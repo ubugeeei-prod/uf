@@ -1,0 +1,15 @@
+// @flow
+import * as React from '@uniflowed/react';
+import { Suspense } from '@uniflowed/react';
+
+component Layout(children: React.Node) {
+  return (
+    <html lang="en">
+      <body>
+        <Suspense fallback={null}>{children}</Suspense>
+      </body>
+    </html>
+  );
+}
+
+export default Layout;

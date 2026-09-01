@@ -1,0 +1,32 @@
+import { defineConfig } from '@uniflowed/config';
+
+export default defineConfig({
+  app: {
+    router: {
+      entry: 'docs-site/app.flow',
+      root: 'docs-site/app',
+    },
+    rendering: {
+      modes: ['ssg'],
+      cache: {
+        actions: false,
+        data: false,
+        fetch: false,
+        route: false,
+      },
+    },
+  },
+  build: {
+    entries: ['docs-site/app.flow'],
+    outDir: 'dist/docs',
+    staticBuild: true,
+  },
+  docs: {
+    enabled: true,
+    app: 'docs-site/app.flow',
+    source: 'docs',
+    outDir: 'dist/docs',
+    staticBuild: true,
+    deploy: 'void',
+  },
+});
