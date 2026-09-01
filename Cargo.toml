@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/uniflowed_config",
+  "crates/uniflowed_flow",
   "crates/uniflowed_infra",
 ]
 resolver = "3"

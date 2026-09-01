@@ -1,0 +1,17 @@
+[package]
+name = "uniflowed_flow"
+description = "Flow parser/typechecker adapter boundary for uniflowed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["official-parser"]
+official-parser = ["dep:flowjs-parser"]
+
+[dependencies]
+flowjs-parser = { workspace = true, optional = true }
+thiserror.workspace = true
