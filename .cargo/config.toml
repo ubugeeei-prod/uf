@@ -1,0 +1,21 @@
+[build]
+rustflags = [
+  "-C",
+  "target-cpu=native",
+]
+
+[target.aarch64-apple-darwin]
+linker = "clang"
+
+[target.x86_64-apple-darwin]
+linker = "clang"
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld"
+
+[alias]
+xtask-check = "test --workspace --all-features"
+xtask-bench-build = "bench --workspace --all-features --no-run"

@@ -1,0 +1,70 @@
+[workspace]
+members = [
+  "crates/uniflowed_infra",
+]
+resolver = "3"
+
+[workspace.package]
+authors = ["uniflowed contributors"]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/ubugeeei-prod/uf"
+rust-version = "1.98"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+assert_cmd = "2.1.1"
+bumpalo = { version = "3.19.1", features = ["collections"] }
+camino = { version = "1.2.1", features = ["serde1"] }
+clap = { version = "4.6.4", features = ["derive", "env"] }
+compact_str = { version = "0.10.0", features = ["serde"] }
+criterion = "0.8.2"
+flowjs-parser = "0.0.0-alpha.3"
+ignore = "0.4.25"
+json5 = "1.3.1"
+memchr = "2.7.6"
+mimalloc = "0.1.52"
+phf = { version = "0.14.0", features = ["macros"] }
+rayon = "1.11.0"
+rustc-hash = "2.1.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
+similar-asserts = "1.7.0"
+simdutf8 = "0.1.5"
+smallvec = { version = "1.15.1", features = ["serde"] }
+tempfile = "3.25.0"
+thiserror = "2.0.17"
+toml = "0.9.8"
+walkdir = "2.5.0"
+
+[profile.release]
+codegen-units = 1
+debug = false
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 3
+overflow-checks = false
+panic = "abort"
+strip = "symbols"
+
+[profile.release.build-override]
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+
+[profile.ci]
+inherits = "dev"
+codegen-units = 256
+debug = false
+incremental = false
+
+[profile.ci-opt]
+inherits = "release"
+codegen-units = 16
+lto = "thin"

@@ -1,0 +1,18 @@
+[package]
+name = "uniflowed_infra"
+description = "Fast shared infrastructure for the Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+bumpalo.workspace = true
+compact_str.workspace = true
+memchr.workspace = true
+phf.workspace = true
+rustc-hash.workspace = true
+simdutf8.workspace = true
+smallvec.workspace = true
