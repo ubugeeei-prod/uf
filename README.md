@@ -28,27 +28,13 @@ Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/
 ## Commands
 
 ```sh
-uf create app react my-app
-uf create lib my-lib
+uf create app my-app
 uf dev
 uf build
 uf lint
 uf fmt
 uf check
-uf test --list
-uf env doctor
-uf env use production
-uf use uf@0.1.0
-uf prepare
-uf inspect
-uf publish
-uf release minor
-uf lsp
-uf install
-uf upgrade
-uf run <task>
-ufr <task>
-ufx <package> [...args]
+uf test
 ```
 
 ## Defaults
