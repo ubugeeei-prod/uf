@@ -1,0 +1,18 @@
+[package]
+name = "uniflowed_project"
+description = "Project discovery and scaffolding for the Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+camino.workspace = true
+uniflowed_config = { path = "../uniflowed_config" }
+thiserror.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

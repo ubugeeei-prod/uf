@@ -1,0 +1,33 @@
+[package]
+name = "uniflowed_cli"
+description = "Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "uf"
+path = "src/bin/uf.rs"
+
+[dependencies]
+anyhow.workspace = true
+camino.workspace = true
+clap.workspace = true
+uniflowed_config = { path = "../uniflowed_config" }
+uniflowed_effect = { path = "../uniflowed_effect" }
+uniflowed_flow = { path = "../uniflowed_flow" }
+uniflowed_fmt = { path = "../uniflowed_fmt" }
+uniflowed_lib = { path = "../uniflowed_lib" }
+uniflowed_lint = { path = "../uniflowed_lint" }
+uniflowed_project = { path = "../uniflowed_project" }
+uniflowed_router = { path = "../uniflowed_router" }
+uniflowed_test = { path = "../uniflowed_test" }
+mimalloc.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true
