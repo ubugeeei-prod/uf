@@ -1,0 +1,7 @@
+/target/
+/dist/
+/node_modules/
+/.direnv/
+/.DS_Store
+*.log
+*.tmp
