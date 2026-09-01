@@ -1,13 +1,14 @@
-import { defineConfig } from '@uniflowed/config';
+// @flow
+import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   app: {
     router: {
-      entry: 'docs-site/app.flow',
-      root: 'docs-site/app',
+      entry: "docs/app.flow",
+      root: "docs/app",
     },
     rendering: {
-      modes: ['ssg'],
+      modes: ["ssg"],
       cache: {
         actions: false,
         data: false,
@@ -17,16 +18,16 @@ export default defineConfig({
     },
   },
   build: {
-    entries: ['docs-site/app.flow'],
-    outDir: 'dist/docs',
+    entries: ["docs/app.flow"],
+    outDir: "dist/docs",
     staticBuild: true,
   },
   docs: {
     enabled: true,
-    app: 'docs-site/app.flow',
-    source: 'docs',
-    outDir: 'dist/docs',
+    app: "docs/app.flow",
+    source: "docs",
+    outDir: "dist/docs",
     staticBuild: true,
-    deploy: 'void',
+    deploy: "void",
   },
 });
