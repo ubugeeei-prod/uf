@@ -1,0 +1,23 @@
+[package]
+name = "uniflowed-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+uf_config = { path = "../../crates/uf_config" }
+uf_flow = { path = "../../crates/uf_flow" }
+
+[[bin]]
+name = "config_object"
+path = "fuzz_targets/config_object.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

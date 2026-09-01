@@ -1,0 +1,26 @@
+name: Semver
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-semver-checks:
+    name: Cargo Semver Checks
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2
+        with:
+          baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+          rust-toolchain: "1.98.0"

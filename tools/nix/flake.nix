@@ -34,6 +34,8 @@
             openssl
             pkg-config
             rustup
+            why3
+            z3
           ];
 
           RUSTUP_TOOLCHAIN = "1.98.0";

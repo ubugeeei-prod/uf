@@ -1,0 +1,24 @@
+name: Formal
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "tools/formal/**"
+      - ".github/workflows/formal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  why3:
+    name: Why3 Z3
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@28cf3ba74de6f3163b6e6d410c10569e74b6cae8 # v20
+      - run: nix develop ./tools/nix --command why3 prove tools/formal/std_contract.mlw -P z3 -a split_vc

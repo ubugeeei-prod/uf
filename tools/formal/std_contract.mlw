@@ -1,0 +1,20 @@
+module StdContract
+
+  use int.Int
+  use seq.Seq
+
+  let clamp (value min max: int) : int
+    requires { min <= max }
+    ensures { min <= result }
+    ensures { result <= max }
+    ensures { min <= value <= max -> result = value }
+  =
+    if value < min then min else if value > max then max else value
+
+  let constant_time_equal_shape (left right: seq int) : bool
+    ensures { length left <> length right -> result = false }
+    ensures { result = true -> length left = length right }
+  =
+    if length left <> length right then false else true
+
+end

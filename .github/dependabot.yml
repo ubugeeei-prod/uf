@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      rust:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "cargo"
+    directory: "/tools/fuzz"
+    schedule:
+      interval: "weekly"
+    groups:
+      fuzz:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      actions:
+        patterns:
+          - "*"
