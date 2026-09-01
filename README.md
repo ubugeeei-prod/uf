@@ -4,7 +4,7 @@
 
 # uf
 
-## Unified Toolchain for Flow (React).
+Unified Toolchain for Flow (React)
 
 </div>
 
