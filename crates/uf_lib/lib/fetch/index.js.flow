@@ -1,0 +1,3 @@
+// @flow
+export type { FetchClient, FetchConfig, RequestOptions } from "../core/fetch.js.flow";
+export { ofetch, createFetch, request } from "../core/fetch.js.flow";

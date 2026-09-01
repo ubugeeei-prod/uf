@@ -1,0 +1,62 @@
+// @flow
+import type * as React from './react.js.flow';
+
+declare export type RoutePath = string;
+declare export type RouteParams = { +[string]: string };
+declare export type SearchParams = { +[string]: string | $ReadOnlyArray<string> };
+
+declare export type Metadata = {
+  +title?: string,
+  +description?: string,
+  +openGraph?: {
+    +title?: string,
+    +description?: string,
+    +images?: $ReadOnlyArray<string>,
+  },
+};
+
+declare export type PageProps<TParams: RouteParams = {}, TSearch: SearchParams = {}> = {
+  +params: TParams,
+  +searchParams: TSearch,
+};
+
+declare export type LayoutProps<TParams: RouteParams = {}> = {
+  +params: TParams,
+  +children: React.Node,
+};
+
+declare export type RouteModule = {
+  +default?: component() renders React.Node,
+  +loader?: () => mixed | Promise<mixed>,
+  +action?: () => mixed | Promise<mixed>,
+  +generateMetadata?: <TParams: RouteParams>(props: PageProps<TParams>) => Metadata | Promise<Metadata>,
+  +generateStaticParams?: <TParams: RouteParams>() => $ReadOnlyArray<TParams> | Promise<$ReadOnlyArray<TParams>>,
+};
+
+declare export function FileRoute<TRoute: RoutePath>(path: TRoute, module: RouteModule): RouteModule;
+declare export function routerView(root: './app'): RouteModule;
+declare export function loader<T>(body: () => T | Promise<T>): () => Promise<T>;
+declare export function action<T>(body: () => T | Promise<T>): () => Promise<T>;
+declare export function next(): mixed;
+declare export function redirect<TRoute: RoutePath>(to: TRoute): empty;
+declare export function permanentRedirect<TRoute: RoutePath>(to: TRoute): empty;
+declare export function notFound(): empty;
+declare export function revalidatePath<TRoute: RoutePath>(to: TRoute): void;
+declare export function revalidateTag(tag: string): void;
+declare export function noStore(): void;
+
+declare export function useRoute<TRoute: RoutePath, TParams: RouteParams>(): {
+  +path: TRoute,
+  +params: TParams,
+};
+
+declare export function useRouter<TRoute: RoutePath>(): {
+  +push: (to: TRoute) => void,
+  +replace: (to: TRoute) => void,
+  +prefetch: (to: TRoute) => Promise<void>,
+  +refresh: () => void,
+};
+
+declare export function defineNavigationGuard<TRoute: RoutePath>(
+  guard: (to: TRoute, from: TRoute) => boolean | Promise<boolean>,
+): (to: TRoute, from: TRoute) => Promise<boolean>;

@@ -1,6 +1,6 @@
 disallowed-types = [
-  { path = "std::collections::HashMap", reason = "Use uniflowed_infra::FxHashMap" },
-  { path = "std::collections::HashSet", reason = "Use uniflowed_infra::FxHashSet" },
+  { path = "std::collections::HashMap", reason = "Use uf_infra::FxHashMap" },
+  { path = "std::collections::HashSet", reason = "Use uf_infra::FxHashSet" },
   { path = "std::rc::Rc", reason = "Prefer references or arena allocation" },
   { path = "std::sync::Arc", reason = "Prefer scoped references; introduce Arc only with an ownership proof" },
 ]

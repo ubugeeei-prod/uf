@@ -1,0 +1,14 @@
+[package]
+name = "uf_prepare"
+description = "Native prepare pipeline for lint-staged-compatible checks and code generation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+compact_str.workspace = true
+serde.workspace = true
+smallvec.workspace = true

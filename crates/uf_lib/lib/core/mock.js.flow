@@ -1,0 +1,9 @@
+// @flow
+
+declare export opaque type MockRegistry;
+declare export opaque type MockHandler;
+
+declare export function mock(): MockRegistry;
+declare export function get(path: string, response: mixed): MockHandler;
+declare export function post(path: string, response: mixed): MockHandler;
+declare export function use(handler: MockHandler): MockRegistry;

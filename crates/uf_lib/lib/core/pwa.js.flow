@@ -1,0 +1,11 @@
+// @flow
+
+declare export type PwaConfig = {
+  +name: string,
+  +shortName?: string,
+  +cache?: "opt-in",
+};
+
+declare export function definePwa(config: PwaConfig): PwaConfig;
+declare export component Manifest(config: PwaConfig);
+declare export component ServiceWorker(config: PwaConfig);

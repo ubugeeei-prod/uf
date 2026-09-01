@@ -1,0 +1,45 @@
+[package]
+name = "uf_cli"
+description = "Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "uf"
+path = "src/bin/uf.rs"
+
+[[bin]]
+name = "ufr"
+path = "src/bin/ufr.rs"
+
+[[bin]]
+name = "ufx"
+path = "src/bin/ufx.rs"
+
+[dependencies]
+anyhow.workspace = true
+camino.workspace = true
+clap.workspace = true
+uf_config = { path = "../uf_config" }
+uf_effect = { path = "../uf_effect" }
+uf_flow = { path = "../uf_flow" }
+uf_fmt = { path = "../uf_fmt" }
+uf_lib = { path = "../uf_lib" }
+uf_lint = { path = "../uf_lint" }
+uf_pm = { path = "../uf_pm" }
+uf_prepare = { path = "../uf_prepare" }
+uf_project = { path = "../uf_project" }
+uf_rm = { path = "../uf_rm" }
+uf_router = { path = "../uf_router" }
+uf_runtime = { path = "../uf_runtime" }
+uf_test = { path = "../uf_test" }
+mimalloc.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true

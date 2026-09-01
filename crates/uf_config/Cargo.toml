@@ -1,0 +1,25 @@
+[package]
+name = "uf_config"
+description = "Configuration loading for the Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+camino.workspace = true
+compact_str.workspace = true
+json5.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+similar-asserts.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "config"
+harness = false

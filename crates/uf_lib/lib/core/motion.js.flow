@@ -1,0 +1,27 @@
+// @flow
+import type * as React from "./react.js.flow";
+
+declare export type MotionEngine = "uf-native";
+declare export type MotionProperty = "transform" | "opacity" | "color";
+declare export type MotionEasing = "linear" | "out" | "spring";
+
+declare export type MotionTrack = {
+  +id: string,
+  +property: MotionProperty,
+  +durationMs: number,
+  +easing?: MotionEasing,
+};
+
+declare export type MotionContract = {
+  +engine: MotionEngine,
+  +tracks: $ReadOnlyArray<MotionTrack>,
+  +compilerSafe: true,
+  +serverComponentSafe: true,
+  +reducedMotionDefault: true,
+};
+
+declare export function motion(contract?: MotionContract): MotionContract;
+declare export function animate(track: MotionTrack): MotionContract;
+declare export function timeline(tracks: $ReadOnlyArray<MotionTrack>): MotionContract;
+declare export function spring(id: string, property: MotionProperty, durationMs: number): MotionTrack;
+declare export function reducedMotion(children: React.Node): React.Node;

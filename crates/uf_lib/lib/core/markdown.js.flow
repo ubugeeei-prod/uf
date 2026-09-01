@@ -1,0 +1,11 @@
+// @flow
+import type * as React from "./react.js.flow";
+
+declare export type MarkdownOptions = {
+  +cache?: "opt-in",
+  +rsc?: true,
+};
+
+declare export component Markdown(source: string, options?: MarkdownOptions) renders React.Node;
+declare export function renderMarkdown(source: string, options?: MarkdownOptions): Promise<string>;
+declare export function compileMarkdown(source: string, options?: MarkdownOptions): Promise<React.Node>;

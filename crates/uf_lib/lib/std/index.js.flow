@@ -1,0 +1,2 @@
+// @flow
+declare export * from "../core/std.js.flow";

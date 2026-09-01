@@ -1,0 +1,18 @@
+[package]
+name = "uf_std"
+description = "Native stdlib modules for @uniflowed/std."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+compact_str.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+smallvec.workspace = true
+toml.workspace = true
+uf_runtime = { path = "../uf_runtime" }

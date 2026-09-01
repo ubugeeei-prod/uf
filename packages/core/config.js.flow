@@ -1,4 +1,0 @@
-// @flow
-export type { UniflowedConfig } from './index.js.flow';
-
-declare export function defineConfig(config: UniflowedConfig): UniflowedConfig;

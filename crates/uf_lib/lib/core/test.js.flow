@@ -1,0 +1,18 @@
+// @flow
+declare export * from './testing.js.flow';
+
+declare export type TestRuntime = "uf-self-hosted";
+declare export type TestScheduler = "native-work-stealing";
+declare export type TestPerformanceTarget = "faster-than-bun";
+
+declare export type NativeTestRunnerPlan = {
+  +module: "@uniflowed/test",
+  +runtime: TestRuntime,
+  +scheduler: TestScheduler,
+  +performanceTarget: TestPerformanceTarget,
+  +imports: $ReadOnlyArray<"@uniflowed/test" | "@uniflowed/testing" | "inflow">,
+  +reactTestingLibraryNative: true,
+  +officialFlowParser: true,
+};
+
+declare export function plan(): NativeTestRunnerPlan;

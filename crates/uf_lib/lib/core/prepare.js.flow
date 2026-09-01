@@ -1,0 +1,20 @@
+// @flow
+
+declare export type PrepareStep =
+  | "discover-staged-files"
+  | "generate-router-types"
+  | "generate-server-action-types"
+  | "generate-validator-types"
+  | "run-lint"
+  | "run-format-check";
+
+declare export type PreparePlan = {
+  +lintStagedCompatible: boolean,
+  +codeGenerator: boolean,
+  +cache: "opt-in",
+  +steps: $ReadOnlyArray<PrepareStep>,
+};
+
+declare export function prepare(): PreparePlan;
+declare export function lintStaged(): PrepareStep;
+declare export function codegen(): $ReadOnlyArray<PrepareStep>;

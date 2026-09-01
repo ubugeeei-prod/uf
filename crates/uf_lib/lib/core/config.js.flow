@@ -1,0 +1,4 @@
+// @flow
+export type { TaskDefinition, UniflowedConfig } from './index.js.flow';
+
+declare export function defineConfig(config: UniflowedConfig): UniflowedConfig;

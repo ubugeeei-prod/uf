@@ -1,9 +1,0 @@
-// @flow
-
-declare export opaque type Table<T>;
-
-declare export function defineTable<T: { +[string]: mixed }>(name: string, shape: T): Table<T>;
-declare export function relation<TFrom, TTo>(from: Table<TFrom>, to: Table<TTo>): void;
-declare export var db: {
-  query<T>(table: Table<T>): Promise<$ReadOnlyArray<T>>,
-};

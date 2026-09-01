@@ -1,0 +1,16 @@
+[package]
+name = "uf_fmt"
+description = "Native formatter runner primitives for uniflowed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+uf_config = { path = "../uf_config" }
+thiserror.workspace = true
+
+[dev-dependencies]
+similar-asserts.workspace = true

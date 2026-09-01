@@ -1,0 +1,8 @@
+// @flow
+export type {
+  BaselinePolicy,
+  DiffAlgorithm,
+  VisualRegressionPlan,
+  VrtEngine,
+} from "../core/vrt.js.flow";
+export { baseline, diff, plan, snapshot } from "../core/vrt.js.flow";

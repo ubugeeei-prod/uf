@@ -1,0 +1,33 @@
+// @flow
+
+declare export opaque type Schema<T>;
+
+declare export type Issue = {
+  +code: string,
+  +message: string,
+};
+
+declare export type Result<T> =
+  | { +ok: true, +value: T }
+  | { +ok: false, +issues: $ReadOnlyArray<Issue> };
+
+declare export type Step<TIn, TOut> = (schema: Schema<TIn>) => Schema<TOut>;
+
+declare export var v: {
+  +string: () => Schema<string>,
+  +number: () => Schema<number>,
+  +boolean: () => Schema<boolean>,
+  +object: <T: {...}>(shape: T) => Schema<T>,
+  +pipe: <A, B>(schema: Schema<A>, step: Step<A, B>) => Schema<B>,
+  +minLength: (value: number) => Step<string, string>,
+  +maxLength: (value: number) => Step<string, string>,
+  +startsWith: (value: string) => Step<string, string>,
+  +min: (value: number) => Step<number, number>,
+  +max: (value: number) => Step<number, number>,
+  +safeParse: <T>(schema: Schema<T>, value: mixed) => Result<T>,
+};
+
+declare export var string: typeof v.string;
+declare export var number: typeof v.number;
+declare export var object: typeof v.object;
+declare export var pipe: typeof v.pipe;

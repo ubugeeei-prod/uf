@@ -1,0 +1,23 @@
+[package]
+name = "uf_lint"
+description = "Native lint runner for Flow source files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+uf_config = { path = "../uf_config" }
+uf_flow = { path = "../uf_flow" }
+uf_infra = { path = "../uf_infra" }
+rayon.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "lint"
+harness = false

@@ -1,0 +1,20 @@
+// @flow
+import type { FetchClient } from "./fetch.js.flow";
+import type { Cell } from "./state.js.flow";
+
+declare export type LoaderState<T> =
+  | { +status: "idle" }
+  | { +status: "pending" }
+  | { +status: "ready", +value: T }
+  | { +status: "failed", +error: Error };
+
+declare export opaque type Loader<T>;
+
+declare export function createLoader<T>(
+  key: string,
+  load: (client: FetchClient) => Promise<T>,
+): Loader<T>;
+
+declare export function useLoader<T>(loader: Loader<T>): LoaderState<T>;
+declare export function loaderCell<T>(loader: Loader<T>): Cell<LoaderState<T>>;
+declare export function preload<T>(loader: Loader<T>): Promise<T>;

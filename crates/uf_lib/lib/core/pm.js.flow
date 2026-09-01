@@ -1,0 +1,39 @@
+// @flow
+import type { UniflowedConfig } from "./index.js.flow";
+
+declare export type PackageResolver = "uf-native";
+declare export type PackageScriptPolicy = "forbid" | "explicit-opt-in";
+declare export type PackageStoreStrategy = "content-addressed";
+declare export type PackageLinkMode = "hardlink-then-copy";
+
+declare export type WorkspacePackage = {
+  +name: string,
+  +path: string,
+};
+
+declare export type PackageStore = {
+  +strategy: PackageStoreStrategy,
+  +directory: string,
+};
+
+declare export type PackageManagerPlan = {
+  +resolver: PackageResolver,
+  +lockfile: "uf.lock" | string,
+  +registry: string,
+  +scripts: PackageScriptPolicy,
+  +store: PackageStore,
+  +linkMode: PackageLinkMode,
+  +workspacePackages: $ReadOnlyArray<WorkspacePackage>,
+  +steps: $ReadOnlyArray<
+    | "read-config"
+    | "resolve-graph"
+    | "verify-integrity"
+    | "write-lockfile"
+    | "apply-store"
+    | "link-workspace",
+  >,
+};
+
+declare export function inferFromConfig(config: UniflowedConfig): PackageManagerPlan;
+declare export function install(plan?: PackageManagerPlan): Promise<void>;
+declare export function upgrade(plan?: PackageManagerPlan): Promise<void>;

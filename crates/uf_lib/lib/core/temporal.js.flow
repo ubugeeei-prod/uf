@@ -1,0 +1,15 @@
+// @flow
+
+declare export opaque type Instant;
+declare export opaque type PlainDate;
+declare export opaque type PlainTime;
+declare export opaque type ZonedDateTime;
+declare export opaque type Duration;
+
+declare export var Temporal: {
+  +Instant: { +from: (value: string) => Instant },
+  +PlainDate: { +from: (value: string) => PlainDate },
+  +PlainTime: { +from: (value: string) => PlainTime },
+  +ZonedDateTime: { +from: (value: string) => ZonedDateTime },
+  +Duration: { +from: (value: string) => Duration },
+};

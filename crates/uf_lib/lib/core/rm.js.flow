@@ -1,0 +1,61 @@
+// @flow
+import type { UniflowedConfig } from "./index.js.flow";
+
+declare export type RuntimeEngine =
+  | "uf"
+  | "node"
+  | "bun"
+  | "deno"
+  | "edge"
+  | "serverless"
+  | "container";
+
+declare export type RuntimeHost = RuntimeEngine;
+declare export type RuntimeAcquisition = "auto";
+declare export type RuntimeApplication = "config-and-host";
+declare export type RuntimeReference = { +name: "uf" | string, +version: string };
+
+declare export type XdgLayout = {
+  +configDir: string,
+  +dataDir: string,
+  +cacheDir: string,
+  +stateDir: string,
+  +runtimeDir?: string,
+  +binDir: string,
+  +shimPath: string,
+  +versionsDir: string,
+};
+
+declare export type RuntimeManagerPlan = {
+  +engine: RuntimeEngine,
+  +hosts: $ReadOnlyArray<RuntimeHost>,
+  +acquisition: RuntimeAcquisition,
+  +application: RuntimeApplication,
+  +steps: $ReadOnlyArray<
+    | "read-config"
+    | "infer-runtime"
+    | "acquire-runtime"
+    | "apply-adapters"
+    | "verify-doctor",
+  >,
+};
+
+declare export type RuntimeUsePlan = {
+  +requested: RuntimeReference,
+  +layout: XdgLayout,
+  +autoSwitch: boolean,
+  +steps: $ReadOnlyArray<
+    | "resolve-version"
+    | "download-runtime"
+    | "verify-checksum"
+    | "install-version"
+    | "write-shim"
+    | "activate-version",
+  >,
+};
+
+declare export function inferRuntime(config: UniflowedConfig): RuntimeManagerPlan;
+declare export function useRuntime(specifier: string): RuntimeUsePlan;
+declare export function acquireRuntime(plan: RuntimeManagerPlan): Promise<RuntimeManagerPlan>;
+declare export function applyRuntime(plan: RuntimeManagerPlan): Promise<void>;
+declare export function doctor(plan?: RuntimeManagerPlan): Promise<void>;

@@ -1,0 +1,19 @@
+[package]
+name = "uf_lib"
+description = "Native modules exposed to Flow for the Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+compact_str.workspace = true
+uf_infra = { path = "../uf_infra" }
+uf_motion = { path = "../uf_motion" }
+uf_orm = { path = "../uf_orm" }
+uf_std = { path = "../uf_std" }
+uf_validator = { path = "../uf_validator" }
+uf_vrt = { path = "../uf_vrt" }
+serde.workspace = true
