@@ -18,7 +18,7 @@ pub type InstallerShellList = SmallVec<[InstallerShell; 8]>;
 /// Inline platform list.
 pub type InstallerPlatformList = SmallVec<[InstallerPlatform; 8]>;
 
-/// Runtime manager plan inferred from `uf.config.flow`.
+/// Runtime manager plan inferred from `uf.config.js`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeManagerPlan {
@@ -385,7 +385,7 @@ pub enum RuntimeApplication {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeManagerStep {
-    /// Read `uf.config.flow`.
+    /// Read `uf.config.js`.
     ReadConfig,
     /// Infer runtime requirements from app, server, and deploy config.
     InferRuntime,

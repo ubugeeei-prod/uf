@@ -39,14 +39,14 @@ uf test
 ## Defaults
 
 React app projects work without configuration, and project-specific settings
-live in `uf.config.flow`. The default app preset
+live in `uf.config.js`. The default app preset
 enables:
 
 - Flow component/hook style for React
-- `app.flow` as the entrypoint
+- `app.js` as the entrypoint
 - file-system router rooted at `app`
-- reserved `app/_uf.layout.flow`, `app/_uf.page.flow`, and `app/_uf.middleware.flow`
-- generated `router.flow` route path and params types
+- reserved `app/_uf.layout.js`, `app/_uf.page.js`, and `app/_uf.middleware.js`
+- generated `router.js` route path and params types
 - Server Components by default
 - explicit `"use client";` for Client Components
 - explicit `"use server";` for server actions
@@ -71,10 +71,11 @@ enables:
 - ox-content wasm-backed `@uniflowed/markdown`
 - lite Temporal and PWA primitives
 - native stdlib modules for os, net, dns, path, stream, URL, wasm, glob, motion,
-  cron, S3, SigV4, worker/lambda functions, uuid, and zip
+  TUI, cron, S3, SigV4, worker/lambda functions, uuid, and zip
 - all route, fetch, image, font, markdown, and PWA caches are opt-in
 - native query, effect, ORM, Relay, validator, and state/flow-cell builtin modules
 - React Compiler-safe motion primitives with reduced-motion defaults
+- OpenTUI-aligned native TUI framework targeting a React Ink replacement
 - React-minded hooks inspired by VueUse without render-time impurity
 - headless RSC-compatible UI primitives with preset styles
 - validator-backed form UI designed for React Compiler-safe render idempotency
@@ -94,7 +95,7 @@ enables:
 - formatter defaults to double quotes and semicolons
 
 No Babel, Jest, Yarn, npm scripts, or `.flowconfig` is required for generated
-projects. Project automation belongs in `uf.config.flow` tasks and runs through
+projects. Project automation belongs in `uf.config.js` tasks and runs through
 the uf Vite Task-compatible runner.
 
 When config is needed, use the Vite-like entrypoint through Flow syntax:
@@ -152,6 +153,7 @@ The Flow package surface starts in `crates/uf_lib/lib/core` and is exposed as bu
 - `@uniflowed/story`
 - `@uniflowed/vrt`
 - `@uniflowed/motion`
+- `@uniflowed/tui`
 - `@uniflowed/cli`
 - `@uniflowed/prepare`
 - `@uniflowed/pm`
@@ -166,8 +168,9 @@ The Flow package surface starts in `crates/uf_lib/lib/core` and is exposed as bu
 The Rust source of truth for that registry is `uf_lib`, so CLI inspection,
 docs, and runtime binding can converge on one module table.
 
-Core implementation should remain native Rust. Flow is the user-facing config
-syntax via `uf.config.flow`; Vite and Rolldown stay hidden behind uniflowed.
+Core implementation should remain native Rust. User projects are `.js` files
+with Flow syntax and `// @flow`, starting from `uf.config.js`; Vite and
+Rolldown stay hidden behind uniflowed.
 Native package artifacts are generated from Rust using a napi-rs-style target
 package model, and generated TypeScript declarations are converted back to Flow.
 

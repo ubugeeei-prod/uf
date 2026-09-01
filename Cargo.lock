@@ -1077,6 +1077,7 @@ dependencies = [
  "uf_router",
  "uf_runtime",
  "uf_test",
+ "uf_tui",
 ]
 
 [[package]]
@@ -1160,6 +1161,7 @@ dependencies = [
  "uf_motion",
  "uf_orm",
  "uf_std",
+ "uf_tui",
  "uf_validator",
  "uf_vrt",
 ]
@@ -1353,6 +1355,15 @@ dependencies = [
  "smallvec",
  "thiserror",
  "uf_infra",
+]
+
+[[package]]
+name = "uf_tui"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "serde",
+ "smallvec",
 ]
 
 [[package]]

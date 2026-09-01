@@ -1,0 +1,156 @@
+// @flow
+import type * as React from "./react.js.flow";
+
+declare export type TuiEngine = "uf-native-open-tui-compatible";
+declare export type TuiStandard = "open-tui";
+declare export type TuiRenderer = "cell-diff-native";
+declare export type TuiLayoutEngine = "flexbox-yoga-compatible";
+declare export type TuiInputModel = "keyboard-mouse-focus-selection";
+declare export type TuiRuntimeBinding = "flow-react";
+declare export type TuiPerformanceTarget = "faster-than-react-ink";
+
+declare export type TuiFeature =
+  | "flexbox"
+  | "cell-diff"
+  | "keyboard"
+  | "mouse"
+  | "focus"
+  | "selection"
+  | "scrollback"
+  | "keymap"
+  | "in-memory-testing"
+  | "snapshot-testing"
+  | "terminal-automation"
+  | "rich-text"
+  | "code-highlight"
+  | "markdown"
+  | "images"
+  | "audio"
+  | "three-d"
+  | "ssh"
+  | "qr-code"
+  | "embedded-terminal"
+  | "clipboard"
+  | "notifications"
+  | "animations";
+
+declare export type TuiComponentKind =
+  | "display"
+  | "input"
+  | "selection"
+  | "scrolling"
+  | "rich-content"
+  | "graphics"
+  | "application"
+  | "testing"
+  | "integration";
+
+declare export type TuiComponent = {
+  +name: string,
+  +parts: $ReadOnlyArray<string>,
+  +kind: TuiComponentKind,
+  +serverComponentSafe: boolean,
+  +interactive: boolean,
+  +feature: TuiFeature,
+};
+
+declare export type ReactInkTarget = {
+  +replacementReady: true,
+  +nativeRenderer: true,
+  +typedComponents: true,
+  +richMedia: true,
+  +inMemoryTests: true,
+  +performanceTarget: TuiPerformanceTarget,
+};
+
+declare export type TuiFrameworkContract = {
+  +engine: TuiEngine,
+  +standard: TuiStandard,
+  +renderer: TuiRenderer,
+  +layout: TuiLayoutEngine,
+  +input: TuiInputModel,
+  +runtimeBinding: TuiRuntimeBinding,
+  +features: $ReadOnlyArray<TuiFeature>,
+  +components: $ReadOnlyArray<TuiComponent>,
+  +reactInkTarget: ReactInkTarget,
+};
+
+declare export type TuiProps = {
+  +children?: React.Node,
+  +id?: string,
+  +width?: number | string,
+  +height?: number | string,
+  +grow?: number,
+  +shrink?: number,
+  +focusable?: boolean,
+};
+
+declare export type TuiComponentFn = component(
+  children?: React.Node,
+  id?: string,
+  width?: number | string,
+  height?: number | string,
+  grow?: number,
+  shrink?: number,
+  focusable?: boolean,
+) renders React.Node;
+
+declare export type SelectComponent = {
+  +Root: TuiComponentFn,
+  +Item: TuiComponentFn,
+  +Group: TuiComponentFn,
+  +Empty: TuiComponentFn,
+};
+
+declare export type ScrollBoxComponent = {
+  +Root: TuiComponentFn,
+  +Viewport: TuiComponentFn,
+  +Content: TuiComponentFn,
+};
+
+declare export type FrameBufferComponent = {
+  +Root: TuiComponentFn,
+  +Layer: TuiComponentFn,
+};
+
+declare export type RenderTuiHandle = {
+  +stop: () => void,
+  +snapshot: () => string,
+};
+
+declare export type RenderTuiOptions = {
+  +stdin?: mixed,
+  +stdout?: mixed,
+  +testing?: boolean,
+};
+
+declare export function contract(): TuiFrameworkContract;
+declare export function renderTui(node: React.Node, options?: RenderTuiOptions): RenderTuiHandle;
+
+declare export var Box: TuiComponentFn;
+declare export var Text: TuiComponentFn;
+declare export var Input: TuiComponentFn;
+declare export var Textarea: TuiComponentFn;
+declare export var Select: SelectComponent;
+declare export var TabSelect: TuiComponentFn;
+declare export var Slider: TuiComponentFn;
+declare export var ScrollBox: ScrollBoxComponent;
+declare export var ScrollBar: TuiComponentFn;
+declare export var Code: TuiComponentFn;
+declare export var Markdown: TuiComponentFn;
+declare export var LineNumbers: TuiComponentFn;
+declare export var Diff: TuiComponentFn;
+declare export var TextTable: TuiComponentFn;
+declare export var AsciiFont: TuiComponentFn;
+declare export var FrameBuffer: FrameBufferComponent;
+declare export var Image: TuiComponentFn;
+declare export var QrCode: TuiComponentFn;
+declare export var EmbeddedTerminal: TuiComponentFn;
+declare export var Clipboard: TuiComponentFn;
+declare export var Notification: TuiComponentFn;
+declare export var Audio: TuiComponentFn;
+declare export var Timeline: TuiComponentFn;
+declare export var Keymap: TuiComponentFn;
+declare export var SshHost: TuiComponentFn;
+declare export var ThreeCanvas: TuiComponentFn;
+declare export var TestRenderer: TuiComponentFn;

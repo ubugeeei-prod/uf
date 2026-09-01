@@ -10,7 +10,7 @@ fn bench_test_discovery(c: &mut Criterion) {
     }
 
     c.bench_function("discover 5000 native tests", |b| {
-        b.iter(|| black_box(discover_tests("index.test.flow", &source)));
+        b.iter(|| black_box(discover_tests("index.test.js", &source)));
     });
 }
 

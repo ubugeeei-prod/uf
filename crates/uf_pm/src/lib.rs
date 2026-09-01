@@ -12,7 +12,7 @@ pub type PackageList = SmallVec<[WorkspacePackage; 8]>;
 /// Inline step list for deterministic install and upgrade planning.
 pub type PackageManagerSteps = SmallVec<[PackageManagerStep; 8]>;
 
-/// Native package manager plan inferred from `uf.config.flow`.
+/// Native package manager plan inferred from `uf.config.js`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageManagerPlan {
@@ -157,7 +157,7 @@ pub struct WorkspacePackage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PackageManagerStep {
-    /// Read `uf.config.flow`.
+    /// Read `uf.config.js`.
     ReadConfig,
     /// Resolve the package graph.
     ResolveGraph,

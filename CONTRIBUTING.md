@@ -13,11 +13,11 @@ docs: define framework defaults
 ## Implementation Policy
 
 Core engines should be implemented in Rust. Config should be expressed through
-`uf.config.flow`; parser, linter, formatter, build, test, package, and
+`uf.config.js`; parser, linter, formatter, build, test, package, and
 runtime engines should stay native.
 
 Generated app projects should not require Babel, Jest, Yarn, npm scripts, or
-`.flowconfig`. Project tasks belong in `uf.config.flow` and run through `uf run`.
+`.flowconfig`. Project tasks belong in `uf.config.js` and run through `uf run`.
 Package management belongs to `uf install`/`uf upgrade` and `@uniflowed/pm`;
 runtime inference and acquisition belongs to `@uniflowed/rm`.
 

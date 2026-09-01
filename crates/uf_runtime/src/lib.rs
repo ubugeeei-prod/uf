@@ -46,6 +46,7 @@ impl Default for RuntimeContract {
                 RuntimeCapability::ServerActions,
                 RuntimeCapability::ReactServerComponents,
                 RuntimeCapability::NativePackages,
+                RuntimeCapability::TerminalUi,
             ],
             hosts: smallvec::smallvec![
                 RuntimeHost::Uf,
@@ -141,6 +142,8 @@ pub enum RuntimeCapability {
     ServerActions,
     ReactServerComponents,
     NativePackages,
+    /// Native terminal UI rendering.
+    TerminalUi,
 }
 
 #[cfg(test)]
@@ -188,5 +191,6 @@ mod tests {
         assert!(contract.has_capability(RuntimeCapability::ServerActions));
         assert!(contract.has_capability(RuntimeCapability::ReactServerComponents));
         assert!(contract.has_capability(RuntimeCapability::NativePackages));
+        assert!(contract.has_capability(RuntimeCapability::TerminalUi));
     }
 }

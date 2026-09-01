@@ -7,7 +7,7 @@ use compact_str::CompactString;
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
-pub const CONFIG_FILES: &[&str] = &["uf.config.flow"];
+pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -93,8 +93,8 @@ impl Default for RouterConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            entry: CompactString::const_new("app.flow"),
-            manifest: CompactString::const_new("router.flow"),
+            entry: CompactString::const_new("app.js"),
+            manifest: CompactString::const_new("router.js"),
             root: CompactString::const_new("app"),
             convention: RouterConvention::FileSystem,
         }
@@ -148,6 +148,7 @@ pub struct BuiltinConfig {
     pub relay: bool,
     pub style: StyleEngine,
     pub temporal: TemporalConfig,
+    pub tui: TuiConfig,
     pub web: WebConfig,
 }
 
@@ -170,6 +171,7 @@ impl Default for BuiltinConfig {
             relay: true,
             style: StyleEngine::StyleX,
             temporal: TemporalConfig::default(),
+            tui: TuiConfig::default(),
             web: WebConfig::default(),
         }
     }
@@ -322,6 +324,39 @@ impl Default for MotionConfig {
 pub enum MotionEngineConfig {
     #[default]
     UfNative,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TuiConfig {
+    pub module: CompactString,
+    pub std_module: CompactString,
+    pub standard: TuiStandardConfig,
+    pub native_renderer: bool,
+    pub beat_react_ink: bool,
+    pub rich_media: bool,
+    pub in_memory_tests: bool,
+}
+
+impl Default for TuiConfig {
+    fn default() -> Self {
+        Self {
+            module: CompactString::const_new("@uniflowed/tui"),
+            std_module: CompactString::const_new("@uniflowed/std/tui"),
+            standard: TuiStandardConfig::OpenTui,
+            native_renderer: true,
+            beat_react_ink: true,
+            rich_media: true,
+            in_memory_tests: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TuiStandardConfig {
+    #[default]
+    OpenTui,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -609,7 +644,7 @@ pub struct BuildConfig {
 impl Default for BuildConfig {
     fn default() -> Self {
         Self {
-            entries: vec![CompactString::const_new("app.flow")],
+            entries: vec![CompactString::const_new("app.js")],
             hooks: BTreeMap::new(),
             out_dir: CompactString::const_new("dist"),
             static_build: false,
@@ -633,7 +668,7 @@ impl Default for DocsConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            app: CompactString::const_new("docs/app.flow"),
+            app: CompactString::const_new("docs/app.js"),
             source: CompactString::const_new("docs"),
             out_dir: CompactString::const_new("dist/docs"),
             static_build: true,
@@ -846,6 +881,7 @@ impl Default for StdConfig {
                 StdModuleConfig::Wasm,
                 StdModuleConfig::Glob,
                 StdModuleConfig::Motion,
+                StdModuleConfig::Tui,
                 StdModuleConfig::Cron,
                 StdModuleConfig::S3,
                 StdModuleConfig::Sigv4,
@@ -897,6 +933,7 @@ pub enum StdModuleConfig {
     Wasm,
     Glob,
     Motion,
+    Tui,
     Cron,
     S3,
     Sigv4,
@@ -1447,7 +1484,7 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
     })?;
 
     match path.extension() {
-        Some("flow") => {
+        Some("js" | "mjs" | "cjs" | "flow") => {
             let json5 = extract_config_object(&source).ok_or_else(|| {
                 ConfigError::UnsupportedExpression {
                     path: path.to_path_buf(),
@@ -1569,7 +1606,7 @@ mod tests {
         let config = UniflowedConfig::default();
 
         assert!(config.app.router.enabled);
-        assert_eq!(config.app.router.entry, "app.flow");
+        assert_eq!(config.app.router.entry, "app.js");
         assert_eq!(config.app.router.root, "app");
         assert_eq!(config.app.component_default, ComponentBoundary::Server);
         assert_eq!(config.app.react.version, "19");
@@ -1669,6 +1706,7 @@ mod tests {
         assert!(config.std.modules.contains(&StdModuleConfig::Wasm));
         assert!(config.std.modules.contains(&StdModuleConfig::Glob));
         assert!(config.std.modules.contains(&StdModuleConfig::Motion));
+        assert!(config.std.modules.contains(&StdModuleConfig::Tui));
         assert!(config.std.modules.contains(&StdModuleConfig::Cron));
         assert!(config.std.modules.contains(&StdModuleConfig::S3));
         assert!(config.std.modules.contains(&StdModuleConfig::Sigv4));
@@ -1728,6 +1766,13 @@ mod tests {
         assert!(config.app.builtins.motion.compiler_safe);
         assert!(config.app.builtins.motion.server_component_safe);
         assert!(config.app.builtins.motion.reduced_motion_default);
+        assert_eq!(config.app.builtins.tui.module, "@uniflowed/tui");
+        assert_eq!(config.app.builtins.tui.std_module, "@uniflowed/std/tui");
+        assert_eq!(config.app.builtins.tui.standard, TuiStandardConfig::OpenTui);
+        assert!(config.app.builtins.tui.native_renderer);
+        assert!(config.app.builtins.tui.beat_react_ink);
+        assert!(config.app.builtins.tui.rich_media);
+        assert!(config.app.builtins.tui.in_memory_tests);
         assert_eq!(config.app.builtins.temporal.module, "@uniflowed/temporal");
         assert!(config.app.builtins.temporal.lite);
         assert_eq!(config.app.builtins.pwa.module, "@uniflowed/pwa");
@@ -1827,13 +1872,14 @@ mod tests {
     #[test]
     fn parses_flow_config() {
         let dir = tempfile::tempdir().unwrap();
-        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.flow")).unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
         fs::write(
             &path,
             r#"
                 export default defineConfig({
                   dev: { port: 3000 },
                   app: { builtins: { flowCell: false } },
+                  std: { modules: ["tui"] },
                 });
             "#,
         )
@@ -1843,6 +1889,7 @@ mod tests {
 
         assert_eq!(config.dev.port, 3000);
         assert!(!config.app.builtins.flow_cell);
+        assert!(config.std.modules.contains(&StdModuleConfig::Tui));
         assert!(config.app.builtins.native_test_runner);
     }
 
@@ -1851,7 +1898,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::write(
-            root.join("uf.config.flow"),
+            root.join("uf.config.js"),
             "export default defineConfig({});",
         )
         .unwrap();
@@ -1862,7 +1909,7 @@ mod tests {
         assert_eq!(resolved.root, root);
         assert_eq!(
             resolved.config_path.unwrap().file_name(),
-            Some("uf.config.flow")
+            Some("uf.config.js")
         );
     }
 }

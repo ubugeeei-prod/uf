@@ -13,7 +13,8 @@
 ## P0: Native Toolchain Spine
 
 - [ ] Keep all core implementation in Rust native crates.
-- [x] Use `uf.config.flow` as the single user-visible config surface.
+- [x] Use `uf.config.js` as the single user-visible config surface.
+- [x] Prefer `.js` files with `// @flow` for user-authored Flow source.
 - [x] Start native `@uniflowed/test`, `@uniflowed/pm`, and `@uniflowed/rm` contracts.
 - [x] Start XDG-compliant uf runtime layout.
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
@@ -30,17 +31,17 @@
 - [ ] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [ ] Implement editor extension packages on top of `uf lsp`.
-- [x] Use Vite Task-compatible task definitions in `uf.config.flow`.
+- [x] Use Vite Task-compatible task definitions in `uf.config.js`.
 - [x] Ban npm scripts from generated project templates and lint defaults.
 
 ## P1: Flow React Framework
 
-- [ ] Use `app.flow` as the framework entrypoint.
-- [ ] Load `./app` through `routerView('./app')`.
-- [ ] Reserve `app/_uf.layout.flow`.
-- [ ] Reserve `app/_uf.page.flow`.
-- [ ] Reserve `app/_uf.middleware.flow`.
-- [ ] Generate `router.flow` with route path and params types.
+- [x] Use `app.js` as the framework entrypoint.
+- [x] Load `./app` through `routerView('./app')`.
+- [x] Reserve `app/_uf.layout.js`.
+- [x] Reserve `app/_uf.page.js`.
+- [x] Reserve `app/_uf.middleware.js`.
+- [x] Generate `router.js` with route path and params types.
 - [ ] Enforce typed route guards and constraints.
 - [ ] Make Server Components the default.
 - [ ] Require client components to opt in with `"use client";`.
@@ -59,7 +60,7 @@
 - [ ] Provide explicit ofetch-style clients without global fetch override.
 - [x] Start Nuxt-like web primitives: Font, Image, OgImage, Link, Page, Layout, Time, Announcer, and Picture.
 - [x] Start typed `useCookie`, `useHead`, `useRoute`, `useRouter`, and navigation guard contracts.
-- [ ] Generate fully type-safe route hook declarations from `router.flow`.
+- [ ] Generate fully type-safe route hook declarations from `router.js`.
 - [ ] Implement Link prefetch scheduling with opt-in cache semantics.
 - [ ] Expose Nuxt Module-style builder hooks from Rust.
 - [ ] Build docs with the framework as an RSC fully static site.
@@ -79,11 +80,13 @@
 - [x] Start `@uniflowed/web` for web primitives and route/head/cookie hooks.
 - [x] Start `@uniflowed/markdown` with an ox-content wasm-backed contract.
 - [x] Start `@uniflowed/motion` with React Compiler-safe motion contracts.
+- [x] Start `@uniflowed/tui` as an OpenTUI-aligned native TUI framework.
 - [x] Start `@uniflowed/temporal` as a lite Temporal contract.
 - [x] Start `@uniflowed/pwa` with opt-in cache defaults.
 - [ ] Implement `@uniflowed/orm`.
 - [ ] Implement `@uniflowed/stylex` with preset StyleX defaults.
 - [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library.
+- [ ] Implement native terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
 - [ ] Cover the shadcn-style component catalog.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `crates/uf_lib/lib/ui`.
@@ -139,7 +142,7 @@
 
 ## P5: Standard Library, Legal, And Formal Methods
 
-- [x] Start `@uniflowed/std` registry for vfs, fs, types, pipeline, effect, env, format, stdio, hash, debug, defs, lock, colors, qs, equality, http, buffer, ws, sql, json, yaml, toml, collections, crypto, dotenv, math, os, net, dns, path, stream, url, wasm, glob, motion, cron, s3, sigv4, functions, uuid, zip, import-meta, and defer.
+- [x] Start `@uniflowed/std` registry for vfs, fs, types, pipeline, effect, env, format, stdio, hash, debug, defs, lock, colors, qs, equality, http, buffer, ws, sql, json, yaml, toml, collections, crypto, dotenv, math, os, net, dns, path, stream, url, wasm, glob, motion, tui, cron, s3, sigv4, functions, uuid, zip, import-meta, and defer.
 - [ ] Bind `@uniflowed/std` modules to Rust-native implementations.
 - [x] Start type-safe native ORM contracts.
 - [ ] Implement ORM drivers and generated Flow row/query types.

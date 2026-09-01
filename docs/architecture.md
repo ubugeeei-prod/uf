@@ -16,7 +16,7 @@ manager performance, and integrated feature coverage.
 ## Crates
 
 - `uf_cli`: command router for `uf`
-- `uf_config`: zero-config defaults and `uf.config.flow` loading
+- `uf_config`: zero-config defaults and `uf.config.js` loading
 - `uf_browser`: Playwright-compatible browser and VRT contracts
 - `uf_fetch`: explicit ofetch-style client contracts
 - `uf_flow`: Flow parser/typechecker adapter boundary
@@ -40,6 +40,7 @@ manager performance, and integrated feature coverage.
 - `uf_stdlib_cli`: Gunshi-style stdlib CLI framework for Flow
 - `uf_temporal`: lite Temporal contracts
 - `uf_test`: native test discovery core
+- `uf_tui`: OpenTUI-compatible native TUI framework contracts
 - `uf_validator`: valibot-style native validator primitives
 - `uf_vrt`: native visual regression contracts
 - `uf_web`: Nuxt-like web primitives and typed route hooks
@@ -47,7 +48,7 @@ manager performance, and integrated feature coverage.
 ## Flow And React
 
 The default app preset is Flow-first React. New app templates use Flow component
-syntax, `app.flow`, file-system routes, server actions, StyleX,
+syntax, `app.js`, file-system routes, server actions, StyleX,
 query/effect APIs, Relay, `flow-cell`, headless UI, hooks, and React
 Native-compatible entry files.
 
@@ -66,6 +67,9 @@ starts with platform split diagnostics for generic files that branch on
 `uf_lib` follows the Bun-style shape: native Rust engines expose a compact
 Flow module surface. The initial package is declaration-first, then the runtime
 loader can map `@uniflowed/*` modules to native implementations.
+
+User-authored Flow source uses `.js` files with `// @flow`. Package declaration
+files may still use Flow's `.js.flow` convention when publishing typed modules.
 
 Planned native engines:
 
@@ -87,8 +91,10 @@ Planned native engines:
   and VRT baseline planning
 - React Compiler-safe motion primitives with reduced-motion defaults
 - React hook utilities that preserve render idempotency
-- stdlib contracts for OS, net, DNS, path, streams, URL, WebAssembly, glob, cron,
-  S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
+- OpenTUI-aligned terminal UI primitives targeting a faster, richer React Ink
+  replacement with native cell-diff rendering and in-memory tests
+- stdlib contracts for OS, net, DNS, path, streams, URL, WebAssembly, glob, TUI,
+  cron, S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
 - Rust-native server with owned request handling, streaming, and libuv-level IO
 - WinterTC-aligned Flow runtime backed by Hermes
 - default `uf` runtime with Node.js, Bun, Deno, edge, serverless, static, and
@@ -96,13 +102,13 @@ Planned native engines:
 
 ## Build And Dev
 
-`uf.config.flow` mirrors the Vite style because the build and dev pipeline is
+`uf.config.js` mirrors the Vite style because the build and dev pipeline is
 expected to reuse Vite-compatible plugin semantics and Rolldown where it gives us
 the best performance. Users should not need `vite.config.*` or `rolldown`
 configuration files; those engines stay internal to uniflowed.
 
 Generated projects do not use npm scripts. Tasks are declared in
-`uf.config.flow` and executed by `uf run` through the Vite Task-compatible runner.
+`uf.config.js` and executed by `uf run` through the Vite Task-compatible runner.
 
 Editor integrations live under `editors/` and should stay thin. VS Code,
 Neovim, Emacs, Vim, Helix, Zed, and Cursor all connect to `uf lsp`; the Rust
@@ -119,7 +125,7 @@ publishing is configured from the CLI, `uf release minor` should create a
 npm token.
 
 `@uniflowed/pm` owns package resolution, `uf.lock`, a content-addressed store,
-and script-free install policy. `@uniflowed/rm` reads `uf.config.flow`, infers
+and script-free install policy. `@uniflowed/rm` reads `uf.config.js`, infers
 the required runtime, acquires it, applies host adapters, and feeds `uf env
 doctor` with runtime checks.
 

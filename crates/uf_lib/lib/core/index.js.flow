@@ -62,6 +62,15 @@ declare export type UniflowedConfig = {
         +serverComponentSafe?: true,
         +reducedMotionDefault?: true,
       },
+      +tui?: {
+        +module?: '@uniflowed/tui',
+        +stdModule?: '@uniflowed/std/tui',
+        +standard?: 'open-tui',
+        +nativeRenderer?: true,
+        +beatReactInk?: true,
+        +richMedia?: true,
+        +inMemoryTests?: true,
+      },
       +pwa?: {
         +module?: '@uniflowed/pwa',
         +enabledByDefault?: false,
@@ -200,6 +209,7 @@ declare export type UniflowedConfig = {
       | "wasm"
       | "glob"
       | "motion"
+      | "tui"
       | "cron"
       | "s3"
       | "sigv4"

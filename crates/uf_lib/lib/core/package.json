@@ -45,6 +45,7 @@
     "./stylex": "./stylex.js",
     "./test": "./test.js",
     "./testing": "./testing.js",
+    "./tui": "./tui.js",
     "./ui": "./ui.js",
     "./validator": "./validator.js",
     "./cli": "./cli.js",

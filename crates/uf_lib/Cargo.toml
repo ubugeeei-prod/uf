@@ -14,6 +14,7 @@ uf_infra = { path = "../uf_infra" }
 uf_motion = { path = "../uf_motion" }
 uf_orm = { path = "../uf_orm" }
 uf_std = { path = "../uf_std" }
+uf_tui = { path = "../uf_tui" }
 uf_validator = { path = "../uf_validator" }
 uf_vrt = { path = "../uf_vrt" }
 serde.workspace = true

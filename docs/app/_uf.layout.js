@@ -1,6 +1,6 @@
 // @flow
-import * as React from '@uniflowed/react';
-import { Suspense } from '@uniflowed/react';
+import * as React from "@uniflowed/react";
+import { Suspense } from "@uniflowed/react";
 
 component Layout(children: React.Node) {
   return (

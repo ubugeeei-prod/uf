@@ -29,6 +29,7 @@ members = [
   "crates/uf_stdlib_cli",
   "crates/uf_test",
   "crates/uf_temporal",
+  "crates/uf_tui",
   "crates/uf_validator",
   "crates/uf_vrt",
   "crates/uf_web",

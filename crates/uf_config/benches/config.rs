@@ -10,7 +10,7 @@ fn bench_define_config_parse(c: &mut Criterion) {
         export default defineConfig({
           dev: { port: 3000 },
           app: {
-            router: { entry: 'app.flow', root: 'app' },
+            router: { entry: 'app.js', root: 'app' },
             builtins: {
               relay: true,
               flowCell: true,

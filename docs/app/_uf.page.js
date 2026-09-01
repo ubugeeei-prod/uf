@@ -1,6 +1,6 @@
 // @flow
-import * as React from '@uniflowed/react';
-import { Card } from '@uniflowed/ui';
+import * as React from "@uniflowed/react";
+import { Card } from "@uniflowed/ui";
 
 component Page() {
   return (

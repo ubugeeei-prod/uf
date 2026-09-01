@@ -4,6 +4,7 @@ use uf_infra::InlineVec;
 use uf_motion::MotionContract;
 use uf_orm::OrmContract;
 use uf_std::{StdModule, std_modules};
+use uf_tui::TuiFrameworkContract;
 use uf_validator::{SchemaKind, ValidationStep};
 use uf_vrt::VisualRegressionPlan;
 
@@ -285,6 +286,21 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &["motion", "animate", "timeline", "spring", "reducedMotion"],
         ),
         NativeModule::new(
+            "@uniflowed/tui",
+            NativeModuleKind::Ui,
+            Stability::Experimental,
+            &[
+                "Box",
+                "Text",
+                "Input",
+                "Select",
+                "ScrollBox",
+                "FrameBuffer",
+                "renderTui",
+                "contract",
+            ],
+        ),
+        NativeModule::new(
             "@uniflowed/cli",
             NativeModuleKind::Runtime,
             Stability::Experimental,
@@ -355,6 +371,10 @@ pub fn orm_contract() -> OrmContract {
 
 pub fn motion_contract() -> MotionContract {
     MotionContract::default()
+}
+
+pub fn tui_contract() -> TuiFrameworkContract {
+    TuiFrameworkContract::default()
 }
 
 pub fn vrt_plan() -> VisualRegressionPlan {
@@ -731,7 +751,25 @@ mod tests {
         assert!(specs.contains(&"@uniflowed/story"));
         assert!(specs.contains(&"@uniflowed/vrt"));
         assert!(specs.contains(&"@uniflowed/motion"));
+        assert!(specs.contains(&"@uniflowed/tui"));
         assert!(specs.contains(&"@uniflowed/cli"));
+    }
+
+    #[test]
+    fn tui_contract_targets_opentui_and_react_ink_replacement() {
+        let module = module_by_specifier("@uniflowed/tui").expect("tui module");
+        let contract = tui_contract();
+
+        assert_eq!(module.kind, NativeModuleKind::Ui);
+        assert!(
+            module
+                .flow_exports
+                .iter()
+                .any(|export| export == "renderTui")
+        );
+        assert!(contract.react_ink_target.replacement_ready);
+        assert!(contract.has_component("FrameBuffer"));
+        assert!(contract.has_component("EmbeddedTerminal"));
     }
 
     #[test]

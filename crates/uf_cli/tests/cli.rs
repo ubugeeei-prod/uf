@@ -19,7 +19,7 @@ fn uf_prints_help() {
 fn ufr_alias_runs_config_task() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
-        dir.path().join("uf.config.flow"),
+        dir.path().join("uf.config.js"),
         r#"
             export default defineConfig({
               tasks: {
@@ -85,11 +85,11 @@ fn creates_react_app_from_cli() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(app.join("app.flow").exists());
-    assert!(app.join("uf.config.flow").exists());
-    assert!(app.join("app/_uf.page.flow").exists());
-    assert!(app.join("app/_uf.page.native.flow").exists());
-    assert!(app.join("server/actions.flow").exists());
+    assert!(app.join("app.js").exists());
+    assert!(app.join("uf.config.js").exists());
+    assert!(app.join("app/_uf.page.js").exists());
+    assert!(app.join("app/_uf.page.native.js").exists());
+    assert!(app.join("server/actions.js").exists());
 
     let package = fs::read_to_string(app.join("package.json")).unwrap();
     assert!(!package.contains(r#""scripts""#));
@@ -138,12 +138,35 @@ fn inspect_reports_zero_config_defaults() {
         value["engines"]["runtimeManager"]["acquisition"],
         serde_json::json!("auto")
     );
+    assert_eq!(value["tui"]["standard"], serde_json::json!("open-tui"));
+    assert_eq!(
+        value["tui"]["renderer"],
+        serde_json::json!("cell-diff-native")
+    );
+    assert_eq!(
+        value["tui"]["reactInkTarget"]["performanceTarget"],
+        serde_json::json!("faster-than-react-ink")
+    );
+    assert!(
+        value["tui"]["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|component| component["name"] == "EmbeddedTerminal")
+    );
     assert!(
         value["stdModules"]
             .as_array()
             .unwrap()
             .iter()
             .any(|module| module["specifier"] == "@uniflowed/std/import-meta")
+    );
+    assert!(
+        value["stdModules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["specifier"] == "@uniflowed/std/tui")
     );
     assert_eq!(
         value["orm"]["parameterizedQueriesOnly"],

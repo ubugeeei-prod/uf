@@ -37,6 +37,7 @@ uf_rm = { path = "../uf_rm" }
 uf_router = { path = "../uf_router" }
 uf_runtime = { path = "../uf_runtime" }
 uf_test = { path = "../uf_test" }
+uf_tui = { path = "../uf_tui" }
 mimalloc.workspace = true
 serde_json.workspace = true
 

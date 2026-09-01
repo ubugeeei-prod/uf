@@ -54,6 +54,16 @@ declare export type MotionTransition = {
   +ease: MotionEase,
   +respectsReducedMotion: true,
 };
+declare export type TerminalColorDepth = "ansi16" | "ansi256" | "true-color";
+declare export type TerminalCapabilities = {
+  +columns: number,
+  +rows: number,
+  +colorDepth: TerminalColorDepth,
+  +unicode: boolean,
+  +mouse: boolean,
+  +inlineImages: boolean,
+  +sixel: boolean,
+};
 declare export type CronSchedule = {
   +minute: string,
   +hour: string,
@@ -101,6 +111,7 @@ declare export function parseUrl(value: string): ?UrlParts;
 declare export function wasmModule(name: string): WasmModulePlan;
 declare export function glob(pattern: string): GlobPattern;
 declare export function motion(durationMs: number, ease: MotionEase): MotionTransition;
+declare export function terminalCapabilities(columns: number, rows: number): TerminalCapabilities;
 declare export function parseCron(source: string): ?CronSchedule;
 declare export function s3Object(bucket: string, key: string): S3ObjectRequest;
 declare export function sigv4Scope(region: string, service: string): SigV4Scope;

@@ -6,9 +6,9 @@ use thiserror::Error;
 use uf_config::UniflowedConfig;
 use walkdir::WalkDir;
 
-pub const RESERVED_LAYOUT: &str = "_uf.layout.flow";
-pub const RESERVED_PAGE: &str = "_uf.page.flow";
-pub const RESERVED_MIDDLEWARE: &str = "_uf.middleware.flow";
+pub const RESERVED_LAYOUT: &str = "_uf.layout.js";
+pub const RESERVED_PAGE: &str = "_uf.page.js";
+pub const RESERVED_MIDDLEWARE: &str = "_uf.middleware.js";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteParamKind {
@@ -251,14 +251,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app/users/[id]")).unwrap();
-        fs::write(root.join("app/_uf.page.flow"), "// @flow\n").unwrap();
-        fs::write(root.join("app/_uf.layout.flow"), "// @flow\n").unwrap();
-        fs::write(root.join("app/users/[id]/_uf.page.flow"), "// @flow\n").unwrap();
-        fs::write(
-            root.join("app/users/[id]/_uf.middleware.flow"),
-            "// @flow\n",
-        )
-        .unwrap();
+        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/users/[id]/_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/users/[id]/_uf.middleware.js"), "// @flow\n").unwrap();
 
         let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
 
@@ -275,7 +271,7 @@ mod tests {
         let route = Route {
             path: "/users/:id".into(),
             directory: "app/users/[id]".into(),
-            page: "app/users/[id]/_uf.page.flow".into(),
+            page: "app/users/[id]/_uf.page.js".into(),
             params: vec![RouteParam {
                 name: "id".into(),
                 kind: RouteParamKind::Single,
@@ -295,12 +291,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app")).unwrap();
-        fs::write(root.join("app/_uf.route.flow"), "// @flow\n").unwrap();
+        fs::write(root.join("app/_uf.route.js"), "// @flow\n").unwrap();
 
         let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].path.file_name(), Some("_uf.route.flow"));
+        assert_eq!(violations[0].path.file_name(), Some("_uf.route.js"));
     }
 
     #[test]
@@ -308,13 +304,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app")).unwrap();
-        fs::write(root.join("app/_uf.page.flow"), "// @flow\n").unwrap();
+        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
 
         let manifest = write_router_manifest(&root, &UniflowedConfig::default())
             .unwrap()
             .unwrap();
 
-        assert_eq!(manifest.file_name(), Some("router.flow"));
+        assert_eq!(manifest.file_name(), Some("router.js"));
         assert!(fs::read_to_string(manifest).unwrap().contains("RoutePath"));
     }
 }

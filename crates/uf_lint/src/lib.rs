@@ -497,7 +497,7 @@ fn run_router_reserved_files(
     }
     if matches!(
         file_name,
-        "_uf.layout.flow" | "_uf.page.flow" | "_uf.middleware.flow"
+        "_uf.layout.js" | "_uf.page.js" | "_uf.middleware.js"
     ) {
         return;
     }
@@ -509,7 +509,7 @@ fn run_router_reserved_files(
         severity,
         1,
         1,
-        "reserved router files must be _uf.layout.flow, _uf.page.flow, or _uf.middleware.flow",
+        "reserved router files must be _uf.layout.js, _uf.page.js, or _uf.middleware.js",
     );
 }
 
@@ -534,7 +534,7 @@ fn run_package_no_npm_scripts(
                 severity,
                 line_index + 1,
                 column + 1,
-                "declare tasks in uf.config.flow; npm scripts are not part of the uf toolchain",
+                "declare tasks in uf.config.js; npm scripts are not part of the uf toolchain",
             );
         }
     }
@@ -693,7 +693,7 @@ mod tests {
     fn server_actions_require_use_server_directive() {
         let report = lint_source(
             &SourceFile {
-                path: "server/actions.flow".to_string(),
+                path: "server/actions.js".to_string(),
                 source: "// @flow\nimport { serverAction } from '@uniflowed/server';\nexport const save = serverAction(() => {});\n"
                     .to_string(),
             },
@@ -713,7 +713,7 @@ mod tests {
     fn server_actions_accept_use_server_directive() {
         let report = lint_source(
             &SourceFile {
-                path: "server/actions.flow".to_string(),
+                path: "server/actions.js".to_string(),
                 source: "\"use server\";\n// @flow\nimport { serverAction } from '@uniflowed/server';\nexport const save = serverAction(() => {});\n"
                     .to_string(),
             },
@@ -733,7 +733,7 @@ mod tests {
     fn router_reserved_files_are_constrained() {
         let report = lint_source(
             &SourceFile {
-                path: "app/_uf.route.flow".to_string(),
+                path: "app/_uf.route.js".to_string(),
                 source: "// @flow\n".to_string(),
             },
             &UniflowedConfig::default(),

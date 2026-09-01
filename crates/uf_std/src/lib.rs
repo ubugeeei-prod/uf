@@ -263,6 +263,17 @@ pub fn std_modules() -> StdModuleList {
             &["animate", "timeline", "spring", "reducedMotion"],
         ),
         StdModule::new(
+            "@uniflowed/std/tui",
+            StdCategory::Platform,
+            &[
+                "TerminalCapabilities",
+                "detectTerminal",
+                "ansi",
+                "mouse",
+                "images",
+            ],
+        ),
+        StdModule::new(
             "@uniflowed/std/cron",
             StdCategory::Cloud,
             &["CronSchedule", "parseCron", "nextRun"],
@@ -1166,6 +1177,69 @@ impl MotionTransition {
     }
 }
 
+/// Terminal color depth exposed by `@uniflowed/std/tui`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TerminalColorDepth {
+    /// 16-color ANSI terminal.
+    Ansi16,
+    /// 256-color ANSI terminal.
+    Ansi256,
+    /// 24-bit true color terminal.
+    TrueColor,
+}
+
+/// Terminal capability descriptor for native TUI rendering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCapabilities {
+    /// Terminal columns.
+    pub columns: u16,
+    /// Terminal rows.
+    pub rows: u16,
+    /// Supported color depth.
+    pub color_depth: TerminalColorDepth,
+    /// Whether Unicode graphemes are supported.
+    pub unicode: bool,
+    /// Whether mouse input is supported.
+    pub mouse: bool,
+    /// Whether inline image protocols are available.
+    pub inline_images: bool,
+    /// Whether sixel images are available.
+    pub sixel: bool,
+}
+
+impl TerminalCapabilities {
+    /// Create terminal capabilities with true-color Unicode defaults.
+    pub fn new(columns: u16, rows: u16) -> Self {
+        Self {
+            columns,
+            rows,
+            color_depth: TerminalColorDepth::TrueColor,
+            unicode: true,
+            mouse: true,
+            inline_images: false,
+            sixel: false,
+        }
+    }
+
+    /// Enable inline image protocols.
+    pub fn with_inline_images(mut self) -> Self {
+        self.inline_images = true;
+        self
+    }
+
+    /// Return whether high fidelity rendering is available.
+    pub fn high_fidelity(&self) -> bool {
+        self.color_depth == TerminalColorDepth::TrueColor && self.unicode
+    }
+}
+
+/// Create a terminal capability descriptor.
+pub fn terminal_capabilities(columns: u16, rows: u16) -> TerminalCapabilities {
+    TerminalCapabilities::new(columns, rows)
+}
+
 /// Dotenv key-value pair.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1369,6 +1443,7 @@ mod tests {
         assert!(specifiers.contains(&"@uniflowed/std/wasm"));
         assert!(specifiers.contains(&"@uniflowed/std/glob"));
         assert!(specifiers.contains(&"@uniflowed/std/motion"));
+        assert!(specifiers.contains(&"@uniflowed/std/tui"));
         assert!(specifiers.contains(&"@uniflowed/std/cron"));
         assert!(specifiers.contains(&"@uniflowed/std/s3"));
         assert!(specifiers.contains(&"@uniflowed/std/sigv4"));
@@ -1426,7 +1501,7 @@ mod tests {
             .then(PipelineStep::Collect);
         let event = debug_event("uf:std", "ready");
 
-        assert_eq!(VirtualPath::new("app\\page.flow").path, "app/page.flow");
+        assert_eq!(VirtualPath::new("app\\page.js").path, "app/page.js");
         assert_eq!(pipeline.steps.len(), 2);
         assert!(colorize("ok", AnsiStyle::Green, true).starts_with("\x1b[32m"));
         assert_eq!(colorize("ok", AnsiStyle::Green, false), "ok");
@@ -1435,7 +1510,7 @@ mod tests {
 
     #[test]
     fn import_meta_and_defer_are_explicit_contracts() {
-        let meta = ImportMeta::new("file:///repo/app.flow").with_file("/repo", "/repo/app.flow");
+        let meta = ImportMeta::new("file:///repo/app.js").with_file("/repo", "/repo/app.js");
         let task = DeferredTask::new("render-post-response", DeferPhase::PostResponse);
 
         assert_eq!(meta.dirname.as_deref(), Some("/repo"));
@@ -1451,10 +1526,10 @@ mod tests {
         assert_eq!(chunks.len(), 3);
         assert_eq!(clamp(12, 0, 10), 10);
         assert_eq!(lerp(10.0, 20.0, 0.25), 12.5);
-        assert_eq!(join_path(&["app/", "/_uf.page.flow"]), "app/_uf.page.flow");
+        assert_eq!(join_path(&["app/", "/_uf.page.js"]), "app/_uf.page.js");
         assert_eq!(
-            normalize_path("app/./server/../_uf.page.flow"),
-            "app/_uf.page.flow"
+            normalize_path("app/./server/../_uf.page.js"),
+            "app/_uf.page.js"
         );
         assert_eq!(env[0].key, "UF_ENV");
         assert_eq!(env[1].value, "flow");
@@ -1467,7 +1542,7 @@ mod tests {
         let stream = StreamDescriptor::new(StreamKind::Transform);
         let url = parse_url("https://setup.uniflowed.dev/install.sh").unwrap();
         let wasm = WasmModulePlan::new("ox-content");
-        let glob = GlobPattern::new("app/*.flow");
+        let glob = GlobPattern::new("app/*.js");
         let motion = MotionTransition::new(120, MotionEase::Spring);
         let cron = parse_cron("0 * * * *").unwrap();
         let s3 = S3ObjectRequest::new("uf-releases", "uf@0.1.0.tar.gz");
@@ -1475,7 +1550,7 @@ mod tests {
         let function = FunctionDescriptor::new(
             "docs-render",
             FunctionRuntime::Worker,
-            "server/functions/docs.flow",
+            "server/functions/docs.js",
         );
 
         assert_eq!(os.family, OsFamily::MacOs);
@@ -1483,7 +1558,7 @@ mod tests {
         assert!(stream.backpressure);
         assert_eq!(url.host, "setup.uniflowed.dev");
         assert!(wasm.ahead_of_time);
-        assert!(glob.matches("app/_uf.page.flow"));
+        assert!(glob.matches("app/_uf.page.js"));
         assert!(motion.respects_reduced_motion);
         assert_eq!(cron.minute, "0");
         assert!(s3.sigv4);
@@ -1492,11 +1567,23 @@ mod tests {
     }
 
     #[test]
+    fn terminal_capabilities_are_high_fidelity_by_default() {
+        let capabilities = terminal_capabilities(120, 36).with_inline_images();
+
+        assert_eq!(capabilities.columns, 120);
+        assert_eq!(capabilities.rows, 36);
+        assert_eq!(capabilities.color_depth, TerminalColorDepth::TrueColor);
+        assert!(capabilities.high_fidelity());
+        assert!(capabilities.mouse);
+        assert!(capabilities.inline_images);
+    }
+
+    #[test]
     fn crypto_uuid_and_zip_contracts_are_native_ready() {
         let digest = digest_bytes(DigestAlgorithm::FastHash, b"uf");
         let uuid = parse_uuid("018f7c9a-7cb4-7a10-a7aa-1df490512a88").unwrap();
         let entry = ZipEntry {
-            path: CompactString::const_new("app.flow"),
+            path: CompactString::const_new("app.js"),
             compression: ZipCompression::Deflate,
             size: 42,
         };

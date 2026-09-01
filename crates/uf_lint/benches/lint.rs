@@ -8,7 +8,7 @@ fn bench_lint_scan(c: &mut Criterion) {
     let config = UniflowedConfig::default();
     let files = (0..1_000)
         .map(|index| SourceFile {
-            path: format!("app/route{index}/_uf.page.flow"),
+            path: format!("app/route{index}/_uf.page.js"),
             source: "// @flow\ncomponent Page() { return <main />; }\n".to_string(),
         })
         .collect::<Vec<_>>();

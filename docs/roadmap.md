@@ -16,7 +16,7 @@
 - Replace whitespace formatter core with a Flow AST printer.
 - Wire `uf build` and `uf dev` to a Vite-compatible plugin container and
   Rolldown-backed production build.
-- Keep `uf.config.flow` as the single config and Vite Task-compatible task
+- Keep `uf.config.js` as the single config and Vite Task-compatible task
   surface; generated projects do not use npm scripts.
 - Add LSP JSON-RPC loop over config, parser diagnostics, formatter, and lints.
 
@@ -35,6 +35,7 @@
 - ORM, validator, state, and flow-cell runtime primitives.
 - Lite Temporal, PWA primitives, and opt-in-only cache controls.
 - React Compiler-safe motion primitives with reduced-motion defaults.
+- OpenTUI-aligned native TUI framework targeting a React Ink replacement.
 
 ## P2: Native Test Runner
 
@@ -42,6 +43,7 @@
 - Target faster-than-Bun execution for Flow-heavy suites.
 - Implement JavaScript execution backend.
 - Add React DOM and React Native renderers.
+- Add native terminal renderers and snapshots through `@uniflowed/tui`.
 - Add Testing Library-compatible queries and user events.
 - Add story system, MSW-compatible mocks, Playwright-compatible browser
   automation, and VRT baseline diffing.

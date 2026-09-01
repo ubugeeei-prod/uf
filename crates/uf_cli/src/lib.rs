@@ -11,7 +11,7 @@ use uf_config::{ResolvedConfig, TaskDefinition, load_config};
 use uf_fmt::format_source;
 use uf_lib::{
     builtin_modules, hook_descriptors, motion_contract, orm_contract, std_module_descriptors,
-    ui_components, vrt_plan,
+    tui_contract, ui_components, vrt_plan,
 };
 use uf_lint::{Severity, SourceFile, lint_sources};
 use uf_pm::PackageManagerPlan;
@@ -422,6 +422,7 @@ fn inspect(cwd: &Utf8Path, as_json: bool) -> Result<()> {
         println!("native modules: {}", builtin_modules().len());
         println!("std modules: {}", std_module_descriptors().len());
         println!("ui components: {}", ui_components().len());
+        println!("tui components: {}", tui_contract().components.len());
         println!("hooks: {}", hook_descriptors().len());
     }
     Ok(())
@@ -458,6 +459,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         "stdModules": std_module_descriptors(),
         "orm": orm_contract(),
         "motion": motion_contract(),
+        "tui": tui_contract(),
         "vrt": vrt_plan(),
         "hooks": hook_descriptors(),
         "ui": ui_components(),
@@ -652,7 +654,7 @@ fn run_named_task(
     }
 
     let Some(task) = resolved.config.tasks.get(script) else {
-        bail!("task {script:?} is not defined in uf.config.flow");
+        bail!("task {script:?} is not defined in uf.config.js");
     };
 
     if let TaskDefinition::Detailed(details) = task {

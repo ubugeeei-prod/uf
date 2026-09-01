@@ -156,26 +156,26 @@ fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> boo
 fn app_react_files(name: &str) -> Vec<(&'static str, String)> {
     vec![
         ("package.json", app_package_json(name)),
-        ("uf.config.flow", app_config()),
-        ("app.flow", app_entry()),
-        ("app/_uf.layout.flow", app_layout()),
-        ("app/_uf.middleware.flow", app_middleware()),
-        ("app/_uf.page.flow", app_page()),
-        ("app/_uf.page.native.flow", app_native_page()),
-        ("app/_uf.page.test.flow", app_test()),
-        ("app/client/Counter.flow", app_client_counter()),
-        ("app/client/useCounter.flow", app_client_hook()),
-        ("app/styles/tokens.stylex.flow", stylex_tokens()),
-        ("server/actions.flow", app_server_actions()),
+        ("uf.config.js", app_config()),
+        ("app.js", app_entry()),
+        ("app/_uf.layout.js", app_layout()),
+        ("app/_uf.middleware.js", app_middleware()),
+        ("app/_uf.page.js", app_page()),
+        ("app/_uf.page.native.js", app_native_page()),
+        ("app/_uf.page.test.js", app_test()),
+        ("app/client/Counter.js", app_client_counter()),
+        ("app/client/useCounter.js", app_client_hook()),
+        ("app/styles/tokens.stylex.js", stylex_tokens()),
+        ("server/actions.js", app_server_actions()),
     ]
 }
 
 fn lib_files(name: &str) -> Vec<(&'static str, String)> {
     vec![
         ("package.json", lib_package_json(name)),
-        ("uf.config.flow", lib_config()),
-        ("index.flow", lib_index()),
-        ("index.test.flow", lib_test()),
+        ("uf.config.js", lib_config()),
+        ("index.js", lib_index()),
+        ("index.test.js", lib_test()),
     ]
 }
 
@@ -199,7 +199,7 @@ fn lib_package_json(name: &str) -> String {
   "name": "{name}",
   "type": "module",
   "exports": {{
-    ".": "./index.flow"
+    ".": "./index.js"
   }},
   "dependencies": {{
     "@uniflowed/core": "latest"
@@ -302,9 +302,9 @@ import { graphql, useLazyLoadQuery } from "@uniflowed/relay";
 import { stylex } from "@uniflowed/stylex";
 import { Button, Dialog, Form } from "@uniflowed/ui";
 import { v } from "@uniflowed/validator";
-import { refreshGreeting } from "../server/actions.flow";
-import Counter from "./client/Counter.flow";
-import { tokens } from "./styles/tokens.stylex.flow";
+import { refreshGreeting } from "../server/actions.js";
+import Counter from "./client/Counter.js";
+import { tokens } from "./styles/tokens.stylex.js";
 
 const selectedTone = cell<"calm" | "sharp">("calm");
 const HomeQuery = graphql("query HomeQuery { viewer { name } }");
@@ -410,7 +410,7 @@ fn app_client_counter() -> String {
 // @flow
 import * as React from "@uniflowed/react";
 import { Button } from "@uniflowed/ui";
-import { useCounter } from "./useCounter.flow";
+import { useCounter } from "./useCounter.js";
 
 component Counter(initial: number) {
   const [count, increment] = useCounter(initial);
@@ -441,7 +441,7 @@ fn app_test() -> String {
 import * as React from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/test";
 import { render, screen } from "@uniflowed/react-testing";
-import Page from "./_uf.page.flow";
+import Page from "./_uf.page.js";
 
 describe("Page", () => {
   it("renders the starter headline", async () => {
@@ -479,7 +479,7 @@ export function createId(raw: string): UniflowedId {
 fn lib_test() -> String {
     r#"// @flow
 import { describe, expect, it } from "@uniflowed/test";
-import { createId } from "./index";
+import { createId } from "./index.js";
 
 describe("createId", () => {
   it("preserves the source value behind an opaque boundary", () => {
@@ -510,16 +510,16 @@ mod tests {
         .unwrap();
 
         assert_eq!(report.files.len(), 12);
-        assert!(root.join("app.flow").exists());
-        assert!(root.join("uf.config.flow").exists());
-        assert!(root.join("app/_uf.page.flow").exists());
-        assert!(root.join("app/_uf.page.native.flow").exists());
-        assert!(root.join("server/actions.flow").exists());
+        assert!(root.join("app.js").exists());
+        assert!(root.join("uf.config.js").exists());
+        assert!(root.join("app/_uf.page.js").exists());
+        assert!(root.join("app/_uf.page.native.js").exists());
+        assert!(root.join("server/actions.js").exists());
 
         let package = fs::read_to_string(root.join("package.json")).unwrap();
         assert!(!package.contains(r#""scripts""#));
 
-        let page = fs::read_to_string(root.join("app/_uf.page.flow")).unwrap();
+        let page = fs::read_to_string(root.join("app/_uf.page.js")).unwrap();
         assert!(page.contains("component Page()"));
         assert!(page.contains("@uniflowed/query"));
         assert!(page.contains("@uniflowed/effect"));
@@ -531,7 +531,7 @@ mod tests {
         assert!(page.contains("@uniflowed/relay"));
         assert!(page.contains("Form.Root"));
         assert!(page.contains("Dialog.Body"));
-        assert!(root.join("app/client/useCounter.flow").exists());
+        assert!(root.join("app/client/useCounter.js").exists());
     }
 
     #[test]
@@ -549,7 +549,7 @@ mod tests {
         )
         .unwrap();
 
-        let index = fs::read_to_string(root.join("index.flow")).unwrap();
+        let index = fs::read_to_string(root.join("index.js")).unwrap();
         let package = fs::read_to_string(root.join("package.json")).unwrap();
 
         assert!(index.contains("opaque type UniflowedId"));
@@ -581,12 +581,12 @@ mod tests {
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app")).unwrap();
         fs::create_dir_all(root.join("dist")).unwrap();
-        fs::write(root.join("app/index.flow"), "// @flow\n").unwrap();
+        fs::write(root.join("app/index.js"), "// @flow\n").unwrap();
         fs::write(root.join("dist/index.js"), "// built\n").unwrap();
 
         let files = collect_source_files(&root, &UniflowedConfig::default()).unwrap();
 
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0].relative_path, "app/index.flow");
+        assert_eq!(files[0].relative_path, "app/index.js");
     }
 }
