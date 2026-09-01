@@ -1,6 +1,14 @@
+<div align="center">
+  
+<img width="200" src="assets/uf.png" alt="uf logo">
+
 # uf
 
-Unified Toolchain for Flow (React).
+## Unified Toolchain for Flow (React).
+
+</div>
+
+
 
 `uf` stands for unifiedflow: unified flow for React applications, libraries, and
 tooling. It is intended to become the all-in-one toolchain for Flow projects:
@@ -15,7 +23,7 @@ performance and integrated feature coverage.
 
 Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/1).
 
-![uniflowed logo](assets/uf.png)
+
 
 ## Commands
 
