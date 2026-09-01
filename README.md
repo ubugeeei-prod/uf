@@ -27,14 +27,15 @@ Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/
 
 ```sh
 curl -fsSL https://setup.uniflowed.dev | sh
-uf create
-uf dev
-uf build
-uf lint
-uf fmt
-uf check
-uf test
 ```
+
+- `uf create`: Create your new flow project (zero-config)
+- `uf dev`: Start development server (internaly using vite)
+- `uf build`: Build your flow project for production
+- `uf lint`: Run hosted linter
+- `uf fmt`: Run Formatter
+- `uf check`: Run Flow type checker
+- `uf test`: Run uf hosted test runner
 
 ## Defaults
 
