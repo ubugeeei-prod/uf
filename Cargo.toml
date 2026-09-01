@@ -61,12 +61,12 @@ rayon = "1.11.0"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
-similar-asserts = "1.7.0"
+similar-asserts = "2.0.0"
 simdutf8 = "0.1.5"
 smallvec = { version = "1.15.1", features = ["serde"] }
 tempfile = "3.25.0"
 thiserror = "2.0.17"
-toml = "0.9.8"
+toml = "1.1.4"
 walkdir = "2.5.0"
 
 [profile.release]
