@@ -39,9 +39,6 @@ uf test --list
 uf env doctor
 uf env use production
 uf use uf@0.1.0
-uf run <task>
-ufr <task>
-ufx <package> [...args]
 uf prepare
 uf inspect
 uf publish
@@ -49,6 +46,9 @@ uf release minor
 uf lsp
 uf install
 uf upgrade
+uf run <task>
+ufr <task>
+ufx <package> [...args]
 ```
 
 ## Defaults
