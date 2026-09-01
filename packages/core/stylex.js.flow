@@ -1,0 +1,16 @@
+// @flow
+
+declare export interface StyleXSheet {
+  +[string]: mixed,
+}
+
+declare export interface StyleX {
+  create<T: { +[string]: mixed }>(styles: T): T,
+  props(...styles: $ReadOnlyArray<mixed>): { +[string]: mixed },
+  defineVars<T: { +[string]: string | number }>(tokens: T): T,
+  createTheme<T: { +[string]: string | number }>(tokens: T): T,
+}
+
+declare export var stylex: StyleX;
+declare export function defineVars<T: { +[string]: string | number }>(tokens: T): T;
+declare export function createTheme<T: { +[string]: string | number }>(tokens: T): T;

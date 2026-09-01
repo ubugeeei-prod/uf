@@ -1,0 +1,13 @@
+// @flow
+
+declare export opaque type GraphQLTaggedNode;
+declare export function graphql(source: string): GraphQLTaggedNode;
+declare export function useFragment<T>(fragment: GraphQLTaggedNode, key: mixed): T;
+declare export function useLazyLoadQuery<T>(
+  query: GraphQLTaggedNode,
+  variables: { +[string]: mixed },
+): T;
+declare export function commitMutation<T>(config: {
+  +mutation: GraphQLTaggedNode,
+  +variables: { +[string]: mixed },
+}): Promise<T>;

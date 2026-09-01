@@ -1,0 +1,15 @@
+// @flow
+
+declare export opaque type Effect<+T>;
+declare export opaque type Task<+T>;
+
+declare export function effect<T>(body: () => Generator<Effect<mixed>, T, mixed>): Effect<T>;
+declare export function call<TArgs: $ReadOnlyArray<mixed>, TReturn>(
+  fn: (...TArgs) => TReturn | Promise<TReturn>,
+  ...args: TArgs
+): Effect<TReturn>;
+declare export function fork<T>(body: () => Effect<T>): Effect<Task<T>>;
+declare export function all<T>(effects: $ReadOnlyArray<Effect<T>>): Effect<$ReadOnlyArray<T>>;
+declare export function race<T>(effects: { +[string]: Effect<T> }): Effect<T>;
+declare export function take<T>(channel: string): Effect<T>;
+declare export function put<T>(channel: string, value: T): Effect<void>;

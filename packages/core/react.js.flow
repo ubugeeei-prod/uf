@@ -1,0 +1,17 @@
+// @flow
+
+declare export type Node = mixed;
+declare export type SetState<S> = S | ((previous: S) => S);
+
+declare export component Suspense(fallback?: Node, children?: Node);
+declare export function use<T>(usable: Promise<T> | T): T;
+declare export function useState<S>(initial: S): [S, (next: SetState<S>) => void];
+declare export function cache<TArgs: $ReadOnlyArray<mixed>, TReturn>(
+  fn: (...TArgs) => TReturn,
+): (...TArgs) => TReturn;
+declare export default {
+  +Suspense: typeof Suspense,
+  +use: typeof use,
+  +useState: typeof useState,
+  +cache: typeof cache,
+};

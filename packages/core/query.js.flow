@@ -1,0 +1,29 @@
+// @flow
+
+declare export type QueryKey = $ReadOnlyArray<string | number | boolean>;
+
+declare export interface QueryState<T> {
+  value: null | T,
+  error: null | Error,
+  pending: boolean,
+  refetch(): Promise<T>,
+}
+
+declare export interface QueryResource<T> {
+  key: QueryKey,
+  use(): QueryState<T>,
+  prefetch(): Promise<T>,
+}
+
+declare export function createQuery<T>(config: {
+  +key: QueryKey,
+  +query: () => T | Promise<T>,
+}): QueryResource<T>;
+
+declare export interface Mutation<TInput, TOutput> {
+  run(input: TInput): Promise<TOutput>,
+}
+
+declare export function createMutation<TInput, TOutput>(config: {
+  +mutation: (input: TInput) => TOutput | Promise<TOutput>,
+}): Mutation<TInput, TOutput>;

@@ -1,0 +1,26 @@
+// @flow
+
+declare export type RuntimeEngine =
+  | 'uf'
+  | 'node'
+  | 'bun'
+  | 'deno'
+  | 'edge'
+  | 'serverless'
+  | 'container';
+
+declare export type DeployAdapter =
+  | 'node'
+  | 'bun'
+  | 'deno'
+  | 'edge'
+  | 'serverless'
+  | 'static'
+  | 'container';
+
+declare export function run(entry: string): Promise<void>;
+declare export function resolve(specifier: string, from?: string): Promise<string>;
+declare export function spawn(
+  entry: string,
+  options?: $ReadOnly<{ +runtime?: RuntimeEngine, +adapter?: DeployAdapter }>,
+): Promise<void>;

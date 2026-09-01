@@ -1,0 +1,15 @@
+// @flow
+import type * as React from './react.js.flow';
+
+declare export type RouteModule = {
+  +default?: component() renders React.Node,
+  +loader?: () => mixed | Promise<mixed>,
+  +action?: () => mixed | Promise<mixed>,
+};
+
+declare export function FileRoute(path: string, module: RouteModule): RouteModule;
+declare export function routerView(root: './app'): RouteModule;
+declare export function loader<T>(body: () => T | Promise<T>): () => Promise<T>;
+declare export function action<T>(body: () => T | Promise<T>): () => Promise<T>;
+declare export function next(): mixed;
+declare export function redirect(to: string): empty;

@@ -1,0 +1,87 @@
+// @flow
+import type * as React from './react.js.flow';
+
+declare export type HeadlessProps = {
+  +className?: string,
+  +children?: React.Node,
+  +variant?: string,
+  +size?: string,
+  +disabled?: boolean,
+};
+
+declare export type HeadlessComponent = component(
+  className?: string,
+  children?: React.Node,
+  variant?: string,
+  size?: string,
+  disabled?: boolean,
+) renders React.Node;
+
+declare export type CompoundComponent = {
+  +Root: HeadlessComponent,
+  +Trigger?: HeadlessComponent,
+  +Overlay?: HeadlessComponent,
+  +Body?: HeadlessComponent,
+  +Header?: HeadlessComponent,
+  +Footer?: HeadlessComponent,
+  +Title?: HeadlessComponent,
+  +Description?: HeadlessComponent,
+  +Close?: HeadlessComponent,
+  +Item?: HeadlessComponent,
+  +Content?: HeadlessComponent,
+  +List?: HeadlessComponent,
+  +Input?: HeadlessComponent,
+  +Label?: HeadlessComponent,
+  +Control?: HeadlessComponent,
+  +Message?: HeadlessComponent,
+};
+
+declare export var Accordion: CompoundComponent;
+declare export var Alert: CompoundComponent;
+declare export var AlertDialog: CompoundComponent;
+declare export var AspectRatio: CompoundComponent;
+declare export var Avatar: CompoundComponent;
+declare export var Badge: HeadlessComponent;
+declare export var Breadcrumb: CompoundComponent;
+declare export var Button: HeadlessComponent;
+declare export var Calendar: CompoundComponent;
+declare export var Card: CompoundComponent;
+declare export var Carousel: CompoundComponent;
+declare export var Chart: CompoundComponent;
+declare export var Checkbox: CompoundComponent;
+declare export var Collapsible: CompoundComponent;
+declare export var Command: CompoundComponent;
+declare export var ContextMenu: CompoundComponent;
+declare export var DataTable: CompoundComponent;
+declare export var DatePicker: CompoundComponent;
+declare export var Dialog: CompoundComponent;
+declare export var Drawer: CompoundComponent;
+declare export var DropdownMenu: CompoundComponent;
+declare export var Form: CompoundComponent;
+declare export var HoverCard: CompoundComponent;
+declare export var Input: HeadlessComponent;
+declare export var InputOtp: CompoundComponent;
+declare export var Label: HeadlessComponent;
+declare export var Menubar: CompoundComponent;
+declare export var NavigationMenu: CompoundComponent;
+declare export var Pagination: CompoundComponent;
+declare export var Popover: CompoundComponent;
+declare export var Progress: HeadlessComponent;
+declare export var RadioGroup: CompoundComponent;
+declare export var Resizable: CompoundComponent;
+declare export var ScrollArea: CompoundComponent;
+declare export var Select: CompoundComponent;
+declare export var Separator: HeadlessComponent;
+declare export var Sheet: CompoundComponent;
+declare export var Sidebar: CompoundComponent;
+declare export var Skeleton: HeadlessComponent;
+declare export var Slider: CompoundComponent;
+declare export var Sonner: CompoundComponent;
+declare export var Switch: CompoundComponent;
+declare export var Table: CompoundComponent;
+declare export var Tabs: CompoundComponent;
+declare export var Textarea: HeadlessComponent;
+declare export var Toast: CompoundComponent;
+declare export var Toggle: HeadlessComponent;
+declare export var ToggleGroup: CompoundComponent;
+declare export var Tooltip: CompoundComponent;
