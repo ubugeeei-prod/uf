@@ -31,6 +31,7 @@ pub struct AppConfig {
     pub react: ReactConfig,
     pub rendering: RenderingConfig,
     pub router: RouterConfig,
+    pub runtime: RuntimeConfig,
     pub rsc: bool,
     pub server_actions: bool,
     pub orm: OrmConfig,
@@ -46,6 +47,7 @@ impl Default for AppConfig {
             react: ReactConfig::default(),
             rendering: RenderingConfig::default(),
             router: RouterConfig::default(),
+            runtime: RuntimeConfig::default(),
             rsc: true,
             server_actions: true,
             orm: OrmConfig::default(),
@@ -188,6 +190,80 @@ pub enum RuntimeTarget {
     ReactNative,
     Server,
     Hermes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RuntimeConfig {
+    pub default: RuntimeEngine,
+    pub compatibility: Vec<RuntimeEngine>,
+    pub deploy: DeployAnywhereConfig,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            default: RuntimeEngine::Uf,
+            compatibility: vec![
+                RuntimeEngine::Node,
+                RuntimeEngine::Bun,
+                RuntimeEngine::Deno,
+                RuntimeEngine::Edge,
+                RuntimeEngine::Serverless,
+                RuntimeEngine::Container,
+            ],
+            deploy: DeployAnywhereConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeEngine {
+    #[default]
+    Uf,
+    Node,
+    Bun,
+    Deno,
+    Edge,
+    Serverless,
+    Container,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DeployAnywhereConfig {
+    pub enabled: bool,
+    pub adapters: Vec<DeployAdapter>,
+}
+
+impl Default for DeployAnywhereConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            adapters: vec![
+                DeployAdapter::Node,
+                DeployAdapter::Bun,
+                DeployAdapter::Deno,
+                DeployAdapter::Edge,
+                DeployAdapter::Serverless,
+                DeployAdapter::Static,
+                DeployAdapter::Container,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeployAdapter {
+    Node,
+    Bun,
+    Deno,
+    Edge,
+    Serverless,
+    Static,
+    Container,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -774,6 +850,45 @@ mod tests {
         assert!(config.app.react.use_hook);
         assert!(config.app.rsc);
         assert!(config.app.server_actions);
+        assert_eq!(config.app.runtime.default, RuntimeEngine::Uf);
+        assert!(config.app.runtime.deploy.enabled);
+        assert!(
+            config
+                .app
+                .runtime
+                .compatibility
+                .contains(&RuntimeEngine::Node)
+        );
+        assert!(
+            config
+                .app
+                .runtime
+                .compatibility
+                .contains(&RuntimeEngine::Bun)
+        );
+        assert!(
+            config
+                .app
+                .runtime
+                .compatibility
+                .contains(&RuntimeEngine::Deno)
+        );
+        assert!(
+            config
+                .app
+                .runtime
+                .deploy
+                .adapters
+                .contains(&DeployAdapter::Edge)
+        );
+        assert!(
+            config
+                .app
+                .runtime
+                .deploy
+                .adapters
+                .contains(&DeployAdapter::Serverless)
+        );
         assert!(!config.app.rendering.cache.fetch);
         assert!(!config.app.rendering.cache.route);
         assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));

@@ -842,6 +842,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "uniflowed_fmt"
+version = "0.1.0"
+dependencies = [
+ "similar-asserts",
+ "thiserror",
+ "uniflowed_config",
+]
+
+[[package]]
 name = "uniflowed_infra"
 version = "0.1.0"
 dependencies = [
@@ -852,6 +861,41 @@ dependencies = [
  "rustc-hash",
  "simdutf8",
  "smallvec",
+]
+
+[[package]]
+name = "uniflowed_lint"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "rayon",
+ "thiserror",
+ "uniflowed_config",
+ "uniflowed_flow",
+ "uniflowed_infra",
+]
+
+[[package]]
+name = "uniflowed_router"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "compact_str",
+ "criterion",
+ "tempfile",
+ "thiserror",
+ "uniflowed_config",
+ "walkdir",
+]
+
+[[package]]
+name = "uniflowed_test"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "similar-asserts",
+ "thiserror",
+ "uniflowed_infra",
 ]
 
 [[package]]

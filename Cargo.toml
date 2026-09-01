@@ -2,7 +2,11 @@
 members = [
   "crates/uniflowed_config",
   "crates/uniflowed_flow",
+  "crates/uniflowed_fmt",
   "crates/uniflowed_infra",
+  "crates/uniflowed_lint",
+  "crates/uniflowed_router",
+  "crates/uniflowed_test",
 ]
 resolver = "3"
 
