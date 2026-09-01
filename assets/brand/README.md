@@ -1,11 +1,13 @@
 # uniflowed Brand Assets
 
-The mark combines a continuous route-like Flow line with typed checkpoints and a
-small validation tick. Use the mark for square surfaces, the logo for README and
-social previews, and the wordmark where horizontal space is tight.
+The primary logo is the glossy flowing `uf` mark in `assets/uf.png`. Use it for
+README, release pages, social previews, and product-facing surfaces. The SVG
+files in this folder remain lightweight derived marks for monochrome, tight, or
+text-heavy placements.
 
 ## Files
 
+- `../uf.png`: primary logo
 - `uniflowed-mark.svg`: square icon
 - `uniflowed-logo.svg`: mark plus wordmark
 - `uniflowed-wordmark.svg`: text-only wordmark with flow accent

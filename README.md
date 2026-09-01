@@ -9,9 +9,13 @@ inspection, publishing, LSP, and runtime execution.
 
 The package scope and ecosystem name is **uniflowed**. The command is **`uf`**.
 
+The bar is explicit: beat Vite+ on Flow React DX, framework completeness, and
+build/dev performance; beat Bun on native test/runtime/package-manager
+performance and integrated feature coverage.
+
 Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/1).
 
-![uniflowed logo](assets/brand/uniflowed-logo.svg)
+![uniflowed logo](assets/uf.png)
 
 ## Commands
 

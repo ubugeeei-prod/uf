@@ -8,6 +8,11 @@ intentionally broad, while each engine is isolated behind small Rust crate
 boundaries so we can deepen behavior without destabilizing the user-facing
 command model.
 
+The product bar is deliberately aggressive: `uf` should beat Vite+ on Flow
+React DX, framework completeness, build latency, and dev-server feedback loops,
+while beating Bun on native test runner throughput, runtime startup, package
+manager performance, and integrated feature coverage.
+
 ## Crates
 
 - `uf_cli`: command router for `uf`

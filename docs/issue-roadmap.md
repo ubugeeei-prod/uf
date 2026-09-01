@@ -8,6 +8,7 @@
 - [x] Enable GitHub auto-merge.
 - [x] Add Blacksmith 32 vCPU CI jobs for format, clippy, tests, bench compile, and metadata.
 - [x] Keep admin branch-protection bypass available.
+- [x] Document the product bar: beat Vite+ on Flow React DX/build performance and beat Bun on native runtime/test/package-manager performance.
 
 ## P0: Native Toolchain Spine
 

@@ -1,5 +1,14 @@
 # Roadmap
 
+## North Star
+
+- Beat Vite+ on Flow React DX, framework completeness, build latency, and dev
+  server feedback loops.
+- Beat Bun on native test runner throughput, runtime startup, package manager
+  performance, and integrated toolchain coverage.
+- Keep Vite-compatible plugin semantics and Rolldown as internal engines where
+  they help, but make `uf` the only user-facing interface.
+
 ## P0: Toolchain Spine
 
 - Finish parser/typechecker integration against Flow's maintained parser and

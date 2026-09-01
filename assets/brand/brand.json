@@ -1,6 +1,11 @@
 {
   "name": "uniflowed",
   "tagline": "Flow at native speed",
+  "assets": {
+    "primaryLogo": "assets/uf.png",
+    "mark": "assets/brand/uniflowed-mark.svg",
+    "wordmark": "assets/brand/uniflowed-wordmark.svg"
+  },
   "colors": {
     "ink": "#151B1F",
     "paper": "#F7F7F2",
