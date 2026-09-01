@@ -2,15 +2,19 @@
 set -eu
 
 if command -v wild >/dev/null 2>&1; then
-  exec cc -fuse-ld=wild "$@"
+  exec wild "$@"
 fi
 
 if command -v mold >/dev/null 2>&1; then
-  exec cc -fuse-ld=mold "$@"
+  exec mold "$@"
 fi
 
-if command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then
-  exec clang -fuse-ld=lld "$@"
+if command -v ld.lld >/dev/null 2>&1; then
+  exec ld.lld "$@"
 fi
 
-exec cc "$@"
+if command -v ld.gold >/dev/null 2>&1; then
+  exec ld.gold "$@"
+fi
+
+exec ld "$@"
