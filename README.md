@@ -62,6 +62,7 @@ enables:
 - native test declarations via `import { describe, it, expect } from '@uniflowed/testing'`
 - React Testing Library-compatible declarations via `@uniflowed/react-testing`
 - React Native platform linting and `.native/.ios/.android` split guidance
+- formatter defaults to double quotes and semicolons
 
 No Babel, Jest, Yarn, or `.flowconfig` is required for generated projects.
 

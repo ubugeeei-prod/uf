@@ -436,7 +436,7 @@ impl Default for FmtConfig {
         Self {
             indent_width: 2,
             line_width: 100,
-            quotes: QuoteStyle::Single,
+            quotes: QuoteStyle::Double,
             semicolons: true,
         }
     }
@@ -897,6 +897,8 @@ mod tests {
         assert!(config.app.builtins.react_testing_library);
         assert!(config.app.builtins.relay);
         assert_eq!(config.app.builtins.style, StyleEngine::StyleX);
+        assert_eq!(config.fmt.quotes, QuoteStyle::Double);
+        assert!(config.fmt.semicolons);
         assert_eq!(config.app.builtins.data, DataEngine::UniflowedQuery);
         assert_eq!(config.app.builtins.effect, EffectEngine::UniflowedEffect);
         assert_eq!(
