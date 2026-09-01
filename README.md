@@ -10,7 +10,7 @@ Unified Toolchain for Flow (React)
 
 
 
-`uf` stands for unifiedflow: unified flow for React applications, libraries, and
+`uf` stands for unified-flow: unified flow for React applications, libraries, and
 tooling. It is intended to become the all-in-one toolchain for Flow projects:
 create, dev server, build, lint, format, type check, test, task running, env
 inspection, publishing, LSP, and runtime execution.
