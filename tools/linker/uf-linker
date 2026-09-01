@@ -1,20 +1,53 @@
 #!/bin/sh
 set -eu
 
+cc_runtime_lib_dir() {
+  for candidate in "${CC:-}" cc gcc clang; do
+    if [ -z "$candidate" ] || ! command -v "$candidate" >/dev/null 2>&1; then
+      continue
+    fi
+
+    for library in libgcc_s.so.1 libgcc_s.so libgcc.a; do
+      path=$("$candidate" -print-file-name="$library" 2>/dev/null || true)
+      case "$path" in
+        /*)
+          dir=${path%/*}
+          if [ -d "$dir" ]; then
+            printf '%s\n' "$dir"
+            return 0
+          fi
+          ;;
+      esac
+    done
+  done
+}
+
+run_linker() {
+  linker=$1
+  shift
+
+  runtime_dir=$(cc_runtime_lib_dir || true)
+  if [ -n "$runtime_dir" ]; then
+    set -- -L "$runtime_dir" "$@"
+  fi
+
+  exec "$linker" "$@"
+}
+
 if command -v wild >/dev/null 2>&1; then
-  exec wild "$@"
+  run_linker wild "$@"
 fi
 
 if command -v mold >/dev/null 2>&1; then
-  exec mold "$@"
+  run_linker mold "$@"
 fi
 
 if command -v ld.lld >/dev/null 2>&1; then
-  exec ld.lld "$@"
+  run_linker ld.lld "$@"
 fi
 
 if command -v ld.gold >/dev/null 2>&1; then
-  exec ld.gold "$@"
+  run_linker ld.gold "$@"
 fi
 
-exec ld "$@"
+run_linker ld "$@"
