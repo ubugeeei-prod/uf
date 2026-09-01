@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+
+for candidate in "${CC:-}" cc clang gcc; do
+  if [ -z "$candidate" ] || ! command -v "$candidate" >/dev/null 2>&1; then
+    continue
+  fi
+
+  exec "$candidate" -B "$script_dir/" "$@"
+done
+
+printf '%s\n' "uf-cc-linker: no C compiler driver found" >&2
+exit 127
