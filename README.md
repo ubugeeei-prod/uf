@@ -23,12 +23,11 @@ performance and integrated feature coverage.
 
 Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/1).
 
-
-
-## Commands
+## Usage
 
 ```sh
-uf create app my-app
+curl -fsSL https://setup.uniflowed.dev | sh
+uf create
 uf dev
 uf build
 uf lint
