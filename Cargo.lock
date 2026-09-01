@@ -834,6 +834,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "uniflowed_effect"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "uniflowed_infra",
+]
+
+[[package]]
 name = "uniflowed_flow"
 version = "0.1.0"
 dependencies = [
@@ -861,6 +869,15 @@ dependencies = [
  "rustc-hash",
  "simdutf8",
  "smallvec",
+]
+
+[[package]]
+name = "uniflowed_lib"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "serde",
+ "uniflowed_infra",
 ]
 
 [[package]]
