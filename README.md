@@ -1,12 +1,13 @@
-# uniflowed
+# uf
 
 Unified Toolchain for Flow (React).
 
-`uf` is intended to become the all-in-one toolchain for Flow projects: create,
-dev server, build, lint, format, type check, test, task running, env inspection,
-publishing, LSP, and eventually a Hermes-backed runtime.
+`uf` stands for unifiedflow: unified flow for React applications, libraries, and
+tooling. It is intended to become the all-in-one toolchain for Flow projects:
+create, dev server, build, lint, format, type check, test, task running, env
+inspection, publishing, LSP, and runtime execution.
 
-The project and ecosystem name is **uniflowed**. The command is **`uf`**.
+The package scope and ecosystem name is **uniflowed**. The command is **`uf`**.
 
 Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/1).
 
@@ -51,6 +52,8 @@ enables:
 - route, fetch, action, and data cache defaults OFF
 - React 19, Suspense, `use`, and Async React assumptions
 - React Compiler with `mode: "syntax"`
+- `uf` runtime by default, with deploy-anywhere adapters for Node.js, Bun, Deno,
+  edge, serverless, static, and container targets
 - StyleX as the default styling layer
 - native query, effect, ORM, Relay, and `flow-cell` builtin modules
 - React-minded hooks inspired by VueUse without render-time impurity
