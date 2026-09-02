@@ -2,18 +2,29 @@
 //!
 //! Owns [`Token`] and the scanning of the constructs whose boundaries a naive
 //! substring search would get wrong — strings, templates, regular expressions
-//! and comments — plus the small navigation helpers (`starts_statement`,
-//! `matching_open`, `matching_close`) that let callers walk a token vector
+//! and comments — plus the small navigation helpers ([`starts_statement`],
+//! [`matching_open`], [`matching_close`]) that let callers walk a token vector
 //! without re-deriving nesting for themselves.
+//!
+//! This is uf's only lexer for `.js` sources. It is public so that the passes
+//! living in other crates — StyleX extraction, the React compiler's syntax
+//! validation — scan a module through it rather than growing a second scanner
+//! that would disagree with this one about where a string ends.
 
 use super::MAX_SOURCE_BYTES;
 
+/// What one [`Token`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TokenKind {
+pub enum TokenKind {
+    /// An identifier, keyword, or private name.
     Ident,
+    /// A `'`- or `"`-quoted string literal.
     String,
+    /// A backtick template literal, substitutions included.
     Template,
+    /// A numeric literal.
     Number,
+    /// A regular-expression literal, flags included.
     Regex,
     /// `=>`, lexed as one token so it is never confused with `=` followed by `>`.
     Arrow,
@@ -23,35 +34,46 @@ pub(crate) enum TokenKind {
     Invalid,
 }
 
+/// One token, as a half-open byte range into the source it came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Token {
+pub struct Token {
+    /// What the token is.
     pub kind: TokenKind,
+    /// Byte offset of the first byte of the token.
     pub start: usize,
+    /// Byte offset one past the last byte of the token.
     pub end: usize,
     /// Whether a line terminator separates this token from the previous one.
     pub newline_before: bool,
 }
 
 impl Token {
-    pub(crate) fn text<'a>(&self, source: &'a str) -> &'a str {
+    /// The token's text, borrowed from the source it was lexed from.
+    pub fn text<'a>(&self, source: &'a str) -> &'a str {
         source.get(self.start..self.end).unwrap_or_default()
     }
 
     /// Content of a string or template token, without the surrounding quotes.
-    pub(crate) fn quoted_content<'a>(&self, source: &'a str) -> &'a str {
+    pub fn quoted_content<'a>(&self, source: &'a str) -> &'a str {
         if self.end < self.start + 2 {
             return "";
         }
         source.get(self.start + 1..self.end - 1).unwrap_or_default()
     }
 
-    pub(crate) fn is_punct(&self, byte: u8) -> bool {
+    /// Whether the token is exactly the punctuation byte `byte`.
+    pub fn is_punct(&self, byte: u8) -> bool {
         self.kind == TokenKind::Punct(byte)
     }
 }
 
 /// Tokenize a module, skipping a BOM and a leading `#!` line.
-pub(crate) fn tokenize(source: &str) -> Vec<Token> {
+///
+/// A source over [`MAX_SOURCE_BYTES`] yields no tokens at all: the ceiling is
+/// the crate's guard against unbounded allocation from a generated or hostile
+/// file, and a caller that needs to tell "too large" from "empty" apart must
+/// check the length itself before calling.
+pub fn tokenize(source: &str) -> Vec<Token> {
     let bytes = source.as_bytes();
     if bytes.len() > MAX_SOURCE_BYTES {
         return Vec::new();
@@ -342,7 +364,7 @@ fn is_ident_part(byte: u8) -> bool {
 }
 
 /// Whether the token at `position` begins a statement.
-pub(crate) fn starts_statement(tokens: &[Token], position: usize) -> bool {
+pub fn starts_statement(tokens: &[Token], position: usize) -> bool {
     match position.checked_sub(1) {
         None => true,
         Some(previous) => {
@@ -353,12 +375,7 @@ pub(crate) fn starts_statement(tokens: &[Token], position: usize) -> bool {
 }
 
 /// Index of the token closing the group opened at `position`.
-pub(crate) fn matching_close(
-    tokens: &[Token],
-    position: usize,
-    open: u8,
-    close: u8,
-) -> Option<usize> {
+pub fn matching_close(tokens: &[Token], position: usize, open: u8, close: u8) -> Option<usize> {
     let mut depth = 0usize;
     for (at, token) in tokens.iter().enumerate().skip(position) {
         if token.is_punct(open) {
@@ -374,12 +391,7 @@ pub(crate) fn matching_close(
 }
 
 /// Index of the token opening the group closed at `position`.
-pub(crate) fn matching_open(
-    tokens: &[Token],
-    position: usize,
-    open: u8,
-    close: u8,
-) -> Option<usize> {
+pub fn matching_open(tokens: &[Token], position: usize, open: u8, close: u8) -> Option<usize> {
     let mut depth = 0usize;
     let mut at = position;
     loop {
