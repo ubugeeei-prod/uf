@@ -2,13 +2,17 @@
   description = "uniflowed: Unified Toolchain for Flow (React)";
 
   inputs = {
+    flow = {
+      url = "github:facebook/flow/81b0c2a3dd591c66c51167aac341d851932bd9c5";
+      flake = false;
+    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-x86_64-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-x86_64-darwin, rust-overlay }:
+  outputs = { self, flow, nixpkgs, nixpkgs-x86_64-darwin, rust-overlay }:
     let
       systems = [
         "aarch64-darwin"
@@ -25,6 +29,7 @@
         nixpkgs.lib.genAttrs systems (system: f system (pkgsFor system));
       workspace = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       version = workspace.workspace.package.version;
+      sourceRoot = toString ./.;
     in
     {
       packages = forAllSystems (system: pkgs:
@@ -44,14 +49,30 @@
               src = ./.;
               filter = path: type:
                 let
-                  base = baseNameOf path;
+                  relPath = pkgs.lib.removePrefix "${sourceRoot}/" (toString path);
+                  excludedDirectories = [
+                    ".direnv"
+                    ".git"
+                    "dist"
+                    "docs/dist"
+                    "infra/cloudflare/.terraform"
+                    "node_modules"
+                    "target"
+                  ];
+                  isInExcludedDirectory = directory:
+                    relPath == directory || pkgs.lib.hasPrefix "${directory}/" relPath;
                 in
-                  !(base == "target"
-                    || base == "dist"
-                    || base == ".git"
-                    || base == ".direnv"
-                    || base == ".terraform");
+                  !(pkgs.lib.any isInExcludedDirectory excludedDirectories
+                    || relPath == "docs/router.js"
+                    || pkgs.lib.hasSuffix ".tfstate" relPath
+                    || pkgs.lib.hasInfix ".tfstate." relPath);
             };
+
+            postPatch = ''
+              rm -rf upstream/flow
+              mkdir -p upstream
+              ln -s ${flow} upstream/flow
+            '';
 
             cargoLock.lockFile = ./Cargo.lock;
             cargoBuildFlags = [ "--package" "uf_cli" "--bins" ];
