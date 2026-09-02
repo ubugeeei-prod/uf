@@ -6,7 +6,26 @@
 
 Unified Toolchain for Flow (React)
 
+**🚧 Under active construction — not usable yet. 🚧**
+
 </div>
+
+> [!WARNING]
+> **This is a work in progress, not a released tool.** It is being built in the
+> open and large parts of it are unfinished or actively being replaced.
+>
+> - **Nothing is published.** There is no release on GitHub, nothing on
+>   crates.io, and nothing on npm. `curl … | sh` will not install anything until
+>   the first tag exists.
+> - **The build is being moved onto Vite.** The dev server and bundler in this
+>   repository are being deleted as Vite takes over, so `uf dev` and `uf build`
+>   are mid-migration.
+> - **The formatter is being rewritten** for Prettier compatibility. The current
+>   one works from a token stream and misformats some valid Flow.
+> - Commands, config keys and package names may change without notice.
+>
+> Everything below describes where `uf` is going. Treat it as the plan, not as
+> documentation of something you can rely on today.
 
 
 
@@ -25,9 +44,18 @@ Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/
 
 ## Usage
 
+Once a release exists, this is how `uf` will be installed. **Neither command
+works yet** — no tag has been cut, so there is nothing behind either URL.
+
 ```sh
 curl -fsSL https://setup.uniflowed.dev | sh
 nix run github:ubugeeei-prod/uf#uf -- --version
+```
+
+Until then, build from a checkout:
+
+```sh
+tools/upstream/sync.sh && cargo build --release --bin uf
 ```
 
 - `uf create`: Create your new flow project (zero-config)
