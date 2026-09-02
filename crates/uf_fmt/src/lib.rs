@@ -54,23 +54,13 @@ pub struct FormatResult {
 }
 
 /// Why a source file could not be formatted.
-///
-/// Non-exhaustive: the formatter grows new guards over time, and a caller that
-/// matches every variant today should not break when the next one lands.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[non_exhaustive]
 pub enum FormatError {
-    /// `indentWidth` was zero, which cannot produce nested indentation.
-    #[error("indent width must be greater than zero")]
+    /// `indentWidth` was zero, which cannot produce nested indentation, or
+    /// larger than [`MAX_INDENT_WIDTH`], which would let deep nesting emit an
+    /// unbounded amount of leading whitespace.
+    #[error("indent width must be between 1 and {MAX_INDENT_WIDTH}")]
     InvalidIndentWidth,
-    /// `indentWidth` was larger than [`MAX_INDENT_WIDTH`].
-    #[error("indent width {indent_width} exceeds the maximum of {maximum}")]
-    IndentWidthTooLarge {
-        /// The configured width.
-        indent_width: u8,
-        /// The largest accepted width.
-        maximum: u8,
-    },
 }
 
 /// Format one source file.
@@ -81,17 +71,11 @@ pub enum FormatError {
 ///
 /// # Errors
 ///
-/// Returns [`FormatError`] when [`FmtConfig::indent_width`] is zero or larger
-/// than [`MAX_INDENT_WIDTH`].
+/// Returns [`FormatError::InvalidIndentWidth`] when [`FmtConfig::indent_width`]
+/// is zero or larger than [`MAX_INDENT_WIDTH`].
 pub fn format_source(source: &str, config: &FmtConfig) -> Result<FormatResult, FormatError> {
-    if config.indent_width == 0 {
+    if config.indent_width == 0 || config.indent_width > MAX_INDENT_WIDTH {
         return Err(FormatError::InvalidIndentWidth);
-    }
-    if config.indent_width > MAX_INDENT_WIDTH {
-        return Err(FormatError::IndentWidthTooLarge {
-            indent_width: config.indent_width,
-            maximum: MAX_INDENT_WIDTH,
-        });
     }
 
     let (bom, body) = split_bom(source);
@@ -921,11 +905,12 @@ mod tests {
         });
         assert_eq!(
             format_source("x;\n", &config),
-            Err(FormatError::IndentWidthTooLarge {
-                indent_width: 200,
-                maximum: MAX_INDENT_WIDTH,
-            })
+            Err(FormatError::InvalidIndentWidth)
         );
+        let allowed = config_with(|config| {
+            config.indent_width = MAX_INDENT_WIDTH;
+        });
+        assert!(format_source("x;\n", &allowed).is_ok());
     }
 
     #[test]
