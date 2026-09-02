@@ -71,7 +71,22 @@ loader can map `@uniflowed/*` modules to native implementations.
 User-authored Flow source uses `.js` files with `// @flow`. Package declaration
 files may still use Flow's `.js.flow` convention when publishing typed modules.
 
-Planned native engines:
+Implemented native slices already cover:
+
+- zero-config `.js` + `// @flow` project generation without npm scripts
+- router discovery and generated `router.js` route types
+- `uf build` metadata emission through `dist/uf-build-manifest.json`
+- Rust-native `uf dev` HTTP state and health endpoint
+- `uf install` workspace discovery, `uf.lock`, store manifest, and
+  content-addressed package entries
+- `uf use` local current-binary runtime activation through XDG directories
+- `uf upgrade` package/runtime manifest generation
+- `ufx` native execution for known `@uniflowed/*` package entrypoints
+- `uf publish` and `uf release` metadata generation for trusted publishing
+- source-level native `uf test` execution for the first assertion subset
+- stdio JSON-RPC `uf lsp` initialize capabilities
+
+Native engines being deepened:
 
 - query cache and mutation scheduler, similar in capability to TanStack Query
 - generator/yield EffectSystem inspired by Redux-Saga but typed for Flow
@@ -119,10 +134,10 @@ Native package output follows a napi-rs-style target model. The generated
 TypeScript declaration files are converted into Flow declaration files so the
 repository and published library surface remain Flow-first.
 
-`uf publish` is planned to bootstrap the first release locally. After trusted
-publishing is configured from the CLI, `uf release minor` should create a
-`uf@*` tag and GitHub Actions should publish through OIDC without a long-lived
-npm token.
+`uf publish` writes the local/trusted publishing manifest used to bootstrap the
+first release locally. After trusted publishing is configured from the CLI,
+`uf release minor` computes the next `uf@*` tag metadata and GitHub Actions
+publishes through OIDC without a long-lived npm token.
 
 `@uniflowed/pm` owns package resolution, `uf.lock`, a content-addressed store,
 and script-free install policy. `@uniflowed/rm` reads `uf.config.js`, infers

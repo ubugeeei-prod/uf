@@ -11,9 +11,9 @@ Unified Toolchain for Flow (React)
 
 
 `uf` stands for unified-flow: unified flow for React applications, libraries, and
-tooling. It is intended to become the all-in-one toolchain for Flow projects:
-create, dev server, build, lint, format, type check, test, task running, env
-inspection, publishing, LSP, and runtime execution.
+tooling. It is the all-in-one native command surface for Flow projects: create,
+dev server, build, lint, format, type check, test, task running, env inspection,
+publishing, LSP, and runtime execution.
 
 The package scope and ecosystem name is **uniflowed**. The command is **`uf`**.
 
@@ -30,12 +30,50 @@ curl -fsSL https://setup.uniflowed.dev | sh
 ```
 
 - `uf create`: Create your new flow project (zero-config)
-- `uf dev`: Start development server (internaly using vite)
-- `uf build`: Build your flow project for production
-- `uf lint`: Run hosted linter
-- `uf fmt`: Run Formatter
+- `uf dev`: Start the native Vite-compatible development server
+- `uf build`: Build your Flow project metadata and generated route types
+- `uf lint`: Run the native lint runner
+- `uf fmt`: Run the native formatter
 - `uf check`: Run Flow type checker
-- `uf test`: Run uf hosted test runner
+- `uf test`: Run the self-hosted native test runner
+- `uf install`: Write `uf.lock` and the content-addressed `.uf/store`
+- `uf upgrade`: Re-apply the native package/runtime manifests
+- `uf use`: Install and activate a versioned `uf` runtime through the XDG layout
+- `uf publish`: Write local/trusted publish metadata
+- `uf release`: Compute release metadata and the next `uf@*` tag
+- `uf lsp`: Start the native JSON-RPC language server
+- `uf prepare`: Write generated route/codegen preparation metadata
+- `ufx`: Execute known native `@uniflowed/*` package entrypoints
+
+## Current Execution Surface
+
+The current CLI already executes the first native vertical slice:
+
+- `uf create app react` and `uf create lib` generate `.js` + `// @flow`
+  projects without npm scripts.
+- `uf build` discovers file-system routes, writes `router.js`, and writes
+  `dist/uf-build-manifest.json` with the internal Vite/Rolldown-compatible
+  contract.
+- `uf dev` starts a Rust-native HTTP development server, writes
+  `.uf/dev-server.json`, and exposes `/__uf/health`.
+- `uf test` discovers `describe`/`it`/`test` declarations and executes the
+  native source-level assertion subset for `expect(...).toBe`,
+  `expect(...).toEqual`, thrown `Error`s, and React Testing Library-style
+  visibility checks.
+- `uf install` discovers workspace `package.json` files, rejects npm scripts by
+  default, writes `uf.lock`, writes `.uf/store/manifest.json`, and materializes
+  content-addressed package entries in `.uf/store/packages`.
+- `uf upgrade` reapplies the package store and writes `.uf/upgrade.json`.
+- `uf use uf@0.1.0` installs the current `uf` binary into the XDG runtime
+  version directory, writes active runtime metadata, and writes the user-local
+  shim.
+- `uf publish` and `uf release minor` write trusted publish and release
+  manifests, including the next `uf@*` tag metadata.
+- `ufx @uniflowed/create app` runs the native create package entrypoint and
+  records the exec-cache manifest.
+- `uf prepare` writes `.uf/prepare.json` and generated router metadata.
+- `uf lsp` answers JSON-RPC `initialize` over stdio with formatting and
+  diagnostic capabilities.
 
 ## Defaults
 

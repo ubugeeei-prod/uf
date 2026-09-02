@@ -97,9 +97,10 @@
 
 ## P3: Test Runner And DX
 
-- [ ] Implement `import { describe, it, expect } from '@uniflowed/testing'`.
+- [x] Implement `import { describe, it, expect } from '@uniflowed/testing'`.
 - [x] Start self-hosted `@uniflowed/test` runner planning.
-- [ ] Make `@uniflowed/test` execute Flow suites through the native runtime.
+- [x] Execute the first native source-level assertion subset in `uf test`.
+- [ ] Make `@uniflowed/test` execute full Flow suites through the native runtime.
 - [ ] Benchmark `@uniflowed/test` against Bun and keep the faster-than-Bun target visible.
 - [ ] Implement native React Testing Library-compatible DOM queries.
 - [ ] Implement native React Native testing utilities.
@@ -114,30 +115,35 @@
 - [ ] Implement `@uniflowed/browser` Playwright-compatible browser automation.
 - [ ] Add visual regression baselines, diffing, and update flows.
 - [x] Add `uf prepare` command surface for lint-staged-compatible checks and code generation.
+- [x] Write `.uf/prepare.json` and generated route metadata from `uf prepare`.
 - [ ] Wire `uf prepare` to staged file discovery and generated type writes.
 
 ## P4: Build, Runtime, Package Manager, Publish
 
 - [ ] Wire `uf build` to Vite-compatible plugin semantics.
+- [x] Write native build manifest and generated router types from `uf build`.
 - [ ] Wire production builds to Rolldown where possible.
 - [ ] Wire `uf dev` to a Vite-compatible dev server.
+- [x] Start Rust-native dev HTTP server state, health endpoint, and route metadata.
 - [x] Start self-hosted `@uniflowed/pm` package manager planning.
 - [ ] Implement native package resolver.
-- [ ] Implement native lockfile and content-addressed cache.
+- [x] Implement native workspace lockfile and content-addressed store entries.
 - [x] Start `@uniflowed/rm` runtime manager inference/acquire/apply planning.
-- [ ] Implement runtime acquisition and host adaptation in `@uniflowed/rm`.
+- [x] Implement local current-binary runtime activation for `uf use`.
+- [ ] Implement remote runtime acquisition and host adaptation in `@uniflowed/rm`.
 - [ ] Publish `curl -fsSL https://setup.uniflowed.dev | sh` installer.
 - [ ] Support sh, bash, zsh, ush, Windows, macOS, and Linux installer targets.
 - [x] Start napi-rs-style native target package generation contracts.
 - [x] Start generated TypeScript declaration to Flow declaration conversion.
-- [ ] Implement `uf install`.
-- [ ] Implement `uf upgrade`.
+- [x] Implement `uf install` for workspace package discovery, lockfile writes, store manifest writes, and npm-script rejection.
+- [x] Implement `uf upgrade` package/runtime manifest writes.
 - [ ] Implement Hermes-backed `uf index.js` runtime.
-- [ ] Implement `uf publish`.
+- [x] Implement `uf publish` trusted publish manifest writes.
 - [x] Add trusted publish config defaults for local first publish and tokenless OIDC publishing.
 - [x] Add tag-push trusted publish GitHub Actions scaffold.
 - [x] Add `uf release minor` command surface.
-- [ ] Wire `uf release minor` to semver calculation, changelog generation, and `uf@*` tag push.
+- [x] Wire `uf release minor` to semver calculation and `uf@*` tag metadata.
+- [ ] Wire `uf release minor` to changelog generation and tag push.
 - [ ] Ship `curl -fsSL https://setup.uniflowed.dev | sh`.
 
 ## P5: Standard Library, Legal, And Formal Methods

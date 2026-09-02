@@ -11,6 +11,10 @@
 
 ## P0: Toolchain Spine
 
+- Keep the first executable native slice green: `uf create`, `uf build`,
+  `uf dev --once`, `uf install`, `uf upgrade`, `uf use`, `uf publish`,
+  `uf release`, `ufx`, `uf test`, `uf prepare`, and `uf lsp` already produce
+  local artifacts or protocol responses.
 - Finish parser/typechecker integration against Flow's maintained parser and
   type checker boundary.
 - Replace whitespace formatter core with a Flow AST printer.
