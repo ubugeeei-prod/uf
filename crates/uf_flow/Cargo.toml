@@ -12,7 +12,7 @@ authors.workspace = true
 default = ["official-parser"]
 official-parser = ["dep:flowjs-parser"]
 # Meta's official Flow Rust port from the `upstream/flow` submodule.
-# Requires a nightly toolchain until the `!` type stabilizes (Rust 1.100).
+# Requires a nightly toolchain while the port uses the unstable `!` type.
 upstream-parser = ["dep:flow_parser"]
 
 [dependencies]

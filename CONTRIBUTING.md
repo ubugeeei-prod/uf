@@ -67,7 +67,7 @@ cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings
 cargo +nightly test --workspace --all-features
 ```
 
-Once `never_type` reaches stable (Rust 1.100), `uf_flow`'s `upstream-parser`
-feature becomes the default and the stable jobs go back to `--all-features`.
+Once `never_type` reaches stable, `uf_flow`'s `upstream-parser` feature becomes
+the default and the stable jobs go back to `--all-features`.
 
 When GitHub Actions is configured, use Actions as the final merge gate.
