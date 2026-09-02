@@ -1,4 +1,9 @@
 [toolchain]
-channel = "1.98.0"
+# Meta's Flow Rust port declares `#![feature(box_patterns)]`, which the compiler
+# removed around 2026-09-01, so the port builds only on a nightly old enough to
+# accept it. This date is the newest that does. It is not a preference: uf parses
+# and type-checks Flow with the official port, and no stable toolchain can build
+# it. See `docs/architecture.md`.
+channel = "nightly-2026-08-01"
 components = ["clippy", "rustfmt"]
 profile = "minimal"

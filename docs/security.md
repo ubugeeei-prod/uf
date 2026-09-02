@@ -128,18 +128,20 @@ on a CI machine, or a formatter silently changing program meaning.
 
 | Risk | Structural decision in `uf` | Test |
 | --- | --- | --- |
-| A hosted JavaScript engine budgeting its stack from wherever it was created, so parsing inside a work-stealing pool exhausts it on ordinary files — found in `uf lint` at a few hundred files, reported to the user as a syntax error in their own code | `uf_flow::prepare_thread` creates each worker's engine from a shallow frame before any nested work begins | `uf_lint` |
+| A hosted JavaScript engine budgeting its stack from wherever it was created, so parsing inside a work-stealing pool exhausts it on ordinary files — found in `uf lint` at a few hundred files, reported to the user as a syntax error in their own code | No hosted engine: Flow's Rust port parses on the calling stack | `uf_flow`, `uf_lint` |
 | Stack overflow on deeply nested input | Depth is tracked on an explicit stack, never the call stack, and bounded | todo |
 | Quadratic or exponential scanning | Single-pass lexing with byte scanning; no backtracking regex on source text | todo |
 | A formatter that changes the token stream | Formatting is verified token-preserving: the lexer output of input and output must match, ignoring trivia | todo |
 | Unbounded memory on a hostile file | File size caps with typed errors | `uf_rsc::scan`, `uf_pm::detect`, `uf_bundle::size`, `uf_devserver::hmr::graph` |
 | Non-UTF-8 and lone-surrogate input | Rejected at the boundary with a typed error; never sliced blindly | todo |
 
-The QuickJS-hosted Flow parser is a temporary backend and a liability in this
-section: it is an embedded C engine with its own internal limits, reached through
-`libquickjs-sys`. Meta's Flow Rust port removes both the C dependency and that
-class of engine-internal failure, which is a security argument for the switch
-independent of it being ~376x faster.
+`uf` used to reach Flow's grammar through a QuickJS-hosted build of Flow's
+JavaScript parser — an embedded C engine with its own internal limits, reached
+through `libquickjs-sys`, and the default on stable toolchains. It is gone.
+Meta's Flow Rust port removed the C dependency, the engine-internal failure
+class above, and the source rewriting `uf` performed to feed a parser that
+predated `component` syntax — which had put every diagnostic in a rewritten
+file at the wrong location.
 
 ## Supply chain of `uf` itself
 

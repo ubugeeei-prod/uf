@@ -158,21 +158,13 @@ fn node_binary() -> Option<std::path::PathBuf> {
 /// JavaScript that is also malformed Flow. It cannot catch surviving JSX, which
 /// is why it is no longer the only check.
 ///
-/// The QuickJS-hosted backend budgets its stack from wherever its runtime was
-/// created and can exhaust that budget on a chunk merging several modules. That
-/// is the parser giving up rather than a verdict, so it is skipped rather than
-/// counted as a failure.
 #[test]
 fn the_flow_parser_finds_no_diagnostics_in_a_chunk() {
     let dir = tempfile::tempdir().unwrap();
     build(dir.path());
 
-    uf_flow::prepare_thread().expect("parser ready");
-
     for (name, code) in chunks(dir.path()) {
-        let Ok(outcome) = uf_flow::validate_source(&code) else {
-            continue;
-        };
+        let outcome = uf_flow::validate_source(&code).expect("parser ran");
         assert!(
             outcome.is_ok(),
             "chunk {name} does not parse: {:?}\n{code}",

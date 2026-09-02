@@ -22,10 +22,11 @@
 - [x] Add `ufx` temporary execution command surface.
 - [x] Integrate the maintained Flow parser boundary through the `upstream/flow`
       submodule and Meta's official Flow Rust port.
-- [ ] Make `upstream-parser` the default once `never_type` reaches stable Rust.
-- [ ] Integrate Flow typecheck diagnostics without requiring `.flowconfig`.
+- [x] Make Meta's Flow Rust port the only parser, and delete the QuickJS-hosted
+      backend along with the source rewriting it required.
+- [x] Integrate Flow typecheck diagnostics without requiring `.flowconfig`.
       The port's typing crates need `box_patterns`, removed from the floating
-      nightly channel, so the feature pins `nightly-2026-08-01`. Proven to run:
+      nightly channel, so `rust-toolchain.toml` pins `nightly-2026-08-01`.
       68 ms to merge builtins, ~4 ms per file. See docs/architecture.md.
 - [ ] Replace whitespace formatter with a Flow AST printer.
 - [x] Default formatter settings to double quotes and semicolons.

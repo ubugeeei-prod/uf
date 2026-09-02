@@ -21,7 +21,7 @@ name = "ufx"
 path = "src/bin/ufx.rs"
 
 [features]
-default = []
+default = ["upstream-typecheck"]
 # Run Flow's own type inference in `uf check`; see `crates/uf_check`.
 upstream-typecheck = ["uf_check/upstream-typecheck"]
 

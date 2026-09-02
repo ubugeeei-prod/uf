@@ -26,20 +26,13 @@ fn lower(source: &str) -> String {
         "JSX survived lowering:\n{}",
         transformed.code
     );
-    // The QuickJS-hosted backend budgets its stack from wherever its runtime
-    // was created, so it has to be created from a shallow frame. When it still
-    // refuses — a deeply nested call tree can exhaust its own 256 kB — that is
-    // the parser giving up rather than the output being wrong, so the two
-    // assertions above stand and this one steps aside.
-    uf_flow::prepare_thread().expect("parser ready");
-    if let Ok(outcome) = uf_flow::validate_source(&transformed.code) {
-        assert!(
-            outcome.is_ok(),
-            "lowered output does not parse: {:?}\n{}",
-            outcome.diagnostics,
-            transformed.code
-        );
-    }
+    let outcome = uf_flow::validate_source(&transformed.code).expect("parser ran");
+    assert!(
+        outcome.is_ok(),
+        "lowered output does not parse: {:?}\n{}",
+        outcome.diagnostics,
+        transformed.code
+    );
 
     transformed.code
 }
