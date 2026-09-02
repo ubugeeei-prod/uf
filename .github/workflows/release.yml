@@ -83,10 +83,14 @@ jobs:
           UF_TEST_RELEASE_DIR: dist/release/uf/${{ steps.version.outputs.version }}
         run: tools/release/test-install.sh
 
+      # Name the version directory rather than globbing it. A glob makes
+      # upload-artifact root the artifact at the non-wildcard prefix, so every
+      # file arrives under a `<version>/` directory that `publish` does not
+      # look in, and the release fails as if the target had never built.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: uf-${{ matrix.target }}
-          path: dist/release/uf/*/
+          path: dist/release/uf/${{ steps.version.outputs.version }}
           if-no-files-found: error
 
   publish:
@@ -113,6 +117,8 @@ jobs:
           set -eu
           version="${INPUT_VERSION:-${REF_NAME#uf@}}"
           printf '%s\n' "$version" > artifacts/VERSION
+          # Before the checks, so a failure below shows what actually arrived.
+          ls -R artifacts
 
           # A release missing one target is not a partial release, it is a 404
           # for everyone on that platform. Refuse to publish one.
@@ -125,7 +131,6 @@ jobs:
           done
           # setup.uniflowed.dev/metadata/latest.json serves this.
           tools/release/build-manifest.sh artifacts
-          ls -l artifacts
 
       - name: Publish
         env:
