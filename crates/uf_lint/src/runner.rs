@@ -12,6 +12,7 @@ mod flow_syntax;
 mod flow_type;
 mod package;
 mod react;
+mod react_compiler;
 mod react_native;
 mod router;
 mod security;
@@ -36,8 +37,8 @@ pub(crate) use flow_type::{
 pub(crate) use package::run_package_no_npm_scripts;
 pub(crate) use react::{
     run_react_component_syntax, run_react_hook_syntax, run_react_no_default_export_component,
-    run_react_no_render_side_effects,
 };
+pub(crate) use react_compiler::run_react_compiler_rules;
 pub(crate) use react_native::run_react_native_platform_split;
 pub(crate) use router::run_router_reserved_files;
 pub(crate) use security::{run_security_no_dangerously_set_inner_html, run_security_no_eval};

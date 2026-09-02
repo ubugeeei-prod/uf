@@ -1,0 +1,25 @@
+[package]
+name = "uf_react_compiler"
+description = "React Compiler syntax-mode validation for uniflowed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+compact_str.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+uf_infra = { path = "../uf_infra" }
+uf_plugin = { path = "../uf_plugin" }
+uf_rsc = { path = "../uf_rsc" }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "react_compiler"
+harness = false

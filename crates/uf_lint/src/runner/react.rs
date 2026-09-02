@@ -1,6 +1,9 @@
 //! The `react/*` rules that read one construct at a time: preferring Flow's
-//! `component` and `hook` declarations over the React idioms they replace, the
-//! default-export ban, and side effects in a render body.
+//! `component` and `hook` declarations over the React idioms they replace, and
+//! the default-export ban.
+//!
+//! The rules that ask whether a component *could have been compiled* live in
+//! [`super::react_compiler`], which delegates to `uf_react_compiler`.
 
 use uf_config::UniflowedConfig;
 
@@ -126,40 +129,4 @@ fn is_router_module(path: &str) -> bool {
     path.rsplit('/')
         .next()
         .is_some_and(|name| name.starts_with("_uf."))
-}
-
-pub(crate) fn run_react_no_render_side_effects(
-    scan: &FileScan<'_>,
-    config: &UniflowedConfig,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    let Some(severity) = severity(config, "react/no-render-side-effects") else {
-        return;
-    };
-    if !scan.facts.declares_component {
-        return;
-    }
-
-    const NEEDLES: [&str; 4] = [
-        "Date.now(",
-        "Math.random(",
-        "localStorage.",
-        "sessionStorage.",
-    ];
-
-    for (position, line) in scan.lines.iter().enumerate() {
-        let code = line.code();
-        let Some(at) = NEEDLES.into_iter().find_map(|needle| code.find(needle)) else {
-            continue;
-        };
-        push_in_code(
-            diagnostics,
-            scan,
-            "react/no-render-side-effects",
-            severity,
-            position,
-            at,
-            "keep React render idempotent; move unstable reads into actions, effects, or loaders",
-        );
-    }
 }
