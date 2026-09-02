@@ -275,6 +275,35 @@ mod tests {
         );
     }
 
+    /// The weaker guarantee that still holds for input that does not lex cleanly.
+    ///
+    /// Full token preservation cannot: the printer emits exactly one final
+    /// newline, and for a source ending inside an unterminated comment or string
+    /// that newline necessarily lands *inside* that token, changing its text.
+    /// The input was already not valid JavaScript, and the comment stays
+    /// unterminated either way, so that is harmless.
+    ///
+    /// What must still hold is that recovery neither drops nor invents a token,
+    /// which is the failure a formatter could actually cause here.
+    fn assert_token_kinds_preserved(input: &str, output: &str) {
+        use crate::lexer::Punctuator;
+
+        let kinds = |source: &str| -> Vec<TokenKind> {
+            tokenize(source)
+                .into_iter()
+                .map(|token| token.kind)
+                .filter(|kind| {
+                    !kind.is_trivia() && *kind != TokenKind::Punctuator(Punctuator::Semicolon)
+                })
+                .collect()
+        };
+        similar_asserts::assert_eq!(
+            kinds(input),
+            kinds(output),
+            "a token was dropped or invented while formatting {input:?}"
+        );
+    }
+
     fn assert_comments_preserved(input: &str, output: &str) {
         let comments = |source: &str| -> Vec<String> {
             tokenize(source)
@@ -854,6 +883,11 @@ mod tests {
 
         for source in &cases {
             let first = format(source);
+            // Idempotence alone is too weak here: a formatter can make a stable
+            // token-changing rewrite and pass it. Malformed input is exactly
+            // where a recovery path might silently drop or invent a token, so
+            // the stream has to be checked too.
+            assert_token_kinds_preserved(source, &first);
             let second = format(&first);
             similar_asserts::assert_eq!(first, second, "not idempotent for {source:?}");
         }
