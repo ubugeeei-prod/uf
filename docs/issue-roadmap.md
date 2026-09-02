@@ -97,7 +97,7 @@
 - [ ] Implement native terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
 - [ ] Cover the shadcn-style component catalog.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
-- [x] Add UI `renders` type utility declarations under `crates/uf_lib/lib/ui`.
+- [x] Add UI `renders` type utility declarations under `packages/ui`.
 - [x] Make form UI validator-backed and React Compiler-safe by contract.
 - [ ] Add compile-time form value/error type generation from validator schemas.
 - [ ] Expose runtime bindings through Flow declarations.
