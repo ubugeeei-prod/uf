@@ -1,4 +1,8 @@
-const RELEASE_BASE_URL = "https://releases.uniflowed.dev/uf";
+// GitHub Releases is where the release workflow publishes, and it is what
+// install.sh downloads from by default. Point metadata at the same place so the
+// two cannot disagree about what "latest" is.
+const RELEASE_BASE_URL =
+  "https://github.com/ubugeeei-prod/uf/releases/latest/download";
 const DOCS_INSTALL_URL = "https://docs.uniflowed.dev/install";
 
 function responseWithHeaders(response, headers) {
@@ -33,10 +37,26 @@ export default {
     }
 
     if (url.pathname === "/metadata/latest.json") {
-      const upstream = await fetch(`${RELEASE_BASE_URL}/latest/manifest.json`, {
+      const upstream = await fetch(`${RELEASE_BASE_URL}/manifest.json`, {
         headers: { accept: "application/json" },
+        redirect: "follow",
       });
+      if (!upstream.ok) {
+        // Say so in the body rather than passing an HTML error page off as the
+        // manifest; clients parse this as JSON.
+        return Response.json(
+          { error: "no published release", status: upstream.status },
+          {
+            status: 502,
+            headers: {
+              "access-control-allow-origin": "*",
+              "cache-control": "no-store",
+            },
+          },
+        );
+      }
       return responseWithHeaders(upstream, {
+        "content-type": "application/json; charset=utf-8",
         "access-control-allow-origin": "*",
         "cache-control": "public, max-age=60",
       });

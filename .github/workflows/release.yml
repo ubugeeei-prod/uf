@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "uf@*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the uf@ prefix"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every target install.sh can ask for, each on a native runner so the
+        # installer test below runs the binaries it just packaged.
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: 1.98.0
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: release-${{ matrix.target }}
+      # `.cargo/config.toml` routes the Linux targets through the wild linker.
+      - if: runner.os == 'Linux'
+        run: cargo install wild-linker --version 0.10.0 --locked
+
+      - name: Resolve version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          version="${INPUT_VERSION:-${REF_NAME#uf@}}"
+          # The tag names the version; a workspace that disagrees would ship an
+          # archive whose contents do not match the release it is filed under.
+          workspace="$(cargo metadata --no-deps --format-version 1 \
+            | node -e 'const m=JSON.parse(require("node:fs").readFileSync(0,"utf8"));
+                       const p=m.packages.find(x=>x.name==="uf_cli");
+                       process.stdout.write(p.version)')"
+          if [ "$version" != "$workspace" ]; then
+            echo "tag says ${version}, but uf_cli is ${workspace}" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        env:
+          UF_TARGET: ${{ matrix.target }}
+          UF_VERSION: ${{ steps.version.outputs.version }}
+        run: tools/release/package-binaries.sh
+
+      # The point of the whole workflow is that `curl … | sh` works. Prove it
+      # against the archive this job just produced, on this target's own
+      # hardware, before anything reaches a release page.
+      - name: Verify the installer against this archive
+        env:
+          UF_TEST_RELEASE_DIR: dist/release/uf/${{ steps.version.outputs.version }}
+        run: tools/release/test-install.sh
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: uf-${{ matrix.target }}
+          path: dist/release/uf/*/
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Check the release is complete
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          version="${INPUT_VERSION:-${REF_NAME#uf@}}"
+          printf '%s\n' "$version" > artifacts/VERSION
+
+          # A release missing one target is not a partial release, it is a 404
+          # for everyone on that platform. Refuse to publish one.
+          for target in aarch64-apple-darwin x86_64-apple-darwin \
+                        x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            archive="artifacts/uf-${target}.tar.gz"
+            test -f "$archive" || { echo "missing artifact for ${target}" >&2; exit 1; }
+            test -f "${archive}.sha256" || { echo "missing checksum for ${target}" >&2; exit 1; }
+            (cd artifacts && sha256sum -c "uf-${target}.tar.gz.sha256")
+          done
+          # setup.uniflowed.dev/metadata/latest.json serves this.
+          tools/release/build-manifest.sh artifacts
+          ls -l artifacts
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          version="${INPUT_VERSION:-${REF_NAME#uf@}}"
+          tag="uf@${version}"
+          assets="artifacts/VERSION"
+          for file in artifacts/uf-*.tar.gz artifacts/uf-*.tar.gz.sha256 \
+                      artifacts/manifest.json artifacts/manifest-*.json; do
+            [ -f "$file" ] && assets="${assets} ${file}"
+          done
+          # shellcheck disable=SC2086
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber $assets
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "uf ${version}" --generate-notes $assets
+          fi
+
+      - name: Mirror to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          UF_RELEASE_BUCKET: uf-releases
+        run: |
+          set -eu
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::notice::Cloudflare secrets are not set; the release is on"
+            echo "::notice::GitHub Releases only, which is what install.sh uses."
+            exit 0
+          fi
+          tools/release/publish-r2.sh artifacts --latest
+
+  smoke:
+    name: Install from the release
+    needs: publish
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The last thing that can still be wrong is the published URLs. Install
+      # the way a user does, from the release that was just created.
+      - name: curl | sh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          UF_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          version="${INPUT_VERSION:-${REF_NAME#uf@}}"
+          UF_VERSION="$version" sh infra/cloudflare/setup-assets/install.sh
+          "$HOME/.local/bin/uf" --version
+          "$HOME/.local/bin/ufr" --version
+          "$HOME/.local/bin/ufx" --version

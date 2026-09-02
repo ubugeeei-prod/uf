@@ -55,13 +55,19 @@ existing `uf-docs` and `uf-setup` Workers from `main` when
 
 ## Release Upload
 
-Release artifacts are uploaded by `.github/workflows/publish.yml` on `uf@*`
-tags when both secrets exist:
+`.github/workflows/release.yml` builds every target on `uf@*` tags, verifies the
+installer against each archive, and publishes to **GitHub Releases**, which is
+what `install.sh` downloads from by default. That path needs no Cloudflare
+secrets, so an unconfigured account cannot produce a release that 404s.
+
+R2 is an optional mirror. The same workflow uploads there afterwards when both
+secrets exist, and skips with a notice when they do not:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-The installer expects this object layout in the `uf-releases` R2 bucket:
+Setting `UF_RELEASE_BASE=https://releases.uniflowed.dev/uf` points the installer
+at the mirror, which serves this object layout in the `uf-releases` bucket:
 
 ```txt
 uf/latest/VERSION
@@ -77,4 +83,17 @@ Upload manually from a built release directory:
 ```sh
 UF_R2_DRY_RUN=1 tools/release/publish-r2.sh dist/release/uf/0.1.0 --latest
 tools/release/publish-r2.sh dist/release/uf/0.1.0 --latest
+```
+
+## Verifying the installer
+
+`tools/release/test-install.sh` packages a release, serves it over HTTP, and
+runs the real `install.sh` against it — covering `latest` resolution, pinned
+`uf@<version>` installs, reinstalls, a tampered archive, an archive whose
+members escape the extraction root, and a version that does not exist. CI runs
+it on every pull request, and the release workflow runs it per target before
+anything is published.
+
+```sh
+tools/release/test-install.sh
 ```

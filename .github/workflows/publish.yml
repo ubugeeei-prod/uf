@@ -1,3 +1,5 @@
+# npm only. Native binaries are built, verified, and released by
+# `release.yml`, which runs on the same `uf@*` tags.
 name: Publish
 
 on:
@@ -32,45 +34,3 @@ jobs:
       - run: cargo test --workspace
       - run: npm publish --access public
         working-directory: crates/uf_lib/lib/core
-
-  native:
-    name: Native release (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: macos-15
-            target: aarch64-apple-darwin
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
-        with:
-          toolchain: 1.98.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - if: runner.os == 'Linux'
-        run: cargo install wild-linker --version 0.10.0 --locked
-      - if: runner.os == 'Linux'
-        run: wild --version
-      - run: tools/release/package-binaries.sh
-        env:
-          UF_TARGET: ${{ matrix.target }}
-      - if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
-        run: tools/release/publish-r2.sh "dist/release/uf/$(cat dist/release/uf/*/VERSION | head -1)" --latest
-        env:
-          UF_RELEASE_BUCKET: uf-releases

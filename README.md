@@ -130,8 +130,9 @@ enables:
 - React Testing Library-compatible declarations via `@uniflowed/react-testing`
 - self-hosted `@uniflowed/pm` package manager with `uf.lock` and a content-addressed store
 - `@uniflowed/rm` runtime manager inferred from config, with automatic acquire/apply planning
-- install via `curl -fsSL https://setup.uniflowed.dev | sh`, with sh, bash, zsh, ush,
-  Windows, macOS, and Linux targets
+- install via `curl -fsSL https://setup.uniflowed.dev | sh`, with sh, bash, zsh, and
+  ush support, on macOS and Linux for both x86_64 and aarch64; Windows artifacts
+  are not published yet and `install.ps1` says so rather than failing obscurely
 - React Native platform linting and `.native/.ios/.android` split guidance
 - editor integration targets for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor
 - formatter defaults to double quotes and semicolons
