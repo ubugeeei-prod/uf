@@ -666,7 +666,7 @@ fn every_advertised_module_resolves_to_a_package() {
         .collect();
 
     let mut unresolvable = Vec::new();
-    for module in uf_lib::builtin_modules() {
+    for module in builtin_modules() {
         let specifier = module.specifier.as_str();
         let (package, subpath) = match specifier.strip_prefix('@').and_then(|rest| {
             let (scope, rest) = rest.split_once('/')?;
