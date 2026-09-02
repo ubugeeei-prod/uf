@@ -1,0 +1,9 @@
+account_id = "00000000000000000000000000000000"
+zone_id    = "00000000000000000000000000000000"
+
+# Defaults are for uniflowed.dev.
+# zone_name                = "uniflowed.dev"
+# release_bucket_name      = "uf-releases"
+# nix_cache_bucket_name    = "uf-nix-cache"
+# r2_location              = "apac"
+# enable_nix_cache_bucket  = true

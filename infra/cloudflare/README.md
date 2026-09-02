@@ -1,0 +1,63 @@
+# Cloudflare distribution infrastructure
+
+This directory is the IaC source of truth for `uniflowed.dev`.
+
+## Topology
+
+- `uniflowed.dev` and `www.uniflowed.dev`: redirect to docs.
+- `docs.uniflowed.dev`: Workers Static Assets for the generated docs site.
+- `setup.uniflowed.dev`: Worker endpoint for `curl -fsSL https://setup.uniflowed.dev | sh`.
+- `releases.uniflowed.dev`: public R2 custom domain for release archives.
+- `cache.uniflowed.dev`: optional public R2 custom domain reserved for Nix binary cache objects.
+
+## Apply
+
+Use OpenTofu or Terraform. The Cloudflare provider reads `CLOUDFLARE_API_TOKEN`
+from the environment.
+
+Enable R2 for the Cloudflare account in the dashboard before applying. If R2 is
+not enabled yet, Cloudflare returns `10042: Please enable R2 through the
+Cloudflare Dashboard` while creating the release buckets.
+
+```sh
+cargo run --release --package uf_cli --bin uf -- --cwd docs build
+export CLOUDFLARE_API_TOKEN=...
+tofu -chdir=infra/cloudflare init
+tofu -chdir=infra/cloudflare apply -var account_id=... -var zone_id=...
+```
+
+Terraform works with the same configuration:
+
+```sh
+terraform -chdir=infra/cloudflare init
+terraform -chdir=infra/cloudflare apply -var account_id=... -var zone_id=...
+```
+
+The API token needs enough permissions to manage Workers, Workers custom
+domains, DNS records in `uniflowed.dev`, and R2 buckets/custom domains.
+
+## Release Upload
+
+Release artifacts are uploaded by `.github/workflows/publish.yml` on `uf@*`
+tags when both secrets exist:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+The installer expects this object layout in the `uf-releases` R2 bucket:
+
+```txt
+uf/latest/VERSION
+uf/latest/uf-<target>.tar.gz
+uf/latest/uf-<target>.tar.gz.sha256
+uf/<version>/VERSION
+uf/<version>/uf-<target>.tar.gz
+uf/<version>/uf-<target>.tar.gz.sha256
+```
+
+Upload manually from a built release directory:
+
+```sh
+UF_R2_DRY_RUN=1 tools/release/publish-r2.sh dist/release/uf/0.1.0 --latest
+tools/release/publish-r2.sh dist/release/uf/0.1.0 --latest
+```
