@@ -54,7 +54,8 @@ pub use directive::{
 pub use graph::{
     ClientBoundary, ClientBoundaryProximity, EntryKind, ModuleId, ModuleReachability,
     RscDiagnostic, RscGraph, RscGraphBuilder, RscModule, RscModuleInput, RscSeverity,
-    SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, is_server_only_specifier,
+    SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution, is_inside_project,
+    is_server_only_specifier, normalize_module_path, resolve_specifier,
 };
 pub use manifest::{
     RSC_MANIFEST_FILE_NAME, RSC_MANIFEST_VERSION, RscManifest, RscManifestAction,

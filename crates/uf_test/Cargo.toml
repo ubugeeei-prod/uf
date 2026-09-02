@@ -1,6 +1,6 @@
 [package]
 name = "uf_test"
-description = "Native test discovery and runner core for uniflowed."
+description = "Native test discovery, scheduling and runner core for uniflowed."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,16 +9,26 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+uf_effect = { path = "../uf_effect" }
 uf_infra = { path = "../uf_infra" }
+uf_rsc = { path = "../uf_rsc" }
+camino.workspace = true
 compact_str.workspace = true
+rayon.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
 similar-asserts.workspace = true
+tempfile.workspace = true
 
 [[bench]]
 name = "test_discovery"
+harness = false
+
+[[bench]]
+name = "runner"
 harness = false

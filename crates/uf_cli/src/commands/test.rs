@@ -1,182 +1,270 @@
-//! `uf test`: a live progress line while running, then a pass/fail summary.
+//! `uf test`: schedule the suite, run it wide, and report what happened.
+//!
+//! The command owns three decisions and delegates everything else:
+//!
+//! * **What to run** — path and name filters, `.only` / `.skip` / `.todo`, and
+//!   in watch mode the set the import graph says an edit invalidated.
+//! * **In what order** — longest-first, from durations the previous run wrote to
+//!   `.uf/test-timings.json`. A cold suite falls back to file size.
+//! * **How to say it** — a live progress line on stderr, code frames under the
+//!   failures, and a summary; or, under `--json`, one machine-readable document
+//!   on stdout and nothing else.
+
+use std::num::NonZeroUsize;
+use std::time::Duration;
 
 use anyhow::{Result, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::load_config;
-use uf_project::collect_source_files;
-use uf_term::{
-    Align, Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, format_duration, push_padded,
-    push_spaces,
+use uf_project::{ProjectFile, collect_source_files};
+use uf_term::PhaseTimer;
+use uf_test::{
+    Bail, Concurrency, FileStatus, LockedObserver, NativeTestRunnerPlan, RetryPolicy, RunOptions,
+    TestFilter, TestRunReport, TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
 };
-use uf_test::{NativeTestRunnerPlan, TestKind, discover_tests, merge_plans, run_tests};
 
-use crate::support::{plural, project_label};
-use crate::ui::{Ui, widest};
+use crate::support::plural;
+use crate::ui::Ui;
 
-pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, list: bool) -> Result<()> {
-    let mut timer = PhaseTimer::start();
-    let resolved = load_config(cwd)?;
-    let runner = NativeTestRunnerPlan::self_hosted();
-    let files = collect_source_files(&resolved.root, &resolved.config)?;
-    let plan = timer.measure("discovery", || {
-        merge_plans(
-            files
-                .iter()
-                .map(|file| discover_tests(&file.relative_path, &file.source)),
-        )
-    });
+mod payload;
+mod render;
+mod watch;
 
-    let runtime = format!("{:?}", runner.runtime);
-    let target = format!("{:?}", runner.performance_target);
+use payload::test_payload;
+use render::{render_list, render_report};
 
-    if list {
-        let rows = plan
-            .cases
-            .iter()
-            .map(|case| {
-                (
-                    format!("{}:{}:{}", case.file, case.line, case.column),
-                    case.name.clone(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let discovered = plural(plan.runnable_count(), "runnable test");
+/// How many of the slowest files are named in the summary.
+const SLOWEST_SHOWN: usize = 5;
 
-        ui.render(|renderer, out| {
-            renderer.banner(out, "uf test", Some("discovery"));
-            renderer.blank(out);
-            let mut table = Table::new(vec![Column::left("location"), Column::left("test")]);
-            for (location, name) in &rows {
-                table.push(vec![
-                    Cell::toned(location, Tone::Path),
-                    Cell::new(name.as_str()),
-                ]);
-            }
-            renderer.table(out, 2, &table);
-            renderer.blank(out);
-            renderer.key_values(
-                out,
-                2,
-                &[
-                    KeyValue::new("runtime", &runtime),
-                    KeyValue::new("target", &target),
-                ],
-            );
-            renderer.blank(out);
-            renderer.status(out, Status::Info, &format!("discovered {discovered}"));
-        });
-        return Ok(());
+/// Everything `uf test` was asked to do.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TestArgs {
+    /// List what would run instead of running it.
+    pub(crate) list: bool,
+    /// Re-run affected tests when a file changes.
+    pub(crate) watch: bool,
+    /// Emit machine-readable JSON on stdout.
+    pub(crate) json: bool,
+    /// Keep only tests whose fully qualified name contains this pattern.
+    pub(crate) filter: Option<String>,
+    /// Stop once this many tests have failed.
+    pub(crate) bail: Option<usize>,
+    /// Re-run a failing test up to this many more times.
+    pub(crate) retry: u32,
+    /// Run at most this many files at once.
+    pub(crate) threads: Option<usize>,
+    /// How often watch mode looks for changes, in milliseconds.
+    pub(crate) watch_interval: Option<u64>,
+    /// Only run files whose path contains one of these patterns.
+    pub(crate) paths: Vec<String>,
+}
+
+impl TestArgs {
+    /// The run options this invocation asks for.
+    fn options(&self) -> RunOptions {
+        RunOptions {
+            concurrency: match self.threads.and_then(NonZeroUsize::new) {
+                Some(threads) => Concurrency::Fixed(threads),
+                None => Concurrency::Auto,
+            },
+            bail: self.bail.map(Bail::after).unwrap_or_default(),
+            retry: if self.retry == 0 {
+                RetryPolicy::none()
+            } else {
+                RetryPolicy::retries(self.retry)
+            },
+            ..RunOptions::default()
+        }
     }
+
+    /// The filter this invocation asks for.
+    fn filter(&self) -> TestFilter {
+        let filter = TestFilter::new().with_paths(self.paths.iter().map(String::as_str));
+        match &self.filter {
+            Some(pattern) => filter.with_name(pattern),
+            None => filter,
+        }
+    }
+
+    /// The watch settings this invocation asks for.
+    fn watch_options(&self) -> WatchOptions {
+        match self.watch_interval {
+            Some(millis) => WatchOptions::with_interval(Duration::from_millis(millis)),
+            None => WatchOptions::default(),
+        }
+    }
+}
+
+pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
+    // Watch mode prints a report per change; `--json` promises one document and
+    // nothing else. Rather than quietly picking one, say so.
+    if args.watch && args.json {
+        bail!("--watch and --json cannot be combined: watch mode reports once per change");
+    }
+
+    let resolved = load_config(cwd)?;
+    let root = resolved.root.clone();
+    let files = collect_source_files(&root, &resolved.config)?;
+
+    if args.list {
+        return render_list(ui, &root, &files, &args.filter());
+    }
+    if args.watch {
+        return watch::watch(ui, &root, resolved.config, args);
+    }
+
+    let mut timer = PhaseTimer::start();
+    let (timings, timing_note) = read_timings(&root);
+    let report = timer.measure("run", || run_once(ui, &files, &args, timings.clone()));
+    let duration = timer.total();
+
+    let recorded = record_timings(&root, timings, &report, &files);
+    if args.json {
+        ui.json(&test_payload(&report))?;
+    } else {
+        render_report(
+            ui,
+            &root,
+            &files,
+            &report,
+            timer.phases(),
+            duration,
+            &args,
+            timing_note.as_deref(),
+            recorded.as_deref(),
+        );
+    }
+
+    finish(&report)
+}
+
+/// Run the suite once, drawing a progress line while it goes.
+pub(crate) fn run_once(
+    ui: &Ui,
+    files: &[ProjectFile],
+    args: &TestArgs,
+    timings: TestTimings,
+) -> TestRunReport {
+    let sources = sources_of(files);
+    let runner = TestRunner::new()
+        .with_options(args.options())
+        .with_filter(args.filter())
+        .with_timings(timings);
 
     let mut progress = ui.progress();
-    for case in plan.cases.iter().filter(|case| case.kind == TestKind::Test) {
-        progress.tick(&case.name);
+    if !progress.is_enabled() {
+        return runner.run(&sources);
     }
-    let sources = files
+
+    let mut line = String::new();
+    let observer = LockedObserver::new(move |completed: usize, total: usize, report: &_| {
+        let report: &uf_test::FileReport = report;
+        line.clear();
+        line.push_str(&completed.to_string());
+        line.push('/');
+        line.push_str(&total.to_string());
+        line.push(' ');
+        line.push_str(&report.file);
+        progress.tick(&line);
+    });
+    runner.run_observed(&sources, &observer)
+}
+
+/// Borrow every collected file as a `(path, source)` pair.
+pub(crate) fn sources_of(files: &[ProjectFile]) -> Vec<(&str, &str)> {
+    files
         .iter()
-        .map(|file| (file.relative_path.as_str(), file.source.as_str()));
-    let report = timer.measure("run", || run_tests(sources));
-    progress.finish();
-    drop(progress);
+        .map(|file| (file.relative_path.as_str(), file.source.as_str()))
+        .collect()
+}
 
-    let duration = timer.total();
-    let file_width = widest(
-        report
-            .plan
-            .cases
-            .iter()
-            .filter(|case| case.kind == TestKind::Test)
-            .map(|case| case.file.as_str()),
-    );
-    let passed = report.passed.to_string();
-    let failures = report.failed.to_string();
-    let unsupported = report.unsupported_assertions.to_string();
-    let summary = if report.unsupported_assertions == 0 {
-        format!(
-            "{} passed, {} failed in {}",
-            report.passed,
-            report.failed,
-            format_duration(duration)
-        )
-    } else {
-        format!(
-            "{} passed, {} failed, {} unsupported in {}",
-            report.passed,
-            report.failed,
-            report.unsupported_assertions,
-            format_duration(duration)
-        )
-    };
-    let phases = timer.phases().to_vec();
+/// Read recorded timings, falling back to a cold schedule on anything the
+/// validator rejects.
+///
+/// The document is untrusted input, so a bad one is never fatal: the run just
+/// schedules by size and says why.
+pub(crate) fn read_timings(root: &Utf8Path) -> (TestTimings, Option<String>) {
+    match load_timings(root) {
+        Ok((timings, audit)) if audit.is_clean() => (timings, None),
+        Ok((timings, audit)) => (
+            timings,
+            Some(format!(
+                "ignored {} in .uf/test-timings.json",
+                plural(audit.rejected(), "unusable entry")
+            )),
+        ),
+        Err(error) => (
+            TestTimings::new(),
+            Some(format!("scheduling cold: {error}")),
+        ),
+    }
+}
 
-    ui.render(|renderer, out| {
-        renderer.banner(out, "uf test", Some(project_label(&resolved.root)));
-        renderer.blank(out);
-        let mut line = String::new();
-        for case in report
-            .plan
-            .cases
-            .iter()
-            .filter(|case| case.kind == TestKind::Test)
-        {
-            let failure = report
-                .failures
-                .iter()
-                .find(|failure| failure.file == case.file && failure.name == case.name);
-            line.clear();
-            push_padded(&mut line, &case.file, file_width + 2, Align::Left);
-            line.push_str(&case.name);
-            push_spaces(out, 2);
-            renderer.status(
-                out,
-                if failure.is_some() {
-                    Status::Error
-                } else {
-                    Status::Success
-                },
-                &line,
-            );
-            // The reason a test failed belongs directly under it, not in a
-            // separate block the reader has to correlate by name.
-            if let Some(failure) = failure {
-                push_spaces(out, 6);
-                renderer.line(out, renderer.theme().error, &failure.message);
-            }
+/// Record this run's durations for the next one.
+///
+/// Returns a note when the cache could not be written; failing to write a cache
+/// is never a reason to fail a test run.
+pub(crate) fn record_timings(
+    root: &Utf8Path,
+    mut timings: TestTimings,
+    report: &TestRunReport,
+    files: &[ProjectFile],
+) -> Option<String> {
+    for file in &report.files {
+        if file.status == FileStatus::Completed {
+            timings.record(&file.file, file.duration_micros);
         }
-        renderer.blank(out);
-        renderer.timings(out, 2, &phases, Some(duration));
-        renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::toned("passed", &passed, Tone::Good),
-                KeyValue::toned("failed", &failures, Tone::Bad),
-                KeyValue::toned("unsupported assertions", &unsupported, Tone::Warn),
-                KeyValue::new("runtime", &runtime),
-                KeyValue::new("target", &target),
-            ],
-        );
-        renderer.blank(out);
-        renderer.status(
-            out,
-            if report.is_success() {
-                Status::Success
-            } else {
-                Status::Error
-            },
-            &summary,
-        );
+    }
+    timings.retain_files(|recorded| {
+        files
+            .iter()
+            .any(|file| file.relative_path.as_str() == recorded)
     });
 
-    if !report.is_success() {
-        if report.failed > 0 {
-            bail!("uf test failed with {}", plural(report.failed, "failure"));
-        }
+    save_timings(root, &timings)
+        .err()
+        .map(|error| format!("could not record timings: {error}"))
+}
+
+/// The path recorded timings live at, for the summary block.
+pub(crate) fn timings_label(root: &Utf8Path) -> Utf8PathBuf {
+    uf_test::timings_path(root)
+}
+
+/// The runner contract reported alongside every run.
+pub(crate) fn runner_plan() -> NativeTestRunnerPlan {
+    NativeTestRunnerPlan::self_hosted()
+}
+
+/// Turn a report into the command's exit status.
+fn finish(report: &TestRunReport) -> Result<()> {
+    let summary = &report.summary;
+    if summary.is_success() {
+        return Ok(());
+    }
+    if summary.failed > 0 {
+        bail!("uf test failed with {}", plural(summary.failed, "failure"));
+    }
+    if summary.failed_files > 0 {
         bail!(
-            "uf test found {}",
-            plural(report.unsupported_assertions, "unsupported assertion")
+            "uf test could not run {}",
+            plural(summary.failed_files, "file")
         );
     }
-    Ok(())
+    if summary.unsupported_assertions > 0 {
+        bail!(
+            "uf test found {}",
+            plural(summary.unsupported_assertions, "unsupported assertion")
+        );
+    }
+    if summary.unsupported_declarations > 0 {
+        bail!(
+            "uf test found {}",
+            plural(
+                summary.unsupported_declarations,
+                "unsupported test declaration"
+            )
+        );
+    }
+    bail!("uf test stopped early because --bail was reached");
 }

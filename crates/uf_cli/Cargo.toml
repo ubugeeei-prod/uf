@@ -25,6 +25,7 @@ anyhow.workspace = true
 camino.workspace = true
 clap.workspace = true
 uf_bundle = { path = "../uf_bundle" }
+uf_bundler = { path = "../uf_bundler" }
 uf_config = { path = "../uf_config" }
 uf_devserver = { path = "../uf_devserver" }
 uf_effect = { path = "../uf_effect" }
@@ -43,6 +44,7 @@ uf_runtime = { path = "../uf_runtime" }
 uf_term = { path = "../uf_term" }
 uf_test = { path = "../uf_test" }
 uf_tui = { path = "../uf_tui" }
+compact_str.workspace = true
 mimalloc.workspace = true
 serde_json.workspace = true
 

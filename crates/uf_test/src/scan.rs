@@ -186,18 +186,82 @@ pub(crate) fn matching_delimiter(
 }
 
 pub(crate) fn is_call_at(source: &str, offset: usize, ident: &str) -> bool {
+    matches!(call_shape_at(source, offset, ident), Some(CallShape::Plain))
+}
+
+/// The shape of a registration call found at `offset`.
+///
+/// `it(` and `it.only(` are both declarations; `it.each(` is a declaration this
+/// runner cannot expand, and `page.it(` is not a declaration at all. Telling
+/// those four apart is what keeps an unexpandable form from being silently
+/// dropped, so the scanner reports the property name instead of just a boolean.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CallShape<'a> {
+    /// `ident(`.
+    Plain,
+    /// `ident.property(`.
+    Property {
+        /// The property name as written.
+        name: &'a str,
+        /// Byte offset one past the property name.
+        end: usize,
+    },
+}
+
+pub(crate) fn call_shape_at<'a>(
+    source: &'a str,
+    offset: usize,
+    ident: &str,
+) -> Option<CallShape<'a>> {
+    // A preceding identifier byte means this is the tail of a longer word
+    // (`unit`, `submit`); a preceding `.` means it is somebody else's member.
     let before = source[..offset].chars().next_back();
-    if before.is_some_and(is_identifier_char) {
-        return false;
+    if before.is_some_and(|ch| is_identifier_char(ch) || ch == '.') {
+        return None;
     }
 
     let after_ident = offset + ident.len();
-    let tail = &source[after_ident..];
-    let Some(next) = tail.chars().find(|ch| !ch.is_whitespace()) else {
-        return false;
-    };
+    let (next, next_offset) = next_significant(source, after_ident)?;
+    if next == '(' {
+        return Some(CallShape::Plain);
+    }
+    if next != '.' {
+        return None;
+    }
 
-    next == '('
+    let (_, property_start) = next_significant(source, next_offset + 1)?;
+    let property_len = identifier_len(&source[property_start..]);
+    if property_len == 0 {
+        return None;
+    }
+    let property_end = property_start + property_len;
+    let (after_property, _) = next_significant(source, property_end)?;
+    if after_property != '(' {
+        return None;
+    }
+
+    Some(CallShape::Property {
+        name: &source[property_start..property_end],
+        end: property_end,
+    })
+}
+
+/// The next non-whitespace character at or after `from`, with its offset.
+fn next_significant(source: &str, from: usize) -> Option<(char, usize)> {
+    source
+        .get(from..)?
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(relative, ch)| (ch, from + relative))
+}
+
+/// Length in bytes of the identifier starting at the front of `source`.
+fn identifier_len(source: &str) -> usize {
+    source
+        .char_indices()
+        .find(|(_, ch)| !is_identifier_char(*ch))
+        .map(|(offset, _)| offset)
+        .unwrap_or(source.len())
 }
 
 pub(crate) fn extract_first_string_arg(tail_after_ident: &str) -> Option<String> {

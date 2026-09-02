@@ -2,6 +2,7 @@
 members = [
   "crates/uf_browser",
   "crates/uf_bundle",
+  "crates/uf_bundler",
   "crates/uf_cli",
   "crates/uf_config",
   "crates/uf_devserver",

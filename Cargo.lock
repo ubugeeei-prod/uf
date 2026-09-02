@@ -1456,6 +1456,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "uf_bundler"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "compact_str",
+ "criterion",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "uf_config",
+ "uf_flow",
+ "uf_infra",
+ "uf_plugin",
+ "uf_router",
+ "uf_rsc",
+]
+
+[[package]]
 name = "uf_cli"
 version = "0.1.0"
 dependencies = [
@@ -1463,10 +1484,12 @@ dependencies = [
  "assert_cmd",
  "camino",
  "clap",
+ "compact_str",
  "mimalloc",
  "serde_json",
  "tempfile",
  "uf_bundle",
+ "uf_bundler",
  "uf_config",
  "uf_devserver",
  "uf_effect",
@@ -1830,13 +1853,19 @@ dependencies = [
 name = "uf_test"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "compact_str",
  "criterion",
+ "rayon",
  "serde",
+ "serde_json",
  "similar-asserts",
  "smallvec",
+ "tempfile",
  "thiserror",
+ "uf_effect",
  "uf_infra",
+ "uf_rsc",
 ]
 
 [[package]]
