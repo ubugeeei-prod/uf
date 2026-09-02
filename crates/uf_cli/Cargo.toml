@@ -20,11 +20,18 @@ path = "src/bin/ufr.rs"
 name = "ufx"
 path = "src/bin/ufx.rs"
 
+[features]
+default = []
+# Run Flow's own type inference in `uf check`; see `crates/uf_check`.
+upstream-typecheck = ["uf_check/upstream-typecheck"]
+
 [dependencies]
 anyhow.workspace = true
 camino.workspace = true
 clap.workspace = true
 uf_bundle = { path = "../uf_bundle" }
+uf_bundler = { path = "../uf_bundler" }
+uf_check = { path = "../uf_check" }
 uf_config = { path = "../uf_config" }
 uf_devserver = { path = "../uf_devserver" }
 uf_effect = { path = "../uf_effect" }
@@ -43,6 +50,7 @@ uf_runtime = { path = "../uf_runtime" }
 uf_term = { path = "../uf_term" }
 uf_test = { path = "../uf_test" }
 uf_tui = { path = "../uf_tui" }
+compact_str.workspace = true
 mimalloc.workspace = true
 serde_json.workspace = true
 

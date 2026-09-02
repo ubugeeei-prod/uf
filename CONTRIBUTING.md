@@ -59,12 +59,23 @@ cargo bench --workspace --no-run
 ```
 
 The pinned 1.98.0 release toolchain cannot compile the upstream Flow Rust port
-yet, because the port still uses the unstable `!` type. `--all-features` therefore
-runs on nightly, which is also what the `Upstream Flow` CI job does:
+yet, because the port still uses the unstable `!` type. `uf_flow`'s
+`upstream-parser` therefore runs on the current nightly, which is what the
+`Upstream Flow` CI job does:
 
 ```sh
-cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings
-cargo +nightly test --workspace --all-features
+cargo +nightly clippy --workspace --all-targets --features uf_flow/upstream-parser -- -D warnings
+cargo +nightly test --workspace --features uf_flow/upstream-parser
+```
+
+`--all-features` additionally turns on `uf_check`'s `upstream-typecheck`, and
+Flow's typing crates declare `#![feature(box_patterns)]` — which the compiler
+*removed* around the 2026-09-01 nightly. That half needs a nightly old enough to
+still accept it, which is the `Upstream Flow Typecheck` CI job:
+
+```sh
+cargo +nightly-2026-08-01 clippy --workspace --all-targets --all-features -- -D warnings
+cargo +nightly-2026-08-01 test --workspace --all-features
 ```
 
 Once `never_type` reaches stable, `uf_flow`'s `upstream-parser` feature becomes

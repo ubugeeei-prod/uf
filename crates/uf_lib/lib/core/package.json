@@ -18,6 +18,7 @@
     "./flow-cell": "./flow-cell.js",
     "./fetch": "./fetch.js",
     "./graphql": "./graphql.js",
+    "./hmr": "./hmr.js",
     "./hooks": "./hooks.js",
     "./lib": "./lib.js",
     "./lint": "./lint.js",

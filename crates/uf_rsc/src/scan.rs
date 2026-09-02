@@ -18,12 +18,12 @@ use uf_infra::{InlineVec, LineIndex};
 mod client_api;
 mod exports;
 mod imports;
-mod lexer;
+pub mod lexer;
 
 pub(crate) use client_api::client_api_uses_from_tokens;
 pub(crate) use exports::exports_from_tokens;
 pub(crate) use imports::imports_from_tokens;
-pub(crate) use lexer::{Token, TokenKind, matching_open, starts_statement, tokenize};
+pub use lexer::{Token, TokenKind, matching_close, matching_open, starts_statement, tokenize};
 
 /// Inline list of import specifiers belonging to one module.
 pub type ImportList = InlineVec<ImportSpecifier, 8>;

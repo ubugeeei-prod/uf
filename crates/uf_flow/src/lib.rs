@@ -1,4 +1,5 @@
-//! Flow parser/typechecker adapter boundary for uniflowed.
+//! Flow syntax for uniflowed: the parser boundary, a token scanner, and type
+//! erasure.
 //!
 //! `uf` talks to exactly one Flow backend at a time, and both real backends
 //! implement the same official Flow grammar. The preferred one is Meta's
@@ -7,13 +8,25 @@
 //! the pinned release toolchain the crate defaults to the QuickJS-hosted
 //! reference parser, which needs source normalization for `component`/`hook`
 //! declarations.
+//!
+//! Two things sit beside that boundary, and both are here rather than in the
+//! crates that use them because this is the crate that owns Flow syntax:
+//!
+//! * [`scan`] is the byte-level token scanner — one scanner for uf source, used
+//!   by the eraser below and by anything else that rewrites a module;
+//! * [`strip`] erases Flow types, which is what turns a `// @flow` module into
+//!   the JavaScript a browser runs.
 
 #[cfg(all(feature = "official-parser", not(feature = "upstream-parser")))]
 mod quickjs;
+pub mod scan;
+pub mod strip;
 #[cfg(feature = "upstream-parser")]
 mod upstream;
 
 use thiserror::Error;
+
+pub use strip::{MAX_STRIP_BYTES, StripError, Stripped, strip_types};
 
 /// A single syntax diagnostic reported by the active Flow parser.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -4,13 +4,15 @@ use std::fs;
 
 use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
+use compact_str::CompactString;
 use serde_json::json;
 use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ReportOptions, build_report, collect_assets,
     evaluate, write_report,
 };
-use uf_config::load_config;
-use uf_router::{discover_routes, write_router_manifest};
+use uf_bundler::{BundleOptions, BundleOutput, build_entries, build_pipeline};
+use uf_config::{PipelineMode, load_config};
+use uf_router::{Route, discover_routes, write_router_manifest};
 use uf_rsc::{BuildId, ProjectScanOptions, analyze_project};
 use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
 
@@ -80,10 +82,28 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
         uf_rsc::write_manifest(&out_dir, &rsc.manifest())
     })?;
 
+    progress.tick("bundling");
+    let container = timer.measure("pipeline", || {
+        build_pipeline(
+            &resolved.config,
+            &resolved.root,
+            PipelineMode::Build,
+            &routes,
+        )
+    })?;
+    let entries = build_entries(&resolved.config, &resolved.root, &routes);
+    let bundle_options = BundleOptions::new(resolved.root.clone(), out_dir.clone())
+        .with_entries(entries)
+        .with_sourcemap(resolved.config.build.sourcemap);
+    let bundled = timer.measure("bundle", || uf_bundler::bundle(&bundle_options, &container))?;
+    let written = timer.measure("emit", || {
+        uf_bundler::write_bundle(&bundle_options, &bundled, &container)
+    })?;
+
     progress.tick("measuring shipped assets");
     let (size, size_report_path) = timer.measure("bundle size", || -> Result<_> {
         let assets = collect_assets(&out_dir, &ReportOptions::default())?;
-        let report = build_report(assets, &[]);
+        let report = build_report(assets, &route_assets(&resolved.root, &routes, &bundled));
         let path = write_report(&out_dir, &report)?;
         Ok((report, path))
     })?;
@@ -105,6 +125,10 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     let action_count = rsc.callable_action_count().to_string();
     let diagnostic_count = rsc.graph.diagnostics().len().to_string();
 
+    let chunk_count = bundled.stats.chunks.to_string();
+    let bundled_module_count = bundled.stats.modules_kept.to_string();
+    let dropped_export_count = bundled.stats.exports_dropped.to_string();
+
     let mut outputs = vec![
         relative_to(&resolved.root, &build_manifest),
         relative_to(&resolved.root, &rsc_manifest),
@@ -112,6 +136,9 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     ];
     if let Some(manifest) = &router_manifest {
         outputs.push(relative_to(&resolved.root, manifest));
+    }
+    for path in &written {
+        outputs.push(relative_to(&resolved.root, path));
     }
     outputs.sort();
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
@@ -152,6 +179,9 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
                 KeyValue::new("entries", &entries),
                 KeyValue::toned("routes", &route_count, Tone::Number),
                 KeyValue::toned("modules", &module_count, Tone::Number),
+                KeyValue::toned("bundled modules", &bundled_module_count, Tone::Number),
+                KeyValue::toned("chunks", &chunk_count, Tone::Number),
+                KeyValue::toned("dropped exports", &dropped_export_count, Tone::Number),
                 KeyValue::toned("client components", &client_count, Tone::Number),
                 KeyValue::toned("server actions", &action_count, Tone::Number),
                 KeyValue::toned("rsc diagnostics", &diagnostic_count, Tone::Number),
@@ -201,6 +231,26 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)
+}
+
+/// Attribute emitted chunks to the routes that need them.
+///
+/// A route's initial JavaScript is the transitive closure of its entry chunk:
+/// every file a browser downloads before the route can render. Nothing is
+/// attributed lazily yet, because nothing is code-split behind a dynamic
+/// `import()` yet — so the lazy column is honestly empty rather than a guess.
+fn route_assets(
+    root: &Utf8Path,
+    routes: &[Route],
+    bundled: &BundleOutput,
+) -> Vec<(CompactString, Vec<CompactString>, Vec<CompactString>)> {
+    routes
+        .iter()
+        .map(|route| {
+            let module = route.page.strip_prefix(root).unwrap_or(&route.page);
+            (route.path.clone(), bundled.closure_of(module), Vec::new())
+        })
+        .collect()
 }
 
 /// Fail the build when a shipped asset breaks `build.budgets`.

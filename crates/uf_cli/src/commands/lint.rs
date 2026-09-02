@@ -66,7 +66,7 @@ pub(crate) fn lint_command(
     Ok(())
 }
 
-fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>)> {
+pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>)> {
     let resolved = load_config(cwd)?;
     let files = collect_source_files(&resolved.root, &resolved.config)?;
     let sources = files
@@ -174,7 +174,7 @@ fn render_lint_report(
 }
 
 /// One file's diagnostics: a header naming the file, then the code frames.
-fn render_group(ui: &mut Ui, group: &[Diagnostic], sources: &[SourceFile]) {
+pub(crate) fn render_group(ui: &mut Ui, group: &[Diagnostic], sources: &[SourceFile]) {
     let path = diagnostic_path(&group[0]);
     let lines: Option<Vec<&str>> = sources
         .iter()
@@ -221,7 +221,7 @@ fn render_group(ui: &mut Ui, group: &[Diagnostic], sources: &[SourceFile]) {
 }
 
 /// A per-file count table, printed once diagnostics span more than one file.
-fn render_file_summary(ui: &mut Ui, groups: &[&[Diagnostic]]) {
+pub(crate) fn render_file_summary(ui: &mut Ui, groups: &[&[Diagnostic]]) {
     let rows: Vec<(String, String, String)> = groups
         .iter()
         .map(|group| {
@@ -255,7 +255,7 @@ fn render_file_summary(ui: &mut Ui, groups: &[&[Diagnostic]]) {
     });
 }
 
-fn render_verdict(ui: &mut Ui, report: &LintReport, errors: usize, warnings: usize) {
+pub(crate) fn render_verdict(ui: &mut Ui, report: &LintReport, errors: usize, warnings: usize) {
     let files_checked = report.files_checked.to_string();
     let error_count = errors.to_string();
     let warning_count = warnings.to_string();

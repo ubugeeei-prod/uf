@@ -8,9 +8,10 @@ use support::uf;
 
 /// A scaffolded app, optionally with extra `uf.config.js` keys.
 ///
-/// `uf build` does not run a bundler yet, so it emits manifests and no shipped
-/// assets. Tests that need weight to measure write their own files into `dist/`,
-/// which is exactly what the size reporter walks.
+/// `uf build` bundles the project into `dist/assets/`, so a scaffolded app
+/// already has real weight to measure. Tests that need a specific size on top
+/// of that write their own files into `dist/`, which is exactly what the size
+/// reporter walks.
 fn built_app(config_extra: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
 
@@ -161,15 +162,15 @@ fn build_size_report_flag_lists_the_largest_assets() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    let listed = stdout
-        .lines()
-        .filter(|line| line.contains("assets/"))
-        .collect::<Vec<_>>();
+    let large = stdout
+        .find("assets/large.js")
+        .expect("the large asset is listed");
+    let small = stdout
+        .find("assets/small.js")
+        .expect("the small asset is listed");
 
     // Largest first, and the table header names every column.
-    assert_eq!(listed.len(), 2, "{stdout}");
-    assert!(listed[0].contains("assets/large.js"), "{stdout}");
-    assert!(listed[1].contains("assets/small.js"), "{stdout}");
+    assert!(large < small, "{stdout}");
     assert!(stdout.contains("asset"), "{stdout}");
     assert!(stdout.contains("kind"), "{stdout}");
 }

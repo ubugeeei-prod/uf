@@ -54,7 +54,8 @@ pub use directive::{
 pub use graph::{
     ClientBoundary, ClientBoundaryProximity, EntryKind, ModuleId, ModuleReachability,
     RscDiagnostic, RscGraph, RscGraphBuilder, RscModule, RscModuleInput, RscSeverity,
-    SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, is_server_only_specifier,
+    SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution, is_inside_project,
+    is_server_only_specifier, normalize_module_path, resolve_specifier,
 };
 pub use manifest::{
     RSC_MANIFEST_FILE_NAME, RSC_MANIFEST_VERSION, RscManifest, RscManifestAction,
@@ -66,7 +67,8 @@ pub use project::{
 };
 pub use scan::{
     CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ExportKind, ImportKind, ImportSpecifier,
-    MAX_SOURCE_BYTES, ModuleExport, scan_client_api_uses, scan_exports, scan_imports,
+    MAX_SOURCE_BYTES, ModuleExport, Token, TokenKind, matching_close, matching_open,
+    scan_client_api_uses, scan_exports, scan_imports, starts_statement, tokenize,
 };
 
 /// Anything that can go wrong outside the analyses themselves.

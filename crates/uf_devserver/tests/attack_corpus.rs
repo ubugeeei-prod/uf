@@ -9,7 +9,10 @@
 //! allowlists, target grammar, resolution, response — so a row proves the
 //! *server* refuses the request, not merely that some function did.
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
+use uf_devserver::hmr::update_target;
+use uf_devserver::resolve::{AccessDenied, resolve_with_policy};
+use uf_devserver::target::RequestTarget;
 use uf_devserver::{FsPolicy, Loader, NetworkPolicy, RequestHead, Response, Status, respond};
 
 /// Marker written into every file the server must never serve. If it appears in
@@ -390,6 +393,150 @@ fn the_health_endpoint_answers() {
     let response = fixture.get("/__uf/health");
     assert_eq!(response.status, Status::Ok);
     assert_eq!(response.body, br#"{"status":"ok","engine":"uf-native"}"#);
+}
+
+// --- hot module replacement -------------------------------------------------
+
+/// Every corpus target, driven through the update path instead of the plain
+/// one. The two must be indistinguishable: an update is not a second way into
+/// the filesystem, it is the same `resolve_with_policy` behind a different name.
+#[test]
+fn an_hmr_fetch_is_refused_exactly_like_a_plain_request() {
+    let fixture = Fixture::new();
+    for attack in CORPUS {
+        let over_hmr = uf_devserver::fetch_update(&fixture.fs, attack.target);
+        let over_the_plain_path = RequestTarget::parse(attack.target)
+            .map_err(AccessDenied::from)
+            .and_then(|target| resolve_with_policy(&fixture.fs, &target));
+
+        match (over_hmr, over_the_plain_path) {
+            (Err(hmr), Err(plain)) => assert_eq!(
+                hmr, plain,
+                "{} ({}) is refused differently over the update path",
+                attack.target, attack.trying
+            ),
+            (Ok(file), Ok(_)) => panic!(
+                "{} ({}) produced a file: {}",
+                attack.target,
+                attack.trying,
+                file.checked_path()
+            ),
+            (hmr, plain) => panic!(
+                "{} ({}) disagrees: update path {:?}, plain path {:?}",
+                attack.target,
+                attack.trying,
+                hmr.map(|file| file.checked_path().to_string()),
+                plain.map(|file| file.checked_path().to_string()),
+            ),
+        }
+    }
+}
+
+/// The row the bar names explicitly.
+#[test]
+fn an_hmr_fetch_for_a_parent_relative_env_file_is_refused() {
+    let fixture = Fixture::new();
+    for target in ["/../../.env", "/../.env", "/app/../../.env"] {
+        let over_hmr = uf_devserver::fetch_update(&fixture.fs, target).unwrap_err();
+        let over_the_plain_path = resolve_with_policy(
+            &fixture.fs,
+            &RequestTarget::parse(target).expect("origin-form"),
+        )
+        .unwrap_err();
+
+        assert_eq!(over_hmr, over_the_plain_path, "{target}");
+        assert_eq!(over_hmr, AccessDenied::Escape, "{target}");
+    }
+}
+
+/// An update payload can only ever name a target the pipeline would serve, so
+/// the builder refuses the paths the pipeline refuses.
+#[test]
+fn an_update_target_cannot_be_built_for_anything_outside_the_project() {
+    for path in [
+        "../.env",
+        "../../.env",
+        "/etc/passwd",
+        "/.env",
+        "",
+        "app/50%AB.js",
+    ] {
+        assert!(
+            update_target(Utf8Path::new(path), 1).is_none(),
+            "{path} must have no update target"
+        );
+    }
+}
+
+/// Every target the builder *does* produce survives the whole HTTP surface.
+#[test]
+fn every_built_update_target_round_trips_through_the_server() {
+    let fixture = Fixture::new();
+    for (path, expected) in [
+        ("app/main.js", "export default 1;\n"),
+        ("a file.js", "spaced\n"),
+        ("café.js", "unicode\n"),
+        ("nested/deep/mod.js", "deep\n"),
+    ] {
+        let built = update_target(Utf8Path::new(path), 12).expect("encodable");
+        let response = fixture.get(&built);
+        assert_eq!(response.status, Status::Ok, "{built} was refused");
+        assert_eq!(response.body, expected.as_bytes(), "{built} served wrongly");
+    }
+}
+
+/// A denied file still has a spellable update target — and it still is not
+/// served. The refusal is the pipeline's, not the builder's.
+#[test]
+fn a_built_update_target_for_a_denied_file_is_still_refused() {
+    let fixture = Fixture::new();
+    let built = update_target(Utf8Path::new("config/.env.local"), 1).expect("encodable");
+
+    let response = fixture.get(&built);
+
+    assert_eq!(response.status, Status::Forbidden);
+    assert!(!String::from_utf8_lossy(&response.to_bytes()).contains(SECRET));
+}
+
+/// The reserved update target is never a file, whatever is on disk under it.
+#[test]
+fn the_update_target_is_not_a_file_route() {
+    let fixture = Fixture::new();
+    for target in [
+        uf_devserver::HMR_TARGET,
+        "/__uf/hmr?raw",
+        "/./__uf/hmr",
+        "/x/../__uf/hmr",
+    ] {
+        let response = fixture.get(target);
+        assert!(
+            !response.status.is_success() || response.body.is_empty(),
+            "{target} served a body"
+        );
+        assert!(!String::from_utf8_lossy(&response.to_bytes()).contains(SECRET));
+    }
+}
+
+/// The shipped client runtime and the server must agree about the wire.
+#[test]
+fn the_client_runtime_names_the_endpoint_the_server_serves() {
+    let runtime = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../uf_lib/lib/core/hmr.js")
+        .canonicalize()
+        .expect("the shipped client runtime exists");
+    let source = std::fs::read_to_string(&runtime).expect("readable");
+
+    assert!(
+        source.contains(&format!("\"{}\"", uf_devserver::HMR_TARGET)),
+        "the client runtime must open {}",
+        uf_devserver::HMR_TARGET
+    );
+    assert!(
+        source.contains(&format!("\"{}\"", uf_devserver::hmr::UPDATE_EVENT)),
+        "the client runtime must listen for {}",
+        uf_devserver::hmr::UPDATE_EVENT
+    );
+    assert!(source.starts_with("// @flow\n"));
 }
 
 #[test]
