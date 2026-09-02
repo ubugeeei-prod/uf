@@ -341,6 +341,14 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             Stability::Experimental,
             &["compiler", "syntaxMode"],
         ),
+        // Imported by generated code rather than by hand: `uf build` injects
+        // the import when it lowers a module's JSX.
+        NativeModule::new(
+            "@uniflowed/jsx-runtime",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["jsx", "jsxs", "Fragment"],
+        ),
         NativeModule::new(
             "@uniflowed/runtime",
             NativeModuleKind::Runtime,

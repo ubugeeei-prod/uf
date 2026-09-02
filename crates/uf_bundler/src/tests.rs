@@ -9,6 +9,7 @@ mod graphing;
 mod hashing;
 mod limiting;
 mod linking;
+mod lowering;
 mod mapping;
 mod pipelining;
 mod resolving;
