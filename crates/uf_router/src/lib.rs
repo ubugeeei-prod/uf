@@ -146,7 +146,12 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
         output.push_str(";\n\n");
     }
 
-    output.push_str("export type RouteParams = {\n");
+    // Exact, because the generated table *is* the whole set of routes: an
+    // inexact type would let a caller pass a path this router does not serve,
+    // which is the mistake the generated types exist to prevent. It also keeps a
+    // freshly scaffolded project passing `flow/ambiguous-object-type`, which uf
+    // turns on by default — generated code has to satisfy the rules uf ships.
+    output.push_str("export type RouteParams = {|\n");
     for route in routes {
         output.push_str(&format!(
             "  +'{}': {},\n",
@@ -154,7 +159,7 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
             route_params_type(&route.params)
         ));
     }
-    output.push_str("};\n\n");
+    output.push_str("|};\n\n");
     output.push_str(
         "declare export function route<Path: RoutePath>(path: Path, params: $ElementType<RouteParams, Path>): string;\n",
     );
@@ -241,7 +246,9 @@ fn route_params_type(params: &[RouteParam]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ");
-    format!("{{ {fields} }}")
+    // Exact for the same reason: a route's parameters are exactly the segments
+    // in its path.
+    format!("{{| {fields} |}}")
 }
 
 #[cfg(test)]
@@ -285,7 +292,55 @@ mod tests {
         let source = generate_router_flow(&[route]);
 
         assert!(source.contains("export type RoutePath = '/users/:id';"));
-        assert!(source.contains("+'/users/:id': { +id: string }"));
+        assert!(source.contains("+'/users/:id': {| +id: string |}"));
+    }
+
+    /// Generated code has to satisfy the rules uf ships enabled.
+    ///
+    /// `flow/ambiguous-object-type` is on by default, so a `{ … }` in the
+    /// generated router made a freshly scaffolded project fail `uf check` on a
+    /// file the user never wrote.
+    #[test]
+    fn generated_router_types_are_exact() {
+        let source = generate_router_flow(&[Route {
+            path: "/users/:id".into(),
+            directory: Utf8PathBuf::from("app/users/[id]"),
+            page: Utf8PathBuf::from("app/users/[id]/_uf.page.js"),
+            params: vec![RouteParam {
+                name: "id".into(),
+                kind: RouteParamKind::Single,
+            }],
+            has_layout: false,
+            has_middleware: false,
+        }]);
+
+        // An object type opens inexactly when `{` is not immediately followed
+        // by `|`, which is exactly what the lint rule looks for.
+        for line in source.lines() {
+            let bytes = line.as_bytes();
+            for (index, byte) in bytes.iter().enumerate() {
+                if *byte != b'{' {
+                    continue;
+                }
+                assert_eq!(
+                    bytes.get(index + 1),
+                    Some(&b'|'),
+                    "generated router opens an inexact object type, which \
+                     `flow/ambiguous-object-type` rejects: {line}"
+                );
+            }
+        }
+        assert!(source.contains("export type RouteParams = {|"));
+        assert!(source.ends_with("string;\n"));
+    }
+
+    #[test]
+    fn an_empty_project_still_generates_exact_types() {
+        let source = generate_router_flow(&[]);
+
+        assert!(source.contains("export type RoutePath = empty;"));
+        assert!(source.contains("export type RouteParams = {|"));
+        assert!(!source.contains("= {\n"));
     }
 
     #[test]
