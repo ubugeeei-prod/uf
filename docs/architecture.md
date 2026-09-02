@@ -99,12 +99,25 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
 `tools/upstream/sync.sh` checks those out too and asserts they arrived.
 
-The submodule costs one gate: `cargo-semver-checks` builds its baseline from
-a copy of each crate at a different depth, where the relative path to
-`upstream/flow` no longer resolves. `uf_flow` and `uf_check` are excluded from
-that check rather than the check being switched off, and they are the crates
-whose public API moves least — the parser backends sit behind one
-`validate_source`, and the checker behind one `check_sources`.
+The submodule costs one gate. `cargo-semver-checks` builds its baseline from a
+copy of each crate, outside the workspace, where the relative path to
+`upstream/flow` no longer resolves — and a path dependency is relative by
+definition, so no crate can fix it from its own manifest.
+
+Five crates are excluded from that check: `uf_flow` and `uf_check` name the
+submodule, and `uf_bundler`, `uf_cli` and `uf_lint` reach it transitively,
+because cargo resolves a path dependency whether or not the feature using it is
+enabled. That leaves 37 of 42 crates gated, which is worth more than switching
+the gate off — but the list grows as more crates use the parser, and it already
+includes three of the more interesting public APIs.
+
+If it grows to where the gate covers little, the fix is to make the upstream
+dependency a rev-pinned git dependency, which cargo resolves from any directory,
+and keep the submodule for reading. That would also undo the other three costs
+the submodule has charged: `cargo fmt --all` visiting vendored code, every CI job
+needing `tools/upstream/sync.sh` before cargo will parse the workspace at all,
+and the `include_str!` paths reaching outside `rust_port`. The trade is that the
+built code and the readable checkout stop being the same bytes by construction.
 
 ## Type Checking
 
