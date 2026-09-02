@@ -49,6 +49,10 @@ was eventually opened."
 | A deny list weakened by project configuration | `dev.fs.deny` entries are *added* to a built-in list (`.env*`, `**/.git/**`, `*.pem`, `*.key`, `*.crt`, `**/.uf/**`) and cannot remove one. Patterns are matched by a two-pointer globber with a single backtrack point — no regex, no exponential blow-up | `uf_devserver::policy`, `attack_corpus` |
 | DNS rebinding, and cross-origin requests with side effects | Loopback bind by default; `--host` fails to start without a non-empty `dev.allowedHosts`, with exposure read from the *bound socket* rather than the config string. A `Host` outside the list is refused, and anything that is not a simple `GET`/`HEAD` needs an `Origin` in `dev.allowedOrigins`. `*` is rejected in either list | `uf_devserver::network`, `uf_devserver::server`, `attack_corpus`, `uf_cli` |
 | Inbound headers that steer dispatch — [CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927)'s class, at the dev server's own surface | `RequestHead` retains the method, the request target, `Host` and `Origin`, and nothing else: there is no header map for a handler to consult. The two retained headers can only refuse a request, never select a root, loader, handler, or path | `uf_devserver::http`, `attack_corpus` |
+| `Last-Event-ID`, the resume cursor the server-sent-events specification defines, letting a client choose what the update stream sends — the same bug class, at the surface most likely to reproduce it | The hot-reload stream is served by the same listener behind the same `Host`/`Origin` allowlists. Its response head is a `&'static [u8]` with no substitution point and no `Access-Control-Allow-Origin`, and a subscriber's cursor is assigned by the server at `subscribe`. `no_inbound_header_changes_what_the_update_stream_sends` drives `Last-Event-ID`, `x-middleware-subrequest` and friends and asserts every response is byte-identical | `uf_devserver::hmr::channel`, `uf_devserver::server` |
+| Hot module replacement as a second way to reach a file — an update payload naming a path the request pipeline would refuse | An update carries origin-form *request targets*, built by `update_target` from already-normalized module paths and re-parsed under the same grammar an inbound target is parsed with; a path it cannot spell becomes a full reload, not a target. Fetching is `fetch_update`, which is `resolve_with_policy` behind a name. `an_hmr_fetch_is_refused_exactly_like_a_plain_request` drives the whole corpus, `../../.env` included, down both paths and asserts the refusals are equal | `uf_devserver::hmr::update`, `attack_corpus` |
+| A file watcher announcing a path the server would never serve, turning the update channel into a disclosure of what exists | The poll watcher shares the dev server's `FsPolicy` deny list, watches `.js` only, skips dot-directories and a fixed table of build directories, and refuses to follow a symlink. Editing `.env` produces no update at all | `uf_devserver::hmr::watch` |
+| Unbounded work from a hostile project tree: a directory nested to the filesystem's limit, an import cycle, a module graph with no ceiling | Every walk is an explicit worklist with a per-side seen set — no recursion in the graph, the invalidation, or the watcher — and each has a typed bound: `MAX_MODULES`, `MAX_MODULE_DEPTH`, `MAX_MODULE_IMPORTS`, `MAX_MODULE_BYTES`, `MAX_WATCH_DEPTH`, `MAX_WATCHED_FILES`, `MAX_SUBSCRIBERS`, `MAX_BUFFERED_UPDATES`. Exceeding the invalidation depth degrades to a reported full reload rather than a hang | `uf_devserver::hmr::graph`, `uf_devserver::hmr::invalidate`, `uf_devserver::hmr::watch`, `uf_devserver::hmr::channel` |
 
 `attack_corpus` is `crates/uf_devserver/tests/attack_corpus.rs`: a table of
 request targets that must never produce a file, each row naming the trick it
@@ -61,11 +65,17 @@ additionally requires an `Origin` in `dev.allowedOrigins`. Neither list has a
 default, neither accepts `*`, and a server that cannot name its allowed hosts
 does not start.
 
-What the dev server does today is serve static files under the project root and
-answer `/__uf/health`. The loaders it names (`?raw`, `?inline`, `?url`,
-`?worker`) are selected from the closed enum and reported on the response, but
-do not yet transform the body; when they do, the transform must consume the
-`ResolvedFile` rather than re-open anything.
+What the dev server does today is serve static files under the project root,
+answer `/__uf/health`, and stream hot-module-replacement updates on
+`/__uf/hmr`. The loaders it names (`?raw`, `?inline`, `?url`, `?worker`) are
+selected from the closed enum and reported on the response, but do not yet
+transform the body; when they do, the transform must consume the `ResolvedFile`
+rather than re-open anything.
+
+The update stream is a second *surface*, not a second *server*: same listener,
+same port, same `Host` and `Origin` allowlists, and the modules an update names
+are fetched back through `resolve_with_policy` like any other request. The only
+new refusal it introduces is a subscriber ceiling, answered with `503`.
 
 ## Framework, RSC, and server actions
 
@@ -122,7 +132,7 @@ on a CI machine, or a formatter silently changing program meaning.
 | Stack overflow on deeply nested input | Depth is tracked on an explicit stack, never the call stack, and bounded | todo |
 | Quadratic or exponential scanning | Single-pass lexing with byte scanning; no backtracking regex on source text | todo |
 | A formatter that changes the token stream | Formatting is verified token-preserving: the lexer output of input and output must match, ignoring trivia | todo |
-| Unbounded memory on a hostile file | File size caps with typed errors | `uf_rsc::scan`, `uf_pm::detect`, `uf_bundle::size` |
+| Unbounded memory on a hostile file | File size caps with typed errors | `uf_rsc::scan`, `uf_pm::detect`, `uf_bundle::size`, `uf_devserver::hmr::graph` |
 | Non-UTF-8 and lone-surrogate input | Rejected at the boundary with a typed error; never sliced blindly | todo |
 
 The QuickJS-hosted Flow parser is a temporary backend and a liability in this

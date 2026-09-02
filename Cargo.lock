@@ -1508,12 +1508,16 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "compact_str",
+ "criterion",
  "serde",
  "serde_json",
  "smallvec",
  "tempfile",
  "thiserror",
  "uf_config",
+ "uf_infra",
+ "uf_rsc",
+ "uf_term",
 ]
 
 [[package]]
