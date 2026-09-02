@@ -7,6 +7,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "tools/fuzz/**"
+      - ".github/workflows/fuzz.yml"
   workflow_dispatch:
 
 permissions:
@@ -29,5 +30,6 @@ jobs:
       - run: cargo +nightly install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo +nightly install cargo-fuzz --locked
-      - run: cargo +nightly fuzz build config_object
-        working-directory: tools/fuzz
+      # `cargo fuzz` looks for `<cargo project root>/fuzz` unless told otherwise,
+      # and this repository keeps its fuzz crate at `tools/fuzz`.
+      - run: cargo +nightly fuzz build config_object --fuzz-dir tools/fuzz
