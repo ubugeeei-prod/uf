@@ -4,6 +4,7 @@ members = [
   "crates/uf_bundle",
   "crates/uf_cli",
   "crates/uf_config",
+  "crates/uf_devserver",
   "crates/uf_effect",
   "crates/uf_fetch",
   "crates/uf_flow",

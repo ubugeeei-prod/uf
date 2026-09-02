@@ -254,6 +254,76 @@ fn dev_once_writes_native_server_state() {
             .unwrap();
     assert_eq!(state["engine"], serde_json::json!("uf-native"));
     assert!(state["port"].as_u64().unwrap() > 0);
+
+    // The access-control posture is part of the reported state, and the default
+    // is loopback with no allowlists. See `docs/security.md`.
+    assert!(stdout.contains("exposure"), "{stdout}");
+    assert!(stdout.contains("loopback"), "{stdout}");
+    assert!(stdout.contains("0 hosts, 0 origins, 1 root"), "{stdout}");
+    assert_eq!(state["exposure"], serde_json::json!("loopback"));
+    assert_eq!(state["allowedHosts"], serde_json::json!([]));
+    assert_eq!(state["allowedOrigins"], serde_json::json!([]));
+    assert!(
+        state["fsDeny"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!(".env*"))
+    );
+}
+
+#[test]
+fn dev_host_without_an_allowed_hosts_list_refuses_to_start() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              dev: { port: 0 },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["dev", "--host", "0.0.0.0", "--once"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("allowedHosts"), "{stderr}");
+}
+
+#[test]
+fn dev_host_with_an_allowed_hosts_list_starts_exposed() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              dev: { port: 0, allowedHosts: ["dev.internal"] },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["dev", "--host", "0.0.0.0", "--once"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("exposed"), "{stdout}");
+    assert!(stdout.contains("1 host, 0 origins, 1 root"), "{stdout}");
 }
 
 #[test]

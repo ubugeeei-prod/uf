@@ -728,6 +728,9 @@ pub struct DevConfig {
     pub host: CompactString,
     pub port: u16,
     pub strict_port: bool,
+    pub fs: DevFsConfig,
+    pub allowed_hosts: Vec<CompactString>,
+    pub allowed_origins: Vec<CompactString>,
 }
 
 impl Default for DevConfig {
@@ -736,8 +739,26 @@ impl Default for DevConfig {
             host: CompactString::const_new("127.0.0.1"),
             port: 5173,
             strict_port: false,
+            fs: DevFsConfig::default(),
+            allowed_hosts: Vec::new(),
+            allowed_origins: Vec::new(),
         }
     }
+}
+
+/// Which files the dev server may serve.
+///
+/// `allow` names extra roots beyond the project root, which is always allowed.
+/// `deny` is a glob list evaluated on the canonical path, and deny wins over
+/// allow. Entries are *added* to `uf_devserver`'s built-in deny list — which
+/// already covers `.env*`, `**/.git/**`, `*.pem`, `*.key`, `*.crt`, and
+/// `**/.uf/**` — and cannot remove one. See `docs/security.md`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct DevFsConfig {
+    pub allow: Vec<CompactString>,
+    pub deny: Vec<CompactString>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

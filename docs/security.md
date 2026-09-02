@@ -40,14 +40,32 @@ was eventually opened."
 
 | Past failure | Structural decision in `uf` | Test |
 | --- | --- | --- |
-| [CVE-2025-30208](https://github.com/advisories/GHSA-x574-m823-4x7w) — `?raw??` and `?import&raw??` bypass `server.fs.deny` | Query suffixes are stripped and the request is canonicalized to an absolute path *before* any access decision; the decision is made on the resolved path only | todo |
-| [CVE-2025-31125](https://nvd.nist.gov/vuln/detail/CVE-2025-31125) — `?import` / `?inline` / `?raw` traversal | Loader selection is a table lookup over a closed enum, not a string suffix match | todo |
-| [CVE-2025-32395](https://nvd.nist.gov/vuln/detail/CVE-2025-32395) — invalid `request-target` bypass | Requests whose target is not a valid origin-form path are rejected before routing, not normalized into one | todo |
-| [CVE-2025-62522](https://nvd.nist.gov/vuln/detail/CVE-2025-62522) — Windows trailing backslash bypass | `\` is treated as a path separator on every platform when deciding access, never only on Windows | todo |
+| [CVE-2025-30208](https://github.com/advisories/GHSA-x574-m823-4x7w) — `?raw??` and `?import&raw??` bypass `server.fs.deny` | Query suffixes are stripped and the request is canonicalized to an absolute path *before* any access decision; the decision is made on the resolved path only | `uf_devserver::target`, `uf_devserver::resolve`, `attack_corpus` |
+| [CVE-2025-31125](https://nvd.nist.gov/vuln/detail/CVE-2025-31125) — `?import` / `?inline` / `?raw` traversal | Loader selection is a table lookup over a closed enum, not a string suffix match | `uf_devserver::target`, `attack_corpus` |
+| [CVE-2025-32395](https://nvd.nist.gov/vuln/detail/CVE-2025-32395) — invalid `request-target` bypass | Requests whose target is not a valid origin-form path are rejected before routing, not normalized into one | `uf_devserver::target`, `attack_corpus` |
+| [CVE-2025-62522](https://nvd.nist.gov/vuln/detail/CVE-2025-62522) — Windows trailing backslash bypass | `\` is treated as a path separator on every platform when deciding access, never only on Windows | `uf_devserver::resolve`, `attack_corpus` |
+| Traversal, double encoding, poisoned `%00`, and symlinks out of the project root | One pipeline: percent-decode once (a still-encoded result is rejected, not decoded again), normalize lexically, resolve symlinks, decide, then open. `ResolvedFile` carries the open handle and exposes the approved path only as a non-path `CheckedPath`, so a caller has nothing to re-derive | `uf_devserver::resolve`, `attack_corpus` |
+| Vite's `/@fs/` absolute-path prefix, the entry point for the four rows above | There is no such prefix. A request whose first normalized segment is `@fs` is a typed refusal, so the absence is asserted rather than incidental | `uf_devserver::resolve`, `attack_corpus` |
+| A deny list weakened by project configuration | `dev.fs.deny` entries are *added* to a built-in list (`.env*`, `**/.git/**`, `*.pem`, `*.key`, `*.crt`, `**/.uf/**`) and cannot remove one. Patterns are matched by a two-pointer globber with a single backtrack point — no regex, no exponential blow-up | `uf_devserver::policy`, `attack_corpus` |
+| DNS rebinding, and cross-origin requests with side effects | Loopback bind by default; `--host` fails to start without a non-empty `dev.allowedHosts`, with exposure read from the *bound socket* rather than the config string. A `Host` outside the list is refused, and anything that is not a simple `GET`/`HEAD` needs an `Origin` in `dev.allowedOrigins`. `*` is rejected in either list | `uf_devserver::network`, `uf_devserver::server`, `attack_corpus`, `uf_cli` |
+| Inbound headers that steer dispatch — [CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927)'s class, at the dev server's own surface | `RequestHead` retains the method, the request target, `Host` and `Origin`, and nothing else: there is no header map for a handler to consult. The two retained headers can only refuse a request, never select a root, loader, handler, or path | `uf_devserver::http`, `attack_corpus` |
 
-The dev server binds loopback by default. Exposing it requires an explicit
-opt-in, and that opt-in must also require an allowed-origin list rather than
-defaulting to `*`.
+`attack_corpus` is `crates/uf_devserver/tests/attack_corpus.rs`: a table of
+request targets that must never produce a file, each row naming the trick it
+plays and the status the server must answer with. Every new bypass anyone
+thinks of becomes a row there before it becomes a fix.
+
+The dev server binds loopback by default. Exposing it requires `uf dev --host`
+*and* a non-empty `dev.allowedHosts`; a cross-origin request with side effects
+additionally requires an `Origin` in `dev.allowedOrigins`. Neither list has a
+default, neither accepts `*`, and a server that cannot name its allowed hosts
+does not start.
+
+What the dev server does today is serve static files under the project root and
+answer `/__uf/health`. The loaders it names (`?raw`, `?inline`, `?url`,
+`?worker`) are selected from the closed enum and reported on the response, but
+do not yet transform the body; when they do, the transform must consume the
+`ResolvedFile` rather than re-open anything.
 
 ## Framework, RSC, and server actions
 

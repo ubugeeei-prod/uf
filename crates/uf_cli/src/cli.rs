@@ -41,6 +41,10 @@ pub(crate) enum Commands {
         command: CreateCommand,
     },
     Dev {
+        /// Bind a routable address instead of loopback. Requires a non-empty
+        /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
         #[arg(long, hide = true)]
         once: bool,
     },

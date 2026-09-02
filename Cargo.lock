@@ -1468,6 +1468,7 @@ dependencies = [
  "tempfile",
  "uf_bundle",
  "uf_config",
+ "uf_devserver",
  "uf_effect",
  "uf_flow",
  "uf_fmt",
@@ -1499,6 +1500,20 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_bundle",
+]
+
+[[package]]
+name = "uf_devserver"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "compact_str",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "uf_config",
 ]
 
 [[package]]
