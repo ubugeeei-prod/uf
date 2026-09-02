@@ -73,6 +73,7 @@ jobs:
         env:
           UF_TARGET: ${{ matrix.target }}
           UF_VERSION: ${{ steps.version.outputs.version }}
+          UF_CARGO_PROFILE: dist
         run: tools/release/package-binaries.sh
 
       # The point of the whole workflow is that `curl … | sh` works. Prove it

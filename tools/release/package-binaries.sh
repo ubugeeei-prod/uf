@@ -6,6 +6,7 @@ cd "$repo_root"
 
 target="${UF_TARGET:-}"
 version="${UF_VERSION:-}"
+profile="${UF_CARGO_PROFILE:-dist}"
 if [ -z "$version" ]; then
   version="$(cargo metadata --no-deps --format-version 1 | node -e '
 const fs = require("node:fs");
@@ -25,12 +26,21 @@ if [ -z "$target" ]; then
   exit 1
 fi
 
-bin_root="target/release"
+profile_dir="$profile"
+cargo_profile_flag="--profile $profile"
+if [ "$profile" = "release" ]; then
+  profile_dir="release"
+  cargo_profile_flag="--release"
+fi
+
+bin_root="target/$profile_dir"
 if [ "${UF_CARGO_TARGET:-1}" != "0" ]; then
-  bin_root="target/$target/release"
-  cargo build --release --locked --package uf_cli --bins --target "$target"
+  bin_root="target/$target/$profile_dir"
+  # shellcheck disable=SC2086
+  cargo build $cargo_profile_flag --locked --package uf_cli --bins --target "$target"
 else
-  cargo build --release --locked --package uf_cli --bins
+  # shellcheck disable=SC2086
+  cargo build $cargo_profile_flag --locked --package uf_cli --bins
 fi
 
 stage_dir="dist/stage/uf-${version}-${target}"
