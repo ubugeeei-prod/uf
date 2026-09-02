@@ -3,8 +3,11 @@
 use super::*;
 
 fn file(path: &str, source: &str) -> ProjectFile {
+    let absolute_path = camino::Utf8PathBuf::from(path);
     ProjectFile {
-        absolute_path: camino::Utf8PathBuf::from(path),
+        kind: uf_project::SourceKind::from_path(&absolute_path)
+            .unwrap_or(uf_project::SourceKind::JavaScript),
+        absolute_path,
         relative_path: path.to_string(),
         source: source.to_string(),
     }

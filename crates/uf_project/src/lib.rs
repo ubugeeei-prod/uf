@@ -33,6 +33,49 @@ pub struct ProjectFile {
     pub absolute_path: Utf8PathBuf,
     pub relative_path: String,
     pub source: String,
+    /// What kind of file this is.
+    ///
+    /// The linter reads `package.json` as well as JavaScript, so discovery
+    /// returns both. The formatter must not: it is a JavaScript formatter, and
+    /// running it over JSON inserts statement terminators and destroys the file.
+    /// Recording the kind is what lets each caller say which it wants instead of
+    /// every caller having to remember.
+    pub kind: SourceKind,
+}
+
+/// What a discovered project file is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SourceKind {
+    /// Flow-typed JavaScript: `.js`, `.jsx`, `.mjs`, `.cjs`.
+    JavaScript,
+    /// A `package.json` manifest. Read by the linter, never rewritten.
+    PackageManifest,
+}
+
+impl SourceKind {
+    /// Classify a path, or [`None`] when the project does not own it.
+    #[must_use]
+    pub fn from_path(path: &Utf8Path) -> Option<Self> {
+        if path.file_name() == Some("package.json") {
+            return Some(Self::PackageManifest);
+        }
+        match path.extension() {
+            Some("js" | "jsx" | "mjs" | "cjs") => Some(Self::JavaScript),
+            _ => None,
+        }
+    }
+
+    /// Whether `uf fmt` may rewrite a file of this kind.
+    ///
+    /// A `match` rather than a comparison, so a new kind cannot default into
+    /// being formattable by omission.
+    #[must_use]
+    pub const fn is_formattable(self) -> bool {
+        match self {
+            Self::JavaScript => true,
+            Self::PackageManifest => false,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -98,10 +141,12 @@ pub fn collect_source_files(
             }
         })?;
 
-        if !entry.file_type().is_file() || !is_source_file(&path) || is_ignored(root, &path, config)
-        {
+        if !entry.file_type().is_file() || is_ignored(root, &path, config) {
             continue;
         }
+        let Some(kind) = SourceKind::from_path(&path) else {
+            continue;
+        };
 
         let source = fs::read_to_string(&path).map_err(|source| ProjectError::Read {
             path: path.clone(),
@@ -116,6 +161,7 @@ pub fn collect_source_files(
             absolute_path: path,
             relative_path,
             source,
+            kind,
         });
     }
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -138,14 +184,6 @@ fn write_generated_file(path: &Utf8Path, contents: &str, force: bool) -> Result<
         path: path.to_path_buf(),
         source,
     })
-}
-
-fn is_source_file(path: &Utf8Path) -> bool {
-    matches!(path.file_name(), Some("package.json"))
-        || matches!(
-            path.extension(),
-            Some("flow" | "js" | "jsx" | "mjs" | "cjs")
-        )
 }
 
 fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> bool {

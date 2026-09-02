@@ -364,6 +364,63 @@ fn fmt_reports_an_already_formatted_project() {
     assert!(stdout.contains("✓"));
 }
 
+/// `uf fmt` must not rewrite `package.json`.
+///
+/// Discovery returns it because the linter reads it, and the formatter used to
+/// take the same list — so `uf fmt` inserted a statement terminator after
+/// `"@uniflowed/core": "latest"` and left the manifest unparseable. `uf install`
+/// then failed on a project whose only crime was running `uf fmt`.
+///
+/// A scaffolded project is a real one: this is what `uf create && uf fmt` did.
+#[test]
+fn fmt_leaves_the_package_manifest_byte_identical() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let manifest = app.join("package.json");
+    let before = fs::read_to_string(&manifest).unwrap();
+    serde_json::from_str::<serde_json::Value>(&before).expect("the scaffold writes valid JSON");
+
+    let output = uf().arg("--cwd").arg(&app).arg("fmt").output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let after = fs::read_to_string(&manifest).unwrap();
+    serde_json::from_str::<serde_json::Value>(&after)
+        .expect("uf fmt must leave package.json parseable");
+    assert_eq!(before, after, "uf fmt rewrote package.json");
+}
+
+/// And `--check` must not claim it needs formatting either, which is how a
+/// green CI job would start failing for a file the formatter must never touch.
+#[test]
+fn fmt_check_ignores_the_package_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&app)
+        .args(["fmt", "--check"])
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !stdout.contains("package.json"),
+        "uf fmt --check listed package.json:\n{stdout}"
+    );
+    assert!(
+        output.status.success(),
+        "a freshly scaffolded project must pass `uf fmt --check`:\n{stdout}"
+    );
+}
+
 #[test]
 fn env_use_records_the_active_environment() {
     let dir = tempfile::tempdir().unwrap();
