@@ -29,12 +29,12 @@ fn all_holds_every_builtin_exactly_once() {
 
 #[test]
 fn every_builtin_has_a_unique_index_and_bit() {
-    let mut mask = 0u8;
+    let mut mask = 0u16;
     for (position, plugin) in BuiltinPlugin::ALL.into_iter().enumerate() {
         assert_eq!(plugin.index(), position, "{plugin:?}");
         assert_eq!(plugin.bit().count_ones(), 1, "{plugin:?}");
-        assert_eq!(mask & plugin.bit(), 0, "{plugin:?} reuses a bit");
-        mask |= plugin.bit();
+        assert_eq!(mask & plugin.bit() as u16, 0, "{plugin:?} reuses a bit");
+        mask |= plugin.bit() as u16;
     }
     assert_eq!(mask, BuiltinSet::ALL.bits());
 }
@@ -60,7 +60,8 @@ fn every_builtin_implements_at_least_one_hook() {
 }
 
 #[test]
-fn flow_stripping_and_route_generation_run_first() {
+fn mdx_flow_stripping_and_route_generation_run_first() {
+    assert_eq!(BuiltinPlugin::Mdx.order(), HookOrder::Pre);
     assert_eq!(BuiltinPlugin::Flow.order(), HookOrder::Pre);
     assert_eq!(BuiltinPlugin::Router.order(), HookOrder::Pre);
 }
@@ -98,14 +99,32 @@ fn the_react_compiler_runs_last_over_component_code() {
 }
 
 #[test]
-fn flow_stripping_runs_before_every_other_transform() {
+fn mdx_runs_before_flow_and_flow_runs_before_late_transforms() {
     let container = pipeline(&UniflowedConfig::default());
     let transformers = container
         .plugins_for(PluginHook::Transform)
         .map(|plugin| plugin.name.as_str())
         .collect::<Vec<_>>();
 
-    assert_eq!(transformers.first(), Some(&BuiltinPlugin::Flow.name()));
+    assert_eq!(transformers.first(), Some(&BuiltinPlugin::Mdx.name()));
+    assert!(
+        transformers
+            .iter()
+            .position(|name| *name == BuiltinPlugin::Mdx.name())
+            < transformers
+                .iter()
+                .position(|name| *name == BuiltinPlugin::Flow.name()),
+        "{transformers:?}"
+    );
+    assert!(
+        transformers
+            .iter()
+            .position(|name| *name == BuiltinPlugin::Flow.name())
+            < transformers
+                .iter()
+                .position(|name| *name == BuiltinPlugin::Jsx.name()),
+        "{transformers:?}"
+    );
     assert!(transformers.len() > 1);
 }
 
@@ -167,7 +186,7 @@ fn the_style_engine_selects_the_style_plugin() {
 }
 
 #[test]
-fn flow_and_asset_handling_cannot_be_switched_off() {
+fn flow_mdx_and_asset_handling_are_default_builtins() {
     let mut config = UniflowedConfig::default();
     config.app.router.enabled = false;
     config.app.rsc = false;
@@ -175,6 +194,7 @@ fn flow_and_asset_handling_cannot_be_switched_off() {
 
     let set = BuiltinSet::from_config(&config);
 
+    assert!(set.contains(BuiltinPlugin::Mdx));
     assert!(set.contains(BuiltinPlugin::Flow));
     assert!(set.contains(BuiltinPlugin::Asset));
 }
@@ -194,6 +214,18 @@ fn a_set_iterates_in_pipeline_order() {
         set.iter().collect::<Vec<_>>(),
         vec![BuiltinPlugin::Flow, BuiltinPlugin::Asset]
     );
+}
+
+#[test]
+fn turning_off_mdx_drops_only_the_mdx_plugin() {
+    let mut config = UniflowedConfig::default();
+    config.app.builtins.markdown.mdx.enabled = false;
+
+    let set = BuiltinSet::from_config(&config);
+
+    assert!(!set.contains(BuiltinPlugin::Mdx));
+    assert!(set.contains(BuiltinPlugin::Flow));
+    assert!(set.contains(BuiltinPlugin::Asset));
 }
 
 #[test]

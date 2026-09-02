@@ -8,7 +8,7 @@ use uf_router::{Route, RouteParam, RouteParamKind};
 use super::fixture::{Fixture, assert_chunks_parse};
 use crate::pipeline::{
     ROUTE_TABLE_MODULE, ROUTE_TABLE_SPECIFIER, asset_extension, asset_file_name, asset_url,
-    blank_directive_prologue, build_entries, build_pipeline,
+    blank_directive_prologue, build_entries, build_pipeline, is_mdx_module, mdx_module,
 };
 
 fn route(path: &str, page: &str) -> Route {
@@ -50,9 +50,67 @@ fn every_default_builtin_is_in_the_pipeline() {
     let container = fixture.container();
     let names: Vec<&str> = container.names().collect();
 
-    for expected in ["uf:flow", "uf:router", "uf:rsc", "uf:asset"] {
+    for expected in ["uf:mdx", "uf:flow", "uf:router", "uf:rsc", "uf:asset"] {
         assert!(names.contains(&expected), "{names:?}");
     }
+    fixture.keep();
+}
+
+#[test]
+fn the_mdx_stage_runs_before_flow() {
+    let fixture = Fixture::new();
+
+    let container = fixture.container();
+    let transformers = container
+        .plugins_for(PluginHook::Transform)
+        .map(|plugin| plugin.name.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        transformers.iter().position(|name| *name == "uf:mdx")
+            < transformers.iter().position(|name| *name == "uf:flow"),
+        "{transformers:?}"
+    );
+    fixture.keep();
+}
+
+#[test]
+fn the_mdx_stage_turns_documents_into_javascript_modules() {
+    let fixture = Fixture::new();
+    let container = fixture.container();
+
+    let outcome = container
+        .transform("docs/intro.mdx", "# Hello\n\nFlow docs")
+        .expect("transform runs");
+
+    let code = outcome.handled().expect("mdx handled").code;
+    assert!(code.contains("export const mdxSource"), "{code}");
+    assert!(code.contains("MdxDocument"), "{code}");
+    assert!(!code.contains("renders React.Node"), "{code}");
+    assert!(
+        uf_flow::validate_source(&code).expect("parser ran").is_ok(),
+        "{code}"
+    );
+    fixture.keep();
+}
+
+#[test]
+fn an_mdx_import_is_bundled_without_plugin_config() {
+    let mut fixture = Fixture::new();
+    fixture.write("docs/intro.mdx", "# Hello\n\nFlow docs");
+    fixture.entry(
+        "app.js",
+        "import Intro from \"./docs/intro.mdx\";\nexport default Intro;\n",
+    );
+
+    let output = fixture.bundle();
+
+    assert!(
+        output.chunks[0].code.contains("mdxSource"),
+        "{}",
+        output.chunks[0].code
+    );
+    assert_chunks_parse(&output);
     fixture.keep();
 }
 
@@ -229,9 +287,24 @@ fn an_asset_is_copied_into_the_output_directory() {
 #[test]
 fn a_javascript_import_is_not_claimed_by_the_asset_stage() {
     assert_eq!(asset_extension(Utf8Path::new("app/page.js")), None);
+    assert_eq!(asset_extension(Utf8Path::new("docs/page.mdx")), None);
     assert_eq!(asset_extension(Utf8Path::new("app/style.css")), Some("css"));
     assert_eq!(asset_extension(Utf8Path::new("app/logo.svg")), Some("svg"));
     assert_eq!(asset_extension(Utf8Path::new("app/no-extension")), None);
+}
+
+#[test]
+fn mdx_detection_is_extension_based() {
+    assert!(is_mdx_module(Utf8Path::new("docs/page.mdx")));
+    assert!(!is_mdx_module(Utf8Path::new("docs/page.md")));
+    assert!(!is_mdx_module(Utf8Path::new("app/page.js")));
+
+    let code = mdx_module("# Title");
+    assert!(
+        code.contains("export component MdxDocument() renders React.Node"),
+        "{code}"
+    );
+    assert!(code.contains("\"# Title\""), "{code}");
 }
 
 #[test]

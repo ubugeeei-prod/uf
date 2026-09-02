@@ -13,7 +13,6 @@ compact_str.workspace = true
 uf_infra = { path = "../uf_infra" }
 uf_std = { path = "../uf_std" }
 uf_tui = { path = "../uf_tui" }
-uf_validator = { path = "../uf_validator" }
 serde.workspace = true
 
 [dev-dependencies]

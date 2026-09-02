@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/validator",
-  "version": "0.0.1",
-  "description": "Flow declarations for @uniflowed/validator, part of the Unified Toolchain for Flow.",
+  "version": "0.0.0-alpha.0",
+  "description": "Flow implementation for @uniflowed/validator, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -14,9 +14,7 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
-  ],
-  "dependencies": {
-    "@uniflowed/core": "0.0.1"
-  }
+    "index.js",
+    "internal"
+  ]
 }

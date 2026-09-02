@@ -1,8 +1,8 @@
 //! What discovery finds, and what it refuses to find.
 
 use crate::{
-    MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, NativeTestRunnerPlan, TestKind, TestPerformanceTarget,
-    TestRuntime, TestScheduler, discover_tests, merge_plans,
+    MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, NativeTestRunnerPlan, TestHost, TestKind,
+    TestPerformanceTarget, TestRuntime, TestScheduler, discover_tests, merge_plans,
 };
 
 fn names(source: &str) -> Vec<String> {
@@ -95,10 +95,14 @@ fn merging_no_plans_produces_an_empty_plan() {
 }
 
 #[test]
-fn runner_plan_is_self_hosted_and_faster_than_bun_targeted() {
-    let plan = NativeTestRunnerPlan::self_hosted();
+fn runner_plan_is_runtime_agnostic_and_faster_than_bun_targeted() {
+    let plan = NativeTestRunnerPlan::runtime_agnostic();
 
-    assert_eq!(plan.runtime, TestRuntime::UfSelfHosted);
+    assert_eq!(plan.runtime, TestRuntime::CapabilityJsHost);
+    assert_eq!(
+        plan.hosts.as_slice(),
+        &[TestHost::Node, TestHost::Deno, TestHost::Bun]
+    );
     assert_eq!(plan.scheduler, TestScheduler::NativeWorkStealing);
     assert_eq!(
         plan.performance_target,

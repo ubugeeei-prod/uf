@@ -8,7 +8,6 @@
 use compact_str::{CompactString, ToCompactString};
 use serde::Serialize;
 use uf_infra::InlineVec;
-use uf_validator::{SchemaKind, ValidationStep};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -129,6 +128,28 @@ pub struct FormContract {
     pub compiler_safe: bool,
     pub render_idempotent: bool,
     pub mutation_phase: FormMutationPhase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SchemaKind {
+    String,
+    Number,
+    Boolean,
+    Object,
+    Array,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ValidationStep {
+    MinLength,
+    MaxLength,
+    StartsWith,
+    Min,
+    Max,
+    Integer,
 }
 
 impl FormContract {

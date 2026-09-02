@@ -3,6 +3,27 @@ import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   app: {
+    runtime: {
+      default: "node",
+      capabilityJsHost: {
+        default: "node",
+        hosts: ["node", "deno", "bun"],
+        autoDetect: true,
+      },
+    },
+    builtins: {
+      markdown: {
+        module: "@uniflowed/markdown",
+        engine: "ox-content-wasm",
+        mdx: {
+          enabled: true,
+          extensions: [".mdx"],
+          jsxImportSource: "@uniflowed/jsx-runtime",
+          pipelinePlugin: "built-in",
+        },
+        cache: "opt-in",
+      },
+    },
     router: {
       entry: "app.js",
       root: "app",
@@ -29,5 +50,27 @@ export default defineConfig({
     outDir: "dist/docs",
     staticBuild: true,
     deploy: "void",
+  },
+  fmt: {
+    flow: {
+      parser: "official-flow-rust",
+      printer: "uf-rust",
+    },
+    nonFlow: {
+      formatter: "biome",
+    },
+  },
+  lint: {
+    engine: "rust",
+    flow: {
+      builtins: "mixed",
+      parser: "official-flow-rust",
+    },
+  },
+  test: {
+    runner: {
+      runtime: "capability-js-host",
+      jsHosts: ["node", "deno", "bun"],
+    },
   },
 });

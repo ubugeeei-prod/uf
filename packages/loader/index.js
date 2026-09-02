@@ -2,12 +2,12 @@
 //
 // `@uniflowed/loader`.
 //
-// `Cell` comes from `./flow-cell.js` rather than `./state.js`: the loader needs
+// `Cell` comes from `@uniflowed/cell` rather than `@uniflowed/state`: the loader needs
 // the cell type, not the React hook, and importing the primitive module keeps
 // the React binding out of a loader-only bundle.
 
 import type { FetchClient } from "@uniflowed/fetch";
-import type { Cell } from "@uniflowed/flow-cell";
+import type { Cell } from "@uniflowed/cell";
 import type { NativeHandleInvariant } from "@uniflowed/core/native";
 import { nativeRuntimeRequired } from "@uniflowed/core/native";
 

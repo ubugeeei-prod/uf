@@ -26,18 +26,18 @@ manager performance, and integrated feature coverage.
 - `uf_lint`: native lint runner and framework rules
 - `uf_pm`: self-hosted package manager plan, lockfile, and content-addressed store contracts
 - `uf_project`: project discovery and `create` templates
-- `uf_rm`: runtime manager inference, acquisition, and adapter application contracts
-- `uf_runtime`: WinterTC, Hermes, native event-loop, and deploy-anywhere runtime contract
+- `uf_rm`: runtime manager inference, host detection, and adapter application contracts
+- `uf_runtime`: Capability JS Host, WinterTC, and deploy-anywhere runtime contract
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
 - `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
 - `uf_tui`: OpenTUI-compatible native TUI framework contracts
-- `uf_validator`: valibot-style native validator primitives
 
 These are the crates that survive. `uf` used to ship a Rust crate per library
 surface — `uf_motion`, `uf_orm`, `uf_markdown`, `uf_temporal`, `uf_web` and ten
 more — each holding a `serde` struct that described a feature rather than
-implementing one, and each duplicating a `crates/uf_lib/lib/core/*.js` module
-that was the real thing. Twelve had no consumer at all; three existed so
+implementing one, and each duplicating a `packages/*/index.js` module
+that was the real thing. Effect and validator are now plain `.js` + Flow
+packages rather than Rust crates. Twelve had no consumer at all; three existed so
 `uf inspect` could print their `::default()`. They are gone: the JavaScript in
 `uf_lib/lib/core` is the source of truth for what those modules are.
 
@@ -164,7 +164,7 @@ the **bytes** that `uf_term`'s code frames and `uf_lint` both measure in.
 
 The default app preset is Flow-first React. New app templates use Flow component
 syntax, `app.js`, file-system routes, server actions, StyleX,
-query/effect APIs, Relay, `flow-cell`, headless UI, hooks, and React
+query/effect APIs, Relay, `cell`, headless UI, hooks, and React
 Native-compatible entry files.
 
 Server Components are the default. Client Components must opt in with
@@ -177,11 +177,19 @@ function component typing and toward Flow component syntax. React Native support
 starts with platform split diagnostics for generic files that branch on
 `Platform.OS` or `Platform.select`.
 
-## Native Runtime Direction
+## Runtime Agnostic Direction
 
-`uf_lib` follows the Bun-style shape: native Rust engines expose a compact
-Flow module surface. The initial package is declaration-first, then the runtime
-loader can map `@uniflowed/*` modules to native implementations.
+`uf_lib` follows the Bun-style shape for builtin modules, but the user project
+runtime is deliberately host-agnostic. Native Rust owns toolchain work —
+configuration, linting, Flow parsing/type checking, Flow formatting, test
+scheduling, package metadata, and builtin binding contracts — while ordinary
+JavaScript execution is delegated to a Capability JS Host.
+
+The zero-config host set is Node.js, Deno, and Bun. `uf.config.js` names the
+default host and the accepted host set once, and `@uniflowed/rm` detects and
+applies that host instead of installing a bespoke runtime. The self-hosted
+Hermes-backed `uf` runtime is still documented as a later line, but it is no
+longer the default direction for app execution.
 
 User-authored Flow source uses `.js` files with `// @flow`, and so do the
 published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
@@ -211,10 +219,10 @@ Native engines being deepened:
 
 - query cache and mutation scheduler, similar in capability to TanStack Query
 - generator/yield EffectSystem inspired by Redux-Saga but typed for Flow
-- explicit fetch clients similar to ofetch, without global fetch override
+- explicit fetch clients without global fetch override
 - Relay-based GraphQL client primitives
 - validator utilities exposed as `@uniflowed/validator` with `v.pipe`
-- state primitives exposed through `@uniflowed/state` and `@uniflowed/flow-cell`
+- state primitives exposed through `@uniflowed/state` and `@uniflowed/cell`
 - DOM and React Native testing utilities compatible with Testing Library habits
 - self-hosted `@uniflowed/test` runner targeting faster-than-Bun execution
 - ORM schema/runtime with Flow opaque types at module boundaries
@@ -231,20 +239,23 @@ Native engines being deepened:
   replacement with native cell-diff rendering and in-memory tests
 - stdlib contracts for OS, net, DNS, path, streams, URL, WebAssembly, glob, TUI,
   cron, S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
-- Rust-native server with owned request handling, streaming, and libuv-level IO
-- WinterTC-aligned Flow runtime backed by Hermes
-- default `uf` runtime with Node.js, Bun, Deno, edge, serverless, static, and
-  container deployment adapters in a Nitro-like deploy-anywhere model
+- host-provided event loop and IO capability mapping for Node.js, Deno, and Bun
+- deferred WinterTC-aligned Flow runtime backed by Hermes
+- deploy-anywhere adapters for Node.js, Deno, Bun, edge, serverless, static, and
+  container targets in a Nitro-like model
 
 ## Build And Dev
 
-`uf.config.js` mirrors the Vite style because the build and dev pipeline is
-expected to reuse Vite-compatible plugin semantics and Rolldown where it gives us
-the best performance. Users should not need `vite.config.*` or `rolldown`
-configuration files; those engines stay internal to uniflowed.
+`uf.config.js` mirrors the Vite style because it replaces the user-authored
+`vite.config.ts`. Vite remains the dev server, bundler facade, and plugin
+system; `uf` owns the Flow-specific config surface, generated route/RSC data,
+Rust lint/typecheck/format/test work, and the translation from uf plugins to the
+underlying Vite plugin container. Users should not need `vite.config.*`;
+project-specific build, dev, plugin, lint, format, test, and task settings live
+in `uf.config.js`.
 
 Generated projects do not use npm scripts. Tasks are declared in
-`uf.config.js` and executed by `uf run` through the Vite Task-compatible runner.
+`uf.config.js` and executed by `uf run` through the uf task runner.
 
 Editor integrations live under `editors/` and should stay thin. VS Code,
 Neovim, Emacs, Vim, Helix, Zed, and Cursor all connect to `uf lsp`; the Rust
@@ -257,13 +268,14 @@ repository and published library surface remain Flow-first.
 
 `uf publish` writes the local/trusted publishing manifest used to bootstrap the
 first release locally. After trusted publishing is configured from the CLI,
-`uf release minor` computes the next `uf@*` tag metadata and GitHub Actions
+`uf release alpha` computes the next `uf@*` tag metadata and GitHub Actions
 publishes through OIDC without a long-lived npm token.
 
 `@uniflowed/pm` owns package resolution, `uf.lock`, a content-addressed store,
-and script-free install policy. `@uniflowed/rm` reads `uf.config.js`, infers
-the required runtime, acquires it, applies host adapters, and feeds `uf env
-doctor` with runtime checks.
+and script-free install policy. `@uniflowed/rm` reads `uf.config.js`, infers the
+required Capability JS Host, applies host adapters, and feeds `uf env doctor`
+with runtime checks. Explicit `uf use uf@...` remains available for the
+postponed self-hosted runtime line, but zero-config apps do not depend on it.
 
 Runtime manager paths follow the XDG Base Directory layout: config in
 `XDG_CONFIG_HOME`, runtime data and versions in `XDG_DATA_HOME`, cache in

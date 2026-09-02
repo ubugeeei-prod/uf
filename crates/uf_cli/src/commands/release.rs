@@ -180,7 +180,10 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
 }
 
 fn bump_semver(version: &str, bump: ReleaseBump) -> Result<String> {
-    let mut parts = version.split('.');
+    let (core, prerelease) = version
+        .split_once('-')
+        .map_or((version, None), |(core, suffix)| (core, Some(suffix)));
+    let mut parts = core.split('.');
     let major = parse_semver_part(parts.next(), "major")?;
     let minor = parse_semver_part(parts.next(), "minor")?;
     let patch = parse_semver_part(parts.next(), "patch")?;
@@ -188,12 +191,26 @@ fn bump_semver(version: &str, bump: ReleaseBump) -> Result<String> {
         bail!("version {version:?} is not a three-part semver");
     }
 
-    let next = match bump {
-        ReleaseBump::Patch => (major, minor, patch + 1),
-        ReleaseBump::Minor => (major, minor + 1, 0),
-        ReleaseBump::Major => (major + 1, 0, 0),
+    match bump {
+        ReleaseBump::Alpha => next_alpha(core, prerelease),
+        ReleaseBump::Patch => Ok(format!("{major}.{minor}.{}", patch + 1)),
+        ReleaseBump::Minor => Ok(format!("{major}.{}.0", minor + 1)),
+        ReleaseBump::Major => Ok(format!("{}.0.0", major + 1)),
+    }
+}
+
+fn next_alpha(core: &str, prerelease: Option<&str>) -> Result<String> {
+    let Some(prerelease) = prerelease else {
+        return Ok(format!("{core}-alpha.0"));
     };
-    Ok(format!("{}.{}.{}", next.0, next.1, next.2))
+
+    let Some(alpha) = prerelease.strip_prefix("alpha.") else {
+        return Ok(format!("{core}-alpha.0"));
+    };
+    let current = alpha
+        .parse::<u64>()
+        .with_context(|| format!("alpha version part {alpha:?} is not numeric"))?;
+    Ok(format!("{core}-alpha.{}", current + 1))
 }
 
 fn parse_semver_part(part: Option<&str>, name: &str) -> Result<u64> {
@@ -208,9 +225,21 @@ mod tests {
 
     #[test]
     fn each_bump_moves_the_right_component() {
+        assert_eq!(
+            bump_semver("0.0.0-alpha.0", ReleaseBump::Alpha).unwrap(),
+            "0.0.0-alpha.1"
+        );
+        assert_eq!(
+            bump_semver("0.0.0", ReleaseBump::Alpha).unwrap(),
+            "0.0.0-alpha.0"
+        );
         assert_eq!(bump_semver("1.2.3", ReleaseBump::Patch).unwrap(), "1.2.4");
         assert_eq!(bump_semver("1.2.3", ReleaseBump::Minor).unwrap(), "1.3.0");
         assert_eq!(bump_semver("1.2.3", ReleaseBump::Major).unwrap(), "2.0.0");
+        assert_eq!(
+            bump_semver("1.2.3-alpha.4", ReleaseBump::Patch).unwrap(),
+            "1.2.4"
+        );
     }
 
     #[test]
@@ -218,6 +247,7 @@ mod tests {
         assert!(bump_semver("1.2", ReleaseBump::Patch).is_err());
         assert!(bump_semver("1.2.3.4", ReleaseBump::Patch).is_err());
         assert!(bump_semver("1.2.x", ReleaseBump::Patch).is_err());
+        assert!(bump_semver("1.2.3-alpha.x", ReleaseBump::Alpha).is_err());
         assert!(bump_semver("", ReleaseBump::Patch).is_err());
     }
 }

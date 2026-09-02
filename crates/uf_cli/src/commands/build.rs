@@ -56,9 +56,10 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "runtime": {
-            "default": "uf",
+            "default": resolved.config.app.runtime.default,
+            "capabilityJsHost": &resolved.config.app.runtime.capability_js_host,
             "wintertc": true,
-            "hermes": true,
+            "hermes": false,
         },
         "cache": {
             "route": resolved.config.app.rendering.cache.route,

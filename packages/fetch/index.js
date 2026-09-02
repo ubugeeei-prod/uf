@@ -20,10 +20,6 @@ export type RequestOptions = {
   +headers?: { +[string]: string },
 };
 
-export function ofetch(config?: FetchConfig): FetchClient {
-  return nativeRuntimeRequired(MODULE, "ofetch");
-}
-
 export function createFetch(config?: FetchConfig): FetchClient {
   return nativeRuntimeRequired(MODULE, "createFetch");
 }

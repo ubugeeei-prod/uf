@@ -12,6 +12,11 @@ export type MarkdownOptions = {
   +rsc?: true,
 };
 
+export type MdxOptions = MarkdownOptions & {
+  +components?: { +[string]: mixed },
+  +jsxImportSource?: "@uniflowed/jsx-runtime",
+};
+
 export component Markdown(
   source: string,
   options?: MarkdownOptions,
@@ -31,4 +36,19 @@ export function compileMarkdown(
   options?: MarkdownOptions,
 ): Promise<React.Node> {
   return nativeRuntimeRequired(MODULE, "compileMarkdown");
+}
+
+export component Mdx(source: string, options?: MdxOptions) renders React.Node {
+  return nativeRuntimeRequired(MODULE, "Mdx");
+}
+
+export function renderMdx(source: string, options?: MdxOptions): Promise<string> {
+  return nativeRuntimeRequired(MODULE, "renderMdx");
+}
+
+export function compileMdx(
+  source: string,
+  options?: MdxOptions,
+): Promise<React.Node> {
+  return nativeRuntimeRequired(MODULE, "compileMdx");
 }

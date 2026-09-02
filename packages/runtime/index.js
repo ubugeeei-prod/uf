@@ -9,11 +9,14 @@ const MODULE = "@uniflowed/core/runtime";
 export type RuntimeEngine =
   | "uf"
   | "node"
-  | "bun"
   | "deno"
+  | "bun"
   | "edge"
   | "serverless"
   | "container";
+
+export type CapabilityJsHost = "node" | "deno" | "bun";
+export type JavaScriptEngine = "capability-js-host" | "hermes";
 
 export type DeployAdapter =
   | "node"
@@ -47,6 +50,14 @@ export type RuntimeCapability =
   | "react-server-components"
   | "native-packages"
   | "terminal-ui";
+
+export type RuntimeContract = {
+  +standard: "winter-tc",
+  +language: "flow",
+  +javascriptEngine: JavaScriptEngine,
+  +hosts: $ReadOnlyArray<RuntimeEngine>,
+  +capabilities: $ReadOnlyArray<RuntimeCapability>,
+};
 
 export function run(entry: string): Promise<void> {
   return nativeRuntimeRequired(MODULE, "run");

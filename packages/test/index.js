@@ -23,13 +23,15 @@ export {
   waitFor,
 } from "@uniflowed/testing";
 
-export type TestRuntime = "uf-self-hosted";
+export type CapabilityJsHost = "node" | "deno" | "bun";
+export type TestRuntime = "capability-js-host" | "uf-self-hosted";
 export type TestScheduler = "native-work-stealing";
 export type TestPerformanceTarget = "faster-than-bun";
 
 export type NativeTestRunnerPlan = {
   +module: "@uniflowed/test",
   +runtime: TestRuntime,
+  +hosts: $ReadOnlyArray<CapabilityJsHost>,
   +scheduler: TestScheduler,
   +performanceTarget: TestPerformanceTarget,
   +imports: $ReadOnlyArray<"@uniflowed/test" | "@uniflowed/testing" | "inflow">,
