@@ -34,13 +34,27 @@ pub(crate) fn is_server_only_path(path: &str) -> bool {
     })
 }
 
-pub(crate) enum SpecifierResolution {
+/// What an import specifier turned out to name.
+///
+/// This is the shared path guard: every consumer of the graph — the RSC
+/// analysis and the bundler alike — asks this question in one place, so there
+/// is exactly one implementation of "does this specifier leave the project?"
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SpecifierResolution {
+    /// A project-relative path, normalized and proven to stay inside the root.
     Relative(Utf8PathBuf),
+    /// A bare specifier: a package name, not a path.
     Bare,
+    /// A relative specifier that climbs above the project root.
     Escapes,
 }
 
-pub(crate) fn resolve_specifier(importer: &Utf8Path, specifier: &str) -> SpecifierResolution {
+/// Resolve an import specifier written in `importer` against the project root.
+///
+/// Purely lexical: nothing is read from disk, `..` is folded textually, and a
+/// specifier that climbs out of the project is [`SpecifierResolution::Escapes`]
+/// rather than a path anyone could open.
+pub fn resolve_specifier(importer: &Utf8Path, specifier: &str) -> SpecifierResolution {
     let specifier = if specifier.contains('\\') {
         Cow::Owned(specifier.replace('\\', "/"))
     } else {
@@ -109,7 +123,7 @@ pub(crate) fn resolve_candidates(
 ///
 /// A `..` that cannot be resolved is kept so [`is_inside_project`] can reject the
 /// path instead of silently rewriting an escape into a plausible-looking module.
-pub(crate) fn normalize_module_path(path: &Utf8Path) -> Utf8PathBuf {
+pub fn normalize_module_path(path: &Utf8Path) -> Utf8PathBuf {
     let text = path.as_str().replace('\\', "/");
     let mut segments: Vec<&str> = Vec::new();
 
@@ -141,7 +155,11 @@ pub(crate) fn normalize_module_path(path: &Utf8Path) -> Utf8PathBuf {
 }
 
 /// Whether a normalized module path stays inside the project root.
-pub(crate) fn is_inside_project(path: &Utf8Path) -> bool {
+///
+/// Rejects absolute paths, anything that climbs with `..`, and anything
+/// carrying a `:` — a Windows drive letter is an absolute path wearing a URL
+/// scheme's clothes, and both are refused.
+pub fn is_inside_project(path: &Utf8Path) -> bool {
     let text = path.as_str();
     !text.is_empty()
         && !text.starts_with('/')
