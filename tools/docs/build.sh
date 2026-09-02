@@ -19,8 +19,11 @@ for asset in \
   tokens.css \
   tokens.json \
   uf.png \
+  uniflowed-logo.png \
   uniflowed-logo.svg \
+  uniflowed-mark.png \
   uniflowed-mark.svg \
+  uniflowed-wordmark.png \
   uniflowed-wordmark.svg
 do
   cp "$repo_root/brand/$asset" "$out_dir/brand/$asset"

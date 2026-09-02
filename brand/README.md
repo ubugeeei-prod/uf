@@ -1,15 +1,18 @@
 # uf Brand System
 
-This directory is the source of truth for the uf visual system: the glossy mark,
-SVG fallbacks, CSS custom properties, JSON design tokens, and Flow constants
-used by docs and examples.
+This directory is the source of truth for the uf visual system: the extracted
+glossy mark, stable raster lockups, SVG wrappers, CSS custom properties, JSON
+design tokens, and Flow constants used by docs and examples.
 
 ## Files
 
-- `uf.png`: primary glossy logo
-- `uniflowed-mark.svg`: square icon
-- `uniflowed-logo.svg`: mark plus wordmark
-- `uniflowed-wordmark.svg`: text-only wordmark
+- `uf.png`: high-resolution source mark
+- `uniflowed-mark.png`: trimmed display mark
+- `uniflowed-mark.svg`: SVG wrapper for the display mark
+- `uniflowed-logo.png`: mark plus wordmark lockup
+- `uniflowed-logo.svg`: SVG wrapper for the lockup
+- `uniflowed-wordmark.png`: extracted text-only wordmark
+- `uniflowed-wordmark.svg`: SVG wrapper for the wordmark
 - `favicon.svg`: browser icon
 - `tokens.json`: complete design token data
 - `tokens.css`: CSS custom properties

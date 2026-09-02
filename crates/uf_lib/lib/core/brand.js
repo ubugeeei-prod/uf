@@ -20,6 +20,18 @@ export const ufBrand = {
   tagline: "All-in-one toolchain for Flow and React.",
 };
 
+export const ufBrandAssets = {
+  sourceMark: "brand/uf.png",
+  primaryLogo: "brand/uniflowed-logo.png",
+  logo: "brand/uniflowed-logo.png",
+  logoSvg: "brand/uniflowed-logo.svg",
+  mark: "brand/uniflowed-mark.png",
+  markSvg: "brand/uniflowed-mark.svg",
+  wordmark: "brand/uniflowed-wordmark.png",
+  wordmarkSvg: "brand/uniflowed-wordmark.svg",
+  favicon: "brand/favicon.svg",
+};
+
 export const ufPalette: $ReadOnlyArray<BrandColorToken> = [
   { name: "Primary Cyan", token: "--uf-color-cyan-500", value: "#35D6F6" },
   { name: "Electric Blue", token: "--uf-color-blue-500", value: "#2677FF" },

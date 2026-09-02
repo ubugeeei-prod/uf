@@ -2,6 +2,7 @@
 import * as React from "@uniflowed/react";
 import {
   ufBrand,
+  ufBrandAssets,
   ufCommands,
   ufPalette,
   ufRadiusScale,
@@ -38,13 +39,14 @@ const radiusMd = ufRadiusScale[1];
 const radiusLg = ufRadiusScale[2];
 const radiusXl = ufRadiusScale[3];
 const radiusPill = ufRadiusScale[4];
+const markSrc = "/" + ufBrandAssets.mark;
 
 export component Page() {
   return (
     <main className="shell">
       <nav className="topbar" aria-label="Primary">
         <a className="brand-lockup" href="/">
-          <img src="/brand/uf.png" alt="" width="40" height="40" />
+          <img src={markSrc} alt="" width="40" height="40" />
           <span>{ufBrand.name}</span>
         </a>
         <div className="nav-links">
@@ -55,7 +57,7 @@ export component Page() {
 
       <section className="hero">
         <div className="logo-stage">
-          <img src="/brand/uf.png" alt="uf gradient mark" />
+          <img src={markSrc} alt="uf gradient mark" />
         </div>
         <div className="hero-copy">
           <p className="eyebrow">uf Design System</p>

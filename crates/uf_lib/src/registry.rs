@@ -46,6 +46,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             Stability::Experimental,
             &[
                 "ufBrand",
+                "ufBrandAssets",
                 "ufPalette",
                 "ufTextScale",
                 "ufSpacingScale",
