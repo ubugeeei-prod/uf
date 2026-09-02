@@ -788,6 +788,7 @@ impl Default for EnvConfig {
 pub struct FmtConfig {
     pub indent_width: u8,
     pub line_width: u16,
+    pub max_blank_lines: u8,
     pub quotes: QuoteStyle,
     pub semicolons: bool,
 }
@@ -797,6 +798,7 @@ impl Default for FmtConfig {
         Self {
             indent_width: 2,
             line_width: 100,
+            max_blank_lines: 1,
             quotes: QuoteStyle::Double,
             semicolons: true,
         }

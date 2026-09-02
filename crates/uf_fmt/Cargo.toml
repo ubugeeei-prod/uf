@@ -10,7 +10,13 @@ authors.workspace = true
 
 [dependencies]
 uf_config = { path = "../uf_config" }
+memchr.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 similar-asserts.workspace = true
+
+[[bench]]
+name = "fmt"
+harness = false

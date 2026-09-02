@@ -1546,6 +1546,8 @@ dependencies = [
 name = "uf_fmt"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "memchr",
  "similar-asserts",
  "thiserror",
  "uf_config",
