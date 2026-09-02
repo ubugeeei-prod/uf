@@ -1,5 +1,14 @@
 #![deny(missing_docs)]
 //! Native package manager for `uf install`, `uf upgrade`, and `@uniflowed/pm`.
+//!
+//! The crate has two halves. [`install_workspace`] and [`PackageManagerPlan`]
+//! describe uf's own resolver: `uf.lock` plus the content-addressed `.uf/store`.
+//! [`detect_package_manager`] and [`command_for`] let uf *interoperate* with a
+//! repository that already uses npm, pnpm, yarn, or bun, driving that manager
+//! instead of forcing a migration.
+
+pub mod command;
+pub mod detect;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -11,6 +20,29 @@ use serde_json::Value;
 use smallvec::SmallVec;
 use thiserror::Error;
 use uf_config::UniflowedConfig;
+
+pub use crate::command::{Invocation, InvocationArgs, Operation, PROGRAMS, command_for};
+pub use crate::detect::{
+    Detection, DetectionCandidate, DetectionCandidates, DetectionIssue, DetectionIssues,
+    DetectionOptions, DetectionOutcome, DetectionSource, Lockfile, LockfileList,
+    MAX_ANCESTOR_DEPTH, MAX_MANIFEST_BYTES, MAX_PACKAGE_MANAGER_FIELD_BYTES, ManifestFault,
+    PackageManager, PackageManagerFieldError, PackageManagerSpec, UnknownPackageManager, Version,
+    WorkspaceMarker, YarnEdition, detect_package_manager, detect_package_manager_with,
+    parse_package_manager_field, scan_lockfiles, yarn_edition_in,
+};
+
+/// JSON object keys that must never be treated as data.
+///
+/// A manifest that ships `__proto__`, `constructor`, or `prototype` is aiming at
+/// a JavaScript consumer's prototype chain (the `lodash.merge` CVE-2019-10744
+/// class); uf drops them everywhere it walks a JSON map.
+pub const POLLUTING_JSON_KEYS: [&str; 3] = ["__proto__", "constructor", "prototype"];
+
+/// Return whether `key` is a prototype-pollution key that must be ignored.
+#[must_use]
+pub fn is_polluting_json_key(key: &str) -> bool {
+    POLLUTING_JSON_KEYS.contains(&key)
+}
 
 /// Inline package list used for small workspaces without heap-heavy metadata.
 pub type PackageList = SmallVec<[WorkspacePackage; 8]>;
@@ -393,6 +425,11 @@ fn read_dependency_map(value: &Value, field: &str) -> BTreeMap<CompactString, Co
     };
 
     for (name, version) in object {
+        // A dependency map is untrusted manifest content; prototype-pollution keys
+        // never become dependency names.
+        if is_polluting_json_key(name) {
+            continue;
+        }
         if let Some(version) = version.as_str() {
             dependencies.insert(
                 name.as_str().to_compact_string(),
@@ -602,5 +639,63 @@ mod tests {
             error,
             PackageManagerError::ScriptsForbidden { .. }
         ));
+    }
+
+    #[test]
+    fn install_drops_prototype_pollution_dependency_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            root.join("package.json"),
+            r#"{
+  "name": "demo",
+  "dependencies": {
+    "__proto__": "1.0.0",
+    "constructor": "1.0.0",
+    "prototype": "1.0.0",
+    "@uniflowed/core": "latest"
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        let report = install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+        let dependencies = &report.packages[0].dependencies;
+        assert_eq!(dependencies.len(), 1);
+        assert!(dependencies.contains_key("@uniflowed/core"));
+        for key in POLLUTING_JSON_KEYS {
+            assert!(!dependencies.contains_key(key), "{key} survived");
+        }
+    }
+
+    #[test]
+    fn polluting_json_keys_are_recognised() {
+        assert!(is_polluting_json_key("__proto__"));
+        assert!(is_polluting_json_key("constructor"));
+        assert!(is_polluting_json_key("prototype"));
+        assert!(!is_polluting_json_key("dependencies"));
+        assert!(!is_polluting_json_key("__proto__x"));
+    }
+
+    #[test]
+    fn install_still_detects_the_native_resolver_afterwards() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(root.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+
+        install_workspace(&root, &UniflowedConfig::default()).unwrap();
+        let detection =
+            detect_package_manager_with(&root, &DetectionOptions::new().with_boundary(&root));
+
+        assert_eq!(detection.package_manager, PackageManager::Uf);
+        assert_eq!(
+            detection.source,
+            DetectionSource::Lockfile {
+                lockfile: Lockfile::UfLock,
+                path: root.join("uf.lock"),
+            }
+        );
     }
 }

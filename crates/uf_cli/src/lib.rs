@@ -16,7 +16,7 @@ use uf_lib::{
     tui_contract, ui_components, vrt_plan,
 };
 use uf_lint::{Severity, SourceFile, lint_sources};
-use uf_pm::{PackageManagerPlan, install_workspace};
+use uf_pm::{DetectionOptions, PackageManagerPlan, detect_package_manager_with, install_workspace};
 use uf_prepare::default_plan;
 use uf_project::{CreateKind, CreateOptions, collect_source_files, create_project};
 use uf_rm::{RuntimeManagerPlan, RuntimeReference, RuntimeUsePlan, XdgEnv, XdgLayout};
@@ -624,6 +624,15 @@ fn inspect(cwd: &Utf8Path, as_json: bool) -> Result<()> {
             "package manager: {:?} lockfile={}",
             resolved.config.pm.resolver, resolved.config.pm.lockfile
         );
+        let detection = detect_project_package_manager(&resolved);
+        println!(
+            "detected package manager: {} source={} ambiguous={} alternatives={} issues={}",
+            detection.package_manager,
+            detection.source.kind(),
+            detection.is_ambiguous(),
+            detection.alternatives.len(),
+            detection.issues.len()
+        );
         println!(
             "runtime manager: inferFromConfig={} module={}",
             resolved.config.rm.infer_from_config, resolved.config.rm.module
@@ -635,6 +644,18 @@ fn inspect(cwd: &Utf8Path, as_json: bool) -> Result<()> {
         println!("hooks: {}", hook_descriptors().len());
     }
     Ok(())
+}
+
+/// Infer which package manager drives the project, honouring `pm.packageManager`.
+///
+/// The walk starts at the resolved project root and is free to reach the nearest
+/// ancestor workspace root, which is how a package inside a pnpm or yarn monorepo
+/// inherits the manager its repository already uses.
+fn detect_project_package_manager(resolved: &ResolvedConfig) -> uf_pm::Detection {
+    detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    )
 }
 
 fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
@@ -658,6 +679,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
     let runtime = RuntimeContract::wintertc_hermes_native();
     let test_runner = NativeTestRunnerPlan::self_hosted();
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
+    let package_manager_detection = detect_project_package_manager(resolved);
     let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config);
 
     Ok(json!({
@@ -695,6 +717,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             },
             "testRunner": test_runner,
             "packageManager": package_manager,
+            "packageManagerDetection": package_manager_detection,
             "runtimeManager": runtime_manager,
             "reactCompiler": {
                 "enabled": resolved.config.app.builtins.react_compiler.enabled,
