@@ -28,7 +28,7 @@ jobs:
       - uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2
         with:
           baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
-          rust-toolchain: "1.98.0"
+          rust-toolchain: "nightly-2026-08-01"
           # cargo-semver-checks builds its baseline from a copy of each crate,
           # outside the workspace, where the relative path to the `upstream/flow`
           # submodule no longer resolves. A path dependency is relative by

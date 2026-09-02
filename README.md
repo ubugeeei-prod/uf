@@ -231,12 +231,10 @@ cargo test --workspace
 ```
 
 `tools/upstream/sync.sh` checks out only `rust_port/` from a shallow, blobless
-clone. Building `uf_flow` against that port is the `upstream-parser` feature; it
-needs nightly until the unstable `!` type reaches stable Rust:
-
-```sh
-cargo +nightly test --workspace --all-features
-```
+clone, and nothing builds without it: `uf` parses and type-checks Flow with that
+port and has no second backend. Flow's typing crates need
+`#![feature(box_patterns)]`, so `rust-toolchain.toml` pins the newest nightly
+that still accepts it.
 
 Distribution is configured for Cloudflare:
 

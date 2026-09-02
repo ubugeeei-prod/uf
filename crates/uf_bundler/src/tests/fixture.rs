@@ -138,17 +138,10 @@ pub(crate) fn chunk_named<'a>(output: &'a BundleOutput, prefix: &str) -> &'a cra
 /// property of the bytes rather than of a front end that shares this project's
 /// blind spot.
 pub(crate) fn assert_chunks_parse(output: &BundleOutput) {
-    uf_flow::prepare_thread().expect("parser ready");
-
     for chunk in &output.chunks {
         assert_no_jsx(&chunk.file_name, &chunk.code);
 
-        // A `Runtime` error is the QuickJS-hosted backend exhausting its own
-        // 256 kB budget, not a verdict on the chunk. The no-JSX check above
-        // has no such limit and runs either way.
-        let Ok(outcome) = uf_flow::validate_source(&chunk.code) else {
-            continue;
-        };
+        let outcome = uf_flow::validate_source(&chunk.code).expect("parser ran");
         assert!(
             outcome.is_ok(),
             "chunk {} does not parse: {:?}\n{}",
