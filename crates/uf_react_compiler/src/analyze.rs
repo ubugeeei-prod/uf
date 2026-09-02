@@ -35,6 +35,11 @@ pub(crate) struct Walk<'a> {
     props_frames: Vec<(usize, ParamList)>,
     /// Token indices at which an arrow's concise body ends, innermost last.
     concise_ends: Vec<usize>,
+    /// The body `{` of a declaration whose return type the walk is stepping over.
+    ///
+    /// Set by the `component`, `hook` and `function` declarations; see
+    /// [`crate::syntax::return_type_body`] for why a type must not be walked.
+    skip_until: Option<usize>,
 }
 
 /// Validate one module.
@@ -58,6 +63,7 @@ pub fn validate(source: &str) -> Result<Vec<ReactDiagnostic>, ReactCompilerError
         pending_props: None,
         props_frames: Vec::new(),
         concise_ends: Vec::new(),
+        skip_until: None,
     };
 
     for index in 0..tokens.len() {
@@ -65,6 +71,17 @@ pub fn validate(source: &str) -> Result<Vec<ReactDiagnostic>, ReactCompilerError
         while walk.concise_ends.last() == Some(&index) {
             walk.concise_ends.pop();
             walk.stack.close();
+        }
+
+        // A return type is not code: `hook useX(): [number, () => void] {` holds
+        // an `=>` that belongs to a type, and reading it as an arrow opened a
+        // frame the real body then sat inside — so every hook call in that body
+        // looked like it was outside a hook.
+        if let Some(body) = walk.skip_until {
+            if index < body {
+                continue;
+            }
+            walk.skip_until = None;
         }
 
         let token = &tokens[index];
