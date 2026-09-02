@@ -200,6 +200,43 @@ fn zero_config_defaults_to_flow_react_app_stack() {
 }
 
 #[test]
+fn parses_the_dev_server_access_control_surface() {
+    let source = r#"
+        export default defineConfig({
+          dev: {
+            port: 5173,
+            fs: {
+              allow: ["../shared"],
+              deny: ["*.secret"],
+            },
+            allowedHosts: ["dev.internal"],
+            allowedOrigins: ["http://dev.internal:5173"],
+          },
+        });
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(parsed.dev.fs.allow, vec!["../shared"]);
+    assert_eq!(parsed.dev.fs.deny, vec!["*.secret"]);
+    assert_eq!(parsed.dev.allowed_hosts, vec!["dev.internal"]);
+    assert_eq!(parsed.dev.allowed_origins, vec!["http://dev.internal:5173"]);
+}
+
+#[test]
+fn dev_server_access_control_defaults_to_nothing_extra() {
+    // The built-in deny list lives in `uf_devserver`, not here: configuring
+    // `dev.fs.deny` adds to it and cannot shrink it.
+    let dev = DevConfig::default();
+    assert_eq!(dev.host, "127.0.0.1");
+    assert!(dev.fs.allow.is_empty());
+    assert!(dev.fs.deny.is_empty());
+    assert!(dev.allowed_hosts.is_empty());
+    assert!(dev.allowed_origins.is_empty());
+}
+
+#[test]
 fn extracts_vite_style_define_config_object() {
     let source = r#"
         // @flow

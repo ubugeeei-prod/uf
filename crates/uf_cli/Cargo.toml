@@ -26,6 +26,7 @@ camino.workspace = true
 clap.workspace = true
 uf_bundle = { path = "../uf_bundle" }
 uf_config = { path = "../uf_config" }
+uf_devserver = { path = "../uf_devserver" }
 uf_effect = { path = "../uf_effect" }
 uf_flow = { path = "../uf_flow" }
 uf_fmt = { path = "../uf_fmt" }

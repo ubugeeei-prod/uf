@@ -81,7 +81,7 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
             commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Check, json)
         }
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
-        Commands::Dev { once } => commands::dev::dev(&cwd, ui, once),
+        Commands::Dev { host, once } => commands::dev::dev(&cwd, ui, host.as_deref(), once),
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
         Commands::Exec { package, args } => commands::task::exec_package(&cwd, ui, &package, &args),
         Commands::Fmt { check } => commands::fmt::fmt(&cwd, ui, check),
