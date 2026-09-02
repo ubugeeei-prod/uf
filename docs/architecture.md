@@ -88,6 +88,12 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
 `tools/upstream/sync.sh` checks those out too and asserts they arrived.
 
+The submodule costs one gate: `cargo-semver-checks` builds its baseline from
+a copy of each crate at a different depth, where `uf_flow`'s relative path to
+`upstream/flow` no longer resolves. `uf_flow` is excluded from that check
+rather than the check being switched off, and it is the crate whose public API
+moves least — the backends sit behind one `validate_source`.
+
 ## Flow And React
 
 The default app preset is Flow-first React. New app templates use Flow component

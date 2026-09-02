@@ -25,3 +25,9 @@ jobs:
         with:
           baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
           rust-toolchain: "1.98.0"
+          # `uf_flow` optionally path-depends on `upstream/flow`, and
+          # cargo-semver-checks builds its baseline from a copy of the crate at
+          # a different depth, where `../../upstream/...` no longer resolves.
+          # The relative path is not something the crate can fix, so the crate
+          # is excluded rather than the whole gate being turned off.
+          exclude: uf_flow
