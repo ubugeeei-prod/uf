@@ -54,7 +54,11 @@ pub struct FormatResult {
 }
 
 /// Why a source file could not be formatted.
+///
+/// Non-exhaustive: the formatter grows new guards over time, and a caller that
+/// matches every variant today should not break when the next one lands.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
 pub enum FormatError {
     /// `indentWidth` was zero, which cannot produce nested indentation.
     #[error("indent width must be greater than zero")]
@@ -188,6 +192,9 @@ pub(crate) const SOURCE_CORPUS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::lexer::{Token, TokenKind, tokenize};
+    use uf_config::QuoteStyle;
 
     /// A default config with `mutate` applied.
     ///
@@ -198,9 +205,6 @@ mod tests {
         mutate(&mut config);
         config
     }
-    use super::*;
-    use crate::lexer::{Token, TokenKind, tokenize};
-    use uf_config::QuoteStyle;
 
     fn format(source: &str) -> String {
         format_source(source, &FmtConfig::default())
