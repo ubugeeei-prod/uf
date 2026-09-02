@@ -423,14 +423,7 @@ fn analyze(source: &str, tokens: &[Token]) -> Analysis {
         let ternary_depth = frames
             .last()
             .map_or(root_ternary, |frame| frame.ternary_depth);
-        let role = role_of(
-            tokens,
-            index,
-            prev,
-            next_significant,
-            ternary_depth,
-            &angles,
-        );
+        let role = role_of(kind, angles[index], prev, next_significant, ternary_depth);
         let space_before = if prev.is_none() {
             false
         } else {
@@ -691,18 +684,15 @@ fn indent_for(
     level.min(MAX_INDENT_LEVELS)
 }
 
-/// Resolve the syntactic role of the token at `index`.
+/// Resolve the syntactic role of a token from its neighbours.
 fn role_of(
-    tokens: &[Token],
-    index: usize,
+    kind: TokenKind,
+    angle: Angle,
     prev: Option<Prev>,
     next: Option<TokenKind>,
     ternary_depth: u32,
-    angles: &[Angle],
 ) -> Role {
-    let kind = tokens[index].kind;
-
-    if angles[index] == Angle::Bracket {
+    if angle == Angle::Bracket {
         return if kind == TokenKind::Punctuator(Punctuator::Less) {
             Role::TypeAngleOpen
         } else {
