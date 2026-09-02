@@ -100,10 +100,11 @@ reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
 `tools/upstream/sync.sh` checks those out too and asserts they arrived.
 
 The submodule costs one gate: `cargo-semver-checks` builds its baseline from
-a copy of each crate at a different depth, where `uf_flow`'s relative path to
-`upstream/flow` no longer resolves. `uf_flow` is excluded from that check
-rather than the check being switched off, and it is the crate whose public API
-moves least — the backends sit behind one `validate_source`.
+a copy of each crate at a different depth, where the relative path to
+`upstream/flow` no longer resolves. `uf_flow` and `uf_check` are excluded from
+that check rather than the check being switched off, and they are the crates
+whose public API moves least — the parser backends sit behind one
+`validate_source`, and the checker behind one `check_sources`.
 
 ## Type Checking
 
