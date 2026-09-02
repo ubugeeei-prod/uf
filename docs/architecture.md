@@ -89,8 +89,11 @@ starts with platform split diagnostics for generic files that branch on
 Flow module surface. The initial package is declaration-first, then the runtime
 loader can map `@uniflowed/*` modules to native implementations.
 
-User-authored Flow source uses `.js` files with `// @flow`. Package declaration
-files may still use Flow's `.js.flow` convention when publishing typed modules.
+User-authored Flow source uses `.js` files with `// @flow`, and so do the
+published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
+A shipped module owns its own declarations, raises only when a native binding is
+actually called, and runs nothing at import time, so `"sideEffects": false` and
+per-subpath exports let a bundler drop everything an application never touches.
 
 Implemented native slices already cover:
 
