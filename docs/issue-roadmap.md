@@ -123,6 +123,7 @@
 ## P4: Build, Runtime, Package Manager, Publish
 
 - [ ] Wire `uf build` to Vite-compatible plugin semantics.
+- [x] Measure emitted bundle size and enforce `build.budgets` from `uf build`.
 - [x] Write native build manifest and generated router types from `uf build`.
 - [ ] Wire production builds to Rolldown where possible.
 - [ ] Wire `uf dev` to a Vite-compatible dev server.

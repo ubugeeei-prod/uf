@@ -6,6 +6,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
+pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
 
 pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
@@ -634,6 +635,7 @@ pub struct CacheConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct BuildConfig {
+    pub budgets: BundleBudgets,
     pub entries: Vec<CompactString>,
     pub hooks: BTreeMap<CompactString, TaskDefinition>,
     pub out_dir: CompactString,
@@ -644,6 +646,9 @@ pub struct BuildConfig {
 impl Default for BuildConfig {
     fn default() -> Self {
         Self {
+            // Budgets stay unset by default: failing a build nobody asked us to
+            // police is worse than reporting and moving on.
+            budgets: BundleBudgets::default(),
             entries: vec![CompactString::const_new("app.js")],
             hooks: BTreeMap::new(),
             out_dir: CompactString::const_new("dist"),
@@ -2056,5 +2061,56 @@ mod tests {
             resolved.config_path.unwrap().file_name(),
             Some("uf.config.js")
         );
+    }
+
+    #[test]
+    fn budgets_are_unset_by_default() {
+        assert!(UniflowedConfig::default().build.budgets.is_empty());
+    }
+
+    #[test]
+    fn reads_human_readable_budgets_from_the_config_object() {
+        let source = r#"
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  build: {
+    budgets: {
+      total: { max: "1.5 MB" },
+      initialJs: { max: "180kb" },
+      perAsset: { max: 250000, metric: "brotli" },
+    },
+  },
+});
+"#;
+        let object = extract_config_object(source).expect("config object");
+        let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+        let budgets = parsed.build.budgets;
+        assert_eq!(budgets.total.expect("total").max.bytes(), 1_500_000);
+        assert_eq!(budgets.initial_js.expect("initialJs").max.bytes(), 180_000);
+        let per_asset = budgets.per_asset.expect("perAsset");
+        assert_eq!(per_asset.max.bytes(), 250_000);
+        assert_eq!(per_asset.metric, BudgetMetric::Brotli);
+        assert_eq!(
+            budgets.initial_js.expect("initialJs").metric,
+            BudgetMetric::Gzip,
+            "gzip is the default metric"
+        );
+        assert!(budgets.per_route.is_none());
+    }
+
+    #[test]
+    fn rejects_a_budget_with_an_unparseable_size() {
+        let source = r#"
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  build: { budgets: { total: { max: "10 terabytes" } } },
+});
+"#;
+        let object = extract_config_object(source).expect("config object");
+
+        assert!(json5::from_str::<UniflowedConfig>(&object).is_err());
     }
 }

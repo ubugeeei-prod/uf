@@ -112,6 +112,7 @@ enables:
 - native stdlib modules for os, net, dns, path, stream, URL, wasm, glob, motion,
   TUI, cron, S3, SigV4, worker/lambda functions, uuid, and zip
 - all route, fetch, image, font, markdown, and PWA caches are opt-in
+- bundle size budgets in `build.budgets`, measured with real gzip and brotli
 - native query, effect, ORM, Relay, validator, and state/flow-cell builtin modules
 - React Compiler-safe motion primitives with reduced-motion defaults
 - OpenTUI-aligned native TUI framework targeting a React Ink replacement

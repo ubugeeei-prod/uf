@@ -24,6 +24,7 @@ path = "src/bin/ufx.rs"
 anyhow.workspace = true
 camino.workspace = true
 clap.workspace = true
+uf_bundle = { path = "../uf_bundle" }
 uf_config = { path = "../uf_config" }
 uf_effect = { path = "../uf_effect" }
 uf_flow = { path = "../uf_flow" }

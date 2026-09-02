@@ -9,6 +9,9 @@ use camino::{Utf8Path, Utf8PathBuf};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
+use uf_bundle::{
+    BudgetMetric, ReportOptions, build_report, collect_assets, evaluate, write_report,
+};
 use uf_config::{ResolvedConfig, TaskDefinition, load_config};
 use uf_fmt::format_source;
 use uf_lib::{
@@ -36,7 +39,10 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Build,
+    Build {
+        #[arg(long)]
+        size_report: bool,
+    },
     Check,
     Create {
         #[command(subcommand)]
@@ -151,7 +157,7 @@ fn run() -> Result<()> {
     let cwd = resolve_cwd(cli.cwd)?;
 
     match cli.command {
-        Commands::Build => build(&cwd),
+        Commands::Build { size_report } => build(&cwd, size_report),
         Commands::Check => check(&cwd),
         Commands::Create { command } => create(&cwd, command),
         Commands::Dev { once } => dev(&cwd, once),
@@ -206,7 +212,7 @@ fn current_dir() -> Result<Utf8PathBuf> {
         .map_err(|path| anyhow!("current directory is not UTF-8: {}", path.display()))
 }
 
-fn build(cwd: &Utf8Path) -> Result<()> {
+fn build(cwd: &Utf8Path, size_report: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
     let routes = discover_routes(&resolved.root, &resolved.config)?;
     let manifest = write_router_manifest(&resolved.root, &resolved.config)?;
@@ -272,7 +278,55 @@ fn build(cwd: &Utf8Path) -> Result<()> {
     if let Some(manifest) = manifest {
         println!("generated {}", manifest);
     }
+
+    report_bundle_size(&resolved, &out_dir, size_report)?;
+
     Ok(())
+}
+
+/// Measure the emitted assets, write the report, and enforce `build.budgets`.
+///
+/// Budgets are unset by default, so this is a report until a project opts in.
+/// Once it does, an overage is a build failure with every violation listed at
+/// once rather than one per CI run.
+fn report_bundle_size(resolved: &ResolvedConfig, out_dir: &Utf8Path, verbose: bool) -> Result<()> {
+    let assets = collect_assets(out_dir, &ReportOptions::default())?;
+    let report = build_report(assets, &[]);
+    let report_path = write_report(out_dir, &report)?;
+
+    println!(
+        "uf build: size assets={} raw={} gzip={} brotli={} report={}",
+        report.assets.len(),
+        report.total.raw,
+        report.total.gzip,
+        report.total.brotli,
+        report_path
+    );
+
+    if verbose {
+        for asset in report.largest_assets(BudgetMetric::Gzip).iter().take(20) {
+            println!(
+                "  {:>10} gzip  {:>10} raw  {} ({})",
+                asset.size.gzip.to_string(),
+                asset.size.raw.to_string(),
+                asset.path,
+                asset.kind.as_str()
+            );
+        }
+    }
+
+    let outcome = evaluate(&report, &resolved.config.build.budgets);
+    if outcome.is_within_budget() {
+        return Ok(());
+    }
+
+    for violation in &outcome.violations {
+        eprintln!("uf build: {violation}");
+    }
+    bail!(
+        "bundle size exceeded {} budget(s)",
+        outcome.violations.len()
+    );
 }
 
 fn check(cwd: &Utf8Path) -> Result<()> {
