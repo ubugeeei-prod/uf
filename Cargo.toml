@@ -18,6 +18,7 @@ members = [
   "crates/uf_motion",
   "crates/uf_orm",
   "crates/uf_package",
+  "crates/uf_plugin",
   "crates/uf_pm",
   "crates/uf_prepare",
   "crates/uf_project",

@@ -79,6 +79,20 @@ defaulting to `*`.
 | Shell injection through the `packageManager` field | Parsed by a hand-written single-pass parser with no regex (ReDoS), and `Invocation.program` comes only from a fixed program table, so no manifest text can name a program or inject an argument | `uf_pm::detect` |
 | Prototype-pollution keys in manifest JSON | `__proto__`, `constructor`, and `prototype` are reported and dropped wherever manifest JSON becomes a map | `uf_pm::detect` |
 
+## Config and plugins
+
+`uf.config.js` is checked into the repository a developer just cloned, so every
+value in it is hostile input. A plugin entry is the sharpest one: it decides
+what code the toolchain executes.
+
+| Past failure | Structural decision in `uf` | Test |
+| --- | --- | --- |
+| A config naming a plugin outside the project (`../../evil.js`, `/etc/…`, `~/…`, `file://…`) loads arbitrary code from the developer's machine | Plugin names are a closed grammar checked in one pass with no regex. Only a leading `./` names a file at all; absolute paths, URL schemes, drive letters, `~`, and `..` segments are typed errors, so there is exactly one place a config can reach the filesystem and it is guarded | `uf_plugin::resolve` |
+| Windows-only separator handling lets `..\..\evil.js` through a check that only understood `/` | `\` is refused as a path separator on **every** platform, never only on Windows | `uf_plugin::resolve` |
+| A symlink inside the project pointing out of it defeats a purely lexical containment check | The joined path is resolved and containment is re-checked against the canonical root, compared as path components rather than string prefixes | `uf_plugin::resolve` |
+| Unbounded config text as a denial-of-service or allocation vector | Plugin names have an explicit byte ceiling and control bytes are refused, so no config text reaches a resolver as a NUL- or newline-bearing string | `uf_plugin::resolve` |
+| A config plugin shadowing a built-in stage, silently replacing part of the toolchain | The `uf:` prefix is reserved, and two plugins with one name is a typed error that names both positions rather than a silent override | `uf_plugin::resolve` |
+
 ## Parser, formatter, linter, and test runner
 
 These read attacker-authored source text. The failure mode is denial of service
