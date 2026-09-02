@@ -2689,6 +2689,7 @@ dependencies = [
  "uf_config",
  "uf_flow",
  "uf_infra",
+ "uf_jsx",
  "uf_plugin",
  "uf_router",
  "uf_rsc",
@@ -2847,6 +2848,19 @@ dependencies = [
  "rustc-hash",
  "simdutf8",
  "smallvec",
+]
+
+[[package]]
+name = "uf_jsx"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "smallvec",
+ "thiserror",
+ "uf_config",
+ "uf_flow",
+ "uf_plugin",
 ]
 
 [[package]]

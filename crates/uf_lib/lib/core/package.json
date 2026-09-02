@@ -19,6 +19,7 @@
     "./graphql": "./graphql.js",
     "./hmr": "./hmr.js",
     "./hooks": "./hooks.js",
+    "./jsx-runtime": "./jsx-runtime.js",
     "./lib": "./lib.js",
     "./lint": "./lint.js",
     "./loader": "./loader.js",

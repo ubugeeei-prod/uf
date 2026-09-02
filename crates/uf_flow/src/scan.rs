@@ -17,6 +17,23 @@
 //! The scanner fails open. Anything it cannot lex confidently becomes
 //! [`TokenKind::Invalid`], and callers leave such regions alone rather than
 //! rewriting bytes nobody understood.
+//!
+//! # Two entry points, one scanner
+//!
+//! JSX is a *lexical mode*, not extra grammar: between `>` and `</` the same
+//! bytes that are operators in JavaScript are text, and `it's` is an
+//! apostrophe rather than the start of a string. So there are two entry points
+//! over one implementation.
+//!
+//! [`tokenize`] reads plain JavaScript and Flow. It is what
+//! [`strip`](crate::strip) uses, because Flow's `<T>` type parameters and
+//! JSX's `<div>` are the same two bytes and only one of those readings can be
+//! right for a source that still has types in it.
+//!
+//! [`tokenize_jsx`] adds the JSX modes, and is for source whose Flow types are
+//! already gone. It emits [`TokenKind::JsxText`] for the text between tags, so
+//! a caller can tell "this file still contains JSX" from the token stream
+//! rather than by searching for a `<`.
 
 /// What a token is, as far as byte scanning can tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,8 +52,31 @@ pub enum TokenKind {
     Arrow,
     /// A single punctuation byte.
     Punct(u8),
+    /// A run of JSX text between two tags, newlines and all.
+    ///
+    /// Only [`tokenize_jsx`] ever produces one.
+    JsxText,
+    /// The `<` that opens a JSX tag, closing tags and fragments included.
+    ///
+    /// Distinct from `Punct(b'<')` so a caller never has to re-derive the
+    /// "element or comparison" decision the scanner already made.
+    JsxTagOpen,
+    /// The `>` that closes a JSX tag.
+    JsxTagClose,
     /// An unterminated string, template or comment.
     Invalid,
+}
+
+impl TokenKind {
+    /// Whether this kind only ever appears in JSX.
+    ///
+    /// A token stream with none of these holds no JSX, which is how a build
+    /// checks that its output is JavaScript rather than by searching for a
+    /// `<` that might be a comparison.
+    #[must_use]
+    pub const fn is_jsx(self) -> bool {
+        matches!(self, Self::JsxText | Self::JsxTagOpen | Self::JsxTagClose)
+    }
 }
 
 /// One token, with the byte range it covers.
@@ -69,18 +109,71 @@ impl Token {
     }
 }
 
-/// Tokenize a module, skipping a BOM and a leading `#!` line.
+mod jsx;
+mod lexer;
+
+#[cfg(test)]
+mod tests;
+
+use jsx::{Frame, JsxMode, lex_children, lex_tag, step_frames};
+use lexer::{
+    block_comment_end, lex_token, line_end, line_terminator_width, skip_bom, whitespace_width,
+};
+
+/// Tokenize a module as JavaScript and Flow, skipping a BOM and a `#!` line.
+///
+/// `<` and `>` come out as ordinary punctuation, which is what a caller
+/// matching Flow type parameters needs. Use [`tokenize_jsx`] for source whose
+/// angle brackets are elements rather than types.
 pub fn tokenize(source: &str) -> Vec<Token> {
+    scan(source, JsxMode::Off)
+}
+
+/// Tokenize a module that may contain JSX.
+///
+/// Text between tags becomes [`TokenKind::JsxText`] rather than being lexed as
+/// JavaScript, so an apostrophe in `it's` is text and not the start of a
+/// string literal. Everything inside `{ … }` is lexed as JavaScript again, to
+/// any depth.
+///
+/// Whether a `<` opens an element or is a comparison is decided the same way
+/// a `/` is decided to be a regular expression: by whether the token before it
+/// can end an expression. That is a heuristic, and it is the same one every
+/// tool without a full parser uses; [`tokenize`] exists precisely so that
+/// callers who must not apply it do not have to.
+pub fn tokenize_jsx(source: &str) -> Vec<Token> {
+    scan(source, JsxMode::On)
+}
+
+fn scan(source: &str, jsx: JsxMode) -> Vec<Token> {
     let bytes = source.as_bytes();
     let mut tokens: Vec<Token> = Vec::with_capacity(bytes.len() / 6 + 8);
     let mut cursor = skip_bom(bytes);
     let mut newline_before = false;
+    let mut frames: Vec<Frame> = vec![Frame::Js { braces: 0 }];
 
     if bytes[cursor..].starts_with(b"#!") {
         cursor = line_end(bytes, cursor);
     }
 
     while cursor < bytes.len() {
+        let frame = *frames.last().unwrap_or(&Frame::Js { braces: 0 });
+
+        if frame == Frame::Children {
+            let start = cursor;
+            let kind = lex_children(bytes, &mut cursor, &mut frames);
+            if cursor > start {
+                tokens.push(Token {
+                    kind,
+                    start,
+                    end: cursor,
+                    newline_before,
+                });
+                newline_before = false;
+            }
+            continue;
+        }
+
         let byte = bytes[cursor];
 
         if let Some(width) = line_terminator_width(bytes, cursor) {
@@ -104,7 +197,10 @@ pub fn tokenize(source: &str) -> Vec<Token> {
         }
 
         let start = cursor;
-        let kind = lex_token(bytes, &mut cursor, tokens.last(), source);
+        let kind = match frame {
+            Frame::Tag { .. } => lex_tag(bytes, &mut cursor),
+            _ => lex_token(bytes, &mut cursor, tokens.last(), source),
+        };
         tokens.push(Token {
             kind,
             start,
@@ -112,247 +208,13 @@ pub fn tokenize(source: &str) -> Vec<Token> {
             newline_before,
         });
         newline_before = false;
+
+        if jsx == JsxMode::On {
+            step_frames(&mut frames, &mut tokens, source);
+        }
     }
 
     tokens
-}
-
-fn skip_bom(bytes: &[u8]) -> usize {
-    if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
-        3
-    } else {
-        0
-    }
-}
-
-/// Width in bytes of a line terminator at `at`, if there is one.
-///
-/// Handles LF, CR, CRLF and the two non-ASCII terminators U+2028 and U+2029.
-fn line_terminator_width(bytes: &[u8], at: usize) -> Option<usize> {
-    match bytes[at] {
-        b'\n' => Some(1),
-        b'\r' if bytes.get(at + 1) == Some(&b'\n') => Some(2),
-        b'\r' => Some(1),
-        0xe2 if bytes.get(at + 1) == Some(&0x80)
-            && matches!(bytes.get(at + 2), Some(0xa8 | 0xa9)) =>
-        {
-            Some(3)
-        }
-        _ => None,
-    }
-}
-
-/// Width in bytes of non-line-terminator whitespace at `at`, if there is any.
-fn whitespace_width(bytes: &[u8], at: usize) -> Option<usize> {
-    match bytes[at] {
-        b' ' | b'\t' | 0x0b | 0x0c => Some(1),
-        // U+00A0 NO-BREAK SPACE.
-        0xc2 if bytes.get(at + 1) == Some(&0xa0) => Some(2),
-        // U+FEFF, legal whitespace away from the BOM.
-        0xef if bytes.get(at + 1) == Some(&0xbb) && bytes.get(at + 2) == Some(&0xbf) => Some(3),
-        _ => None,
-    }
-}
-
-fn line_end(bytes: &[u8], from: usize) -> usize {
-    let mut cursor = from;
-    while cursor < bytes.len() && line_terminator_width(bytes, cursor).is_none() {
-        cursor += 1;
-    }
-    cursor
-}
-
-fn block_comment_end(bytes: &[u8], from: usize) -> (usize, bool) {
-    let mut cursor = from + 2;
-    let mut saw_newline = false;
-    while cursor < bytes.len() {
-        if line_terminator_width(bytes, cursor).is_some() {
-            saw_newline = true;
-        }
-        if bytes[cursor] == b'*' && bytes.get(cursor + 1) == Some(&b'/') {
-            return (cursor + 2, saw_newline);
-        }
-        cursor += 1;
-    }
-    (bytes.len(), saw_newline)
-}
-
-fn lex_token(bytes: &[u8], cursor: &mut usize, prev: Option<&Token>, source: &str) -> TokenKind {
-    let byte = bytes[*cursor];
-    match byte {
-        b'"' | b'\'' => lex_quoted(bytes, cursor, byte),
-        b'`' => lex_template(bytes, cursor),
-        b'0'..=b'9' => {
-            lex_number(bytes, cursor);
-            TokenKind::Number
-        }
-        b'.' if matches!(bytes.get(*cursor + 1), Some(b'0'..=b'9')) => {
-            lex_number(bytes, cursor);
-            TokenKind::Number
-        }
-        b'/' if regex_allowed(prev, source) => {
-            if lex_regex(bytes, cursor) {
-                TokenKind::Regex
-            } else {
-                *cursor += 1;
-                TokenKind::Punct(b'/')
-            }
-        }
-        b'=' if bytes.get(*cursor + 1) == Some(&b'>') => {
-            *cursor += 2;
-            TokenKind::Arrow
-        }
-        _ if is_ident_start(byte) => {
-            *cursor += 1;
-            while *cursor < bytes.len() && is_ident_part(bytes[*cursor]) {
-                *cursor += 1;
-            }
-            TokenKind::Ident
-        }
-        _ => {
-            *cursor += 1;
-            TokenKind::Punct(byte)
-        }
-    }
-}
-
-fn lex_quoted(bytes: &[u8], cursor: &mut usize, quote: u8) -> TokenKind {
-    let mut at = *cursor + 1;
-    while at < bytes.len() {
-        let byte = bytes[at];
-        if byte == b'\\' {
-            at += 2;
-            continue;
-        }
-        if byte == quote {
-            *cursor = at + 1;
-            return TokenKind::String;
-        }
-        if line_terminator_width(bytes, at).is_some() {
-            break;
-        }
-        at += 1;
-    }
-    *cursor = at.min(bytes.len());
-    TokenKind::Invalid
-}
-
-fn lex_template(bytes: &[u8], cursor: &mut usize) -> TokenKind {
-    let mut at = *cursor + 1;
-    let mut depth = 0usize;
-    while at < bytes.len() {
-        let byte = bytes[at];
-        if byte == b'\\' {
-            at += 2;
-            continue;
-        }
-        if depth == 0 && byte == b'`' {
-            *cursor = at + 1;
-            return TokenKind::Template;
-        }
-        if byte == b'$' && bytes.get(at + 1) == Some(&b'{') {
-            depth += 1;
-            at += 2;
-            continue;
-        }
-        if depth > 0 && byte == b'}' {
-            depth -= 1;
-        }
-        at += 1;
-    }
-    *cursor = bytes.len();
-    TokenKind::Invalid
-}
-
-fn lex_number(bytes: &[u8], cursor: &mut usize) {
-    let mut at = *cursor;
-    while at < bytes.len() {
-        let byte = bytes[at];
-        if byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'.' {
-            at += 1;
-            continue;
-        }
-        if (byte == b'+' || byte == b'-') && at > *cursor {
-            let previous = bytes[at - 1];
-            if previous == b'e' || previous == b'E' {
-                at += 1;
-                continue;
-            }
-        }
-        break;
-    }
-    *cursor = at;
-}
-
-/// Consume a regular-expression literal, reporting whether one was found.
-fn lex_regex(bytes: &[u8], cursor: &mut usize) -> bool {
-    let mut at = *cursor + 1;
-    let mut in_class = false;
-    while at < bytes.len() {
-        let byte = bytes[at];
-        if byte == b'\\' {
-            at += 2;
-            continue;
-        }
-        if line_terminator_width(bytes, at).is_some() {
-            return false;
-        }
-        match byte {
-            b'[' => in_class = true,
-            b']' => in_class = false,
-            b'/' if !in_class => {
-                at += 1;
-                while at < bytes.len() && is_ident_part(bytes[at]) {
-                    at += 1;
-                }
-                *cursor = at;
-                return true;
-            }
-            _ => {}
-        }
-        at += 1;
-    }
-    false
-}
-
-/// Whether a `/` here starts a regular expression rather than a division.
-///
-/// A `<` before the slash is excluded so `</div>` in JSX is never lexed as the
-/// start of a regular expression, which would swallow the rest of the line.
-fn regex_allowed(prev: Option<&Token>, source: &str) -> bool {
-    let Some(prev) = prev else {
-        return true;
-    };
-    match prev.kind {
-        TokenKind::Arrow => true,
-        TokenKind::Ident => matches!(
-            prev.text(source),
-            "await"
-                | "case"
-                | "delete"
-                | "do"
-                | "else"
-                | "in"
-                | "instanceof"
-                | "new"
-                | "of"
-                | "return"
-                | "throw"
-                | "typeof"
-                | "void"
-                | "yield"
-        ),
-        TokenKind::Punct(byte) => !matches!(byte, b')' | b']' | b'}' | b'<'),
-        _ => false,
-    }
-}
-
-fn is_ident_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_' || byte == b'$' || byte >= 0x80
-}
-
-fn is_ident_part(byte: u8) -> bool {
-    is_ident_start(byte) || byte.is_ascii_digit()
 }
 
 /// Index of the token closing the group opened at `position`.

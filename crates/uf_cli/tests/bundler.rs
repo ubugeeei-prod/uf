@@ -70,38 +70,128 @@ fn a_scaffolded_app_builds_into_javascript_chunks() {
     assert!(stdout.contains("bundled modules"), "{stdout}");
 }
 
-/// Every chunk the build emitted must be syntactically valid.
+/// Every chunk the build emitted must be **JavaScript**.
 ///
-/// The default parser backend hosts Flow's reference parser in QuickJS, which
-/// enforces a fixed 256 kB recursion budget of its own — see the module docs on
-/// `uf_flow`'s `quickjs` backend. A chunk that merges several modules and their
-/// nested JSX into one file can exhaust that budget, and the backend reports it
-/// as a *runtime* error rather than as a diagnostic. That is the parser giving
-/// up, not the chunk being wrong, so it is counted and reported separately: a
-/// diagnostic always fails the test, and at least one chunk has to parse.
+/// This test used to re-parse each chunk with `uf_flow::validate_source` and
+/// assert no diagnostics. That check was worthless: `validate_source` is a
+/// *Flow* parser, Flow's grammar includes JSX, and so it accepted output that
+/// no browser could load. The suite was self-consistent and the build was
+/// broken.
+///
+/// The replacement asks the concrete question instead. Nothing in this
+/// repository parses ES modules without also accepting JSX — the one front end
+/// uf has is Flow's — so the property is checked on the bytes: the chunk is
+/// re-scanned in JSX mode and must yield no JSX token at all.
+/// [`node_agrees_the_chunks_are_javascript`] adds a real ES-module parse on top
+/// where a Node binary is available.
 #[test]
-fn every_emitted_chunk_parses_as_javascript() {
+fn no_emitted_chunk_holds_jsx() {
     let dir = tempfile::tempdir().unwrap();
     build(dir.path());
 
-    // The runtime budgets its stack from wherever it was created, so it has to
-    // be created from a shallow frame before any parsing.
+    for (name, code) in chunks(dir.path()) {
+        let surviving: Vec<&str> = uf_flow::scan::tokenize_jsx(&code)
+            .iter()
+            .filter(|token| token.kind.is_jsx())
+            .map(|token| token.text(&code))
+            .take(4)
+            .collect();
+        assert!(
+            surviving.is_empty(),
+            "chunk {name} still holds JSX {surviving:?}\n{code}"
+        );
+    }
+}
+
+/// A second opinion from a JavaScript engine, when one is on `PATH`.
+///
+/// `node --check` over an `.mjs` copy is a real ES-module parse by an
+/// implementation that has never heard of Flow or of this project's
+/// assumptions. It is the check that caught the bug this test file now guards
+/// against, so it belongs in the suite rather than in someone's shell history.
+///
+/// Skipped, loudly, where Node is absent: the structural check above holds
+/// everywhere, and a test that silently disappears is how a suite starts lying
+/// again.
+#[test]
+fn node_agrees_the_chunks_are_javascript() {
+    let Some(node) = node_binary() else {
+        eprintln!("skipping: no `node` on PATH; no_emitted_chunk_holds_jsx still ran");
+        return;
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    build(dir.path());
+
+    let mut checked = 0usize;
+    for (name, code) in chunks(dir.path()) {
+        // Node reads `.js` as CommonJS unless a manifest says otherwise, and
+        // these chunks are ES modules.
+        let module = dir.path().join(format!("{name}.mjs"));
+        fs::write(&module, &code).unwrap();
+
+        let output = std::process::Command::new(&node)
+            .arg("--check")
+            .arg(&module)
+            .output()
+            .expect("node runs");
+        assert!(
+            output.status.success(),
+            "node rejects chunk {name}:\n{}\n--- chunk\n{code}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        checked += 1;
+    }
+
+    assert!(checked > 0, "the build emitted no chunks to check");
+}
+
+/// A `node` on `PATH`, if there is one.
+fn node_binary() -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join("node"))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Flow's own parser still has an opinion worth hearing: it catches malformed
+/// JavaScript that is also malformed Flow. It cannot catch surviving JSX, which
+/// is why it is no longer the only check.
+///
+/// The QuickJS-hosted backend budgets its stack from wherever its runtime was
+/// created and can exhaust that budget on a chunk merging several modules. That
+/// is the parser giving up rather than a verdict, so it is skipped rather than
+/// counted as a failure.
+#[test]
+fn the_flow_parser_finds_no_diagnostics_in_a_chunk() {
+    let dir = tempfile::tempdir().unwrap();
+    build(dir.path());
+
     uf_flow::prepare_thread().expect("parser ready");
 
-    let mut parsed = 0usize;
     for (name, code) in chunks(dir.path()) {
         let Ok(outcome) = uf_flow::validate_source(&code) else {
             continue;
         };
-        parsed += 1;
         assert!(
             outcome.is_ok(),
             "chunk {name} does not parse: {:?}\n{code}",
             outcome.diagnostics
         );
     }
+}
 
-    assert!(parsed > 0, "the parser backend could not run on any chunk");
+#[test]
+fn the_scaffolded_components_lower_to_runtime_calls() {
+    let dir = tempfile::tempdir().unwrap();
+    build(dir.path());
+
+    let lowered = chunks(dir.path())
+        .into_iter()
+        .filter(|(_, code)| code.contains("_jsx"))
+        .count();
+
+    assert!(lowered >= 2, "the app's components were not lowered");
 }
 
 #[test]
