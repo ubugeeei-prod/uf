@@ -15,6 +15,15 @@
 //! own graph. Describing Rolldown's output in terms of a graph uf no longer
 //! builds would be a translation layer that lies.
 
+// Rolldown's plugin list is `Vec<SharedPluginable>`, and `SharedPluginable` is
+// `Arc<dyn Pluginable>` — the reference counting is the dependency's API, not a
+// choice this module makes. It stops here: no `Arc` reaches this crate's public
+// types, which are plain owned data.
+#![allow(
+    clippy::disallowed_types,
+    reason = "Rolldown registers plugins as `Arc<dyn Pluginable>`"
+)]
+
 mod plugins;
 #[cfg(test)]
 mod tests;
