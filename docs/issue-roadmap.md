@@ -43,6 +43,8 @@
 - [x] Reserve `app/_uf.layout.js`.
 - [x] Reserve `app/_uf.page.js`.
 - [x] Reserve `app/_uf.middleware.js`.
+- [x] Define one reserved-name grammar, `_uf.<role>[.<variant>].js`, shared by
+      `uf create`, the router, and the linter.
 - [x] Generate `router.js` with route path and params types.
 - [ ] Enforce typed route guards and constraints.
 - [ ] Make Server Components the default.
