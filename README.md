@@ -1,6 +1,6 @@
 <div align="center">
   
-<img width="360" src="brand/uniflowed-logo.png" alt="uf logo">
+<img width="200" src="brand/uniflowed-mark.svg" alt="uf logo">
 
 # uf
 
