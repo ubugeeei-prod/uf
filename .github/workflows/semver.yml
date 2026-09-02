@@ -25,11 +25,16 @@ jobs:
         with:
           baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
           rust-toolchain: "1.98.0"
-          # `uf_flow` and `uf_check` optionally path-depend on `upstream/flow`,
-          # and cargo-semver-checks builds its baseline from a copy of the crate
-          # at a different depth, where `../../upstream/...` no longer resolves.
-          # The relative path is not something either crate can fix, so they are
-          # excluded rather than the whole gate being turned off. Both are also
-          # the crates whose public API moves least: one `validate_source`, and
-          # one `check_sources`.
-          exclude: uf_flow,uf_check
+          # cargo-semver-checks builds its baseline from a copy of each crate,
+          # outside the workspace, where the relative path to the `upstream/flow`
+          # submodule no longer resolves. A path dependency is relative by
+          # definition, so this is not something a crate can fix.
+          #
+          # `uf_flow` and `uf_check` name the submodule; the other three reach it
+          # transitively, and cargo resolves a path dependency whether or not the
+          # feature using it is enabled. Excluding them keeps 37 of 42 crates
+          # gated, which is worth more than switching the gate off.
+          #
+          # The list grows as more crates use the parser. See
+          # docs/architecture.md for what to do when it covers too little.
+          exclude: uf_bundler,uf_check,uf_cli,uf_flow,uf_lint
