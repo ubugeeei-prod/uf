@@ -65,18 +65,35 @@ fn flow_stripping_and_route_generation_run_first() {
     assert_eq!(BuiltinPlugin::Router.order(), HookOrder::Pre);
 }
 
+/// The React compiler is the last pass over component code *as written*, and
+/// JSX lowering is the one thing that may follow it.
+///
+/// Both are in the `Post` band, in that order, which is the order Babel uses:
+/// the compiler reads components with their JSX intact, and turning `<div/>`
+/// into `_jsx("div", {})` afterwards changes no data flow it reasoned about.
 #[test]
-fn the_react_compiler_runs_last() {
+fn the_react_compiler_runs_last_over_component_code() {
     assert_eq!(BuiltinPlugin::ReactCompiler.order(), HookOrder::Post);
+    assert_eq!(BuiltinPlugin::Jsx.order(), HookOrder::Post);
 
     let names = pipeline(&UniflowedConfig::default())
         .names()
         .map(str::to_string)
         .collect::<Vec<_>>();
 
+    let compiler = names
+        .iter()
+        .position(|name| name == BuiltinPlugin::ReactCompiler.name())
+        .expect("the react compiler");
+    let jsx = names
+        .iter()
+        .position(|name| name == BuiltinPlugin::Jsx.name())
+        .expect("the jsx stage");
+
+    assert!(compiler < jsx, "{names:?}");
     assert_eq!(
         names.last().map(String::as_str),
-        Some(BuiltinPlugin::ReactCompiler.name())
+        Some(BuiltinPlugin::Jsx.name())
     );
 }
 

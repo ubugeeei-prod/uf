@@ -70,8 +70,13 @@ fn a_directive_prologue_is_blanked_out_of_the_chunk() {
     fixture.keep();
 }
 
+/// JSX must be lowered by the time it reaches a chunk.
+///
+/// This test used to assert the opposite — that `<p>hello</p>` survived into
+/// the output — and passed, because the only check on the emitted code was a
+/// Flow parser, and Flow's grammar includes JSX. See `tests/lowering.rs`.
 #[test]
-fn jsx_survives_bundling() {
+fn jsx_is_lowered_before_it_reaches_a_chunk() {
     let mut fixture = Fixture::new();
     fixture.entry(
         "app.js",
@@ -80,7 +85,12 @@ fn jsx_survives_bundling() {
 
     let output = fixture.bundle();
 
-    assert!(output.chunks[0].code.contains("<p>hello</p>"));
+    let code = &output.chunks[0].code;
+    assert!(!code.contains("<p>hello</p>"), "{code}");
+    assert!(
+        code.contains("_jsx(\"p\", {children: \"hello\"})"),
+        "{code}"
+    );
     assert_chunks_parse(&output);
     fixture.keep();
 }

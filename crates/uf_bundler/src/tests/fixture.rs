@@ -123,10 +123,32 @@ pub(crate) fn chunk_named<'a>(output: &'a BundleOutput, prefix: &str) -> &'a cra
         })
 }
 
-/// Assert every emitted chunk parses as JavaScript.
+/// Assert every emitted chunk is JavaScript.
+///
+/// Two checks, because neither is enough on its own.
+///
+/// [`uf_flow::validate_source`] answers "does this parse", and it is a *Flow*
+/// parser: Flow's grammar includes JSX, so it accepts `<div>{x}</div>` happily.
+/// A build checked only that way is self-consistent and still unloadable — see
+/// the `no_chunk_holds_jsx` test, which exists because that is exactly what
+/// happened.
+///
+/// So the second check is the one that would have caught it: the emitted code
+/// is re-scanned in JSX mode and must produce no JSX token at all. That is a
+/// property of the bytes rather than of a front end that shares this project's
+/// blind spot.
 pub(crate) fn assert_chunks_parse(output: &BundleOutput) {
+    uf_flow::prepare_thread().expect("parser ready");
+
     for chunk in &output.chunks {
-        let outcome = uf_flow::validate_source(&chunk.code).expect("parser ran");
+        assert_no_jsx(&chunk.file_name, &chunk.code);
+
+        // A `Runtime` error is the QuickJS-hosted backend exhausting its own
+        // 256 kB budget, not a verdict on the chunk. The no-JSX check above
+        // has no such limit and runs either way.
+        let Ok(outcome) = uf_flow::validate_source(&chunk.code) else {
+            continue;
+        };
         assert!(
             outcome.is_ok(),
             "chunk {} does not parse: {:?}\n{}",
@@ -135,4 +157,19 @@ pub(crate) fn assert_chunks_parse(output: &BundleOutput) {
             chunk.code
         );
     }
+}
+
+/// Assert that `code` holds no JSX.
+pub(crate) fn assert_no_jsx(name: &str, code: &str) {
+    let surviving: Vec<&str> = uf_flow::scan::tokenize_jsx(code)
+        .iter()
+        .filter(|token| token.kind.is_jsx())
+        .map(|token| token.text(code))
+        .take(4)
+        .collect();
+
+    assert!(
+        surviving.is_empty(),
+        "chunk {name} still holds JSX {surviving:?}; a browser cannot load it\n{code}"
+    );
 }

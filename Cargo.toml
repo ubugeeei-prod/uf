@@ -13,6 +13,7 @@ members = [
   "crates/uf_fmt",
   "crates/uf_graphql",
   "crates/uf_infra",
+  "crates/uf_jsx",
   "crates/uf_lib",
   "crates/uf_lint",
   "crates/uf_loader",

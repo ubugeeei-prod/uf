@@ -11,17 +11,22 @@
 //! | `uf:flow` | erases Flow types with [`uf_flow::strip_types`] |
 //! | `uf:router` | resolves and generates the virtual route table |
 //! | `uf:rsc` | blanks the `"use client"` / `"use server"` prologue |
+//! | `uf:jsx` | lowers JSX with [`uf_jsx::transform`] |
 //! | `uf:asset` | resolves non-JavaScript imports to a URL module |
-//! | `uf:style` | placed, and not yet extracting StyleX |
-//! | `uf:react-compiler` | placed, and not yet compiling |
+//! | `uf:style` | placed; `uf_stylex::plugin` is not connected here yet |
+//! | `uf:react-compiler` | placed; `uf_react_compiler::plugin` likewise |
 //!
 //! The last two are honest gaps rather than hidden ones: the descriptors are in
-//! the container, in the right band, and the transform they will own is empty.
+//! the container, in the right band, and both crates now ship the transform
+//! that belongs behind them — connecting them needs a place for a stylesheet
+//! and for findings to go, which is a change to the build rather than to this
+//! table.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
 use uf_config::{PipelineMode, UniflowedConfig};
 use uf_flow::scan::{TokenKind, starts_statement, tokenize};
+use uf_jsx::JsxOptions;
 use uf_plugin::{
     BuiltinPlugin, BuiltinSet, ContainerError, FnPlugin, HookFailure, HookOutcome, ModuleCode,
     Plugin, PluginContainer, ResolvedId, resolve_project_plugins,
@@ -65,7 +70,7 @@ pub fn build_pipeline(
     let mut plugins: Vec<Box<dyn Plugin>> = Vec::new();
 
     for builtin in BuiltinSet::from_config(config).iter() {
-        plugins.push(wire(builtin, root, routes));
+        plugins.push(wire(builtin, config, root, routes));
     }
     for descriptor in resolve_project_plugins(config, root)? {
         plugins.push(Box::new(FnPlugin::new(descriptor)));
@@ -75,10 +80,16 @@ pub fn build_pipeline(
 }
 
 /// Give one built-in descriptor the closure that does its work.
-fn wire(builtin: BuiltinPlugin, root: &Utf8Path, routes: &[Route]) -> Box<dyn Plugin> {
+fn wire(
+    builtin: BuiltinPlugin,
+    config: &UniflowedConfig,
+    root: &Utf8Path,
+    routes: &[Route],
+) -> Box<dyn Plugin> {
     let descriptor = builtin.descriptor();
     match builtin {
         BuiltinPlugin::Flow => Box::new(FnPlugin::new(descriptor).on_transform(strip_flow)),
+        BuiltinPlugin::Jsx => Box::new(uf_jsx::plugin(JsxOptions::from_config(config))),
         BuiltinPlugin::Router => {
             let table = route_table(routes);
             Box::new(
