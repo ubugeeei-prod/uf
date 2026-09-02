@@ -1002,3 +1002,43 @@ fn build_size_report_flag_lists_the_largest_assets() {
     assert!(listed[0].contains("assets/large.js"), "{stdout}");
     assert!(listed[1].contains("assets/small.js"), "{stdout}");
 }
+
+/// A project `uf create` generates must pass `uf lint` without router errors.
+///
+/// The scaffold emits `_uf.page.native.js` and `_uf.page.test.js`, and
+/// `router/reserved-files` used to reject both — so a freshly created project
+/// failed its own linter on the first command a user runs after `create`.
+#[test]
+fn a_scaffolded_app_has_no_reserved_router_file_errors() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let created = Command::cargo_bin("uf")
+        .unwrap()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["create", "app", "react"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    assert!(dir.path().join("app/_uf.page.native.js").exists());
+    assert!(dir.path().join("app/_uf.page.test.js").exists());
+
+    let output = Command::cargo_bin("uf")
+        .unwrap()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("lint")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let reserved = stdout
+        .lines()
+        .filter(|line| line.contains("router/reserved-files"))
+        .collect::<Vec<_>>();
+    assert!(reserved.is_empty(), "{reserved:?}");
+}
