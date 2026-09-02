@@ -51,14 +51,14 @@ fn parallel_and_sequential_linting_agree() {
     assert_eq!(parallel.files_checked, 2);
 }
 
-/// Regression test for the QuickJS stack-budget trap.
+/// Linting a real number of files in parallel reports nothing but the truth.
 ///
-/// Before `uf_flow::prepare_thread` was broadcast to the pool, linting a few
-/// hundred perfectly valid files in parallel failed with
-/// `Flow parser runtime error: SyntaxError: stack overflow`, because rayon ran
-/// later jobs several frames deeper than the one that created each worker's
-/// parser. The failure scaled with parallelism rather than with input size, so
-/// a small project never saw it and a real one always did.
+/// A JavaScript-hosted parser used to sit behind this, budgeting its stack from
+/// wherever its runtime happened to be created; linting a few hundred valid
+/// files in parallel then failed with `SyntaxError: stack overflow`, scaling
+/// with parallelism rather than input size, so a small project never saw it and
+/// a real one always did. The Flow Rust port parses on the calling stack and
+/// has no such budget — this holds that line.
 #[test]
 fn lints_hundreds_of_files_in_parallel_without_exhausting_the_parser_stack() {
     let config = UniflowedConfig::default();

@@ -49,39 +49,47 @@ manager performance, and integrated feature coverage.
 
 ## Flow Syntax Authority
 
-`uf` never reimplements Flow's grammar. `uf_flow` is a thin adapter over exactly
-one backend at a time:
+`uf` never reimplements Flow's grammar, and it does not host one either.
+`uf_flow` is a thin adapter over exactly one backend: Meta's Flow Rust port at
+`upstream/flow/rust_port/crates/flow_parser`, vendored through the
+`upstream/flow` submodule. It is the same code Flow itself runs, and it parses
+`component`/`hook`/`renders`/`match`, modern variance (`readonly`, `in`, `out`)
+and `extends` bounds natively.
 
-| Backend | Feature | Toolchain | Notes |
-| --- | --- | --- | --- |
-| Meta's Flow Rust port | `upstream-parser` | nightly | `upstream/flow/rust_port/crates/flow_parser`, parses `component`/`hook`/`renders`/`match` natively |
-| Reference parser in QuickJS | `official-parser` (default) | 1.98.0 | Flow's OCaml parser compiled to JavaScript, needs source rewriting for component syntax |
-| Guard | none | any | compile error surface only, no real grammar |
+There is no second backend and no feature flag selecting one. A build of `uf`
+that spoke a different dialect would make `uf lint` and `uf check` disagree with
+the grammar uf documents, which is exactly what happened while a QuickJS-hosted
+build of Flow's JavaScript parser stood in for the port on stable toolchains:
 
-The upstream port is the target: it is the same code Flow itself runs, it is
-native Rust rather than JavaScript interpreted in an embedded engine, and it
-removes the `quick-js` C dependency from the release binary. It is gated behind a
-feature only because the port still uses the unstable `!` type, so it needs
-nightly for now. Both real backends report
-`ParserKind::OfficialFlowParser` because they implement the same grammar;
-`active_backend()` reports which implementation a build selected, and
-`upstream-parser` always wins when both are enabled.
+- it predated component syntax, so `uf` rewrote the user's source before parsing
+  and reported every diagnostic against the rewritten text;
+- its AST deserialization predated `readonly`, so writing the only spelling Flow
+  accepts for a read-only property crashed `uf lint`;
+- it budgeted a 256 kB stack from wherever its runtime was created, so linting a
+  few hundred valid files in parallel failed as `SyntaxError: stack overflow` —
+  scaling with parallelism rather than input size.
+
+Removing it also removes an embedded JavaScript engine, and the `libquickjs-sys`
+C dependency with it, from the release binary.
 
 ### What the port can and cannot give us yet
 
 Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
 
-- **The parser works, and its nightly requirement is expiring.** `flow_parser`'s
-  only unstable feature is `never_type`, and that compiler already reports it as
-  *stable since 1.100.0-nightly*. When the toolchain pin reaches 1.100 stable,
-  `upstream-parser` becomes the default with no nightly involved — a one-line
-  change to `uf_flow`'s default features.
+- **The parser's own nightly requirement is expiring.** `flow_parser`'s only
+  unstable feature is `never_type`, and that compiler already reports it as
+  *stable since 1.100.0-nightly*. The type checker below is what keeps the
+  whole workspace on a pinned nightly.
 - **The type checker builds and runs, on a pinned nightly.** 23 crates in the
   port, including `flow_common` and everything under `flow_typing*`, declare
   `#![feature(box_patterns)]`, and that feature was *removed* from the compiler
   around the 2026-09-01 nightly — so the typing crates fail on the floating
   `nightly` channel. They compile on `nightly-2026-08-01` (rustc 1.99.0-nightly),
-  which is what the type-check feature pins.
+  which is what `rust-toolchain.toml` pins for the whole workspace. The pin is
+  not a preference: `uf` parses and type-checks Flow with the official port, and
+  no stable toolchain can build it. The `Upstream Flow` CI job builds the parser
+  on the floating channel as an early warning, so the pin moves deliberately
+  rather than being discovered when it breaks.
 
   Measured on that toolchain: Flow's builtin library definitions merge into a
   master context in **68 ms** (once, then cached), and checking a file costs

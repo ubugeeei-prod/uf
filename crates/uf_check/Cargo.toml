@@ -9,12 +9,12 @@ repository.workspace = true
 authors.workspace = true
 
 [features]
-default = []
+default = ["upstream-typecheck"]
 # Run Flow's own type inference from the `upstream/flow` submodule.
 #
-# Off by default: the typing crates in the port declare `#![feature(box_patterns)]`,
-# so they build only on a nightly old enough to still accept it. See
-# `docs/architecture.md` for the pinned date and why it is pinned.
+# On by default: `uf check` is Flow's checker. The typing crates declare
+# `#![feature(box_patterns)]`, so they need the nightly `rust-toolchain.toml`
+# pins. See `docs/architecture.md`.
 upstream-typecheck = [
   "dep:dupe",
   "dep:flow_aloc",
