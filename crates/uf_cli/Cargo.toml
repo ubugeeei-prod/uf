@@ -31,6 +31,7 @@ uf_flow = { path = "../uf_flow" }
 uf_fmt = { path = "../uf_fmt" }
 uf_lib = { path = "../uf_lib" }
 uf_lint = { path = "../uf_lint" }
+uf_plugin = { path = "../uf_plugin" }
 uf_pm = { path = "../uf_pm" }
 uf_prepare = { path = "../uf_prepare" }
 uf_project = { path = "../uf_project" }

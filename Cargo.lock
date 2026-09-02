@@ -1473,6 +1473,7 @@ dependencies = [
  "uf_fmt",
  "uf_lib",
  "uf_lint",
+ "uf_plugin",
  "uf_pm",
  "uf_prepare",
  "uf_project",
@@ -1644,6 +1645,22 @@ dependencies = [
  "compact_str",
  "serde",
  "smallvec",
+]
+
+[[package]]
+name = "uf_plugin"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "compact_str",
+ "criterion",
+ "json5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "uf_config",
+ "uf_infra",
 ]
 
 [[package]]
