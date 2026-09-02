@@ -633,6 +633,14 @@ fn inspect(cwd: &Utf8Path, as_json: bool) -> Result<()> {
         println!("ui components: {}", ui_components().len());
         println!("tui components: {}", tui_contract().components.len());
         println!("hooks: {}", hook_descriptors().len());
+        println!(
+            "lint rules: {} ({} need the type checker)",
+            uf_lint::rules().len(),
+            uf_lint::rules()
+                .iter()
+                .filter(|descriptor| !descriptor.requirement.is_available())
+                .count()
+        );
     }
     Ok(())
 }
@@ -671,6 +679,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         "tui": tui_contract(),
         "vrt": vrt_plan(),
         "hooks": hook_descriptors(),
+        "lintRules": uf_lint::rules(),
         "ui": ui_components(),
         "engines": {
             "parser": "official-flow-parser",
@@ -903,10 +912,23 @@ fn print_lint_report(report: &uf_lint::LintReport) {
             diagnostic.message
         );
     }
+    if !report.unavailable.is_empty() {
+        let names = report
+            .unavailable
+            .iter()
+            .map(|unavailable| unavailable.rule)
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!(
+            "note: {} enabled rule(s) need Flow type inference, which uf does not implement yet: {names}",
+            report.unavailable.len()
+        );
+    }
     println!(
-        "uf lint: checked {} file(s), {} diagnostic(s)",
+        "uf lint: checked {} file(s), {} diagnostic(s), {} rule(s) not yet available",
         report.files_checked,
-        report.diagnostics.len()
+        report.diagnostics.len(),
+        report.unavailable.len()
     );
 }
 
