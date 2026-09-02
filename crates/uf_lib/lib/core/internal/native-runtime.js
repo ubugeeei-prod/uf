@@ -48,6 +48,32 @@ export type NativeHandleCovariant<Name: string, +T> = {
 };
 
 /**
+ * Phantom carrier for a handle with two covariant type parameters.
+ *
+ * Same guarantee as `NativeHandleCovariant`, for a handle that tracks two
+ * things at once — a fiber's success and failure types, say.
+ */
+export type NativeHandleCovariant2<Name: string, +A, +B> = {
+  +__ufNative: Name,
+  +__ufFirst: () => A,
+  +__ufSecond: () => B,
+};
+
+/**
+ * Phantom carrier for a handle with three covariant type parameters.
+ *
+ * An effect tracks what it produces, how it fails, and what it needs; each sits
+ * behind a function that returns it, which is what makes all three covariant
+ * rather than merely declared so.
+ */
+export type NativeHandleCovariant3<Name: string, +A, +B, +C> = {
+  +__ufNative: Name,
+  +__ufFirst: () => A,
+  +__ufSecond: () => B,
+  +__ufThird: () => C,
+};
+
+/**
  * Raised when a `@uniflowed/*` binding is reached outside the uf native runtime.
  *
  * The message names both the subpath and the binding, so a caller sees
