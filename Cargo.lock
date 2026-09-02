@@ -1480,6 +1480,7 @@ dependencies = [
  "uf_router",
  "uf_rsc",
  "uf_runtime",
+ "uf_term",
  "uf_test",
  "uf_tui",
 ]
@@ -1778,6 +1779,13 @@ name = "uf_temporal"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "uf_term"
+version = "0.1.0"
+dependencies = [
+ "criterion",
 ]
 
 [[package]]

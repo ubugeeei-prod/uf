@@ -1,0 +1,223 @@
+//! `uf prepare`, `uf publish`, and `uf release`: the plans written to `.uf`.
+
+use std::fs;
+
+use anyhow::{Context, Result, anyhow, bail};
+use camino::Utf8Path;
+use serde_json::json;
+use uf_config::load_config;
+use uf_prepare::default_plan;
+use uf_router::write_router_manifest;
+use uf_term::{KeyValue, Status, Tone};
+
+use crate::cli::ReleaseBump;
+use crate::support::{enabled, project_label, write_json_file, yes_no};
+use crate::ui::Ui;
+
+pub(crate) fn prepare(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let plan = default_plan();
+    let router_manifest = write_router_manifest(&resolved.root, &resolved.config)?;
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("prepare.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "routerManifest": router_manifest,
+            "lintStagedCompatible": plan.lint_staged_compatible,
+            "codeGenerator": plan.code_generator,
+            "writeGeneratedFiles": plan.write_generated_files,
+            "cache": format!("{:?}", plan.cache),
+            "steps": plan.steps.iter().map(|step| format!("{step:?}")).collect::<Vec<_>>(),
+        }),
+    )?;
+
+    let root = resolved.root.as_str().to_string();
+    let manifest_path = manifest.to_string();
+    let cache = format!("{:?}", plan.cache);
+    let steps = plan
+        .steps
+        .iter()
+        .map(|step| format!("{step:?}"))
+        .collect::<Vec<_>>();
+    let step_labels = steps.iter().map(String::as_str).collect::<Vec<_>>();
+
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf prepare", Some(project_label(&resolved.root)));
+        renderer.blank(out);
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::toned("root", &root, Tone::Path),
+                KeyValue::toned("manifest", &manifest_path, Tone::Path),
+                KeyValue::new(
+                    "lint-staged compatible",
+                    yes_no(plan.lint_staged_compatible),
+                ),
+                KeyValue::new("code generator", enabled(plan.code_generator)),
+                KeyValue::new("cache", &cache),
+            ],
+        );
+        renderer.blank(out);
+        renderer.heading(out, 2, "steps");
+        renderer.bullet_list(out, 4, &step_labels);
+        renderer.blank(out);
+        renderer.status(out, Status::Success, "prepare plan written");
+    });
+    Ok(())
+}
+
+pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("publish.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "registry": resolved.config.publish.registry.as_str(),
+            "dryRun": resolved.config.publish.dry_run,
+            "firstPublish": {
+                "mode": resolved.config.publish.first_publish.mode,
+                "localBootstrap": resolved.config.publish.first_publish.local_bootstrap,
+            },
+            "trustedPublish": {
+                "provider": resolved.config.publish.trusted_publish.provider,
+                "tokenless": resolved.config.publish.trusted_publish.tokenless,
+                "trigger": resolved.config.publish.trusted_publish.trigger,
+            },
+        }),
+    )?;
+
+    let registry = resolved.config.publish.registry.to_string();
+    let first_publish = format!("{:?}", resolved.config.publish.first_publish.mode);
+    let provider = format!("{:?}", resolved.config.publish.trusted_publish.provider);
+    let trigger = format!("{:?}", resolved.config.publish.trusted_publish.trigger);
+    let manifest_path = manifest.to_string();
+
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf publish", Some(&registry));
+        renderer.blank(out);
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::toned("registry", &registry, Tone::Accent),
+                KeyValue::new("dry run", yes_no(resolved.config.publish.dry_run)),
+                KeyValue::new("first publish", &first_publish),
+                KeyValue::new(
+                    "local bootstrap",
+                    yes_no(resolved.config.publish.first_publish.local_bootstrap),
+                ),
+                KeyValue::new("trusted provider", &provider),
+                KeyValue::new(
+                    "tokenless",
+                    yes_no(resolved.config.publish.trusted_publish.tokenless),
+                ),
+                KeyValue::new("trigger", &trigger),
+                KeyValue::toned("manifest", &manifest_path, Tone::Path),
+            ],
+        );
+        renderer.blank(out);
+        renderer.status(out, Status::Success, "publish plan written");
+    });
+    Ok(())
+}
+
+pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let current_version = env!("CARGO_PKG_VERSION");
+    let next_version = bump_semver(current_version, bump)?;
+    let tag = format!("{}{}", resolved.config.release.tag_prefix, next_version);
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("release.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "bump": format!("{bump:?}"),
+            "currentVersion": current_version,
+            "nextVersion": next_version,
+            "tag": tag,
+            "command": resolved.config.release.command.as_str(),
+            "publish": resolved.config.release.publish,
+            "trustedTrigger": resolved.config.publish.trusted_publish.trigger,
+        }),
+    )?;
+
+    let bump_label = format!("{bump:?}");
+    let command = resolved.config.release.command.to_string();
+    let trigger = format!("{:?}", resolved.config.publish.trusted_publish.trigger);
+    let manifest_path = manifest.to_string();
+    let summary = format!("release {tag} planned");
+
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf release", Some(&tag));
+        renderer.blank(out);
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::new("bump", &bump_label),
+                KeyValue::new("current version", current_version),
+                KeyValue::toned("next version", &next_version, Tone::Accent),
+                KeyValue::toned("tag", &tag, Tone::Accent),
+                KeyValue::new("command", &command),
+                KeyValue::new("publish", yes_no(resolved.config.release.publish)),
+                KeyValue::new("trusted trigger", &trigger),
+                KeyValue::toned("manifest", &manifest_path, Tone::Path),
+            ],
+        );
+        renderer.blank(out);
+        renderer.status(out, Status::Success, &summary);
+    });
+    Ok(())
+}
+
+fn bump_semver(version: &str, bump: ReleaseBump) -> Result<String> {
+    let mut parts = version.split('.');
+    let major = parse_semver_part(parts.next(), "major")?;
+    let minor = parse_semver_part(parts.next(), "minor")?;
+    let patch = parse_semver_part(parts.next(), "patch")?;
+    if parts.next().is_some() {
+        bail!("version {version:?} is not a three-part semver");
+    }
+
+    let next = match bump {
+        ReleaseBump::Patch => (major, minor, patch + 1),
+        ReleaseBump::Minor => (major, minor + 1, 0),
+        ReleaseBump::Major => (major + 1, 0, 0),
+    };
+    Ok(format!("{}.{}.{}", next.0, next.1, next.2))
+}
+
+fn parse_semver_part(part: Option<&str>, name: &str) -> Result<u64> {
+    let part = part.ok_or_else(|| anyhow!("version is missing {name}"))?;
+    part.parse()
+        .with_context(|| format!("version {name} part {part:?} is not numeric"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_bump_moves_the_right_component() {
+        assert_eq!(bump_semver("1.2.3", ReleaseBump::Patch).unwrap(), "1.2.4");
+        assert_eq!(bump_semver("1.2.3", ReleaseBump::Minor).unwrap(), "1.3.0");
+        assert_eq!(bump_semver("1.2.3", ReleaseBump::Major).unwrap(), "2.0.0");
+    }
+
+    #[test]
+    fn a_malformed_version_is_rejected() {
+        assert!(bump_semver("1.2", ReleaseBump::Patch).is_err());
+        assert!(bump_semver("1.2.3.4", ReleaseBump::Patch).is_err());
+        assert!(bump_semver("1.2.x", ReleaseBump::Patch).is_err());
+        assert!(bump_semver("", ReleaseBump::Patch).is_err());
+    }
+}

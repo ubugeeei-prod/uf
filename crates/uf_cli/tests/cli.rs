@@ -1,18 +1,19 @@
+//! End-to-end coverage for the commands that scaffold, build, and serve.
+
+mod support;
+
 use std::fs;
 
-use assert_cmd::Command;
+use support::{assert_plain, binary, create_app, uf};
 
 #[test]
 fn uf_prints_help() {
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--help")
-        .output()
-        .unwrap();
+    let output = uf().arg("--help").output().unwrap();
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Unified Toolchain for Flow (React)"));
+    assert!(stdout.contains("--color"));
 }
 
 #[test]
@@ -30,8 +31,7 @@ fn ufr_alias_runs_config_task() {
     )
     .unwrap();
 
-    let output = Command::cargo_bin("ufr")
-        .unwrap()
+    let output = binary("ufr")
         .arg("--cwd")
         .arg(dir.path())
         .arg("hello")
@@ -43,15 +43,18 @@ fn ufr_alias_runs_config_task() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), "alias-ok");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "alias-ok",
+        "a task owns stdout; uf must not render onto it"
+    );
 }
 
 #[test]
 fn ufx_alias_runs_uniflowed_create_package() {
     let dir = tempfile::tempdir().unwrap();
 
-    let output = Command::cargo_bin("ufx")
-        .unwrap()
+    let output = binary("ufx")
         .arg("--cwd")
         .arg(dir.path())
         .args(["@uniflowed/create", "app"])
@@ -64,10 +67,10 @@ fn ufx_alias_runs_uniflowed_create_package() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("ufx: package=@uniflowed/create"));
-    assert!(stdout.contains("resolver=UfNative"));
+    assert!(stdout.contains("ufx  @uniflowed/create"));
+    assert!(stdout.contains("UfNative"));
     assert!(stdout.contains("exec-cache"));
-    assert!(stdout.contains("created 12 file"));
+    assert!(stdout.contains("created 12 files"));
     assert!(dir.path().join("app.js").exists());
     assert!(
         dir.path()
@@ -81,18 +84,8 @@ fn creates_react_app_from_cli() {
     let dir = tempfile::tempdir().unwrap();
     let app = dir.path().join("app");
 
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .args(["create", "app", "react"])
-        .arg(&app)
-        .output()
-        .unwrap();
+    let stdout = create_app(&app);
 
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
     assert!(app.join("app.js").exists());
     assert!(app.join("uf.config.js").exists());
     assert!(app.join("app/_uf.page.js").exists());
@@ -101,33 +94,25 @@ fn creates_react_app_from_cli() {
 
     let package = fs::read_to_string(app.join("package.json")).unwrap();
     assert!(!package.contains(r#""scripts""#));
+
+    // The generated files are shown as a tree, not as a flat count.
+    assert!(stdout.contains("uf create"));
+    assert!(stdout.contains("├─ app"));
+    assert!(stdout.contains("│  ├─ client"));
+    assert!(stdout.contains("└─ uf.config.js"));
+    assert!(stdout.contains("next steps"));
+    assert!(stdout.contains("1. cd app"));
+    assert!(stdout.contains("2. uf install"));
+    assert!(stdout.contains("3. uf dev"));
+    assert!(stdout.contains("✓ created 12 files"));
 }
 
 #[test]
-fn build_writes_native_manifest_and_router_types() {
+fn creating_a_library_suggests_running_its_tests() {
     let dir = tempfile::tempdir().unwrap();
-    let app = dir.path().join("app");
+    let lib = dir.path().join("kit");
 
-    let create = Command::cargo_bin("uf")
-        .unwrap()
-        .args(["create", "app", "react"])
-        .arg(&app)
-        .output()
-        .unwrap();
-
-    assert!(
-        create.status.success(),
-        "{}",
-        String::from_utf8_lossy(&create.stderr)
-    );
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(&app)
-        .arg("build")
-        .output()
-        .unwrap();
+    let output = uf().args(["create", "lib"]).arg(&lib).output().unwrap();
 
     assert!(
         output.status.success(),
@@ -135,8 +120,52 @@ fn build_writes_native_manifest_and_router_types() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("backend=uf-native/vite-compatible/rolldown-compatible"));
+    assert!(stdout.contains("3. uf test"));
+}
+
+#[test]
+fn creating_over_an_existing_project_reports_the_conflict_on_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf()
+        .args(["create", "app", "react"])
+        .arg(&app)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.starts_with("error: "), "{stderr}");
+    assert!(stderr.contains("--force"));
+}
+
+#[test]
+fn build_writes_native_manifest_and_router_types() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf().arg("--cwd").arg(&app).arg("build").output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("uf build"));
     assert!(stdout.contains("uf-build-manifest.json"));
+    assert!(stdout.contains("uf-rsc-manifest.json"));
+    assert!(stdout.contains("router.js"));
+    assert!(stdout.contains("✓ build succeeded in"));
+    assert_plain(&stdout);
+    assert!(
+        String::from_utf8(output.stderr).unwrap().is_empty(),
+        "a successful build must not write to stderr"
+    );
 
     let manifest_path = app.join("dist/uf-build-manifest.json");
     let manifest: serde_json::Value =
@@ -154,7 +183,6 @@ fn build_writes_native_manifest_and_router_types() {
             .contains("export type RoutePath")
     );
 
-    assert!(stdout.contains("uf-rsc-manifest.json"));
     let rsc_manifest: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(app.join("dist/uf-rsc-manifest.json")).unwrap())
             .unwrap();
@@ -170,6 +198,26 @@ fn build_writes_native_manifest_and_router_types() {
 }
 
 #[test]
+fn build_reports_each_phase_timing_and_a_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf().arg("--cwd").arg(&app).arg("build").output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    for phase in ["config", "routes", "rsc analysis", "manifest", "total"] {
+        assert!(
+            stdout.contains(phase),
+            "missing phase {phase} in:\n{stdout}"
+        );
+    }
+    assert!(stdout.contains("client components"));
+    assert!(stdout.contains("server actions"));
+    assert!(stdout.contains("output"));
+}
+
+#[test]
 fn dev_once_writes_native_server_state() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
@@ -182,8 +230,7 @@ fn dev_once_writes_native_server_state() {
     )
     .unwrap();
 
-    let output = Command::cargo_bin("uf")
-        .unwrap()
+    let output = uf()
         .arg("--cwd")
         .arg(dir.path())
         .args(["dev", "--once"])
@@ -196,7 +243,11 @@ fn dev_once_writes_native_server_state() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("backend=uf-native/vite-compatible-dev-server"));
+    assert!(stdout.contains("uf dev"));
+    assert!(stdout.contains("uf-native"));
+    assert!(stdout.contains("http://127.0.0.1:"));
+    assert!(stdout.contains("/__uf/health"));
+    assert!(stdout.contains("✓ dev server ready"));
 
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(dir.path().join(".uf/dev-server.json")).unwrap())
@@ -210,12 +261,7 @@ fn lsp_initialize_returns_native_capabilities() {
     let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
     let input = format!("Content-Length: {}\r\n\r\n{body}", body.len());
 
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("lsp")
-        .write_stdin(input)
-        .output()
-        .unwrap();
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
 
     assert!(
         output.status.success(),
@@ -227,17 +273,35 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.contains(r#""name":"uf-lsp""#));
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
     assert!(stdout.contains(r#""workspaceDiagnostics":true"#));
+    assert_plain(&stdout);
 }
 
 #[test]
-fn inspect_reports_zero_config_defaults() {
+fn fmt_reports_an_already_formatted_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf().arg("--cwd").arg(&app).arg("fmt").output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("uf fmt"));
+    assert!(stdout.contains("✓"));
+}
+
+#[test]
+fn env_use_records_the_active_environment() {
     let dir = tempfile::tempdir().unwrap();
 
-    let output = Command::cargo_bin("uf")
-        .unwrap()
+    let output = uf()
         .arg("--cwd")
         .arg(dir.path())
-        .args(["inspect", "--json"])
+        .args(["env", "use", "staging"])
         .output()
         .unwrap();
 
@@ -246,799 +310,13 @@ fn inspect_reports_zero_config_defaults() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["command"], serde_json::json!("uf"));
-    assert_eq!(
-        value["engines"]["reactCompiler"],
-        serde_json::json!({"enabled": true, "mode": "syntax"})
-    );
-    assert_eq!(
-        value["engines"]["runtimeContract"]["standard"],
-        serde_json::json!("winter-tc")
-    );
-    assert_eq!(
-        value["engines"]["runtimeContract"]["javascriptEngine"],
-        serde_json::json!("hermes")
-    );
-    assert_eq!(
-        value["engines"]["testRunner"]["performanceTarget"],
-        serde_json::json!("faster-than-bun")
-    );
-    assert_eq!(
-        value["engines"]["packageManager"]["resolver"],
-        serde_json::json!("uf-native")
-    );
-    assert_eq!(
-        value["engines"]["runtimeManager"]["acquisition"],
-        serde_json::json!("auto")
-    );
-    assert_eq!(value["tui"]["standard"], serde_json::json!("open-tui"));
-    assert_eq!(
-        value["tui"]["renderer"],
-        serde_json::json!("cell-diff-native")
-    );
-    assert_eq!(
-        value["tui"]["reactInkTarget"]["performanceTarget"],
-        serde_json::json!("faster-than-react-ink")
-    );
     assert!(
-        value["tui"]["components"]
-            .as_array()
+        String::from_utf8(output.stdout)
             .unwrap()
-            .iter()
-            .any(|component| component["name"] == "EmbeddedTerminal")
-    );
-    assert!(
-        value["stdModules"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|module| module["specifier"] == "@uniflowed/std/import-meta")
-    );
-    assert!(
-        value["stdModules"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|module| module["specifier"] == "@uniflowed/std/tui")
+            .contains("✓ active environment: staging")
     );
     assert_eq!(
-        value["orm"]["parameterizedQueriesOnly"],
-        serde_json::json!(true)
+        fs::read_to_string(dir.path().join(".uniflowed/env")).unwrap(),
+        "staging\n"
     );
-    assert_eq!(value["motion"]["engine"], serde_json::json!("uf-native"));
-    assert_eq!(value["vrt"]["baselines"], serde_json::json!("__uf_vrt__"));
-    assert_eq!(value["config"]["config_path"], serde_json::Value::Null);
-    assert_eq!(
-        value["config"]["config"]["pm"]["packageManager"],
-        serde_json::json!("auto")
-    );
-    assert!(value["engines"]["packageManagerDetection"]["packageManager"].is_string());
-}
-
-/// Write a project uf's config loader will treat as its own root.
-fn write_detection_project(dir: &std::path::Path, manifest: &str) {
-    fs::write(dir.join("package.json"), manifest).unwrap();
-}
-
-fn inspect_json(dir: &std::path::Path) -> serde_json::Value {
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir)
-        .args(["inspect", "--json"])
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    serde_json::from_slice(&output.stdout).unwrap()
-}
-
-#[test]
-fn inspect_detects_pnpm_from_a_lockfile() {
-    let dir = tempfile::tempdir().unwrap();
-    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
-    fs::write(
-        dir.path().join("pnpm-lock.yaml"),
-        "lockfileVersion: '9.0'\n",
-    )
-    .unwrap();
-
-    let value = inspect_json(dir.path());
-    let detection = &value["engines"]["packageManagerDetection"];
-
-    assert_eq!(detection["packageManager"], serde_json::json!("pnpm"));
-    assert_eq!(detection["source"]["kind"], serde_json::json!("lockfile"));
-    assert_eq!(
-        detection["source"]["lockfile"],
-        serde_json::json!("pnpm-lock")
-    );
-    assert_eq!(
-        detection["outcome"]["kind"],
-        serde_json::json!("unambiguous")
-    );
-}
-
-#[test]
-fn inspect_detects_yarn_berry_from_the_package_manager_field() {
-    let dir = tempfile::tempdir().unwrap();
-    write_detection_project(
-        dir.path(),
-        r#"{ "name": "demo", "packageManager": "yarn@4.1.0+sha224.abc" }"#,
-    );
-    fs::write(
-        dir.path().join("pnpm-lock.yaml"),
-        "lockfileVersion: '9.0'\n",
-    )
-    .unwrap();
-
-    let value = inspect_json(dir.path());
-    let detection = &value["engines"]["packageManagerDetection"];
-
-    assert_eq!(detection["packageManager"], serde_json::json!("yarn-berry"));
-    assert_eq!(
-        detection["source"]["kind"],
-        serde_json::json!("package-manager-field")
-    );
-    assert_eq!(
-        detection["source"]["spec"]["version"]["major"],
-        serde_json::json!(4)
-    );
-    assert_eq!(
-        detection["source"]["spec"]["integrity"],
-        serde_json::json!("sha224.abc")
-    );
-    assert_eq!(
-        detection["alternatives"][0]["packageManager"],
-        serde_json::json!("pnpm")
-    );
-}
-
-#[test]
-fn inspect_reports_side_by_side_lockfiles_as_ambiguous() {
-    let dir = tempfile::tempdir().unwrap();
-    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
-    fs::write(
-        dir.path().join("pnpm-lock.yaml"),
-        "lockfileVersion: '9.0'\n",
-    )
-    .unwrap();
-    fs::write(dir.path().join("package-lock.json"), "{}\n").unwrap();
-
-    let value = inspect_json(dir.path());
-    let detection = &value["engines"]["packageManagerDetection"];
-
-    assert_eq!(detection["outcome"]["kind"], serde_json::json!("ambiguous"));
-    assert_eq!(
-        detection["outcome"]["lockfiles"],
-        serde_json::json!(["pnpm-lock", "package-lock"])
-    );
-}
-
-#[test]
-fn inspect_rejects_a_hostile_package_manager_field() {
-    let dir = tempfile::tempdir().unwrap();
-    write_detection_project(
-        dir.path(),
-        r#"{ "name": "demo", "packageManager": "pnpm@9.0.0; rm -rf /" }"#,
-    );
-    fs::write(dir.path().join("bun.lock"), "{}\n").unwrap();
-
-    let value = inspect_json(dir.path());
-    let detection = &value["engines"]["packageManagerDetection"];
-
-    assert_eq!(detection["packageManager"], serde_json::json!("bun"));
-    assert_eq!(
-        detection["issues"][0]["kind"],
-        serde_json::json!("invalid-package-manager-field")
-    );
-    assert_eq!(
-        detection["issues"][0]["error"]["kind"],
-        serde_json::json!("forbidden-character")
-    );
-}
-
-#[test]
-fn inspect_honours_the_config_package_manager_override() {
-    let dir = tempfile::tempdir().unwrap();
-    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
-    fs::write(
-        dir.path().join("pnpm-lock.yaml"),
-        "lockfileVersion: '9.0'\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("uf.config.js"),
-        r#"export default defineConfig({ pm: { packageManager: "bun" } });"#,
-    )
-    .unwrap();
-
-    let value = inspect_json(dir.path());
-    let detection = &value["engines"]["packageManagerDetection"];
-
-    assert_eq!(detection["packageManager"], serde_json::json!("bun"));
-    assert_eq!(
-        detection["source"]["kind"],
-        serde_json::json!("config-override")
-    );
-}
-
-#[test]
-fn inspect_text_output_reports_the_detected_package_manager() {
-    let dir = tempfile::tempdir().unwrap();
-    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
-    fs::write(dir.path().join("yarn.lock"), "# yarn lockfile v1\n").unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("inspect")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("detected package manager: yarn-classic source=lockfile"));
-    assert!(stdout.contains("ambiguous=false"));
-}
-
-#[test]
-fn test_list_discovers_native_test_import_shape() {
-    let dir = tempfile::tempdir().unwrap();
-    let src = dir.path().join("src");
-    fs::create_dir_all(&src).unwrap();
-    fs::write(
-        src.join("index.test.js"),
-        "// @flow\nimport { it } from '@uniflowed/test';\nit('runs', () => {});\n",
-    )
-    .unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["test", "--list"])
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("src/index.test.js"));
-    assert!(stdout.contains("discovered 1 runnable test"));
-    assert!(stdout.contains("FasterThanBun"));
-}
-
-#[test]
-fn test_runs_native_assertion_subset() {
-    let dir = tempfile::tempdir().unwrap();
-    let src = dir.path().join("src");
-    fs::create_dir_all(&src).unwrap();
-    fs::write(
-        src.join("math.test.js"),
-        r#"// @flow
-import { expect, it } from "@uniflowed/test";
-
-it("adds", () => {
-  expect(1 + 1).toBe(2);
-});
-"#,
-    )
-    .unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("test")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("passed=1"));
-    assert!(stdout.contains("failed=0"));
-    assert!(stdout.contains("FasterThanBun"));
-}
-
-#[test]
-fn test_reports_native_assertion_failures() {
-    let dir = tempfile::tempdir().unwrap();
-    let src = dir.path().join("src");
-    fs::create_dir_all(&src).unwrap();
-    fs::write(
-        src.join("math.test.js"),
-        r#"// @flow
-import { expect, it } from "@uniflowed/test";
-
-it("fails", () => {
-  expect("flow").toBe("typescript");
-});
-"#,
-    )
-    .unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("test")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("failed=1"));
-    assert!(stdout.contains("toBe assertion failed"));
-}
-
-#[test]
-fn test_rejects_unsupported_native_assertions() {
-    let dir = tempfile::tempdir().unwrap();
-    let src = dir.path().join("src");
-    fs::create_dir_all(&src).unwrap();
-    fs::write(
-        src.join("array.test.js"),
-        r#"// @flow
-import { expect, it } from "@uniflowed/test";
-
-it("contains", () => {
-  expect([1, 2, 3]).toContain(2);
-});
-"#,
-    )
-    .unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("test")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stdout.contains("unsupportedAssertions=1"));
-    assert!(stderr.contains("unsupported assertion"));
-}
-
-#[test]
-fn prepare_prints_lint_staged_and_codegen_plan() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("prepare")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("lintStagedCompatible=true"));
-    assert!(stdout.contains("GenerateRouterTypes"));
-    assert!(stdout.contains("GenerateValidatorTypes"));
-    assert!(dir.path().join(".uf/prepare.json").exists());
-}
-
-#[test]
-fn publish_and_release_report_trusted_publish_plan() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let publish = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("publish")
-        .output()
-        .unwrap();
-
-    assert!(
-        publish.status.success(),
-        "{}",
-        String::from_utf8_lossy(&publish.stderr)
-    );
-    let stdout = String::from_utf8(publish.stdout).unwrap();
-    assert!(stdout.contains("firstPublish=Local"));
-    assert!(stdout.contains("localBootstrap=true"));
-    assert!(stdout.contains("trustedProvider=GitHubActionsOidc"));
-    assert!(stdout.contains("tokenless=true"));
-    assert!(stdout.contains("trigger=TagPush"));
-    assert!(stdout.contains("publish.json"));
-    assert!(dir.path().join(".uf/publish.json").exists());
-
-    let release = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["release", "minor"])
-        .output()
-        .unwrap();
-
-    assert!(
-        release.status.success(),
-        "{}",
-        String::from_utf8_lossy(&release.stderr)
-    );
-    let stdout = String::from_utf8(release.stdout).unwrap();
-    assert!(stdout.contains("bump=Minor"));
-    assert!(stdout.contains("tag=uf@0.2.0"));
-    assert!(stdout.contains("command=uf release minor"));
-    assert!(stdout.contains("publish=true"));
-    assert!(stdout.contains("release.json"));
-    assert!(dir.path().join(".uf/release.json").exists());
-}
-
-#[test]
-fn install_reports_native_package_manager_plan() {
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("package.json"),
-        r#"{
-  "name": "install-demo",
-  "dependencies": {
-    "@uniflowed/core": "latest"
-  }
-}
-"#,
-    )
-    .unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("install")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("resolver=UfNative"));
-    assert!(stdout.contains("uf.lock"));
-    assert!(stdout.contains(".uf/store/manifest.json"));
-    assert!(stdout.contains("scripts=Forbid"));
-    assert!(stdout.contains("packages=1"));
-    assert!(stdout.contains("storeEntries=1"));
-    assert!(dir.path().join("uf.lock").exists());
-    assert!(dir.path().join(".uf/store/manifest.json").exists());
-    assert!(dir.path().join(".uf/store/packages").exists());
-}
-
-#[test]
-fn install_rejects_npm_scripts() {
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("package.json"),
-        r#"{
-  "name": "scripted",
-  "scripts": {
-    "test": "jest"
-  }
-}
-"#,
-    )
-    .unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("install")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("declares scripts"));
-    assert!(stderr.contains("uf tasks"));
-}
-
-#[test]
-fn upgrade_reports_package_and_runtime_manager_plan() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("upgrade")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("packageResolver=UfNative"));
-    assert!(stdout.contains("runtimeEngine=Uf"));
-    assert!(stdout.contains("acquisition=Auto"));
-    assert!(stdout.contains("upgrade.json"));
-    assert!(dir.path().join("uf.lock").exists());
-    assert!(dir.path().join(".uf/upgrade.json").exists());
-}
-
-#[test]
-fn use_reports_xdg_runtime_switch_plan() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = dir.path().join("home");
-    let config_home = dir.path().join("xdg-config");
-    let data_home = dir.path().join("xdg-data");
-    let cache_home = dir.path().join("xdg-cache");
-    let state_home = dir.path().join("xdg-state");
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["use", "uf@0.1.0"])
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", &config_home)
-        .env("XDG_DATA_HOME", &data_home)
-        .env("XDG_CACHE_HOME", &cache_home)
-        .env("XDG_STATE_HOME", &state_home)
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("runtime=uf@0.1.0"));
-    assert!(stdout.contains("autoSwitch=true"));
-    assert!(stdout.contains(".local/bin/uf"));
-    assert!(stdout.contains("active-runtime.json"));
-    assert!(stdout.contains("runtime.json"));
-    assert!(stdout.contains("WriteShim"));
-    assert!(stdout.contains("ActivateVersion"));
-    assert!(
-        data_home
-            .join("uniflowed/runtimes/uf/0.1.0/bin/uf")
-            .exists()
-    );
-    assert!(
-        data_home
-            .join("uniflowed/runtimes/uf/0.1.0/runtime.json")
-            .exists()
-    );
-    assert!(state_home.join("uniflowed/active-runtime.json").exists());
-    assert!(home.join(".local/bin/uf").exists());
-}
-
-/// Scaffold an app, returning the temp dir so it stays alive.
-///
-/// `uf build` does not run a bundler yet, so it emits manifests and no shipped
-/// assets. Tests that need weight to measure write their own files into `dist/`,
-/// which is exactly what the size reporter walks.
-fn built_app(config_extra: &str) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
-
-    let created = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["create", "app", "react"])
-        .output()
-        .unwrap();
-    assert!(
-        created.status.success(),
-        "{}",
-        String::from_utf8_lossy(&created.stderr)
-    );
-
-    if !config_extra.is_empty() {
-        let config_path = dir.path().join("uf.config.js");
-        let config = fs::read_to_string(&config_path).unwrap();
-        let injected = config.replacen(
-            "defineConfig({",
-            &format!("defineConfig({{{config_extra}"),
-            1,
-        );
-        assert_ne!(injected, config, "config template changed shape");
-        fs::write(&config_path, injected).unwrap();
-    }
-
-    dir
-}
-
-#[test]
-fn build_writes_a_bundle_size_report() {
-    let dir = built_app("");
-    emit_asset(&dir, "assets/app.js", &"export const a = 1;\n".repeat(50));
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("build")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("uf build: size assets="), "{stdout}");
-    assert!(stdout.contains("gzip="), "{stdout}");
-
-    let report = fs::read_to_string(dir.path().join("dist/uf-bundle-report.json")).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&report).unwrap();
-    assert_eq!(parsed["version"], 1);
-    assert_eq!(parsed["gzipLevel"], 9);
-    assert_eq!(parsed["brotliQuality"], 11);
-    assert!(!parsed["assets"].as_array().unwrap().is_empty());
-    // The report must never measure itself or the other build manifests.
-    let paths = parsed["assets"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|asset| asset["path"].as_str().unwrap().to_string())
-        .collect::<Vec<_>>();
-    assert!(
-        !paths
-            .iter()
-            .any(|path| path.ends_with("uf-bundle-report.json")),
-        "{paths:?}"
-    );
-    assert!(
-        !paths
-            .iter()
-            .any(|path| path.ends_with("uf-build-manifest.json")),
-        "{paths:?}"
-    );
-}
-
-/// Write a shipped asset into `dist/` so there is real weight to measure.
-fn emit_asset(dir: &tempfile::TempDir, relative: &str, contents: &str) {
-    let path = dir.path().join("dist").join(relative);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, contents).unwrap();
-}
-
-#[test]
-fn build_fails_when_a_size_budget_is_exceeded() {
-    let dir = built_app("\n  build: { budgets: { total: { max: \"1b\" } } },");
-    emit_asset(&dir, "assets/app.js", &"export const a = 1;\n".repeat(200));
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("build")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("total budget exceeded"), "{stderr}");
-    assert!(stderr.contains("gzip"), "{stderr}");
-    assert!(stderr.contains("bundle size exceeded"), "{stderr}");
-}
-
-#[test]
-fn build_passes_a_budget_that_is_large_enough() {
-    let dir = built_app(
-        "\n  build: { budgets: { total: { max: \"10mb\" }, perAsset: { max: \"10mb\" } } },",
-    );
-    emit_asset(&dir, "assets/app.js", &"export const a = 1;\n".repeat(200));
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("build")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-#[test]
-fn build_size_report_flag_lists_the_largest_assets() {
-    let dir = built_app("");
-    emit_asset(
-        &dir,
-        "assets/large.js",
-        &"export const a = 1;\n".repeat(400),
-    );
-    emit_asset(&dir, "assets/small.js", "export const b = 2;\n");
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["build", "--size-report"])
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let listed = stdout
-        .lines()
-        .filter(|line| line.starts_with("  "))
-        .collect::<Vec<_>>();
-    assert_eq!(listed.len(), 2, "{stdout}");
-    assert!(listed[0].contains("assets/large.js"), "{stdout}");
-    assert!(listed[1].contains("assets/small.js"), "{stdout}");
-}
-
-/// A project `uf create` generates must pass `uf lint` without router errors.
-///
-/// The scaffold emits `_uf.page.native.js` and `_uf.page.test.js`, and
-/// `router/reserved-files` used to reject both — so a freshly created project
-/// failed its own linter on the first command a user runs after `create`.
-#[test]
-fn a_scaffolded_app_has_no_reserved_router_file_errors() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let created = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["create", "app", "react"])
-        .output()
-        .unwrap();
-    assert!(
-        created.status.success(),
-        "{}",
-        String::from_utf8_lossy(&created.stderr)
-    );
-    assert!(dir.path().join("app/_uf.page.native.js").exists());
-    assert!(dir.path().join("app/_uf.page.test.js").exists());
-
-    let output = Command::cargo_bin("uf")
-        .unwrap()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("lint")
-        .output()
-        .unwrap();
-
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let reserved = stdout
-        .lines()
-        .filter(|line| line.contains("router/reserved-files"))
-        .collect::<Vec<_>>();
-    assert!(reserved.is_empty(), "{reserved:?}");
 }
