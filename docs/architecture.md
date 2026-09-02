@@ -10,8 +10,9 @@ command model.
 
 The product bar is deliberately aggressive: `uf` should beat Vite+ on Flow
 React DX, framework completeness, build latency, and dev-server feedback loops,
-while beating Bun on native test runner throughput, runtime startup, package
-manager performance, and integrated feature coverage.
+while using Vite Task for cached task execution and beating Bun Test/Vitest on
+native test throughput, runtime startup, package manager performance, and
+integrated feature coverage.
 
 ## Crates
 
@@ -217,12 +218,15 @@ Implemented native slices already cover:
 
 Native engines being deepened:
 
-- query cache and mutation scheduler, similar in capability to TanStack Query
+- query cache and mutation scheduler, aimed at replacing TanStack Query for
+  Flow React applications
 - generator/yield EffectSystem inspired by Redux-Saga but typed for Flow
 - explicit fetch clients without global fetch override
 - Relay-based GraphQL client primitives
-- validator utilities exposed as `@uniflowed/validator` with `v.pipe`
-- state primitives exposed through `@uniflowed/state` and `@uniflowed/cell`
+- Valibot-class validator utilities exposed as `@uniflowed/validator` with
+  `v.pipe`
+- Jotai-class atom state primitives exposed through `@uniflowed/state` and
+  `@uniflowed/cell`
 - DOM and React Native testing utilities compatible with Testing Library habits
 - self-hosted `@uniflowed/test` runner targeting faster-than-Bun execution
 - ORM schema/runtime with Flow opaque types at module boundaries
@@ -230,11 +234,13 @@ Native engines being deepened:
 - React Compiler syntax-mode integration
 - Relay integration
 - headless UI components with preset styles, validator-backed form contracts,
-  RSC split metadata, and `renders` type utilities
+  RSC split metadata, and `renders` type utilities, aimed at replacing shadcn's
+  copy-and-edit workflow with typed imports
 - MSW-compatible mocks, Playwright-compatible browser automation, story system,
   and VRT baseline planning
 - React Compiler-safe motion primitives with reduced-motion defaults
-- React hook utilities that preserve render idempotency
+- React hook utilities that preserve render idempotency and cover the practical
+  VueUse-style browser/state/async hooks a React app reaches for
 - OpenTUI-aligned terminal UI primitives targeting a faster, richer React Ink
   replacement with native cell-diff rendering and in-memory tests
 - stdlib contracts for OS, net, DNS, path, streams, URL, WebAssembly, glob, TUI,
@@ -255,7 +261,7 @@ project-specific build, dev, plugin, lint, format, test, and task settings live
 in `uf.config.js`.
 
 Generated projects do not use npm scripts. Tasks are declared in
-`uf.config.js` and executed by `uf run` through the uf task runner.
+`uf.config.js` and executed by `uf run` through Vite Task.
 
 Editor integrations live under `editors/` and should stay thin. VS Code,
 Neovim, Emacs, Vim, Helix, Zed, and Cursor all connect to `uf lsp`; the Rust

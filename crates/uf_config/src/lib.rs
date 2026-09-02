@@ -16,9 +16,9 @@ pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
     EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, LinkPrefetchMode, LoaderConfig,
     MarkdownConfig, MarkdownEngineConfig, MdxConfig, MdxPipelinePluginConfig, MotionConfig,
-    MotionEngineConfig, OrmConfig, PwaConfig, ReactCompilerConfig, ReactCompilerMode, ReactConfig,
-    RenderingConfig, RenderingMode, RouterConfig, RouterConvention, RuntimeTarget, StyleEngine,
-    TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
+    MotionEngineConfig, OrmConfig, PwaConfig, ReactCompilerConfig, ReactCompilerImplementation,
+    ReactCompilerMode, ReactConfig, RenderingConfig, RenderingMode, RouterConfig, RouterConvention,
+    RuntimeTarget, StyleEngine, TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
 };
 pub use lint::{
     FlowBuiltinLintMode, FlowLintConfig, FlowLintParser, LintConfig, LintEngine, RuleLevel,
@@ -632,6 +632,7 @@ impl Default for NativeTestRunnerConfig {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NativeTestRuntimeConfig {
+    ViteTask,
     #[default]
     CapabilityJsHost,
     UfSelfHosted,
@@ -640,6 +641,7 @@ pub enum NativeTestRuntimeConfig {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NativeTestSchedulerConfig {
+    ViteTaskCache,
     #[default]
     NativeWorkStealing,
 }
@@ -647,6 +649,7 @@ pub enum NativeTestSchedulerConfig {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NativeTestPerformanceTarget {
+    ViteTask,
     #[default]
     FasterThanBun,
 }
@@ -773,7 +776,7 @@ pub struct TaskRunnerConfig {
 impl Default for TaskRunnerConfig {
     fn default() -> Self {
         Self {
-            engine: TaskRunnerEngine::UfTask,
+            engine: TaskRunnerEngine::ViteTask,
             allow_package_scripts: false,
         }
     }
@@ -781,18 +784,17 @@ impl Default for TaskRunnerConfig {
 
 /// Which runner executes `uf.config.js` tasks.
 ///
-/// `uf` matches the task semantics of the wider ecosystem so existing task
-/// definitions keep working, but a developer using `uf` never chose an
-/// underlying runner and should not have to reason about one. No alias is kept
-/// for the old spelling: a name a user can still write is still a name they can
-/// see, which is the thing being removed.
+/// `uf` delegates this surface to Vite Task so package scripts and task graphs
+/// share the upstream Rust scheduler while the rest of uf stays runtime
+/// agnostic. No alias is kept for the old spelling: a name a user can still
+/// write is still a name they can see, which is the thing being removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum TaskRunnerEngine {
-    /// uf's own task runner.
+    /// Vite+'s Rust task runner, invoked through the public `vp run` interface.
     #[default]
-    UfTask,
+    ViteTask,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

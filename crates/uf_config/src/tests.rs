@@ -144,7 +144,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(config.release.tag_prefix, "uf@");
     assert_eq!(config.release.command, "uf release alpha");
     assert!(config.release.publish);
-    assert_eq!(config.task_runner.engine, TaskRunnerEngine::UfTask);
+    assert_eq!(config.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
     assert_eq!(
@@ -229,6 +229,10 @@ fn zero_config_defaults_to_flow_react_app_stack() {
         config.app.builtins.react_compiler.mode,
         ReactCompilerMode::Syntax
     );
+    assert_eq!(
+        config.app.builtins.react_compiler.implementation,
+        ReactCompilerImplementation::OfficialRust
+    );
     assert!(config.app.targets.contains(&RuntimeTarget::ReactNative));
     assert!(config.docs.enabled);
     assert!(config.docs.static_build);
@@ -303,7 +307,7 @@ fn extracts_vite_style_define_config_object() {
             },
           },
           taskRunner: {
-            engine: "uf-task",
+            engine: "vite-task",
             allowPackageScripts: false,
           },
           test: {
@@ -351,7 +355,7 @@ fn extracts_vite_style_define_config_object() {
         RuleLevel::Error
     );
     assert_eq!(parsed.tasks["storybook"].command(), "vite --host 0.0.0.0");
-    assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::UfTask);
+    assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!parsed.task_runner.allow_package_scripts);
     assert_eq!(
         parsed.test.runner.performance_target,

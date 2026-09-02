@@ -18,7 +18,7 @@ pub type TestHostList = SmallVec<[TestHost; 4]>;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeTestRunnerPlan {
-    /// Package specifier for the self-hosted native test runtime.
+    /// Package specifier for the native test runtime surface.
     pub module: CompactString,
     /// Execution backend.
     pub runtime: TestRuntime,
@@ -26,7 +26,7 @@ pub struct NativeTestRunnerPlan {
     pub hosts: TestHostList,
     /// Scheduler used for test file execution.
     pub scheduler: TestScheduler,
-    /// Performance target for the native runner.
+    /// Performance target for the runner.
     pub performance_target: TestPerformanceTarget,
     /// Builtin import specifiers accepted by discovery and runtime bindings.
     pub imports: TestImportList,
@@ -56,7 +56,7 @@ impl Default for NativeTestRunnerPlan {
 }
 
 impl NativeTestRunnerPlan {
-    /// Return the default runtime-agnostic native runner plan.
+    /// Return the default runtime-agnostic runner plan.
     pub fn runtime_agnostic() -> Self {
         Self::default()
     }
@@ -64,8 +64,8 @@ impl NativeTestRunnerPlan {
     /// Return the default runner plan.
     ///
     /// Kept for callers that predate the Capability JS Host split; the runner is
-    /// still self-hosted in Rust, but JavaScript execution is delegated to a host
-    /// runtime.
+    /// still self-hosted in Rust, but JavaScript execution is delegated to a
+    /// Capability JS Host.
     pub fn self_hosted() -> Self {
         Self::default()
     }
@@ -80,6 +80,8 @@ impl NativeTestRunnerPlan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TestRuntime {
+    /// Vite+'s Rust task runner, invoked through `vp run`.
+    ViteTask,
     /// Native Rust runner driving a detected JavaScript host.
     CapabilityJsHost,
     /// uf-owned self-hosted runtime.
@@ -102,7 +104,9 @@ pub enum TestHost {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TestScheduler {
-    /// Work-stealing scheduler for large projects.
+    /// Vite Task's cache and dependency-aware scheduler.
+    ViteTaskCache,
+    /// Work-stealing scheduler for large test suites.
     NativeWorkStealing,
 }
 
@@ -110,6 +114,8 @@ pub enum TestScheduler {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TestPerformanceTarget {
-    /// Target a runner faster than Bun's test runner for Flow-heavy suites.
+    /// Follow Vite Task's native Rust runner performance profile.
+    ViteTask,
+    /// Beat Bun Test and Vitest for Flow-heavy suites.
     FasterThanBun,
 }

@@ -1,13 +1,14 @@
 //! `uf run` and `ufx`: the two commands that hand control to another process.
 
 use std::collections::BTreeSet;
+use std::env;
 use std::fs;
 use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
-use uf_config::{ResolvedConfig, TaskDefinition, load_config};
+use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::PackageManagerPlan;
 use uf_term::{KeyValue, Status, Tone};
 
@@ -51,6 +52,10 @@ fn execute_task(
     task: &TaskDefinition,
     args: &[String],
 ) -> Result<()> {
+    if resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask {
+        return execute_vite_task(resolved, script, args);
+    }
+
     let command = if args.is_empty() {
         task.command().to_string()
     } else {
@@ -75,11 +80,32 @@ fn execute_task(
         process.current_dir(&resolved.root);
     }
 
-    let status = process
-        .status()
-        .with_context(|| format!("failed to run task {script:?} through the uf task runner"))?;
+    let status = process.status().with_context(|| {
+        format!("failed to run task {script:?} through the fallback task runner")
+    })?;
     if !status.success() {
         bail!("task {script:?} exited with {status}");
+    }
+    Ok(())
+}
+
+fn execute_vite_task(resolved: &ResolvedConfig, script: &str, args: &[String]) -> Result<()> {
+    let runner = env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
+    let mut process = ProcessCommand::new(runner);
+    process.arg("run").arg(script);
+    if !args.is_empty() {
+        process.arg("--").args(args);
+    }
+    let status = process
+        .current_dir(resolved.root.as_std_path())
+        .status()
+        .with_context(|| {
+            format!(
+                "failed to run task {script:?} through Vite Task; install Vite+ and make `vp` available"
+            )
+        })?;
+    if !status.success() {
+        bail!("Vite Task task {script:?} exited with {status}");
     }
     Ok(())
 }
