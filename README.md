@@ -215,11 +215,22 @@ package model, and generated TypeScript declarations are converted back to Flow.
 
 ## Development
 
-The repository is pinned to Rust 1.98.
+The repository is pinned to Rust 1.98, and `upstream/flow` carries Meta's
+official Flow Rust port as a submodule because those crates are not published to
+crates.io.
 
 ```sh
 nix develop ./tools/nix
-cargo test --workspace --all-features
+tools/upstream/sync.sh
+cargo test --workspace
+```
+
+`tools/upstream/sync.sh` checks out only `rust_port/` from a shallow, blobless
+clone. Building `uf_flow` against that port is the `upstream-parser` feature; it
+needs nightly until the unstable `!` type reaches stable Rust:
+
+```sh
+cargo +nightly test --workspace --all-features
 ```
 
 The installer is not published yet. The target endpoint is:

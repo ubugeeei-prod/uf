@@ -1,84 +1,119 @@
+//! Flow parser/typechecker adapter boundary for uniflowed.
+//!
+//! `uf` talks to exactly one Flow syntax authority at a time. The preferred
+//! backend is Meta's official Flow Rust port, vendored as the `upstream/flow`
+//! submodule and selected with the `upstream-parser` feature. Until the `!`
+//! type is stable on the pinned release toolchain the crate defaults to the
+//! QuickJS-hosted reference parser, which needs source normalization for
+//! `component`/`hook` declarations.
+
+#[cfg(all(feature = "official-parser", not(feature = "upstream-parser")))]
+mod quickjs;
+#[cfg(feature = "upstream-parser")]
+mod upstream;
+
 use thiserror::Error;
 
+/// A single syntax diagnostic reported by the active Flow parser.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseDiagnostic {
+    /// Human readable parser message.
     pub message: String,
+    /// One-based source line, when the backend reports one.
     pub line: Option<u32>,
+    /// Zero-based source column, when the backend reports one.
     pub column: Option<u32>,
 }
 
+/// The result of validating one Flow source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseOutcome {
+    /// Diagnostics in source order.
     pub diagnostics: Vec<ParseDiagnostic>,
+    /// Backend that produced the diagnostics.
     pub parser: ParserKind,
 }
 
 impl ParseOutcome {
+    /// Return whether the source parsed without diagnostics.
     pub fn is_ok(&self) -> bool {
         self.diagnostics.is_empty()
     }
 }
 
+/// Flow syntax authority backing [`validate_source`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParserKind {
+    /// Meta's official Flow Rust port from `upstream/flow/rust_port`.
+    UpstreamRustPort,
+    /// The QuickJS-hosted reference Flow parser.
     OfficialFlowParser,
+    /// The dependency-free guard used when no parser backend is compiled in.
     Fallback,
 }
 
+/// Errors raised while driving a Flow parser backend.
 #[derive(Debug, Error)]
 pub enum FlowError {
+    /// The backend could not be initialized.
     #[error("failed to initialize Flow parser: {0}")]
     Initialize(String),
+    /// The backend failed while parsing.
     #[error("Flow parser runtime error: {0}")]
     Runtime(String),
 }
 
+/// Handle for validating Flow sources through the compiled-in backend.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FlowParser;
 
 impl FlowParser {
+    /// Validate `source` with the active backend.
     pub fn validate_source(&self, source: &str) -> Result<ParseOutcome, FlowError> {
         validate_source(source)
     }
 }
 
-#[cfg(feature = "official-parser")]
-pub fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
-    use std::cell::RefCell;
-
-    thread_local! {
-        static PARSER: RefCell<Option<flowjs_parser::FlowParser>> = const { RefCell::new(None) };
+/// Backend selected at compile time.
+///
+/// `upstream-parser` wins over `official-parser` so a build that enables both
+/// always reports the more precise diagnostics.
+pub const fn active_parser() -> ParserKind {
+    #[cfg(feature = "upstream-parser")]
+    {
+        ParserKind::UpstreamRustPort
     }
-
-    let parser_source = normalize_modern_flow_for_parser(source);
-    let diagnostics = PARSER.with(|slot| {
-        if slot.borrow().is_none() {
-            let parser = flowjs_parser::FlowParser::new()
-                .map_err(|error| FlowError::Initialize(error.to_string()))?;
-            *slot.borrow_mut() = Some(parser);
-        }
-
-        let parser = slot.borrow();
-        let parser = parser.as_ref().expect("parser initialized");
-        parser
-            .diagnostics(parser_source.as_deref().unwrap_or(source))
-            .map_err(|error| FlowError::Runtime(error.to_string()))
-    })?;
-    let diagnostics = diagnostics
-        .into_iter()
-        .map(|diagnostic| ParseDiagnostic {
-            message: diagnostic.message,
-            line: diagnostic.loc.as_ref().map(|loc| loc.start.line),
-            column: diagnostic.loc.as_ref().map(|loc| loc.start.column),
-        })
-        .collect();
-
-    Ok(ParseOutcome {
-        diagnostics,
-        parser: ParserKind::OfficialFlowParser,
-    })
+    #[cfg(all(not(feature = "upstream-parser"), feature = "official-parser"))]
+    {
+        ParserKind::OfficialFlowParser
+    }
+    #[cfg(not(any(feature = "upstream-parser", feature = "official-parser")))]
+    {
+        ParserKind::Fallback
+    }
 }
 
+/// Validate `source` with the active Flow parser backend.
+pub fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
+    #[cfg(feature = "upstream-parser")]
+    {
+        upstream::validate_source(source)
+    }
+    #[cfg(all(not(feature = "upstream-parser"), feature = "official-parser"))]
+    {
+        quickjs::validate_source(source)
+    }
+    #[cfg(not(any(feature = "upstream-parser", feature = "official-parser")))]
+    {
+        fallback_validate_source(source)
+    }
+}
+
+/// Rewrite `component`/`hook` declarations into plain functions.
+///
+/// Backends that predate Flow component syntax need this; the upstream Rust
+/// port parses the real syntax and never calls it. Returns [`None`] when the
+/// source needs no rewriting.
 pub fn normalize_modern_flow_for_parser(source: &str) -> Option<String> {
     if !source.contains("component ") && !source.contains("hook ") {
         return None;
@@ -135,8 +170,8 @@ fn strip_renders_clause(tail: &str) -> String {
     format!("{} {}", signature[..renders_start].trim_end(), body)
 }
 
-#[cfg(not(feature = "official-parser"))]
-pub fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
+#[cfg(not(any(feature = "upstream-parser", feature = "official-parser")))]
+fn fallback_validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
     let diagnostics = if source.contains("type =") {
         vec![ParseDiagnostic {
             message: "fallback parser found an invalid type declaration".to_string(),
@@ -153,8 +188,10 @@ pub fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
     })
 }
 
+/// Stable identifier for a parser backend, used by `uf inspect` and the LSP.
 pub fn parser_name(kind: ParserKind) -> &'static str {
     match kind {
+        ParserKind::UpstreamRustPort => "upstream-flow-rust-port",
         ParserKind::OfficialFlowParser => "official-flow-parser",
         ParserKind::Fallback => "fallback",
     }
@@ -177,6 +214,7 @@ mod tests {
         let outcome = validate_source(source).expect("parse result");
 
         assert!(outcome.is_ok(), "{:?}", outcome.diagnostics);
+        assert_eq!(outcome.parser, active_parser());
     }
 
     #[test]
@@ -191,6 +229,11 @@ mod tests {
     }
 
     #[test]
+    fn leaves_sources_without_component_or_hook_untouched() {
+        assert!(normalize_modern_flow_for_parser("const x = 1;\n").is_none());
+    }
+
+    #[test]
     fn reports_flow_syntax_errors() {
         let source = "// @flow\ntype = ;";
 
@@ -198,5 +241,36 @@ mod tests {
 
         assert!(!outcome.is_ok());
         assert!(outcome.diagnostics[0].message.contains("Unexpected"));
+    }
+
+    #[test]
+    fn reports_error_locations_on_the_failing_line() {
+        let source = "// @flow\nconst a = 1;\ntype = ;\n";
+
+        let outcome = validate_source(source).expect("parse result");
+
+        assert_eq!(outcome.diagnostics[0].line, Some(3));
+    }
+
+    #[test]
+    fn accepts_jsx_and_flow_generics() {
+        let source = "// @flow\nconst node = <div className=\"a\">{value}</div>;\ntype Box<T> = { value: T };\n";
+
+        let outcome = validate_source(source).expect("parse result");
+
+        assert!(outcome.is_ok(), "{:?}", outcome.diagnostics);
+    }
+
+    #[test]
+    fn parser_names_are_stable() {
+        assert_eq!(
+            parser_name(ParserKind::UpstreamRustPort),
+            "upstream-flow-rust-port"
+        );
+        assert_eq!(
+            parser_name(ParserKind::OfficialFlowParser),
+            "official-flow-parser"
+        );
+        assert_eq!(parser_name(ParserKind::Fallback), "fallback");
     }
 }
