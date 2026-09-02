@@ -18,6 +18,64 @@ fn uf_prints_help() {
 }
 
 #[test]
+fn alias_binaries_print_the_root_version() {
+    for name in ["ufr", "ufx"] {
+        let output = binary(name).arg("--version").output().unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.contains(env!("CARGO_PKG_VERSION")),
+            "{name} should expose the installed uf version, got {stdout:?}"
+        );
+    }
+}
+
+#[test]
+fn ufr_keeps_version_flags_after_the_task_name_as_task_args() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: {
+                show: { command: "printf %s \"$1\"" },
+              },
+            });
+        "#,
+    )
+    .unwrap();
+    let runner = dir.path().join("vp");
+    fs::write(
+        &runner,
+        "#!/bin/sh\n[ \"$1\" = run ] && [ \"$2\" = show ] && [ \"$3\" = -- ] && [ \"$4\" = --version ] && printf payload-version\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&runner).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&runner, permissions).unwrap();
+
+    let output = binary("ufr")
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["show", "--", "--version"])
+        .env("UF_VITE_TASK_BIN", &runner)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "payload-version");
+}
+
+#[test]
 fn ufr_alias_runs_config_task() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
