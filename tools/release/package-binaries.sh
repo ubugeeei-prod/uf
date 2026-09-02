@@ -61,6 +61,15 @@ fi
 printf '%s  %s\n' "$sha" "$archive" > "$out_dir/$archive.sha256"
 printf '%s\n' "$version" > "$out_dir/VERSION"
 
+# The release workflow publishes to GitHub Releases; a mirror sets
+# UF_RELEASE_BASE to its own flat `<base>/<version>/<asset>` layout. Recording a
+# URL nothing serves is how a manifest ends up advertising a 404.
+if [ -n "${UF_RELEASE_BASE:-}" ]; then
+  url="${UF_RELEASE_BASE}/${version}/${archive}"
+else
+  url="https://github.com/${UF_REPO:-ubugeeei-prod/uf}/releases/download/uf@${version}/${archive}"
+fi
+
 cat > "$out_dir/manifest-${target}.json" <<EOF
 {
   "name": "uf",
@@ -68,7 +77,7 @@ cat > "$out_dir/manifest-${target}.json" <<EOF
   "target": "${target}",
   "archive": "${archive}",
   "sha256": "${sha}",
-  "url": "https://releases.uniflowed.dev/uf/${version}/${archive}"
+  "url": "${url}"
 }
 EOF
 

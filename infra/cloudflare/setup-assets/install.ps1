@@ -1,16 +1,19 @@
 $ErrorActionPreference = "Stop"
 
-$releaseBase = if ($env:UF_RELEASE_BASE) { $env:UF_RELEASE_BASE } else { "https://releases.uniflowed.dev/uf" }
+# Reserved so the URL resolves and says something useful. The release workflow
+# publishes macOS and Linux only, so resolving a version here would just 404
+# before reaching this message.
 $requestedVersion = if ($env:UF_VERSION) { $env:UF_VERSION } else { "latest" }
-
 if ($requestedVersion.StartsWith("uf@")) {
   $requestedVersion = $requestedVersion.Substring(3)
 }
 
-$channelUrl = "$releaseBase/$requestedVersion"
-$version = $requestedVersion
-if ($requestedVersion -eq "latest") {
-  $version = (Invoke-WebRequest -UseBasicParsing "$channelUrl/VERSION").Content.Trim()
-}
+Write-Error @"
+uf does not publish Windows artifacts yet (requested uf@$requestedVersion).
 
-Write-Error "uf Windows installer is reserved, but Windows artifacts are not published yet. Requested uf@$version."
+Supported today: macOS and Linux, on x86_64 and aarch64, via
+  curl -fsSL https://setup.uniflowed.dev | sh
+
+On Windows, run uf under WSL2, or build from source:
+  cargo install --git https://github.com/ubugeeei-prod/uf uf_cli
+"@
