@@ -1,7 +1,11 @@
 #!/bin/sh
 set -eu
 
-release_base="${UF_RELEASE_BASE:-https://releases.uniflowed.dev/uf}"
+# GitHub Releases is the source of truth, so `curl | sh` works with no CDN in
+# front of it. UF_RELEASE_BASE switches to the flat `<base>/<version>/<asset>`
+# layout a mirror serves.
+release_base="${UF_RELEASE_BASE:-}"
+repo="${UF_REPO:-ubugeeei-prod/uf}"
 requested_version="${UF_VERSION:-latest}"
 install_root="${UF_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/uf}"
 bin_dir="${UF_BIN_DIR:-$HOME/.local/bin}"
@@ -42,10 +46,22 @@ case "$requested_version" in
   uf@*) requested_version="${requested_version#uf@}" ;;
 esac
 
-channel_url="${release_base}/${requested_version}"
+if [ -n "$release_base" ]; then
+  channel_url="${release_base}/${requested_version}"
+elif [ "$requested_version" = "latest" ]; then
+  channel_url="https://github.com/${repo}/releases/latest/download"
+else
+  channel_url="https://github.com/${repo}/releases/download/uf@${requested_version}"
+fi
+
 version="$requested_version"
 if [ "$requested_version" = "latest" ]; then
-  version="$(curl -fsSL "${channel_url}/VERSION" | tr -d '[:space:]')"
+  if ! version="$(curl -fsSL "${channel_url}/VERSION" | tr -d '[:space:]')" \
+    || [ -z "$version" ]; then
+    echo "uf installer: could not resolve the latest version from ${channel_url}/VERSION" >&2
+    echo "uf installer: set UF_VERSION to install a specific release" >&2
+    exit 1
+  fi
 fi
 
 archive="uf-${target}.tar.gz"
@@ -76,6 +92,14 @@ if [ "$actual" != "$expected" ]; then
   echo "uf installer: checksum mismatch for ${archive}" >&2
   echo "expected: $expected" >&2
   echo "actual:   $actual" >&2
+  exit 1
+fi
+
+# Refuse an archive that would write outside the runtime directory. The
+# checksum only proves the archive matches what the same host advertised, so it
+# does not bound where the members land.
+if tar -tzf "${tmp_dir}/${archive}" | grep -Eq '^/|(^|/)\.\.(/|$)'; then
+  echo "uf installer: ${archive} contains paths outside the archive root" >&2
   exit 1
 fi
 
