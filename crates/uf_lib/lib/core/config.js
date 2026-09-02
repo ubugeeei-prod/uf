@@ -239,7 +239,7 @@ export type UniflowedConfig = {
     },
   },
   +taskRunner?: {
-    +engine?: "vite-task",
+    +engine?: "uf-task",
     +allowPackageScripts?: false,
   },
   +test?: {
@@ -267,7 +267,7 @@ export type UniflowedConfig = {
  * This is the one binding in the package that is not a native call: a config
  * module evaluates `defineConfig({...})` at its top level, so raising here would
  * make every config file unloadable. Its whole job is to give Flow a type to
- * check the literal against, exactly like the Vite entry point it replaces.
+ * check the literal against.
  */
 export function defineConfig(config: UniflowedConfig): UniflowedConfig {
   return config;

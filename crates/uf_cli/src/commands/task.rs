@@ -77,7 +77,7 @@ fn execute_task(
 
     let status = process
         .status()
-        .with_context(|| format!("failed to run task {script:?} through uf Vite Task runner"))?;
+        .with_context(|| format!("failed to run task {script:?} through the uf task runner"))?;
     if !status.success() {
         bail!("task {script:?} exited with {status}");
     }

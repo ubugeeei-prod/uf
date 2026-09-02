@@ -172,8 +172,8 @@ fn build_writes_native_manifest_and_router_types() {
         serde_json::from_str(&fs::read_to_string(manifest_path).unwrap()).unwrap();
     assert_eq!(manifest["engine"], serde_json::json!("uf-native"));
     assert_eq!(
-        manifest["bundlerCompatibility"],
-        serde_json::json!(["vite", "rolldown"])
+        manifest["pluginContract"],
+        serde_json::json!("uf-plugin-v1")
     );
     assert_eq!(manifest["runtime"]["wintertc"], serde_json::json!(true));
     assert!(app.join("router.js").exists());
