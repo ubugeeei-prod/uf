@@ -1,0 +1,14 @@
+// @flow
+import type { HeadlessComponent } from "../types/renders.js";
+
+export type DialogParts = {
+  +Root: HeadlessComponent,
+  +Trigger: HeadlessComponent,
+  +Overlay: HeadlessComponent,
+  +Body: HeadlessComponent,
+  +Header: HeadlessComponent,
+  +Footer: HeadlessComponent,
+  +Title: HeadlessComponent,
+  +Description: HeadlessComponent,
+  +Close: HeadlessComponent,
+};

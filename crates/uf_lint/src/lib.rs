@@ -376,9 +376,14 @@ fn run_flow_syntax(
     Ok(())
 }
 
+/// Whether `path` is Flow source uf should parse.
+///
+/// Flow lives in `.js` files here; `.flow` declaration sidecars are not part of
+/// the product, so a file ending in `.flow` is someone else's convention and
+/// parsing it would report syntax errors against declaration syntax uf never
+/// emits.
 fn is_flow_syntax_target(path: &str) -> bool {
-    path.ends_with(".flow")
-        || path.ends_with(".js")
+    path.ends_with(".js")
         || path.ends_with(".jsx")
         || path.ends_with(".mjs")
         || path.ends_with(".cjs")
@@ -1577,7 +1582,10 @@ fn run_server_no_client_secret(
 }
 
 /// Module specifiers a `"use client"` module must never import.
-const SERVER_ONLY_SPECIFIERS: [&str; 3] = ["@uniflowed/server", ".server.js", ".server.flow"];
+///
+/// `.server.flow` is not among them: the product has no `.flow` files, so a
+/// server module is `@uniflowed/server` or a `*.server.js` sibling.
+const SERVER_ONLY_SPECIFIERS: [&str; 2] = ["@uniflowed/server", ".server.js"];
 
 fn run_server_no_server_only_import_in_client(
     scan: &FileScan<'_>,
@@ -1674,9 +1682,7 @@ fn run_server_use_server_actions(
         return;
     };
 
-    if !(scan.file.path.starts_with("server/")
-        || scan.file.path.ends_with(".server.flow")
-        || scan.file.path.ends_with(".server.js"))
+    if !(scan.file.path.starts_with("server/") || scan.file.path.ends_with(".server.js"))
         || !scan.file.source.contains("serverAction")
     {
         return;

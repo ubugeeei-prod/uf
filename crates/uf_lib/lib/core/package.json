@@ -4,6 +4,7 @@
   "description": "Core native bridge declarations for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ubugeeei-prod/uf.git",
@@ -54,6 +55,6 @@
   },
   "files": [
     "*.js",
-    "*.js.flow"
+    "internal/*.js"
   ]
 }
