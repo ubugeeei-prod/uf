@@ -33,4 +33,4 @@ jobs:
       - run: wild --version
       - run: cargo test --workspace
       - run: npm publish --access public
-        working-directory: crates/uf_lib/lib/core
+        working-directory: packages/core

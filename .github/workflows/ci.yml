@@ -107,7 +107,7 @@ jobs:
         with:
           node-version: 24
       - run: cargo metadata --format-version 1 --locked
-      - run: node -e "JSON.parse(require('node:fs').readFileSync('crates/uf_lib/lib/core/package.json', 'utf8'))"
+      - run: node -e "JSON.parse(require('node:fs').readFileSync('packages/core/package.json', 'utf8'))"
 
   upstream-flow:
     name: Upstream Flow

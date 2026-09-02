@@ -164,7 +164,7 @@ export default defineConfig({
 
 ## Native Library Surface
 
-The Flow package surface starts in `crates/uf_lib/lib/core` and is exposed as bundled
+The Flow package surface starts in `packages/core` and is exposed as bundled
 `@uniflowed/*` modules:
 
 - `@uniflowed/core`

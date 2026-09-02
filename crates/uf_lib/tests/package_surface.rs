@@ -1,4 +1,4 @@
-//! Invariants of the JavaScript surface shipped from `crates/uf_lib/lib`.
+//! Invariants of the JavaScript surface shipped from `packages`.
 //!
 //! Shipped JavaScript weight is a product requirement, so these are structural
 //! tests over the files themselves rather than tests of Rust code:
@@ -43,14 +43,14 @@ const DECLARATION_KEYWORDS: &[&str] = &[
 ];
 
 fn lib_root() -> Utf8PathBuf {
-    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("lib")
+    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages")
 }
 
 fn crate_root() -> Utf8PathBuf {
     Utf8Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
 
-/// Every file under `crates/uf_lib/lib`, relative to that directory.
+/// Every file under `packages`, relative to that directory.
 fn shipped_files() -> Vec<Utf8PathBuf> {
     let root = lib_root();
     let mut files = WalkDir::new(&root)
@@ -275,7 +275,7 @@ fn is_identifier_part(value: char) -> bool {
     value.is_alphanumeric() || value == '_' || value == '$'
 }
 
-/// Every `package.json` under `crates/uf_lib/lib`, relative to that directory.
+/// Every `package.json` under `packages`, relative to that directory.
 fn shipped_manifests() -> Vec<Utf8PathBuf> {
     shipped_files()
         .into_iter()

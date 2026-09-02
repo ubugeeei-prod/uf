@@ -24,8 +24,8 @@ fn infers_registry_store_and_script_policy_from_config() {
 
 #[test]
 fn records_workspace_packages_without_npm_scripts() {
-    let plan = PackageManagerPlan::default()
-        .with_workspace_package("@uniflowed/core", "crates/uf_lib/lib/core");
+    let plan =
+        PackageManagerPlan::default().with_workspace_package("@uniflowed/core", "packages/core");
 
     assert_eq!(plan.workspace_packages[0].name, "@uniflowed/core");
     assert!(plan.forbids_npm_scripts());

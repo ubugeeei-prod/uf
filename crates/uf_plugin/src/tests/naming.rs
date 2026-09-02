@@ -40,7 +40,7 @@ const CHECKED_TREES: [&str; 5] = [
 ///
 /// `@uniflowed/*` modules are published, so a comment in one is something a
 /// user reads in their own `node_modules`.
-const CHECKED_JS_TREES: [&str; 1] = ["../uf_lib/lib"];
+const CHECKED_JS_TREES: [&str; 1] = ["../../packages"];
 
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

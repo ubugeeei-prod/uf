@@ -521,7 +521,7 @@ fn the_update_target_is_not_a_file_route() {
 #[test]
 fn the_client_runtime_names_the_endpoint_the_server_serves() {
     let runtime = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../uf_lib/lib/core/hmr.js")
+        .join("../../packages/core/hmr.js")
         .canonicalize()
         .expect("the shipped client runtime exists");
     let source = std::fs::read_to_string(&runtime).expect("readable");
