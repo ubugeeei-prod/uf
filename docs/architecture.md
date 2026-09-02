@@ -40,7 +40,7 @@ manager performance, and integrated feature coverage.
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
 - `uf_stdlib_cli`: Gunshi-style stdlib CLI framework for Flow
 - `uf_temporal`: lite Temporal contracts
-- `uf_test`: native test discovery core
+- `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
 - `uf_tui`: OpenTUI-compatible native TUI framework contracts
 - `uf_validator`: valibot-style native validator primitives
 - `uf_vrt`: native visual regression contracts
@@ -145,7 +145,10 @@ Implemented native slices already cover:
 - `uf upgrade` package/runtime manifest generation
 - `ufx` native execution for known `@uniflowed/*` package entrypoints
 - `uf publish` and `uf release` metadata generation for trusted publishing
-- source-level native `uf test` execution for the first assertion subset
+- source-level native `uf test` execution for the first assertion subset,
+  scheduled longest-first across a rayon pool from durations recorded in
+  `.uf/test-timings.json`, with `--watch` re-running only the test files an edit
+  transitively invalidates
 - stdio JSON-RPC `uf lsp` initialize capabilities
 
 Native engines being deepened:

@@ -83,8 +83,33 @@ pub(crate) enum Commands {
         args: Vec<String>,
     },
     Test {
+        /// List what would run instead of running it.
         #[arg(long)]
         list: bool,
+        /// Re-run the affected tests whenever a source file changes.
+        #[arg(long)]
+        watch: bool,
+        /// Emit machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+        /// Keep only tests whose fully qualified name contains PATTERN.
+        #[arg(short = 't', long, value_name = "PATTERN")]
+        filter: Option<String>,
+        /// Stop once N tests have failed; N defaults to 1.
+        #[arg(long, value_name = "N", num_args = 0..=1, default_missing_value = "1")]
+        bail: Option<usize>,
+        /// Re-run a failing test up to N more times.
+        #[arg(long, value_name = "N", default_value_t = 0)]
+        retry: u32,
+        /// Run at most N files at once; defaults to one per core.
+        #[arg(short = 'j', long, value_name = "N")]
+        threads: Option<usize>,
+        /// How often `--watch` looks for changes, in milliseconds.
+        #[arg(long, value_name = "MS")]
+        watch_interval: Option<u64>,
+        /// Only run files whose path contains one of these patterns.
+        #[arg(value_name = "PATH")]
+        paths: Vec<String>,
     },
     Use {
         runtime: String,
@@ -97,7 +122,10 @@ impl Commands {
     pub(crate) fn wants_json(&self) -> bool {
         matches!(
             self,
-            Self::Check { json: true } | Self::Inspect { json: true } | Self::Lint { json: true }
+            Self::Check { json: true }
+                | Self::Inspect { json: true }
+                | Self::Lint { json: true }
+                | Self::Test { json: true, .. }
         )
     }
 
