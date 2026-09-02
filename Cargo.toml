@@ -56,6 +56,10 @@ flow_common_errors = { path = "upstream/flow/rust_port/crates/flow_common_errors
 flow_flowlib = { path = "upstream/flow/rust_port/crates/flow_flowlib" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
+rolldown = "1.2.6"
+rolldown_common = "1.2.6"
+rolldown_plugin = "1.2.6"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 flow_parser_utils = { path = "upstream/flow/rust_port/crates/flow_parser_utils" }
 flow_parsing = { path = "upstream/flow/rust_port/crates/flow_parsing" }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }

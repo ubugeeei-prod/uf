@@ -70,6 +70,7 @@ pub mod limits;
 pub mod pipeline;
 pub mod record;
 pub mod resolve;
+pub mod rolldown_backend;
 pub mod shake;
 pub mod sourcemap;
 
@@ -91,6 +92,12 @@ pub use sourcemap::SourceMapBuilder;
 /// Anything that can stop a build.
 #[derive(Debug, Error)]
 pub enum BundleError {
+    /// Rolldown could not build or generate the bundle.
+    #[error("bundling failed: {0}")]
+    Rolldown(String),
+    /// The async runtime Rolldown needs could not be created.
+    #[error("could not start the bundler runtime: {0}")]
+    Runtime(String),
     /// An entry point names a path outside the project root.
     #[error("entry {entry} is outside the project root")]
     EntryOutsideProject {
