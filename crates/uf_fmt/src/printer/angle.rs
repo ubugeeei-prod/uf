@@ -95,6 +95,13 @@ fn scan_type_arguments(tokens: &[Token], start: usize) -> Option<usize> {
 
         match kind {
             TokenKind::Identifier | TokenKind::Number | TokenKind::String => saw_content = true,
+            // `extends` bounds a type parameter and `in` marks a contravariant
+            // one — both sit inside the brackets in modern Flow, and both
+            // replace syntax that is now deprecated (`<T: Bound>` and `<-T>`).
+            // Rejecting them made the scan give up and print the brackets as
+            // comparisons, so the formatter mangled exactly the spellings uf
+            // tells users to write. (`out`, the covariant sigil, lexes as an
+            // identifier and was already accepted.)
             TokenKind::Keyword(
                 Keyword::Typeof
                 | Keyword::Void
@@ -103,7 +110,9 @@ fn scan_type_arguments(tokens: &[Token], start: usize) -> Option<usize> {
                 | Keyword::False
                 | Keyword::This
                 | Keyword::Static
-                | Keyword::Interface,
+                | Keyword::Interface
+                | Keyword::Extends
+                | Keyword::In,
             ) => saw_content = true,
             TokenKind::Punctuator(punctuator) => match punctuator {
                 Punctuator::Less => {

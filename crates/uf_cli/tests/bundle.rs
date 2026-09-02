@@ -229,6 +229,98 @@ fn a_scaffolded_app_has_no_reserved_router_file_errors() {
     assert!(reserved.is_empty(), "{reserved:?}");
 }
 
+/// The generated router must survive uf's own tooling for a route that *has*
+/// parameters, and for one with a catch-all segment.
+///
+/// The default scaffold has a single parameterless route, so nothing exercised
+/// the nested params object. `uf_router`'s own tests assert the generated
+/// *text*, which cannot notice that the formatter rewrites it or that the
+/// parser rejects it — `route<P extends X>` was being reformatted to
+/// `route < P extends X > (` with the mangling baked back into the codegen.
+#[test]
+fn a_generated_router_with_params_survives_fmt_and_check() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let created = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["create", "app", "react"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+
+    for route in ["app/users/[id]", "app/files/[...path]"] {
+        let page = dir.path().join(route);
+        fs::create_dir_all(&page).unwrap();
+        fs::write(
+            page.join("_uf.page.js"),
+            "// @flow\nexport function Page(): null {\n  return null;\n}\n",
+        )
+        .unwrap();
+    }
+
+    let built = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let router = fs::read_to_string(dir.path().join("router.js")).unwrap();
+    assert!(
+        router.contains("\"/users/:id\"") && router.contains("\"/files/:path*\""),
+        "the router did not pick up the added routes:\n{router}"
+    );
+
+    // Generated code has to be what the formatter would have written, or every
+    // `uf fmt --check` in CI fails on a file the user never wrote.
+    let formatted = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["fmt", "--check"])
+        .output()
+        .unwrap();
+    let fmt_stdout = String::from_utf8(formatted.stdout).unwrap();
+    assert!(
+        !fmt_stdout.contains("router.js"),
+        "the generated router is not formatted the way `uf fmt` writes it:\n{fmt_stdout}"
+    );
+
+    let checked = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("check")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(checked.stdout).unwrap();
+    let stderr = String::from_utf8(checked.stderr).unwrap();
+    let errors = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("error["))
+        .collect::<Vec<_>>();
+    assert!(
+        errors.is_empty(),
+        "a generated router with params fails `uf check`:\n{}",
+        errors.join("\n")
+    );
+    // A backend that cannot parse the generated syntax fails before it reports
+    // any per-file error, so the error list above would be empty either way.
+    assert!(
+        checked.status.success(),
+        "`uf check` exited non-zero on a generated router:\n{stdout}{stderr}"
+    );
+}
+
 /// A freshly scaffolded project must pass `uf check` with no errors.
 ///
 /// Not "no errors in files the user wrote" — no errors at all. Everything in a
@@ -273,6 +365,7 @@ fn a_scaffolded_app_passes_its_own_check() {
         .unwrap();
 
     let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
     let errors = stdout
         .lines()
         .filter(|line| line.trim_start().starts_with("error["))
@@ -282,8 +375,11 @@ fn a_scaffolded_app_passes_its_own_check() {
         "a freshly created project fails its own `uf check`:\n{}",
         errors.join("\n")
     );
+    // `uf check` reports a backend that failed before it reached a file on
+    // stderr, leaving stdout empty — so a bare stdout dump says nothing about
+    // why this failed.
     assert!(
         output.status.success(),
-        "`uf check` exited non-zero on a fresh project:\n{stdout}"
+        "`uf check` exited non-zero on a fresh project:\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }

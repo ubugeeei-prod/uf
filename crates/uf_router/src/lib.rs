@@ -151,7 +151,10 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
     // which is the mistake the generated types exist to prevent. It also keeps a
     // freshly scaffolded project passing `flow/ambiguous-object-type`, which uf
     // turns on by default — generated code has to satisfy the rules uf ships.
-    output.push_str("export type RouteParams = {|\n");
+    // `Readonly<>` wraps the map rather than each key carrying a modifier: the
+    // keys are route paths, so they are quoted, and Flow rejects `readonly` on a
+    // string-literal key.
+    output.push_str("export type RouteParams = Readonly<{|\n");
     for route in routes {
         output.push_str(&format!(
             "  \"{}\": {},\n",
@@ -159,9 +162,9 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
             route_params_type(&route.params)
         ));
     }
-    output.push_str("|};\n\n");
+    output.push_str("|}>;\n\n");
     output.push_str(
-        "declare export function route < Path extends RoutePath > (\n  path: Path,\n  params: RouteParams[Path]\n): string;\n",
+        "declare export function route<Path extends RoutePath>(\n  path: Path,\n  params: RouteParams[Path]\n): string;\n",
     );
     output
 }
@@ -330,7 +333,7 @@ mod tests {
                 );
             }
         }
-        assert!(source.contains("export type RouteParams = {|"));
+        assert!(source.contains("export type RouteParams = Readonly<{|"));
         assert!(source.ends_with("string;\n"));
     }
 
@@ -339,7 +342,7 @@ mod tests {
         let source = generate_router_flow(&[]);
 
         assert!(source.contains("export type RoutePath = empty;"));
-        assert!(source.contains("export type RouteParams = {|"));
+        assert!(source.contains("export type RouteParams = Readonly<{|"));
         assert!(!source.contains("= {\n"));
     }
 

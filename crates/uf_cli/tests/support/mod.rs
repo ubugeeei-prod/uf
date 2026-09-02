@@ -14,8 +14,20 @@ pub fn uf() -> Command {
 }
 
 /// One of the alias binaries, `ufr` or `ufx`.
+///
+/// The path comes from `CARGO_BIN_EXE_*`, which Cargo sets to the artifact it
+/// guarantees is built before this test runs. `Command::cargo_bin` instead
+/// guesses the path by convention, so it can hand back a binary that is still
+/// being linked — which surfaces as an empty stdout and a non-zero exit that
+/// looks like the tool failing rather than a race.
 pub fn binary(name: &str) -> Command {
-    let mut command = Command::cargo_bin(name).unwrap();
+    let path = match name {
+        "uf" => env!("CARGO_BIN_EXE_uf"),
+        "ufr" => env!("CARGO_BIN_EXE_ufr"),
+        "ufx" => env!("CARGO_BIN_EXE_ufx"),
+        other => panic!("unknown uf binary: {other}"),
+    };
+    let mut command = Command::new(path);
     command
         .env_remove("NO_COLOR")
         .env_remove("FORCE_COLOR")
