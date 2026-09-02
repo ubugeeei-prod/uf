@@ -1,9 +1,15 @@
 #![deny(missing_docs)]
-//! Native package manager planning for `uf install`, `uf upgrade`, and `@uniflowed/pm`.
+//! Native package manager for `uf install`, `uf upgrade`, and `@uniflowed/pm`.
 
+use std::collections::BTreeMap;
+use std::fs;
+
+use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{CompactString, ToCompactString};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use smallvec::SmallVec;
+use thiserror::Error;
 use uf_config::UniflowedConfig;
 
 /// Inline package list used for small workspaces without heap-heavy metadata.
@@ -32,6 +38,84 @@ pub struct PackageManagerPlan {
     pub workspace_packages: PackageList,
     /// Deterministic install steps.
     pub steps: PackageManagerSteps,
+}
+
+/// Applied install report for a workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageManagerApplyReport {
+    /// Lockfile written by `uf install`.
+    pub lockfile: Utf8PathBuf,
+    /// Store manifest written by `uf install`.
+    pub store_manifest: Utf8PathBuf,
+    /// Content-addressed package entries written by `uf install`.
+    pub store_entries: Vec<Utf8PathBuf>,
+    /// Locked workspace packages.
+    pub packages: Vec<LockedPackage>,
+}
+
+/// Package entry persisted in `uf.lock`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockedPackage {
+    /// Published package name.
+    pub name: CompactString,
+    /// Package version, or `0.0.0` when the manifest intentionally omits one.
+    pub version: CompactString,
+    /// Path relative to the workspace root.
+    pub path: CompactString,
+    /// Stable content address for the package manifest.
+    pub integrity: CompactString,
+    /// Store entry path relative to the package store root.
+    pub store_path: CompactString,
+    /// Production dependencies from `package.json`.
+    pub dependencies: BTreeMap<CompactString, CompactString>,
+    /// Development dependencies from `package.json`.
+    pub dev_dependencies: BTreeMap<CompactString, CompactString>,
+}
+
+/// Native package-manager errors.
+#[derive(Debug, Error)]
+pub enum PackageManagerError {
+    /// A filesystem read failed.
+    #[error("failed to read {path}: {source}")]
+    Read {
+        /// Path that failed to read.
+        path: Utf8PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+    /// A filesystem write failed.
+    #[error("failed to write {path}: {source}")]
+    Write {
+        /// Path that failed to write.
+        path: Utf8PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+    /// A package manifest was invalid JSON.
+    #[error("failed to parse {path}: {source}")]
+    Parse {
+        /// Manifest path.
+        path: Utf8PathBuf,
+        /// JSON parser error.
+        #[source]
+        source: serde_json::Error,
+    },
+    /// A package manifest omitted its name.
+    #[error("package manifest {path} is missing a string name")]
+    MissingName {
+        /// Manifest path.
+        path: Utf8PathBuf,
+    },
+    /// A package manifest declared npm scripts while they are forbidden.
+    #[error("package manifest {path} declares scripts; use uf tasks in uf.config.js")]
+    ScriptsForbidden {
+        /// Manifest path.
+        path: Utf8PathBuf,
+    },
 }
 
 impl Default for PackageManagerPlan {
@@ -87,6 +171,258 @@ impl PackageManagerPlan {
         });
         self
     }
+}
+
+/// Install the workspace deterministically without running npm lifecycle scripts.
+pub fn install_workspace(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+) -> Result<PackageManagerApplyReport, PackageManagerError> {
+    let plan = PackageManagerPlan::infer_from_config(config);
+    let manifests = discover_package_manifests(root)?;
+    let mut packages = Vec::with_capacity(manifests.len());
+
+    for manifest in manifests {
+        let source = fs::read_to_string(&manifest).map_err(|source| PackageManagerError::Read {
+            path: manifest.to_path_buf(),
+            source,
+        })?;
+        let value = serde_json::from_str::<Value>(&source).map_err(|source| {
+            PackageManagerError::Parse {
+                path: manifest.to_path_buf(),
+                source,
+            }
+        })?;
+
+        if plan.forbids_npm_scripts() && has_scripts(&value) {
+            return Err(PackageManagerError::ScriptsForbidden { path: manifest });
+        }
+
+        packages.push(lock_manifest(root, &manifest, &source, &value)?);
+    }
+
+    packages.sort_by(|a, b| a.path.cmp(&b.path).then(a.name.cmp(&b.name)));
+
+    let store_dir = root.join(plan.store.directory.as_str());
+    fs::create_dir_all(&store_dir).map_err(|source| PackageManagerError::Write {
+        path: store_dir.clone(),
+        source,
+    })?;
+    let store_package_dir = store_dir.join("packages");
+    fs::create_dir_all(&store_package_dir).map_err(|source| PackageManagerError::Write {
+        path: store_package_dir.clone(),
+        source,
+    })?;
+
+    let lockfile = root.join(plan.lockfile.as_str());
+    let lock = PackageLockfile {
+        lockfile_version: 1,
+        resolver: plan.resolver,
+        registry: plan.registry,
+        scripts: plan.scripts,
+        link_mode: plan.link_mode,
+        packages: &packages,
+    };
+    write_json(&lockfile, &lock)?;
+
+    let mut store_entries = Vec::with_capacity(packages.len());
+    for package in &packages {
+        let store_entry = store_dir.join(package.store_path.as_str());
+        write_json(
+            &store_entry,
+            &PackageStoreEntry {
+                version: 1,
+                package,
+            },
+        )?;
+        store_entries.push(store_entry);
+    }
+
+    let store_manifest = store_dir.join("manifest.json");
+    let manifest = StoreManifest {
+        version: 1,
+        strategy: plan.store.strategy,
+        packages: &packages,
+    };
+    write_json(&store_manifest, &manifest)?;
+
+    Ok(PackageManagerApplyReport {
+        lockfile,
+        store_manifest,
+        store_entries,
+        packages,
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageLockfile<'a> {
+    lockfile_version: u8,
+    resolver: PackageResolver,
+    registry: CompactString,
+    scripts: PackageScriptPolicy,
+    link_mode: PackageLinkMode,
+    packages: &'a [LockedPackage],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoreManifest<'a> {
+    version: u8,
+    strategy: PackageStoreStrategy,
+    packages: &'a [LockedPackage],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageStoreEntry<'a> {
+    version: u8,
+    package: &'a LockedPackage,
+}
+
+fn discover_package_manifests(root: &Utf8Path) -> Result<Vec<Utf8PathBuf>, PackageManagerError> {
+    let mut manifests = Vec::new();
+    visit_package_dirs(root, root, &mut manifests)?;
+    manifests.sort();
+    Ok(manifests)
+}
+
+fn visit_package_dirs(
+    root: &Utf8Path,
+    dir: &Utf8Path,
+    manifests: &mut Vec<Utf8PathBuf>,
+) -> Result<(), PackageManagerError> {
+    let entries = fs::read_dir(dir).map_err(|source| PackageManagerError::Read {
+        path: dir.to_path_buf(),
+        source,
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|source| PackageManagerError::Read {
+            path: dir.to_path_buf(),
+            source,
+        })?;
+        let path =
+            Utf8PathBuf::from_path_buf(entry.path()).map_err(|path| PackageManagerError::Read {
+                path: Utf8PathBuf::from(path.display().to_string()),
+                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "path is not UTF-8"),
+            })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|source| PackageManagerError::Read {
+                path: path.clone(),
+                source,
+            })?;
+
+        if file_type.is_dir() {
+            if should_skip_dir(root, &path) {
+                continue;
+            }
+            visit_package_dirs(root, &path, manifests)?;
+        } else if file_type.is_file() && path.file_name() == Some("package.json") {
+            manifests.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn should_skip_dir(root: &Utf8Path, path: &Utf8Path) -> bool {
+    let name = path.file_name().unwrap_or_default();
+    matches!(
+        name,
+        ".git" | ".uf" | "dist" | "node_modules" | "target" | "__uf_vrt__"
+    ) || path
+        .strip_prefix(root)
+        .map(|relative| relative.as_str().starts_with("tools/fuzz/target"))
+        .unwrap_or(false)
+}
+
+fn lock_manifest(
+    root: &Utf8Path,
+    manifest: &Utf8Path,
+    source: &str,
+    value: &Value,
+) -> Result<LockedPackage, PackageManagerError> {
+    let name = value.get("name").and_then(Value::as_str).ok_or_else(|| {
+        PackageManagerError::MissingName {
+            path: manifest.to_path_buf(),
+        }
+    })?;
+    let version = value
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or("0.0.0");
+    let package_dir = manifest.parent().unwrap_or(root);
+    let relative = package_dir
+        .strip_prefix(root)
+        .map(Utf8Path::as_str)
+        .unwrap_or(package_dir.as_str());
+    let path = if relative.is_empty() { "." } else { relative };
+    let integrity = stable_manifest_integrity(source.as_bytes());
+    let store_path = format!("packages/{integrity}.json");
+
+    Ok(LockedPackage {
+        name: name.to_compact_string(),
+        version: version.to_compact_string(),
+        path: path.to_compact_string(),
+        integrity: integrity.to_compact_string(),
+        store_path: store_path.to_compact_string(),
+        dependencies: read_dependency_map(value, "dependencies"),
+        dev_dependencies: read_dependency_map(value, "devDependencies"),
+    })
+}
+
+fn stable_manifest_integrity(bytes: &[u8]) -> String {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    let mut hash = OFFSET;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+
+    format!("uf-fnv1a64-{hash:016x}")
+}
+
+fn read_dependency_map(value: &Value, field: &str) -> BTreeMap<CompactString, CompactString> {
+    let mut dependencies = BTreeMap::new();
+    let Some(object) = value.get(field).and_then(Value::as_object) else {
+        return dependencies;
+    };
+
+    for (name, version) in object {
+        if let Some(version) = version.as_str() {
+            dependencies.insert(
+                name.as_str().to_compact_string(),
+                version.to_compact_string(),
+            );
+        }
+    }
+
+    dependencies
+}
+
+fn has_scripts(value: &Value) -> bool {
+    value
+        .get("scripts")
+        .and_then(Value::as_object)
+        .is_some_and(|scripts| !scripts.is_empty())
+}
+
+fn write_json<T: Serialize>(path: &Utf8Path, value: &T) -> Result<(), PackageManagerError> {
+    let mut contents =
+        serde_json::to_string_pretty(value).map_err(|source| PackageManagerError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    contents.push('\n');
+
+    fs::write(path, contents).map_err(|source| PackageManagerError::Write {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 /// Resolver backend used by the native package manager.
@@ -204,5 +540,67 @@ mod tests {
 
         assert_eq!(plan.workspace_packages[0].name, "@uniflowed/core");
         assert!(plan.forbids_npm_scripts());
+    }
+
+    #[test]
+    fn install_writes_lockfile_and_store_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            root.join("package.json"),
+            r#"{
+  "name": "demo",
+  "version": "1.2.3",
+  "dependencies": {
+    "@uniflowed/core": "latest"
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        let report = install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+        assert_eq!(report.packages.len(), 1);
+        assert_eq!(report.packages[0].name, "demo");
+        assert!(report.packages[0].integrity.starts_with("uf-fnv1a64-"));
+        assert_eq!(report.store_entries.len(), 1);
+        assert!(report.lockfile.exists());
+        assert!(report.store_manifest.exists());
+        assert!(report.store_entries[0].exists());
+        assert!(
+            fs::read_to_string(root.join("uf.lock"))
+                .unwrap()
+                .contains("\"lockfileVersion\": 1")
+        );
+        assert!(
+            fs::read_to_string(report.store_entries[0].as_std_path())
+                .unwrap()
+                .contains("\"integrity\"")
+        );
+    }
+
+    #[test]
+    fn install_rejects_package_scripts_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            root.join("package.json"),
+            r#"{
+  "name": "demo",
+  "scripts": {
+    "test": "jest"
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        let error = install_workspace(&root, &UniflowedConfig::default()).unwrap_err();
+
+        assert!(matches!(
+            error,
+            PackageManagerError::ScriptsForbidden { .. }
+        ));
     }
 }

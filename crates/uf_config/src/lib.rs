@@ -1507,7 +1507,9 @@ pub fn extract_config_object(source: &str) -> Option<String> {
         .filter(|line| !line.trim_start().starts_with("import "))
         .collect::<Vec<_>>()
         .join("\n");
-    let expression = without_imports.trim().trim_end_matches(';').trim();
+    let expression = strip_leading_comments(without_imports.trim())
+        .trim_end_matches(';')
+        .trim();
     let expression = expression
         .strip_prefix("export default")
         .map(str::trim)
@@ -1529,6 +1531,27 @@ pub fn extract_config_object(source: &str) -> Option<String> {
     }
 
     None
+}
+
+fn strip_leading_comments(mut source: &str) -> &str {
+    loop {
+        source = source.trim_start();
+        if let Some(rest) = source.strip_prefix("//") {
+            source = rest
+                .split_once('\n')
+                .map(|(_, rest)| rest)
+                .unwrap_or_default();
+            continue;
+        }
+        if let Some(rest) = source.strip_prefix("/*") {
+            let Some((_, rest)) = rest.split_once("*/") else {
+                return "";
+            };
+            source = rest;
+            continue;
+        }
+        return source;
+    }
 }
 
 fn extract_balanced(source: &str, open: char, close: char) -> Option<String> {
@@ -1802,6 +1825,7 @@ mod tests {
     #[test]
     fn extracts_vite_style_define_config_object() {
         let source = r#"
+            // @flow
             import { defineConfig } from "@uniflowed/config";
 
             export default defineConfig({

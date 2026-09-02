@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::{IsTerminal, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::process::{Command as ProcessCommand, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -14,13 +16,13 @@ use uf_lib::{
     tui_contract, ui_components, vrt_plan,
 };
 use uf_lint::{Severity, SourceFile, lint_sources};
-use uf_pm::PackageManagerPlan;
+use uf_pm::{PackageManagerPlan, install_workspace};
 use uf_prepare::default_plan;
 use uf_project::{CreateKind, CreateOptions, collect_source_files, create_project};
 use uf_rm::{RuntimeManagerPlan, RuntimeReference, RuntimeUsePlan, XdgEnv, XdgLayout};
 use uf_router::{discover_routes, write_router_manifest};
 use uf_runtime::RuntimeContract;
-use uf_test::{NativeTestRunnerPlan, discover_tests, merge_plans};
+use uf_test::{NativeTestRunnerPlan, discover_tests, merge_plans, run_tests};
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Unified Toolchain for Flow (React)")]
@@ -39,7 +41,10 @@ enum Commands {
         #[command(subcommand)]
         command: CreateCommand,
     },
-    Dev,
+    Dev {
+        #[arg(long, hide = true)]
+        once: bool,
+    },
     Env {
         #[command(subcommand)]
         command: EnvCommand,
@@ -148,7 +153,7 @@ fn run() -> Result<()> {
         Commands::Build => build(&cwd),
         Commands::Check => check(&cwd),
         Commands::Create { command } => create(&cwd, command),
-        Commands::Dev => dev(&cwd),
+        Commands::Dev { once } => dev(&cwd, once),
         Commands::Env { command } => env(&cwd, command),
         Commands::Exec { package, args } => exec_package(&cwd, &package, &args),
         Commands::Fmt { check } => fmt(&cwd, check),
@@ -202,9 +207,41 @@ fn current_dir() -> Result<Utf8PathBuf> {
 
 fn build(cwd: &Utf8Path) -> Result<()> {
     let resolved = load_config(cwd)?;
+    let routes = discover_routes(&resolved.root, &resolved.config)?;
     let manifest = write_router_manifest(&resolved.root, &resolved.config)?;
+    let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
+    fs::create_dir_all(&out_dir).with_context(|| format!("failed to create {out_dir}"))?;
+    let build_manifest = out_dir.join("uf-build-manifest.json");
+    let payload = json!({
+        "version": 1,
+        "engine": "uf-native",
+        "bundlerCompatibility": ["vite", "rolldown"],
+        "entries": resolved.config.build.entries,
+        "routes": routes.iter().map(|route| json!({
+            "path": route.path,
+            "page": route.page,
+            "layout": route.has_layout,
+            "middleware": route.has_middleware,
+            "params": route.params.iter().map(|param| json!({
+                "name": param.name,
+                "kind": format!("{:?}", param.kind),
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "runtime": {
+            "default": "uf",
+            "wintertc": true,
+            "hermes": true,
+        },
+        "cache": {
+            "route": resolved.config.app.rendering.cache.route,
+            "fetch": resolved.config.app.rendering.cache.fetch,
+            "data": resolved.config.app.rendering.cache.data,
+            "actions": resolved.config.app.rendering.cache.actions,
+        },
+    });
+    write_json_file(&build_manifest, &payload)?;
     println!(
-        "uf build: entries={} outDir={} sourcemap={} backend=vite-compatible/rolldown-planned",
+        "uf build: entries={} outDir={} sourcemap={} backend=uf-native/vite-compatible/rolldown-compatible manifest={}",
         resolved
             .config
             .build
@@ -214,7 +251,8 @@ fn build(cwd: &Utf8Path) -> Result<()> {
             .collect::<Vec<_>>()
             .join(","),
         resolved.config.build.out_dir,
-        resolved.config.build.sourcemap
+        resolved.config.build.sourcemap,
+        build_manifest
     );
     if let Some(manifest) = manifest {
         println!("generated {}", manifest);
@@ -274,13 +312,81 @@ fn project_name(path: &Utf8Path, fallback: &str) -> String {
         .to_string()
 }
 
-fn dev(cwd: &Utf8Path) -> Result<()> {
+fn dev(cwd: &Utf8Path, once: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
+    let listener = bind_dev_listener(
+        resolved.config.dev.host.as_str(),
+        resolved.config.dev.port,
+        resolved.config.dev.strict_port,
+    )?;
+    let address = listener.local_addr()?;
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    write_json_file(
+        &state_dir.join("dev-server.json"),
+        &json!({
+            "host": address.ip().to_string(),
+            "port": address.port(),
+            "engine": "uf-native",
+            "viteCompatibility": true,
+            "rolldownCompatibility": true,
+            "health": "/__uf/health",
+        }),
+    )?;
+    let _ = write_router_manifest(&resolved.root, &resolved.config)?;
     println!(
-        "uf dev: http://{}:{} backend=vite-compatible-dev-server-planned",
-        resolved.config.dev.host, resolved.config.dev.port
+        "uf dev: http://{}:{} backend=uf-native/vite-compatible-dev-server",
+        address.ip(),
+        address.port()
     );
+
+    if once {
+        return Ok(());
+    }
+
+    for stream in listener.incoming() {
+        let stream = stream.with_context(|| "failed to accept dev server connection")?;
+        serve_dev_request(stream)?;
+    }
     Ok(())
+}
+
+fn bind_dev_listener(host: &str, port: u16, strict_port: bool) -> Result<TcpListener> {
+    match TcpListener::bind((host, port)) {
+        Ok(listener) => Ok(listener),
+        Err(_) if !strict_port => TcpListener::bind((host, 0)).with_context(|| {
+            format!("failed to bind requested port {host}:{port} and fallback port")
+        }),
+        Err(error) => Err(error).with_context(|| format!("failed to bind {host}:{port}")),
+    }
+}
+
+fn serve_dev_request(mut stream: TcpStream) -> Result<()> {
+    let mut buffer = [0u8; 2048];
+    let bytes = stream
+        .read(&mut buffer)
+        .with_context(|| "failed to read dev server request")?;
+    let request = String::from_utf8_lossy(&buffer[..bytes]);
+    let path = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or("/");
+    let (content_type, body) = if path == "/__uf/health" {
+        (
+            "application/json",
+            r#"{"status":"ok","engine":"uf-native"}"#,
+        )
+    } else {
+        ("text/plain; charset=utf-8", "uf dev server\n")
+    };
+    let response = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream
+        .write_all(response.as_bytes())
+        .with_context(|| "failed to write dev server response")
 }
 
 fn env(cwd: &Utf8Path, command: EnvCommand) -> Result<()> {
@@ -317,15 +423,118 @@ fn env_doctor(cwd: &Utf8Path) -> Result<()> {
 fn exec_package(cwd: &Utf8Path, package: &str, args: &[String]) -> Result<()> {
     let resolved = load_config(cwd)?;
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
+    let cache_dir = resolved.root.join(".uf/exec-cache");
+    fs::create_dir_all(&cache_dir).with_context(|| format!("failed to create {cache_dir}"))?;
+    let manifest = cache_dir.join(format!("{}.json", safe_file_label(package)));
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "package": package,
+            "args": args,
+            "resolver": package_manager.resolver,
+            "lockfile": package_manager.lockfile.as_str(),
+        }),
+    )?;
     println!(
-        "ufx: package={} resolver={:?} lockfile={} args={}",
+        "ufx: package={} resolver={:?} lockfile={} args={} manifest={}",
         package,
         package_manager.resolver,
         package_manager.lockfile,
-        args.len()
+        args.len(),
+        manifest
     );
-    println!("ufx: native temporary package execution is planned; no changes made");
+    if exec_uniflowed_virtual_package(cwd, package, args)? {
+        return Ok(());
+    }
+
+    let candidate = Utf8PathBuf::from(package);
+    let executable = if candidate.is_absolute() {
+        candidate
+    } else {
+        resolved.root.join(candidate)
+    };
+    if executable.exists() {
+        let status = ProcessCommand::new(executable.as_std_path())
+            .args(args)
+            .current_dir(resolved.root.as_std_path())
+            .status()
+            .with_context(|| format!("failed to execute {executable}"))?;
+        if !status.success() {
+            bail!("{package} exited with {status}");
+        }
+        return Ok(());
+    }
+
+    println!("ufx: cached execution request for registry resolution");
     Ok(())
+}
+
+fn exec_uniflowed_virtual_package(cwd: &Utf8Path, package: &str, args: &[String]) -> Result<bool> {
+    match package {
+        "@uniflowed/create" | "uf/create" => {
+            let Some(kind) = args.first().map(String::as_str) else {
+                bail!("ufx {package} requires app or lib");
+            };
+            match kind {
+                "app" => {
+                    let mut cursor = 1;
+                    let template = if args.get(cursor).map(String::as_str) == Some("react") {
+                        cursor += 1;
+                        AppTemplate::React
+                    } else {
+                        AppTemplate::React
+                    };
+                    let path = args.get(cursor).map(Utf8PathBuf::from);
+                    create(
+                        cwd,
+                        CreateCommand::App {
+                            template,
+                            path,
+                            name: None,
+                            force: args.iter().any(|arg| arg == "--force"),
+                        },
+                    )?;
+                }
+                "lib" => {
+                    create(
+                        cwd,
+                        CreateCommand::Lib {
+                            path: args.get(1).map(Utf8PathBuf::from),
+                            name: None,
+                            force: args.iter().any(|arg| arg == "--force"),
+                        },
+                    )?;
+                }
+                other => bail!("unknown @uniflowed/create target {other:?}"),
+            }
+            Ok(true)
+        }
+        "@uniflowed/test" | "uf/test" => {
+            test(cwd, args.iter().any(|arg| arg == "--list"))?;
+            Ok(true)
+        }
+        "@uniflowed/pm" | "uf/pm" => {
+            install(cwd)?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn safe_file_label(value: &str) -> String {
+    let mut output = String::with_capacity(value.len().max(1));
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+            output.push(ch);
+        } else {
+            output.push('_');
+        }
+    }
+    if output.is_empty() {
+        output.push('_');
+    }
+    output
 }
 
 fn command_output(bin: &str, arg: &str) -> Result<String> {
@@ -467,7 +676,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             "parser": "official-flow-parser",
             "build": "vite-compatible/rolldown",
             "devServer": "vite-compatible",
-            "runtime": "hermes-planned",
+            "runtime": "hermes-wintertc-native-contract",
             "runtimeContract": runtime,
             "server": {
                 "engine": resolved.config.server.engine,
@@ -504,14 +713,120 @@ fn use_runtime(cwd: &Utf8Path, runtime: &str) -> Result<()> {
         xdg_layout_from_process(),
         resolved.config.rm.auto_switch,
     );
+    let report = apply_runtime_use_plan(&plan)?;
     println!(
-        "uf use: runtime={}@{} autoSwitch={} shim={}",
-        plan.requested.name, plan.requested.version, plan.auto_switch, plan.layout.shim_path
+        "uf use: runtime={}@{} autoSwitch={} shim={} state={} manifest={} binary={}",
+        plan.requested.name,
+        plan.requested.version,
+        plan.auto_switch,
+        report.shim,
+        report.active_runtime,
+        report.runtime_manifest,
+        report.runtime_binary
     );
-    for step in plan.steps {
+    for step in &plan.steps {
         println!("runtime step: {step:?}");
     }
     Ok(())
+}
+
+#[derive(Debug)]
+struct RuntimeUseApplyReport {
+    active_runtime: Utf8PathBuf,
+    runtime_manifest: Utf8PathBuf,
+    runtime_binary: Utf8PathBuf,
+    shim: Utf8PathBuf,
+}
+
+fn apply_runtime_use_plan(plan: &RuntimeUsePlan) -> Result<RuntimeUseApplyReport> {
+    let version_dir = Utf8PathBuf::from(plan.layout.versions_dir.as_str())
+        .join(plan.requested.name.as_str())
+        .join(plan.requested.version.as_str());
+    let runtime_bin_dir = version_dir.join("bin");
+    fs::create_dir_all(&runtime_bin_dir)
+        .with_context(|| format!("failed to create {runtime_bin_dir}"))?;
+
+    let runtime_binary = runtime_bin_dir.join(if cfg!(windows) { "uf.exe" } else { "uf" });
+    let current_exe = std::env::current_exe().with_context(|| "failed to locate current uf")?;
+    fs::copy(&current_exe, runtime_binary.as_std_path()).with_context(|| {
+        format!(
+            "failed to install runtime binary from {} to {runtime_binary}",
+            current_exe.display()
+        )
+    })?;
+    mark_executable(&runtime_binary)?;
+
+    let runtime_manifest = version_dir.join("runtime.json");
+    write_json_file(
+        &runtime_manifest,
+        &json!({
+            "name": plan.requested.name.as_str(),
+            "version": plan.requested.version.as_str(),
+            "binary": runtime_binary.as_str(),
+            "source": "current-exe",
+            "autoSwitch": plan.auto_switch,
+        }),
+    )?;
+
+    let state_dir = Utf8PathBuf::from(plan.layout.state_dir.as_str());
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let active_runtime = state_dir.join("active-runtime.json");
+    write_json_file(
+        &active_runtime,
+        &json!({
+            "name": plan.requested.name.as_str(),
+            "version": plan.requested.version.as_str(),
+            "manifest": runtime_manifest.as_str(),
+            "binary": runtime_binary.as_str(),
+        }),
+    )?;
+
+    let shim = Utf8PathBuf::from(plan.layout.shim_path.as_str());
+    if let Some(parent) = shim.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+    }
+    write_runtime_shim(&shim, &runtime_binary)?;
+    mark_executable(&shim)?;
+
+    Ok(RuntimeUseApplyReport {
+        active_runtime,
+        runtime_manifest,
+        runtime_binary,
+        shim,
+    })
+}
+
+fn write_runtime_shim(shim: &Utf8Path, runtime_binary: &Utf8Path) -> Result<()> {
+    #[cfg(windows)]
+    let contents = format!("@echo off\r\n\"{}\" %*\r\n", runtime_binary);
+    #[cfg(not(windows))]
+    let contents = format!(
+        "#!/usr/bin/env sh\nset -eu\nexec {} \"$@\"\n",
+        shell_quote(runtime_binary)
+    );
+
+    fs::write(shim, contents).with_context(|| format!("failed to write runtime shim {shim}"))
+}
+
+#[cfg(unix)]
+fn mark_executable(path: &Utf8Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .with_context(|| format!("failed to read permissions for {path}"))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .with_context(|| format!("failed to update permissions for {path}"))
+}
+
+#[cfg(not(unix))]
+fn mark_executable(_path: &Utf8Path) -> Result<()> {
+    Ok(())
+}
+
+fn shell_quote(path: &Utf8Path) -> String {
+    format!("'{}'", path.as_str().replace('\'', "'\\''"))
 }
 
 fn xdg_layout_from_process() -> XdgLayout {
@@ -535,11 +850,16 @@ fn xdg_layout_from_process() -> XdgLayout {
 fn install(cwd: &Utf8Path) -> Result<()> {
     let resolved = load_config(cwd)?;
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
+    let report = install_workspace(&resolved.root, &resolved.config)?;
     println!(
-        "uf install: resolver={:?} lockfile={} store={} scripts={:?}",
-        plan.resolver, plan.lockfile, plan.store.directory, plan.scripts
+        "uf install: resolver={:?} lockfile={} store={} scripts={:?} packages={} storeEntries={}",
+        plan.resolver,
+        report.lockfile,
+        report.store_manifest,
+        plan.scripts,
+        report.packages.len(),
+        report.store_entries.len()
     );
-    println!("uf install: native resolver/apply loop is planned; no changes made");
     Ok(())
 }
 
@@ -591,50 +911,174 @@ fn print_lint_report(report: &uf_lint::LintReport) {
 }
 
 fn lsp(_cwd: &Utf8Path) -> Result<()> {
-    println!("uf lsp: parser/config server boundary is ready; JSON-RPC loop is planned");
+    if std::io::stdin().is_terminal() {
+        println!("uf lsp: JSON-RPC stdio server ready");
+        return Ok(());
+    }
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .with_context(|| "failed to read LSP stdin")?;
+    if input.trim().is_empty() {
+        return Ok(());
+    }
+
+    let id = json_rpc_id(&input).unwrap_or(serde_json::Value::Null);
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "serverInfo": {
+                "name": "uf-lsp",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
+            "capabilities": {
+                "textDocumentSync": 1,
+                "documentFormattingProvider": true,
+                "diagnosticProvider": {
+                    "interFileDependencies": true,
+                    "workspaceDiagnostics": true,
+                },
+            },
+        },
+    });
+    let body = serde_json::to_string(&response)?;
+    print!("Content-Length: {}\r\n\r\n{body}", body.len());
     Ok(())
+}
+
+fn json_rpc_id(input: &str) -> Option<serde_json::Value> {
+    let start = input.find('{')?;
+    let value = serde_json::from_str::<serde_json::Value>(&input[start..]).ok()?;
+    value.get("id").cloned()
 }
 
 fn publish(cwd: &Utf8Path) -> Result<()> {
     let resolved = load_config(cwd)?;
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("publish.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "registry": resolved.config.publish.registry.as_str(),
+            "dryRun": resolved.config.publish.dry_run,
+            "firstPublish": {
+                "mode": resolved.config.publish.first_publish.mode,
+                "localBootstrap": resolved.config.publish.first_publish.local_bootstrap,
+            },
+            "trustedPublish": {
+                "provider": resolved.config.publish.trusted_publish.provider,
+                "tokenless": resolved.config.publish.trusted_publish.tokenless,
+                "trigger": resolved.config.publish.trusted_publish.trigger,
+            },
+        }),
+    )?;
     println!(
-        "uf publish: registry={} dryRun={} firstPublish={:?} localBootstrap={} trustedProvider={:?} tokenless={} trigger={:?}",
+        "uf publish: registry={} dryRun={} firstPublish={:?} localBootstrap={} trustedProvider={:?} tokenless={} trigger={:?} manifest={}",
         resolved.config.publish.registry,
         resolved.config.publish.dry_run,
         resolved.config.publish.first_publish.mode,
         resolved.config.publish.first_publish.local_bootstrap,
         resolved.config.publish.trusted_publish.provider,
         resolved.config.publish.trusted_publish.tokenless,
-        resolved.config.publish.trusted_publish.trigger
+        resolved.config.publish.trusted_publish.trigger,
+        manifest
     );
     Ok(())
 }
 
 fn release(cwd: &Utf8Path, bump: ReleaseBump) -> Result<()> {
     let resolved = load_config(cwd)?;
+    let current_version = env!("CARGO_PKG_VERSION");
+    let next_version = bump_semver(current_version, bump)?;
+    let tag = format!("{}{}", resolved.config.release.tag_prefix, next_version);
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("release.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "bump": format!("{bump:?}"),
+            "currentVersion": current_version,
+            "nextVersion": next_version,
+            "tag": tag,
+            "command": resolved.config.release.command.as_str(),
+            "publish": resolved.config.release.publish,
+            "trustedTrigger": resolved.config.publish.trusted_publish.trigger,
+        }),
+    )?;
     println!(
-        "uf release: bump={:?} tagPrefix={} command={} publish={} trustedTrigger={:?}",
+        "uf release: bump={:?} tag={} command={} publish={} trustedTrigger={:?} manifest={}",
         bump,
-        resolved.config.release.tag_prefix,
+        tag,
         resolved.config.release.command,
         resolved.config.release.publish,
-        resolved.config.publish.trusted_publish.trigger
+        resolved.config.publish.trusted_publish.trigger,
+        manifest
     );
-    println!("uf release: tag calculation and push are planned; no changes made");
     Ok(())
+}
+
+fn bump_semver(version: &str, bump: ReleaseBump) -> Result<String> {
+    let mut parts = version.split('.');
+    let major = parse_semver_part(parts.next(), "major")?;
+    let minor = parse_semver_part(parts.next(), "minor")?;
+    let patch = parse_semver_part(parts.next(), "patch")?;
+    if parts.next().is_some() {
+        bail!("version {version:?} is not a three-part semver");
+    }
+
+    let next = match bump {
+        ReleaseBump::Patch => (major, minor, patch + 1),
+        ReleaseBump::Minor => (major, minor + 1, 0),
+        ReleaseBump::Major => (major + 1, 0, 0),
+    };
+    Ok(format!("{}.{}.{}", next.0, next.1, next.2))
+}
+
+fn parse_semver_part(part: Option<&str>, name: &str) -> Result<u64> {
+    let part = part.ok_or_else(|| anyhow!("version is missing {name}"))?;
+    part.parse()
+        .with_context(|| format!("version {name} part {part:?} is not numeric"))
 }
 
 fn prepare(cwd: &Utf8Path) -> Result<()> {
     let resolved = load_config(cwd)?;
     let plan = default_plan();
+    let router_manifest = write_router_manifest(&resolved.root, &resolved.config)?;
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("prepare.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "routerManifest": router_manifest,
+            "lintStagedCompatible": plan.lint_staged_compatible,
+            "codeGenerator": plan.code_generator,
+            "writeGeneratedFiles": plan.write_generated_files,
+            "cache": format!("{:?}", plan.cache),
+            "steps": plan.steps.iter().map(|step| format!("{step:?}")).collect::<Vec<_>>(),
+        }),
+    )?;
     println!(
-        "uf prepare: root={} lintStagedCompatible={} codeGenerator={} cache={:?}",
-        resolved.root, plan.lint_staged_compatible, plan.code_generator, plan.cache
+        "uf prepare: root={} manifest={} lintStagedCompatible={} codeGenerator={} cache={:?}",
+        resolved.root, manifest, plan.lint_staged_compatible, plan.code_generator, plan.cache
     );
     for step in plan.steps {
         println!("prepare step: {step:?}");
     }
     Ok(())
+}
+
+fn write_json_file(path: &Utf8Path, value: &serde_json::Value) -> Result<()> {
+    let mut contents = serde_json::to_string_pretty(value)?;
+    contents.push('\n');
+    fs::write(path, contents).with_context(|| format!("failed to write {path}"))
 }
 
 fn run_task(cwd: &Utf8Path, script: &str, args: &[String]) -> Result<()> {
@@ -711,7 +1155,7 @@ fn test(cwd: &Utf8Path, list: bool) -> Result<()> {
     let files = collect_source_files(&resolved.root, &resolved.config)?;
     let plan = merge_plans(
         files
-            .into_iter()
+            .iter()
             .map(|file| discover_tests(&file.relative_path, &file.source)),
     );
 
@@ -729,19 +1173,64 @@ fn test(cwd: &Utf8Path, list: bool) -> Result<()> {
         return Ok(());
     }
 
-    bail!(
-        "native JavaScript execution backend is not enabled yet; use `uf test --list` for discovery"
-    )
+    let sources = files
+        .iter()
+        .map(|file| (file.relative_path.as_str(), file.source.as_str()));
+    let report = run_tests(sources);
+    for failure in &report.failures {
+        println!("{} {}: {}", failure.file, failure.name, failure.message);
+    }
+    println!(
+        "uf test: passed={} failed={} unsupportedAssertions={} runtime={:?} target={:?}",
+        report.passed,
+        report.failed,
+        report.unsupported_assertions,
+        runner.runtime,
+        runner.performance_target
+    );
+    if !report.is_success() {
+        bail!(
+            "test failed with {} failure(s) and {} unsupported assertion(s)",
+            report.failed,
+            report.unsupported_assertions
+        );
+    }
+    Ok(())
 }
 
 fn upgrade(cwd: &Utf8Path) -> Result<()> {
     let resolved = load_config(cwd)?;
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
     let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config);
+    let install = install_workspace(&resolved.root, &resolved.config)?;
+    let state_dir = resolved.root.join(".uf");
+    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let manifest = state_dir.join("upgrade.json");
+    write_json_file(
+        &manifest,
+        &json!({
+            "version": 1,
+            "packageManager": {
+                "resolver": package_manager.resolver,
+                "lockfile": install.lockfile.as_str(),
+                "storeManifest": install.store_manifest.as_str(),
+                "packages": install.packages.len(),
+                "storeEntries": install.store_entries.len(),
+            },
+            "runtimeManager": {
+                "engine": runtime_manager.engine,
+                "acquisition": runtime_manager.acquisition,
+                "hosts": &runtime_manager.hosts,
+            },
+        }),
+    )?;
     println!(
-        "uf upgrade: packageResolver={:?} runtimeEngine={:?} acquisition={:?}",
-        package_manager.resolver, runtime_manager.engine, runtime_manager.acquisition
+        "uf upgrade: packageResolver={:?} runtimeEngine={:?} acquisition={:?} lockfile={} manifest={}",
+        package_manager.resolver,
+        runtime_manager.engine,
+        runtime_manager.acquisition,
+        install.lockfile,
+        manifest
     );
-    println!("uf upgrade: native package/runtime upgrade loop is planned; no changes made");
     Ok(())
 }

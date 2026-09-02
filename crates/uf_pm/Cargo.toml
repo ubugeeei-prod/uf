@@ -9,7 +9,13 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+camino.workspace = true
 compact_str.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 smallvec.workspace = true
+thiserror.workspace = true
 uf_config = { path = "../uf_config" }
+
+[dev-dependencies]
+tempfile.workspace = true

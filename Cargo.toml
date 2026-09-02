@@ -62,6 +62,7 @@ rayon = "1.11.0"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
+sha2 = "0.10.9"
 similar-asserts = "2.0.0"
 simdutf8 = "0.1.5"
 smallvec = { version = "1.15.1", features = ["serde"] }

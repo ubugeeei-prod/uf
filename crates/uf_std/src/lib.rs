@@ -6,6 +6,7 @@ use std::hash::Hasher;
 use compact_str::{CompactString, ToCompactString};
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use smallvec::SmallVec;
 use uf_runtime::RuntimeStandard;
 
@@ -1328,12 +1329,18 @@ pub enum DigestAlgorithm {
 pub fn digest_bytes(algorithm: DigestAlgorithm, bytes: &[u8]) -> CompactString {
     match algorithm {
         DigestAlgorithm::FastHash => hex_u64(fast_hash_bytes(bytes)),
-        DigestAlgorithm::Sha256 => {
-            let mut output = CompactString::const_new("sha256-native-planned:");
-            output.push_str(hex_u64(fast_hash_bytes(bytes)).as_str());
-            output
-        }
+        DigestAlgorithm::Sha256 => hex_bytes(Sha256::digest(bytes).as_slice()),
     }
+}
+
+fn hex_bytes(bytes: &[u8]) -> CompactString {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = CompactString::new("");
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 fn hex_u64(value: u64) -> CompactString {
@@ -1581,6 +1588,7 @@ mod tests {
     #[test]
     fn crypto_uuid_and_zip_contracts_are_native_ready() {
         let digest = digest_bytes(DigestAlgorithm::FastHash, b"uf");
+        let sha256 = digest_bytes(DigestAlgorithm::Sha256, b"");
         let uuid = parse_uuid("018f7c9a-7cb4-7a10-a7aa-1df490512a88").unwrap();
         let entry = ZipEntry {
             path: CompactString::const_new("app.js"),
@@ -1589,6 +1597,10 @@ mod tests {
         };
 
         assert_eq!(digest.len(), 16);
+        assert_eq!(
+            sha256,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
         assert_eq!(uuid.version, Some(7));
         assert_eq!(entry.compression, ZipCompression::Deflate);
     }
