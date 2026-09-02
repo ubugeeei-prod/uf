@@ -220,6 +220,9 @@ pub enum Status {
     PayloadTooLarge,
     /// The filesystem failed in a way that is not the client's business.
     InternalServerError,
+    /// A bounded resource — currently the update channel's subscriber slots —
+    /// is exhausted. A ceiling reached is a refusal, never a queue that grows.
+    ServiceUnavailable,
 }
 
 impl Status {
@@ -233,6 +236,7 @@ impl Status {
             Self::MethodNotAllowed => 405,
             Self::PayloadTooLarge => 413,
             Self::InternalServerError => 500,
+            Self::ServiceUnavailable => 503,
         }
     }
 
@@ -246,6 +250,7 @@ impl Status {
             Self::MethodNotAllowed => "Method Not Allowed",
             Self::PayloadTooLarge => "Payload Too Large",
             Self::InternalServerError => "Internal Server Error",
+            Self::ServiceUnavailable => "Service Unavailable",
         }
     }
 
@@ -344,17 +349,33 @@ pub fn status_for_network(denial: &NetworkDenial) -> Status {
     }
 }
 
+/// Run the network allowlists over a request head.
+///
+/// Extracted so that every surface on this listener — the file pipeline below
+/// and the update stream in [`crate::hmr`] — runs the *same* `Host` and
+/// `Origin` checks in the same order. A second surface with its own copy of the
+/// checks is a second surface that will one day be missing one of them.
+///
+/// # Errors
+///
+/// Returns the [`Status`] the client sees when either allowlist refuses.
+pub fn check_network(head: &RequestHead<'_>, network: &NetworkPolicy) -> Result<(), Status> {
+    network
+        .check_host(head.host())
+        .map_err(|denial| status_for_network(&denial))?;
+    network
+        .check_origin(head.method(), head.origin())
+        .map_err(|denial| status_for_network(&denial))
+}
+
 /// Run one request through the whole pipeline.
 ///
 /// The order is fixed and is itself part of the guard: network allowlists, then
 /// the request-target grammar, then the health route, then resolution. Nothing
 /// downstream can be reached by a request that failed an earlier stage.
 pub fn respond(head: &RequestHead<'_>, fs: &FsPolicy, network: &NetworkPolicy) -> Response {
-    if let Err(denial) = network.check_host(head.host()) {
-        return Response::refusal(status_for_network(&denial));
-    }
-    if let Err(denial) = network.check_origin(head.method(), head.origin()) {
-        return Response::refusal(status_for_network(&denial));
+    if let Err(status) = check_network(head, network) {
+        return Response::refusal(status);
     }
     if head.method() == Method::Options {
         // A preflight that got this far named an allowed origin, but this server
@@ -366,6 +387,14 @@ pub fn respond(head: &RequestHead<'_>, fs: &FsPolicy, network: &NetworkPolicy) -
         Ok(target) => target,
         Err(error) => return Response::refusal(status_for(&AccessDenied::from(error))),
     };
+
+    // The update stream is served by the socket loop, which is the only place
+    // that holds the channel. Reaching this branch means no channel is
+    // attached, and the reserved target must never fall through to the
+    // filesystem and serve a project file that happens to sit at `__uf/hmr`.
+    if target.path() == crate::hmr::HMR_TARGET {
+        return Response::refusal(Status::NotFound);
+    }
 
     if target.path() == HEALTH_TARGET && target.query().is_none() {
         let body = br#"{"status":"ok","engine":"uf-native"}"#.to_vec();

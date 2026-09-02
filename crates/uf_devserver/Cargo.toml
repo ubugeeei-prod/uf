@@ -10,6 +10,9 @@ authors.workspace = true
 
 [dependencies]
 uf_config = { path = "../uf_config" }
+uf_infra = { path = "../uf_infra" }
+uf_rsc = { path = "../uf_rsc" }
+uf_term = { path = "../uf_term" }
 camino.workspace = true
 compact_str.workspace = true
 serde.workspace = true
@@ -18,4 +21,9 @@ smallvec.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile.workspace = true
+
+[[bench]]
+name = "invalidate"
+harness = false

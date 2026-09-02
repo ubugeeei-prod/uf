@@ -12,10 +12,17 @@
 //!
 //! **Every connection is bounded.** Read and write timeouts, a ceiling on the
 //! request head, and a single response per connection. A dev server that can be
-//! held open by a slow client is a dev server an attacker can wedge.
+//! held open by a slow client is a dev server an attacker can wedge. The one
+//! connection that outlives its turn in the accept loop is the update stream,
+//! which is bounded instead by the subscriber ceiling in [`crate::hmr::channel`].
+#![expect(
+    clippy::disallowed_types,
+    reason = "the update channel is shared with every open stream thread; see crate::hmr::channel"
+)]
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::Arc;
 use std::time::Duration;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -24,9 +31,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uf_config::DevConfig;
 
-use crate::http::{MAX_REQUEST_HEAD_BYTES, RequestHead, Response, Status, respond};
+use crate::hmr::{HMR_TARGET, StreamLimits, UpdateChannel, write_event_stream};
+use crate::http::{
+    MAX_REQUEST_HEAD_BYTES, Method, RequestHead, Response, Status, check_network, respond,
+};
 use crate::network::{Exposure, NetworkPolicy, NetworkPolicyError};
 use crate::policy::{FsPolicy, PolicyError};
+use crate::target::RequestTarget;
 
 #[cfg(test)]
 mod tests;
@@ -118,6 +129,7 @@ pub struct DevServer {
     address: SocketAddr,
     fs: FsPolicy,
     network: NetworkPolicy,
+    updates: Option<Arc<UpdateChannel>>,
 }
 
 impl DevServer {
@@ -151,7 +163,23 @@ impl DevServer {
             address,
             fs,
             network,
+            updates: None,
         })
+    }
+
+    /// Serve hot-module-replacement updates from `channel` at [`HMR_TARGET`].
+    ///
+    /// One listener, one port. There is no second socket to expose, no second
+    /// set of allowlists to keep in step, and no second place a request could
+    /// reach a file from.
+    pub fn with_updates(mut self, channel: Arc<UpdateChannel>) -> Self {
+        self.updates = Some(channel);
+        self
+    }
+
+    /// The update channel, if one is attached.
+    pub fn updates(&self) -> Option<&Arc<UpdateChannel>> {
+        self.updates.as_ref()
     }
 
     /// The address the listener actually bound.
@@ -249,18 +277,85 @@ impl DevServer {
     fn serve_connection(&self, mut stream: TcpStream) -> Status {
         let _ = stream.set_read_timeout(Some(CONNECTION_TIMEOUT));
         let _ = stream.set_write_timeout(Some(CONNECTION_TIMEOUT));
-        let response = match read_head(&mut stream) {
-            Ok(head) => match RequestHead::parse(&head) {
-                Ok(request) => respond(&request, &self.fs, &self.network),
-                Err(_) => Response::refusal(Status::BadRequest),
-            },
-            Err(status) => Response::refusal(status),
+        let head = match read_head(&mut stream) {
+            Ok(head) => head,
+            Err(status) => return write_refusal(&mut stream, status),
         };
+        let Ok(request) = RequestHead::parse(&head) else {
+            return write_refusal(&mut stream, Status::BadRequest);
+        };
+
+        let stream = match self.dispatch_updates(&request, stream) {
+            Ok(status) => return status,
+            Err(stream) => stream,
+        };
+
+        let response = respond(&request, &self.fs, &self.network);
         let status = response.status;
+        let mut stream = stream;
         let _ = stream.write_all(&response.to_bytes());
         let _ = stream.flush();
         status
     }
+
+    /// Hand the connection to the update stream, or give it back.
+    ///
+    /// The order here is the guard: the target grammar decides whether this is
+    /// even a request, then the network allowlists decide whether it is allowed,
+    /// and only then does a subscription exist. Nothing about the stream is
+    /// selected by a header — `Host` and `Origin` can refuse it and can do
+    /// nothing else, and every other header was dropped during parsing.
+    fn dispatch_updates(
+        &self,
+        head: &RequestHead<'_>,
+        stream: TcpStream,
+    ) -> Result<Status, TcpStream> {
+        let Some(channel) = self.updates.as_ref() else {
+            return Err(stream);
+        };
+        let Ok(target) = RequestTarget::parse(head.target()) else {
+            return Err(stream);
+        };
+        if target.path() != HMR_TARGET || target.query().is_some() {
+            return Err(stream);
+        }
+
+        let mut stream = stream;
+        if let Err(status) = check_network(head, &self.network) {
+            return Ok(write_refusal(&mut stream, status));
+        }
+        if head.method() != Method::Get {
+            return Ok(write_refusal(&mut stream, Status::MethodNotAllowed));
+        }
+        let Ok(mut subscriber) = channel.subscribe() else {
+            return Ok(write_refusal(&mut stream, Status::ServiceUnavailable));
+        };
+
+        // The stream outlives this connection's turn in the accept loop, so it
+        // gets a thread. The subscriber owns an `Arc` of the channel, which is
+        // the only thing it needs, so nothing here borrows the server.
+        let _ = stream.set_write_timeout(Some(CONNECTION_TIMEOUT));
+        let _ = stream.set_read_timeout(Some(CONNECTION_TIMEOUT));
+        let spawned = std::thread::Builder::new()
+            .name(String::from("uf-dev-hmr"))
+            .spawn(move || {
+                let _ = write_event_stream(&mut stream, &mut subscriber, StreamLimits::default());
+            });
+        match spawned {
+            Ok(_handle) => Ok(Status::Ok),
+            // The closure, and the socket it owned, are dropped here, which
+            // closes the connection. There is nothing left to write to.
+            Err(_) => Ok(Status::ServiceUnavailable),
+        }
+    }
+}
+
+/// Write a refusal and report the status it carried.
+fn write_refusal(stream: &mut TcpStream, status: Status) -> Status {
+    let response = Response::refusal(status);
+    let _ = stream.write_all(&response.to_bytes());
+    let _ = stream.flush();
+    status
 }
 
 fn bind_listener(host: &str, port: u16, strict_port: bool) -> Result<TcpListener, DevServerError> {

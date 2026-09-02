@@ -33,6 +33,13 @@
 //! [`policy`], and [`media`], with [`server`] holding the socket. Each module's
 //! documentation names the failure it exists to prevent.
 //!
+//! # Hot module replacement
+//!
+//! [`hmr`] adds the feedback loop — a dev module graph, exact invalidation, and
+//! a server-sent-event channel on this same listener — without adding a second
+//! way to reach a file. An update names origin-form request targets, and the
+//! browser fetches them through the pipeline above.
+//!
 //! # Defaults
 //!
 //! Loopback bind, no exposed hosts, no allowed origins, and a deny list
@@ -55,6 +62,7 @@
 //! [CVE-2025-32395]: https://nvd.nist.gov/vuln/detail/CVE-2025-32395
 //! [CVE-2025-62522]: https://nvd.nist.gov/vuln/detail/CVE-2025-62522
 
+pub mod hmr;
 pub mod http;
 pub mod media;
 pub mod network;
@@ -65,9 +73,13 @@ pub mod target;
 
 pub use uf_config::DevConfig;
 
+pub use hmr::{
+    ChangeKind, DevGraph, DevModuleId, HMR_TARGET, HmrSession, HmrUpdate, Invalidation,
+    ModuleSurface, PollWatcher, ReloadReason, UpdateChannel, UpdateKind, fetch_update, invalidate,
+};
 pub use http::{
     HEALTH_TARGET, HttpError, MAX_HEADER_LINES, MAX_REQUEST_HEAD_BYTES, Method, RequestHead,
-    Response, Status, respond, status_for, status_for_network,
+    Response, Status, check_network, respond, status_for, status_for_network,
 };
 pub use media::MediaType;
 pub use network::{

@@ -230,3 +230,275 @@ fn refuses_a_head_larger_than_the_ceiling_over_a_real_socket() {
     );
     assert_eq!(status, Status::BadRequest);
 }
+
+// -- the hot-module-replacement stream ---------------------------------------
+
+use crate::hmr::{ChangeKind, EVENT_STREAM_HEAD, HmrUpdate, UpdateKind};
+
+fn sample_update() -> HmrUpdate {
+    HmrUpdate {
+        id: 0,
+        path: CompactString::const_new("app/Counter.js"),
+        change: ChangeKind::Modified,
+        kind: UpdateKind::Hot,
+        reason: None,
+        modules: Vec::new(),
+        routes: Vec::new(),
+        elapsed_micros: 42,
+    }
+}
+
+/// Drive the event stream end to end.
+///
+/// `serve_next` hands the socket to a stream thread and returns, so the test
+/// publishes afterwards and then closes the channel, which is what lets the
+/// client's `read_to_string` finish.
+fn stream_round_trip(
+    server: &DevServer,
+    channel: &Arc<UpdateChannel>,
+    request: String,
+    publish: bool,
+) -> (Status, String) {
+    use std::io::{Read, Write};
+
+    let address = server.address();
+    let client = std::thread::spawn(move || {
+        let mut stream = std::net::TcpStream::connect(address).unwrap();
+        let _ = stream.write_all(request.as_bytes());
+        let _ = stream.flush();
+        let _ = stream.shutdown(std::net::Shutdown::Write);
+        let mut response = String::new();
+        let _ = stream.read_to_string(&mut response);
+        response
+    });
+    let status = server.serve_next().unwrap();
+    if publish {
+        channel.publish(sample_update());
+    }
+    channel.close();
+    (status, client.join().unwrap())
+}
+
+fn hmr_server(root: &Utf8Path) -> (DevServer, Arc<UpdateChannel>) {
+    let channel = Arc::new(UpdateChannel::new());
+    let server = DevServer::bind(root, &ephemeral())
+        .unwrap()
+        .with_updates(Arc::clone(&channel));
+    (server, channel)
+}
+
+#[test]
+fn the_update_stream_is_served_on_the_same_listener() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!(
+        "GET {} HTTP/1.1\r\nhost: {}\r\n\r\n",
+        HMR_TARGET,
+        server.address()
+    );
+
+    let (status, response) = stream_round_trip(&server, &channel, request, true);
+
+    assert_eq!(status, Status::Ok);
+    assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(response.contains("content-type: text/event-stream"));
+    assert!(response.contains("event: uf:update"));
+    assert!(response.contains("app/Counter.js"));
+}
+
+#[test]
+fn the_update_stream_writes_its_head_before_anything_is_published() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!(
+        "GET {} HTTP/1.1\r\nhost: {}\r\n\r\n",
+        HMR_TARGET,
+        server.address()
+    );
+
+    let (status, response) = stream_round_trip(&server, &channel, request, false);
+
+    assert_eq!(status, Status::Ok);
+    assert_eq!(
+        response,
+        String::from_utf8(EVENT_STREAM_HEAD.to_vec()).unwrap()
+    );
+}
+
+#[test]
+fn no_inbound_header_changes_what_the_update_stream_sends() {
+    let (_guard, root) = project();
+
+    let mut responses = Vec::new();
+    for extra in [
+        "",
+        "last-event-id: 1\r\n",
+        "last-event-id: 99999\r\n",
+        "accept: text/event-stream\r\n",
+        "x-middleware-subrequest: middleware\r\n",
+        "cookie: session=abc\r\n",
+    ] {
+        let (server, channel) = hmr_server(&root);
+        let request = format!(
+            "GET {} HTTP/1.1\r\nhost: {}\r\n{extra}\r\n",
+            HMR_TARGET,
+            server.address()
+        );
+        let (status, response) = stream_round_trip(&server, &channel, request, true);
+        assert_eq!(status, Status::Ok);
+        responses.push(response);
+    }
+
+    // CVE-2025-29927's bug class is a header that selects what the server does.
+    // `Last-Event-ID` is the server-sent-events specification handing one over;
+    // every response here must be byte-identical anyway.
+    for response in &responses {
+        assert_eq!(response, &responses[0]);
+    }
+}
+
+#[test]
+fn the_update_stream_never_reflects_an_origin() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!(
+        "GET {} HTTP/1.1\r\nhost: {}\r\norigin: https://evil.test\r\n\r\n",
+        HMR_TARGET,
+        server.address()
+    );
+
+    let (_status, response) = stream_round_trip(&server, &channel, request, false);
+
+    assert!(!response.contains("evil.test"));
+    assert!(
+        !response
+            .to_ascii_lowercase()
+            .contains("access-control-allow-origin")
+    );
+}
+
+#[test]
+fn the_update_stream_refuses_a_host_outside_the_allowlist() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!("GET {HMR_TARGET} HTTP/1.1\r\nhost: evil.test\r\n\r\n");
+
+    let (status, response) = stream_round_trip(&server, &channel, request, false);
+
+    assert_eq!(status, Status::Forbidden);
+    assert!(response.starts_with("HTTP/1.1 403 Forbidden\r\n"));
+    assert!(!response.contains("event: "));
+}
+
+#[test]
+fn the_update_stream_refuses_a_request_with_no_host() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!("GET {HMR_TARGET} HTTP/1.1\r\n\r\n");
+
+    let (status, _) = stream_round_trip(&server, &channel, request, false);
+
+    assert_eq!(status, Status::BadRequest);
+}
+
+#[test]
+fn the_update_stream_refuses_a_method_other_than_get() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!(
+        "HEAD {} HTTP/1.1\r\nhost: {}\r\n\r\n",
+        HMR_TARGET,
+        server.address()
+    );
+
+    let (status, response) = stream_round_trip(&server, &channel, request, false);
+
+    assert_eq!(status, Status::MethodNotAllowed);
+    assert!(response.starts_with("HTTP/1.1 405 "));
+}
+
+#[test]
+fn a_query_on_the_update_target_is_not_the_update_stream() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let request = format!(
+        "GET {}?raw HTTP/1.1\r\nhost: {}\r\n\r\n",
+        HMR_TARGET,
+        server.address()
+    );
+
+    let (status, response) = stream_round_trip(&server, &channel, request, false);
+
+    assert_eq!(status, Status::NotFound);
+    assert!(!response.contains("event: "));
+}
+
+#[test]
+fn the_update_target_is_never_served_as_a_file() {
+    let (_guard, root) = project();
+    std::fs::create_dir_all(root.join("__uf")).unwrap();
+    std::fs::write(root.join("__uf/hmr"), "not a stream\n").unwrap();
+    let server = DevServer::bind(&root, &ephemeral()).unwrap();
+
+    let (status, response) = round_trip(
+        &server,
+        format!(
+            "GET {} HTTP/1.1\r\nhost: {}\r\n\r\n",
+            HMR_TARGET,
+            server.address()
+        ),
+    );
+
+    assert_eq!(status, Status::NotFound);
+    assert!(!response.contains("not a stream"));
+}
+
+#[test]
+fn a_server_without_a_channel_serves_files_as_before() {
+    let (_guard, root) = project();
+    let server = DevServer::bind(&root, &ephemeral()).unwrap();
+
+    assert!(server.updates().is_none());
+    let (status, response) = round_trip(
+        &server,
+        format!(
+            "GET /index.html HTTP/1.1\r\nhost: {}\r\n\r\n",
+            server.address()
+        ),
+    );
+    assert_eq!(status, Status::Ok);
+    assert!(response.ends_with("<!doctype html>\n"));
+}
+
+#[test]
+fn a_server_with_a_channel_still_serves_files() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+
+    assert!(server.updates().is_some());
+    let (status, response) = round_trip(
+        &server,
+        format!(
+            "GET /index.html HTTP/1.1\r\nhost: {}\r\n\r\n",
+            server.address()
+        ),
+    );
+    channel.close();
+    assert_eq!(status, Status::Ok);
+    assert!(response.ends_with("<!doctype html>\n"));
+}
+
+#[test]
+fn a_server_with_a_channel_still_refuses_a_denied_file() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+
+    let (status, response) = round_trip(
+        &server,
+        format!("GET /.env HTTP/1.1\r\nhost: {}\r\n\r\n", server.address()),
+    );
+    channel.close();
+
+    assert_eq!(status, Status::Forbidden);
+    assert!(!response.contains("SECRET"));
+}
