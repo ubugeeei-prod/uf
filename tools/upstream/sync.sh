@@ -15,13 +15,32 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 submodule_path="upstream/flow"
-sparse_subtree="rust_port"
+
+# `rust_port` holds the crates, but several of them reach outside it with
+# `include_str!`: `flow_flowlib` embeds Flow's own library definitions from
+# `lib/`, `prelude/`, and `tslib/`. Leaving those out builds fine until the day
+# someone enables the type checker, then fails with an unhelpful missing-file
+# error from a macro. Check them out up front.
+sparse_subtrees="rust_port lib prelude tslib"
 
 git submodule update --init --depth 1 --filter=blob:none "$submodule_path"
-git -C "$submodule_path" sparse-checkout set "$sparse_subtree"
+# shellcheck disable=SC2086 # deliberate word splitting: one argument per subtree
+git -C "$submodule_path" sparse-checkout set $sparse_subtrees
 
-if [ ! -f "$submodule_path/$sparse_subtree/Cargo.toml" ]; then
-  echo "upstream sync failed: $submodule_path/$sparse_subtree/Cargo.toml is missing" >&2
+for required in \
+  "rust_port/Cargo.toml" \
+  "lib/core.js" \
+  "lib/react.js" \
+  "prelude/prelude.js"
+do
+  if [ ! -f "$submodule_path/$required" ]; then
+    echo "upstream sync failed: $submodule_path/$required is missing" >&2
+    exit 1
+  fi
+done
+
+if [ ! -d "$submodule_path/tslib" ]; then
+  echo "upstream sync failed: $submodule_path/tslib is missing" >&2
   exit 1
 fi
 

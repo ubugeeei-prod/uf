@@ -66,6 +66,28 @@ nightly for now. Both real backends report
 `active_backend()` reports which implementation a build selected, and
 `upstream-parser` always wins when both are enabled.
 
+### What the port can and cannot give us yet
+
+Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
+
+- **The parser works, and its nightly requirement is expiring.** `flow_parser`'s
+  only unstable feature is `never_type`, and that compiler already reports it as
+  *stable since 1.100.0-nightly*. When the toolchain pin reaches 1.100 stable,
+  `upstream-parser` becomes the default with no nightly involved — a one-line
+  change to `uf_flow`'s default features.
+- **The type checker does not build at all, and this is upstream's problem to
+  solve.** 23 crates in the port, including `flow_common` and everything under
+  `flow_typing*`, declare `#![feature(box_patterns)]`. That feature has been
+  *removed* from the compiler, not merely left unstable, so those crates fail on
+  today's nightly and on every nightly from here. `uf check` cannot run Flow's
+  own inference until upstream migrates off it. There is no workaround on our
+  side worth having: pinning a nightly old enough to still accept `box_patterns`
+  would freeze the whole toolchain on a compiler that is going stale.
+
+`flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
+reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
+`tools/upstream/sync.sh` checks those out too and asserts they arrived.
+
 ## Flow And React
 
 The default app preset is Flow-first React. New app templates use Flow component

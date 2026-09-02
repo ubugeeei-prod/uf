@@ -24,6 +24,8 @@
       submodule and Meta's official Flow Rust port.
 - [ ] Make `upstream-parser` the default once `never_type` reaches stable Rust.
 - [ ] Integrate Flow typecheck diagnostics without requiring `.flowconfig`.
+      Blocked upstream: the port's typing crates need `box_patterns`, which the
+      compiler has removed. See docs/architecture.md.
 - [ ] Replace whitespace formatter with a Flow AST printer.
 - [x] Default formatter settings to double quotes and semicolons.
 - [ ] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
