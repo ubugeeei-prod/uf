@@ -1,293 +1,286 @@
-//! Running the source-level subset of a discovered plan.
+//! Executing one file's worth of declarations.
 //!
-//! There is no JavaScript engine behind this yet, so a case is executed by
-//! evaluating the handful of expression and matcher shapes that can be decided
-//! from the source text. Anything outside that subset is counted as an
-//! unsupported assertion rather than reported as a pass.
+//! A file is the unit of scheduling, of budgeting and of failure isolation:
+//! whatever happens inside it, the run keeps going and the file is named. Three
+//! things can go wrong before a single assertion is read, and each is a
+//! [`FileStatus`] rather than an error that stops the run — the file is too
+//! large to scan, it exhausted its wall-clock budget, or executing it panicked.
 
-use crate::scan::{extract_quoted, is_call_at, is_identifier_char, matching_delimiter};
-use crate::{TestCase, TestFailure, TestKind, TestPlan, TestRunReport, discover_tests};
+use std::panic::AssertUnwindSafe;
+use std::time::{Duration, Instant};
 
-/// Execute the native source-level test subset.
-pub fn run_tests<'a>(sources: impl IntoIterator<Item = (&'a str, &'a str)>) -> TestRunReport {
-    let mut merged = TestPlan::default();
-    let mut failures = Vec::new();
-    let mut passed = 0;
-    let mut unsupported_assertions = 0;
+use uf_effect::Attempt;
+use uf_infra::LineIndex;
 
-    for (file, source) in sources {
-        let plan = discover_tests(file, source);
-        for case in plan.cases.iter().filter(|case| case.kind == TestKind::Test) {
-            let outcome = execute_case(source, case);
-            unsupported_assertions += outcome.unsupported_assertions;
-            if outcome.failures.is_empty() {
-                passed += 1;
-            } else {
-                failures.extend(outcome.failures);
-            }
+use crate::assertion::{BodyOutcome, evaluate_body};
+use crate::discovery::discover_tests;
+use crate::filter::TestFilter;
+use crate::options::RunOptions;
+use crate::plan::{PlanResolution, Selection, SkipReason, TestCase, TestKind, TestPlan};
+use crate::report::{FileReport, FileStatus, TestRecord, TestStatus};
+use crate::scan::matching_delimiter;
+
+/// Discover and execute one file.
+///
+/// Never panics and never returns an error: a file that misbehaves is reported.
+pub(crate) fn execute_file(
+    file: &str,
+    source: &str,
+    options: &RunOptions,
+    filter: &TestFilter,
+) -> (TestPlan, FileReport) {
+    let started = Instant::now();
+    let limit = options.effective_max_source_bytes();
+    if source.len() > limit {
+        return (
+            TestPlan::default(),
+            FileReport {
+                file: file.to_string(),
+                status: FileStatus::TooLarge {
+                    bytes: source.len(),
+                    limit,
+                },
+                duration_micros: micros_since(started),
+                records: Vec::new(),
+            },
+        );
+    }
+
+    // Isolation, not paranoia: the scanners are total on any UTF-8 input, but a
+    // runner whose own crash takes down a thousand-file run is worse than one
+    // that names the file it choked on. Release builds set `panic = "abort"`,
+    // so in those this is inert and the real guard is the bounded work above
+    // and the deadline below.
+    let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        run_declarations(file, source, options, filter, started)
+    }));
+
+    match outcome {
+        Ok((plan, status, records)) => (
+            plan,
+            FileReport {
+                file: file.to_string(),
+                status,
+                duration_micros: micros_since(started),
+                records,
+            },
+        ),
+        Err(payload) => (
+            TestPlan::default(),
+            FileReport {
+                file: file.to_string(),
+                status: FileStatus::Panicked {
+                    message: panic_message(&payload),
+                },
+                duration_micros: micros_since(started),
+                records: Vec::new(),
+            },
+        ),
+    }
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "non-string panic payload".to_string()
+}
+
+fn run_declarations(
+    file: &str,
+    source: &str,
+    options: &RunOptions,
+    filter: &TestFilter,
+    started: Instant,
+) -> (TestPlan, FileStatus, Vec<TestRecord>) {
+    let plan = discover_tests(file, source);
+    let mut resolution = plan.resolve();
+    apply_filter(&plan, &mut resolution, filter);
+
+    let index = LineIndex::new(source);
+    let budget = options.effective_file_timeout();
+    let max_assertions = options.effective_max_assertions();
+    let mut records = Vec::with_capacity(plan.runnable_count());
+    let mut status = FileStatus::Completed;
+    let mut name = String::new();
+
+    for (position, case) in plan.cases.iter().enumerate() {
+        if case.kind != TestKind::Test {
+            continue;
         }
-        merged.cases.extend(plan.cases);
-    }
+        if started.elapsed() >= budget {
+            status = FileStatus::TimedOut {
+                budget_micros: duration_micros(budget),
+            };
+            break;
+        }
 
-    merged.cases.sort_by(|a, b| {
-        a.file
-            .cmp(&b.file)
-            .then(a.line.cmp(&b.line))
-            .then(a.column.cmp(&b.column))
-    });
+        name.clear();
+        resolution.push_full_name(&plan, position, &mut name);
 
-    TestRunReport {
-        plan: merged,
-        passed,
-        failed: failures.len(),
-        unsupported_assertions,
-        failures,
-    }
-}
-
-#[derive(Debug, Default)]
-struct CaseOutcome {
-    failures: Vec<TestFailure>,
-    unsupported_assertions: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum RuntimeValue {
-    Boolean(bool),
-    Null,
-    Number(f64),
-    String(String),
-}
-
-fn execute_case(source: &str, case: &TestCase) -> CaseOutcome {
-    let mut outcome = CaseOutcome::default();
-    let body = extract_case_body(source, case.byte_offset).unwrap_or_default();
-
-    if let Some(message) = thrown_error_message(body) {
-        outcome.failures.push(TestFailure {
-            file: case.file.clone(),
-            name: case.name.clone(),
-            message,
-        });
-        return outcome;
-    }
-
-    let assertions = discover_assertions(body);
-    for assertion in assertions {
-        match assertion {
-            AssertionOutcome::Passed => {}
-            AssertionOutcome::Unsupported => outcome.unsupported_assertions += 1,
-            AssertionOutcome::Failed(message) => outcome.failures.push(TestFailure {
+        let record = match resolution.selection(position) {
+            Selection::Skipped(reason) => TestRecord {
                 file: case.file.clone(),
-                name: case.name.clone(),
-                message,
-            }),
-        }
-    }
-
-    outcome
-}
-
-fn extract_case_body(source: &str, offset: usize) -> Option<&str> {
-    let tail = source.get(offset..)?;
-    let arrow = tail.find("=>")?;
-    let after_arrow = tail.get(arrow..)?;
-    let open_relative = after_arrow.find('{')?;
-    let open = offset + arrow + open_relative;
-    let close = matching_delimiter(source, open, b'{', b'}')?;
-    source.get(open + 1..close)
-}
-
-fn thrown_error_message(body: &str) -> Option<String> {
-    let throw_offset = body.find("throw new Error")?;
-    let tail = body.get(throw_offset..)?;
-    let open = tail.find('(')?;
-    let argument = tail.get(open + 1..)?;
-    let quote = argument.chars().find(|ch| !ch.is_whitespace())?;
-    if quote != '\'' && quote != '"' {
-        return Some("test threw Error".to_string());
-    }
-
-    extract_quoted(argument.trim_start()).or_else(|| Some("test threw Error".to_string()))
-}
-
-enum AssertionOutcome {
-    Passed,
-    Failed(String),
-    Unsupported,
-}
-
-fn discover_assertions(body: &str) -> Vec<AssertionOutcome> {
-    let mut outcomes = Vec::new();
-    let mut search_start = 0;
-
-    while let Some(relative) = body[search_start..].find("expect") {
-        let offset = search_start + relative;
-        search_start = offset + "expect".len();
-
-        if !is_call_at(body, offset, "expect") {
-            continue;
-        }
-
-        let Some(open) = body[offset..].find('(').map(|open| offset + open) else {
-            outcomes.push(AssertionOutcome::Unsupported);
-            continue;
-        };
-        let Some(close) = matching_delimiter(body, open, b'(', b')') else {
-            outcomes.push(AssertionOutcome::Unsupported);
-            continue;
-        };
-        let expression = body[open + 1..close].trim();
-        let matcher_tail = body[close + 1..].trim_start();
-
-        if let Some(rest) = matcher_tail.strip_prefix(".toBe(") {
-            outcomes.push(evaluate_value_matcher(expression, rest, "toBe"));
-            continue;
-        }
-
-        if let Some(rest) = matcher_tail.strip_prefix(".toEqual(") {
-            outcomes.push(evaluate_value_matcher(expression, rest, "toEqual"));
-            continue;
-        }
-
-        if matcher_tail.starts_with(".resolves.toBeVisible()") {
-            outcomes.push(evaluate_visibility_matcher(body, expression));
-            continue;
-        }
-
-        outcomes.push(AssertionOutcome::Unsupported);
-    }
-
-    outcomes
-}
-
-fn evaluate_value_matcher(expression: &str, rest: &str, matcher: &str) -> AssertionOutcome {
-    let Some(close) = matching_argument_close(rest) else {
-        return AssertionOutcome::Unsupported;
-    };
-    let expected_expression = rest[..close].trim();
-    let Some(actual) = evaluate_expression(expression) else {
-        return AssertionOutcome::Unsupported;
-    };
-    let Some(expected) = evaluate_expression(expected_expression) else {
-        return AssertionOutcome::Unsupported;
-    };
-
-    if actual == expected {
-        AssertionOutcome::Passed
-    } else {
-        AssertionOutcome::Failed(format!(
-            "{matcher} assertion failed: actual={} expected={}",
-            format_runtime_value(&actual),
-            format_runtime_value(&expected)
-        ))
-    }
-}
-
-fn matching_argument_close(source: &str) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let mut depth = 0usize;
-    let mut quote = None;
-    let mut escaped = false;
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let byte = bytes[i];
-
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == active_quote {
-                quote = None;
+                name: name.clone(),
+                line: case.line,
+                column: case.column,
+                status: TestStatus::Skipped { reason },
+                attempts: 0,
+            },
+            Selection::Todo => TestRecord {
+                file: case.file.clone(),
+                name: name.clone(),
+                line: case.line,
+                column: case.column,
+                status: TestStatus::Todo,
+                attempts: 0,
+            },
+            Selection::Run => {
+                let (status, attempts) =
+                    execute_with_retries(source, case, &index, options, max_assertions);
+                TestRecord {
+                    file: case.file.clone(),
+                    name: name.clone(),
+                    line: case.line,
+                    column: case.column,
+                    status,
+                    attempts,
+                }
             }
-            i += 1;
+        };
+        records.push(record);
+    }
+
+    (plan, status, records)
+}
+
+/// Narrow a resolution with the command-line filter.
+///
+/// A `describe` is never itself run, so only test declarations are considered;
+/// the filter sees the fully qualified name, which is what a developer types.
+fn apply_filter(plan: &TestPlan, resolution: &mut PlanResolution, filter: &TestFilter) {
+    if filter.name_pattern().is_none() {
+        return;
+    }
+    let mut name = String::new();
+    for (position, case) in plan.cases.iter().enumerate() {
+        if case.kind != TestKind::Test || !resolution.selection(position).is_run() {
             continue;
         }
-
-        if matches!(byte, b'\'' | b'"' | b'`') {
-            quote = Some(byte);
-            i += 1;
-            continue;
+        name.clear();
+        resolution.push_full_name(plan, position, &mut name);
+        if !filter.matches_name(&name) {
+            resolution.set_selection(position, Selection::Skipped(SkipReason::Filtered));
         }
+    }
+}
 
-        if byte == b'(' {
-            depth += 1;
-        } else if byte == b')' {
-            if depth == 0 {
-                return Some(i);
-            }
-            depth -= 1;
+/// Execute one case, retrying while the policy says to.
+fn execute_with_retries(
+    source: &str,
+    case: &TestCase,
+    index: &LineIndex,
+    options: &RunOptions,
+    max_assertions: usize,
+) -> (TestStatus, u32) {
+    // `retries` follows the `Schedule` convention: it counts retries already
+    // made, so the first decision is taken at zero.
+    let mut retries = Attempt::first();
+    let mut attempts = 0u32;
+    loop {
+        let started = Instant::now();
+        let outcome = execute_case(source, case, index, max_assertions);
+        let taken = started.elapsed();
+        attempts = attempts.saturating_add(1);
+
+        if outcome.failures.is_empty() {
+            return (status_for(outcome), attempts);
         }
-
-        i += 1;
-    }
-
-    None
-}
-
-fn evaluate_visibility_matcher(body: &str, expression: &str) -> AssertionOutcome {
-    if body.contains("render(") && expression.contains("screen.findByText(") {
-        AssertionOutcome::Passed
-    } else {
-        AssertionOutcome::Unsupported
+        let Some(delay) = options.retry.next_delay(retries) else {
+            return (status_for(outcome), attempts);
+        };
+        retries = retries.advance(taken);
+        if !delay.is_zero() {
+            std::thread::sleep(delay);
+        }
     }
 }
 
-fn evaluate_expression(expression: &str) -> Option<RuntimeValue> {
-    let expression = expression.trim();
-    if expression == "true" {
-        return Some(RuntimeValue::Boolean(true));
+fn status_for(outcome: BodyOutcome) -> TestStatus {
+    if !outcome.failures.is_empty() {
+        return TestStatus::Failed {
+            failures: outcome.failures,
+            unsupported: outcome.unsupported,
+        };
     }
-    if expression == "false" {
-        return Some(RuntimeValue::Boolean(false));
+    if !outcome.unsupported.is_empty() {
+        return TestStatus::Unsupported {
+            assertions: outcome.unsupported,
+        };
     }
-    if expression == "null" {
-        return Some(RuntimeValue::Null);
-    }
-    if expression.starts_with('"') || expression.starts_with('\'') {
-        return extract_quoted(expression).map(RuntimeValue::String);
-    }
-    if let Ok(value) = expression.parse::<f64>() {
-        return Some(RuntimeValue::Number(value));
-    }
-    if let Some(value) = evaluate_string_identity_call(expression) {
-        return Some(value);
-    }
-    evaluate_numeric_addition(expression)
+    TestStatus::Passed
 }
 
-fn evaluate_string_identity_call(expression: &str) -> Option<RuntimeValue> {
-    let open = expression.find('(')?;
-    let close = matching_delimiter(expression, open, b'(', b')')?;
-    if close + 1 != expression.len() {
+fn execute_case(
+    source: &str,
+    case: &TestCase,
+    index: &LineIndex,
+    max_assertions: usize,
+) -> BodyOutcome {
+    match case_body(source, case) {
+        Some((start, body)) => evaluate_body(body, start, index, max_assertions),
+        None => BodyOutcome::default(),
+    }
+}
+
+/// The body of a case's callback, and where it starts in `source`.
+///
+/// Bounded to the registration call's own byte range, so a body that fails to
+/// close cannot swallow every declaration after it — which is exactly what an
+/// unbounded search for the next `{` used to do.
+fn case_body<'a>(source: &'a str, case: &TestCase) -> Option<(usize, &'a str)> {
+    let span_start = case.byte_offset;
+    let span_end = case.end_byte_offset.min(source.len());
+    if span_end <= span_start {
         return None;
     }
-    let function_name = expression[..open].trim();
-    if function_name.is_empty() || !function_name.chars().all(is_identifier_char) {
-        return None;
+    let span = source.get(span_start..span_end)?;
+
+    let after_callback_head = match span.find("=>") {
+        Some(arrow) => span_start + arrow + "=>".len(),
+        None => function_body_start(source, span, span_start)?,
+    };
+
+    let tail = source.get(after_callback_head..span_end)?;
+    let (relative, first) = tail.char_indices().find(|(_, ch)| !ch.is_whitespace())?;
+    let open = after_callback_head + relative;
+
+    if first == '{' {
+        let close = matching_delimiter(source, open, b'{', b'}')?;
+        return Some((open + 1, source.get(open + 1..close)?));
     }
-    let argument = expression[open + 1..close].trim();
-    if argument.starts_with('"') || argument.starts_with('\'') {
-        extract_quoted(argument).map(RuntimeValue::String)
-    } else {
-        None
-    }
+
+    // A concise arrow body: `it('x', () => expect(1).toBe(1))`. Everything up
+    // to the call's closing parenthesis is the body.
+    let end = span_end.saturating_sub(1).max(open);
+    Some((open, source.get(open..end)?))
 }
 
-fn evaluate_numeric_addition(expression: &str) -> Option<RuntimeValue> {
-    let (left, right) = expression.split_once('+')?;
-    let left = left.trim().parse::<f64>().ok()?;
-    let right = right.trim().parse::<f64>().ok()?;
-    Some(RuntimeValue::Number(left + right))
+/// Where a `function () { ... }` callback's brace begins.
+fn function_body_start(source: &str, span: &str, span_start: usize) -> Option<usize> {
+    let keyword = span.find("function")?;
+    let params_open = span_start + keyword + span[keyword..].find('(')?;
+    let params_close = matching_delimiter(source, params_open, b'(', b')')?;
+    Some(params_close + 1)
 }
 
-fn format_runtime_value(value: &RuntimeValue) -> String {
-    match value {
-        RuntimeValue::Boolean(value) => value.to_string(),
-        RuntimeValue::Null => "null".to_string(),
-        RuntimeValue::Number(value) => value.to_string(),
-        RuntimeValue::String(value) => format!("{value:?}"),
-    }
+fn micros_since(started: Instant) -> u64 {
+    duration_micros(started.elapsed())
+}
+
+fn duration_micros(duration: Duration) -> u64 {
+    u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
