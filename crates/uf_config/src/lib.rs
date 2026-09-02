@@ -8,6 +8,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
 
+pub mod plugins;
+
+pub use plugins::{ApplyCondition, HookOrder, PipelineMode, PluginEntry, PluginSpec};
+
 pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,6 +26,11 @@ pub struct UniflowedConfig {
     pub fmt: FmtConfig,
     pub lint: LintConfig,
     pub package: PackageConfig,
+    /// Plugins the project adds, in declaration order.
+    ///
+    /// Entries are raw, untrusted declarations; `uf_plugin` resolves them into
+    /// a run order and rejects any that reach outside the project root.
+    pub plugins: Vec<PluginEntry>,
     pub pm: PackageManagerConfig,
     pub publish: PublishConfig,
     pub release: ReleaseConfig,

@@ -9,6 +9,7 @@ use uf_lib::{
     builtin_modules, hook_descriptors, motion_contract, orm_contract, std_module_descriptors,
     tui_contract, ui_components, vrt_plan,
 };
+use uf_plugin::{PipelineMode, resolve_pipeline};
 use uf_pm::{DetectionOptions, PackageManagerPlan, detect_package_manager_with};
 use uf_rm::RuntimeManagerPlan;
 use uf_router::discover_routes;
@@ -188,10 +189,14 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
     let package_manager_detection = detect_project_package_manager(resolved);
     let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config);
+    // Every stage of the build is a plugin, so the resolved order here is the
+    // order that actually runs — including whatever `plugins: [...]` adds.
+    let pipeline = resolve_pipeline(&resolved.config, &resolved.root, PipelineMode::Build)?;
 
     Ok(json!({
         "command": "uf",
         "config": resolved,
+        "plugins": pipeline.report(),
         "routes": routes,
         "nativeModules": builtin_modules(),
         "stdModules": std_module_descriptors(),
