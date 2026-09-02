@@ -14,8 +14,7 @@ pub use descriptor::{
     UiComponent, UiRuntime,
 };
 pub use registry::{
-    builtin_modules, hook_descriptors, module_by_specifier, motion_contract, orm_contract,
-    std_module_descriptors, tui_contract, vrt_plan,
+    builtin_modules, hook_descriptors, module_by_specifier, std_module_descriptors, tui_contract,
 };
 pub use ui::ui_components;
 

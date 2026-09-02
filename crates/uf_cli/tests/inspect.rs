@@ -78,12 +78,6 @@ fn inspect_reports_zero_config_defaults() {
             .iter()
             .any(|module| module["specifier"] == "@uniflowed/std/tui")
     );
-    assert_eq!(
-        value["orm"]["parameterizedQueriesOnly"],
-        serde_json::json!(true)
-    );
-    assert_eq!(value["motion"]["engine"], serde_json::json!("uf-native"));
-    assert_eq!(value["vrt"]["baselines"], serde_json::json!("__uf_vrt__"));
     assert_eq!(value["config"]["config_path"], serde_json::Value::Null);
     assert_eq!(
         value["config"]["config"]["pm"]["packageManager"],
