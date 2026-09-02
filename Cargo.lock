@@ -1587,6 +1587,7 @@ dependencies = [
  "uf_config",
  "uf_flow",
  "uf_infra",
+ "uf_router",
 ]
 
 [[package]]

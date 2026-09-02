@@ -1723,13 +1723,9 @@ fn run_router_reserved_files(
     let Some(file_name) = scan.file.path.rsplit('/').next() else {
         return;
     };
-    if !file_name.starts_with("_uf.") {
-        return;
-    }
-    if matches!(
-        file_name,
-        "_uf.layout.js" | "_uf.page.js" | "_uf.middleware.js"
-    ) {
+    // `uf_router::reserved` owns this grammar; duplicating it here is how the
+    // scaffold, the router, and the linter drifted apart in the first place.
+    if !uf_router::classify_reserved_file(file_name).is_unknown() {
         return;
     }
 
@@ -1740,7 +1736,7 @@ fn run_router_reserved_files(
         severity,
         1,
         1,
-        "reserved router files must be _uf.layout.js, _uf.page.js, or _uf.middleware.js",
+        "reserved router file names are _uf.<layout|page|middleware>[.<native|ios|android|web|test>].js",
     );
 }
 
