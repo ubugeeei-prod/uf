@@ -14,7 +14,13 @@ use crate::ui::Ui;
 
 pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let files = collect_source_files(&resolved.root, &resolved.config)?;
+    // Discovery returns `package.json` too, because the linter reads it. The
+    // formatter must not touch it: it is a JavaScript formatter, and running it
+    // over JSON inserts a statement terminator and leaves the file unparseable.
+    let files = collect_source_files(&resolved.root, &resolved.config)?
+        .into_iter()
+        .filter(|file| file.kind.is_formattable())
+        .collect::<Vec<_>>();
     let scanned = files.len();
     let mut changed = Vec::new();
 
@@ -33,9 +39,10 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     let failing = check && !changed.is_empty();
     let summary = if check {
         format!(
-            "{} of {} need formatting",
+            "{} of {} {} formatting",
             plural(changed.len(), "file"),
-            scanned
+            scanned,
+            if changed.len() == 1 { "needs" } else { "need" }
         )
     } else {
         format!("formatted {} of {}", plural(changed.len(), "file"), scanned)
