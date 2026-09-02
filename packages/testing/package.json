@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/testing",
-  "version": "0.0.1",
+  "version": "0.0.0-alpha.0",
   "description": "Flow declarations for @uniflowed/testing, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.1",
-    "@uniflowed/react-testing": "0.0.1"
+    "@uniflowed/core": "0.0.0-alpha.0",
+    "@uniflowed/react-testing": "0.0.0-alpha.0"
   }
 }

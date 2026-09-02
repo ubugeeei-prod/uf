@@ -1,5 +1,3 @@
-use uf_validator::SchemaKind;
-
 use super::*;
 
 #[test]
@@ -42,7 +40,7 @@ fn includes_react_flow_app_builtins() {
     assert!(specs.contains(&"@uniflowed/stylex"));
     assert!(specs.contains(&"@uniflowed/ui"));
     assert!(specs.contains(&"@uniflowed/react-compiler"));
-    assert!(specs.contains(&"@uniflowed/flow-cell"));
+    assert!(specs.contains(&"@uniflowed/cell"));
     assert!(specs.contains(&"@uniflowed/state"));
     assert!(specs.contains(&"@uniflowed/validator"));
     assert!(specs.contains(&"@uniflowed/mock"));

@@ -9,7 +9,6 @@
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
-use uf_effect::Attempt;
 use uf_infra::LineIndex;
 
 use crate::assertion::{BodyOutcome, evaluate_body};
@@ -18,6 +17,7 @@ use crate::filter::TestFilter;
 use crate::options::RunOptions;
 use crate::plan::{PlanResolution, Selection, SkipReason, TestCase, TestKind, TestPlan};
 use crate::report::{FileReport, FileStatus, TestRecord, TestStatus};
+use crate::retry_schedule::Attempt;
 use crate::scan::matching_delimiter;
 
 /// Discover and execute one file.

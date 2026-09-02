@@ -117,6 +117,7 @@ async fn bundle_async(
             ..Default::default()
         })
         .with_plugins(vec![
+            Arc::new(plugins::MdxPlugin),
             Arc::new(plugins::RouterPlugin {
                 table: crate::pipeline::route_table(routes),
             }),

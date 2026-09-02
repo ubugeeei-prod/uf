@@ -78,6 +78,8 @@ pub fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn validates_modern_flow_syntax() {
@@ -145,6 +147,50 @@ mod tests {
         ] {
             let outcome = validate_source(source).expect("parse result");
             assert!(outcome.is_ok(), "{source}: {:?}", outcome.diagnostics);
+        }
+    }
+
+    #[test]
+    fn validates_shipped_uniflowed_package_sources() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages");
+        let mut modules = Vec::new();
+        collect_js_modules(&root, &mut modules);
+        modules.sort();
+
+        for module in modules {
+            let source = fs::read_to_string(&module).unwrap_or_else(|error| {
+                panic!("failed to read {}: {error}", module.display());
+            });
+            let outcome = validate_source(&source).unwrap_or_else(|error| {
+                panic!("failed to parse {}: {error}", module.display());
+            });
+
+            assert!(
+                outcome.is_ok(),
+                "{} must parse as Flow: {:?}",
+                module.display(),
+                outcome.diagnostics
+            );
+        }
+    }
+
+    fn collect_js_modules(path: &Path, modules: &mut Vec<PathBuf>) {
+        let entries = fs::read_dir(path).unwrap_or_else(|error| {
+            panic!("failed to read {}: {error}", path.display());
+        });
+        for entry in entries {
+            let entry = entry.unwrap_or_else(|error| {
+                panic!("failed to read entry under {}: {error}", path.display());
+            });
+            let path = entry.path();
+            let file_type = entry.file_type().unwrap_or_else(|error| {
+                panic!("failed to stat {}: {error}", path.display());
+            });
+            if file_type.is_dir() {
+                collect_js_modules(&path, modules);
+            } else if path.extension().and_then(|extension| extension.to_str()) == Some("js") {
+                modules.push(path);
+            }
         }
     }
 }

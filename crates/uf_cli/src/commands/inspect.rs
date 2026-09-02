@@ -183,8 +183,8 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             })
         })
         .collect::<Vec<_>>();
-    let runtime = RuntimeContract::wintertc_hermes_native();
-    let test_runner = NativeTestRunnerPlan::self_hosted();
+    let runtime = RuntimeContract::capability_js_hosts();
+    let test_runner = NativeTestRunnerPlan::runtime_agnostic();
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
     let package_manager_detection = detect_project_package_manager(resolved);
     let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config);
@@ -207,7 +207,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             "parser": "official-flow-parser",
             "build": "uf-native",
             "devServer": "uf-native",
-            "runtime": "hermes-wintertc-native-contract",
+            "runtime": "capability-js-host-contract",
             "runtimeContract": runtime,
             "server": {
                 "engine": resolved.config.server.engine,

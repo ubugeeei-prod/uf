@@ -13,7 +13,7 @@ fn bench_define_config_parse(c: &mut Criterion) {
             router: { entry: 'app.js', root: 'app' },
             builtins: {
               relay: true,
-              flowCell: true,
+              cell: true,
             },
           },
           lint: {

@@ -176,6 +176,12 @@ fn build_writes_native_manifest_and_router_types() {
         serde_json::json!("uf-plugin-v1")
     );
     assert_eq!(manifest["runtime"]["wintertc"], serde_json::json!(true));
+    assert_eq!(manifest["runtime"]["default"], serde_json::json!("node"));
+    assert_eq!(
+        manifest["runtime"]["capabilityJsHost"]["hosts"],
+        serde_json::json!(["node", "deno", "bun"])
+    );
+    assert_eq!(manifest["runtime"]["hermes"], serde_json::json!(false));
     assert!(app.join("router.js").exists());
     assert!(
         fs::read_to_string(app.join("router.js"))

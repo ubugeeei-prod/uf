@@ -1,0 +1,20 @@
+{
+  "name": "@uniflowed/cell",
+  "version": "0.0.0-alpha.0",
+  "description": "Flow implementation for @uniflowed/cell, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/cell"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "internal"
+  ]
+}

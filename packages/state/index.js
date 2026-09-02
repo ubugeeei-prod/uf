@@ -2,14 +2,12 @@
 //
 // `@uniflowed/state`: the cell primitives plus their React binding.
 
-import type { Cell } from "@uniflowed/flow-cell";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+import type { Cell, CellScope } from "@uniflowed/cell";
+import { cell, computed, read, resource, subscribe, update, write } from "@uniflowed/cell";
 
-const MODULE = "@uniflowed/core/state";
+export type { Cell, CellScope };
+export { cell, computed, read, resource, subscribe, update, write };
 
-export type { Cell, CellScope } from "@uniflowed/flow-cell";
-export { cell, computed, resource } from "@uniflowed/flow-cell";
-
-export function useCell<T>(cell: Cell<T>): T {
-  return nativeRuntimeRequired(MODULE, "useCell");
+export hook useCell<T>(source: Cell<T>): T {
+  return read(source);
 }

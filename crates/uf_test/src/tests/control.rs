@@ -7,11 +7,9 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use uf_effect::Schedule;
-
 use crate::{
-    Bail, Concurrency, FileStatus, RetryPolicy, RunOptions, SkipReason, TestRunner, TestStatus,
-    UnsupportedReason, run_tests,
+    Attempt, Bail, Concurrency, FileStatus, RetryPolicy, RunOptions, Schedule, SkipReason,
+    TestRunner, TestStatus, UnsupportedReason, run_tests,
 };
 
 fn run(source: &str) -> crate::TestRunReport {
@@ -56,7 +54,7 @@ fn a_retry_policy_does_not_re_run_a_passing_test() {
 #[test]
 fn a_retry_schedule_is_bounded_by_the_attempt_cap() {
     let policy = RetryPolicy::from_schedule(Schedule::Forever);
-    let mut retries = uf_effect::Attempt::first();
+    let mut retries = Attempt::first();
     // One execution has already happened by the time the first decision is made.
     let mut executions = 1u32;
     while policy.next_delay(retries).is_some() {
@@ -74,7 +72,7 @@ fn a_retry_schedule_is_bounded_by_the_attempt_cap() {
 fn a_retry_delay_is_capped() {
     let policy = RetryPolicy::from_schedule(Schedule::spaced(Duration::from_secs(3_600)));
     assert_eq!(
-        policy.next_delay(uf_effect::Attempt::first()),
+        policy.next_delay(Attempt::first()),
         Some(crate::MAX_RETRY_DELAY)
     );
 }
@@ -82,10 +80,7 @@ fn a_retry_delay_is_capped() {
 #[test]
 fn no_retry_policy_means_one_attempt() {
     assert_eq!(RetryPolicy::none().max_attempts(), 1);
-    assert_eq!(
-        RetryPolicy::none().next_delay(uf_effect::Attempt::first()),
-        None
-    );
+    assert_eq!(RetryPolicy::none().next_delay(Attempt::first()), None);
 }
 
 #[test]

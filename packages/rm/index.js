@@ -10,8 +10,8 @@ const MODULE = "@uniflowed/core/rm";
 export type RuntimeEngine =
   | "uf"
   | "node"
-  | "bun"
   | "deno"
+  | "bun"
   | "edge"
   | "serverless"
   | "container";
@@ -40,6 +40,7 @@ export type RuntimeManagerPlan = {
   +steps: $ReadOnlyArray<
     | "read-config"
     | "infer-runtime"
+    | "detect-capability-host"
     | "acquire-runtime"
     | "apply-adapters"
     | "verify-doctor",

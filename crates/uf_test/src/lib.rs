@@ -60,6 +60,7 @@ mod options;
 mod path;
 mod plan;
 mod report;
+mod retry_schedule;
 mod runner;
 mod runner_plan;
 mod scan;
@@ -85,9 +86,11 @@ pub use crate::report::{
     AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, TestRecord, TestRunReport,
     TestStatus, TestSummary, UnsupportedAssertion, UnsupportedReason,
 };
+pub use crate::retry_schedule::{Attempt, Decision, MAX_DELAY, Schedule};
 pub use crate::runner::{LockedObserver, RunObserver, SilentObserver, TestRunner, run_tests};
 pub use crate::runner_plan::{
-    NativeTestRunnerPlan, TestImportList, TestPerformanceTarget, TestRuntime, TestScheduler,
+    NativeTestRunnerPlan, TestHost, TestHostList, TestImportList, TestPerformanceTarget,
+    TestRuntime, TestScheduler,
 };
 pub use crate::schedule::{
     COLD_NANOS_PER_BYTE, ScheduleBasis, ScheduleEntry, cold_weight_micros, makespan_micros,
