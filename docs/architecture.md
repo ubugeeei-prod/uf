@@ -17,35 +17,29 @@ manager performance, and integrated feature coverage.
 
 - `uf_cli`: command router for `uf`
 - `uf_config`: zero-config defaults and `uf.config.js` loading
-- `uf_browser`: Playwright-compatible browser and VRT contracts
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
-- `uf_fetch`: explicit ofetch-style client contracts
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
-- `uf_graphql`: Relay-based GraphQL client contracts
 - `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString
 - `uf_lib`: native standard library registry exposed to Flow
 - `uf_lint`: native lint runner and framework rules
-- `uf_loader`: flow-cell-backed data loading contracts
-- `uf_markdown`: ox-content wasm-backed markdown contracts
-- `uf_mock`: MSW-compatible mock handler contracts
-- `uf_motion`: React Compiler-safe motion contracts
-- `uf_package`: napi-rs-style target package generation and TS-to-Flow declaration conversion
 - `uf_pm`: self-hosted package manager plan, lockfile, and content-addressed store contracts
 - `uf_project`: project discovery and `create` templates
 - `uf_rm`: runtime manager inference, acquisition, and adapter application contracts
 - `uf_runtime`: WinterTC, Hermes, native event-loop, and deploy-anywhere runtime contract
-- `uf_state`: native state and flow-cell primitives
-- `uf_story`: story and visual regression contracts
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
-- `uf_stdlib_cli`: Gunshi-style stdlib CLI framework for Flow
-- `uf_temporal`: lite Temporal contracts
 - `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
 - `uf_tui`: OpenTUI-compatible native TUI framework contracts
 - `uf_validator`: valibot-style native validator primitives
-- `uf_vrt`: native visual regression contracts
-- `uf_web`: Nuxt-like web primitives and typed route hooks
+
+These are the crates that survive. `uf` used to ship a Rust crate per library
+surface — `uf_motion`, `uf_orm`, `uf_markdown`, `uf_temporal`, `uf_web` and ten
+more — each holding a `serde` struct that described a feature rather than
+implementing one, and each duplicating a `crates/uf_lib/lib/core/*.js` module
+that was the real thing. Twelve had no consumer at all; three existed so
+`uf inspect` could print their `::default()`. They are gone: the JavaScript in
+`uf_lib/lib/core` is the source of truth for what those modules are.
 
 ## Flow Syntax Authority
 

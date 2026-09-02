@@ -6,8 +6,7 @@ use camino::Utf8Path;
 use serde_json::json;
 use uf_config::{ResolvedConfig, load_config};
 use uf_lib::{
-    builtin_modules, hook_descriptors, motion_contract, orm_contract, std_module_descriptors,
-    tui_contract, ui_components, vrt_plan,
+    builtin_modules, hook_descriptors, std_module_descriptors, tui_contract, ui_components,
 };
 use uf_plugin::{PipelineMode, resolve_pipeline};
 use uf_pm::{DetectionOptions, PackageManagerPlan, detect_package_manager_with};
@@ -200,10 +199,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         "routes": routes,
         "nativeModules": builtin_modules(),
         "stdModules": std_module_descriptors(),
-        "orm": orm_contract(),
-        "motion": motion_contract(),
         "tui": tui_contract(),
-        "vrt": vrt_plan(),
         "hooks": hook_descriptors(),
         "lintRules": uf_lint::rules(),
         "ui": ui_components(),
