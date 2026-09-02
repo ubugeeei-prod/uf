@@ -103,6 +103,18 @@ strip = "symbols"
 codegen-units = 1
 opt-level = 3
 
+[profile.dist]
+inherits = "release"
+# Release jobs build on every supported architecture. Thin LTO keeps the
+# installable binaries optimized while avoiding the peak memory of one huge
+# fat-LTO codegen unit on hosted arm64 runners.
+codegen-units = 16
+lto = "thin"
+
+[profile.dist.build-override]
+codegen-units = 16
+opt-level = 3
+
 [profile.bench]
 codegen-units = 1
 lto = "fat"
