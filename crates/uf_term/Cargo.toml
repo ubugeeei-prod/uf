@@ -1,0 +1,18 @@
+[package]
+name = "uf_term"
+description = "Native terminal rendering primitives for the Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "render"
+harness = false

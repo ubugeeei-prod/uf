@@ -12,6 +12,7 @@ authors.workspace = true
 camino.workspace = true
 compact_str.workspace = true
 json5.workspace = true
+uf_bundle = { path = "../uf_bundle" }
 serde.workspace = true
 thiserror.workspace = true
 

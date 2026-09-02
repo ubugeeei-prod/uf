@@ -1,3 +1,0 @@
-// @flow
-export type { PwaConfig } from "../core/pwa.js.flow";
-export { Manifest, ServiceWorker, definePwa } from "../core/pwa.js.flow";

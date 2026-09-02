@@ -1,3 +1,5 @@
+pub mod reserved;
+
 use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -5,6 +7,10 @@ use compact_str::{CompactString, ToCompactString};
 use thiserror::Error;
 use uf_config::UniflowedConfig;
 use walkdir::WalkDir;
+
+pub use crate::reserved::{
+    ReservedFile, ReservedName, ReservedRole, ReservedVariant, classify_reserved_file,
+};
 
 pub const RESERVED_LAYOUT: &str = "_uf.layout.js";
 pub const RESERVED_PAGE: &str = "_uf.page.js";
@@ -113,11 +119,7 @@ pub fn find_reserved_file_violations(
             continue;
         }
         let file_name = entry.file_name().to_string_lossy();
-        if file_name.starts_with("_uf.")
-            && file_name != RESERVED_LAYOUT
-            && file_name != RESERVED_PAGE
-            && file_name != RESERVED_MIDDLEWARE
-        {
+        if classify_reserved_file(&file_name).is_unknown() {
             let path = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
                 .unwrap_or_else(|path| Utf8PathBuf::from(path.display().to_string()));
             violations.push(ReservedFileViolation { path });

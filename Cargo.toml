@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/uf_browser",
+  "crates/uf_bundle",
   "crates/uf_cli",
   "crates/uf_config",
   "crates/uf_effect",
@@ -11,22 +13,24 @@ members = [
   "crates/uf_lib",
   "crates/uf_lint",
   "crates/uf_loader",
-  "crates/uf_browser",
   "crates/uf_markdown",
   "crates/uf_mock",
   "crates/uf_motion",
   "crates/uf_orm",
   "crates/uf_package",
+  "crates/uf_plugin",
   "crates/uf_pm",
   "crates/uf_prepare",
   "crates/uf_project",
   "crates/uf_rm",
   "crates/uf_router",
+  "crates/uf_rsc",
   "crates/uf_runtime",
   "crates/uf_state",
   "crates/uf_story",
   "crates/uf_std",
   "crates/uf_stdlib_cli",
+  "crates/uf_term",
   "crates/uf_test",
   "crates/uf_temporal",
   "crates/uf_tui",
@@ -34,6 +38,7 @@ members = [
   "crates/uf_vrt",
   "crates/uf_web",
 ]
+exclude = ["upstream"]
 resolver = "3"
 
 [workspace.package]
@@ -48,10 +53,13 @@ version = "0.1.0"
 anyhow = "1.0.104"
 assert_cmd = "2.1.1"
 bumpalo = { version = "3.19.1", features = ["collections"] }
+brotli = { version = "8.0.4", default-features = false, features = ["std"] }
 camino = { version = "1.2.1", features = ["serde1"] }
 clap = { version = "4.6.4", features = ["derive", "env"] }
 compact_str = { version = "0.10.0", features = ["serde"] }
 criterion = "0.8.2"
+flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 flowjs-parser = "0.0.0-alpha.3"
 ignore = "0.4.25"
 json5 = "1.3.1"

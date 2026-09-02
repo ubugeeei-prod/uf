@@ -1,0 +1,5 @@
+# Blacksmith runners are self-hosted, so actionlint needs the label declared
+# before it will accept `runs-on`.
+self-hosted-runner:
+  labels:
+    - blacksmith-32vcpu-ubuntu-2404

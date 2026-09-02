@@ -113,6 +113,7 @@ enables:
 - native stdlib modules for os, net, dns, path, stream, URL, wasm, glob, motion,
   TUI, cron, S3, SigV4, worker/lambda functions, uuid, and zip
 - all route, fetch, image, font, markdown, and PWA caches are opt-in
+- bundle size budgets in `build.budgets`, measured with real gzip and brotli
 - native query, effect, ORM, Relay, validator, and state/flow-cell builtin modules
 - React Compiler-safe motion primitives with reduced-motion defaults
 - OpenTUI-aligned native TUI framework targeting a React Ink replacement
@@ -216,11 +217,22 @@ package model, and generated TypeScript declarations are converted back to Flow.
 
 ## Development
 
-The repository is pinned to Rust 1.98.
+The repository is pinned to Rust 1.98, and `upstream/flow` carries Meta's
+official Flow Rust port as a submodule because those crates are not published to
+crates.io.
 
 ```sh
 nix develop ./tools/nix
-cargo test --workspace --all-features
+tools/upstream/sync.sh
+cargo test --workspace
+```
+
+`tools/upstream/sync.sh` checks out only `rust_port/` from a shallow, blobless
+clone. Building `uf_flow` against that port is the `upstream-parser` feature; it
+needs nightly until the unstable `!` type reaches stable Rust:
+
+```sh
+cargo +nightly test --workspace --all-features
 ```
 
 Distribution is configured for Cloudflare:

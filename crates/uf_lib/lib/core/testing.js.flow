@@ -1,3 +1,0 @@
-// @flow
-declare export * from './index.js.flow';
-declare export * from './react-testing.js.flow';

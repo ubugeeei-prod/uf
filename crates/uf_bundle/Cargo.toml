@@ -1,0 +1,28 @@
+[package]
+name = "uf_bundle"
+description = "Bundle size measurement and budget enforcement for uniflowed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+brotli.workspace = true
+camino.workspace = true
+compact_str.workspace = true
+flate2.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "bundle"
+harness = false

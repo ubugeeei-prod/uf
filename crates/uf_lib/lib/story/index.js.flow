@@ -1,3 +1,0 @@
-// @flow
-export type { StoryVariant, Storybook } from "../core/story.js.flow";
-export { story, variant, withBrowser, withMocks } from "../core/story.js.flow";

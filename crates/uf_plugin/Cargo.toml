@@ -1,0 +1,27 @@
+[package]
+name = "uf_plugin"
+description = "Plugin container and built-in pipeline stages for uniflowed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+camino.workspace = true
+compact_str.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uf_config = { path = "../uf_config" }
+uf_infra = { path = "../uf_infra" }
+
+[dev-dependencies]
+criterion.workspace = true
+json5.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "container"
+harness = false

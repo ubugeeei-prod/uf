@@ -9,6 +9,11 @@
 - Keep Vite-compatible plugin semantics and Rolldown as internal engines where
   they help, but make `uf` the only user-facing interface.
 
+The threat model that every one of these must satisfy is in
+[docs/security.md](security.md): each row names a published CVE in an
+incumbent tool and the structural decision that makes the same bug impossible
+in `uf`.
+
 ## P0: Toolchain Spine
 
 - Keep the first executable native slice green: `uf create`, `uf build`,

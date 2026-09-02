@@ -1,3 +1,0 @@
-// @flow
-export type { PreparePlan, PrepareStep } from "../core/prepare.js.flow";
-export { codegen, lintStaged, prepare } from "../core/prepare.js.flow";

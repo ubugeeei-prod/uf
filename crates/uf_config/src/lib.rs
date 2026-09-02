@@ -6,11 +6,17 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
+pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
+
+pub mod plugins;
+
+pub use plugins::{ApplyCondition, HookOrder, PipelineMode, PluginEntry, PluginSpec};
 
 pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct UniflowedConfig {
     pub app: AppConfig,
     pub build: BuildConfig,
@@ -20,6 +26,11 @@ pub struct UniflowedConfig {
     pub fmt: FmtConfig,
     pub lint: LintConfig,
     pub package: PackageConfig,
+    /// Plugins the project adds, in declaration order.
+    ///
+    /// Entries are raw, untrusted declarations; `uf_plugin` resolves them into
+    /// a run order and rejects any that reach outside the project root.
+    pub plugins: Vec<PluginEntry>,
     pub pm: PackageManagerConfig,
     pub publish: PublishConfig,
     pub release: ReleaseConfig,
@@ -35,6 +46,7 @@ pub struct UniflowedConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct AppConfig {
     pub component_default: ComponentBoundary,
     pub framework: FrameworkPreset,
@@ -81,6 +93,7 @@ pub enum FrameworkPreset {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RouterConfig {
     pub enabled: bool,
     pub entry: CompactString,
@@ -109,6 +122,7 @@ pub enum RouterConvention {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct OrmConfig {
     pub enabled: bool,
     pub module: CompactString,
@@ -131,6 +145,7 @@ impl Default for OrmConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BuiltinConfig {
     pub data: DataEngine,
     pub effect: EffectEngine,
@@ -197,6 +212,7 @@ pub enum EffectEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FetchConfig {
     pub module: CompactString,
     pub override_global_fetch: bool,
@@ -213,6 +229,7 @@ impl Default for FetchConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct GraphQlConfig {
     pub module: CompactString,
     pub relay_base: bool,
@@ -229,6 +246,7 @@ impl Default for GraphQlConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct LoaderConfig {
     pub module: CompactString,
     pub state_module: CompactString,
@@ -247,6 +265,7 @@ impl Default for LoaderConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct WebConfig {
     pub module: CompactString,
     pub typed_routes: bool,
@@ -275,6 +294,7 @@ pub enum LinkPrefetchMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MarkdownConfig {
     pub module: CompactString,
     pub engine: MarkdownEngineConfig,
@@ -299,6 +319,7 @@ pub enum MarkdownEngineConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MotionConfig {
     pub module: CompactString,
     pub engine: MotionEngineConfig,
@@ -328,6 +349,7 @@ pub enum MotionEngineConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TuiConfig {
     pub module: CompactString,
     pub std_module: CompactString,
@@ -361,6 +383,7 @@ pub enum TuiStandardConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TemporalConfig {
     pub module: CompactString,
     pub lite: bool,
@@ -377,6 +400,7 @@ impl Default for TemporalConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PwaConfig {
     pub module: CompactString,
     pub enabled_by_default: bool,
@@ -401,6 +425,7 @@ pub enum CacheModeConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ReactCompilerConfig {
     pub enabled: bool,
     pub mode: ReactCompilerMode,
@@ -432,6 +457,7 @@ pub enum RuntimeTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RuntimeConfig {
     pub default: RuntimeEngine,
     pub compatibility: Vec<RuntimeEngine>,
@@ -470,6 +496,7 @@ pub enum RuntimeEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DeployAnywhereConfig {
     pub enabled: bool,
     pub adapters: Vec<DeployAdapter>,
@@ -506,6 +533,7 @@ pub enum DeployAdapter {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ServerConfig {
     pub engine: ServerEngine,
     pub native: NativeServerConfig,
@@ -529,6 +557,7 @@ pub enum ServerEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct NativeServerConfig {
     pub streaming: bool,
     pub zero_copy_http: bool,
@@ -574,6 +603,7 @@ pub enum ComponentBoundary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ReactConfig {
     pub version: CompactString,
     pub async_react: bool,
@@ -594,6 +624,7 @@ impl Default for ReactConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RenderingConfig {
     pub modes: Vec<RenderingMode>,
     pub cache: CacheConfig,
@@ -624,6 +655,7 @@ pub enum RenderingMode {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CacheConfig {
     pub actions: bool,
     pub data: bool,
@@ -633,7 +665,9 @@ pub struct CacheConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BuildConfig {
+    pub budgets: BundleBudgets,
     pub entries: Vec<CompactString>,
     pub hooks: BTreeMap<CompactString, TaskDefinition>,
     pub out_dir: CompactString,
@@ -644,6 +678,9 @@ pub struct BuildConfig {
 impl Default for BuildConfig {
     fn default() -> Self {
         Self {
+            // Budgets stay unset by default: failing a build nobody asked us to
+            // police is worse than reporting and moving on.
+            budgets: BundleBudgets::default(),
             entries: vec![CompactString::const_new("app.js")],
             hooks: BTreeMap::new(),
             out_dir: CompactString::const_new("dist"),
@@ -655,6 +692,7 @@ impl Default for BuildConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DocsConfig {
     pub enabled: bool,
     pub app: CompactString,
@@ -685,6 +723,7 @@ pub enum DeployTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DevConfig {
     pub host: CompactString,
     pub port: u16,
@@ -703,6 +742,7 @@ impl Default for DevConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct EnvConfig {
     pub active: CompactString,
     pub files: Vec<CompactString>,
@@ -723,6 +763,7 @@ impl Default for EnvConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FmtConfig {
     pub indent_width: u8,
     pub line_width: u16,
@@ -750,6 +791,7 @@ pub enum QuoteStyle {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PackageConfig {
     pub generator: PackageGenerator,
     pub targets: Vec<PackageTarget>,
@@ -791,12 +833,14 @@ pub enum PackageTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PackageManagerConfig {
     pub module: CompactString,
     pub resolver: PackageManagerResolver,
     pub lockfile: CompactString,
     pub store_dir: CompactString,
     pub allow_lifecycle_scripts: bool,
+    pub package_manager: PackageManagerPreference,
 }
 
 impl Default for PackageManagerConfig {
@@ -807,6 +851,7 @@ impl Default for PackageManagerConfig {
             lockfile: CompactString::const_new("uf.lock"),
             store_dir: CompactString::const_new(".uf/store"),
             allow_lifecycle_scripts: false,
+            package_manager: PackageManagerPreference::Auto,
         }
     }
 }
@@ -818,8 +863,29 @@ pub enum PackageManagerResolver {
     UfNative,
 }
 
+/// Which package manager drives the project, overriding auto-inference.
+///
+/// `Auto` infers the manager from the project itself: an explicit
+/// `"packageManager"` field, then a lockfile, then the nearest workspace root,
+/// then uf's own resolver. `Yarn` means the modern Berry line; pin `YarnClassic`
+/// for Yarn 1.x.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PackageManagerPreference {
+    #[default]
+    Auto,
+    Uf,
+    Npm,
+    Pnpm,
+    Yarn,
+    YarnClassic,
+    YarnBerry,
+    Bun,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RuntimeManagerConfig {
     pub module: CompactString,
     pub infer_from_config: bool,
@@ -832,6 +898,7 @@ pub struct RuntimeManagerConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct StdConfig {
     pub module: CompactString,
     pub wintertc_aligned: bool,
@@ -974,6 +1041,7 @@ pub enum RuntimeManagerApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct StoryConfig {
     pub enabled: bool,
     pub module: CompactString,
@@ -994,6 +1062,7 @@ impl Default for StoryConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MockConfig {
     pub module: CompactString,
     pub msw_compatible: bool,
@@ -1010,6 +1079,7 @@ impl Default for MockConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BrowserAutomationConfig {
     pub module: CompactString,
     pub playwright_compatible: bool,
@@ -1026,6 +1096,7 @@ impl Default for BrowserAutomationConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct VrtConfig {
     pub enabled: bool,
     pub module: CompactString,
@@ -1035,6 +1106,7 @@ pub struct VrtConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TestConfig {
     pub module: CompactString,
     pub runner: NativeTestRunnerConfig,
@@ -1053,6 +1125,7 @@ impl Default for TestConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct NativeTestRunnerConfig {
     pub runtime: NativeTestRuntimeConfig,
     pub scheduler: NativeTestSchedulerConfig,
@@ -1105,64 +1178,131 @@ impl Default for VrtConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct LintConfig {
     pub files: Vec<CompactString>,
     pub ignore: Vec<CompactString>,
     pub rules: BTreeMap<CompactString, RuleLevel>,
 }
 
+/// Every lint rule `uf lint` ships, with the level uf applies out of the box.
+///
+/// `uf lint` is the union of Flow's built-in lint set (the `flow/` namespace) and
+/// uf's own framework rules, so this table has to name both. Flow itself defaults
+/// every built-in lint to `off`; uf does not, because a linter nobody switches on
+/// catches nothing. The policy, applied per row below:
+///
+/// - `error` when the pattern is a bug, an unsound escape hatch, or a rule whose
+///   fix is mechanical — the things a large Flow codebase cannot let accumulate.
+/// - `warn` when the pattern is only suspicious, is legitimate in some code, or
+///   when uf's current check covers a syntactic subset of what Flow checks.
+/// - `off` only where leaving a rule on would report the same violation twice.
+///
+/// Each rule's full rationale, category, and one-line description live on its
+/// `uf_lint::RuleDescriptor`; `uf_lint` has a test asserting this table and that
+/// catalogue agree exactly, in both directions, so the two cannot drift apart.
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 53] = [
+    // --- Flow built-in lints ------------------------------------------------
+    // Exactness must be stated, not inferred from a config flag.
+    ("flow/ambiguous-object-type", RuleLevel::Error),
+    // Reading named exports off a default import is a CommonJS interop bug.
+    ("flow/default-import-access", RuleLevel::Error),
+    // `bool` is a legacy alias for `boolean`; mechanical fix.
+    ("flow/deprecated-type", RuleLevel::Error),
+    // Legal, just confusing.
+    ("flow/export-renamed-default", RuleLevel::Warn),
+    // Flow's internal types are unstable across releases.
+    ("flow/internal-type", RuleLevel::Error),
+    // A namespace object is not a value.
+    ("flow/invalid-import-star-use", RuleLevel::Error),
+    // Rebinding a method to a foreign receiver is unsound.
+    ("flow/invalid-this-arg", RuleLevel::Error),
+    // Shadowing a builtin libdef breaks every consumer at once.
+    ("flow/libdef-override", RuleLevel::Error),
+    // uf ships ESM; mixing module systems defeats static analysis.
+    ("flow/mixed-import-and-require", RuleLevel::Error),
+    // A nested component remounts its whole subtree every render.
+    ("flow/nested-component", RuleLevel::Error),
+    // A nested hook gets a new identity every render.
+    ("flow/nested-hook", RuleLevel::Error),
+    // A mutable export is a live binding consumers cannot reason about.
+    ("flow/non-const-var-export", RuleLevel::Error),
+    // Only actionable mid-migration, so it must not block one.
+    ("flow/nonstrict-import", RuleLevel::Warn),
+    // Shadowing `div`/`span` silently changes what JSX means.
+    ("flow/react-intrinsic-overlap", RuleLevel::Error),
+    // The explicit form is verbose; the implicit form is not itself a bug.
+    ("flow/require-explicit-enum-checks", RuleLevel::Warn),
+    ("flow/require-explicit-enum-switch-cases", RuleLevel::Warn),
+    // The most common Flow-catchable production bug: `if (count)` skipping 0.
+    ("flow/sketchy-null", RuleLevel::Error),
+    // The typed variants stay off so one violation is not reported twice.
+    ("flow/sketchy-null-bigint", RuleLevel::Off),
+    ("flow/sketchy-null-bool", RuleLevel::Off),
+    ("flow/sketchy-null-mixed", RuleLevel::Off),
+    ("flow/sketchy-null-number", RuleLevel::Off),
+    ("flow/sketchy-null-string", RuleLevel::Off),
+    // `{count && <List />}` renders a literal `0`; user-visible bug.
+    ("flow/sketchy-number", RuleLevel::Error),
+    // Legal in methods, so warn rather than block.
+    ("flow/this-in-exported-function", RuleLevel::Warn),
+    // `any`/`Object`/`Function` switch the type checker off.
+    ("flow/unclear-type", RuleLevel::Error),
+    // Reading a field before the constructor finishes yields `undefined`.
+    ("flow/uninitialized-instance-property", RuleLevel::Error),
+    // Dead code, not a bug.
+    ("flow/unnecessary-invariant", RuleLevel::Warn),
+    // uf only sees the syntactic subset today.
+    ("flow/unnecessary-optional-chain", RuleLevel::Warn),
+    // Accessors hide side effects, but are legitimate in some UI code.
+    ("flow/unsafe-getters-setters", RuleLevel::Warn),
+    // `Object.assign` mutates its target and is unsound in Flow.
+    ("flow/unsafe-object-assign", RuleLevel::Error),
+    // An untyped dependency turns everything it exports into `any`.
+    ("flow/untyped-import", RuleLevel::Error),
+    ("flow/untyped-type-import", RuleLevel::Error),
+    // A floating promise swallows rejections and loses ordering.
+    ("flow/unused-promise", RuleLevel::Error),
+    // --- uf's own rules -----------------------------------------------------
+    // A file that does not parse cannot be checked at all.
+    ("flow/syntax", RuleLevel::Error),
+    ("uniflowed/no-tabs", RuleLevel::Error),
+    ("uniflowed/no-trailing-whitespace", RuleLevel::Error),
+    // Tasks belong in uf.config.js, never in a shelled-out package manager.
+    ("uniflowed/no-npm-script-invocation", RuleLevel::Error),
+    // A typo'd suppression silently stops enforcing a rule.
+    ("uniflowed/unknown-lint-suppression", RuleLevel::Error),
+    // Style preferences during the migration to Flow component/hook syntax.
+    ("react/component-syntax", RuleLevel::Warn),
+    ("react/hook-syntax", RuleLevel::Warn),
+    // Breaking the rules of hooks corrupts React's hook state.
+    ("react/hooks-rules", RuleLevel::Error),
+    // Framework routes are wired by name; `warn` while the scaffold migrates.
+    ("react/no-default-export-component", RuleLevel::Warn),
+    // Non-idempotent render breaks streaming SSR and hydration.
+    ("react/no-render-side-effects", RuleLevel::Error),
+    // Platform branches are a preference, not a correctness problem.
+    ("react-native/platform-split", RuleLevel::Warn),
+    // Leaking a secret into a client bundle is unrecoverable.
+    ("server/no-client-secret", RuleLevel::Error),
+    ("server/no-server-only-import-in-client", RuleLevel::Error),
+    // A misplaced directive is silently ignored; Next.js has shipped this bug.
+    ("server/use-client-directive-position", RuleLevel::Error),
+    ("server/use-server-actions", RuleLevel::Error),
+    ("router/reserved-files", RuleLevel::Error),
+    ("package/no-npm-scripts", RuleLevel::Error),
+    ("fetch/no-global-override", RuleLevel::Error),
+    // XSS and arbitrary code execution: never a warning.
+    ("security/no-dangerously-set-inner-html", RuleLevel::Error),
+    ("security/no-eval", RuleLevel::Error),
+];
+
 impl Default for LintConfig {
     fn default() -> Self {
         let mut rules = BTreeMap::new();
-        rules.insert(CompactString::const_new("flow/syntax"), RuleLevel::Error);
-        rules.insert(
-            CompactString::const_new("flow/type-aware/no-explicit-any"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("uniflowed/no-tabs"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("uniflowed/no-trailing-whitespace"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("react/component-syntax"),
-            RuleLevel::Warn,
-        );
-        rules.insert(
-            CompactString::const_new("react/hook-syntax"),
-            RuleLevel::Warn,
-        );
-        rules.insert(
-            CompactString::const_new("react-native/platform-split"),
-            RuleLevel::Warn,
-        );
-        rules.insert(
-            CompactString::const_new("react/no-render-side-effects"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("server/no-client-secret"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("server/use-server-actions"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("router/reserved-files"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("package/no-npm-scripts"),
-            RuleLevel::Error,
-        );
-        rules.insert(
-            CompactString::const_new("fetch/no-global-override"),
-            RuleLevel::Error,
-        );
+        for (rule, level) in DEFAULT_LINT_RULES {
+            rules.insert(CompactString::const_new(rule), level);
+        }
 
         Self {
             files: vec![
@@ -1255,6 +1395,7 @@ impl<'de> Deserialize<'de> for RuleLevel {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PublishConfig {
     pub registry: CompactString,
     pub dry_run: bool,
@@ -1275,6 +1416,7 @@ impl Default for PublishConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FirstPublishConfig {
     pub mode: FirstPublishMode,
     pub local_bootstrap: bool,
@@ -1298,6 +1440,7 @@ pub enum FirstPublishMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TrustedPublishConfig {
     pub enabled: bool,
     pub provider: TrustedPublishProvider,
@@ -1333,6 +1476,7 @@ pub enum TrustedPublishTrigger {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ReleaseConfig {
     pub tag_prefix: CompactString,
     pub command: CompactString,
@@ -1351,6 +1495,7 @@ impl Default for ReleaseConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TaskRunnerConfig {
     pub engine: TaskRunnerEngine,
     pub allow_package_scripts: bool,
@@ -1359,17 +1504,26 @@ pub struct TaskRunnerConfig {
 impl Default for TaskRunnerConfig {
     fn default() -> Self {
         Self {
-            engine: TaskRunnerEngine::ViteTask,
+            engine: TaskRunnerEngine::UfTask,
             allow_package_scripts: false,
         }
     }
 }
 
+/// Which runner executes `uf.config.js` tasks.
+///
+/// `uf` matches the task semantics of the wider ecosystem so existing task
+/// definitions keep working, but a developer using `uf` never chose an
+/// underlying runner and should not have to reason about one. No alias is kept
+/// for the old spelling: a name a user can still write is still a name they can
+/// see, which is the thing being removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum TaskRunnerEngine {
+    /// uf's own task runner.
     #[default]
-    ViteTask,
+    UfTask,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1390,6 +1544,7 @@ impl TaskDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TaskCommand {
     pub command: CompactString,
     pub cwd: Option<CompactString>,
@@ -1621,319 +1776,4 @@ pub fn define_config(config: UniflowedConfig) -> UniflowedConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn zero_config_defaults_to_flow_react_app_stack() {
-        let config = UniflowedConfig::default();
-
-        assert!(config.app.router.enabled);
-        assert_eq!(config.app.router.entry, "app.js");
-        assert_eq!(config.app.router.root, "app");
-        assert_eq!(config.app.component_default, ComponentBoundary::Server);
-        assert_eq!(config.app.react.version, "19");
-        assert!(config.app.react.async_react);
-        assert!(config.app.react.suspense);
-        assert!(config.app.react.use_hook);
-        assert!(config.app.rsc);
-        assert!(config.app.server_actions);
-        assert_eq!(config.app.runtime.default, RuntimeEngine::Uf);
-        assert!(config.app.runtime.deploy.enabled);
-        assert!(
-            config
-                .app
-                .runtime
-                .compatibility
-                .contains(&RuntimeEngine::Node)
-        );
-        assert!(
-            config
-                .app
-                .runtime
-                .compatibility
-                .contains(&RuntimeEngine::Bun)
-        );
-        assert!(
-            config
-                .app
-                .runtime
-                .compatibility
-                .contains(&RuntimeEngine::Deno)
-        );
-        assert!(
-            config
-                .app
-                .runtime
-                .deploy
-                .adapters
-                .contains(&DeployAdapter::Edge)
-        );
-        assert!(
-            config
-                .app
-                .runtime
-                .deploy
-                .adapters
-                .contains(&DeployAdapter::Serverless)
-        );
-        assert!(!config.app.rendering.cache.fetch);
-        assert!(!config.app.rendering.cache.route);
-        assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));
-        assert!(config.app.rendering.modes.contains(&RenderingMode::Isr));
-        assert!(config.app.builtins.flow_cell);
-        assert!(config.app.builtins.react_testing_library);
-        assert!(config.app.builtins.relay);
-        assert!(config.app.orm.native);
-        assert!(config.app.orm.generated_flow_types);
-        assert!(config.app.orm.prepared_by_default);
-        assert_eq!(config.app.builtins.style, StyleEngine::StyleX);
-        assert_eq!(config.fmt.quotes, QuoteStyle::Double);
-        assert!(config.fmt.semicolons);
-        assert_eq!(config.server.engine, ServerEngine::NativeRust);
-        assert!(config.server.native.streaming);
-        assert!(config.server.native.zero_copy_http);
-        assert!(
-            config
-                .server
-                .native
-                .adapters
-                .contains(&NativeServerAdapter::Deno)
-        );
-        assert_eq!(config.package.generator, PackageGenerator::NapiRs);
-        assert!(config.package.typescript_declarations_to_flow);
-        assert!(config.package.targets.contains(&PackageTarget::NodeNapi));
-        assert_eq!(config.pm.module, "@uniflowed/pm");
-        assert_eq!(config.pm.resolver, PackageManagerResolver::UfNative);
-        assert_eq!(config.pm.lockfile, "uf.lock");
-        assert_eq!(config.pm.store_dir, ".uf/store");
-        assert!(!config.pm.allow_lifecycle_scripts);
-        assert_eq!(config.rm.module, "@uniflowed/rm");
-        assert!(config.rm.infer_from_config);
-        assert_eq!(config.rm.version, "uf@0.1.0");
-        assert!(config.rm.auto_switch);
-        assert_eq!(config.rm.acquisition, RuntimeManagerAcquisition::Auto);
-        assert_eq!(config.rm.apply, RuntimeManagerApply::ConfigAndHost);
-        assert!(config.rm.doctor);
-        assert_eq!(config.std.module, "@uniflowed/std");
-        assert!(config.std.wintertc_aligned);
-        assert!(config.std.native_bindings);
-        assert!(config.std.modules.contains(&StdModuleConfig::Vfs));
-        assert!(config.std.modules.contains(&StdModuleConfig::Crypto));
-        assert!(config.std.modules.contains(&StdModuleConfig::Os));
-        assert!(config.std.modules.contains(&StdModuleConfig::Net));
-        assert!(config.std.modules.contains(&StdModuleConfig::Dns));
-        assert!(config.std.modules.contains(&StdModuleConfig::Path));
-        assert!(config.std.modules.contains(&StdModuleConfig::Stream));
-        assert!(config.std.modules.contains(&StdModuleConfig::Url));
-        assert!(config.std.modules.contains(&StdModuleConfig::Wasm));
-        assert!(config.std.modules.contains(&StdModuleConfig::Glob));
-        assert!(config.std.modules.contains(&StdModuleConfig::Motion));
-        assert!(config.std.modules.contains(&StdModuleConfig::Tui));
-        assert!(config.std.modules.contains(&StdModuleConfig::Cron));
-        assert!(config.std.modules.contains(&StdModuleConfig::S3));
-        assert!(config.std.modules.contains(&StdModuleConfig::Sigv4));
-        assert!(config.std.modules.contains(&StdModuleConfig::Functions));
-        assert!(config.std.modules.contains(&StdModuleConfig::ImportMeta));
-        assert!(config.std.modules.contains(&StdModuleConfig::Defer));
-        assert_eq!(config.publish.first_publish.mode, FirstPublishMode::Local);
-        assert!(config.publish.first_publish.local_bootstrap);
-        assert!(config.publish.trusted_publish.enabled);
-        assert_eq!(
-            config.publish.trusted_publish.provider,
-            TrustedPublishProvider::GitHubActionsOidc
-        );
-        assert!(config.publish.trusted_publish.tokenless);
-        assert_eq!(
-            config.publish.trusted_publish.trigger,
-            TrustedPublishTrigger::TagPush
-        );
-        assert_eq!(config.release.tag_prefix, "uf@");
-        assert_eq!(config.release.command, "uf release minor");
-        assert!(config.release.publish);
-        assert_eq!(config.task_runner.engine, TaskRunnerEngine::ViteTask);
-        assert!(!config.task_runner.allow_package_scripts);
-        assert_eq!(config.test.module, "@uniflowed/test");
-        assert_eq!(
-            config.test.runner.runtime,
-            NativeTestRuntimeConfig::UfSelfHosted
-        );
-        assert_eq!(
-            config.test.runner.performance_target,
-            NativeTestPerformanceTarget::FasterThanBun
-        );
-        assert!(config.test.runner.official_flow_parser);
-        assert!(config.test.react_testing_library_native);
-        assert_eq!(config.app.builtins.data, DataEngine::UniflowedQuery);
-        assert_eq!(config.app.builtins.effect, EffectEngine::UniflowedEffect);
-        assert_eq!(config.app.builtins.fetch.module, "@uniflowed/fetch");
-        assert!(!config.app.builtins.fetch.override_global_fetch);
-        assert_eq!(config.app.builtins.graphql.module, "@uniflowed/graphql");
-        assert!(config.app.builtins.graphql.relay_base);
-        assert_eq!(config.app.builtins.loader.module, "@uniflowed/loader");
-        assert_eq!(config.app.builtins.loader.state_module, "@uniflowed/state");
-        assert_eq!(config.app.builtins.loader.cache, CacheModeConfig::OptIn);
-        assert_eq!(config.app.builtins.web.module, "@uniflowed/web");
-        assert!(config.app.builtins.web.typed_routes);
-        assert_eq!(config.app.builtins.web.cache, CacheModeConfig::OptIn);
-        assert_eq!(
-            config.app.builtins.markdown.engine,
-            MarkdownEngineConfig::OxContentWasm
-        );
-        assert_eq!(config.app.builtins.markdown.cache, CacheModeConfig::OptIn);
-        assert_eq!(config.app.builtins.motion.module, "@uniflowed/motion");
-        assert_eq!(
-            config.app.builtins.motion.engine,
-            MotionEngineConfig::UfNative
-        );
-        assert!(config.app.builtins.motion.compiler_safe);
-        assert!(config.app.builtins.motion.server_component_safe);
-        assert!(config.app.builtins.motion.reduced_motion_default);
-        assert_eq!(config.app.builtins.tui.module, "@uniflowed/tui");
-        assert_eq!(config.app.builtins.tui.std_module, "@uniflowed/std/tui");
-        assert_eq!(config.app.builtins.tui.standard, TuiStandardConfig::OpenTui);
-        assert!(config.app.builtins.tui.native_renderer);
-        assert!(config.app.builtins.tui.beat_react_ink);
-        assert!(config.app.builtins.tui.rich_media);
-        assert!(config.app.builtins.tui.in_memory_tests);
-        assert_eq!(config.app.builtins.temporal.module, "@uniflowed/temporal");
-        assert!(config.app.builtins.temporal.lite);
-        assert_eq!(config.app.builtins.pwa.module, "@uniflowed/pwa");
-        assert!(!config.app.builtins.pwa.enabled_by_default);
-        assert_eq!(config.app.builtins.pwa.cache, CacheModeConfig::OptIn);
-        assert!(config.story.enabled);
-        assert_eq!(config.story.module, "@uniflowed/story");
-        assert_eq!(config.story.mocks.module, "@uniflowed/mock");
-        assert!(config.story.mocks.msw_compatible);
-        assert_eq!(config.story.browser.module, "@uniflowed/browser");
-        assert!(config.story.browser.playwright_compatible);
-        assert!(config.vrt.enabled);
-        assert_eq!(config.vrt.module, "@uniflowed/vrt");
-        assert_eq!(config.vrt.baselines, "__uf_vrt__");
-        assert_eq!(config.vrt.threshold, 0);
-        assert_eq!(
-            config.app.builtins.react_compiler.mode,
-            ReactCompilerMode::Syntax
-        );
-        assert!(config.app.targets.contains(&RuntimeTarget::ReactNative));
-        assert!(config.docs.enabled);
-        assert!(config.docs.static_build);
-        assert_eq!(config.docs.deploy, DeployTarget::Void);
-        assert_eq!(config.lint.rules["flow/syntax"], RuleLevel::Error);
-    }
-
-    #[test]
-    fn extracts_vite_style_define_config_object() {
-        let source = r#"
-            // @flow
-            import { defineConfig } from "@uniflowed/config";
-
-            export default defineConfig({
-              dev: { port: 4111 },
-              lint: {
-                rules: {
-                  "uniflowed/no-tabs": "off",
-                  "react/component-syntax": "error",
-                },
-              },
-              taskRunner: {
-                engine: "vite-task",
-                allowPackageScripts: false,
-              },
-              test: {
-                runner: {
-                  performanceTarget: "faster-than-bun",
-                },
-              },
-              rm: {
-                inferFromConfig: true,
-              },
-              pm: {
-                allowLifecycleScripts: false,
-              },
-              tasks: {
-                storybook: {
-                  command: "vite --host 0.0.0.0",
-                },
-              },
-            });
-        "#;
-
-        let object = extract_config_object(source).expect("object");
-        let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
-
-        assert_eq!(parsed.dev.port, 4111);
-        assert_eq!(parsed.lint.rules["uniflowed/no-tabs"], RuleLevel::Off);
-        assert_eq!(
-            parsed.lint.rules["react/component-syntax"],
-            RuleLevel::Error
-        );
-        assert_eq!(parsed.tasks["storybook"].command(), "vite --host 0.0.0.0");
-        assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
-        assert!(!parsed.task_runner.allow_package_scripts);
-        assert_eq!(
-            parsed.test.runner.performance_target,
-            NativeTestPerformanceTarget::FasterThanBun
-        );
-        assert!(parsed.rm.infer_from_config);
-        assert!(!parsed.pm.allow_lifecycle_scripts);
-    }
-
-    #[test]
-    fn extracts_plain_export_default_object_with_satisfies_tail() {
-        let source = r#"
-            export default {
-              fmt: { lineWidth: 88 },
-            } satisfies UniflowedConfig;
-        "#;
-
-        let object = extract_config_object(source).expect("object");
-        let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
-
-        assert_eq!(parsed.fmt.line_width, 88);
-    }
-
-    #[test]
-    fn parses_flow_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
-        fs::write(
-            &path,
-            r#"
-                export default defineConfig({
-                  dev: { port: 3000 },
-                  app: { builtins: { flowCell: false } },
-                  std: { modules: ["tui"] },
-                });
-            "#,
-        )
-        .unwrap();
-
-        let config = load_config_file(&path).unwrap();
-
-        assert_eq!(config.dev.port, 3000);
-        assert!(!config.app.builtins.flow_cell);
-        assert!(config.std.modules.contains(&StdModuleConfig::Tui));
-        assert!(config.app.builtins.native_test_runner);
-    }
-
-    #[test]
-    fn discovers_config_from_child_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        fs::write(
-            root.join("uf.config.js"),
-            "export default defineConfig({});",
-        )
-        .unwrap();
-        fs::create_dir_all(root.join("src/app")).unwrap();
-
-        let resolved = load_config(root.join("src/app")).unwrap();
-
-        assert_eq!(resolved.root, root);
-        assert_eq!(
-            resolved.config_path.unwrap().file_name(),
-            Some("uf.config.js")
-        );
-    }
-}
+mod tests;

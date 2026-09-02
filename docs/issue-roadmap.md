@@ -20,8 +20,12 @@
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
 - [x] Add `ufr` alias for `uf run`.
 - [x] Add `ufx` temporary execution command surface.
-- [ ] Integrate the maintained Flow parser boundary.
+- [x] Integrate the maintained Flow parser boundary through the `upstream/flow`
+      submodule and Meta's official Flow Rust port.
+- [ ] Make `upstream-parser` the default once `never_type` reaches stable Rust.
 - [ ] Integrate Flow typecheck diagnostics without requiring `.flowconfig`.
+      Blocked upstream: the port's typing crates need `box_patterns`, which the
+      compiler has removed. See docs/architecture.md.
 - [ ] Replace whitespace formatter with a Flow AST printer.
 - [x] Default formatter settings to double quotes and semicolons.
 - [ ] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
@@ -41,6 +45,8 @@
 - [x] Reserve `app/_uf.layout.js`.
 - [x] Reserve `app/_uf.page.js`.
 - [x] Reserve `app/_uf.middleware.js`.
+- [x] Define one reserved-name grammar, `_uf.<role>[.<variant>].js`, shared by
+      `uf create`, the router, and the linter.
 - [x] Generate `router.js` with route path and params types.
 - [ ] Enforce typed route guards and constraints.
 - [ ] Make Server Components the default.
@@ -121,6 +127,7 @@
 ## P4: Build, Runtime, Package Manager, Publish
 
 - [ ] Wire `uf build` to Vite-compatible plugin semantics.
+- [x] Measure emitted bundle size and enforce `build.budgets` from `uf build`.
 - [x] Write native build manifest and generated router types from `uf build`.
 - [ ] Wire production builds to Rolldown where possible.
 - [ ] Wire `uf dev` to a Vite-compatible dev server.

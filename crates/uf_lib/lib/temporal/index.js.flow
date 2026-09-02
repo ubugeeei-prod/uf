@@ -1,3 +1,0 @@
-// @flow
-export type { Duration, Instant, PlainDate, PlainTime, ZonedDateTime } from "../core/temporal.js.flow";
-export { Temporal } from "../core/temporal.js.flow";

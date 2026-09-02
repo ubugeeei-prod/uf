@@ -18,3 +18,8 @@ uf_tui = { path = "../uf_tui" }
 uf_validator = { path = "../uf_validator" }
 uf_vrt = { path = "../uf_vrt" }
 serde.workspace = true
+
+[dev-dependencies]
+camino.workspace = true
+serde_json.workspace = true
+walkdir.workspace = true

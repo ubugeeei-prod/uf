@@ -18,8 +18,9 @@ manager performance, and integrated feature coverage.
 - `uf_cli`: command router for `uf`
 - `uf_config`: zero-config defaults and `uf.config.js` loading
 - `uf_browser`: Playwright-compatible browser and VRT contracts
+- `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_fetch`: explicit ofetch-style client contracts
-- `uf_flow`: Flow parser/typechecker adapter boundary
+- `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
 - `uf_graphql`: Relay-based GraphQL client contracts
 - `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString
@@ -45,6 +46,54 @@ manager performance, and integrated feature coverage.
 - `uf_vrt`: native visual regression contracts
 - `uf_web`: Nuxt-like web primitives and typed route hooks
 
+## Flow Syntax Authority
+
+`uf` never reimplements Flow's grammar. `uf_flow` is a thin adapter over exactly
+one backend at a time:
+
+| Backend | Feature | Toolchain | Notes |
+| --- | --- | --- | --- |
+| Meta's Flow Rust port | `upstream-parser` | nightly | `upstream/flow/rust_port/crates/flow_parser`, parses `component`/`hook`/`renders`/`match` natively |
+| Reference parser in QuickJS | `official-parser` (default) | 1.98.0 | Flow's OCaml parser compiled to JavaScript, needs source rewriting for component syntax |
+| Guard | none | any | compile error surface only, no real grammar |
+
+The upstream port is the target: it is the same code Flow itself runs, it is
+native Rust rather than JavaScript interpreted in an embedded engine, and it
+removes the `quick-js` C dependency from the release binary. It is gated behind a
+feature only because the port still uses the unstable `!` type, so it needs
+nightly for now. Both real backends report
+`ParserKind::OfficialFlowParser` because they implement the same grammar;
+`active_backend()` reports which implementation a build selected, and
+`upstream-parser` always wins when both are enabled.
+
+### What the port can and cannot give us yet
+
+Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
+
+- **The parser works, and its nightly requirement is expiring.** `flow_parser`'s
+  only unstable feature is `never_type`, and that compiler already reports it as
+  *stable since 1.100.0-nightly*. When the toolchain pin reaches 1.100 stable,
+  `upstream-parser` becomes the default with no nightly involved — a one-line
+  change to `uf_flow`'s default features.
+- **The type checker does not build at all, and this is upstream's problem to
+  solve.** 23 crates in the port, including `flow_common` and everything under
+  `flow_typing*`, declare `#![feature(box_patterns)]`. That feature has been
+  *removed* from the compiler, not merely left unstable, so those crates fail on
+  today's nightly and on every nightly from here. `uf check` cannot run Flow's
+  own inference until upstream migrates off it. There is no workaround on our
+  side worth having: pinning a nightly old enough to still accept `box_patterns`
+  would freeze the whole toolchain on a compiler that is going stale.
+
+`flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
+reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
+`tools/upstream/sync.sh` checks those out too and asserts they arrived.
+
+The submodule costs one gate: `cargo-semver-checks` builds its baseline from
+a copy of each crate at a different depth, where `uf_flow`'s relative path to
+`upstream/flow` no longer resolves. `uf_flow` is excluded from that check
+rather than the check being switched off, and it is the crate whose public API
+moves least — the backends sit behind one `validate_source`.
+
 ## Flow And React
 
 The default app preset is Flow-first React. New app templates use Flow component
@@ -68,8 +117,11 @@ starts with platform split diagnostics for generic files that branch on
 Flow module surface. The initial package is declaration-first, then the runtime
 loader can map `@uniflowed/*` modules to native implementations.
 
-User-authored Flow source uses `.js` files with `// @flow`. Package declaration
-files may still use Flow's `.js.flow` convention when publishing typed modules.
+User-authored Flow source uses `.js` files with `// @flow`, and so do the
+published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
+A shipped module owns its own declarations, raises only when a native binding is
+actually called, and runs nothing at import time, so `"sideEffects": false` and
+per-subpath exports let a bundler drop everything an application never touches.
 
 Implemented native slices already cover:
 

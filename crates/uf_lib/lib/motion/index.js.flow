@@ -1,9 +1,0 @@
-// @flow
-export type {
-  MotionContract,
-  MotionEasing,
-  MotionEngine,
-  MotionProperty,
-  MotionTrack,
-} from "../core/motion.js.flow";
-export { animate, motion, reducedMotion, spring, timeline } from "../core/motion.js.flow";
