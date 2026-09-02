@@ -27,6 +27,7 @@ Roadmap tracking lives in [Issue #1](https://github.com/ubugeeei-prod/uf/issues/
 
 ```sh
 curl -fsSL https://setup.uniflowed.dev | sh
+nix run github:ubugeeei-prod/uf#uf -- --version
 ```
 
 - `uf create`: Create your new flow project (zero-config)
@@ -222,8 +223,12 @@ nix develop ./tools/nix
 cargo test --workspace --all-features
 ```
 
-The installer is not published yet. The target endpoint is:
+Distribution is configured for Cloudflare:
 
 ```sh
 curl -fsSL https://setup.uniflowed.dev | sh
+nix profile install github:ubugeeei-prod/uf#uf
 ```
+
+Cloudflare IaC and the release upload layout live in
+[`infra/cloudflare`](infra/cloudflare).

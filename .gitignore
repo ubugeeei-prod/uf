@@ -1,7 +1,13 @@
 /target/
 /dist/
+/docs/dist/
+/docs/router.js
 /node_modules/
 /.direnv/
+.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.*
 /.DS_Store
 *.log
 *.tmp

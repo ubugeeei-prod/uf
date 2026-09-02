@@ -12,6 +12,8 @@ component Page() {
         </Card.Header>
         <Card.Body>
           <p>Zero config, native Rust engines, RSC static docs, void deploy target.</p>
+          <pre><code>{`curl -fsSL https://setup.uniflowed.dev | sh
+nix run github:ubugeeei-prod/uf#uf -- --version`}</code></pre>
         </Card.Body>
       </Card.Root>
     </main>
