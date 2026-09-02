@@ -1,0 +1,22 @@
+{
+  "name": "@uniflowed/react-compiler",
+  "version": "0.0.1",
+  "description": "Flow declarations for @uniflowed/react-compiler, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/react-compiler"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.0.1"
+  }
+}

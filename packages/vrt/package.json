@@ -1,0 +1,23 @@
+{
+  "name": "@uniflowed/vrt",
+  "version": "0.0.1",
+  "description": "Flow declarations for @uniflowed/vrt, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/vrt"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "@uniflowed/browser": "0.0.1",
+    "@uniflowed/core": "0.0.1"
+  }
+}

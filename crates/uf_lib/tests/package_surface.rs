@@ -524,8 +524,14 @@ fn every_shipped_module_is_reachable_through_exports() {
                 continue;
             };
             if inside.iter().next() == Some(INTERNAL_DIR) {
+                // Surface packages are separate npm packages and cannot reach a
+                // sibling's internals through a relative path, so the shared
+                // native-runtime bridge is exported — under `./native`, which
+                // names it as the internal it is. Nothing else may be.
+                let bridge = package_dir.as_str() == "core"
+                    && inside.as_str() == "internal/native-runtime.js";
                 assert!(
-                    !targets.contains(inside.as_str()),
+                    bridge || !targets.contains(inside.as_str()),
                     "{relative} exports {inside}, which is an internal module"
                 );
                 continue;
@@ -536,39 +542,6 @@ fn every_shipped_module_is_reachable_through_exports() {
                  unreachable from outside the package"
             );
         }
-    }
-}
-
-#[test]
-fn builtin_module_registry_agrees_with_the_shipped_subpaths() {
-    let relative = Utf8PathBuf::from("core/package.json");
-    let manifest = manifest(&relative);
-    let targets = exports_targets(manifest.get("exports").expect("exports"))
-        .into_values()
-        .map(|target| target.trim_start_matches("./").to_string())
-        .collect::<BTreeSet<_>>();
-
-    for module in builtin_modules() {
-        let name = module
-            .specifier
-            .strip_prefix("@uniflowed/")
-            .unwrap_or_else(|| panic!("{} must be scoped to @uniflowed", module.specifier));
-        let file = if name == "core" {
-            "index.js".to_string()
-        } else {
-            format!("{name}.js")
-        };
-
-        assert!(
-            lib_root().join("core").join(&file).exists(),
-            "{} is registered in uf_lib but core/{file} does not exist",
-            module.specifier
-        );
-        assert!(
-            targets.contains(&file),
-            "{} is registered in uf_lib but core/{file} has no exports subpath",
-            module.specifier
-        );
     }
 }
 
@@ -665,4 +638,63 @@ fn top_level_statement_tokens_catch_a_second_statement_on_one_line() {
     let tokens = top_level_statement_tokens(&code);
 
     assert_eq!(tokens, vec!["const", "sideEffect"]);
+}
+
+/// Every module the registry advertises must resolve to a package on disk.
+///
+/// `uf inspect` lists these, the scaffold imports them, and `docs` documents
+/// them. A specifier with nothing behind it is not a missing nicety: a project
+/// `uf create` generates imports `@uniflowed/react`, and if no package declares
+/// that name the import resolves to nothing — which is why `uf check` reported
+/// `Cannot use Node as a type because it is an any-typed value` on the layout
+/// the scaffold itself wrote.
+///
+/// Resolution here is Node's: a bare `@scope/name` needs a manifest declaring
+/// that name, and `@scope/name/sub` needs `sub` in that manifest's `exports`.
+#[test]
+fn every_advertised_module_resolves_to_a_package() {
+    let manifests: BTreeMap<String, Value> = shipped_manifests()
+        .iter()
+        .map(|relative| {
+            let parsed = manifest(relative);
+            let name = parsed["name"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{relative} has no name"))
+                .to_owned();
+            (name, parsed)
+        })
+        .collect();
+
+    let mut unresolvable = Vec::new();
+    for module in uf_lib::builtin_modules() {
+        let specifier = module.specifier.as_str();
+        let (package, subpath) = match specifier.strip_prefix('@').and_then(|rest| {
+            let (scope, rest) = rest.split_once('/')?;
+            Some(match rest.split_once('/') {
+                Some((name, sub)) => (format!("@{scope}/{name}"), Some(sub.to_owned())),
+                None => (format!("@{scope}/{rest}"), None),
+            })
+        }) {
+            Some(split) => split,
+            None => (specifier.to_owned(), None),
+        };
+
+        let Some(found) = manifests.get(&package) else {
+            unresolvable.push(format!("{specifier}: no package named {package}"));
+            continue;
+        };
+        if let Some(subpath) = subpath {
+            let key = format!("./{subpath}");
+            if !exports_targets(&found["exports"]).contains_key(&key) {
+                unresolvable.push(format!("{specifier}: {package} does not export {key}"));
+            }
+        }
+    }
+
+    assert!(
+        unresolvable.is_empty(),
+        "{} advertised modules do not resolve:\n{}",
+        unresolvable.len(),
+        unresolvable.join("\n")
+    );
 }

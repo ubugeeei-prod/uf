@@ -107,7 +107,9 @@ jobs:
         with:
           node-version: 24
       - run: cargo metadata --format-version 1 --locked
-      - run: node -e "JSON.parse(require('node:fs').readFileSync('packages/core/package.json', 'utf8'))"
+      # Every package manifest, not just one: there are 44 of them now, and a
+      # manifest that does not parse is a package that cannot be installed.
+      - run: node -e "for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))"
 
   upstream-flow:
     name: Upstream Flow

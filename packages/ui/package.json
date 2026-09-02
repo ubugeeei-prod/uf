@@ -1,0 +1,30 @@
+{
+  "name": "@uniflowed/ui",
+  "version": "0.0.1",
+  "description": "Flow declarations for @uniflowed/ui, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/ui"
+  },
+  "exports": {
+    "./dialog/types": "./dialog/types.js",
+    "./form/types": "./form/types.js",
+    ".": "./index.js",
+    "./types/renders": "./types/renders.js"
+  },
+  "files": [
+    "dialog/types.js",
+    "form/types.js",
+    "index.js",
+    "types/renders.js"
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.0.1",
+    "@uniflowed/react": "0.0.1",
+    "@uniflowed/validator": "0.0.1"
+  }
+}
