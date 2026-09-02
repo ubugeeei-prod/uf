@@ -119,6 +119,28 @@ pub const fn active_backend() -> ParserBackend {
     }
 }
 
+/// Initialize this thread's parser state before any nested work begins.
+///
+/// Backends that host a JavaScript engine budget their stack from wherever the
+/// engine was created, so creating one lazily inside a work-stealing job leaves
+/// the parser with less headroom than it expects and makes ordinary files look
+/// like syntax errors. Callers that parse from a thread pool should call this
+/// once per worker, from a shallow frame, before fanning out. It is idempotent,
+/// cheap after the first call, and a no-op for backends that need no setup.
+pub fn prepare_thread() -> Result<(), FlowError> {
+    #[cfg(all(feature = "official-parser", not(feature = "upstream-parser")))]
+    {
+        quickjs::prepare_thread()
+    }
+    #[cfg(any(
+        feature = "upstream-parser",
+        not(any(feature = "upstream-parser", feature = "official-parser"))
+    ))]
+    {
+        Ok(())
+    }
+}
+
 /// Validate `source` with the active Flow parser backend.
 pub fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
     #[cfg(feature = "upstream-parser")]
@@ -302,6 +324,14 @@ mod tests {
         let outcome = validate_source(source).expect("parse result");
 
         assert!(outcome.is_ok(), "{:?}", outcome.diagnostics);
+    }
+
+    #[test]
+    fn preparing_a_thread_is_idempotent() {
+        prepare_thread().expect("first");
+        prepare_thread().expect("second");
+
+        assert!(validate_source("// @flow\nconst a = 1;\n").is_ok());
     }
 
     #[test]

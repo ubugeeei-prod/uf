@@ -1301,3 +1301,37 @@ fn react_native_rule_prefers_platform_files() {
 
     assert!(fired(&diagnostics, "react-native/platform-split"));
 }
+
+/// Regression test for the QuickJS stack-budget trap.
+///
+/// Before `uf_flow::prepare_thread` was broadcast to the pool, linting a few
+/// hundred perfectly valid files in parallel failed with
+/// `Flow parser runtime error: SyntaxError: stack overflow`, because rayon ran
+/// later jobs several frames deeper than the one that created each worker's
+/// parser. The failure scaled with parallelism rather than with input size, so
+/// a small project never saw it and a real one always did.
+#[test]
+fn lints_hundreds_of_files_in_parallel_without_exhausting_the_parser_stack() {
+    let config = UniflowedConfig::default();
+    let files = (0..800)
+        .map(|index| SourceFile {
+            path: format!("app/route{index}/_uf.page.js"),
+            source: format!(
+                "// @flow\ncomponent Page{index}() renders React.Node {{\n  return <main>hello</main>;\n}}\n"
+            ),
+        })
+        .collect::<Vec<_>>();
+
+    let report = lint_sources(&files, &config).expect("lint must not fail on valid sources");
+
+    assert_eq!(report.files_checked, 800);
+    let syntax = report
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.rule == "flow/syntax")
+        .collect::<Vec<_>>();
+    assert!(
+        syntax.is_empty(),
+        "unexpected syntax diagnostics: {syntax:?}"
+    );
+}

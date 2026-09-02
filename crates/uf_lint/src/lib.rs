@@ -131,6 +131,15 @@ pub fn lint_sources(
     files: &[SourceFile],
     config: &UniflowedConfig,
 ) -> Result<LintReport, LintError> {
+    // Give every worker its parser now, from this shallow frame. Rayon runs
+    // later jobs several frames deeper on the same worker, and a parser created
+    // down there starts with much of its stack budget already spent — see
+    // `uf_flow::prepare_thread`.
+    let prepared = rayon::broadcast(|_| uf_flow::prepare_thread());
+    for outcome in prepared {
+        outcome?;
+    }
+
     let per_file = files
         .par_iter()
         .map(|file| lint_file(file, config))
