@@ -10,7 +10,9 @@ use uf_rsc::TokenKind;
 
 use crate::scope::ScopeKind;
 use crate::scope::is_hook_name;
-use crate::syntax::{ParamList, alias_root, parameter_list, parameters, statement_end};
+use crate::syntax::{
+    ParamList, alias_root, parameter_list, parameters, return_type_body, statement_end,
+};
 
 use super::Walk;
 
@@ -21,6 +23,7 @@ impl<'a> Walk<'a> {
         let Some(open) = parameter_list(self.tokens, index + 1) else {
             return;
         };
+        self.skip_return_type(open);
         let params = parameters(self.source, self.tokens, open);
         for name in &params {
             self.bindings.declare(name, false);
@@ -49,8 +52,19 @@ impl<'a> Walk<'a> {
         let Some(open) = parameter_list(self.tokens, index + 1) else {
             return;
         };
+        self.skip_return_type(open);
         for name in parameters(self.source, self.tokens, open) {
             self.bindings.declare(&name, false);
+        }
+    }
+
+    /// Step the walk over this declaration's return type, if it has one.
+    ///
+    /// A `renders` clause is covered too: `component P() renders [Node] {` puts
+    /// the same brackets in the same place.
+    fn skip_return_type(&mut self, open: usize) {
+        if let Some(body) = return_type_body(self.tokens, open) {
+            self.skip_until = Some(body);
         }
     }
 

@@ -76,6 +76,45 @@ pub fn parameter_list(tokens: &[Token], from: usize) -> Option<usize> {
     None
 }
 
+/// The body `{` of a declaration whose parameter list opens at `open`, when a
+/// return type stands between them.
+///
+/// A return type is not code. `hook useThing(): [number, () => void] {` holds an
+/// `=>` that belongs to a *type*, and a walker that reads it as an arrow opens a
+/// function frame the real body then sits inside — so every hook call in that
+/// body looks like it is outside a hook. Types have no runtime scope, so the
+/// walk steps over the annotation instead of interpreting it.
+///
+/// Returns [`None`] when the declaration has no return type, so the caller can
+/// tell "nothing to skip" from "skip to here".
+pub fn return_type_body(tokens: &[Token], open: usize) -> Option<usize> {
+    /// Longest annotation uf will scan past, in tokens. A type is written by
+    /// hand; anything longer than this is not one.
+    const BUDGET: usize = 512;
+
+    let close = matching_close(tokens, open, b'(', b')')?;
+    let colon = tokens.get(close + 1)?;
+    if !colon.is_punct(b':') {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    let limit = (close + BUDGET).min(tokens.len());
+    for (at, token) in tokens.iter().enumerate().take(limit).skip(close + 2) {
+        match token.kind {
+            TokenKind::Punct(b'(' | b'[') => depth += 1,
+            TokenKind::Punct(b')' | b']') => depth = depth.checked_sub(1)?,
+            // A `{` at depth zero is the body; nested, it is an object type.
+            TokenKind::Punct(b'{') if depth == 0 => return Some(at),
+            TokenKind::Punct(b'{') => depth += 1,
+            TokenKind::Punct(b'}') => depth = depth.checked_sub(1)?,
+            TokenKind::Punct(b';') => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 /// The parameter names declared in the list opening at `open`.
 ///
 /// A name is a parameter when it follows `(`, `,`, `{`, `[` or a spread, and is

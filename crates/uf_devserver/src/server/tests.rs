@@ -454,6 +454,29 @@ fn the_update_target_is_never_served_as_a_file() {
 }
 
 #[test]
+fn the_update_stream_refuses_a_connection_past_the_subscriber_ceiling() {
+    let (_guard, root) = project();
+    let (server, channel) = hmr_server(&root);
+    let held: Vec<_> = (0..crate::hmr::MAX_SUBSCRIBERS)
+        .map(|_| channel.subscribe().unwrap())
+        .collect();
+    let request = format!(
+        "GET {} HTTP/1.1\r\nhost: {}\r\n\r\n",
+        HMR_TARGET,
+        server.address()
+    );
+
+    let (status, response) = stream_round_trip(&server, &channel, request, false);
+    drop(held);
+
+    // A bounded resource is refused, never queued: the ceiling is the whole
+    // reason `MAX_SUBSCRIBERS` exists, and an untested ceiling is a comment.
+    assert_eq!(status, Status::ServiceUnavailable);
+    assert!(response.starts_with("HTTP/1.1 503 Service Unavailable\r\n"));
+    assert!(!response.contains("event: "));
+}
+
+#[test]
 fn a_server_without_a_channel_serves_files_as_before() {
     let (_guard, root) = project();
     let server = DevServer::bind(&root, &ephemeral()).unwrap();

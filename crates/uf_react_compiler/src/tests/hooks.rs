@@ -228,3 +228,51 @@ fn a_top_level_message_says_top_level() {
         check("component Page(flag: boolean) {\n  if (flag) { useState(0); }\n  return null;\n}\n");
     assert!(diagnostics[0].message().contains("top level"));
 }
+
+/// A return type is not code, and the walk must not read it as one.
+///
+/// `hook useCounter(i: number): [number, () => void] {` contains an `=>` that
+/// belongs to a *type*. The walk read it as an arrow, opened a function frame,
+/// and every hook call in the real body then looked like it sat outside a hook.
+///
+/// `uf create app react` scaffolds exactly this signature, so a freshly created
+/// project failed its own `uf check` on a file the user never wrote — the third
+/// time a "is this brace a body or a value?" predicate has been written and got
+/// this wrong.
+#[test]
+fn a_tuple_return_type_does_not_hide_the_hook_body() {
+    for source in [
+        "// @flow\nexport hook useA(i: number): [number, () => void] {\n  const [c, s] = useState(i);\n  return [c, () => s(c)];\n}\n",
+        "// @flow\nhook useB(i: number): [number, () => void] {\n  const [c, s] = useState(i);\n  return [c, () => s(c)];\n}\n",
+        "// @flow\nhook useC(): [string, (next: string) => void, () => void] {\n  const [v, set] = useState(\"\");\n  return [v, set, () => set(\"\")];\n}\n",
+        "// @flow\nhook useD(): Array<[string, () => void]> {\n  const [v] = useState([]);\n  return v;\n}\n",
+        "// @flow\nfunction useE(): [number, () => void] {\n  const [c, s] = useState(0);\n  return [c, () => s(c)];\n}\n",
+    ] {
+        let found = findings(source);
+        assert!(
+            found.is_empty(),
+            "a return type hid the hook body:\n{source}got {found:?}"
+        );
+    }
+}
+
+/// The same shape on a `component`, whose `renders` clause puts brackets in the
+/// same place.
+#[test]
+fn a_renders_clause_does_not_hide_the_component_body() {
+    let source = "// @flow\ncomponent Row(items: Array<string>) renders React.Node {\n  const [open, setOpen] = useState(false);\n  return open ? items.length : 0;\n}\n";
+
+    accepts(source);
+}
+
+/// And the rule still fires where it should, so the fix is not just silence.
+#[test]
+fn a_hook_outside_a_hook_is_still_reported_with_a_tuple_return_type() {
+    let source = "// @flow\nfunction plain(): [number, () => void] {\n  const [c, s] = useState(0);\n  return [c, () => s(c)];\n}\n";
+
+    let found = findings(source);
+    assert!(
+        found.contains(&Finding::HookOutsideComponent),
+        "expected a hook-placement finding, got {found:?}"
+    );
+}
