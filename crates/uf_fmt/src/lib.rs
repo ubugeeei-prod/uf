@@ -933,4 +933,80 @@ mod tests {
         assert_eq!(split_bom("\u{feff}x"), ("\u{feff}", "x"));
         assert_eq!(split_bom("x\u{feff}"), ("", "x\u{feff}"));
     }
+
+    /// A body brace after a tuple or array return type is a block, not an object.
+    ///
+    /// The formatter used to read the `{` in
+    /// `hook useX(): [string, () => void] {` as an object literal, because the
+    /// token before it is `]`, and then emitted a `;` after the closing brace —
+    /// a token the input never had. Two golden fixtures had the extra semicolon
+    /// baked in as expected output, which is how it survived: a fixture that
+    /// records a bug turns the bug into the specification.
+    #[test]
+    fn a_body_after_a_tuple_return_type_gains_no_semicolon() {
+        for source in [
+            r#"// @flow
+hook useX(): [string, (next: string) => void] {
+  return ["", () => {}];
+}
+"#,
+            r#"// @flow
+function pair(): [number, number] {
+  return [1, 2];
+}
+"#,
+            r#"// @flow
+function rows(): Array<[string, number]> {
+  return [];
+}
+"#,
+            r#"// @flow
+export function tuple(): [A] {
+  return [a];
+}
+"#,
+        ] {
+            let output = format(source);
+
+            assert_eq!(
+                output.matches(';').count(),
+                source.matches(';').count(),
+                "formatting added or removed a semicolon:\n--- input\n{source}--- output\n{output}"
+            );
+            assert_token_preserving(source, &output);
+        }
+    }
+
+    /// The same shape after an angle-bracket return type, which already worked —
+    /// kept so the two cases cannot drift apart again.
+    #[test]
+    fn a_body_after_a_generic_return_type_gains_no_semicolon() {
+        let source = r#"// @flow
+function load(): Promise<void> {
+  return go();
+}
+"#;
+
+        let output = format(source);
+
+        assert_eq!(output.matches(';').count(), source.matches(';').count());
+        assert_token_preserving(source, &output);
+    }
+
+    /// An object literal directly after `]` is not valid JavaScript, so nothing
+    /// legitimate regresses from treating that brace as a block. An index
+    /// expression followed by a block statement still formats.
+    #[test]
+    fn an_indexed_access_followed_by_a_block_still_formats() {
+        let source = r#"// @flow
+const x = items[0];
+{
+  run();
+}
+"#;
+
+        let output = format(source);
+
+        assert_token_preserving(source, &output);
+    }
 }

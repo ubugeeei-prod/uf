@@ -32,7 +32,7 @@ class Repository<T> implements Serializable {
 
 function pick<T, K>(source: T, key: K): T[K] {
   return source[key];
-};
+}
 
 const typed = new Map<string, number>();
 const cast = (value: mixed) => (value: any);

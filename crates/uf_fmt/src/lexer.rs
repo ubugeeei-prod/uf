@@ -556,7 +556,13 @@ pub(crate) fn classify_brace(prev: Option<Prev>, enclosing: Option<BraceKind>) -
             // bracket always follows a return type, never an operand.
             | Punctuator::Greater
             | Punctuator::GreaterGreater
-            | Punctuator::GreaterGreaterGreater => BraceKind::Block,
+            | Punctuator::GreaterGreaterGreater
+            // `hook useSelection(): [string, (next: string) => void] {` — same
+            // reasoning for a tuple or array return type. Nothing valid puts an
+            // object literal directly after `]`; `[1, 2] {}` is not an
+            // expression. Reading it as an object made `needs_semicolon` emit a
+            // `;` after the body, which is a token the input never had.
+            | Punctuator::CloseBracket => BraceKind::Block,
             // `case 1: {` is a block, but `{ key: { … } }` is a nested object.
             Punctuator::Colon => match enclosing {
                 Some(BraceKind::Object) | None => BraceKind::Object,

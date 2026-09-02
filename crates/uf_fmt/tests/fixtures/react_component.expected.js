@@ -13,7 +13,7 @@ hook useSelection(initial: string): [string, (next: string) => void] {
     setValue(next);
   }, []);
   return [value, select];
-};
+}
 
 component ItemList(props: Props) renders React.Node {
   const [selected, select] = useSelection(props.items[0] ?? "");
