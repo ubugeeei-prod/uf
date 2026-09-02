@@ -28,6 +28,8 @@ pub enum BuiltinPlugin {
     Style,
     /// Runs the React compiler over components and hooks.
     ReactCompiler,
+    /// Lowers JSX to the React runtime's own calls.
+    Jsx,
     /// Resolves, fingerprints, and emits non-JavaScript imports.
     Asset,
 }
@@ -40,11 +42,12 @@ impl BuiltinPlugin {
         Self::Rsc,
         Self::Style,
         Self::ReactCompiler,
+        Self::Jsx,
         Self::Asset,
     ];
 
     /// How many built-ins exist. [`BuiltinSet`] needs at least this many bits.
-    pub const COUNT: usize = 6;
+    pub const COUNT: usize = 7;
 
     /// The plugin's name in the pipeline, and in `uf inspect --json`.
     pub const fn name(self) -> &'static str {
@@ -54,6 +57,7 @@ impl BuiltinPlugin {
             Self::Rsc => "uf:rsc",
             Self::Style => "uf:style",
             Self::ReactCompiler => "uf:react-compiler",
+            Self::Jsx => "uf:jsx",
             Self::Asset => "uf:asset",
         }
     }
@@ -66,7 +70,8 @@ impl BuiltinPlugin {
             Self::Rsc => 2,
             Self::Style => 3,
             Self::ReactCompiler => 4,
-            Self::Asset => 5,
+            Self::Jsx => 5,
+            Self::Asset => 6,
         }
     }
 
@@ -79,14 +84,19 @@ impl BuiltinPlugin {
     ///
     /// Flow stripping and route generation are `Pre` because every other plugin
     /// expects to see plain JavaScript and to be able to import a generated
-    /// route module. The React compiler is `Post` because it must be the last
-    /// pass over component code — anything that rewrites JavaScript afterwards
-    /// would invalidate the memoization it just proved sound.
+    /// route module.
+    ///
+    /// The last two are both `Post`, in that order, and the order is the one
+    /// Babel uses. The React compiler reads components as their author wrote
+    /// them, JSX included, so nothing may lower JSX before it runs; and
+    /// lowering `<div/>` to `_jsx("div", {})` afterwards changes no data flow
+    /// it reasoned about, so nothing it proved is invalidated by running
+    /// second.
     pub const fn order(self) -> HookOrder {
         match self {
             Self::Flow | Self::Router => HookOrder::Pre,
             Self::Rsc | Self::Style | Self::Asset => HookOrder::Normal,
-            Self::ReactCompiler => HookOrder::Post,
+            Self::ReactCompiler | Self::Jsx => HookOrder::Post,
         }
     }
 
@@ -108,6 +118,7 @@ impl BuiltinPlugin {
                 .with(PluginHook::RenderChunk)
                 .with(PluginHook::GenerateBundle),
             Self::ReactCompiler => HookSet::of(PluginHook::Transform),
+            Self::Jsx => HookSet::of(PluginHook::Transform),
             Self::Asset => HookSet::of(PluginHook::ResolveId)
                 .with(PluginHook::Load)
                 .with(PluginHook::GenerateBundle)
@@ -188,12 +199,13 @@ impl BuiltinSet {
 
     /// The built-ins a project's `uf.config.js` switches on.
     ///
-    /// Flow stripping and asset handling are unconditional: a uf project is
-    /// Flow source that imports assets, so switching either off would not
-    /// produce a working build. The rest follow the config fields users
+    /// Flow stripping, JSX lowering and asset handling are unconditional: a uf
+    /// project is Flow source with JSX that imports assets, so switching any of
+    /// them off would not produce a working build. The rest follow the config fields users
     /// already have, which is why there is no second set of plugin toggles.
     pub fn from_config(config: &UniflowedConfig) -> Self {
         Self::of(BuiltinPlugin::Flow)
+            .with(BuiltinPlugin::Jsx)
             .with(BuiltinPlugin::Asset)
             .with_if(BuiltinPlugin::Router, config.app.router.enabled)
             .with_if(BuiltinPlugin::Rsc, config.app.rsc)
