@@ -18,6 +18,7 @@ manager performance, and integrated feature coverage.
 - `uf_cli`: command router for `uf`
 - `uf_config`: zero-config defaults and `uf.config.js` loading
 - `uf_browser`: Playwright-compatible browser and VRT contracts
+- `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_fetch`: explicit ofetch-style client contracts
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
