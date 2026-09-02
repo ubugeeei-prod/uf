@@ -1569,6 +1569,8 @@ dependencies = [
 name = "uf_fmt"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "memchr",
  "similar-asserts",
  "thiserror",
  "uf_config",
@@ -1847,13 +1849,19 @@ dependencies = [
 name = "uf_test"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "compact_str",
  "criterion",
+ "rayon",
  "serde",
+ "serde_json",
  "similar-asserts",
  "smallvec",
+ "tempfile",
  "thiserror",
+ "uf_effect",
  "uf_infra",
+ "uf_rsc",
 ]
 
 [[package]]

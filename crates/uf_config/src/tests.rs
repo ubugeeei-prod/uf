@@ -432,3 +432,19 @@ export default defineConfig({
 
     assert!(json5::from_str::<UniflowedConfig>(&object).is_err());
 }
+
+#[test]
+fn fmt_config_reads_max_blank_lines_from_the_config_file() {
+    let source = r#"
+        export default {
+          fmt: { maxBlankLines: 0, indentWidth: 4 },
+        };
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(parsed.fmt.max_blank_lines, 0);
+    assert_eq!(parsed.fmt.indent_width, 4);
+    assert_eq!(parsed.fmt.line_width, 100);
+}

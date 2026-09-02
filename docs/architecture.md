@@ -40,7 +40,7 @@ manager performance, and integrated feature coverage.
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
 - `uf_stdlib_cli`: Gunshi-style stdlib CLI framework for Flow
 - `uf_temporal`: lite Temporal contracts
-- `uf_test`: native test discovery core
+- `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
 - `uf_tui`: OpenTUI-compatible native TUI framework contracts
 - `uf_validator`: valibot-style native validator primitives
 - `uf_vrt`: native visual regression contracts
@@ -75,14 +75,24 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
   *stable since 1.100.0-nightly*. When the toolchain pin reaches 1.100 stable,
   `upstream-parser` becomes the default with no nightly involved — a one-line
   change to `uf_flow`'s default features.
-- **The type checker does not build at all, and this is upstream's problem to
-  solve.** 23 crates in the port, including `flow_common` and everything under
-  `flow_typing*`, declare `#![feature(box_patterns)]`. That feature has been
-  *removed* from the compiler, not merely left unstable, so those crates fail on
-  today's nightly and on every nightly from here. `uf check` cannot run Flow's
-  own inference until upstream migrates off it. There is no workaround on our
-  side worth having: pinning a nightly old enough to still accept `box_patterns`
-  would freeze the whole toolchain on a compiler that is going stale.
+- **The type checker builds and runs, on a pinned nightly.** 23 crates in the
+  port, including `flow_common` and everything under `flow_typing*`, declare
+  `#![feature(box_patterns)]`, and that feature was *removed* from the compiler
+  around the 2026-09-01 nightly — so the typing crates fail on the floating
+  `nightly` channel. They compile on `nightly-2026-08-01` (rustc 1.99.0-nightly),
+  which is what the type-check feature pins.
+
+  Measured on that toolchain: Flow's builtin library definitions merge into a
+  master context in **68 ms** (once, then cached), and checking a file costs
+  about **4 ms**. Assigning a string to a `number`, passing a `string` where a
+  `number` is declared, and dereferencing a `?string` are each reported; a
+  well-typed file reports nothing.
+
+  Two things an embedder has to know, neither of them documented upstream:
+  `flow_parser::file_key::{set_project_root, set_flowlib_root}` are
+  process-global and panic on first use if unset, and
+  `flow_parsing::docblock_parser::Docblock` is private, so the context metadata
+  has to be computed where the docblock is parsed rather than carried around.
 
 `flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
@@ -135,7 +145,10 @@ Implemented native slices already cover:
 - `uf upgrade` package/runtime manifest generation
 - `ufx` native execution for known `@uniflowed/*` package entrypoints
 - `uf publish` and `uf release` metadata generation for trusted publishing
-- source-level native `uf test` execution for the first assertion subset
+- source-level native `uf test` execution for the first assertion subset,
+  scheduled longest-first across a rayon pool from durations recorded in
+  `.uf/test-timings.json`, with `--watch` re-running only the test files an edit
+  transitively invalidates
 - stdio JSON-RPC `uf lsp` initialize capabilities
 
 Native engines being deepened:

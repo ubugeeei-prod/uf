@@ -1,183 +1,121 @@
 #![deny(missing_docs)]
-//! Native test discovery and runner planning for `uf test` and `@uniflowed/test`.
+//! Native test discovery, scheduling and execution for `uf test` and
+//! `@uniflowed/test`.
+//!
+//! # What this crate does and does not execute
+//!
+//! There is **no JavaScript engine here**. A test body is decided by reading it:
+//! [`assertion`] evaluates the handful of expression and matcher shapes that can
+//! be settled from the source text, and everything else is reported by name as
+//! unsupported. That distinction is the crate's central honesty guarantee — a
+//! matcher `uf` cannot evaluate fails the run and is printed with its file, line
+//! and expression, because a runner that quietly passes what it could not run is
+//! worse than no runner at all.
+//!
+//! # The pieces
+//!
+//! * [`discover_tests`] finds `describe` / `it` / `test` declarations, their
+//!   `.only` / `.skip` / `.todo` suffixes, and the forms it recognises but
+//!   cannot expand ([`UnsupportedDeclaration`]).
+//! * [`TestPlan::resolve`] turns byte ranges into nesting and applies `.only`
+//!   precedence, in one pass.
+//! * [`schedule_files`] orders files longest-expected-first, from durations a
+//!   previous run recorded in `.uf/test-timings.json` ([`timings`]) and from
+//!   file size when nothing was recorded.
+//! * [`TestRunner`] fans the schedule across a rayon pool, bounds each file's
+//!   work, and reassembles a report that does not depend on the schedule.
+//! * [`ImportGraph`] answers what one edit invalidates, and [`Watcher`] notices
+//!   the edit, which is watch mode.
+//!
+//! # Bounds
+//!
+//! Everything the crate reads is untrusted: source files, import specifiers, and
+//! a timings file anything can write. Sources are bounded in size and in
+//! declaration count, per-file execution is bounded in wall-clock time, paths
+//! are validated before they are joined onto the project root, and recorded
+//! durations are range-checked before the scheduler believes them.
+//!
+//! ```
+//! use uf_test::{TestRunner, TestStatus};
+//!
+//! let report = TestRunner::new().run(&[(
+//!     "src/math.test.js",
+//!     "it('adds', () => { expect(1 + 1).toBe(2); });",
+//! )]);
+//!
+//! assert!(report.is_success());
+//! assert_eq!(report.summary.passed, 1);
+//! assert!(matches!(
+//!     report.files[0].records[0].status,
+//!     TestStatus::Passed
+//! ));
+//! ```
 
-use compact_str::{CompactString, ToCompactString};
-use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
-use thiserror::Error;
-
+mod assertion;
 mod discovery;
 mod execution;
+mod filter;
+mod graph;
+mod options;
+mod path;
+mod plan;
+mod report;
+mod runner;
+mod runner_plan;
 mod scan;
+mod schedule;
+mod timings;
+mod watch;
 
-pub use discovery::{discover_tests, merge_plans};
-pub use execution::run_tests;
+use thiserror::Error;
 
-/// Inline list of builtin test package specifiers.
-pub type TestImportList = SmallVec<[CompactString; 4]>;
-
-/// Kind of discovered test registration call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TestKind {
-    /// A grouping call such as `describe`.
-    Describe,
-    /// A runnable test call such as `it` or `test`.
-    Test,
-}
-
-/// Test registration discovered in a Flow or JavaScript source file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestCase {
-    /// Relative source file path.
-    pub file: String,
-    /// User-facing test name.
-    pub name: String,
-    /// Registration kind.
-    pub kind: TestKind,
-    /// One-based line number.
-    pub line: usize,
-    /// One-based column number.
-    pub column: usize,
-    /// Byte offset in the source file, skipped from serialized reports.
-    #[serde(skip)]
-    pub byte_offset: usize,
-}
-
-/// Ordered native test discovery result.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestPlan {
-    /// Discovered test and describe calls.
-    pub cases: Vec<TestCase>,
-}
-
-/// Native test execution report.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestRunReport {
-    /// Discovered test declarations.
-    pub plan: TestPlan,
-    /// Number of runnable tests that passed.
-    pub passed: usize,
-    /// Number of runnable tests that failed.
-    pub failed: usize,
-    /// Assertion expressions that were preserved for a future full JS runtime.
-    pub unsupported_assertions: usize,
-    /// Failure details.
-    pub failures: Vec<TestFailure>,
-}
-
-impl TestRunReport {
-    /// Return whether the run is successful.
-    pub fn is_success(&self) -> bool {
-        self.failed == 0 && self.unsupported_assertions == 0
-    }
-}
-
-/// Native test failure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TestFailure {
-    /// Relative source file path.
-    pub file: String,
-    /// User-facing test name.
-    pub name: String,
-    /// Failure message.
-    pub message: String,
-}
-
-impl TestPlan {
-    /// Count runnable test cases, excluding grouping calls.
-    pub fn runnable_count(&self) -> usize {
-        self.cases
-            .iter()
-            .filter(|case| case.kind == TestKind::Test)
-            .count()
-    }
-}
-
-/// Native test runner execution plan.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeTestRunnerPlan {
-    /// Package specifier for the self-hosted native test runtime.
-    pub module: CompactString,
-    /// Execution backend.
-    pub runtime: TestRuntime,
-    /// Scheduler used for test file execution.
-    pub scheduler: TestScheduler,
-    /// Performance target for the native runner.
-    pub performance_target: TestPerformanceTarget,
-    /// Builtin import specifiers accepted by discovery and runtime bindings.
-    pub imports: TestImportList,
-    /// Whether React Testing Library-compatible helpers are implemented natively.
-    pub react_testing_library_native: bool,
-    /// Whether discovery and transform use the official Flow parser line.
-    pub official_flow_parser: bool,
-}
-
-impl Default for NativeTestRunnerPlan {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/test"),
-            runtime: TestRuntime::UfSelfHosted,
-            scheduler: TestScheduler::NativeWorkStealing,
-            performance_target: TestPerformanceTarget::FasterThanBun,
-            imports: smallvec::smallvec![
-                "@uniflowed/test".to_compact_string(),
-                "@uniflowed/testing".to_compact_string(),
-                "inflow".to_compact_string(),
-            ],
-            react_testing_library_native: true,
-            official_flow_parser: true,
-        }
-    }
-}
-
-impl NativeTestRunnerPlan {
-    /// Return the default self-hosted runner plan.
-    pub fn self_hosted() -> Self {
-        Self::default()
-    }
-
-    /// Return whether the runner accepts the given builtin import specifier.
-    pub fn accepts_import(&self, specifier: &str) -> bool {
-        self.imports.iter().any(|import| import == specifier)
-    }
-}
-
-/// Execution backend for native tests.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TestRuntime {
-    /// uf-owned self-hosted runtime.
-    UfSelfHosted,
-}
-
-/// Native test scheduler.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TestScheduler {
-    /// Work-stealing scheduler for large projects.
-    NativeWorkStealing,
-}
-
-/// Performance target encoded in the runner contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum TestPerformanceTarget {
-    /// Target a runner faster than Bun's test runner for Flow-heavy suites.
-    FasterThanBun,
-}
+pub use crate::discovery::{MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, discover_tests, merge_plans};
+pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
+pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
+pub use crate::options::{
+    Bail, Concurrency, DEFAULT_FILE_TIMEOUT, DEFAULT_MAX_ASSERTIONS_PER_TEST, MAX_ATTEMPTS,
+    MAX_FILE_TIMEOUT, MAX_RETRY_DELAY, MIN_FILE_TIMEOUT, RetryPolicy, RunOptions,
+};
+pub use crate::path::{MAX_RELATIVE_PATH_BYTES, is_safe_relative, normalize_relative};
+pub use crate::plan::{
+    AncestorList, NAME_SEPARATOR, PlanResolution, Selection, SkipReason, TestCase, TestKind,
+    TestModifier, TestPlan, UnsupportedDeclaration,
+};
+pub use crate::report::{
+    AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, TestRecord, TestRunReport,
+    TestStatus, TestSummary, UnsupportedAssertion, UnsupportedReason,
+};
+pub use crate::runner::{LockedObserver, RunObserver, SilentObserver, TestRunner, run_tests};
+pub use crate::runner_plan::{
+    NativeTestRunnerPlan, TestImportList, TestPerformanceTarget, TestRuntime, TestScheduler,
+};
+pub use crate::schedule::{
+    COLD_NANOS_PER_BYTE, ScheduleBasis, ScheduleEntry, cold_weight_micros, makespan_micros,
+    schedule_files,
+};
+pub use crate::timings::{
+    CACHE_DIRECTORY, MAX_TIMING_ENTRIES, MAX_TIMING_MICROS, MAX_TIMINGS_BYTES, TIMINGS_FILE_NAME,
+    TIMINGS_VERSION, TestTimings, TimingsAudit, TimingsError, load_timings, save_timings,
+    timings_path,
+};
+pub use crate::watch::{
+    ChangeSet, DEFAULT_POLL_INTERVAL, MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, WatchOptions, Watcher,
+    next_poll_at,
+};
 
 /// Errors emitted by native test execution.
+///
+/// A misbehaving *file* is not an error — it is a [`FileStatus`], so the run
+/// keeps going and names it. These are the failures that stop a run before it
+/// can produce a report at all.
 #[derive(Debug, Error)]
 pub enum TestError {
     /// The JavaScript execution backend has not been wired yet.
     #[error("native JavaScript execution backend is not enabled yet")]
     RuntimeUnavailable,
+    /// Recorded timings could not be read or written.
+    #[error(transparent)]
+    Timings(#[from] TimingsError),
 }
 
 #[cfg(test)]

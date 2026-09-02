@@ -207,7 +207,15 @@ fn exec_uniflowed_virtual_package(
             Ok(true)
         }
         "@uniflowed/test" | "uf/test" => {
-            test::test(cwd, ui, args.iter().any(|arg| arg == "--list"))?;
+            test::test(
+                cwd,
+                ui,
+                test::TestArgs {
+                    list: args.iter().any(|arg| arg == "--list"),
+                    watch: args.iter().any(|arg| arg == "--watch"),
+                    ..test::TestArgs::default()
+                },
+            )?;
             Ok(true)
         }
         "@uniflowed/pm" | "uf/pm" => {

@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "flow": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788312499,
+        "narHash": "sha256-AJs2lY1BSuQHAng5AVSlWQEPXmXMyaNpM4xPw/ibJ6M=",
+        "owner": "facebook",
+        "repo": "flow",
+        "rev": "81b0c2a3dd591c66c51167aac341d851932bd9c5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "facebook",
+        "repo": "flow",
+        "rev": "81b0c2a3dd591c66c51167aac341d851932bd9c5",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1788179007,
@@ -34,6 +51,7 @@
     },
     "root": {
       "inputs": {
+        "flow": "flow",
         "nixpkgs": "nixpkgs",
         "nixpkgs-x86_64-darwin": "nixpkgs-x86_64-darwin",
         "rust-overlay": "rust-overlay"
