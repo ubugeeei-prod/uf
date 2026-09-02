@@ -14,7 +14,8 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.0"
