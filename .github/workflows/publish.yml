@@ -32,5 +32,25 @@ jobs:
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo test --workspace
-      - run: npm publish --access public
-        working-directory: packages/core
+      # Every package under `packages/` is published, `core` first because the
+      # others declare it as a dependency and npm rejects a manifest whose
+      # dependency is not yet on the registry.
+      - name: Publish
+        run: |
+          set -eu
+          publish() {
+            name="$(node -p "require('./$1/package.json').name")"
+            version="$(node -p "require('./$1/package.json').version")"
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "::notice::${name}@${version} is already published"
+              return 0
+            fi
+            ( cd "$1" && npm publish --access public )
+          }
+
+          publish packages/core
+          for manifest in packages/*/package.json; do
+            directory="${manifest%/package.json}"
+            [ "$directory" = "packages/core" ] && continue
+            publish "$directory"
+          done

@@ -1,0 +1,23 @@
+{
+  "name": "@uniflowed/graphql",
+  "version": "0.0.1",
+  "description": "Flow declarations for @uniflowed/graphql, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/graphql"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.0.1",
+    "@uniflowed/fetch": "0.0.1"
+  }
+}

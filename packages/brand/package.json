@@ -1,0 +1,19 @@
+{
+  "name": "@uniflowed/brand",
+  "version": "0.0.1",
+  "description": "Flow declarations for @uniflowed/brand, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/brand"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ]
+}

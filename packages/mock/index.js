@@ -1,3 +1,27 @@
 // @flow
-export type { MockHandler, MockRegistry } from "../core/mock.js";
-export { get, mock, post, use } from "../core/mock.js";
+//
+// `@uniflowed/mock`.
+
+import type { NativeHandle } from "@uniflowed/core/native";
+import { nativeRuntimeRequired } from "@uniflowed/core/native";
+
+const MODULE = "@uniflowed/core/mock";
+
+export opaque type MockRegistry = NativeHandle<"@uniflowed/core/mock#MockRegistry">;
+export opaque type MockHandler = NativeHandle<"@uniflowed/core/mock#MockHandler">;
+
+export function mock(): MockRegistry {
+  return nativeRuntimeRequired(MODULE, "mock");
+}
+
+export function get(path: string, response: mixed): MockHandler {
+  return nativeRuntimeRequired(MODULE, "get");
+}
+
+export function post(path: string, response: mixed): MockHandler {
+  return nativeRuntimeRequired(MODULE, "post");
+}
+
+export function use(handler: MockHandler): MockRegistry {
+  return nativeRuntimeRequired(MODULE, "use");
+}
