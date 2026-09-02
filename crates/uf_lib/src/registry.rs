@@ -5,11 +5,8 @@
 //! names it exports, so a module that is not here does not exist as far as the
 //! toolchain is concerned.
 
-use uf_motion::MotionContract;
-use uf_orm::OrmContract;
 use uf_std::{StdModule, std_modules};
 use uf_tui::TuiFrameworkContract;
-use uf_vrt::VisualRegressionPlan;
 
 use crate::descriptor::{HookDescriptor, NativeModule, NativeModuleKind, Stability};
 
@@ -375,20 +372,8 @@ pub fn std_module_descriptors() -> Vec<StdModule> {
     std_modules().into_iter().collect()
 }
 
-pub fn orm_contract() -> OrmContract {
-    OrmContract::default()
-}
-
-pub fn motion_contract() -> MotionContract {
-    MotionContract::default()
-}
-
 pub fn tui_contract() -> TuiFrameworkContract {
     TuiFrameworkContract::default()
-}
-
-pub fn vrt_plan() -> VisualRegressionPlan {
-    VisualRegressionPlan::default()
 }
 
 pub fn hook_descriptors() -> Vec<HookDescriptor> {
