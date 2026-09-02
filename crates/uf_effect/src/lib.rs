@@ -1,3 +1,19 @@
+//! Typed native EffectSystem core for uniflowed.
+//!
+//! Three pieces, kept separate because they answer different questions:
+//! [`EffectGraph`] records what a program is made of, [`cause`] records why a
+//! run did not produce a value, and [`schedule`] decides whether to try again.
+//! The Rust side owns these definitions so the native runtime and the Flow
+//! surface in `@uniflowed/effect` cannot drift apart.
+
+pub mod cause;
+pub mod exit;
+pub mod schedule;
+
+pub use crate::cause::{Cause, Defect};
+pub use crate::exit::{Exit, FiberState};
+pub use crate::schedule::{Attempt, Decision, MAX_DELAY, Schedule};
+
 use std::marker::PhantomData;
 
 use compact_str::{CompactString, ToCompactString};
