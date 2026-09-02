@@ -416,6 +416,7 @@ pub enum CacheModeConfig {
 #[non_exhaustive]
 pub struct ReactCompilerConfig {
     pub enabled: bool,
+    pub implementation: ReactCompilerImplementation,
     pub mode: ReactCompilerMode,
 }
 
@@ -423,9 +424,16 @@ impl Default for ReactCompilerConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            implementation: ReactCompilerImplementation::OfficialRust,
             mode: ReactCompilerMode::Syntax,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReactCompilerImplementation {
+    OfficialRust,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

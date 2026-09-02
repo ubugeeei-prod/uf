@@ -3,6 +3,7 @@
 mod support;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 
 use support::{assert_plain, binary, create_app, uf};
 
@@ -30,11 +31,21 @@ fn ufr_alias_runs_config_task() {
         "#,
     )
     .unwrap();
+    let runner = dir.path().join("vp");
+    fs::write(
+        &runner,
+        "#!/bin/sh\n[ \"$1\" = run ] && [ \"$2\" = hello ] && printf alias-ok\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&runner).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&runner, permissions).unwrap();
 
     let output = binary("ufr")
         .arg("--cwd")
         .arg(dir.path())
         .arg("hello")
+        .env("UF_VITE_TASK_BIN", &runner)
         .output()
         .unwrap();
 

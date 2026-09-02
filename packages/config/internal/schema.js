@@ -31,6 +31,11 @@ export type UniflowedConfig = {
         +overrideGlobalFetch?: false,
       },
       +cell?: boolean,
+      +reactCompiler?: {
+        +enabled?: boolean,
+        +implementation?: "official-rust",
+        +mode?: "syntax",
+      },
       +graphql?: {
         +module?: "@uniflowed/graphql",
         +relayBase?: true,
@@ -272,7 +277,7 @@ export type UniflowedConfig = {
     },
   },
   +taskRunner?: {
-    +engine?: "uf-task",
+    +engine?: "vite-task",
     +allowPackageScripts?: false,
   },
   +test?: {

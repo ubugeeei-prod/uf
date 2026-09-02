@@ -74,6 +74,8 @@ memchr = "2.7.6"
 mimalloc = "0.1.52"
 phf = { version = "0.14.0", features = ["macros"] }
 rayon = "1.11.0"
+react_compiler = "0.1.0"
+react_compiler_ast = "0.1.0"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }

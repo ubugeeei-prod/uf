@@ -2,6 +2,7 @@
 
 mod hooks;
 mod mutation;
+mod official;
 mod plugin;
 mod refs;
 mod render;

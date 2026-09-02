@@ -98,9 +98,9 @@
 - [x] Start `@uniflowed/pwa` with opt-in cache defaults.
 - [ ] Implement `@uniflowed/orm`.
 - [ ] Implement `@uniflowed/stylex` with preset StyleX defaults.
-- [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library.
+- [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library that can replace shadcn for Flow React apps.
 - [ ] Implement native terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
-- [ ] Cover the shadcn-style component catalog.
+- [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
 - [x] Make form UI validator-backed and React Compiler-safe by contract.
@@ -115,7 +115,7 @@
 - [x] Execute the first native source-level assertion subset in `uf test`.
 - [ ] Make `@uniflowed/test` execute full Flow suites through Capability JS
       Hosts while keeping scheduling and reporting in Rust.
-- [ ] Benchmark `@uniflowed/test` against Bun and keep the faster-than-Bun target visible.
+- [ ] Benchmark `@uniflowed/test` against Bun Test and Vitest and keep the faster-than-Bun target visible.
 - [ ] Implement native React Testing Library-compatible DOM queries.
 - [ ] Implement native React Native testing utilities.
 - [ ] Add watch mode with dependency-aware reruns.
