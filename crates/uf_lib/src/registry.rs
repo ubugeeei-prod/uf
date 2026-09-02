@@ -1,0 +1,392 @@
+//! The table of every `@uniflowed/*` module uf ships, and the hooks beside it.
+//!
+//! Deliberately long and deliberately flat: this is data, not logic. It is the
+//! one list that says which specifiers exist, how stable each is, and what Flow
+//! names it exports, so a module that is not here does not exist as far as the
+//! toolchain is concerned.
+
+use uf_motion::MotionContract;
+use uf_orm::OrmContract;
+use uf_std::{StdModule, std_modules};
+use uf_tui::TuiFrameworkContract;
+use uf_vrt::VisualRegressionPlan;
+
+use crate::descriptor::{HookDescriptor, NativeModule, NativeModuleKind, Stability};
+
+pub fn builtin_modules() -> Vec<NativeModule> {
+    vec![
+        NativeModule::new(
+            "@uniflowed/core",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &[
+                "describe",
+                "it",
+                "test",
+                "expect",
+                "beforeEach",
+                "afterEach",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/react",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["React", "Suspense", "use", "cache"],
+        ),
+        NativeModule::new(
+            "@uniflowed/react-native",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["View", "Text", "Platform"],
+        ),
+        NativeModule::new(
+            "@uniflowed/testing",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["describe", "it", "test", "expect", "render", "screen"],
+        ),
+        NativeModule::new(
+            "@uniflowed/test",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["describe", "it", "test", "expect", "bench", "plan"],
+        ),
+        NativeModule::new(
+            "@uniflowed/react-testing",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["render", "screen", "fireEvent", "userEvent", "waitFor"],
+        ),
+        NativeModule::new(
+            "@uniflowed/hooks",
+            NativeModuleKind::Hooks,
+            Stability::Experimental,
+            &["useAsync", "useEvent", "useMediaQuery", "useStableCallback"],
+        ),
+        NativeModule::new(
+            "@uniflowed/router",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &[
+                "FileRoute",
+                "loader",
+                "action",
+                "redirect",
+                "useRoute",
+                "useRouter",
+                "defineNavigationGuard",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/server",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["serverAction", "headers", "cookies", "cache"],
+        ),
+        NativeModule::new(
+            "@uniflowed/query",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["createQuery", "createMutation", "QueryClient", "useQuery"],
+        ),
+        NativeModule::new(
+            "@uniflowed/fetch",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["ofetch", "createFetch", "request"],
+        ),
+        NativeModule::new(
+            "@uniflowed/loader",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["createLoader", "useLoader", "loaderCell", "preload"],
+        ),
+        NativeModule::new(
+            "@uniflowed/effect",
+            NativeModuleKind::Effect,
+            Stability::Experimental,
+            &[
+                "succeed",
+                "fail",
+                "die",
+                "sync",
+                "suspend",
+                "promise",
+                "tryPromise",
+                "map",
+                "mapError",
+                "flatMap",
+                "andThen",
+                "zip",
+                "all",
+                "forEach",
+                "race",
+                "catchAll",
+                "catchTag",
+                "orElse",
+                "either",
+                "retry",
+                "timeout",
+                "acquireRelease",
+                "scoped",
+                "tag",
+                "provide",
+                "provideService",
+                "fork",
+                "join",
+                "interrupt",
+                "runPromise",
+                "runSyncExit",
+                "runFork",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/orm",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &[
+                "defineTable",
+                "column",
+                "relation",
+                "query",
+                "migration",
+                "db",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/relay",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &[
+                "graphql",
+                "useFragment",
+                "useLazyLoadQuery",
+                "commitMutation",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/graphql",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["graphql", "createGraphQlClient", "useLazyLoadQuery"],
+        ),
+        NativeModule::new(
+            "@uniflowed/web",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &[
+                "Font",
+                "Image",
+                "OgImage",
+                "Link",
+                "Page",
+                "Layout",
+                "Time",
+                "Announcer",
+                "Picture",
+                "useCookie",
+                "useHead",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/markdown",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["Markdown", "renderMarkdown", "compileMarkdown"],
+        ),
+        NativeModule::new(
+            "@uniflowed/temporal",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["Temporal", "Instant", "PlainDate", "ZonedDateTime"],
+        ),
+        NativeModule::new(
+            "@uniflowed/pwa",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["definePwa", "Manifest", "ServiceWorker"],
+        ),
+        NativeModule::new(
+            "@uniflowed/prepare",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &["prepare", "lintStaged", "codegen"],
+        ),
+        NativeModule::new(
+            "@uniflowed/pm",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &["inferFromConfig", "install", "upgrade", "lock", "store"],
+        ),
+        NativeModule::new(
+            "@uniflowed/rm",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &["inferRuntime", "acquireRuntime", "applyRuntime", "doctor"],
+        ),
+        NativeModule::new(
+            "@uniflowed/flow-cell",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["cell", "computed", "resource"],
+        ),
+        NativeModule::new(
+            "@uniflowed/state",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["cell", "computed", "resource", "useCell"],
+        ),
+        NativeModule::new(
+            "@uniflowed/validator",
+            NativeModuleKind::Data,
+            Stability::Experimental,
+            &["v", "string", "number", "object", "pipe"],
+        ),
+        NativeModule::new(
+            "@uniflowed/mock",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["mock", "get", "post", "use"],
+        ),
+        NativeModule::new(
+            "@uniflowed/browser",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["browser", "viewport", "visit", "screenshot"],
+        ),
+        NativeModule::new(
+            "@uniflowed/story",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["story", "variant", "withMocks", "withBrowser"],
+        ),
+        NativeModule::new(
+            "@uniflowed/vrt",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &["plan", "snapshot", "diff", "baseline"],
+        ),
+        NativeModule::new(
+            "@uniflowed/motion",
+            NativeModuleKind::Ui,
+            Stability::Experimental,
+            &["motion", "animate", "timeline", "spring", "reducedMotion"],
+        ),
+        NativeModule::new(
+            "@uniflowed/tui",
+            NativeModuleKind::Ui,
+            Stability::Experimental,
+            &[
+                "Box",
+                "Text",
+                "Input",
+                "Select",
+                "ScrollBox",
+                "FrameBuffer",
+                "renderTui",
+                "contract",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/cli",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &["defineCli", "command", "arg", "option"],
+        ),
+        NativeModule::new(
+            "@uniflowed/std",
+            NativeModuleKind::Std,
+            Stability::Experimental,
+            &[
+                "modules",
+                "wintertc",
+                "vfs",
+                "fs",
+                "crypto",
+                "http",
+                "buffer",
+                "importMeta",
+                "defer",
+            ],
+        ),
+        NativeModule::new(
+            "@uniflowed/stylex",
+            NativeModuleKind::Style,
+            Stability::Experimental,
+            &["stylex", "defineVars", "createTheme"],
+        ),
+        NativeModule::new(
+            "@uniflowed/ui",
+            NativeModuleKind::Ui,
+            Stability::Experimental,
+            &["Button", "Dialog", "Form", "Table", "Tabs", "Tooltip"],
+        ),
+        NativeModule::new(
+            "@uniflowed/react-compiler",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["compiler", "syntaxMode"],
+        ),
+        NativeModule::new(
+            "@uniflowed/runtime",
+            NativeModuleKind::Runtime,
+            Stability::Planned,
+            &["run", "resolve", "spawn"],
+        ),
+        NativeModule::new(
+            "@uniflowed/lib",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &["modules", "hooks", "ui", "version"],
+        ),
+        NativeModule::new(
+            "@uniflowed/lint",
+            NativeModuleKind::Framework,
+            Stability::Experimental,
+            &["defineRule", "typeAwareRule", "reactRule"],
+        ),
+    ]
+}
+
+pub fn std_module_descriptors() -> Vec<StdModule> {
+    std_modules().into_iter().collect()
+}
+
+pub fn orm_contract() -> OrmContract {
+    OrmContract::default()
+}
+
+pub fn motion_contract() -> MotionContract {
+    MotionContract::default()
+}
+
+pub fn tui_contract() -> TuiFrameworkContract {
+    TuiFrameworkContract::default()
+}
+
+pub fn vrt_plan() -> VisualRegressionPlan {
+    VisualRegressionPlan::default()
+}
+
+pub fn hook_descriptors() -> Vec<HookDescriptor> {
+    vec![
+        HookDescriptor::new("useAsync", true, false),
+        HookDescriptor::new("useDebouncedValue", true, false),
+        HookDescriptor::new("useEvent", true, false),
+        HookDescriptor::new("useInterval", true, false),
+        HookDescriptor::new("useIsomorphicLayoutEffect", true, false),
+        HookDescriptor::new("useLocalStorage", true, false),
+        HookDescriptor::new("useMediaQuery", true, false),
+        HookDescriptor::new("useMounted", true, false),
+        HookDescriptor::new("usePrevious", true, false),
+        HookDescriptor::new("useStableCallback", true, false),
+        HookDescriptor::new("useServerValue", true, true),
+    ]
+}
+
+pub fn module_by_specifier(specifier: &str) -> Option<NativeModule> {
+    builtin_modules()
+        .into_iter()
+        .find(|module| module.specifier == specifier)
+}
