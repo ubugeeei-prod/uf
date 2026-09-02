@@ -19,6 +19,7 @@ manager performance, and integrated feature coverage.
 - `uf_config`: zero-config defaults and `uf.config.js` loading
 - `uf_browser`: Playwright-compatible browser and VRT contracts
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
+- `uf_check`: Flow type inference, driven from `upstream/flow`
 - `uf_fetch`: explicit ofetch-style client contracts
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
@@ -103,6 +104,45 @@ a copy of each crate at a different depth, where `uf_flow`'s relative path to
 `upstream/flow` no longer resolves. `uf_flow` is excluded from that check
 rather than the check being switched off, and it is the crate whose public API
 moves least — the backends sit behind one `validate_source`.
+
+## Type Checking
+
+`uf_check` is the embedding of Flow's own inference, behind the
+`upstream-typecheck` feature. It is a separate crate rather than a feature on
+`uf_flow` for one reason: `uf_lint` depends on `uf_flow`, Cargo resolves path
+dependencies whether or not the feature that uses them is on, and inference
+needs sixteen path dependencies on the submodule plus a pinned nightly. Keeping
+them here means exactly one crate — and, through it, `uf_cli` — carries that
+weight.
+
+| Concern | Where it lands |
+| --- | --- |
+| Toolchain | `nightly-2026-08-01`, pinned by the `Upstream Flow Typecheck` CI job |
+| Default build | feature off; `uf check` is the linter alone and `uf` still builds on 1.98.0 |
+| Diagnostics | typed: severity, Flow's error code, primary and root spans, message fragments, and every location the message references |
+| Bounds | `Options::recursion_limit`, `CheckBudget`, a 4 MiB source cap, and a 1 GiB check stack |
+
+Measured on that toolchain, optimized: builtins merge in **19 ms** cold and cost
+nothing warm; a dense Flow React component file checks in **4.3 ms**
+(230 files/s, one thread). Unoptimized those are 60 ms and 15 ms.
+
+What it does not do yet is resolve modules. Every file is checked against Flow's
+standard library — `react` and everything else the library definitions declare —
+but `uf` does not run Flow's merge service, so an import of another project file
+has no signature to check against. Those resolve to Flow's own *unchecked
+module*, which types the import as `any` and lets the rest of the file check, and
+the specifiers are reported in `CheckReport::untyped_modules` so the hole is
+stated rather than silent. Cross-module inference is the next step.
+
+Errors are never flattened into strings. `flow_common_errors`'s accessors give
+the code, kind, and primary location directly; the message tree itself is private
+to that crate, so `json_output`'s v2 rendering is walked once to recover the
+message fragments and the locations they point at, and each fragment is mapped
+back onto a typed segment. Two embedding details worth knowing: Flow's renderer
+panics on a relative path and reads a location's file from disk to build a
+codepoint offset table, so `uf_check` resolves every path against a synthetic
+absolute root that cannot exist — the read always misses, and the columns stay in
+the **bytes** that `uf_term`'s code frames and `uf_lint` both measure in.
 
 ## Flow And React
 
