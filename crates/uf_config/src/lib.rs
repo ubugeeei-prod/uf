@@ -12,6 +12,7 @@ pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct UniflowedConfig {
     pub app: AppConfig,
     pub build: BuildConfig,
@@ -36,6 +37,7 @@ pub struct UniflowedConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct AppConfig {
     pub component_default: ComponentBoundary,
     pub framework: FrameworkPreset,
@@ -82,6 +84,7 @@ pub enum FrameworkPreset {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RouterConfig {
     pub enabled: bool,
     pub entry: CompactString,
@@ -110,6 +113,7 @@ pub enum RouterConvention {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct OrmConfig {
     pub enabled: bool,
     pub module: CompactString,
@@ -132,6 +136,7 @@ impl Default for OrmConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BuiltinConfig {
     pub data: DataEngine,
     pub effect: EffectEngine,
@@ -198,6 +203,7 @@ pub enum EffectEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FetchConfig {
     pub module: CompactString,
     pub override_global_fetch: bool,
@@ -214,6 +220,7 @@ impl Default for FetchConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct GraphQlConfig {
     pub module: CompactString,
     pub relay_base: bool,
@@ -230,6 +237,7 @@ impl Default for GraphQlConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct LoaderConfig {
     pub module: CompactString,
     pub state_module: CompactString,
@@ -248,6 +256,7 @@ impl Default for LoaderConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct WebConfig {
     pub module: CompactString,
     pub typed_routes: bool,
@@ -276,6 +285,7 @@ pub enum LinkPrefetchMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MarkdownConfig {
     pub module: CompactString,
     pub engine: MarkdownEngineConfig,
@@ -300,6 +310,7 @@ pub enum MarkdownEngineConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MotionConfig {
     pub module: CompactString,
     pub engine: MotionEngineConfig,
@@ -329,6 +340,7 @@ pub enum MotionEngineConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TuiConfig {
     pub module: CompactString,
     pub std_module: CompactString,
@@ -362,6 +374,7 @@ pub enum TuiStandardConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TemporalConfig {
     pub module: CompactString,
     pub lite: bool,
@@ -378,6 +391,7 @@ impl Default for TemporalConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PwaConfig {
     pub module: CompactString,
     pub enabled_by_default: bool,
@@ -402,6 +416,7 @@ pub enum CacheModeConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ReactCompilerConfig {
     pub enabled: bool,
     pub mode: ReactCompilerMode,
@@ -433,6 +448,7 @@ pub enum RuntimeTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RuntimeConfig {
     pub default: RuntimeEngine,
     pub compatibility: Vec<RuntimeEngine>,
@@ -471,6 +487,7 @@ pub enum RuntimeEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DeployAnywhereConfig {
     pub enabled: bool,
     pub adapters: Vec<DeployAdapter>,
@@ -507,6 +524,7 @@ pub enum DeployAdapter {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ServerConfig {
     pub engine: ServerEngine,
     pub native: NativeServerConfig,
@@ -530,6 +548,7 @@ pub enum ServerEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct NativeServerConfig {
     pub streaming: bool,
     pub zero_copy_http: bool,
@@ -575,6 +594,7 @@ pub enum ComponentBoundary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ReactConfig {
     pub version: CompactString,
     pub async_react: bool,
@@ -595,6 +615,7 @@ impl Default for ReactConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RenderingConfig {
     pub modes: Vec<RenderingMode>,
     pub cache: CacheConfig,
@@ -625,6 +646,7 @@ pub enum RenderingMode {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CacheConfig {
     pub actions: bool,
     pub data: bool,
@@ -634,6 +656,7 @@ pub struct CacheConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BuildConfig {
     pub budgets: BundleBudgets,
     pub entries: Vec<CompactString>,
@@ -660,6 +683,7 @@ impl Default for BuildConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DocsConfig {
     pub enabled: bool,
     pub app: CompactString,
@@ -690,6 +714,7 @@ pub enum DeployTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DevConfig {
     pub host: CompactString,
     pub port: u16,
@@ -708,6 +733,7 @@ impl Default for DevConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct EnvConfig {
     pub active: CompactString,
     pub files: Vec<CompactString>,
@@ -728,6 +754,7 @@ impl Default for EnvConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FmtConfig {
     pub indent_width: u8,
     pub line_width: u16,
@@ -755,6 +782,7 @@ pub enum QuoteStyle {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PackageConfig {
     pub generator: PackageGenerator,
     pub targets: Vec<PackageTarget>,
@@ -796,6 +824,7 @@ pub enum PackageTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PackageManagerConfig {
     pub module: CompactString,
     pub resolver: PackageManagerResolver,
@@ -847,6 +876,7 @@ pub enum PackageManagerPreference {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct RuntimeManagerConfig {
     pub module: CompactString,
     pub infer_from_config: bool,
@@ -859,6 +889,7 @@ pub struct RuntimeManagerConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct StdConfig {
     pub module: CompactString,
     pub wintertc_aligned: bool,
@@ -1001,6 +1032,7 @@ pub enum RuntimeManagerApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct StoryConfig {
     pub enabled: bool,
     pub module: CompactString,
@@ -1021,6 +1053,7 @@ impl Default for StoryConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MockConfig {
     pub module: CompactString,
     pub msw_compatible: bool,
@@ -1037,6 +1070,7 @@ impl Default for MockConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BrowserAutomationConfig {
     pub module: CompactString,
     pub playwright_compatible: bool,
@@ -1053,6 +1087,7 @@ impl Default for BrowserAutomationConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct VrtConfig {
     pub enabled: bool,
     pub module: CompactString,
@@ -1062,6 +1097,7 @@ pub struct VrtConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TestConfig {
     pub module: CompactString,
     pub runner: NativeTestRunnerConfig,
@@ -1080,6 +1116,7 @@ impl Default for TestConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct NativeTestRunnerConfig {
     pub runtime: NativeTestRuntimeConfig,
     pub scheduler: NativeTestSchedulerConfig,
@@ -1132,6 +1169,7 @@ impl Default for VrtConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct LintConfig {
     pub files: Vec<CompactString>,
     pub ignore: Vec<CompactString>,
@@ -1348,6 +1386,7 @@ impl<'de> Deserialize<'de> for RuleLevel {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PublishConfig {
     pub registry: CompactString,
     pub dry_run: bool,
@@ -1368,6 +1407,7 @@ impl Default for PublishConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FirstPublishConfig {
     pub mode: FirstPublishMode,
     pub local_bootstrap: bool,
@@ -1391,6 +1431,7 @@ pub enum FirstPublishMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TrustedPublishConfig {
     pub enabled: bool,
     pub provider: TrustedPublishProvider,
@@ -1426,6 +1467,7 @@ pub enum TrustedPublishTrigger {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ReleaseConfig {
     pub tag_prefix: CompactString,
     pub command: CompactString,
@@ -1444,6 +1486,7 @@ impl Default for ReleaseConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TaskRunnerConfig {
     pub engine: TaskRunnerEngine,
     pub allow_package_scripts: bool,
@@ -1483,6 +1526,7 @@ impl TaskDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TaskCommand {
     pub command: CompactString,
     pub cwd: Option<CompactString>,

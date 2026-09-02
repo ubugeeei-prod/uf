@@ -65,10 +65,8 @@ mod tests {
 
     #[test]
     fn expands_leading_tabs_using_configured_indent() {
-        let config = FmtConfig {
-            indent_width: 4,
-            ..FmtConfig::default()
-        };
+        let mut config = FmtConfig::default();
+        config.indent_width = 4;
 
         let result = format_source("\tconst x = 1;\n", &config).unwrap();
 
