@@ -116,7 +116,7 @@ fn app_layout() -> String {
 import * as React from "@uniflowed/react";
 import { Suspense } from "@uniflowed/react";
 
-component Layout(children: React.Node) {
+export component Layout(children: mixed) {
   return (
     <html lang="en">
       <body>
@@ -125,8 +125,6 @@ component Layout(children: React.Node) {
     </html>
   );
 }
-
-export default Layout;
 "#
     .to_string()
 }
@@ -163,7 +161,7 @@ const selectedTone = cell<"calm" | "sharp">("calm");
 const HomeQuery = graphql("query HomeQuery { viewer { name } }");
 const apiBase = "/api";
 const api = createFetch({ baseURL: apiBase });
-const viewerLoader = createLoader<{ +name: string }>("viewer", () => request(api, "/viewer"));
+const viewerLoader = createLoader<{| name: string |}>("viewer", () => request(api, "/viewer"));
 const contactSchema = v.object({
   name: v.pipe(v.string(), v.minLength(1)),
 });
@@ -188,7 +186,7 @@ const styles = stylex.create({
 component Page() {
   const greeting = greetingQuery.use();
   const viewerState = useLoader(viewerLoader);
-  const viewer = use(useLazyLoadQuery<{ +viewer: { +name: string } }>(HomeQuery, {}));
+  const viewer = use(useLazyLoadQuery<{| viewer: {| name: string |} |}>(HomeQuery, {}));
   const viewerName = viewerState.status === "ready" ? viewerState.value.name : viewer.viewer.name;
 
   return (

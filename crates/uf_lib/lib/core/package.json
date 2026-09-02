@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./brand": "./brand.js",
     "./config": "./config.js",
     "./effect": "./effect.js",
     "./flow-cell": "./flow-cell.js",

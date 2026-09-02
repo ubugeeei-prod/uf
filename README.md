@@ -1,6 +1,6 @@
 <div align="center">
   
-<img width="200" src="assets/uf.png" alt="uf logo">
+<img width="360" src="brand/uniflowed-logo.png" alt="uf logo">
 
 # uf
 
@@ -33,6 +33,7 @@ nix run github:ubugeeei-prod/uf#uf -- --version
 - `uf create`: Create your new flow project (zero-config)
 - `uf dev`: Start the native Vite-compatible development server
 - `uf build`: Build your Flow project metadata and generated route types
+- `uf info`: Show brand, install, docs, and local toolchain information
 - `uf lint`: Run the native lint runner
 - `uf fmt`: Run the native formatter
 - `uf check`: Run Flow type checker
@@ -169,6 +170,7 @@ The Flow package surface starts in `crates/uf_lib/lib/core` and is exposed as bu
 - `@uniflowed/config`
 - `@uniflowed/react`
 - `@uniflowed/react-native`
+- `@uniflowed/brand`
 - `@uniflowed/testing`
 - `@uniflowed/test`
 - `@uniflowed/react-testing`
@@ -244,3 +246,8 @@ nix profile install github:ubugeeei-prod/uf#uf
 
 Cloudflare IaC and the release upload layout live in
 [`infra/cloudflare`](infra/cloudflare).
+The docs site is generated with the same CLI:
+
+```sh
+tools/docs/build.sh
+```

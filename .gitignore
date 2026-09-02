@@ -3,6 +3,7 @@
 /docs/dist/
 /docs/router.js
 /node_modules/
+/.wrangler/
 /.direnv/
 .terraform/
 *.tfplan
