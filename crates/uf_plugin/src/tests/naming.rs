@@ -152,6 +152,14 @@ fn no_shipped_javascript_names_the_underlying_engines() {
 
     let mut leaks = Vec::new();
     for path in sources {
+        // `@uniflowed/vite` is the seam between uf and the engine it runs on,
+        // so naming that engine is the one thing it is for. It is plumbing
+        // `uf dev` and `uf build` wire up, not a module an application
+        // imports — a user still writes only `uf.config.js`, which is what
+        // this rule protects.
+        if path.components().any(|part| part.as_os_str() == "vite") {
+            continue;
+        }
         let source = fs::read_to_string(&path).expect("readable source");
         for engine in ENGINE_NAMES {
             for (line_number, line) in source.to_ascii_lowercase().lines().enumerate() {

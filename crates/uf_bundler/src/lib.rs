@@ -73,6 +73,7 @@ pub mod resolve;
 pub mod rolldown_backend;
 pub mod shake;
 pub mod sourcemap;
+pub mod transform;
 
 #[cfg(test)]
 mod tests;
@@ -88,6 +89,7 @@ pub use record::{ModuleRecord, SideEffectKind, scan_module};
 pub use resolve::{Resolution, ResolveError, Resolver};
 pub use shake::{Shaken, UsedExports, shake};
 pub use sourcemap::SourceMapBuilder;
+pub use transform::{TransformError, is_project_module, transform_module};
 
 /// Anything that can stop a build.
 #[derive(Debug, Error)]

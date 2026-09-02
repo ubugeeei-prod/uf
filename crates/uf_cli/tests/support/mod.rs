@@ -8,6 +8,11 @@
 
 use assert_cmd::Command;
 
+/// Path to the built `uf` binary, for callers that drive its stdio directly.
+pub fn uf_path() -> &'static str {
+    env!("CARGO_BIN_EXE_uf")
+}
+
 /// A `uf` invocation with a known terminal environment.
 pub fn uf() -> Command {
     binary("uf")

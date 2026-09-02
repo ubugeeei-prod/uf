@@ -1,0 +1,22 @@
+{
+  "name": "@uniflowed/vite",
+  "version": "0.0.1",
+  "description": "uf's build stages as a Vite plugin: Flow erasure, RSC prologue, JSX lowering.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/vite"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "peerDependencies": {
+    "vite": ">=6"
+  }
+}
