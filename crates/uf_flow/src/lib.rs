@@ -1,11 +1,12 @@
 //! Flow parser/typechecker adapter boundary for uniflowed.
 //!
-//! `uf` talks to exactly one Flow syntax authority at a time. The preferred
-//! backend is Meta's official Flow Rust port, vendored as the `upstream/flow`
-//! submodule and selected with the `upstream-parser` feature. Until the `!`
-//! type is stable on the pinned release toolchain the crate defaults to the
-//! QuickJS-hosted reference parser, which needs source normalization for
-//! `component`/`hook` declarations.
+//! `uf` talks to exactly one Flow backend at a time, and both real backends
+//! implement the same official Flow grammar. The preferred one is Meta's
+//! official Flow Rust port, vendored as the `upstream/flow` submodule and
+//! selected with the `upstream-parser` feature. Until the `!` type is stable on
+//! the pinned release toolchain the crate defaults to the QuickJS-hosted
+//! reference parser, which needs source normalization for `component`/`hook`
+//! declarations.
 
 #[cfg(all(feature = "official-parser", not(feature = "upstream-parser")))]
 mod quickjs;
@@ -42,13 +43,26 @@ impl ParseOutcome {
 }
 
 /// Flow syntax authority backing [`validate_source`].
+///
+/// Both real backends implement the same official Flow grammar, so they report
+/// [`ParserKind::OfficialFlowParser`]. Use [`active_backend`] to learn which
+/// implementation produced a [`ParseOutcome`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParserKind {
-    /// Meta's official Flow Rust port from `upstream/flow/rust_port`.
-    UpstreamRustPort,
-    /// The QuickJS-hosted reference Flow parser.
+    /// Flow's official grammar, through either real backend.
     OfficialFlowParser,
     /// The dependency-free guard used when no parser backend is compiled in.
+    Fallback,
+}
+
+/// Implementation behind [`ParserKind::OfficialFlowParser`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParserBackend {
+    /// Meta's official Flow Rust port from `upstream/flow/rust_port`.
+    UpstreamRustPort,
+    /// Flow's reference parser compiled to JavaScript and hosted in QuickJS.
+    QuickJsReference,
+    /// No parser backend was compiled in.
     Fallback,
 }
 
@@ -74,22 +88,34 @@ impl FlowParser {
     }
 }
 
-/// Backend selected at compile time.
-///
-/// `upstream-parser` wins over `official-parser` so a build that enables both
-/// always reports the more precise diagnostics.
+/// Syntax authority selected at compile time.
 pub const fn active_parser() -> ParserKind {
-    #[cfg(feature = "upstream-parser")]
-    {
-        ParserKind::UpstreamRustPort
-    }
-    #[cfg(all(not(feature = "upstream-parser"), feature = "official-parser"))]
+    #[cfg(any(feature = "upstream-parser", feature = "official-parser"))]
     {
         ParserKind::OfficialFlowParser
     }
     #[cfg(not(any(feature = "upstream-parser", feature = "official-parser")))]
     {
         ParserKind::Fallback
+    }
+}
+
+/// Backend implementation selected at compile time.
+///
+/// `upstream-parser` wins over `official-parser` so a build that enables both
+/// always runs the native Rust port.
+pub const fn active_backend() -> ParserBackend {
+    #[cfg(feature = "upstream-parser")]
+    {
+        ParserBackend::UpstreamRustPort
+    }
+    #[cfg(all(not(feature = "upstream-parser"), feature = "official-parser"))]
+    {
+        ParserBackend::QuickJsReference
+    }
+    #[cfg(not(any(feature = "upstream-parser", feature = "official-parser")))]
+    {
+        ParserBackend::Fallback
     }
 }
 
@@ -188,12 +214,20 @@ fn fallback_validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
     })
 }
 
-/// Stable identifier for a parser backend, used by `uf inspect` and the LSP.
+/// Stable identifier for a syntax authority, used by `uf inspect` and the LSP.
 pub fn parser_name(kind: ParserKind) -> &'static str {
     match kind {
-        ParserKind::UpstreamRustPort => "upstream-flow-rust-port",
         ParserKind::OfficialFlowParser => "official-flow-parser",
         ParserKind::Fallback => "fallback",
+    }
+}
+
+/// Stable identifier for a backend implementation.
+pub fn backend_name(backend: ParserBackend) -> &'static str {
+    match backend {
+        ParserBackend::UpstreamRustPort => "upstream-flow-rust-port",
+        ParserBackend::QuickJsReference => "quickjs-reference-parser",
+        ParserBackend::Fallback => "fallback",
     }
 }
 
@@ -264,13 +298,28 @@ mod tests {
     #[test]
     fn parser_names_are_stable() {
         assert_eq!(
-            parser_name(ParserKind::UpstreamRustPort),
-            "upstream-flow-rust-port"
-        );
-        assert_eq!(
             parser_name(ParserKind::OfficialFlowParser),
             "official-flow-parser"
         );
         assert_eq!(parser_name(ParserKind::Fallback), "fallback");
+    }
+
+    #[test]
+    fn backend_names_are_stable() {
+        assert_eq!(
+            backend_name(ParserBackend::UpstreamRustPort),
+            "upstream-flow-rust-port"
+        );
+        assert_eq!(
+            backend_name(ParserBackend::QuickJsReference),
+            "quickjs-reference-parser"
+        );
+        assert_eq!(backend_name(ParserBackend::Fallback), "fallback");
+    }
+
+    #[test]
+    fn a_real_backend_reports_the_official_grammar() {
+        assert_eq!(active_parser(), ParserKind::OfficialFlowParser);
+        assert_ne!(active_backend(), ParserBackend::Fallback);
     }
 }

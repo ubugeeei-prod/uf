@@ -91,6 +91,10 @@ jobs:
   upstream-flow:
     name: Upstream Flow
     runs-on: blacksmith-32vcpu-ubuntu-2404
+    env:
+      # `rust-toolchain.toml` pins 1.98.0 and overrides `rustup default`, so the
+      # nightly the toolchain action installs only takes effect through this.
+      RUSTUP_TOOLCHAIN: nightly
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

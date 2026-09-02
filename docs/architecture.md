@@ -60,8 +60,10 @@ The upstream port is the target: it is the same code Flow itself runs, it is
 native Rust rather than JavaScript interpreted in an embedded engine, and it
 removes the `quick-js` C dependency from the release binary. It is gated behind a
 feature only because the port still uses the unstable `!` type, so it needs
-nightly until Rust 1.100. `active_parser()` reports which backend a build
-selected, and `upstream-parser` always wins when both are enabled.
+nightly until Rust 1.100. Both real backends report
+`ParserKind::OfficialFlowParser` because they implement the same grammar;
+`active_backend()` reports which implementation a build selected, and
+`upstream-parser` always wins when both are enabled.
 
 ## Flow And React
 

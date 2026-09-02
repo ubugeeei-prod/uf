@@ -36,7 +36,7 @@ pub(crate) fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
 
     Ok(ParseOutcome {
         diagnostics: errors.iter().map(diagnostic_from_error).collect(),
-        parser: ParserKind::UpstreamRustPort,
+        parser: ParserKind::OfficialFlowParser,
     })
 }
 
