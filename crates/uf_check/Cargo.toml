@@ -1,0 +1,63 @@
+[package]
+name = "uf_check"
+description = "Flow type inference for uniflowed, driven by Meta's official Flow Rust port."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# Run Flow's own type inference from the `upstream/flow` submodule.
+#
+# Off by default: the typing crates in the port declare `#![feature(box_patterns)]`,
+# so they build only on a nightly old enough to still accept it. See
+# `docs/architecture.md` for the pinned date and why it is pinned.
+upstream-typecheck = [
+  "dep:dupe",
+  "dep:flow_aloc",
+  "dep:flow_common",
+  "dep:flow_common_errors",
+  "dep:flow_flowlib",
+  "dep:flow_lint_settings",
+  "dep:flow_parser",
+  "dep:flow_parser_utils",
+  "dep:flow_parsing",
+  "dep:flow_type_sig",
+  "dep:flow_typing",
+  "dep:flow_typing_context",
+  "dep:flow_typing_errors",
+  "dep:flow_typing_type",
+  "dep:flow_typing_utils",
+  "dep:flow_utils_concurrency",
+  "dep:serde_json",
+]
+
+[dependencies]
+compact_str.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+
+dupe = { workspace = true, optional = true }
+flow_aloc = { workspace = true, optional = true }
+flow_common = { workspace = true, optional = true }
+flow_common_errors = { workspace = true, optional = true }
+flow_flowlib = { workspace = true, optional = true }
+flow_lint_settings = { workspace = true, optional = true }
+flow_parser = { workspace = true, optional = true }
+flow_parser_utils = { workspace = true, optional = true }
+flow_parsing = { workspace = true, optional = true }
+flow_type_sig = { workspace = true, optional = true }
+flow_typing = { workspace = true, optional = true }
+flow_typing_context = { workspace = true, optional = true }
+flow_typing_errors = { workspace = true, optional = true }
+flow_typing_type = { workspace = true, optional = true }
+flow_typing_utils = { workspace = true, optional = true }
+flow_utils_concurrency = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -77,9 +77,7 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
 
     match cli.command {
         Commands::Build { size_report } => commands::build::build(&cwd, ui, size_report),
-        Commands::Check { json } => {
-            commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Check, json)
-        }
+        Commands::Check { json } => commands::check::check(&cwd, ui, json),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
         Commands::Dev { host, once } => commands::dev::dev(&cwd, ui, host.as_deref(), once),
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
