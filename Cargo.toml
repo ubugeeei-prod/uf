@@ -22,6 +22,7 @@ members = [
   "crates/uf_project",
   "crates/uf_rm",
   "crates/uf_router",
+  "crates/uf_rsc",
   "crates/uf_runtime",
   "crates/uf_state",
   "crates/uf_story",
@@ -34,6 +35,7 @@ members = [
   "crates/uf_vrt",
   "crates/uf_web",
 ]
+exclude = ["upstream"]
 resolver = "3"
 
 [workspace.package]
@@ -52,6 +54,7 @@ camino = { version = "1.2.1", features = ["serde1"] }
 clap = { version = "4.6.4", features = ["derive", "env"] }
 compact_str = { version = "0.10.0", features = ["serde"] }
 criterion = "0.8.2"
+flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
 flowjs-parser = "0.0.0-alpha.3"
 ignore = "0.4.25"
 json5 = "1.3.1"

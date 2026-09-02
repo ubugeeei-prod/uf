@@ -1,0 +1,4 @@
+[submodule "flow"]
+	path = upstream/flow
+	url = https://github.com/facebook/flow.git
+	shallow = true

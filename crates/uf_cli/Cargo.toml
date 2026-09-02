@@ -35,6 +35,7 @@ uf_prepare = { path = "../uf_prepare" }
 uf_project = { path = "../uf_project" }
 uf_rm = { path = "../uf_rm" }
 uf_router = { path = "../uf_router" }
+uf_rsc = { path = "../uf_rsc" }
 uf_runtime = { path = "../uf_runtime" }
 uf_test = { path = "../uf_test" }
 uf_tui = { path = "../uf_tui" }

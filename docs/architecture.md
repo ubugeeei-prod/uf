@@ -19,7 +19,7 @@ manager performance, and integrated feature coverage.
 - `uf_config`: zero-config defaults and `uf.config.js` loading
 - `uf_browser`: Playwright-compatible browser and VRT contracts
 - `uf_fetch`: explicit ofetch-style client contracts
-- `uf_flow`: Flow parser/typechecker adapter boundary
+- `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
 - `uf_graphql`: Relay-based GraphQL client contracts
 - `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString
@@ -44,6 +44,26 @@ manager performance, and integrated feature coverage.
 - `uf_validator`: valibot-style native validator primitives
 - `uf_vrt`: native visual regression contracts
 - `uf_web`: Nuxt-like web primitives and typed route hooks
+
+## Flow Syntax Authority
+
+`uf` never reimplements Flow's grammar. `uf_flow` is a thin adapter over exactly
+one backend at a time:
+
+| Backend | Feature | Toolchain | Notes |
+| --- | --- | --- | --- |
+| Meta's Flow Rust port | `upstream-parser` | nightly | `upstream/flow/rust_port/crates/flow_parser`, parses `component`/`hook`/`renders`/`match` natively |
+| Reference parser in QuickJS | `official-parser` (default) | 1.98.0 | Flow's OCaml parser compiled to JavaScript, needs source rewriting for component syntax |
+| Guard | none | any | compile error surface only, no real grammar |
+
+The upstream port is the target: it is the same code Flow itself runs, it is
+native Rust rather than JavaScript interpreted in an embedded engine, and it
+removes the `quick-js` C dependency from the release binary. It is gated behind a
+feature only because the port still uses the unstable `!` type, so it needs
+nightly for now. Both real backends report
+`ParserKind::OfficialFlowParser` because they implement the same grammar;
+`active_backend()` reports which implementation a build selected, and
+`upstream-parser` always wins when both are enabled.
 
 ## Flow And React
 

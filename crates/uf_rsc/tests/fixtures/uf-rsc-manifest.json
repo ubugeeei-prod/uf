@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "engine": "uf-native",
+  "buildFingerprint": "71527ae95b8871ca4467cfe1c007937a061888fad13c7da20eb669bacb59fb0b",
+  "modules": [
+    {
+      "path": "app/_uf.page.js",
+      "environment": "server",
+      "reachability": "server-only",
+      "imports": [
+        "app/client/Counter.js",
+        "server/actions.js"
+      ],
+      "externalImports": [],
+      "exports": [
+        "default"
+      ]
+    },
+    {
+      "path": "app/client/Counter.js",
+      "environment": "client",
+      "reachability": "client-only",
+      "imports": [],
+      "externalImports": [
+        "@uniflowed/react"
+      ],
+      "exports": [
+        "default"
+      ]
+    },
+    {
+      "path": "server/actions.js",
+      "environment": "server-actions",
+      "reachability": "server-only",
+      "imports": [],
+      "externalImports": [],
+      "exports": [
+        "refresh"
+      ]
+    }
+  ],
+  "clientBoundaries": [
+    {
+      "importer": "app/_uf.page.js",
+      "module": "app/client/Counter.js"
+    }
+  ],
+  "clientBundleRoots": [
+    "app/client/Counter.js"
+  ],
+  "serverActions": [
+    {
+      "id": "8d7c75b4efb3c7d0fa4a9e14bffc1f04a65049708a390873e494523aaaf3a496",
+      "module": "server/actions.js",
+      "export": "refresh",
+      "kind": "module-export"
+    }
+  ],
+  "diagnostics": []
+}
