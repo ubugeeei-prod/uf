@@ -1,5 +1,22 @@
 # Contributing
 
+## Clone
+
+`uf_flow` builds against Meta's official Flow Rust port, which is not published
+to crates.io, so the repository carries it as the `upstream/flow` submodule.
+Cargo resolves path dependencies even when the feature that uses them is off, so
+the submodule must exist before any cargo command:
+
+```sh
+git clone https://github.com/ubugeeei-prod/uf
+cd uf
+tools/upstream/sync.sh
+```
+
+`tools/upstream/sync.sh` fetches one shallow, blobless commit and checks out only
+`rust_port/`, which costs about 40 MB instead of the full 190 MB repository. It
+is idempotent, so re-run it after pulling a submodule bump.
+
 ## Commit Style
 
 Use focused conventional commits, for example:
@@ -36,9 +53,21 @@ Run the local gate before opening a PR:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-cargo bench --workspace --all-features --no-run
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo bench --workspace --no-run
 ```
+
+The pinned 1.98.0 release toolchain cannot compile the upstream Flow Rust port
+yet, because the port still uses the unstable `!` type. `--all-features` therefore
+runs on nightly, which is also what the `Upstream Flow` CI job does:
+
+```sh
+cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings
+cargo +nightly test --workspace --all-features
+```
+
+Once `never_type` reaches stable, `uf_flow`'s `upstream-parser` feature becomes
+the default and the stable jobs go back to `--all-features`.
 
 When GitHub Actions is configured, use Actions as the final merge gate.

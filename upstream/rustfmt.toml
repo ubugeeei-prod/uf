@@ -1,0 +1,4 @@
+# `cargo fmt --all` also visits local path dependencies, which includes Meta's
+# Flow Rust port under `upstream/flow`. Upstream owns that formatting; rustfmt
+# stops here so `cargo fmt --all -- --check` never reports vendored code.
+disable_all_formatting = true
