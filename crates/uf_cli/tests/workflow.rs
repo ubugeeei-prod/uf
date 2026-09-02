@@ -200,8 +200,14 @@ fn publish_and_release_report_trusted_publish_plan() {
         String::from_utf8_lossy(&release.stderr)
     );
     let stdout = String::from_utf8(release.stdout).unwrap();
+    // `uf release` bumps this crate's own version, so a literal tag here fails
+    // on the next version bump rather than when the plan is wrong. The bump
+    // arithmetic is pinned by the unit tests next to `bump_semver`.
+    let mut version = env!("CARGO_PKG_VERSION").split('.');
+    let major: u64 = version.next().unwrap().parse().unwrap();
+    let minor: u64 = version.next().unwrap().parse().unwrap();
     assert!(stdout.contains("bump             Minor"));
-    assert!(stdout.contains("tag              uf@0.2.0"));
+    assert!(stdout.contains(&format!("tag              uf@{major}.{}.0", minor + 1)));
     assert!(stdout.contains("command          uf release minor"));
     assert!(stdout.contains("publish          yes"));
     assert!(stdout.contains("release.json"));
