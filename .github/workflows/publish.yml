@@ -45,7 +45,13 @@ jobs:
               echo "::notice::${name}@${version} is already published"
               return 0
             fi
-            ( cd "$1" && npm publish --access public )
+            tag_args=()
+            case "$version" in
+              *-alpha*) tag_args=(--tag alpha) ;;
+              *-beta*) tag_args=(--tag beta) ;;
+              *-rc*) tag_args=(--tag rc) ;;
+            esac
+            ( cd "$1" && npm publish --access public "${tag_args[@]}" )
           }
 
           publish packages/core
