@@ -520,8 +520,15 @@ fn the_update_target_is_not_a_file_route() {
 /// The shipped client runtime and the server must agree about the wire.
 #[test]
 fn the_client_runtime_names_the_endpoint_the_server_serves() {
-    let runtime = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../packages/hmr/index.js")
+    let package_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/hmr");
+    let entry = std::fs::read_to_string(package_root.join("index.js")).expect("entry is readable");
+    assert!(
+        entry.contains("from \"./internal/client.js\""),
+        "the public HMR entry must re-export the shipped client runtime"
+    );
+
+    let runtime = package_root
+        .join("internal/client.js")
         .canonicalize()
         .expect("the shipped client runtime exists");
     let source = std::fs::read_to_string(&runtime).expect("readable");
