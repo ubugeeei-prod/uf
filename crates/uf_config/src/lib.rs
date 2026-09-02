@@ -797,6 +797,7 @@ pub struct PackageManagerConfig {
     pub lockfile: CompactString,
     pub store_dir: CompactString,
     pub allow_lifecycle_scripts: bool,
+    pub package_manager: PackageManagerPreference,
 }
 
 impl Default for PackageManagerConfig {
@@ -807,6 +808,7 @@ impl Default for PackageManagerConfig {
             lockfile: CompactString::const_new("uf.lock"),
             store_dir: CompactString::const_new(".uf/store"),
             allow_lifecycle_scripts: false,
+            package_manager: PackageManagerPreference::Auto,
         }
     }
 }
@@ -816,6 +818,26 @@ impl Default for PackageManagerConfig {
 pub enum PackageManagerResolver {
     #[default]
     UfNative,
+}
+
+/// Which package manager drives the project, overriding auto-inference.
+///
+/// `Auto` infers the manager from the project itself: an explicit
+/// `"packageManager"` field, then a lockfile, then the nearest workspace root,
+/// then uf's own resolver. `Yarn` means the modern Berry line; pin `YarnClassic`
+/// for Yarn 1.x.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PackageManagerPreference {
+    #[default]
+    Auto,
+    Uf,
+    Npm,
+    Pnpm,
+    Yarn,
+    YarnClassic,
+    YarnBerry,
+    Bun,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1708,6 +1730,7 @@ mod tests {
         assert_eq!(config.pm.lockfile, "uf.lock");
         assert_eq!(config.pm.store_dir, ".uf/store");
         assert!(!config.pm.allow_lifecycle_scripts);
+        assert_eq!(config.pm.package_manager, PackageManagerPreference::Auto);
         assert_eq!(config.rm.module, "@uniflowed/rm");
         assert!(config.rm.infer_from_config);
         assert_eq!(config.rm.version, "uf@0.1.0");
@@ -1850,6 +1873,7 @@ mod tests {
               },
               pm: {
                 allowLifecycleScripts: false,
+                packageManager: "pnpm",
               },
               tasks: {
                 storybook: {
@@ -1877,6 +1901,37 @@ mod tests {
         );
         assert!(parsed.rm.infer_from_config);
         assert!(!parsed.pm.allow_lifecycle_scripts);
+        assert_eq!(parsed.pm.package_manager, PackageManagerPreference::Pnpm);
+    }
+
+    #[test]
+    fn parses_every_package_manager_preference() {
+        for (value, expected) in [
+            ("auto", PackageManagerPreference::Auto),
+            ("uf", PackageManagerPreference::Uf),
+            ("npm", PackageManagerPreference::Npm),
+            ("pnpm", PackageManagerPreference::Pnpm),
+            ("yarn", PackageManagerPreference::Yarn),
+            ("yarn-classic", PackageManagerPreference::YarnClassic),
+            ("yarn-berry", PackageManagerPreference::YarnBerry),
+            ("bun", PackageManagerPreference::Bun),
+        ] {
+            let source = format!(
+                r#"export default defineConfig({{ pm: {{ packageManager: "{value}" }} }});"#
+            );
+            let object = extract_config_object(&source).expect("object");
+            let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+            assert_eq!(parsed.pm.package_manager, expected, "{value}");
+        }
+    }
+
+    #[test]
+    fn rejects_an_unknown_package_manager_preference() {
+        let source = r#"export default defineConfig({ pm: { packageManager: "deno" } });"#;
+        let object = extract_config_object(source).expect("object");
+
+        assert!(json5::from_str::<UniflowedConfig>(&object).is_err());
     }
 
     #[test]
