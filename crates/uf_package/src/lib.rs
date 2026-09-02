@@ -4,6 +4,12 @@ use smallvec::SmallVec;
 
 pub type TargetPackages = SmallVec<[GeneratedTargetPackage; 8]>;
 
+/// File a generated target package writes its Flow declarations to.
+///
+/// `uf` ships `.js` with a `// @flow` pragma and no `.js.flow` sidecars, so a
+/// generated package follows the same convention as `crates/uf_lib/lib`.
+pub const GENERATED_DECLARATION_PATH: &str = "index.js";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativePackageSpec {
@@ -98,7 +104,7 @@ pub fn generate_target_packages(
                     target.artifact_extension()
                 )),
                 declaration: FlowDeclaration {
-                    path: CompactString::const_new("index.js.flow"),
+                    path: CompactString::const_new(GENERATED_DECLARATION_PATH),
                     source: flow_declaration.clone(),
                 },
             }
@@ -106,6 +112,14 @@ pub fn generate_target_packages(
         .collect()
 }
 
+/// Convert a generated TypeScript declaration file into Flow.
+///
+/// The result is written to [`GENERATED_DECLARATION_PATH`]. It still uses
+/// `declare export`, which is declaration-file syntax: a generated target
+/// package is a facade over a napi/wasm artifact, and a module-level `const`
+/// binding has no definition that can fail lazily the way a function body can.
+/// Turning these into real bindings needs the artifact loader, which does not
+/// exist yet.
 pub fn convert_typescript_declaration_to_flow(source: &str) -> CompactString {
     let mut flow = String::with_capacity(source.len() + 16);
     flow.push_str("// @flow\n");
@@ -160,7 +174,21 @@ mod tests {
         assert!(
             packages
                 .iter()
-                .all(|package| package.declaration.path == "index.js.flow")
+                .all(|package| package.declaration.path == "index.js")
+        );
+    }
+
+    #[test]
+    fn generated_declarations_never_use_the_flow_sidecar_extension() {
+        let spec = NativePackageSpec::new("runtime", "0.1.0");
+        let packages =
+            generate_target_packages(&spec, "export declare function run(entry: string): void;");
+
+        assert_eq!(GENERATED_DECLARATION_PATH, "index.js");
+        assert!(
+            packages
+                .iter()
+                .all(|package| !package.declaration.path.ends_with(".js.flow"))
         );
     }
 }

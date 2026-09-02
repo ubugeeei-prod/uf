@@ -1,3 +1,0 @@
-// @flow
-export type { BrowserPlan, Viewport } from "../core/browser.js.flow";
-export { browser, screenshot, viewport, visit } from "../core/browser.js.flow";

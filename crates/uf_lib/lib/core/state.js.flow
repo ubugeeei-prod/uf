@@ -1,9 +1,0 @@
-// @flow
-export type CellScope = 'client' | 'server' | 'react-render' | 'native-runtime';
-
-declare export opaque type Cell<T>;
-
-declare export function cell<T>(value: T): Cell<T>;
-declare export function computed<T>(derive: () => T): Cell<T>;
-declare export function resource<T>(load: () => Promise<T>): Cell<?T>;
-declare export function useCell<T>(cell: Cell<T>): T;

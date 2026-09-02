@@ -1,9 +1,0 @@
-// @flow
-import type * as React from './react.js.flow';
-
-declare export component View(...props: $ReadOnly<{ +children?: React.Node }>);
-declare export component Text(...props: $ReadOnly<{ +children?: React.Node }>);
-declare export const Platform: {
-  +OS: 'ios' | 'android' | 'web' | 'native',
-  +select: <T>(options: $ReadOnly<{ +ios?: T, +android?: T, +web?: T, +native?: T }>) => T | void,
-};

@@ -1185,6 +1185,39 @@ fn reports_flow_parse_errors() {
 }
 
 #[test]
+fn flow_syntax_rule_ignores_declaration_file_extensions() {
+    for path in [
+        "src/app/page.js.flow",
+        "src/app/types.flow",
+        "src/app/page.server.flow",
+    ] {
+        let diagnostics = lint_one("flow/syntax", path, "// @flow\ntype = ;\n");
+
+        assert!(
+            !fired(&diagnostics, "flow/syntax"),
+            "{path} must not be treated as Flow source"
+        );
+    }
+}
+
+#[test]
+fn flow_syntax_rule_still_matches_js_spellings() {
+    for path in [
+        "src/app/page.js",
+        "src/app/page.jsx",
+        "src/app/page.mjs",
+        "src/app/page.cjs",
+    ] {
+        let diagnostics = lint_one("flow/syntax", path, "// @flow\ntype = ;\n");
+
+        assert!(
+            fired(&diagnostics, "flow/syntax"),
+            "{path} must be treated as Flow source"
+        );
+    }
+}
+
+#[test]
 fn type_aware_rule_blocks_explicit_any() {
     let report = lint_source(
         &source("// @flow\ntype Props = { value: any };\n"),
@@ -1249,6 +1282,56 @@ fn server_actions_accept_use_server_directive() {
     );
 
     assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn server_action_rule_ignores_the_removed_server_flow_spelling() {
+    let diagnostics = lint_one(
+        "server/use-server-actions",
+        "actions.server.flow",
+        "// @flow\nimport { serverAction } from '@uniflowed/server';\nexport const save = serverAction(() => {});\n",
+    );
+
+    assert!(!fired(&diagnostics, "server/use-server-actions"));
+}
+
+#[test]
+fn server_action_rule_matches_dot_server_js_modules() {
+    let diagnostics = lint_one(
+        "server/use-server-actions",
+        "actions.server.js",
+        "// @flow\nimport { serverAction } from '@uniflowed/server';\nexport const save = serverAction(() => {});\n",
+    );
+
+    assert!(fired(&diagnostics, "server/use-server-actions"));
+}
+
+#[test]
+fn client_module_may_import_a_server_flow_named_module() {
+    let diagnostics = lint_one(
+        "server/no-server-only-import-in-client",
+        "app/page.js",
+        "// @flow\n'use client';\nimport { save } from './actions.server.flow';\n",
+    );
+
+    assert!(!fired(
+        &diagnostics,
+        "server/no-server-only-import-in-client"
+    ));
+}
+
+#[test]
+fn client_module_may_not_import_a_dot_server_js_module() {
+    let diagnostics = lint_one(
+        "server/no-server-only-import-in-client",
+        "app/page.js",
+        "// @flow\n'use client';\nimport { save } from './actions.server.js';\n",
+    );
+
+    assert!(fired(
+        &diagnostics,
+        "server/no-server-only-import-in-client"
+    ));
 }
 
 #[test]

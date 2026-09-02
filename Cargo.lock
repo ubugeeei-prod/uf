@@ -1561,8 +1561,10 @@ dependencies = [
 name = "uf_lib"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "compact_str",
  "serde",
+ "serde_json",
  "uf_infra",
  "uf_motion",
  "uf_orm",
@@ -1570,6 +1572,7 @@ dependencies = [
  "uf_tui",
  "uf_validator",
  "uf_vrt",
+ "walkdir",
 ]
 
 [[package]]
