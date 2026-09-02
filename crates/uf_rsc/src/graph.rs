@@ -38,9 +38,10 @@ mod resolve;
 
 pub use build::RscGraphBuilder;
 pub use diagnostic::{RscDiagnostic, RscSeverity};
-pub use resolve::is_server_only_specifier;
-
-use resolve::normalize_module_path;
+pub use resolve::{
+    SpecifierResolution, is_inside_project, is_server_only_specifier, normalize_module_path,
+    resolve_specifier,
+};
 
 /// Packages whose code must never reach the browser.
 ///
