@@ -151,6 +151,53 @@ fn color_never_writes_no_escape_sequences() {
 }
 
 #[test]
+fn info_renders_the_brand_system() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["info", "--color", "never"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    assert!(stdout.contains("Unified Toolchain for Flow"), "{stdout}");
+    assert!(stdout.contains("--uf-color-cyan-500"), "{stdout}");
+    assert!(
+        stdout.contains("curl -fsSL https://setup.uniflowed.dev | sh"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nix profile install github:ubugeeei-prod/uf#uf"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn install_renders_the_brand_header() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&app)
+        .args(["install", "--color", "never"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    assert!(stdout.contains("Unified Toolchain for Flow"), "{stdout}");
+    assert!(stdout.contains("uf install"), "{stdout}");
+    assert!(stdout.contains("store entries"), "{stdout}");
+}
+
+#[test]
 fn color_is_off_by_default_when_stdout_is_a_pipe() {
     let dir = tempfile::tempdir().unwrap();
 

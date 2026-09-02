@@ -4,6 +4,7 @@
 //! [`commands`]. The output surface itself lives in [`ui`], and the terminal
 //! primitives it draws with live in `uf_term`.
 
+mod brand;
 mod cli;
 mod commands;
 mod support;
@@ -85,6 +86,7 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
         Commands::Exec { package, args } => commands::task::exec_package(&cwd, ui, &package, &args),
         Commands::Fmt { check } => commands::fmt::fmt(&cwd, ui, check),
+        Commands::Info => commands::info::info(&cwd, ui),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Install => commands::pm::install(&cwd, ui),
         Commands::Lint { json } => {

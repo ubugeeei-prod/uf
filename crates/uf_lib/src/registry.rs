@@ -41,6 +41,19 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &["View", "Text", "Platform"],
         ),
         NativeModule::new(
+            "@uniflowed/brand",
+            NativeModuleKind::Style,
+            Stability::Experimental,
+            &[
+                "ufBrand",
+                "ufPalette",
+                "ufTextScale",
+                "ufSpacingScale",
+                "ufRadiusScale",
+                "ufCommands",
+            ],
+        ),
+        NativeModule::new(
             "@uniflowed/testing",
             NativeModuleKind::Testing,
             Stability::Experimental,

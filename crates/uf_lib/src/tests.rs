@@ -22,6 +22,7 @@ fn includes_react_flow_app_builtins() {
     assert!(specs.contains(&"@uniflowed/router"));
     assert!(specs.contains(&"@uniflowed/react"));
     assert!(specs.contains(&"@uniflowed/react-native"));
+    assert!(specs.contains(&"@uniflowed/brand"));
     assert!(specs.contains(&"@uniflowed/testing"));
     assert!(specs.contains(&"@uniflowed/lib"));
     assert!(specs.contains(&"@uniflowed/lint"));

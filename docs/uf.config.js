@@ -4,8 +4,8 @@ import { defineConfig } from "@uniflowed/config";
 export default defineConfig({
   app: {
     router: {
-      entry: "docs/app.js",
-      root: "docs/app",
+      entry: "app.js",
+      root: "app",
     },
     rendering: {
       modes: ["ssg"],
@@ -18,14 +18,14 @@ export default defineConfig({
     },
   },
   build: {
-    entries: ["docs/app.js"],
+    entries: ["app.js"],
     outDir: "dist/docs",
     staticBuild: true,
   },
   docs: {
     enabled: true,
-    app: "docs/app.js",
-    source: "docs",
+    app: "app.js",
+    source: ".",
     outDir: "dist/docs",
     staticBuild: true,
     deploy: "void",

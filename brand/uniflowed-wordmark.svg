@@ -1,0 +1,13 @@
+<svg width="260" height="92" viewBox="0 0 260 92" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">uf wordmark</title>
+  <desc id="desc">The uf wordmark and flow accent.</desc>
+  <text x="8" y="62" fill="#0F172A" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="72" font-weight="800" letter-spacing="0">uf</text>
+  <rect x="118" y="70" width="126" height="3" rx="1.5" fill="url(#accent)"/>
+  <defs>
+    <linearGradient id="accent" x1="118" y1="72" x2="244" y2="72" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#35D6F6"/>
+      <stop offset="0.55" stop-color="#5C49FF"/>
+      <stop offset="1" stop-color="#D84BFF"/>
+    </linearGradient>
+  </defs>
+</svg>

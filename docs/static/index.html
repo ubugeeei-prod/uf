@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>uf docs</title>
+    <meta name="description" content="Unified Toolchain for Flow and React.">
+    <link rel="icon" href="/brand/favicon.svg">
+    <link rel="stylesheet" href="/brand/tokens.css">
+    <link rel="stylesheet" href="/docs.css">
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="topbar" aria-label="Primary">
+        <a class="brand-lockup" href="/">
+          <img src="/brand/uf.png" alt="" width="40" height="40">
+          <span>uf</span>
+        </a>
+        <div class="nav-links">
+          <a href="/install/">Install</a>
+          <a href="/brand/tokens.json">Tokens</a>
+        </div>
+      </nav>
+
+      <section class="hero">
+        <div class="logo-stage">
+          <img src="/brand/uf.png" alt="uf gradient mark">
+        </div>
+        <div class="hero-copy">
+          <p class="eyebrow">uf Design System</p>
+          <h1>uf</h1>
+          <h2>Unified Toolchain for Flow</h2>
+          <p>All-in-one toolchain for Flow and React.</p>
+          <div class="accent-line"></div>
+          <ul class="capabilities">
+            <li>Unified</li>
+            <li>Fast</li>
+            <li>Elegant</li>
+            <li>Modern</li>
+            <li>Developer-first</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="token-grid" aria-label="Design tokens">
+        <article class="panel palette-panel">
+          <h3>Color Tokens</h3>
+          <ul class="swatches">
+            <li>
+              <span class="swatch" style="background-color:#35D6F6"></span>
+              <strong>Primary Cyan</strong>
+              <code>--uf-color-cyan-500</code>
+              <span>#35D6F6</span>
+            </li>
+            <li>
+              <span class="swatch" style="background-color:#2677FF"></span>
+              <strong>Electric Blue</strong>
+              <code>--uf-color-blue-500</code>
+              <span>#2677FF</span>
+            </li>
+            <li>
+              <span class="swatch" style="background-color:#5C49FF"></span>
+              <strong>Indigo</strong>
+              <code>--uf-color-indigo-500</code>
+              <span>#5C49FF</span>
+            </li>
+            <li>
+              <span class="swatch" style="background-color:#8F4BFF"></span>
+              <strong>Violet</strong>
+              <code>--uf-color-violet-500</code>
+              <span>#8F4BFF</span>
+            </li>
+            <li>
+              <span class="swatch" style="background-color:#D84BFF"></span>
+              <strong>Magenta</strong>
+              <code>--uf-color-magenta-500</code>
+              <span>#D84BFF</span>
+            </li>
+            <li>
+              <span class="swatch" style="background-color:#0F172A"></span>
+              <strong>Ink</strong>
+              <code>--uf-color-ink-900</code>
+              <span>#0F172A</span>
+            </li>
+            <li>
+              <span class="swatch" style="background-color:#475569"></span>
+              <strong>Slate</strong>
+              <code>--uf-color-slate-600</code>
+              <span>#475569</span>
+            </li>
+            <li>
+              <span class="swatch mist"></span>
+              <strong>Mist</strong>
+              <code>--uf-color-mist-50</code>
+              <span>#F8FAFC</span>
+            </li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h3>Typography Tokens</h3>
+          <div class="type-spec">
+            <strong>Satoshi</strong>
+            <span>Display / Headings</span>
+          </div>
+          <div class="type-spec body">
+            <strong>Inter</strong>
+            <span>Body / UI Text</span>
+          </div>
+          <div class="type-spec mono">
+            <strong>JetBrains Mono</strong>
+            <span>Code / Monospace</span>
+          </div>
+          <ul class="token-list">
+            <li><code>--uf-text-xs</code><span>12px</span></li>
+            <li><code>--uf-text-sm</code><span>14px</span></li>
+            <li><code>--uf-text-md</code><span>16px</span></li>
+            <li><code>--uf-text-lg</code><span>20px</span></li>
+            <li><code>--uf-text-xl</code><span>28px</span></li>
+            <li><code>--uf-text-2xl</code><span>40px</span></li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h3>Spacing Tokens</h3>
+          <ul class="bars">
+            <li><code>--uf-space-1</code><span>4px</span><i style="width:4px"></i></li>
+            <li><code>--uf-space-2</code><span>8px</span><i style="width:8px"></i></li>
+            <li><code>--uf-space-3</code><span>12px</span><i style="width:12px"></i></li>
+            <li><code>--uf-space-4</code><span>16px</span><i style="width:16px"></i></li>
+            <li><code>--uf-space-6</code><span>24px</span><i style="width:24px"></i></li>
+            <li><code>--uf-space-8</code><span>32px</span><i style="width:32px"></i></li>
+            <li><code>--uf-space-12</code><span>48px</span><i style="width:48px"></i></li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h3>Radius Tokens</h3>
+          <ul class="radius-list">
+            <li><span style="border-radius:8px"></span><code>--uf-radius-sm</code><em>8px</em></li>
+            <li><span style="border-radius:12px"></span><code>--uf-radius-md</code><em>12px</em></li>
+            <li><span style="border-radius:16px"></span><code>--uf-radius-lg</code><em>16px</em></li>
+            <li><span style="border-radius:24px"></span><code>--uf-radius-xl</code><em>24px</em></li>
+            <li><span style="border-radius:999px"></span><code>--uf-radius-pill</code><em>999px</em></li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="terminal-section">
+        <div class="terminal">
+          <div class="traffic">
+            <span></span>
+            <span></span>
+            <span></span>
+            <strong>uf</strong>
+          </div>
+          <pre><code>uf v0.1.0
+Unified Toolchain for Flow
+
+$ curl -fsSL https://setup.uniflowed.dev | sh
+$ nix profile install github:ubugeeei-prod/uf#uf
+$ uf info
+
+All set: Happy coding.</code></pre>
+        </div>
+        <div class="install-copy">
+          <h3>Install</h3>
+          <p>Use the hosted installer, or install the flake package directly.</p>
+          <pre><code>curl -fsSL https://setup.uniflowed.dev | sh
+nix run github:ubugeeei-prod/uf#uf -- --version
+nix profile install github:ubugeeei-prod/uf#uf</code></pre>
+          <a class="primary-action" href="/install/">Open install docs</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -20,7 +20,7 @@ not enabled yet, Cloudflare returns `10042: Please enable R2 through the
 Cloudflare Dashboard` while creating the release buckets.
 
 ```sh
-cargo run --release --package uf_cli --bin uf -- --cwd docs build
+tools/docs/build.sh
 export CLOUDFLARE_API_TOKEN=...
 tofu -chdir=infra/cloudflare init
 tofu -chdir=infra/cloudflare apply -var account_id=... -var zone_id=...
@@ -35,6 +35,23 @@ terraform -chdir=infra/cloudflare apply -var account_id=... -var zone_id=...
 
 The API token needs enough permissions to manage Workers, Workers custom
 domains, DNS records in `uniflowed.dev`, and R2 buckets/custom domains.
+
+## Docs Deploy
+
+The generated docs site is dogfooded through `uf build`. The same build script
+copies `brand/` into `docs/dist/docs/brand` before the bundle report is written.
+
+```sh
+tools/docs/build.sh
+npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.docs.jsonc
+npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.docs.jsonc
+npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.setup.jsonc
+npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.setup.jsonc
+```
+
+`.github/workflows/docs.yml` builds docs for pull requests and deploys the
+existing `uf-docs` and `uf-setup` Workers from `main` when
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are available.
 
 ## Release Upload
 

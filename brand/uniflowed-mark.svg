@@ -1,0 +1,25 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">uf mark</title>
+  <desc id="desc">A continuous gradient uf mark.</desc>
+  <defs>
+    <linearGradient id="u" x1="16" y1="44" x2="82" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#35D6F6"/>
+      <stop offset="0.48" stop-color="#2677FF"/>
+      <stop offset="1" stop-color="#5C49FF"/>
+    </linearGradient>
+    <linearGradient id="f" x1="66" y1="18" x2="112" y2="74" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2677FF"/>
+      <stop offset="0.54" stop-color="#8F4BFF"/>
+      <stop offset="1" stop-color="#D84BFF"/>
+    </linearGradient>
+    <linearGradient id="bridge" x1="35" y1="91" x2="106" y2="57" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2677FF"/>
+      <stop offset="0.46" stop-color="#5C49FF"/>
+      <stop offset="1" stop-color="#D84BFF"/>
+    </linearGradient>
+  </defs>
+  <path d="M25 44V70C25 90 41 105 61 105C82 105 96 90 96 70V53" stroke="url(#u)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M73 103V49C73 30 88 16 107 16H111" stroke="url(#f)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M77 56H108" stroke="url(#f)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M38 89C56 85 66 69 80 63C90 58 101 58 111 58" stroke="url(#bridge)" stroke-width="16" stroke-linecap="round" opacity="0.88"/>
+</svg>
