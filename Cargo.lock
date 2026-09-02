@@ -2780,6 +2780,8 @@ name = "uf_fmt"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "flow_parser",
+ "flow_parser_utils_output",
  "memchr",
  "similar-asserts",
  "thiserror",

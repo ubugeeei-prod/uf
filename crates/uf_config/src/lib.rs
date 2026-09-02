@@ -797,7 +797,9 @@ impl Default for FmtConfig {
     fn default() -> Self {
         Self {
             indent_width: 2,
-            line_width: 100,
+            // Flow's own printer targets 80 columns and is not configurable;
+            // `uf fmt` is that printer, so this is what it does.
+            line_width: 80,
             max_blank_lines: 1,
             quotes: QuoteStyle::Double,
             semicolons: true,

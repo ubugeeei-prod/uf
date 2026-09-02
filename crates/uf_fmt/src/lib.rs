@@ -27,6 +27,7 @@
 //! assert_eq!(result.output, "const x = { a: 1, b: 2 };\n");
 //! ```
 
+mod layout;
 pub mod lexer;
 mod printer;
 
@@ -56,11 +57,38 @@ pub struct FormatResult {
 /// Why a source file could not be formatted.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum FormatError {
-    /// `indentWidth` was zero, which cannot produce nested indentation, or
-    /// larger than [`MAX_INDENT_WIDTH`], which would let deep nesting emit an
-    /// unbounded amount of leading whitespace.
-    #[error("indent width must be between 1 and {MAX_INDENT_WIDTH}")]
-    InvalidIndentWidth,
+    /// The source is not valid Flow, so there is no AST to print. A formatter
+    /// that guessed at the grammar would reformat it anyway, and could change
+    /// what it means.
+    #[error("{line}:{column}: {message}")]
+    Parse {
+        /// One-based line.
+        line: u32,
+        /// Zero-based column.
+        column: u32,
+        /// The parser's message.
+        message: String,
+    },
+    /// The source nests deeper than the parser can recurse. Formatting it
+    /// would abort the process, so it is refused with a location instead.
+    #[error("nesting is {depth} deep; `uf fmt` accepts {limit}")]
+    TooDeep {
+        /// Deepest nesting found.
+        depth: u32,
+        /// What the formatter accepts.
+        limit: u32,
+    },
+    /// The formatter's worker thread could not be started or finished.
+    #[error("the formatter could not run: {0}")]
+    Spawn(String),
+    /// The configuration asks for something Flow's printer does not offer.
+    #[error("`fmt.{field}` is not configurable; Flow's formatter is fixed at {fixed_at}")]
+    Unsupported {
+        /// The `uf.config.js` field.
+        field: &'static str,
+        /// What Flow's printer does instead.
+        fixed_at: u16,
+    },
 }
 
 /// Format one source file.
@@ -74,14 +102,34 @@ pub enum FormatError {
 /// Returns [`FormatError::InvalidIndentWidth`] when [`FmtConfig::indent_width`]
 /// is zero or larger than [`MAX_INDENT_WIDTH`].
 pub fn format_source(source: &str, config: &FmtConfig) -> Result<FormatResult, FormatError> {
-    if config.indent_width == 0 || config.indent_width > MAX_INDENT_WIDTH {
-        return Err(FormatError::InvalidIndentWidth);
+    if config.indent_width != layout::FLOW_INDENT_WIDTH {
+        return Err(FormatError::Unsupported {
+            field: "indentWidth",
+            fixed_at: u16::from(layout::FLOW_INDENT_WIDTH),
+        });
+    }
+    if config.line_width != layout::FLOW_LINE_WIDTH {
+        return Err(FormatError::Unsupported {
+            field: "lineWidth",
+            fixed_at: layout::FLOW_LINE_WIDTH,
+        });
     }
 
     let (bom, body) = split_bom(source);
     let normalized = normalize_line_endings(body);
-    let tokens = lexer::tokenize(&normalized);
-    let printed = printer::print(&normalized, &tokens, config);
+    let printed = layout::print(&normalized, config).map_err(|error| match error {
+        layout::LayoutError::Parse {
+            line,
+            column,
+            message,
+        } => FormatError::Parse {
+            line,
+            column,
+            message,
+        },
+        layout::LayoutError::TooDeep { depth, limit } => FormatError::TooDeep { depth, limit },
+        layout::LayoutError::Spawn(message) => FormatError::Spawn(message),
+    })?;
 
     let output = if bom.is_empty() {
         printed

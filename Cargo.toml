@@ -71,6 +71,7 @@ flow_common_errors = { path = "upstream/flow/rust_port/crates/flow_common_errors
 flow_flowlib = { path = "upstream/flow/rust_port/crates/flow_flowlib" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
+flow_parser_utils_output = { path = "upstream/flow/rust_port/crates/flow_parser_utils_output" }
 flow_parser_utils = { path = "upstream/flow/rust_port/crates/flow_parser_utils" }
 flow_parsing = { path = "upstream/flow/rust_port/crates/flow_parsing" }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }

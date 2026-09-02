@@ -9,6 +9,8 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+flow_parser.workspace = true
+flow_parser_utils_output.workspace = true
 uf_config = { path = "../uf_config" }
 memchr.workspace = true
 thiserror.workspace = true
