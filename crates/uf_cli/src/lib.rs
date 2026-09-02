@@ -21,6 +21,7 @@ use uf_prepare::default_plan;
 use uf_project::{CreateKind, CreateOptions, collect_source_files, create_project};
 use uf_rm::{RuntimeManagerPlan, RuntimeReference, RuntimeUsePlan, XdgEnv, XdgLayout};
 use uf_router::{discover_routes, write_router_manifest};
+use uf_rsc::{BuildId, ProjectScanOptions, analyze_project};
 use uf_runtime::RuntimeContract;
 use uf_test::{NativeTestRunnerPlan, discover_tests, merge_plans, run_tests};
 
@@ -240,6 +241,12 @@ fn build(cwd: &Utf8Path) -> Result<()> {
         },
     });
     write_json_file(&build_manifest, &payload)?;
+    let rsc = analyze_project(
+        &resolved.root,
+        &BuildId::from_env_or_generate(),
+        &ProjectScanOptions::default(),
+    )?;
+    let rsc_manifest = uf_rsc::write_manifest(&out_dir, &rsc.manifest())?;
     println!(
         "uf build: entries={} outDir={} sourcemap={} backend=uf-native/vite-compatible/rolldown-compatible manifest={}",
         resolved
@@ -253,6 +260,14 @@ fn build(cwd: &Utf8Path) -> Result<()> {
         resolved.config.build.out_dir,
         resolved.config.build.sourcemap,
         build_manifest
+    );
+    println!(
+        "uf build: rsc modules={} clientBoundaries={} serverActions={} diagnostics={} manifest={}",
+        rsc.graph.modules().len(),
+        rsc.graph.client_boundaries().len(),
+        rsc.callable_action_count(),
+        rsc.graph.diagnostics().len(),
+        rsc_manifest
     );
     if let Some(manifest) = manifest {
         println!("generated {}", manifest);

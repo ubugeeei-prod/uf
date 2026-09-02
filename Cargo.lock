@@ -1140,6 +1140,7 @@ dependencies = [
  "uf_project",
  "uf_rm",
  "uf_router",
+ "uf_rsc",
  "uf_runtime",
  "uf_test",
  "uf_tui",
@@ -1353,6 +1354,25 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_config",
+ "walkdir",
+]
+
+[[package]]
+name = "uf_rsc"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "compact_str",
+ "criterion",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "similar-asserts",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "uf_infra",
  "walkdir",
 ]
 

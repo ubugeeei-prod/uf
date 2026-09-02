@@ -22,6 +22,7 @@ members = [
   "crates/uf_project",
   "crates/uf_rm",
   "crates/uf_router",
+  "crates/uf_rsc",
   "crates/uf_runtime",
   "crates/uf_state",
   "crates/uf_story",
