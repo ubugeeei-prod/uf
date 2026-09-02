@@ -209,8 +209,8 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         "ui": ui_components(),
         "engines": {
             "parser": "official-flow-parser",
-            "build": "vite-compatible/rolldown",
-            "devServer": "vite-compatible",
+            "build": "uf-native",
+            "devServer": "uf-native",
             "runtime": "hermes-wintertc-native-contract",
             "runtimeContract": runtime,
             "server": {

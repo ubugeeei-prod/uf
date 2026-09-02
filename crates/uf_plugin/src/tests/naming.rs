@@ -23,20 +23,51 @@ const ENGINE_NAMES: [&str; 3] = ["vite", "rolldown", "rollup"];
 
 /// Source trees whose user-visible strings are checked.
 ///
-/// This crate, because every id it invents ends up in `uf inspect --json`, and
-/// the project templates, because they become the files in someone's
-/// repository.
-const CHECKED_TREES: [&str; 3] = ["src", "benches", "../uf_project/src"];
+/// Everything that decides what a user reads: this crate, because every id it
+/// invents ends up in `uf inspect --json`; the CLI, because it writes both the
+/// terminal output and the manifests that land in someone's `dist/`; the config
+/// crate, because its enum spellings are the vocabulary of `uf.config.js`; and
+/// the project templates, because they become the files in someone's repository.
+const CHECKED_TREES: [&str; 5] = [
+    "src",
+    "benches",
+    "../uf_cli/src",
+    "../uf_config/src",
+    "../uf_project/src",
+];
+
+/// Shipped JavaScript trees whose user-visible strings are checked.
+///
+/// `@uniflowed/*` modules are published, so a comment in one is something a
+/// user reads in their own `node_modules`.
+const CHECKED_JS_TREES: [&str; 1] = ["../uf_lib/lib"];
 
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Collect the `.js` files under `dir` that are published to users.
+fn js_sources(dir: &Path, into: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            js_sources(&path, into);
+        } else if path.extension().is_some_and(|extension| extension == "js") {
+            into.push(path);
+        }
+    }
+}
+
 /// Collect the `.rs` files under `dir` that end up in a shipped binary.
 ///
-/// `#[cfg(test)]` trees are skipped: they are the one place the engines have to
-/// be named, because a test for "this name never reaches a user" has to say the
-/// name to look for it, and none of that code is ever compiled into `uf`.
+/// `#[cfg(test)]` code is skipped, as a `tests` directory or a `tests.rs`
+/// sibling: it is the one place the engines have to be named, because a test
+/// for "this name never reaches a user" has to say the name to look for it, and
+/// a fixture may legitimately contain a *user's* task command such as
+/// `vite --host 0.0.0.0`. None of it is ever compiled into `uf`.
 fn rust_sources(dir: &Path, into: &mut Vec<PathBuf>) {
     if dir.file_name().is_some_and(|name| name == "tests") {
         return;
@@ -48,6 +79,8 @@ fn rust_sources(dir: &Path, into: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             rust_sources(&path, into);
+        } else if path.file_name().is_some_and(|name| name == "tests.rs") {
+            continue;
         } else if path.extension().is_some_and(|extension| extension == "rs") {
             into.push(path);
         }
@@ -78,7 +111,7 @@ fn no_user_visible_string_names_the_underlying_engines() {
         rust_sources(&root.join(tree), &mut sources);
     }
     assert!(
-        sources.len() > 8,
+        sources.len() > 25,
         "the grep found almost nothing, so it is not actually checking anything: {sources:?}"
     );
 
@@ -98,6 +131,40 @@ fn no_user_visible_string_names_the_underlying_engines() {
     assert!(
         leaks.is_empty(),
         "an engine name reached a user-visible string:\n{}",
+        leaks.join("\n")
+    );
+}
+
+/// The shipped `@uniflowed/*` modules are read in someone's `node_modules`, so
+/// their comments count as user-visible too — unlike this repository's own Rust
+/// comments, which are for people editing `uf`.
+#[test]
+fn no_shipped_javascript_names_the_underlying_engines() {
+    let root = crate_dir();
+    let mut sources = Vec::new();
+    for tree in CHECKED_JS_TREES {
+        js_sources(&root.join(tree), &mut sources);
+    }
+    assert!(
+        sources.len() > 20,
+        "the grep found almost nothing, so it is not actually checking anything: {sources:?}"
+    );
+
+    let mut leaks = Vec::new();
+    for path in sources {
+        let source = fs::read_to_string(&path).expect("readable source");
+        for engine in ENGINE_NAMES {
+            for (line_number, line) in source.to_ascii_lowercase().lines().enumerate() {
+                if line.contains(engine) {
+                    leaks.push(format!("{}:{}: {engine}", path.display(), line_number + 1));
+                }
+            }
+        }
+    }
+
+    assert!(
+        leaks.is_empty(),
+        "an engine name reached a shipped module:\n{}",
         leaks.join("\n")
     );
 }

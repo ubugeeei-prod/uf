@@ -30,8 +30,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, once: bool) -> Result<()> {
             "host": address.ip().to_string(),
             "port": address.port(),
             "engine": "uf-native",
-            "viteCompatibility": true,
-            "rolldownCompatibility": true,
+            "pluginContract": "uf-plugin-v1",
             "health": "/__uf/health",
         }),
     )?;

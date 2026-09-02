@@ -41,7 +41,7 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     let payload = json!({
         "version": 1,
         "engine": "uf-native",
-        "bundlerCompatibility": ["vite", "rolldown"],
+        "pluginContract": "uf-plugin-v1",
         "entries": resolved.config.build.entries,
         "routes": routes.iter().map(|route| json!({
             "path": route.path,
