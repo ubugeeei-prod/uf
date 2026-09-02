@@ -61,6 +61,7 @@ pub(crate) enum Commands {
         #[arg(long)]
         check: bool,
     },
+    Info,
     Inspect {
         #[arg(long)]
         json: bool,

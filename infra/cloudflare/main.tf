@@ -94,7 +94,8 @@ resource "cloudflare_workers_script" "docs" {
     directory          = "${path.module}/../../docs/dist/docs"
     binding            = "ASSETS"
     not_found_handling = "404-page"
-    run_worker_first   = ["/install", "/install/", "/api/*"]
+    html_handling      = "auto-trailing-slash"
+    run_worker_first   = ["/setup", "/setup/", "/api/*"]
   }
 }
 

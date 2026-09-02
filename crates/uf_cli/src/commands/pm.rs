@@ -10,6 +10,7 @@ use uf_pm::{PackageManagerPlan, install_workspace};
 use uf_rm::{RuntimeManagerPlan, RuntimeReference, RuntimeUsePlan, XdgEnv, XdgLayout};
 use uf_term::{KeyValue, Status, Tone};
 
+use crate::brand;
 use crate::support::{enabled, plural, project_label, write_json_file};
 use crate::ui::Ui;
 
@@ -31,6 +32,8 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let summary = format!("installed {}", plural(report.packages.len(), "package"));
 
     ui.render(|renderer, out| {
+        brand::render_product_card(renderer, out, "uf install");
+        renderer.blank(out);
         renderer.banner(out, "uf install", Some(project_label(&resolved.root)));
         renderer.blank(out);
         renderer.key_values(

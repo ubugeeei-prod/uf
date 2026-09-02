@@ -32,13 +32,27 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             "@uniflowed/react",
             NativeModuleKind::Framework,
             Stability::Experimental,
-            &["React", "Suspense", "use", "cache"],
+            &["Node", "React", "SetState", "Suspense", "use", "cache"],
         ),
         NativeModule::new(
             "@uniflowed/react-native",
             NativeModuleKind::Framework,
             Stability::Experimental,
             &["View", "Text", "Platform"],
+        ),
+        NativeModule::new(
+            "@uniflowed/brand",
+            NativeModuleKind::Style,
+            Stability::Experimental,
+            &[
+                "ufBrand",
+                "ufBrandAssets",
+                "ufPalette",
+                "ufTextScale",
+                "ufSpacingScale",
+                "ufRadiusScale",
+                "ufCommands",
+            ],
         ),
         NativeModule::new(
             "@uniflowed/testing",
