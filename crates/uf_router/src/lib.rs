@@ -154,14 +154,14 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
     output.push_str("export type RouteParams = {|\n");
     for route in routes {
         output.push_str(&format!(
-            "  +'{}': {},\n",
+            "  '{}': {},\n",
             route.path,
             route_params_type(&route.params)
         ));
     }
     output.push_str("|};\n\n");
     output.push_str(
-        "declare export function route<Path: RoutePath>(path: Path, params: $ElementType<RouteParams, Path>): string;\n",
+        "declare export function route<Path extends RoutePath>(path: Path, params: RouteParams[Path]): string;\n",
     );
     output
 }
@@ -242,7 +242,7 @@ fn route_params_type(params: &[RouteParam]) -> String {
                 RouteParamKind::Single => "string",
                 RouteParamKind::CatchAll => "$ReadOnlyArray<string>",
             };
-            format!("+{}: {}", param.name, ty)
+            format!("{}: {}", param.name, ty)
         })
         .collect::<Vec<_>>()
         .join(", ");
@@ -292,7 +292,7 @@ mod tests {
         let source = generate_router_flow(&[route]);
 
         assert!(source.contains("export type RoutePath = '/users/:id';"));
-        assert!(source.contains("+'/users/:id': {| +id: string |}"));
+        assert!(source.contains("'/users/:id': {| id: string |}"));
     }
 
     /// Generated code has to satisfy the rules uf ships enabled.

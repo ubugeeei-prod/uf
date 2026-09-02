@@ -2,7 +2,7 @@
 import * as React from "@uniflowed/react";
 import { Suspense } from "@uniflowed/react";
 
-component Layout(children: React.Node) {
+export component Layout(children: mixed) {
   return (
     <html lang="en">
       <head>
@@ -23,5 +23,3 @@ component Layout(children: React.Node) {
     </html>
   );
 }
-
-export default Layout;

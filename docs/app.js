@@ -1,4 +1,4 @@
 // @flow
 import { routerView } from "@uniflowed/router";
 
-export default routerView('./app');
+export default routerView("./app");

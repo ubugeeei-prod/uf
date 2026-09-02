@@ -32,7 +32,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             "@uniflowed/react",
             NativeModuleKind::Framework,
             Stability::Experimental,
-            &["React", "Suspense", "use", "cache"],
+            &["Node", "React", "SetState", "Suspense", "use", "cache"],
         ),
         NativeModule::new(
             "@uniflowed/react-native",

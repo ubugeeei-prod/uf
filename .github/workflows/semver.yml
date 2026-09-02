@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: semver-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cargo-semver-checks:
     name: Cargo Semver Checks
