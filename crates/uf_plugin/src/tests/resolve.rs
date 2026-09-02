@@ -166,7 +166,7 @@ fn a_project_plugin_can_ask_to_run_before_the_builtins_in_its_band() {
     // first and the sort inside a band is stable.
     assert_eq!(
         names.iter().position(|name| *name == "mdx"),
-        Some(2),
+        Some(3),
         "{names:?}"
     );
 }

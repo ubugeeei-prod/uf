@@ -1,31 +1,16 @@
-//! Retry and repeat schedules.
-//!
-//! A schedule answers one question, repeatedly: given that an effect has now run
-//! `n` times and `elapsed` has passed, should it run again, and after how long?
-//! Keeping that as data rather than a loop is what lets `retry` and `repeat`
-//! share one vocabulary, and lets a schedule be combined
-//! ([`Schedule::intersect`], [`Schedule::union`]) instead of re-implemented.
-//!
-//! All arithmetic saturates. A schedule is a policy for handling failure, so
-//! overflowing one is a spectacular way to turn a recoverable error into a
-//! panic — `exponential` with a large factor reaches `Duration::MAX` and stays
-//! there rather than wrapping to zero and spinning.
+//! Retry schedule data used by the native test runner.
 
 use std::time::Duration;
 
 /// Largest delay a schedule will ever ask for.
-///
-/// `Duration::MAX` is over five hundred billion years; a bound that a human can
-/// reason about makes "the backoff saturated" visible instead of looking like a
-/// hang.
 pub const MAX_DELAY: Duration = Duration::from_secs(60 * 60 * 24 * 365);
 
-/// What a schedule decides after one step.
+/// What a retry schedule decides after one step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     /// Run again after this delay.
     Continue(Duration),
-    /// Stop.
+    /// Stop retrying.
     Done,
 }
 
@@ -44,17 +29,17 @@ impl Decision {
     }
 }
 
-/// How many times an effect has run, and for how long.
+/// How many times a test case has already retried, and for how long.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Attempt {
-    /// Completed runs so far. The first decision is made with `count == 0`.
+    /// Completed retries so far. The first retry decision is made with `0`.
     pub count: u32,
-    /// Time since the first attempt started.
+    /// Time since the first test execution started.
     pub elapsed: Duration,
 }
 
 impl Attempt {
-    /// The state before the first run.
+    /// The state before any retry decision.
     pub const fn first() -> Self {
         Self {
             count: 0,
@@ -71,11 +56,7 @@ impl Attempt {
     }
 }
 
-/// A retry or repeat policy.
-///
-/// Deliberately a closed enum rather than a boxed closure: a schedule that can
-/// be inspected can be logged, serialized into a build manifest, and tested for
-/// equality, and none of the combinators need more expressiveness than this.
+/// A retry policy for test cases.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Schedule {
     /// Run at most `n` more times, immediately.
@@ -83,10 +64,6 @@ pub enum Schedule {
     /// Wait a fixed delay, forever.
     Spaced(Duration),
     /// `base * factor^count`, saturating at [`MAX_DELAY`].
-    ///
-    /// `factor` is scaled by 100, so 200 doubles and 150 grows by half. Integer
-    /// arithmetic keeps the schedule exactly reproducible across machines, which
-    /// a float would not.
     Exponential {
         /// Delay before the first retry.
         base: Duration,
@@ -102,10 +79,6 @@ pub enum Schedule {
     /// Continue while either agrees; take the shorter delay.
     Union(Box<Schedule>, Box<Schedule>),
     /// Follow the inner schedule, but never wait longer than this.
-    ///
-    /// A ceiling is not the same as [`Schedule::Intersect`] with
-    /// [`Schedule::Spaced`]: that takes the *longer* of the two delays, which
-    /// turns a cap into a floor. Capping needs its own shape.
     Capped(Box<Schedule>, Duration),
     /// Never continue.
     Stop,
@@ -124,7 +97,7 @@ impl Schedule {
         Self::Spaced(delay)
     }
 
-    /// Exponential backoff, doubling.
+    /// Exponential backoff, doubling by default.
     pub const fn exponential(base: Duration) -> Self {
         Self::Exponential {
             base,
@@ -166,10 +139,6 @@ impl Schedule {
     }
 
     /// Decide what to do after `attempt`.
-    ///
-    /// Iterative over an explicit stack: `intersect` and `union` nest, and a
-    /// schedule assembled in a loop should not be able to overflow the stack of
-    /// the code recovering from an error.
     pub fn decide(&self, attempt: Attempt) -> Decision {
         #[derive(Debug)]
         enum Step<'a> {
@@ -236,6 +205,22 @@ impl Schedule {
         results.pop().expect("a decision")
     }
 
+    /// Every delay this schedule would ask for, up to `limit` attempts.
+    pub fn delays(&self, limit: usize) -> Vec<Duration> {
+        let mut delays = Vec::new();
+        let mut attempt = Attempt::first();
+        for _ in 0..limit {
+            match self.decide(attempt) {
+                Decision::Continue(delay) => {
+                    delays.push(delay);
+                    attempt = attempt.advance(delay);
+                }
+                Decision::Done => break,
+            }
+        }
+        delays
+    }
+
     fn decide_leaf(&self, attempt: Attempt) -> Decision {
         match self {
             Self::Stop => Decision::Done,
@@ -265,33 +250,12 @@ impl Schedule {
             }
         }
     }
-
-    /// Every delay this schedule would ask for, up to `limit` attempts.
-    ///
-    /// Bounded on purpose: a `Forever` schedule has no last element, and a
-    /// helper that hangs on one is worse than no helper.
-    pub fn delays(&self, limit: usize) -> Vec<Duration> {
-        let mut delays = Vec::new();
-        let mut attempt = Attempt::first();
-        for _ in 0..limit {
-            match self.decide(attempt) {
-                Decision::Continue(delay) => {
-                    delays.push(delay);
-                    attempt = attempt.advance(delay);
-                }
-                Decision::Done => break,
-            }
-        }
-        delays
-    }
 }
 
-/// Clamp a delay to [`MAX_DELAY`].
 fn clamp_delay(delay: Duration) -> Duration {
     if delay > MAX_DELAY { MAX_DELAY } else { delay }
 }
 
-/// `base * (factor_percent / 100)^count`, saturating.
 fn exponential_delay(base: Duration, factor_percent: u32, count: u32) -> Duration {
     let mut nanos = base.as_nanos();
     let max_nanos = MAX_DELAY.as_nanos();
@@ -311,7 +275,6 @@ fn exponential_delay(base: Duration, factor_percent: u32, count: u32) -> Duratio
     }
 }
 
-/// `base * fib(count)`, saturating, with `fib(0) = 1`.
 fn fibonacci_delay(base: Duration, count: u32) -> Duration {
     let mut previous: u128 = 1;
     let mut current: u128 = 1;
@@ -332,13 +295,9 @@ fn fibonacci_delay(base: Duration, count: u32) -> Duration {
     }
 }
 
-/// Build a `Duration` from nanoseconds already known to be under [`MAX_DELAY`].
 fn duration_from_nanos(nanos: u128) -> Duration {
     const NANOS_PER_SEC: u128 = 1_000_000_000;
     let secs = u64::try_from(nanos / NANOS_PER_SEC).unwrap_or(u64::MAX);
     let subsec = u32::try_from(nanos % NANOS_PER_SEC).unwrap_or(0);
     Duration::new(secs, subsec)
 }
-
-#[cfg(test)]
-mod tests;

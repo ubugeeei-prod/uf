@@ -34,7 +34,23 @@ fn inspect_reports_zero_config_defaults() {
     );
     assert_eq!(
         value["engines"]["runtimeContract"]["javascriptEngine"],
-        serde_json::json!("hermes")
+        serde_json::json!("capability-js-host")
+    );
+    assert_eq!(
+        value["engines"]["runtimeContract"]["hosts"],
+        serde_json::json!(["node", "deno", "bun"])
+    );
+    assert_eq!(
+        value["engines"]["runtime"],
+        serde_json::json!("capability-js-host-contract")
+    );
+    assert_eq!(
+        value["engines"]["testRunner"]["runtime"],
+        serde_json::json!("capability-js-host")
+    );
+    assert_eq!(
+        value["engines"]["testRunner"]["hosts"],
+        serde_json::json!(["node", "deno", "bun"])
     );
     assert_eq!(
         value["engines"]["testRunner"]["performanceTarget"],

@@ -6,7 +6,6 @@ members = [
   "crates/uf_cli",
   "crates/uf_config",
   "crates/uf_devserver",
-  "crates/uf_effect",
   "crates/uf_flow",
   "crates/uf_fmt",
   "crates/uf_infra",
@@ -27,7 +26,6 @@ members = [
   "crates/uf_term",
   "crates/uf_test",
   "crates/uf_tui",
-  "crates/uf_validator",
 ]
 exclude = ["upstream"]
 resolver = "3"
@@ -38,7 +36,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ubugeeei-prod/uf"
 rust-version = "1.98"
-version = "0.0.1"
+version = "0.0.0-alpha.0"
 
 [workspace.dependencies]
 anyhow = "1.0.104"

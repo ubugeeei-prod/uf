@@ -13,22 +13,37 @@
 use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::{Value, json};
+#[cfg(feature = "upstream-typecheck")]
 use uf_check::{
     CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic, active_backend, backend_name,
     check_sources,
 };
 use uf_lint::{LintReport, Severity, SourceFile};
-use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Status, Tone, push_spaces};
+use uf_term::Status;
+#[cfg(feature = "upstream-typecheck")]
+use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
     LintCommand, group_by_path, lint_payload, render_file_summary, render_group, render_verdict,
     run_lint, severity_count,
 };
-use crate::support::{plural, problem_summary};
+use crate::support::plural;
+#[cfg(feature = "upstream-typecheck")]
+use crate::support::problem_summary;
 use crate::ui::Ui;
 
 /// How many untyped imports are named before the list is summarised.
+#[cfg(feature = "upstream-typecheck")]
 const UNTYPED_MODULES_SHOWN: usize = 5;
+
+/// Severity counts from the type-checking half of `uf check`.
+#[derive(Clone, Copy)]
+enum TypeSeverity {
+    /// Type errors.
+    Error,
+    /// Type warnings.
+    Warning,
+}
 
 /// What the type-checking half of `uf check` produced.
 ///
@@ -39,12 +54,15 @@ enum TypeCheck {
     /// No checker was compiled in.
     Unavailable,
     /// Inference ran over the project.
+    #[cfg(feature = "upstream-typecheck")]
     Checked(CheckReport),
     /// Inference could not run.
+    #[cfg(feature = "upstream-typecheck")]
     Failed(CheckError),
 }
 
 impl TypeCheck {
+    #[cfg(feature = "upstream-typecheck")]
     fn report(&self) -> Option<&CheckReport> {
         match self {
             Self::Checked(report) => Some(report),
@@ -52,21 +70,47 @@ impl TypeCheck {
         }
     }
 
+    #[cfg(feature = "upstream-typecheck")]
     fn diagnostics(&self) -> &[TypeDiagnostic] {
         self.report()
             .map_or(&[][..], |report| report.diagnostics.as_slice())
     }
 
-    fn count(&self, severity: uf_check::Severity) -> usize {
-        self.report().map_or(0, |report| report.count(severity))
+    fn count(&self, severity: TypeSeverity) -> usize {
+        #[cfg(feature = "upstream-typecheck")]
+        {
+            let severity = match severity {
+                TypeSeverity::Error => uf_check::Severity::Error,
+                TypeSeverity::Warning => uf_check::Severity::Warning,
+            };
+            self.report().map_or(0, |report| report.count(severity))
+        }
+        #[cfg(not(feature = "upstream-typecheck"))]
+        {
+            let _ = severity;
+            0
+        }
     }
 
     fn status(&self) -> &'static str {
         match self {
             Self::Unavailable => "unavailable",
+            #[cfg(feature = "upstream-typecheck")]
             Self::Checked(_) => "checked",
+            #[cfg(feature = "upstream-typecheck")]
             Self::Failed(_) => "failed",
         }
+    }
+}
+
+fn type_backend_name() -> String {
+    #[cfg(feature = "upstream-typecheck")]
+    {
+        backend_name(active_backend()).to_string()
+    }
+    #[cfg(not(feature = "upstream-typecheck"))]
+    {
+        "unavailable".to_string()
     }
 }
 
@@ -85,7 +129,7 @@ pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool) -> Result<()> {
         render(ui, &lint, &sources, &types);
     }
 
-    let errors = severity_count(&lint, Severity::Error) + types.count(uf_check::Severity::Error);
+    let errors = severity_count(&lint, Severity::Error) + types.count(TypeSeverity::Error);
     if errors > 0 {
         bail!(
             "{} failed with {}",
@@ -93,6 +137,7 @@ pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool) -> Result<()> {
             plural(errors, "error")
         );
     }
+    #[cfg(feature = "upstream-typecheck")]
     if let TypeCheck::Failed(error) = types {
         return Err(error.into());
     }
@@ -105,6 +150,7 @@ pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool) -> Result<()> {
 /// reports them because a library caller needs to know why inference did not
 /// run, but `uf lint` has already reported the same syntax error with its own
 /// rule id, and printing it twice helps nobody.
+#[cfg(feature = "upstream-typecheck")]
 fn type_check(sources: &[SourceFile]) -> TypeCheck {
     let inputs: Vec<Source<'_>> = sources
         .iter()
@@ -123,31 +169,51 @@ fn type_check(sources: &[SourceFile]) -> TypeCheck {
     }
 }
 
+#[cfg(not(feature = "upstream-typecheck"))]
+fn type_check(_sources: &[SourceFile]) -> TypeCheck {
+    TypeCheck::Unavailable
+}
+
 fn payload(lint: &LintReport, types: &TypeCheck) -> Value {
     let mut value = lint_payload(LintCommand::Check, lint);
-    let errors = severity_count(lint, Severity::Error) + types.count(uf_check::Severity::Error);
-    let warnings = severity_count(lint, Severity::Warn) + types.count(uf_check::Severity::Warning);
+    let errors = severity_count(lint, Severity::Error) + types.count(TypeSeverity::Error);
+    let warnings = severity_count(lint, Severity::Warn) + types.count(TypeSeverity::Warning);
 
-    let mut type_check = json!({
-        "backend": backend_name(active_backend()),
-        "status": types.status(),
-        "diagnostics": types.diagnostics(),
-    });
-    if let Some(report) = types.report() {
-        type_check["filesChecked"] = json!(report.files_checked);
-        type_check["elapsedMs"] = json!(report.elapsed.as_secs_f64() * 1000.0);
-        type_check["builtinsMs"] = json!(report.builtins.cold_elapsed.as_secs_f64() * 1000.0);
-        type_check["builtinsCold"] = json!(report.builtins.cold);
-        type_check["untypedModules"] = json!(report.untyped_modules);
-    }
-    if let TypeCheck::Failed(error) = types {
-        type_check["error"] = json!(error.to_string());
-    }
+    let type_check = type_check_payload(types);
 
     value["errors"] = json!(errors);
     value["warnings"] = json!(warnings);
     value["typeCheck"] = type_check;
     value
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn type_check_payload(types: &TypeCheck) -> Value {
+    let mut value = json!({
+        "backend": type_backend_name(),
+        "status": types.status(),
+        "diagnostics": types.diagnostics(),
+    });
+    if let Some(report) = types.report() {
+        value["filesChecked"] = json!(report.files_checked);
+        value["elapsedMs"] = json!(report.elapsed.as_secs_f64() * 1000.0);
+        value["builtinsMs"] = json!(report.builtins.cold_elapsed.as_secs_f64() * 1000.0);
+        value["builtinsCold"] = json!(report.builtins.cold);
+        value["untypedModules"] = json!(report.untyped_modules);
+    }
+    if let TypeCheck::Failed(error) = types {
+        value["error"] = json!(error.to_string());
+    }
+    value
+}
+
+#[cfg(not(feature = "upstream-typecheck"))]
+fn type_check_payload(types: &TypeCheck) -> Value {
+    json!({
+        "backend": type_backend_name(),
+        "status": types.status(),
+        "diagnostics": [],
+    })
 }
 
 fn render(ui: &mut Ui, lint: &LintReport, sources: &[SourceFile], types: &TypeCheck) {
@@ -172,13 +238,14 @@ fn render(ui: &mut Ui, lint: &LintReport, sources: &[SourceFile], types: &TypeCh
     render_verdict(
         ui,
         lint,
-        lint_errors + types.count(uf_check::Severity::Error),
-        lint_warnings + types.count(uf_check::Severity::Warning),
+        lint_errors + types.count(TypeSeverity::Error),
+        lint_warnings + types.count(TypeSeverity::Warning),
     );
     render_type_footer(ui, types);
 }
 
 /// Type diagnostics, grouped by file, as code frames.
+#[cfg(feature = "upstream-typecheck")]
 fn render_type_diagnostics(ui: &mut Ui, sources: &[SourceFile], types: &TypeCheck) {
     let diagnostics = types.diagnostics();
     if diagnostics.is_empty() {
@@ -197,6 +264,10 @@ fn render_type_diagnostics(ui: &mut Ui, sources: &[SourceFile], types: &TypeChec
     }
 }
 
+#[cfg(not(feature = "upstream-typecheck"))]
+fn render_type_diagnostics(_ui: &mut Ui, _sources: &[SourceFile], _types: &TypeCheck) {}
+
+#[cfg(feature = "upstream-typecheck")]
 fn render_type_group(ui: &mut Ui, sources: &[SourceFile], group: &[TypeDiagnostic]) {
     let path = group[0].primary.path.as_str();
     let lines: Option<Vec<&str>> = sources
@@ -291,6 +362,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 "type inference is not compiled into this build",
             );
         }),
+        #[cfg(feature = "upstream-typecheck")]
         TypeCheck::Failed(error) => {
             let detail = error.to_string();
             ui.render(|renderer, out| {
@@ -298,6 +370,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 renderer.status(out, Status::Warn, &detail);
             });
         }
+        #[cfg(feature = "upstream-typecheck")]
         TypeCheck::Checked(report) => {
             let files = report.files_checked.to_string();
             let inference = format!("{:.1?}", report.elapsed);
@@ -338,6 +411,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
 ///
 /// A project pulls in more packages than a terminal should list, and the full
 /// set is always in `--json`.
+#[cfg(feature = "upstream-typecheck")]
 fn untyped_module_list(report: &CheckReport) -> Vec<String> {
     let mut named: Vec<String> = report
         .untyped_modules

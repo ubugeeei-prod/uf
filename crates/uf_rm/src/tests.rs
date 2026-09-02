@@ -1,17 +1,20 @@
 use super::*;
 
 #[test]
-fn default_plan_is_uf_hermes_and_deploy_anywhere() {
+fn default_plan_is_capability_js_host_and_runtime_agnostic() {
     let plan = RuntimeManagerPlan::default();
 
-    assert_eq!(plan.engine, RuntimeEngine::Uf);
-    assert!(plan.includes_uf_runtime());
-    assert!(plan.uses_hermes());
+    assert_eq!(plan.engine, RuntimeEngine::Node);
+    assert!(!plan.includes_uf_runtime());
+    assert!(!plan.uses_hermes());
+    assert!(plan.uses_capability_js_host());
     assert!(plan.hosts.contains(&RuntimeHost::Node));
-    assert!(plan.hosts.contains(&RuntimeHost::Bun));
     assert!(plan.hosts.contains(&RuntimeHost::Deno));
-    assert!(plan.hosts.contains(&RuntimeHost::Edge));
-    assert!(plan.steps.contains(&RuntimeManagerStep::AcquireRuntime));
+    assert!(plan.hosts.contains(&RuntimeHost::Bun));
+    assert!(
+        plan.steps
+            .contains(&RuntimeManagerStep::DetectCapabilityHost)
+    );
     assert!(plan.steps.contains(&RuntimeManagerStep::ApplyAdapters));
     assert_eq!(plan.installer.endpoint, "https://setup.uniflowed.dev");
     assert!(plan.installer.shells.contains(&InstallerShell::Sh));
@@ -32,8 +35,8 @@ fn infers_hosts_from_config_without_duplicates() {
     let config = UniflowedConfig::default();
     let plan = RuntimeManagerPlan::infer_from_config(&config);
 
-    assert_eq!(plan.engine, RuntimeEngine::Uf);
-    assert_eq!(plan.hosts[0], RuntimeHost::Uf);
+    assert_eq!(plan.engine, RuntimeEngine::Node);
+    assert_eq!(plan.hosts[0], RuntimeHost::Node);
     assert_eq!(
         plan.hosts
             .iter()

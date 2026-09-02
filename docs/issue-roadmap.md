@@ -15,6 +15,8 @@
 - [ ] Keep all core implementation in Rust native crates.
 - [x] Use `uf.config.js` as the single user-visible config surface.
 - [x] Prefer `.js` files with `// @flow` for user-authored Flow source.
+- [x] Default app execution to runtime-agnostic Capability JS Hosts: Node.js,
+      Deno, and Bun.
 - [x] Start native `@uniflowed/test`, `@uniflowed/pm`, and `@uniflowed/rm` contracts.
 - [x] Start XDG-compliant uf runtime layout.
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
@@ -28,7 +30,9 @@
       The port's typing crates need `box_patterns`, removed from the floating
       nightly channel, so `rust-toolchain.toml` pins `nightly-2026-08-01`.
       68 ms to merge builtins, ~4 ms per file. See docs/architecture.md.
-- [ ] Replace whitespace formatter with a Flow AST printer.
+- [ ] Replace whitespace formatter with a Flow AST printer backed by the
+      official Flow Rust parser.
+- [x] Route non-Flow formatter configuration to Biome.
 - [x] Default formatter settings to double quotes and semicolons.
 - [ ] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.
@@ -37,7 +41,7 @@
 - [ ] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [ ] Implement editor extension packages on top of `uf lsp`.
-- [x] Use Vite Task-compatible task definitions in `uf.config.js`.
+- [x] Use uf task definitions in `uf.config.js`.
 - [x] Ban npm scripts from generated project templates and lint defaults.
 
 ## P1: Flow React Framework
@@ -57,15 +61,16 @@
 - [ ] Support RSC graph splitting.
 - [ ] Support PPR, SSR, SSG, and ISR.
 - [ ] Keep route, fetch, action, and data cache defaults OFF.
-- [ ] Default to the `uf` runtime.
-- [ ] Align the `uf` runtime with WinterTC.
-- [ ] Execute Flow through Hermes by default once runtime execution lands.
-- [ ] Implement Rust-native server request handling and streaming.
-- [ ] Implement Rust-native libuv-level IO primitives.
-- [ ] Support deploy-anywhere adapters for Node.js, Bun, Deno, edge, serverless, static, and container targets.
+- [x] Default to Node.js through the Capability JS Host contract.
+- [x] Keep Node.js, Deno, and Bun as zero-config host targets.
+- [ ] Align the deferred `uf` runtime with WinterTC.
+- [ ] Execute Flow through Hermes once the Vite/host-runtime path is stable.
+- [ ] Implement Vite-backed server entry generation and RSC streaming adapters.
+- [ ] Map host-provided IO capabilities for Node.js, Deno, and Bun.
+- [ ] Support deploy-anywhere adapters for Node.js, Deno, Bun, edge, serverless, static, and container targets.
 - [ ] Assume React 19, Suspense, `use`, and Async React.
 - [ ] Bundle GraphQL Relay primitives.
-- [ ] Provide explicit ofetch-style clients without global fetch override.
+- [ ] Provide explicit fetch clients without global fetch override.
 - [x] Start Nuxt-like web primitives: Font, Image, OgImage, Link, Page, Layout, Time, Announcer, and Picture.
 - [x] Start typed `useCookie`, `useHead`, `useRoute`, `useRouter`, and navigation guard contracts.
 - [ ] Generate fully type-safe route hook declarations from `router.js`.
@@ -78,12 +83,12 @@
 
 - [ ] Implement `@uniflowed/query` as a native TanStack Query-style data layer.
 - [ ] Implement `@uniflowed/effect` as a typed generator/yield EffectSystem.
-- [x] Start `@uniflowed/state` and `@uniflowed/flow-cell` from this repository.
-- [ ] Complete `@uniflowed/state` and `@uniflowed/flow-cell` runtime bindings.
+- [x] Start `@uniflowed/state` and `@uniflowed/cell` from this repository.
+- [ ] Complete `@uniflowed/state` and `@uniflowed/cell` as Flow JS implementations.
 - [x] Start `@uniflowed/validator` with `v.pipe`-style validation.
 - [ ] Add validator-driven Flow type inference and schema exports.
 - [x] Start `@uniflowed/cli` as a Gunshi-style stdlib CLI framework.
-- [x] Start `@uniflowed/fetch` as an explicit ofetch-style client.
+- [x] Start `@uniflowed/fetch` as an explicit fetch client.
 - [x] Start `@uniflowed/graphql` as a Relay-based GraphQL client.
 - [x] Start `@uniflowed/web` for web primitives and route/head/cookie hooks.
 - [x] Start `@uniflowed/markdown` with an ox-content wasm-backed contract.
@@ -108,7 +113,8 @@
 - [x] Implement `import { describe, it, expect } from '@uniflowed/testing'`.
 - [x] Start self-hosted `@uniflowed/test` runner planning.
 - [x] Execute the first native source-level assertion subset in `uf test`.
-- [ ] Make `@uniflowed/test` execute full Flow suites through the native runtime.
+- [ ] Make `@uniflowed/test` execute full Flow suites through Capability JS
+      Hosts while keeping scheduling and reporting in Rust.
 - [ ] Benchmark `@uniflowed/test` against Bun and keep the faster-than-Bun target visible.
 - [ ] Implement native React Testing Library-compatible DOM queries.
 - [ ] Implement native React Native testing utilities.
@@ -128,31 +134,31 @@
 
 ## P4: Build, Runtime, Package Manager, Publish
 
-- [ ] Wire `uf build` to Vite-compatible plugin semantics.
+- [ ] Wire `uf build` to Vite itself and the Vite plugin container.
 - [x] Measure emitted bundle size and enforce `build.budgets` from `uf build`.
 - [x] Write native build manifest and generated router types from `uf build`.
 - [ ] Wire production builds to Rolldown where possible.
-- [ ] Wire `uf dev` to a Vite-compatible dev server.
+- [ ] Wire `uf dev` to Vite's dev server.
 - [x] Start Rust-native dev HTTP server state, health endpoint, and route metadata.
 - [x] Start self-hosted `@uniflowed/pm` package manager planning.
 - [ ] Implement native package resolver.
 - [x] Implement native workspace lockfile and content-addressed store entries.
 - [x] Start `@uniflowed/rm` runtime manager inference/acquire/apply planning.
 - [x] Implement local current-binary runtime activation for `uf use`.
-- [ ] Implement remote runtime acquisition and host adaptation in `@uniflowed/rm`.
+- [ ] Implement host detection and adaptation in `@uniflowed/rm`.
 - [ ] Publish `curl -fsSL https://setup.uniflowed.dev | sh` installer.
 - [ ] Support sh, bash, zsh, ush, Windows, macOS, and Linux installer targets.
 - [x] Start napi-rs-style native target package generation contracts.
 - [x] Start generated TypeScript declaration to Flow declaration conversion.
 - [x] Implement `uf install` for workspace package discovery, lockfile writes, store manifest writes, and npm-script rejection.
 - [x] Implement `uf upgrade` package/runtime manifest writes.
-- [ ] Implement Hermes-backed `uf index.js` runtime.
+- [ ] Implement Hermes-backed `uf index.js` runtime after the host runtime path.
 - [x] Implement `uf publish` trusted publish manifest writes.
 - [x] Add trusted publish config defaults for local first publish and tokenless OIDC publishing.
 - [x] Add tag-push trusted publish GitHub Actions scaffold.
-- [x] Add `uf release minor` command surface.
-- [x] Wire `uf release minor` to semver calculation and `uf@*` tag metadata.
-- [ ] Wire `uf release minor` to changelog generation and tag push.
+- [x] Add `uf release alpha` command surface.
+- [x] Wire `uf release alpha` to prerelease calculation and `uf@*` tag metadata.
+- [ ] Wire `uf release alpha` to changelog generation and tag push.
 - [ ] Ship `curl -fsSL https://setup.uniflowed.dev | sh`.
 
 ## P5: Standard Library, Legal, And Formal Methods

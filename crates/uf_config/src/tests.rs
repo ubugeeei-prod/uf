@@ -14,7 +14,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(config.app.react.use_hook);
     assert!(config.app.rsc);
     assert!(config.app.server_actions);
-    assert_eq!(config.app.runtime.default, RuntimeEngine::Uf);
+    assert_eq!(config.app.runtime.default, RuntimeEngine::Node);
     assert!(config.app.runtime.deploy.enabled);
     assert!(
         config
@@ -28,15 +28,28 @@ fn zero_config_defaults_to_flow_react_app_stack() {
             .app
             .runtime
             .compatibility
-            .contains(&RuntimeEngine::Bun)
+            .contains(&RuntimeEngine::Deno)
     );
     assert!(
         config
             .app
             .runtime
             .compatibility
-            .contains(&RuntimeEngine::Deno)
+            .contains(&RuntimeEngine::Bun)
     );
+    assert_eq!(
+        config.app.runtime.capability_js_host.default,
+        CapabilityJsHost::Node
+    );
+    assert_eq!(
+        config.app.runtime.capability_js_host.hosts,
+        vec![
+            CapabilityJsHost::Node,
+            CapabilityJsHost::Deno,
+            CapabilityJsHost::Bun,
+        ]
+    );
+    assert!(config.app.runtime.capability_js_host.auto_detect);
     assert!(
         config
             .app
@@ -57,13 +70,16 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(!config.app.rendering.cache.route);
     assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));
     assert!(config.app.rendering.modes.contains(&RenderingMode::Isr));
-    assert!(config.app.builtins.flow_cell);
+    assert!(config.app.builtins.cell);
     assert!(config.app.builtins.react_testing_library);
     assert!(config.app.builtins.relay);
     assert!(config.app.orm.native);
     assert!(config.app.orm.generated_flow_types);
     assert!(config.app.orm.prepared_by_default);
     assert_eq!(config.app.builtins.style, StyleEngine::StyleX);
+    assert_eq!(config.fmt.flow.parser, FlowFormatParser::OfficialFlowRust);
+    assert_eq!(config.fmt.flow.printer, FlowFormatPrinter::UfRust);
+    assert_eq!(config.fmt.non_flow.formatter, NonFlowFormatter::Biome);
     assert_eq!(config.fmt.quotes, QuoteStyle::Double);
     assert!(config.fmt.semicolons);
     assert_eq!(config.server.engine, ServerEngine::NativeRust);
@@ -87,7 +103,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(config.pm.package_manager, PackageManagerPreference::Auto);
     assert_eq!(config.rm.module, "@uniflowed/rm");
     assert!(config.rm.infer_from_config);
-    assert_eq!(config.rm.version, "uf@0.1.0");
+    assert_eq!(config.rm.version, "node@system");
     assert!(config.rm.auto_switch);
     assert_eq!(config.rm.acquisition, RuntimeManagerAcquisition::Auto);
     assert_eq!(config.rm.apply, RuntimeManagerApply::ConfigAndHost);
@@ -126,20 +142,28 @@ fn zero_config_defaults_to_flow_react_app_stack() {
         TrustedPublishTrigger::TagPush
     );
     assert_eq!(config.release.tag_prefix, "uf@");
-    assert_eq!(config.release.command, "uf release minor");
+    assert_eq!(config.release.command, "uf release alpha");
     assert!(config.release.publish);
     assert_eq!(config.task_runner.engine, TaskRunnerEngine::UfTask);
     assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
     assert_eq!(
         config.test.runner.runtime,
-        NativeTestRuntimeConfig::UfSelfHosted
+        NativeTestRuntimeConfig::CapabilityJsHost
     );
     assert_eq!(
         config.test.runner.performance_target,
         NativeTestPerformanceTarget::FasterThanBun
     );
     assert!(config.test.runner.official_flow_parser);
+    assert_eq!(
+        config.test.runner.js_hosts,
+        vec![
+            CapabilityJsHost::Node,
+            CapabilityJsHost::Deno,
+            CapabilityJsHost::Bun,
+        ]
+    );
     assert!(config.test.react_testing_library_native);
     assert_eq!(config.app.builtins.data, DataEngine::UniflowedQuery);
     assert_eq!(config.app.builtins.effect, EffectEngine::UniflowedEffect);
@@ -156,6 +180,19 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(
         config.app.builtins.markdown.engine,
         MarkdownEngineConfig::OxContentWasm
+    );
+    assert!(config.app.builtins.markdown.mdx.enabled);
+    assert_eq!(
+        config.app.builtins.markdown.mdx.extensions,
+        vec![CompactString::const_new(".mdx")]
+    );
+    assert_eq!(
+        config.app.builtins.markdown.mdx.jsx_import_source,
+        "@uniflowed/jsx-runtime"
+    );
+    assert_eq!(
+        config.app.builtins.markdown.mdx.pipeline_plugin,
+        MdxPipelinePluginConfig::BuiltIn
     );
     assert_eq!(config.app.builtins.markdown.cache, CacheModeConfig::OptIn);
     assert_eq!(config.app.builtins.motion.module, "@uniflowed/motion");
@@ -196,6 +233,9 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(config.docs.enabled);
     assert!(config.docs.static_build);
     assert_eq!(config.docs.deploy, DeployTarget::Void);
+    assert_eq!(config.lint.engine, LintEngine::Rust);
+    assert_eq!(config.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
+    assert_eq!(config.lint.flow.parser, FlowLintParser::OfficialFlowRust);
     assert_eq!(config.lint.rules["flow/syntax"], RuleLevel::Error);
 }
 
@@ -243,6 +283,18 @@ fn extracts_vite_style_define_config_object() {
         import { defineConfig } from "@uniflowed/config";
 
         export default defineConfig({
+          app: {
+            builtins: {
+              markdown: {
+                mdx: {
+                  enabled: true,
+                  extensions: [".mdx"],
+                  jsxImportSource: "@uniflowed/jsx-runtime",
+                  pipelinePlugin: "built-in",
+                },
+              },
+            },
+          },
           dev: { port: 4111 },
           lint: {
             rules: {
@@ -256,7 +308,9 @@ fn extracts_vite_style_define_config_object() {
           },
           test: {
             runner: {
+              runtime: "capability-js-host",
               performanceTarget: "faster-than-bun",
+              jsHosts: ["node", "deno", "bun"],
             },
           },
           rm: {
@@ -278,6 +332,19 @@ fn extracts_vite_style_define_config_object() {
     let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
 
     assert_eq!(parsed.dev.port, 4111);
+    assert!(parsed.app.builtins.markdown.mdx.enabled);
+    assert_eq!(
+        parsed.app.builtins.markdown.mdx.extensions,
+        vec![CompactString::const_new(".mdx")]
+    );
+    assert_eq!(
+        parsed.app.builtins.markdown.mdx.jsx_import_source,
+        "@uniflowed/jsx-runtime"
+    );
+    assert_eq!(
+        parsed.app.builtins.markdown.mdx.pipeline_plugin,
+        MdxPipelinePluginConfig::BuiltIn
+    );
     assert_eq!(parsed.lint.rules["uniflowed/no-tabs"], RuleLevel::Off);
     assert_eq!(
         parsed.lint.rules["react/component-syntax"],
@@ -289,6 +356,14 @@ fn extracts_vite_style_define_config_object() {
     assert_eq!(
         parsed.test.runner.performance_target,
         NativeTestPerformanceTarget::FasterThanBun
+    );
+    assert_eq!(
+        parsed.test.runner.js_hosts,
+        vec![
+            CapabilityJsHost::Node,
+            CapabilityJsHost::Deno,
+            CapabilityJsHost::Bun,
+        ]
     );
     assert!(parsed.rm.infer_from_config);
     assert!(!parsed.pm.allow_lifecycle_scripts);
@@ -347,7 +422,7 @@ fn parses_flow_config() {
         r#"
             export default defineConfig({
               dev: { port: 3000 },
-              app: { builtins: { flowCell: false } },
+              app: { builtins: { cell: false } },
               std: { modules: ["tui"] },
             });
         "#,
@@ -357,7 +432,7 @@ fn parses_flow_config() {
     let config = load_config_file(&path).unwrap();
 
     assert_eq!(config.dev.port, 3000);
-    assert!(!config.app.builtins.flow_cell);
+    assert!(!config.app.builtins.cell);
     assert!(config.std.modules.contains(&StdModuleConfig::Tui));
     assert!(config.app.builtins.native_test_runner);
 }
@@ -447,4 +522,71 @@ fn fmt_config_reads_max_blank_lines_from_the_config_file() {
     assert_eq!(parsed.fmt.max_blank_lines, 0);
     assert_eq!(parsed.fmt.indent_width, 4);
     assert_eq!(parsed.fmt.line_width, 100);
+}
+
+#[test]
+fn parses_runtime_agnostic_tooling_surface() {
+    let source = r#"
+        export default defineConfig({
+          app: {
+            runtime: {
+              default: "deno",
+              capabilityJsHost: {
+                default: "deno",
+                hosts: ["node", "deno", "bun"],
+                autoDetect: true,
+              },
+            },
+          },
+          fmt: {
+            flow: {
+              parser: "official-flow-rust",
+              printer: "uf-rust",
+            },
+            nonFlow: {
+              formatter: "biome",
+            },
+          },
+          lint: {
+            engine: "rust",
+            flow: {
+              builtins: "mixed",
+              parser: "official-flow-rust",
+            },
+          },
+          test: {
+            runner: {
+              runtime: "capability-js-host",
+              jsHosts: ["node", "deno", "bun"],
+            },
+          },
+        });
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(parsed.app.runtime.default, RuntimeEngine::Deno);
+    assert_eq!(
+        parsed.app.runtime.capability_js_host.default,
+        CapabilityJsHost::Deno
+    );
+    assert_eq!(
+        parsed.app.runtime.capability_js_host.hosts,
+        vec![
+            CapabilityJsHost::Node,
+            CapabilityJsHost::Deno,
+            CapabilityJsHost::Bun,
+        ]
+    );
+    assert_eq!(parsed.fmt.flow.parser, FlowFormatParser::OfficialFlowRust);
+    assert_eq!(parsed.fmt.flow.printer, FlowFormatPrinter::UfRust);
+    assert_eq!(parsed.fmt.non_flow.formatter, NonFlowFormatter::Biome);
+    assert_eq!(parsed.lint.engine, LintEngine::Rust);
+    assert_eq!(parsed.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
+    assert_eq!(parsed.lint.flow.parser, FlowLintParser::OfficialFlowRust);
+    assert_eq!(
+        parsed.test.runner.runtime,
+        NativeTestRuntimeConfig::CapabilityJsHost
+    );
 }

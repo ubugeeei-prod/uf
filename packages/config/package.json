@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/config",
-  "version": "0.0.1",
+  "version": "0.0.0-alpha.0",
   "description": "Flow declarations for @uniflowed/config, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -14,6 +14,7 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal"
   ]
 }

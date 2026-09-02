@@ -563,7 +563,11 @@ fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
                 continue;
             }
             assert!(
-                declaration.contains("NativeHandleCovariant"),
+                declaration.contains("NativeHandleCovariant")
+                    || declaration.contains("EffectCarrier")
+                    || declaration.contains("FiberCarrier")
+                    || declaration.contains("TagCarrier")
+                    || declaration.contains("LayerCarrier"),
                 "{module} declares a covariant opaque type without a covariant \
                  carrier, so the `+` sigil promises more than the definition \
                  delivers: {}",

@@ -47,13 +47,14 @@ fn the_payload_names_the_checker_backend_and_its_status() {
     let value = payload(&lint_report(0, 0), &TypeCheck::Unavailable);
 
     assert_eq!(value["typeCheck"]["status"], json!("unavailable"));
-    assert_eq!(
-        value["typeCheck"]["backend"],
-        json!(backend_name(active_backend()))
-    );
+    #[cfg(feature = "upstream-typecheck")]
+    assert_eq!(value["typeCheck"]["backend"], json!(type_backend_name()));
+    #[cfg(not(feature = "upstream-typecheck"))]
+    assert_eq!(value["typeCheck"]["backend"], json!("unavailable"));
     assert_eq!(value["typeCheck"]["diagnostics"], json!([]));
 }
 
+#[cfg(feature = "upstream-typecheck")]
 #[test]
 fn a_checker_failure_is_reported_without_losing_the_lint_counts() {
     let types = TypeCheck::Failed(CheckError::SourceTooLarge {
@@ -78,15 +79,18 @@ fn a_checker_failure_is_reported_without_losing_the_lint_counts() {
 fn an_unavailable_checker_contributes_no_counts() {
     let types = TypeCheck::Unavailable;
 
-    assert_eq!(types.count(uf_check::Severity::Error), 0);
-    assert_eq!(types.count(uf_check::Severity::Warning), 0);
+    assert_eq!(types.count(TypeSeverity::Error), 0);
+    assert_eq!(types.count(TypeSeverity::Warning), 0);
+    #[cfg(feature = "upstream-typecheck")]
     assert!(types.diagnostics().is_empty());
+    #[cfg(feature = "upstream-typecheck")]
     assert!(types.report().is_none());
 }
 
 #[test]
 fn statuses_are_stable() {
     assert_eq!(TypeCheck::Unavailable.status(), "unavailable");
+    #[cfg(feature = "upstream-typecheck")]
     assert_eq!(
         TypeCheck::Failed(CheckError::Unavailable).status(),
         "failed"
@@ -97,6 +101,7 @@ fn statuses_are_stable() {
 fn a_build_with_a_checker_reports_it_and_one_without_says_so() {
     let types = type_check(&[]);
 
+    #[cfg(feature = "upstream-typecheck")]
     if uf_check::is_available() {
         assert_eq!(types.status(), "checked");
         assert_eq!(
@@ -107,8 +112,11 @@ fn a_build_with_a_checker_reports_it_and_one_without_says_so() {
     } else {
         assert_eq!(types.status(), "unavailable");
     }
+    #[cfg(not(feature = "upstream-typecheck"))]
+    assert_eq!(types.status(), "unavailable");
 }
 
+#[cfg(feature = "upstream-typecheck")]
 fn value_of(types: &TypeCheck) -> Value {
     payload(&lint_report(0, 0), types)["typeCheck"].clone()
 }

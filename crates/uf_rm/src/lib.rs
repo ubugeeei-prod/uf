@@ -24,7 +24,7 @@ pub type InstallerPlatformList = SmallVec<[InstallerPlatform; 8]>;
 pub struct RuntimeManagerPlan {
     /// Default engine selected for this project.
     pub engine: RuntimeEngine,
-    /// WinterTC and Hermes runtime contract.
+    /// Runtime contract satisfied by the selected JavaScript host.
     pub contract: RuntimeContract,
     /// Hosts that must be available after adaptation.
     pub hosts: RuntimeHostList,
@@ -43,17 +43,9 @@ pub struct RuntimeManagerPlan {
 impl Default for RuntimeManagerPlan {
     fn default() -> Self {
         Self {
-            engine: RuntimeEngine::Uf,
-            contract: RuntimeContract::wintertc_hermes_native(),
-            hosts: smallvec::smallvec![
-                RuntimeHost::Uf,
-                RuntimeHost::Node,
-                RuntimeHost::Bun,
-                RuntimeHost::Deno,
-                RuntimeHost::Edge,
-                RuntimeHost::Serverless,
-                RuntimeHost::Container,
-            ],
+            engine: RuntimeEngine::Node,
+            contract: RuntimeContract::capability_js_hosts(),
+            hosts: smallvec::smallvec![RuntimeHost::Node, RuntimeHost::Deno, RuntimeHost::Bun,],
             acquisition: RuntimeAcquisition::Auto,
             application: RuntimeApplication::ConfigAndHost,
             xdg: XdgLayout::default(),
@@ -61,7 +53,7 @@ impl Default for RuntimeManagerPlan {
             steps: smallvec::smallvec![
                 RuntimeManagerStep::ReadConfig,
                 RuntimeManagerStep::InferRuntime,
-                RuntimeManagerStep::AcquireRuntime,
+                RuntimeManagerStep::DetectCapabilityHost,
                 RuntimeManagerStep::ApplyAdapters,
                 RuntimeManagerStep::VerifyDoctor,
             ],
@@ -96,6 +88,11 @@ impl RuntimeManagerPlan {
     /// Return whether Hermes is the JavaScript engine for the contract.
     pub fn uses_hermes(&self) -> bool {
         self.contract.javascript_engine == uf_runtime::JavaScriptEngine::Hermes
+    }
+
+    /// Return whether the plan delegates JavaScript execution to a host runtime.
+    pub fn uses_capability_js_host(&self) -> bool {
+        self.contract.javascript_engine == uf_runtime::JavaScriptEngine::CapabilityJsHost
     }
 }
 
@@ -389,6 +386,8 @@ pub enum RuntimeManagerStep {
     ReadConfig,
     /// Infer runtime requirements from app, server, and deploy config.
     InferRuntime,
+    /// Detect the selected Node.js, Deno, or Bun host and its capabilities.
+    DetectCapabilityHost,
     /// Acquire the selected runtime and native adapters.
     AcquireRuntime,
     /// Apply runtime adapters for every supported host.

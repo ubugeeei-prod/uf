@@ -7,9 +7,8 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use uf_effect::{Attempt, Decision, Schedule};
-
 use crate::discovery::MAX_SOURCE_BYTES;
+use crate::retry_schedule::{Attempt, Decision, Schedule};
 
 /// Default wall-clock budget for one test file.
 pub const DEFAULT_FILE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -96,8 +95,7 @@ impl Bail {
 
 /// How a failing case is retried.
 ///
-/// The policy is a [`Schedule`] — the same retry vocabulary the rest of the
-/// repository uses — rather than a bare count, so `--retry 3` and an
+/// The policy is a [`Schedule`] rather than a bare count, so `--retry 3` and an
 /// exponential backoff are the same mechanism.
 ///
 /// Re-running a source-level evaluation cannot change its outcome today,

@@ -18,6 +18,8 @@ use crate::hook::{HookSet, PluginHook};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BuiltinPlugin {
+    /// Turns `.mdx` documents into React modules before Flow sees them.
+    Mdx,
     /// Strips Flow types and normalizes the module for everything downstream.
     Flow,
     /// Turns the `app/` tree into route modules and their Flow types.
@@ -37,6 +39,7 @@ pub enum BuiltinPlugin {
 impl BuiltinPlugin {
     /// Every built-in, in pipeline order.
     pub const ALL: [Self; Self::COUNT] = [
+        Self::Mdx,
         Self::Flow,
         Self::Router,
         Self::Rsc,
@@ -47,11 +50,12 @@ impl BuiltinPlugin {
     ];
 
     /// How many built-ins exist. [`BuiltinSet`] needs at least this many bits.
-    pub const COUNT: usize = 7;
+    pub const COUNT: usize = 8;
 
     /// The plugin's name in the pipeline, and in `uf inspect --json`.
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Mdx => "uf:mdx",
             Self::Flow => "uf:flow",
             Self::Router => "uf:router",
             Self::Rsc => "uf:rsc",
@@ -65,13 +69,14 @@ impl BuiltinPlugin {
     /// Position in [`BuiltinPlugin::ALL`], and the bit index in a [`BuiltinSet`].
     pub const fn index(self) -> usize {
         match self {
-            Self::Flow => 0,
-            Self::Router => 1,
-            Self::Rsc => 2,
-            Self::Style => 3,
-            Self::ReactCompiler => 4,
-            Self::Jsx => 5,
-            Self::Asset => 6,
+            Self::Mdx => 0,
+            Self::Flow => 1,
+            Self::Router => 2,
+            Self::Rsc => 3,
+            Self::Style => 4,
+            Self::ReactCompiler => 5,
+            Self::Jsx => 6,
+            Self::Asset => 7,
         }
     }
 
@@ -94,7 +99,7 @@ impl BuiltinPlugin {
     /// second.
     pub const fn order(self) -> HookOrder {
         match self {
-            Self::Flow | Self::Router => HookOrder::Pre,
+            Self::Mdx | Self::Flow | Self::Router => HookOrder::Pre,
             Self::Rsc | Self::Style | Self::Asset => HookOrder::Normal,
             Self::ReactCompiler | Self::Jsx => HookOrder::Post,
         }
@@ -103,6 +108,7 @@ impl BuiltinPlugin {
     /// Which hooks the stage implements.
     pub const fn hooks(self) -> HookSet {
         match self {
+            Self::Mdx => HookSet::of(PluginHook::Transform),
             Self::Flow => HookSet::of(PluginHook::Transform).with(PluginHook::ModuleParsed),
             Self::Router => HookSet::of(PluginHook::BuildStart)
                 .with(PluginHook::ResolveId)
@@ -139,25 +145,25 @@ impl BuiltinPlugin {
 /// Which built-ins a project's config switches on.
 ///
 /// A bitset rather than a struct of flags, so "is the router in this pipeline?"
-/// is one AND and the whole selection fits in a byte.
+/// is one AND and the whole selection stays compact.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BuiltinSet(u8);
+pub struct BuiltinSet(u16);
 
 impl BuiltinSet {
     /// No built-ins.
     pub const EMPTY: Self = Self(0);
 
     /// Every built-in.
-    pub const ALL: Self = Self((1u8 << BuiltinPlugin::COUNT) - 1);
+    pub const ALL: Self = Self((1u16 << BuiltinPlugin::COUNT) - 1);
 
     /// A set holding exactly `plugin`.
     pub const fn of(plugin: BuiltinPlugin) -> Self {
-        Self(plugin.bit())
+        Self(plugin.bit() as u16)
     }
 
     /// This set plus `plugin`.
     pub const fn with(self, plugin: BuiltinPlugin) -> Self {
-        Self(self.0 | plugin.bit())
+        Self(self.0 | plugin.bit() as u16)
     }
 
     /// This set plus `plugin` when `enabled`, unchanged otherwise.
@@ -167,12 +173,12 @@ impl BuiltinSet {
 
     /// This set without `plugin`.
     pub const fn without(self, plugin: BuiltinPlugin) -> Self {
-        Self(self.0 & !plugin.bit())
+        Self(self.0 & !(plugin.bit() as u16))
     }
 
     /// Whether `plugin` is in the set.
     pub const fn contains(self, plugin: BuiltinPlugin) -> bool {
-        self.0 & plugin.bit() != 0
+        self.0 & plugin.bit() as u16 != 0
     }
 
     /// Whether the set holds nothing.
@@ -186,7 +192,7 @@ impl BuiltinSet {
     }
 
     /// The raw mask.
-    pub const fn bits(self) -> u8 {
+    pub const fn bits(self) -> u16 {
         self.0
     }
 
@@ -205,6 +211,7 @@ impl BuiltinSet {
     /// already have, which is why there is no second set of plugin toggles.
     pub fn from_config(config: &UniflowedConfig) -> Self {
         Self::of(BuiltinPlugin::Flow)
+            .with_if(BuiltinPlugin::Mdx, config.app.builtins.markdown.mdx.enabled)
             .with(BuiltinPlugin::Jsx)
             .with(BuiltinPlugin::Asset)
             .with_if(BuiltinPlugin::Router, config.app.router.enabled)

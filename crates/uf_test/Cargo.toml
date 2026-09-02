@@ -9,7 +9,6 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-uf_effect = { path = "../uf_effect" }
 uf_infra = { path = "../uf_infra" }
 uf_rsc = { path = "../uf_rsc" }
 camino.workspace = true

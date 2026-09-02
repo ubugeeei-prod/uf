@@ -190,7 +190,7 @@ fn publish_and_release_report_trusted_publish_plan() {
     let release = uf()
         .arg("--cwd")
         .arg(dir.path())
-        .args(["release", "minor"])
+        .args(["release", "alpha"])
         .output()
         .unwrap();
 
@@ -203,12 +203,13 @@ fn publish_and_release_report_trusted_publish_plan() {
     // `uf release` bumps this crate's own version, so a literal tag here fails
     // on the next version bump rather than when the plan is wrong. The bump
     // arithmetic is pinned by the unit tests next to `bump_semver`.
-    let mut version = env!("CARGO_PKG_VERSION").split('.');
-    let major: u64 = version.next().unwrap().parse().unwrap();
-    let minor: u64 = version.next().unwrap().parse().unwrap();
-    assert!(stdout.contains("bump             Minor"));
-    assert!(stdout.contains(&format!("tag              uf@{major}.{}.0", minor + 1)));
-    assert!(stdout.contains("command          uf release minor"));
+    let current = env!("CARGO_PKG_VERSION");
+    let expected = current
+        .strip_suffix(".0")
+        .map_or(format!("{current}-alpha.0"), |prefix| format!("{prefix}.1"));
+    assert!(stdout.contains("bump             Alpha"));
+    assert!(stdout.contains(&format!("tag              uf@{expected}")));
+    assert!(stdout.contains("command          uf release alpha"));
     assert!(stdout.contains("publish          yes"));
     assert!(stdout.contains("release.json"));
     assert!(dir.path().join(".uf/release.json").exists());
@@ -302,7 +303,7 @@ fn upgrade_reports_package_and_runtime_manager_plan() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("package resolver  UfNative"));
-    assert!(stdout.contains("runtime engine    Uf"));
+    assert!(stdout.contains("runtime engine    Node"));
     assert!(stdout.contains("acquisition       Auto"));
     assert!(stdout.contains("upgrade.json"));
     assert!(stdout.contains("✓ workspace upgraded"));

@@ -1,6 +1,6 @@
 [package]
 name = "uf_runtime"
-description = "Native runtime contract for uf, WinterTC, Hermes, and deploy-anywhere targets."
+description = "Runtime contract for Capability JS Hosts, WinterTC, and deploy-anywhere targets."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

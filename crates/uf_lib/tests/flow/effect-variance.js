@@ -10,7 +10,7 @@
 // must be backed by a carrier that only ever produces a `T`.
 
 import type { Effect, Task } from "@uniflowed/core/effect";
-import type { Cell } from "@uniflowed/core/flow-cell";
+import type { Cell } from "@uniflowed/cell";
 
 type Animal = { +name: string };
 type Dog = { +name: string, +breed: string };

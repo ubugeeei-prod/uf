@@ -11,6 +11,9 @@ use smallvec::SmallVec;
 /// Inline list of builtin test package specifiers.
 pub type TestImportList = SmallVec<[CompactString; 4]>;
 
+/// Inline list of JavaScript hosts the native runner can target.
+pub type TestHostList = SmallVec<[TestHost; 4]>;
+
 /// Native test runner execution plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +22,8 @@ pub struct NativeTestRunnerPlan {
     pub module: CompactString,
     /// Execution backend.
     pub runtime: TestRuntime,
+    /// Capability JavaScript hosts the runner can drive without changing config.
+    pub hosts: TestHostList,
     /// Scheduler used for test file execution.
     pub scheduler: TestScheduler,
     /// Performance target for the native runner.
@@ -35,7 +40,8 @@ impl Default for NativeTestRunnerPlan {
     fn default() -> Self {
         Self {
             module: CompactString::const_new("@uniflowed/test"),
-            runtime: TestRuntime::UfSelfHosted,
+            runtime: TestRuntime::CapabilityJsHost,
+            hosts: smallvec::smallvec![TestHost::Node, TestHost::Deno, TestHost::Bun],
             scheduler: TestScheduler::NativeWorkStealing,
             performance_target: TestPerformanceTarget::FasterThanBun,
             imports: smallvec::smallvec![
@@ -50,7 +56,16 @@ impl Default for NativeTestRunnerPlan {
 }
 
 impl NativeTestRunnerPlan {
-    /// Return the default self-hosted runner plan.
+    /// Return the default runtime-agnostic native runner plan.
+    pub fn runtime_agnostic() -> Self {
+        Self::default()
+    }
+
+    /// Return the default runner plan.
+    ///
+    /// Kept for callers that predate the Capability JS Host split; the runner is
+    /// still self-hosted in Rust, but JavaScript execution is delegated to a host
+    /// runtime.
     pub fn self_hosted() -> Self {
         Self::default()
     }
@@ -65,8 +80,22 @@ impl NativeTestRunnerPlan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TestRuntime {
+    /// Native Rust runner driving a detected JavaScript host.
+    CapabilityJsHost,
     /// uf-owned self-hosted runtime.
     UfSelfHosted,
+}
+
+/// JavaScript runtimes that can host Flow test execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TestHost {
+    /// Node.js.
+    Node,
+    /// Deno.
+    Deno,
+    /// Bun.
+    Bun,
 }
 
 /// Native test scheduler.

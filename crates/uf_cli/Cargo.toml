@@ -23,7 +23,7 @@ path = "src/bin/ufx.rs"
 [features]
 default = ["upstream-typecheck"]
 # Run Flow's own type inference in `uf check`; see `crates/uf_check`.
-upstream-typecheck = ["uf_check/upstream-typecheck"]
+upstream-typecheck = ["dep:uf_check", "uf_check/upstream-typecheck"]
 
 [dependencies]
 anyhow.workspace = true
@@ -31,10 +31,9 @@ camino.workspace = true
 clap.workspace = true
 uf_bundle = { path = "../uf_bundle" }
 uf_bundler = { path = "../uf_bundler" }
-uf_check = { path = "../uf_check" }
+uf_check = { path = "../uf_check", optional = true }
 uf_config = { path = "../uf_config" }
 uf_devserver = { path = "../uf_devserver" }
-uf_effect = { path = "../uf_effect" }
 uf_flow = { path = "../uf_flow" }
 uf_fmt = { path = "../uf_fmt" }
 uf_lib = { path = "../uf_lib" }

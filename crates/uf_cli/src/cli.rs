@@ -164,6 +164,7 @@ pub(crate) enum AppTemplate {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum ReleaseBump {
+    Alpha,
     Patch,
     Minor,
     Major,

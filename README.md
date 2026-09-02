@@ -59,7 +59,7 @@ tools/upstream/sync.sh && cargo build --release --bin uf
 ```
 
 - `uf create`: Create your new flow project (zero-config)
-- `uf dev`: Start the native Vite-compatible development server
+- `uf dev`: Start the Vite-owned development server through `uf.config.js`
 - `uf build`: Build your Flow project metadata and generated route types
 - `uf info`: Show brand, install, docs, and local toolchain information
 - `uf lint`: Run the native lint runner
@@ -68,7 +68,8 @@ tools/upstream/sync.sh && cargo build --release --bin uf
 - `uf test`: Run the self-hosted native test runner
 - `uf install`: Write `uf.lock` and the content-addressed `.uf/store`
 - `uf upgrade`: Re-apply the native package/runtime manifests
-- `uf use`: Install and activate a versioned `uf` runtime through the XDG layout
+- `uf use`: Install and activate a versioned `uf` runtime when the deferred
+  native runtime line is explicitly selected
 - `uf publish`: Write local/trusted publish metadata
 - `uf release`: Compute release metadata and the next `uf@*` tag
 - `uf lsp`: Start the native JSON-RPC language server
@@ -84,8 +85,9 @@ The current CLI already executes the first native vertical slice:
 - `uf build` discovers file-system routes, writes `router.js`, and writes
   `dist/uf-build-manifest.json` with the internal Vite/Rolldown-compatible
   contract.
-- `uf dev` starts a Rust-native HTTP development server, writes
-  `.uf/dev-server.json`, and exposes `/__uf/health`.
+- `uf dev` still starts the transitional Rust HTTP development server, writes
+  `.uf/dev-server.json`, and exposes `/__uf/health`; this slice is being
+  replaced by Vite as the long-term dev server.
 - `uf test` discovers `describe`/`it`/`test` declarations and executes the
   native source-level assertion subset for `expect(...).toBe`,
   `expect(...).toEqual`, thrown `Error`s, and React Testing Library-style
@@ -96,8 +98,8 @@ The current CLI already executes the first native vertical slice:
 - `uf upgrade` reapplies the package store and writes `.uf/upgrade.json`.
 - `uf use uf@0.1.0` installs the current `uf` binary into the XDG runtime
   version directory, writes active runtime metadata, and writes the user-local
-  shim.
-- `uf publish` and `uf release minor` write trusted publish and release
+  shim for the deferred self-hosted runtime line.
+- `uf publish` and `uf release alpha` write trusted publish and release
   manifests, including the next `uf@*` tag metadata.
 - `ufx @uniflowed/create app` runs the native create package entrypoint and
   records the exec-cache manifest.
@@ -124,13 +126,16 @@ enables:
 - route, fetch, action, and data cache defaults OFF
 - React 19, Suspense, `use`, and Async React assumptions
 - React Compiler with `mode: "syntax"`
-- `uf` runtime by default, with deploy-anywhere adapters for Node.js, Bun, Deno,
-  edge, serverless, static, and container targets
-- WinterTC-aligned Flow runtime direction on Hermes
-- Rust-native server, event loop, and libuv-level IO contracts
+- Runtime-agnostic execution by default through Capability JS Hosts: Node.js,
+  Deno, and Bun
+- the self-hosted `uf` runtime and Hermes execution line are deferred until the
+  Vite-backed build/dev pipeline is stable
+- host-provided event loop and IO capability contracts, with deploy-anywhere
+  adapters for Node.js, Deno, Bun, edge, serverless, static, and container
+  targets
 - XDG-compliant config, data, cache, state, runtime, and shim locations
 - StyleX as the default styling layer
-- explicit ofetch-style `@uniflowed/fetch`; no global fetch override
+- explicit `@uniflowed/fetch` clients; no global fetch override
 - Relay-based `@uniflowed/graphql`
 - Nuxt-like `Font`, `Image`, `OgImage`, `Link`, `Page`, `Layout`, `Time`,
   `Announcer`, and `Picture` primitives
@@ -143,7 +148,8 @@ enables:
   TUI, cron, S3, SigV4, worker/lambda functions, uuid, and zip
 - all route, fetch, image, font, markdown, and PWA caches are opt-in
 - bundle size budgets in `build.budgets`, measured with real gzip and brotli
-- native query, effect, ORM, Relay, validator, and state/flow-cell builtin modules
+- query, effect, ORM, Relay, validator, state, and cell builtin modules usable
+  from `.js` Flow source without user plugin registration
 - React Compiler-safe motion primitives with reduced-motion defaults
 - OpenTUI-aligned native TUI framework targeting a React Ink replacement
 - React-minded hooks inspired by VueUse without render-time impurity
@@ -153,35 +159,68 @@ enables:
 - story and VRT contracts with `@uniflowed/mock` and `@uniflowed/browser`
 - first publish from local `uf publish`, then tokenless OIDC trusted publish from
   GitHub Actions on `uf@*` tag push
-- self-hosted `@uniflowed/test` runner targeting faster-than-Bun execution
+- Rust-owned `@uniflowed/test` runner targeting faster-than-Bun execution while
+  delegating JavaScript execution to Node.js, Deno, or Bun hosts
 - native test declarations via `import { describe, it, expect } from '@uniflowed/test'`
 - React Testing Library-compatible declarations via `@uniflowed/react-testing`
 - self-hosted `@uniflowed/pm` package manager with `uf.lock` and a content-addressed store
-- `@uniflowed/rm` runtime manager inferred from config, with automatic acquire/apply planning
+- `@uniflowed/rm` runtime manager inferred from config, with automatic host
+  detection/apply planning
 - install via `curl -fsSL https://setup.uniflowed.dev | sh`, with sh, bash, zsh, and
   ush support, on macOS and Linux for both x86_64 and aarch64; Windows artifacts
   are not published yet and `install.ps1` says so rather than failing obscurely
 - React Native platform linting and `.native/.ios/.android` split guidance
 - editor integration targets for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor
-- formatter defaults to double quotes and semicolons
+- formatter defaults to double quotes and semicolons; Flow files use the
+  official Flow Rust parser plus uf's Rust printer, while non-Flow files route
+  to Biome formatting
 
 No Babel, Jest, Yarn, npm scripts, or `.flowconfig` is required for generated
 projects. Project automation belongs in `uf.config.js` tasks and runs through
-the uf Vite Task-compatible runner.
+the uf task runner.
 
-When config is needed, use the Vite-like entrypoint through Flow syntax:
+When config is needed, use the Vite-like entrypoint through Flow syntax. The
+file replaces a user-authored `vite.config.ts`; Vite, plugins, lint, format, and
+test host selection all flow through this one `.js` config:
 
 ```js
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
+  app: {
+    runtime: {
+      default: "node",
+      capabilityJsHost: {
+        hosts: ["node", "deno", "bun"],
+      },
+    },
+  },
   dev: {
     port: 3000,
   },
+  fmt: {
+    flow: {
+      parser: "official-flow-rust",
+      printer: "uf-rust",
+    },
+    nonFlow: {
+      formatter: "biome",
+    },
+  },
   lint: {
+    engine: "rust",
+    flow: {
+      builtins: "mixed",
+    },
     rules: {
       "react/component-syntax": "error",
       "react-native/platform-split": "warn",
+    },
+  },
+  test: {
+    runner: {
+      runtime: "capability-js-host",
+      jsHosts: ["node", "deno", "bun"],
     },
   },
   tasks: {
@@ -215,7 +254,7 @@ The Flow package surface starts in `packages/core` and is exposed as bundled
 - `@uniflowed/markdown`
 - `@uniflowed/temporal`
 - `@uniflowed/pwa`
-- `@uniflowed/flow-cell`
+- `@uniflowed/cell`
 - `@uniflowed/state`
 - `@uniflowed/validator`
 - `@uniflowed/hooks`
@@ -240,9 +279,11 @@ The Flow package surface starts in `packages/core` and is exposed as bundled
 The Rust source of truth for that registry is `uf_lib`, so CLI inspection,
 docs, and runtime binding can converge on one module table.
 
-Core implementation should remain native Rust. User projects are `.js` files
-with Flow syntax and `// @flow`, starting from `uf.config.js`; Vite and
-Rolldown stay hidden behind uniflowed.
+Core implementation should remain native Rust where Rust owns the toolchain:
+linting, Flow formatting, type checks, test scheduling, and package metadata.
+Effect, validator, and cell stay ordinary `.js` Flow packages; user projects are
+`.js` files with Flow syntax and `// @flow`, starting from `uf.config.js`; Vite
+owns bundling, plugin execution, and the development server behind uniflowed.
 Native package artifacts are generated from Rust using a napi-rs-style target
 package model, and generated TypeScript declarations are converted back to Flow.
 

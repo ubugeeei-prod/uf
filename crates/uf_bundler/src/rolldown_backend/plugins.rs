@@ -21,7 +21,7 @@ use uf_jsx::JsxOptions;
 
 use crate::pipeline::{
     ASSET_EXTENSIONS, ROUTE_TABLE_MODULE, ROUTE_TABLE_SPECIFIER, asset_module,
-    blank_directive_prologue,
+    blank_directive_prologue, is_mdx_module, mdx_module,
 };
 
 /// Whether a module id is one of the project's own JavaScript files.
@@ -29,7 +29,35 @@ use crate::pipeline::{
 /// Rolldown's synthesised modules are not on disk and must reach its parser
 /// exactly as it wrote them.
 fn is_project_module(id: &str) -> bool {
-    id.ends_with(".js") && !id.starts_with('\0')
+    (id.ends_with(".js") || id.ends_with(".mdx")) && !id.starts_with('\0')
+}
+
+/// `uf:mdx` — MDX document in, React module out.
+#[derive(Debug)]
+pub(crate) struct MdxPlugin;
+
+impl Plugin for MdxPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("uf:mdx")
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Transform
+    }
+
+    async fn transform(
+        &self,
+        _ctx: SharedTransformPluginContext,
+        args: &HookTransformArgs<'_>,
+    ) -> HookTransformReturn {
+        if !is_mdx_module(Utf8Path::new(args.id)) {
+            return Ok(None);
+        }
+        Ok(Some(HookTransformOutput {
+            code: Some(mdx_module(args.code)),
+            ..Default::default()
+        }))
+    }
 }
 
 /// `uf:flow` — Flow in, JavaScript out.

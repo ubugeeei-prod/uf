@@ -8,6 +8,7 @@
 //!
 //! | stage | what it now does |
 //! |---|---|
+//! | `uf:mdx` | turns `.mdx` documents into React modules |
 //! | `uf:flow` | erases Flow types with [`uf_flow::strip_types`] |
 //! | `uf:router` | resolves and generates the virtual route table |
 //! | `uf:rsc` | blanks the `"use client"` / `"use server"` prologue |
@@ -89,6 +90,7 @@ fn wire(
     let descriptor = builtin.descriptor();
     match builtin {
         BuiltinPlugin::Flow => Box::new(FnPlugin::new(descriptor).on_transform(strip_flow)),
+        BuiltinPlugin::Mdx => Box::new(FnPlugin::new(descriptor).on_transform(transform_mdx)),
         BuiltinPlugin::Jsx => Box::new(uf_jsx::plugin(JsxOptions::from_config(config))),
         BuiltinPlugin::Router => {
             let table = route_table(routes);
@@ -137,6 +139,40 @@ fn wire(
         // docs: an empty transform here is a gap that `uf inspect` can see.
         BuiltinPlugin::Style | BuiltinPlugin::ReactCompiler => Box::new(FnPlugin::new(descriptor)),
     }
+}
+
+/// The `uf:mdx` transform: MDX document in, JavaScript module out.
+fn transform_mdx(input: uf_plugin::TransformInput<'_>) -> uf_plugin::HookResult<ModuleCode> {
+    if !is_mdx_module(Utf8Path::new(input.id)) {
+        return Ok(HookOutcome::Passthrough);
+    }
+
+    Ok(HookOutcome::Handled(ModuleCode::new(mdx_module(
+        input.code,
+    ))))
+}
+
+/// Whether a path is an MDX source module uf handles by default.
+#[must_use]
+pub fn is_mdx_module(path: &Utf8Path) -> bool {
+    path.extension() == Some("mdx")
+}
+
+/// The module an MDX document becomes in the current native pipeline.
+#[must_use]
+pub fn mdx_module(source: &str) -> String {
+    let mut module = String::with_capacity(source.len() + 260);
+    module.push_str("// @flow\n");
+    module.push_str("import type * as React from \"@uniflowed/react\";\n");
+    module.push_str("import { jsx as _jsx } from \"@uniflowed/jsx-runtime\";\n");
+    module.push_str("export const mdxSource = ");
+    module.push_str(&crate::emit::quote(source));
+    module.push_str(";\n");
+    module.push_str("export component MdxDocument() renders React.Node {\n");
+    module.push_str("  return _jsx(\"article\", {children: mdxSource});\n");
+    module.push_str("}\n");
+    module.push_str("export default MdxDocument;\n");
+    module
 }
 
 /// The `uf:flow` transform: Flow in, JavaScript out.
