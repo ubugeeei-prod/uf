@@ -67,7 +67,8 @@ pub use project::{
 };
 pub use scan::{
     CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ExportKind, ImportKind, ImportSpecifier,
-    MAX_SOURCE_BYTES, ModuleExport, scan_client_api_uses, scan_exports, scan_imports,
+    MAX_SOURCE_BYTES, ModuleExport, Token, TokenKind, matching_close, matching_open,
+    scan_client_api_uses, scan_exports, scan_imports, starts_statement, tokenize,
 };
 
 /// Anything that can go wrong outside the analyses themselves.

@@ -2879,6 +2879,7 @@ dependencies = [
  "uf_config",
  "uf_flow",
  "uf_infra",
+ "uf_react_compiler",
  "uf_router",
 ]
 
@@ -2988,6 +2989,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "uf_react_compiler"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "serde",
+ "smallvec",
+ "thiserror",
+ "uf_infra",
+ "uf_plugin",
+ "uf_rsc",
+]
+
+[[package]]
 name = "uf_rm"
 version = "0.1.0"
 dependencies = [
@@ -3079,6 +3094,22 @@ dependencies = [
  "smallvec",
  "uf_browser",
  "uf_mock",
+]
+
+[[package]]
+name = "uf_stylex"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "serde",
+ "sha2",
+ "similar-asserts",
+ "smallvec",
+ "thiserror",
+ "uf_infra",
+ "uf_plugin",
+ "uf_rsc",
 ]
 
 [[package]]

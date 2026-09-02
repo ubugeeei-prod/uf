@@ -12,6 +12,7 @@ authors.workspace = true
 uf_config = { path = "../uf_config" }
 uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
+uf_react_compiler = { path = "../uf_react_compiler" }
 uf_router = { path = "../uf_router" }
 phf.workspace = true
 rayon.workspace = true
