@@ -65,7 +65,7 @@ tools/upstream/sync.sh && cargo build --release --bin uf
 - `uf lint`: Run the native lint runner
 - `uf fmt`: Run the native formatter
 - `uf check`: Run Flow type checker
-- `uf test`: Run the self-hosted native test runner
+- `uf test`: Run the native Flow-aware test runner
 - `uf install`: Write `uf.lock` and the content-addressed `.uf/store`
 - `uf upgrade`: Re-apply the native package/runtime manifests
 - `uf use`: Install and activate a versioned `uf` runtime when the deferred
@@ -139,7 +139,8 @@ enables:
 - Relay-based `@uniflowed/graphql`
 - Nuxt-like `Font`, `Image`, `OgImage`, `Link`, `Page`, `Layout`, `Time`,
   `Announcer`, and `Picture` primitives
-- fully type-safe `useRoute`, `useRouter`, and navigation guards
+- fully type-safe `useRoute`, `useRouter`, and navigation guards, shaped to
+  replace React Router and Remix flows for Flow React apps
 - `useCookie` and `useHead`
 - `uf prepare` for lint-staged-compatible checks and code generation
 - ox-content wasm-backed `@uniflowed/markdown`
@@ -148,13 +149,16 @@ enables:
   TUI, cron, S3, SigV4, worker/lambda functions, uuid, and zip
 - all route, fetch, image, font, markdown, and PWA caches are opt-in
 - bundle size budgets in `build.budgets`, measured with real gzip and brotli
-- query, effect, ORM, Relay, validator, state, and cell builtin modules usable
-  from `.js` Flow source without user plugin registration
+- query, effect, ORM, Relay, validator, atom state, and cell builtin modules
+  usable from `.js` Flow source without user plugin registration
 - React Compiler-safe motion primitives with reduced-motion defaults
 - OpenTUI-aligned native TUI framework targeting a React Ink replacement
 - React-minded hooks inspired by VueUse without render-time impurity
-- headless RSC-compatible UI primitives with preset styles
+- headless RSC-compatible UI primitives with preset styles, shaped to replace
+  shadcn's copy-and-edit workflow with typed imports
 - validator-backed form UI designed for React Compiler-safe render idempotency
+- TanStack Query-class data fetching through `@uniflowed/query`, and
+  Next.js-class route metadata, static params, and cache controls
 - docs site built through the same RSC/static framework and targeting `void`
 - story and VRT contracts with `@uniflowed/mock` and `@uniflowed/browser`
 - first publish from local `uf publish`, then tokenless OIDC trusted publish from
@@ -177,7 +181,7 @@ enables:
 
 No Babel, Jest, Yarn, npm scripts, or `.flowconfig` is required for generated
 projects. Project automation belongs in `uf.config.js` tasks and runs through
-the uf task runner.
+Vite Task.
 
 When config is needed, use the Vite-like entrypoint through Flow syntax. The
 file replaces a user-authored `vite.config.ts`; Vite, plugins, lint, format, and

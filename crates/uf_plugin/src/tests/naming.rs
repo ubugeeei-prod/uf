@@ -1,11 +1,11 @@
 //! uf borrows the plugin *semantics* of the existing ecosystem so those plugins
-//! keep working. It does not borrow the names.
+//! keep working. It does not borrow the bundler names.
 //!
 //! A developer using uf writes `uf.config.js` and `.js` files with `// @flow`.
 //! They never chose an underlying bundler, so no id, no diagnostic, no report
-//! field, and no generated file may hand them one to reason about. These tests
-//! read this crate's own sources and the project templates and fail if an
-//! engine name appears anywhere a user could see it.
+//! field, and no generated file may hand them one to reason about. Vite Task is
+//! different: it is the public task-runner engine in `uf.config.js`, not a hidden
+//! bundler implementation detail.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,8 +18,8 @@ use crate::container::PluginContainer;
 use crate::descriptor::{PluginOrigin, PluginSource};
 use crate::hook::{HookDispatch, PluginHook};
 
-/// The engines uf drives internally and never names to a user.
-const ENGINE_NAMES: [&str; 3] = ["vite", "rolldown", "rollup"];
+/// The bundler engines uf drives internally and never names to a user.
+const HIDDEN_BUNDLER_ENGINE_NAMES: [&str; 2] = ["rolldown", "rollup"];
 
 /// Source trees whose user-visible strings are checked.
 ///
@@ -119,7 +119,7 @@ fn no_user_visible_string_names_the_underlying_engines() {
     for path in sources {
         let source = fs::read_to_string(&path).expect("readable source");
         let checked = without_line_comments(&source).to_ascii_lowercase();
-        for engine in ENGINE_NAMES {
+        for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             for (line_number, line) in checked.lines().enumerate() {
                 if line.contains(engine) {
                     leaks.push(format!("{}:{}: {engine}", path.display(), line_number + 1));
@@ -161,7 +161,7 @@ fn no_shipped_javascript_names_the_underlying_engines() {
             continue;
         }
         let source = fs::read_to_string(&path).expect("readable source");
-        for engine in ENGINE_NAMES {
+        for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             for (line_number, line) in source.to_ascii_lowercase().lines().enumerate() {
                 if line.contains(engine) {
                     leaks.push(format!("{}:{}: {engine}", path.display(), line_number + 1));
@@ -181,7 +181,7 @@ fn no_shipped_javascript_names_the_underlying_engines() {
 fn no_builtin_plugin_names_an_engine() {
     for plugin in BuiltinPlugin::ALL {
         let name = plugin.name().to_ascii_lowercase();
-        for engine in ENGINE_NAMES {
+        for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             assert!(!name.contains(engine), "{name} names {engine}");
         }
     }
@@ -191,7 +191,7 @@ fn no_builtin_plugin_names_an_engine() {
 fn no_hook_id_names_an_engine() {
     for hook in PluginHook::ALL {
         let id = hook.as_str().to_ascii_lowercase();
-        for engine in ENGINE_NAMES {
+        for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             assert!(!id.contains(engine), "{id} names {engine}");
         }
     }
@@ -214,7 +214,7 @@ fn no_enum_id_in_the_public_vocabulary_names_an_engine() {
 
     for id in ids {
         let lowered = id.to_ascii_lowercase();
-        for engine in ENGINE_NAMES {
+        for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             assert!(!lowered.contains(engine), "{id} names {engine}");
         }
     }
@@ -233,7 +233,7 @@ fn the_inspect_report_never_names_an_engine() {
         .expect("serializes")
         .to_ascii_lowercase();
 
-    for engine in ENGINE_NAMES {
+    for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
         assert!(!json.contains(engine), "the report names {engine}: {json}");
     }
 }
@@ -256,7 +256,7 @@ fn a_resolved_project_pipeline_never_names_an_engine() {
         .expect("serializes")
         .to_ascii_lowercase();
 
-    for engine in ENGINE_NAMES {
+    for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
         assert!(!json.contains(engine), "the report names {engine}");
     }
 }

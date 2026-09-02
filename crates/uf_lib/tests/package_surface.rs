@@ -82,6 +82,20 @@ fn read(relative: &Utf8Path) -> String {
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {path}: {error}"))
 }
 
+fn assert_exports(relative: &str, names: &[&str]) {
+    let source = code_only(&read(Utf8Path::new(relative)));
+    for name in names {
+        assert!(
+            source.contains(&format!("export function {name}"))
+                || source.contains(&format!("export hook {name}"))
+                || source.contains(&format!("export const {name}"))
+                || source.contains(&format!("export opaque type {name}"))
+                || source.contains(&format!("export type {name}")),
+            "{relative} must export {name}"
+        );
+    }
+}
+
 /// Blank out comments and the bodies of string and template literals, keeping
 /// their delimiters, so brace depth and token scanning see code only.
 ///
@@ -428,6 +442,43 @@ fn native_runtime_message_names_the_module_and_the_export() {
         "the message must name both the subpath and the binding, so a caller \
          reading it sees `@uniflowed/core/effect: effect() requires the uf \
          native runtime`"
+    );
+}
+
+#[test]
+fn validator_exports_valibot_style_strict_flow_combinators() {
+    assert_exports(
+        "validator/internal/schema.js",
+        &[
+            "Infer",
+            "brand",
+            "date",
+            "email",
+            "enum_",
+            "instance",
+            "nullable",
+            "parse",
+            "partial",
+            "strictObject",
+            "transform",
+            "tuple",
+            "union",
+        ],
+    );
+}
+
+#[test]
+fn state_exports_jotai_style_atoms_without_a_native_binding() {
+    assert_exports(
+        "state/index.js",
+        &[
+            "Atom",
+            "ReadonlyAtom",
+            "atom",
+            "atomWithStorage",
+            "selector",
+            "useAtom",
+        ],
     );
 }
 

@@ -65,6 +65,7 @@
 pub mod analyze;
 pub mod bindings;
 pub mod error;
+pub mod official;
 pub mod plugin;
 pub mod rule;
 pub mod scope;
@@ -74,6 +75,10 @@ pub use crate::analyze::validate;
 pub use crate::bindings::{BindingFacts, Bindings, MUTATING_METHODS};
 pub use crate::error::{
     MAX_DIAGNOSTICS, MAX_SCOPE_DEPTH, MAX_SOURCE_BYTES, MAX_TRACKED_BINDINGS, ReactCompilerError,
+};
+pub use crate::official::{
+    OfficialCompileOutput, OfficialReactCompilerCrate, OfficialReactCompilerError,
+    compile_babel_ast, compile_babel_ast_json, official_compiler_crate,
 };
 pub use crate::plugin::{FindingsSink, ModuleFindings, OnFinding, plugin};
 pub use crate::rule::{Finding, ReactCompilerRule, ReactDiagnostic};
