@@ -20,7 +20,9 @@
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
 - [x] Add `ufr` alias for `uf run`.
 - [x] Add `ufx` temporary execution command surface.
-- [ ] Integrate the maintained Flow parser boundary.
+- [x] Integrate the maintained Flow parser boundary through the `upstream/flow`
+      submodule and Meta's official Flow Rust port.
+- [ ] Make `upstream-parser` the default once `never_type` reaches stable Rust.
 - [ ] Integrate Flow typecheck diagnostics without requiring `.flowconfig`.
 - [ ] Replace whitespace formatter with a Flow AST printer.
 - [x] Default formatter settings to double quotes and semicolons.
