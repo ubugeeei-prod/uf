@@ -1,3 +1,6 @@
+use compact_str::CompactString;
+use uf_runtime::RuntimeStandard;
+
 use super::*;
 
 #[test]
