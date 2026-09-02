@@ -1,0 +1,30 @@
+[package]
+name = "uf_rsc"
+description = "React Server Components module graph and server action registry for uniflowed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+camino.workspace = true
+compact_str.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+uf_infra = { path = "../uf_infra" }
+walkdir.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+similar-asserts.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "rsc"
+harness = false

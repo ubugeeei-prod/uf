@@ -153,6 +153,20 @@ fn build_writes_native_manifest_and_router_types() {
             .unwrap()
             .contains("export type RoutePath")
     );
+
+    assert!(stdout.contains("uf-rsc-manifest.json"));
+    let rsc_manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(app.join("dist/uf-rsc-manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        rsc_manifest["clientBundleRoots"],
+        serde_json::json!(["app/client/Counter.js"])
+    );
+    assert_eq!(
+        rsc_manifest["serverActions"][0]["module"],
+        serde_json::json!("server/actions.js")
+    );
+    assert_eq!(rsc_manifest["diagnostics"], serde_json::json!([]));
 }
 
 #[test]
