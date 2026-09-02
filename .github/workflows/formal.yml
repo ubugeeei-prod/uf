@@ -21,4 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      # why3 only knows about provers listed in ~/.why3.conf, which does not
+      # exist on a fresh runner, so z3 has to be detected before proving.
+      - run: nix develop ./tools/nix --command why3 config detect
       - run: nix develop ./tools/nix --command why3 prove tools/formal/std_contract.mlw -P z3 -a split_vc
