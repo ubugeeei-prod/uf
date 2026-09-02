@@ -1481,7 +1481,9 @@ name = "uf_lint"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "phf",
  "rayon",
+ "serde",
  "thiserror",
  "uf_config",
  "uf_flow",

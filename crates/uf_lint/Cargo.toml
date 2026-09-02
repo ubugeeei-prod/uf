@@ -12,7 +12,9 @@ authors.workspace = true
 uf_config = { path = "../uf_config" }
 uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
+phf.workspace = true
 rayon.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
