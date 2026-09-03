@@ -31,7 +31,7 @@ jobs:
       # `uf run` — this repository is a uf project, and its pipeline uses the
       # toolchain it ships rather than a second description of the same checks.
       - run: cargo build --release --bin uf
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uf-ci
           path: target/release/uf
@@ -51,7 +51,7 @@ jobs:
           toolchain: nightly-2026-08-01
           components: rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -74,7 +74,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -103,7 +103,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -132,7 +132,7 @@ jobs:
       # The `@uniflowed/*` packages are Flow, so `cargo test` cannot run a line
       # of them — their tests are uf tests, run by the runner this repository
       # ships. Without this job the library has a suite nothing executes.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -159,7 +159,7 @@ jobs:
       # Packages a release and installs it with the real installer. Keeps
       # install.sh and package-binaries.sh from drifting apart between releases,
       # when the only thing that notices is a user running `curl … | sh`.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -181,7 +181,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -203,7 +203,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
@@ -238,7 +238,7 @@ jobs:
       # than discovered when it breaks. Only the parser: the typing crates need
       # `box_patterns`, which the current nightly no longer has, which is
       # exactly what this job is here to tell us about.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: uf-ci
           path: target/release
