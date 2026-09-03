@@ -301,3 +301,34 @@ describe("resource", () => {
     expect(status(cell(1))).toBe("success");
   });
 });
+
+describe("unsubscribing inside a batch", () => {
+  it("does not call a listener that was torn down before the flush", () => {
+    const value = cell(0);
+    const calls = [];
+    const stop = subscribe(value, () => calls.push("listener"));
+
+    batch(() => {
+      value.set(1);
+      // React unmounts a `useSyncExternalStore` subscriber by calling exactly
+      // this, and an unmount can happen inside a batch.
+      stop();
+    });
+
+    expect(calls).toEqual([]);
+  });
+
+  it("still calls the listeners that remain", () => {
+    const value = cell(0);
+    const calls = [];
+    const stopFirst = subscribe(value, () => calls.push("first"));
+    subscribe(value, () => calls.push("second"));
+
+    batch(() => {
+      value.set(1);
+      stopFirst();
+    });
+
+    expect(calls).toEqual(["second"]);
+  });
+});

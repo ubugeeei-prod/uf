@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+# Every job here reads the repository and writes nothing to it. Saying so at
+# the top rather than per job means a job added later inherits the narrow
+# token instead of the default one.
+permissions:
+  contents: read
+
 jobs:
   format:
     name: Format

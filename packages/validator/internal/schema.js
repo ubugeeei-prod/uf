@@ -161,6 +161,24 @@ function plainRecord(value: mixed): { readonly [string]: mixed, ... } {
   return value as { readonly [string]: mixed, ... };
 }
 
+/**
+ * Write a parsed field into the object being built.
+ *
+ * `out[key] = value` runs a setter when `key` is `__proto__`, so an input
+ * carrying that key would change the object's prototype instead of adding a
+ * field — and everything downstream would then read attacker-chosen values
+ * from a prototype it never inspected. `defineProperty` writes an own
+ * property whatever the key is called.
+ */
+function put<Value>(out: { [string]: Value, ... }, key: string, value: Value): void {
+  Object.defineProperty(out, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 export function string(): Schema<string> {
   return makeSchema({
     parse: (value, path) =>
@@ -286,7 +304,7 @@ export function record<Value>(
       for (const key of Object.keys(source)) {
         const result = parseAt(value, source[key], path, key);
         if (result.ok) {
-          out[key] = result.value;
+          put(out, key, result.value);
         } else {
           issues = issues ?? [];
           mergeIssues(issues, result);
@@ -377,7 +395,7 @@ function schemaObject<T extends { ... }>(shape: Shape): Schema<T> {
       for (const [key, schema] of entries) {
         const result = parseAt(schema, record[key], path, key);
         if (result.ok) {
-          out[key] = result.value;
+          put(out, key, result.value);
         } else {
           issues = issues ?? [];
           mergeIssues(issues, result);
@@ -403,19 +421,27 @@ export function strictObject<T extends { ... }>(shape: Shape): Schema<T> {
   return makeSchema({
     parse: (value, path) => {
       const result = parseInternal(inner, value, path);
-      if (!result.ok || !isPlainObject(value)) {
+      if (!isPlainObject(value)) {
         return result;
       }
-      let issues: null | Array<Issue> = null;
+
+      // The unknown-key scan runs whether or not the fields parsed. Returning
+      // early on a field failure meant `{ name: 1, extra: true }` reported the
+      // wrong type of `name` and said nothing about `extra`, so fixing the
+      // first error revealed the second — which is the whole reason this
+      // validator collects issues instead of stopping at one.
+      const issues: Array<Issue> = [];
+      if (!result.ok) {
+        mergeIssues(issues, result);
+      }
       for (const key of Object.keys(plainRecord(value))) {
         if (!allowed.has(key)) {
-          issues = issues ?? [];
           path.push(key);
           issues.push(issue("unknown_key", `unexpected key ${key}`, path));
           path.pop();
         }
       }
-      return issues == null ? result : { ok: false, issues };
+      return issues.length === 0 ? result : { ok: false, issues };
     },
   });
 }

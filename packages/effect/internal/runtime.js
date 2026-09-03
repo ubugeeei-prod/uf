@@ -865,7 +865,15 @@ export function timeout<A, E, R>(
     run: (runContext) =>
       Promise.race([
         runKernel(self, runContext),
-        pause(millis, runContext).then(() => failure(failCause({ kind: "timeout", millis }))),
+        pause(millis, runContext).then(() =>
+          // `pause` resolves early when the fiber is interrupted, so reaching
+          // here does not mean the time ran out. Reporting an interruption as
+          // a timeout would make it a typed failure, and `retry` would then
+          // run the effect again after somebody asked for it to stop.
+          isInterrupted(runContext)
+            ? interruptedExit()
+            : failure(failCause({ kind: "timeout", millis })),
+        ),
       ]),
   });
 }
@@ -1077,13 +1085,18 @@ export function tapError<A, E, R1, R2>(
 
 /** Turn any failure of `self` into a defect, so its error type is `empty`. */
 function orDie<A, E, R>(self: Effect<A, E, R>): Effect<A, empty, R> {
+  const convert = (settled) =>
+    settled.kind === "success"
+      ? (settled: any)
+      : failure(dieCause(causeMessage(settled.cause)));
+
   return makeEffect({
-    run: async (runContext) => {
-      const settled = await runKernel(self, runContext);
-      return settled.kind === "success"
-        ? (settled: any)
-        : failure(dieCause(causeMessage(settled.cause)));
-    },
+    run: async (runContext) => convert(await runKernel(self, runContext)),
+    // Without this, `runSyncExit` on anything built out of `tapError` — which
+    // is `catchAll(self, error => andThen(orDie(body(error)), fail(error)))` —
+    // reached an effect with no synchronous kernel and returned "effect is
+    // asynchronous" as a defect, losing both the tap and the original failure.
+    runSync: (runContext) => convert(runSyncKernel(self, runContext)),
   });
 }
 
@@ -1098,16 +1111,24 @@ export function ensuring<A, E, R>(
   self: Effect<A, E, R>,
   finalizer: () => Effect<mixed, mixed, empty>,
 ): Effect<A, E, R> {
+  // The finalizer runs in a context that is not interrupted, because a cleanup
+  // that is itself cancelled is not a cleanup. A finalizer that fails replaces
+  // a success and is swallowed by a failure, which is already worse news.
+  const combine = (settled, released) =>
+    released.kind === "failure" && settled.kind === "success"
+      ? (released: any)
+      : (settled: any);
+
   return makeEffect({
     run: async (runContext) => {
       const settled = await runKernel(self, runContext);
-      // The finalizer runs in a context that is not interrupted, because a
-      // cleanup that is itself cancelled is not a cleanup.
-      const released = await runKernel(finalizer(), withFiber(runContext));
-      if (released.kind === "failure" && settled.kind === "success") {
-        return (released: any);
-      }
-      return (settled: any);
+      return combine(settled, await runKernel(finalizer(), withFiber(runContext)));
+    },
+    // A synchronous body and a synchronous finalizer is an ordinary case, and
+    // without this it degraded to a defect saying the effect was asynchronous.
+    runSync: (runContext) => {
+      const settled = runSyncKernel(self, runContext);
+      return combine(settled, runSyncKernel(finalizer(), withFiber(runContext)));
     },
   });
 }

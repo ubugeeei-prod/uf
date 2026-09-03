@@ -520,3 +520,73 @@ describe("promises", () => {
     }
   });
 });
+
+describe("what the review found", () => {
+  it("reports an interruption inside timeout as an interruption", async () => {
+    const program = effect(function* () {
+      const fiber = yield fork(timeout(sleep(500), 400));
+      // Interrupting while the effect waits inside `timeout` used to resolve
+      // the pause early and be reported as a timeout — a typed failure, which
+      // `retry` would then have run again after somebody asked it to stop.
+      return yield interrupt(fiber);
+    });
+
+    const result = await runPromise(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("interrupt");
+    }
+  });
+
+  it("runs tapError synchronously", () => {
+    const seen = [];
+    const result = runSyncExit(
+      tapError(fail("bad"), (error) => {
+        seen.push(error);
+        return succeed(undefined);
+      }),
+    );
+
+    expect(seen).toEqual(["bad"]);
+    // The original typed failure, not a defect saying the effect could not run
+    // synchronously.
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("bad");
+    } else {
+      throw new Error(`expected a typed failure, got ${JSON.stringify(result)}`);
+    }
+  });
+
+  it("runs ensuring synchronously", () => {
+    const events = [];
+    const value = runSync(
+      ensuring(succeed(7), () =>
+        sync(() => {
+          events.push("finalised");
+        }),
+      ),
+    );
+
+    expect(value).toBe(7);
+    expect(events).toEqual(["finalised"]);
+  });
+
+  it("keeps a synchronous failure through ensuring", () => {
+    const events = [];
+    const result = runSyncExit(
+      ensuring(fail("no"), () =>
+        sync(() => {
+          events.push("finalised");
+        }),
+      ),
+    );
+
+    expect(events).toEqual(["finalised"]);
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("no");
+    } else {
+      throw new Error("expected the original failure");
+    }
+  });
+});

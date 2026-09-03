@@ -70,7 +70,7 @@ let tracking: null | Array<CellCarrier<any>> = null;
 let batchDepth = 0;
 
 /** Listeners a batch has collected, de-duplicated by set membership. */
-const pending: Set<Listener> = new Set();
+const pending: Set<Set<Listener>> = new Set();
 
 function makeCell<T>(carrier: CellCarrier<T>): Cell<T> {
   return carrier;
@@ -113,15 +113,22 @@ function publish(observers: Set<Listener>): void {
   }
 }
 
-/** Run the application channel, or hand it to the open batch. */
+/**
+ * Run the application channel, or hand it to the open batch.
+ *
+ * The batch queue holds the *set* a listener belongs to, not the listener, so
+ * that whether it still belongs is decided when the flush runs. Queueing the
+ * listeners themselves meant an unsubscribe between the write and the flush
+ * removed it from its set and left the queued copy behind — and React unmounts
+ * a `useSyncExternalStore` subscriber by calling exactly that unsubscribe, so a
+ * component unmounted inside `batch(…)` was called after it was torn down.
+ */
 function notify(listeners: Set<Listener>): void {
   if (listeners.size === 0) {
     return;
   }
   if (batchDepth > 0) {
-    for (const listener of listeners) {
-      pending.add(listener);
-    }
+    pending.add(listeners);
     return;
   }
   publish(listeners);
@@ -138,8 +145,16 @@ function flush(): void {
   while (pending.size > 0) {
     const due = Array.from(pending);
     pending.clear();
-    for (const listener of due) {
-      listener();
+    for (const listeners of due) {
+      // A copy, because a listener may subscribe or unsubscribe as it runs and
+      // a `Set` mutated mid-iteration skips entries — but the membership test
+      // is against the live set, so one that unsubscribed a moment ago is not
+      // called.
+      for (const listener of Array.from(listeners)) {
+        if (listeners.has(listener)) {
+          listener();
+        }
+      }
     }
   }
 }

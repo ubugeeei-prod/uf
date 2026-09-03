@@ -359,3 +359,35 @@ describe("v", () => {
     expect(v.enum).toBe(enum_);
   });
 });
+
+describe("what the review found", () => {
+  it("reports an unknown key and a field failure together", () => {
+    const schema = v.strictObject({ name: v.string() });
+    const result = v.safeParse(schema, { name: 1, extra: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected a failure");
+    }
+    const kinds = result.issues.map((entry) => entry.code).sort();
+    // Reporting only the first meant fixing `name` revealed `extra`, which is
+    // the behaviour this validator collects issues to avoid.
+    expect(kinds).toEqual(["type", "unknown_key"]);
+  });
+
+  it("does not let a __proto__ key reach the prototype", () => {
+    const schema = v.record(v.number());
+    const hostile = JSON.parse('{"__proto__": 1, "safe": 2}');
+    const result = v.safeParse(schema, hostile);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a success");
+    }
+    // An own property, and the prototype untouched — `out[key] = …` would have
+    // run the legacy setter and changed the prototype instead.
+    expect(Object.prototype.hasOwnProperty.call(result.value, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
+    expect(({}: any).__proto__).toBe(Object.prototype);
+  });
+});
