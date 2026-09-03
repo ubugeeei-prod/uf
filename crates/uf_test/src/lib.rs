@@ -1,61 +1,70 @@
 #![deny(missing_docs)]
-//! Native test discovery, scheduling and execution for `uf test` and
-//! `@uniflowed/test`.
+//! Test discovery, scheduling and execution for `uf test`.
 //!
-//! # What this crate does and does not execute
+//! # Where the work happens
 //!
-//! There is **no JavaScript engine here**. A test body is decided by reading it:
-//! [`assertion`] evaluates the handful of expression and matcher shapes that can
-//! be settled from the source text, and everything else is reported by name as
-//! unsupported. That distinction is the crate's central honesty guarantee — a
-//! matcher `uf` cannot evaluate fails the run and is printed with its file, line
-//! and expression, because a runner that quietly passes what it could not run is
-//! worse than no runner at all.
+//! `uf` cannot execute JavaScript, and a runner that pretends otherwise is a
+//! runner that lies about what passed. So this crate owns everything a test
+//! run needs *except* running the code: which files there are, what order they
+//! go in, how many run at once, what bounds them, what a retry means, what an
+//! edit invalidates, and what the report says. Executing a test body belongs
+//! to the project's Capability JS Host — Node.js or Bun — which runs
+//! `@uniflowed/test`'s worker and streams results back ([`host`]).
+//!
+//! That split is also the performance argument. Ordering a thousand files
+//! longest-first from durations a previous run recorded, fanning them across
+//! cores, and assembling a report are the parts that are faster in Rust; the
+//! host does nothing but evaluate the code, one file at a time per process,
+//! with no test framework of its own to load.
 //!
 //! # The pieces
 //!
-//! * [`discover_tests`] finds `describe` / `it` / `test` declarations, their
-//!   `.only` / `.skip` / `.todo` suffixes, and the forms it recognises but
-//!   cannot expand ([`UnsupportedDeclaration`]).
-//! * [`TestPlan::resolve`] turns byte ranges into nesting and applies `.only`
-//!   precedence, in one pass.
+//! * [`discover_tests`] finds `describe` / `it` / `test` declarations without
+//!   running anything, which is what `uf test --list` shows and what watch
+//!   mode reasons about.
 //! * [`schedule_files`] orders files longest-expected-first, from durations a
 //!   previous run recorded in `.uf/test-timings.json` ([`timings`]) and from
 //!   file size when nothing was recorded.
-//! * [`TestRunner`] fans the schedule across a rayon pool, bounds each file's
-//!   work, and reassembles a report that does not depend on the schedule.
+//! * [`TestRunner`] fans that schedule across [`Worker`] processes, bounds each
+//!   file, retries what the policy says to retry, and reassembles a report that
+//!   does not depend on the schedule.
 //! * [`ImportGraph`] answers what one edit invalidates, and [`Watcher`] notices
 //!   the edit, which is watch mode.
 //!
 //! # Bounds
 //!
-//! Everything the crate reads is untrusted: source files, import specifiers, and
-//! a timings file anything can write. Sources are bounded in size and in
-//! declaration count, per-file execution is bounded in wall-clock time, paths
-//! are validated before they are joined onto the project root, and recorded
-//! durations are range-checked before the scheduler believes them.
+//! Everything the crate reads is untrusted: source files, import specifiers,
+//! whatever a worker writes, and a timings file anything can write. Sources are
+//! bounded in size and in declaration count, every file has a wall-clock
+//! deadline the worker cannot talk its way out of, paths are validated before
+//! they are joined onto the project root, and recorded durations are
+//! range-checked before the scheduler believes them.
 //!
-//! ```
-//! use uf_test::{TestRunner, TestStatus};
+//! ```no_run
+//! use camino::Utf8PathBuf;
+//! use uf_test::{HostCommand, HostKind, TestFile, TestRunner};
 //!
-//! let report = TestRunner::new().run(&[(
+//! let host = HostCommand::new(
+//!     HostKind::Node,
+//!     Utf8PathBuf::from("node"),
+//!     Utf8PathBuf::from("node_modules/@uniflowed/test/worker.js"),
+//!     Utf8PathBuf::from("."),
+//! );
+//! let files = vec![TestFile::new(
 //!     "src/math.test.js",
+//!     "/project/src/math.test.js",
 //!     "it('adds', () => { expect(1 + 1).toBe(2); });",
-//! )]);
+//! )];
 //!
+//! let report = TestRunner::new().with_host(host).run(&files)?;
 //! assert!(report.is_success());
-//! assert_eq!(report.summary.passed, 1);
-//! assert!(matches!(
-//!     report.files[0].records[0].status,
-//!     TestStatus::Passed
-//! ));
+//! # Ok::<(), uf_test::RunError>(())
 //! ```
 
-mod assertion;
 mod discovery;
-mod execution;
 mod filter;
 mod graph;
+mod host;
 mod options;
 mod path;
 mod plan;
@@ -73,6 +82,7 @@ use thiserror::Error;
 pub use crate::discovery::{MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, discover_tests, merge_plans};
 pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
 pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
+pub use crate::host::{FileOutcome, HostCommand, HostKind, SpawnError, Worker};
 pub use crate::options::{
     Bail, Concurrency, DEFAULT_FILE_TIMEOUT, DEFAULT_MAX_ASSERTIONS_PER_TEST, MAX_ATTEMPTS,
     MAX_FILE_TIMEOUT, MAX_RETRY_DELAY, MIN_FILE_TIMEOUT, RetryPolicy, RunOptions,
@@ -84,10 +94,12 @@ pub use crate::plan::{
 };
 pub use crate::report::{
     AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, TestRecord, TestRunReport,
-    TestStatus, TestSummary, UnsupportedAssertion, UnsupportedReason,
+    TestStatus, TestSummary,
 };
 pub use crate::retry_schedule::{Attempt, Decision, MAX_DELAY, Schedule};
-pub use crate::runner::{LockedObserver, RunObserver, SilentObserver, TestRunner, run_tests};
+pub use crate::runner::{
+    LockedObserver, RunError, RunObserver, SilentObserver, TestFile, TestRunner, run_tests,
+};
 pub use crate::runner_plan::{
     NativeTestRunnerPlan, TestHost, TestHostList, TestImportList, TestPerformanceTarget,
     TestRuntime, TestScheduler,

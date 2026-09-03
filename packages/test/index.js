@@ -1,44 +1,35 @@
 // @flow
 //
-// `@uniflowed/test`: the self-hosted runner entry point. The assertion API is
-// re-exported by name from `./testing.js` so a bundler can drop the halves an
-// application does not use.
+// `@uniflowed/test`: the test API a project writes against.
+//
+// This is the implementation, not a declaration of one. `describe`, `it` and
+// the hooks collect into a tree ([`./internal/registry.js`]); `expect` is a
+// real matcher set ([`./internal/expect.js`]); `./worker.js` is the process
+// `uf test` runs them in. `uf` owns discovery, scheduling across cores, the
+// timings that order a run longest-first, watch invalidation and the terminal
+// report — everything that is faster in Rust — and the host owns executing
+// JavaScript, which is the one thing Rust cannot do.
+//
+// The whole surface is importable from here, so a test file has one import.
 
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export type { Body as TestBody, Case, Modifier, Suite, TestOptions } from "./internal/registry.js";
+export type { Outcome, Result, RunOptions } from "./internal/run.js";
+export type { Site } from "./internal/frames.js";
+export type { SpyCall } from "./internal/expect.js";
+export type { Strictness } from "./internal/equality.js";
 
-const MODULE = "@uniflowed/core/test";
-
-export type { Expectation, RenderResult, Screen, TestBody } from "@uniflowed/testing";
 export {
+  afterAll,
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
-  expect,
-  fireEvent,
   it,
-  render,
-  screen,
   test,
-  userEvent,
-  waitFor,
-} from "@uniflowed/testing";
+} from "./internal/registry.js";
 
-export type CapabilityJsHost = "node" | "deno" | "bun";
-export type TestRuntime = "capability-js-host" | "uf-self-hosted";
-export type TestScheduler = "native-work-stealing";
-export type TestPerformanceTarget = "faster-than-bun";
+export { AssertionError, expect, fn } from "./internal/expect.js";
 
-export type NativeTestRunnerPlan = {
-  +module: "@uniflowed/test",
-  +runtime: TestRuntime,
-  +hosts: $ReadOnlyArray<CapabilityJsHost>,
-  +scheduler: TestScheduler,
-  +performanceTarget: TestPerformanceTarget,
-  +imports: $ReadOnlyArray<"@uniflowed/test" | "@uniflowed/testing" | "inflow">,
-  +reactTestingLibraryNative: true,
-  +officialFlowParser: true,
-};
+export { DEFAULT_TIMEOUT_MS, NAME_SEPARATOR } from "./internal/run.js";
 
-export function plan(): NativeTestRunnerPlan {
-  return nativeRuntimeRequired(MODULE, "plan");
-}
+export { equals, render } from "./internal/equality.js";

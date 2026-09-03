@@ -18,56 +18,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::plan::{SkipReason, TestPlan};
 
-/// Why an assertion could not be evaluated by the native subset.
-///
-/// Executing arbitrary Flow needs a JavaScript engine, which `uf` does not have
-/// yet. Until it does, anything outside the subset is named here rather than
-/// counted as a pass.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", tag = "kind")]
-pub enum UnsupportedReason {
-    /// The matcher is not implemented natively, e.g. `toContain`.
-    Matcher {
-        /// Matcher name as written, without the leading dot.
-        matcher: String,
-    },
-    /// The matcher is implemented, but its operands are not constant-evaluable.
-    Expression,
-    /// The `expect(...)` call is not balanced, so nothing can be read from it.
-    Malformed,
-}
-
-impl UnsupportedReason {
-    /// A one-line explanation for a terminal report.
-    pub fn describe(&self) -> String {
-        match self {
-            Self::Matcher { matcher } => {
-                format!("matcher `{matcher}` needs a JavaScript engine uf does not have yet")
-            }
-            Self::Expression => {
-                "operands are not constant-evaluable by the native assertion subset".to_string()
-            }
-            Self::Malformed => "the expect(...) call is not balanced".to_string(),
-        }
-    }
-}
-
-/// One assertion the native subset refused to decide.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnsupportedAssertion {
-    /// The assertion source, truncated to [`MAX_EXPRESSION_BYTES`].
-    pub expression: String,
-    /// Why it could not be evaluated.
-    pub reason: UnsupportedReason,
-    /// One-based line of the `expect` call.
-    pub line: usize,
-    /// One-based column of the `expect` call.
-    pub column: usize,
-    /// Byte length of the assertion, for a code frame caret.
-    pub span: usize,
-}
-
 /// Longest source excerpt copied into a report.
 ///
 /// A generated file can contain a megabyte-long expression; a report is not the
@@ -78,7 +28,7 @@ pub const MAX_EXPRESSION_BYTES: usize = 200;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssertionFailure {
-    /// The failure message shown to the developer.
+    /// The failure message the matcher wrote, shown as it was written.
     pub message: String,
     /// One-based line of the failing assertion.
     pub line: usize,
@@ -86,26 +36,29 @@ pub struct AssertionFailure {
     pub column: usize,
     /// Byte length of the failing expression, for a code frame caret.
     pub span: usize,
+    /// What the matcher wanted, when it said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+    /// What arrived, when the matcher said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub received: Option<String>,
+    /// The stack, with the runner's own frames removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack: Option<String>,
 }
 
 /// How one declaration ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "status")]
 pub enum TestStatus {
-    /// Every assertion in the native subset held.
+    /// The body ran and every assertion held.
     Passed,
-    /// At least one assertion did not hold, or the body threw.
+    /// An assertion did not hold, the body threw, or it exceeded its budget.
     Failed {
-        /// Why it failed, in source order.
+        /// Why it failed. A body stops at its first failure, so this is one
+        /// entry today; it is a list because a future concurrent case could
+        /// produce more and a report should not have to change shape for it.
         failures: Vec<AssertionFailure>,
-        /// Assertions in the same body that could not be evaluated.
-        unsupported: Vec<UnsupportedAssertion>,
-    },
-    /// Nothing failed, but the body uses something the subset cannot evaluate,
-    /// so the case cannot be claimed as a pass.
-    Unsupported {
-        /// Each assertion that could not be evaluated, named.
-        assertions: Vec<UnsupportedAssertion>,
     },
     /// Excluded before it ran.
     Skipped {
@@ -127,12 +80,10 @@ impl TestStatus {
         matches!(self, Self::Failed { .. })
     }
 
-    /// Assertions that could not be evaluated, in either state that carries
-    /// them.
-    pub fn unsupported_assertions(&self) -> &[UnsupportedAssertion] {
+    /// Why it failed, or nothing when it did not.
+    pub fn failures(&self) -> &[AssertionFailure] {
         match self {
-            Self::Failed { unsupported, .. } => unsupported,
-            Self::Unsupported { assertions } => assertions,
+            Self::Failed { failures } => failures,
             _ => &[],
         }
     }
@@ -154,6 +105,9 @@ pub struct TestRecord {
     pub status: TestStatus,
     /// How many times the case was executed, including retries.
     pub attempts: u32,
+    /// How long the case took, in microseconds. Zero for one that never ran.
+    #[serde(default)]
+    pub duration_micros: u64,
 }
 
 /// Why a file did not finish, when it did not.
@@ -168,16 +122,19 @@ pub enum FileStatus {
         /// The budget that was exceeded, in microseconds.
         budget_micros: u64,
     },
-    /// The file is larger than the runner will scan.
-    TooLarge {
-        /// The file's size in bytes.
-        bytes: usize,
-        /// The accepted limit in bytes.
-        limit: usize,
+    /// The module threw while it was being imported, so there were no tests
+    /// to run. Reported apart from a failing test, because "0 tests" for a
+    /// module that could not load would be a lie.
+    LoadFailed {
+        /// What the host reported.
+        message: String,
+        /// The stack, with the runner's own frames removed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stack: Option<String>,
     },
-    /// Executing the file panicked. The file is named and the run continues.
-    Panicked {
-        /// The panic payload, when it was a string.
+    /// The worker died, or said something the runner could not read.
+    HostFailed {
+        /// What went wrong.
         message: String,
     },
     /// The run bailed before this file was scheduled.
@@ -189,7 +146,7 @@ impl FileStatus {
     pub fn is_fatal(&self) -> bool {
         matches!(
             self,
-            Self::TimedOut { .. } | Self::TooLarge { .. } | Self::Panicked { .. }
+            Self::TimedOut { .. } | Self::LoadFailed { .. } | Self::HostFailed { .. }
         )
     }
 
@@ -200,10 +157,8 @@ impl FileStatus {
             Self::TimedOut { budget_micros } => {
                 format!("exceeded the per-file budget of {budget_micros}us")
             }
-            Self::TooLarge { bytes, limit } => {
-                format!("is {bytes} bytes, past the {limit} byte limit")
-            }
-            Self::Panicked { message } => format!("panicked: {message}"),
+            Self::LoadFailed { message, .. } => format!("failed to load: {message}"),
+            Self::HostFailed { message } => format!("the host failed: {message}"),
             Self::NotRun => "was not scheduled because the run bailed".to_string(),
         }
     }
@@ -244,10 +199,6 @@ pub struct TestSummary {
     pub skipped: usize,
     /// Declarations marked `.todo`.
     pub todo: usize,
-    /// Tests that could not be decided by the native assertion subset.
-    pub unsupported: usize,
-    /// Individual assertions that could not be evaluated.
-    pub unsupported_assertions: usize,
     /// Registration forms discovery recognised but cannot expand.
     pub unsupported_declarations: usize,
     /// Files that did not complete.
@@ -270,12 +221,7 @@ impl TestSummary {
 
     /// Whether the run is green.
     pub fn is_success(&self) -> bool {
-        self.failed == 0
-            && self.unsupported == 0
-            && self.unsupported_assertions == 0
-            && self.unsupported_declarations == 0
-            && self.failed_files == 0
-            && !self.bailed
+        self.failed == 0 && self.failed_files == 0 && !self.bailed
     }
 }
 

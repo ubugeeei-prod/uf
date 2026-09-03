@@ -30,7 +30,10 @@ pub struct NativeTestRunnerPlan {
     pub performance_target: TestPerformanceTarget,
     /// Builtin import specifiers accepted by discovery and runtime bindings.
     pub imports: TestImportList,
-    /// Whether React Testing Library-compatible helpers are implemented natively.
+    /// Whether React Testing Library-compatible helpers are implemented.
+    ///
+    /// They are not: `@uniflowed/react-testing` still needs a DOM, and says so
+    /// when it is called rather than pretending.
     pub react_testing_library_native: bool,
     /// Whether discovery and transform use the official Flow parser line.
     pub official_flow_parser: bool,
@@ -47,9 +50,8 @@ impl Default for NativeTestRunnerPlan {
             imports: smallvec::smallvec![
                 "@uniflowed/test".to_compact_string(),
                 "@uniflowed/testing".to_compact_string(),
-                "inflow".to_compact_string(),
             ],
-            react_testing_library_native: true,
+            react_testing_library_native: false,
             official_flow_parser: true,
         }
     }

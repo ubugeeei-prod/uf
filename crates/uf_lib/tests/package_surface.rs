@@ -33,9 +33,17 @@ const INTERNAL_DIR: &str = "internal";
 /// module docs for why they are plain JavaScript.
 const HOST_EXECUTED_PACKAGES: &[&str] = &["vite"];
 
+/// Individual modules that are process entry points, and so run when they are
+/// loaded because that is what running them means. Everything else in their
+/// package is held to the ordinary bar.
+const HOST_EXECUTED_MODULES: &[&str] = &["test/worker.js"];
+
 /// Whether `module` (relative to `packages/`) belongs to a host-executed
 /// package.
 fn is_host_executed(module: &Utf8Path) -> bool {
+    if HOST_EXECUTED_MODULES.contains(&module.as_str()) {
+        return true;
+    }
     module
         .iter()
         .next()

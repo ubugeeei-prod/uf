@@ -1,0 +1,69 @@
+---
+title: "What uf is · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# What uf is
+
+<div className="lede">
+uf is one binary that runs, builds, tests, formats and lints a Flow and React
+project. The argument is not that each of those is better on its own — it is
+that they stop being separate things you have to make agree.
+</div>
+
+## The problem it is aimed at
+
+A Flow and React project today is an assembly job. Babel to strip the types, a
+preset to understand `component`, a plugin for the React Compiler, Vite for the
+dev server, a second config to tell Vite about the first one, Vitest with its
+own transform pipeline that has to be configured the same way, Prettier for
+formatting, ESLint with a parser plugin so it can read the syntax, and a
+`tsconfig.json` you do not use but something insists on.
+
+Every one of those is a place where two tools can disagree about what your code
+means. When they do, the error surfaces somewhere unrelated: a test that passes
+and a build that fails, or a formatter that reflows syntax the linter then
+rejects.
+
+uf's position is that there should be exactly one answer to "what does this file
+mean", that it should be given once, in Rust, and that everything else should
+use it.
+
+## What that buys
+
+**One parse of the modern syntax.** `component`, `hook`, `renders`, `match` and
+Flow enums are understood by Meta's own Flow parser, compiled into the binary.
+The dev server, the build, the test runner, the formatter and the linter all
+read the same tree. There is no second parser to keep in step.
+
+**No Babel.** Flow reaches JavaScript through the official Flow parser, ports of
+Hermes' own lowering passes, the official React Compiler crate in syntax mode,
+and oxc for JSX and codegen. Nothing in that list is a plugin you install.
+
+**One config.** `uf.config.js` is the only config file. It is Flow, so it is
+type-checked, and it configures the runtime, the router, the build, the test
+runner and the formatter together.
+
+**One command.** `uf dev`, `uf build`, `uf test`, `uf fmt`, `uf lint`,
+`uf check` — nothing to add to `package.json` for any of them.
+
+## What it does not do
+
+uf does not replace Vite, and does not want to. The dev server and the
+production build **are** Vite 8 — uf decides what Vite is handed and drives it
+over a JSON protocol. Vite's plugin ecosystem keeps working, and a project that
+outgrows uf's opinions can reach past them.
+
+uf does not type-check your code. Flow does that, and `uf check` runs it.
+
+uf is not finished. It is at `0.0.0-alpha`, the packages are not published, and
+parts of it lose to what they mean to replace — the test runner is about three
+times slower than Bun's, and [its own page](/guide/testing) says so rather than
+leaving you to find out.
+
+## Where to go next
+
+To try it, [install](/guide/install) it and then
+[build something](/guide/project). To understand the Flow pipeline before
+trusting it with anything, read [Flow, the modern parts](/guide/flow).

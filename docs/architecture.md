@@ -353,6 +353,54 @@ Native engines being deepened:
 - deploy-anywhere adapters for Node.js, Deno, Bun, edge, serverless, static, and
   container targets in a Nitro-like model
 
+## Testing
+
+`uf test` is two halves that never overlap. `uf_test` in Rust owns discovery,
+ordering, concurrency, bounds, retries, watch invalidation and the report;
+`@uniflowed/test`'s worker owns executing the code. Nothing about a test body
+is decided in Rust, because Rust cannot run one — an earlier version of this
+crate evaluated a "native assertion subset" by reading source text, and a
+runner that decides `expect(a).toBe(b)` without evaluating `a` is a runner that
+can be wrong about what passed.
+
+A run works out which files declare tests (by reading, so a module is never
+imported to find out whether it is a test), orders them longest-expected-first
+from durations `.uf/test-timings.json` recorded, and fans them across worker
+processes on the project's Capability JS Host. Each worker takes one file at a
+time — two files sharing a process share globals, and a suite that passes alone
+but fails beside another is the worst failure a runner can produce — imports it
+through the host's Flow loader, and streams one JSON line per case back.
+
+| Concern | Decision |
+| --- | --- |
+| A test that never settles | Raced against a per-case budget in the worker, *and* a wall-clock deadline in Rust that kills the process, because a wedged event loop would never run its own timer |
+| A module that throws while importing | A file result, not a test result: there were no tests to fail, and "0 tests" for a module that could not load would be a lie |
+| A worker that dies | The file is named with what went wrong and the run continues on a fresh worker |
+| A retry | Re-runs the *file* with a filter naming one case, so the retry sees the module state a first run would |
+| `.only` | Decided per file after the module body has run, because a file's `.only` can appear after the tests it excludes |
+| A failing assertion's position | The matcher's own message, and the line from the stack — which points at the Flow source because the transform emits a source map and the worker runs with it enabled |
+
+### Measured
+
+50 files, 1,000 tests, 2,000 assertions, on an 8-core M-series Mac, best of
+five, each tool running its own idiomatic input:
+
+| Runner | Time |
+| --- | --- |
+| `bun test` | **0.06 s** |
+| `uf test` (Node or Bun host, warm transform cache) | 0.20 s |
+| `uf test` (cold transform cache) | 0.30 s |
+| `vitest run` | 1.96 s |
+
+So `uf test` is about **nine times faster than Vitest** and about **three times
+slower than Bun's built-in runner**. The stated product bar is to beat Bun, and
+this does not meet it yet. The gap is process start-up and inter-process
+messaging: Bun runs everything in one process with a runner written into the
+engine, while `uf` spawns a worker per core and each one loads the test API
+before it can do anything. `-j 4` is faster than `-j 8` on this suite for the
+same reason. The way to close it is a worker pool that survives between runs
+and a worker whose imports are pre-bundled, neither of which is done.
+
 ## Build And Dev
 
 `uf.config.js` mirrors the Vite style because it replaces the user-authored

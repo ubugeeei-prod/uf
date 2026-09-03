@@ -41,102 +41,10 @@ fn test_list_discovers_native_test_import_shape() {
     assert_plain(&stdout);
 }
 
-#[test]
-fn test_runs_native_assertion_subset() {
-    let dir = tempfile::tempdir().unwrap();
-    write_test_file(
-        dir.path(),
-        "math.test.js",
-        r#"// @flow
-import { expect, it } from "@uniflowed/test";
-
-it("adds", () => {
-  expect(1 + 1).toBe(2);
-});
-"#,
-    );
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("test")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("✓ src/math.test.js  adds"));
-    assert!(stdout.contains("passed"));
-    assert!(stdout.contains("1 passed, 0 failed in"));
-    assert!(stdout.contains("FasterThanBun"));
-}
-
-#[test]
-fn test_reports_native_assertion_failures() {
-    let dir = tempfile::tempdir().unwrap();
-    write_test_file(
-        dir.path(),
-        "math.test.js",
-        r#"// @flow
-import { expect, it } from "@uniflowed/test";
-
-it("fails", () => {
-  expect("flow").toBe("typescript");
-});
-"#,
-    );
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("test")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("✗ src/math.test.js  fails"));
-    assert!(stdout.contains("toBe assertion failed"));
-    assert!(stdout.contains("0 passed, 1 failed in"));
-
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.starts_with("error: "));
-    assert!(stderr.contains("1 failure"));
-}
-
-#[test]
-fn test_rejects_unsupported_native_assertions() {
-    let dir = tempfile::tempdir().unwrap();
-    write_test_file(
-        dir.path(),
-        "array.test.js",
-        r#"// @flow
-import { expect, it } from "@uniflowed/test";
-
-it("contains", () => {
-  expect([1, 2, 3]).toContain(2);
-});
-"#,
-    );
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("test")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stdout.contains("unsupported assertions  1"));
-    assert!(stdout.contains("1 unsupported in"));
-    assert!(stderr.contains("unsupported assertion"));
-}
+// What `uf test` does when it *runs* a suite — assertions, failures, hooks,
+// filters, retries, bail — is covered in `testing.rs`, against a real host.
+// Those tests need the workspace's `node_modules`, so they build their
+// projects inside this repository rather than in a system temp directory.
 
 #[test]
 fn prepare_prints_lint_staged_and_codegen_plan() {

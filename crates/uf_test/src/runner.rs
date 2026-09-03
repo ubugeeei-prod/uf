@@ -1,43 +1,74 @@
-//! The driver: schedule the files, fan them out, put the report back together.
+//! The driver: schedule the files, fan them across worker processes, put the
+//! report back together.
+//!
+//! # What runs where
+//!
+//! `uf` decides *which* files run and *in what order*, bounds them, and
+//! assembles the report; the host executes the JavaScript. The split is the
+//! whole design: scheduling a thousand files longest-first from recorded
+//! durations, and rendering what came back, are the parts that are faster in
+//! Rust, and executing a test body is the part Rust cannot do at all.
 //!
 //! # Determinism
 //!
-//! The schedule decides *when* a file runs and never *what* it produces. Every
-//! file is executed from its own source with no shared mutable state, results
-//! are re-sorted by path before the report is assembled, and every list inside
-//! the report has a total order. A run on one thread and a run on sixteen
-//! therefore produce equal reports, which is asserted directly in the tests.
+//! The schedule decides *when* a file runs and never *what* it produces. Each
+//! file runs alone in its worker with no shared state, results are re-sorted
+//! by path before the report is assembled, and every list inside the report
+//! has a total order. A run on one worker and a run on sixteen therefore
+//! produce equal reports, which the tests assert directly.
 //!
 //! The single exception is `--bail`, which by construction depends on which
 //! files happened to finish first. Bailing marks the files it skipped
 //! [`FileStatus::NotRun`] and sets [`TestSummary::bailed`], so the report says
 //! plainly that it is not a complete picture.
 //!
-//! # Threads
+//! # Retries
 //!
-//! Nothing here creates a Flow parser, so unlike `uf_lint` this pool needs no
-//! `uf_flow::prepare_thread` broadcast: discovery and the assertion subset are
-//! byte scans over `&str`, with no per-thread setup and no stack budget to
-//! blow. If a real JavaScript engine ever lands behind [`crate::assertion`],
-//! that broadcast has to be added here before any parsing moves off the calling
-//! thread — see the comment in `uf_lint::lint_sources` for why.
+//! A retry re-runs the *file* with a filter naming the failing case, because
+//! a case cannot be re-entered without re-importing the module it lives in.
+//! That is slower than re-calling a closure would be, and it is the only
+//! honest option: a retried test must see the same module state a first run
+//! would.
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-use rayon::prelude::*;
+use camino::Utf8PathBuf;
 
 use crate::discovery::merge_plans;
-use crate::execution::execute_file;
 use crate::filter::TestFilter;
+use crate::host::{FileOutcome, HostCommand, SpawnError, Worker};
 use crate::options::{Bail, Concurrency, RunOptions};
-use crate::plan::TestPlan;
-use crate::report::{
-    FileReport, FileStatus, TestRunReport, TestStatus, TestSummary, UnsupportedAssertion,
-};
-use crate::schedule::{ScheduleBasis, ScheduleEntry, schedule_files};
+use crate::report::{FileReport, FileStatus, TestRunReport, TestStatus, TestSummary};
+use crate::schedule::{ScheduleEntry, schedule_files};
 use crate::timings::TestTimings;
+
+/// One file a run will execute.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestFile {
+    /// Path as it appears in the report, relative to the project root.
+    pub relative: String,
+    /// Absolute path the worker imports.
+    pub absolute: Utf8PathBuf,
+    /// The file's source, for discovery and for rendering code frames.
+    pub source: String,
+}
+
+impl TestFile {
+    /// A file at `absolute`, reported as `relative`.
+    pub fn new(
+        relative: impl Into<String>,
+        absolute: impl Into<Utf8PathBuf>,
+        source: impl Into<String>,
+    ) -> Self {
+        Self {
+            relative: relative.into(),
+            absolute: absolute.into(),
+            source: source.into(),
+        }
+    }
+}
 
 /// Notified as each file finishes, so a caller can draw a progress line.
 ///
@@ -57,17 +88,29 @@ impl RunObserver for SilentObserver {
 }
 
 /// A configured test run.
-///
-/// The thread pool for an explicit worker count is built once and reused, not
-/// rebuilt per run: spawning eight threads costs several milliseconds, which is
-/// a third of a run over a thousand files, and in watch mode it would be paid
-/// again on every keystroke.
 #[derive(Debug, Default)]
 pub struct TestRunner {
     options: RunOptions,
     filter: TestFilter,
     timings: TestTimings,
-    pool: OnceLock<Option<rayon::ThreadPool>>,
+    host: Option<HostCommand>,
+}
+
+/// Why a run could not start.
+///
+/// Everything that can go wrong with *one file* is a [`FileStatus`]; this is
+/// only for what would go wrong with all of them.
+#[derive(Debug, thiserror::Error)]
+pub enum RunError {
+    /// No JavaScript host is configured, so nothing can execute.
+    #[error(
+        "no JavaScript host is configured for `uf test`; install Node.js or Bun, or name an \
+         installed host in `app.runtime.capabilityJsHost.default`"
+    )]
+    NoHost,
+    /// The host could not be started, which every file would hit.
+    #[error("{0}")]
+    Spawn(#[from] SpawnError),
 }
 
 impl TestRunner {
@@ -79,8 +122,6 @@ impl TestRunner {
     /// Set the run options.
     pub fn with_options(mut self, options: RunOptions) -> Self {
         self.options = options;
-        // The cached pool is sized from the options it was built for.
-        self.pool = OnceLock::new();
         self
     }
 
@@ -96,6 +137,12 @@ impl TestRunner {
         self
     }
 
+    /// Set the host the workers run on.
+    pub fn with_host(mut self, host: HostCommand) -> Self {
+        self.host = Some(host);
+        self
+    }
+
     /// The options this runner will use.
     pub fn options(&self) -> &RunOptions {
         &self.options
@@ -106,165 +153,357 @@ impl TestRunner {
         &self.filter
     }
 
-    /// The order `sources` would run in, after path filtering.
-    pub fn schedule<'a>(&self, sources: &'a [(&'a str, &'a str)]) -> Vec<ScheduleEntry> {
-        let selected = self.select(sources);
-        schedule_files(&selected, &self.timings)
+    /// The order `files` would run in, after path filtering.
+    pub fn schedule(&self, files: &[TestFile]) -> Vec<ScheduleEntry> {
+        let selected = self.select(files);
+        schedule_files(&sources_of(&selected), &self.timings)
     }
 
     /// Run every file, reporting nothing as it goes.
-    pub fn run(&self, sources: &[(&str, &str)]) -> TestRunReport {
-        self.run_observed(sources, &SilentObserver)
+    ///
+    /// # Errors
+    ///
+    /// [`RunError`] when no host is configured or the host will not start.
+    pub fn run(&self, files: &[TestFile]) -> Result<TestRunReport, RunError> {
+        self.run_observed(files, &SilentObserver)
     }
 
     /// Run every file, notifying `observer` as each one finishes.
+    ///
+    /// # Errors
+    ///
+    /// [`RunError`] when no host is configured or the host will not start.
     pub fn run_observed(
         &self,
-        sources: &[(&str, &str)],
+        files: &[TestFile],
         observer: &dyn RunObserver,
-    ) -> TestRunReport {
+    ) -> Result<TestRunReport, RunError> {
+        let host = self.host.as_ref().ok_or(RunError::NoHost)?;
         let started = Instant::now();
-        let selected = self.select(sources);
-        let schedule = schedule_files(&selected, &self.timings);
+        let selected = self.select(files);
+        let schedule = schedule_files(&sources_of(&selected), &self.timings);
 
         let state = RunState {
+            next: AtomicUsize::new(0),
             failures: AtomicUsize::new(0),
             completed: AtomicUsize::new(0),
             total: schedule.len(),
-        };
-        let outcomes = if self.options.concurrency.is_serial() {
-            schedule
-                .iter()
-                .map(|entry| self.run_one(&selected, entry, &state, observer))
-                .collect::<Vec<_>>()
-        } else {
-            self.run_parallel(&selected, &schedule, &state, observer)
+            outcomes: Mutex::new(vec![None; schedule.len()]),
         };
 
-        assemble(outcomes, &schedule, started, self.options.bail, &state)
+        let workers = self.worker_count(schedule.len());
+        // A host that will not start is a run that cannot happen. Finding that
+        // out once, here, turns it into one clear error instead of `workers`
+        // identical file failures.
+        Worker::spawn(host)?.kill();
+
+        std::thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(workers);
+            for _ in 0..workers {
+                handles
+                    .push(scope.spawn(|| self.drive(host, &selected, &schedule, &state, observer)));
+            }
+            for handle in handles {
+                let _ = handle.join();
+            }
+        });
+
+        let outcomes = state
+            .outcomes
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Ok(assemble(
+            outcomes,
+            &selected,
+            &schedule,
+            started,
+            self.options.bail,
+            state.failures.load(Ordering::Relaxed),
+        ))
+    }
+
+    /// How many workers to start: never more than there are files, and never
+    /// more than the configured concurrency.
+    fn worker_count(&self, files: usize) -> usize {
+        let requested = match self.options.concurrency {
+            Concurrency::Serial => 1,
+            Concurrency::Fixed(count) => count.get(),
+            Concurrency::Auto => {
+                std::thread::available_parallelism().map_or(1, |count| count.get())
+            }
+        };
+        requested.min(files.max(1)).max(1)
     }
 
     /// Files that survive the path filter, in the caller's order.
-    fn select<'a>(&self, sources: &'a [(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
-        sources
+    fn select<'a>(&self, files: &'a [TestFile]) -> Vec<&'a TestFile> {
+        files
             .iter()
-            .filter(|(file, _)| self.filter.matches_path(file))
-            .copied()
+            .filter(|file| self.filter.matches_path(&file.relative))
             .collect()
     }
 
-    fn run_parallel(
+    /// One worker: take the next file until there are none, or the run bails.
+    fn drive(
         &self,
-        selected: &[(&str, &str)],
+        host: &HostCommand,
+        selected: &[&TestFile],
         schedule: &[ScheduleEntry],
         state: &RunState,
         observer: &dyn RunObserver,
-    ) -> Vec<(TestPlan, FileReport)> {
-        // `with_min_len(1)` is what makes the schedule mean anything: rayon
-        // otherwise splits the slice into contiguous halves, which hands one
-        // worker a block of expensive files and another a block of cheap ones.
-        // Splitting to single items lets every worker take the next unstarted
-        // file, which is the LPT hand-out `schedule_files` assumes.
-        let run = || {
-            schedule
-                .par_iter()
-                .with_min_len(1)
-                .map(|entry| self.run_one(selected, entry, state, observer))
-                .collect::<Vec<_>>()
-        };
+    ) {
+        let mut worker: Option<Worker> = None;
+        loop {
+            let at = state.next.fetch_add(1, Ordering::SeqCst);
+            if at >= schedule.len() {
+                return;
+            }
+            if self.bailed(state) {
+                // Leave the slot empty; `assemble` reports it as not run.
+                continue;
+            }
+            let Some(file) = selected
+                .iter()
+                .find(|file| file.relative == schedule[at].file)
+            else {
+                continue;
+            };
 
-        match self.pool() {
-            Some(pool) => pool.install(run),
-            // Either the caller asked for the global pool, or building a
-            // private one failed. A pool that will not build is not a reason to
-            // lose the run; the global pool is a correct, if wider, place for it.
-            None => run(),
+            if worker.is_none() {
+                worker = match Worker::spawn(host) {
+                    Ok(worker) => Some(worker),
+                    Err(error) => {
+                        state.record(
+                            at,
+                            FileReport {
+                                file: file.relative.clone(),
+                                status: FileStatus::HostFailed {
+                                    message: error.message,
+                                },
+                                duration_micros: 0,
+                                records: Vec::new(),
+                            },
+                            observer,
+                        );
+                        continue;
+                    }
+                };
+            }
+
+            let started = Instant::now();
+            let mut outcome = worker
+                .as_mut()
+                .map(|worker| self.run_one(worker, file))
+                .unwrap_or(FileOutcome {
+                    status: FileStatus::HostFailed {
+                        message: String::from("no worker"),
+                    },
+                    records: Vec::new(),
+                });
+
+            // A file that timed out or lost its host killed the worker; the
+            // next file needs a fresh one.
+            if !matches!(
+                outcome.status,
+                FileStatus::Completed | FileStatus::LoadFailed { .. }
+            ) {
+                worker = None;
+            } else if self.options.retry.max_attempts() > 1 {
+                self.retry_failures(host, file, &mut outcome, &mut worker);
+            }
+
+            let report = FileReport {
+                file: file.relative.clone(),
+                status: outcome.status,
+                duration_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+                records: outcome.records,
+            };
+            let failed = report
+                .records
+                .iter()
+                .filter(|record| record.status.is_failed())
+                .count()
+                + usize::from(report.status.is_fatal());
+            if failed > 0 {
+                state.failures.fetch_add(failed, Ordering::SeqCst);
+            }
+            state.record(at, report, observer);
         }
     }
 
-    /// The private pool for an explicit worker count, built at most once.
-    fn pool(&self) -> Option<&rayon::ThreadPool> {
-        self.pool
-            .get_or_init(|| match self.options.concurrency {
-                Concurrency::Fixed(threads) => rayon::ThreadPoolBuilder::new()
-                    .num_threads(threads.get())
-                    .thread_name(|index| format!("uf-test-{index}"))
-                    .build()
-                    .ok(),
-                Concurrency::Auto | Concurrency::Serial => None,
-            })
-            .as_ref()
+    /// Run one file once.
+    fn run_one(&self, worker: &mut Worker, file: &TestFile) -> FileOutcome {
+        worker.run_file(
+            file.absolute.as_str(),
+            &file.relative,
+            self.filter.name_pattern(),
+            self.options.effective_file_timeout(),
+            self.options.effective_file_timeout() * MAX_CASES_PER_FILE_BUDGET,
+        )
     }
 
-    fn run_one(
+    /// Re-run each failing case, up to the configured number of attempts.
+    ///
+    /// The file is re-imported with a filter naming exactly one case, so a
+    /// retry sees the module state a first run would rather than whatever the
+    /// previous attempt left behind.
+    fn retry_failures(
         &self,
-        selected: &[(&str, &str)],
-        entry: &ScheduleEntry,
-        state: &RunState,
-        observer: &dyn RunObserver,
-    ) -> (TestPlan, FileReport) {
-        let Some((file, source)) = selected.get(entry.index).copied() else {
-            return (TestPlan::default(), not_run(entry));
-        };
-
-        if self
-            .options
-            .bail
-            .is_reached(state.failures.load(Ordering::Relaxed))
-        {
-            return (TestPlan::default(), not_run(entry));
-        }
-
-        let (plan, report) = execute_file(file, source, &self.options, &self.filter);
-        let failed = report
+        host: &HostCommand,
+        file: &TestFile,
+        outcome: &mut FileOutcome,
+        worker: &mut Option<Worker>,
+    ) {
+        let attempts = self.options.retry.max_attempts();
+        let failing: Vec<String> = outcome
             .records
             .iter()
             .filter(|record| record.status.is_failed())
-            .count();
-        if failed > 0 {
-            state.failures.fetch_add(failed, Ordering::Relaxed);
+            .map(|record| record.name.clone())
+            .collect();
+
+        for name in failing {
+            for attempt in 2..=attempts {
+                if worker.is_none() {
+                    match Worker::spawn(host) {
+                        Ok(fresh) => *worker = Some(fresh),
+                        Err(_) => return,
+                    }
+                }
+                let Some(active) = worker.as_mut() else {
+                    return;
+                };
+                let retried = active.run_file(
+                    file.absolute.as_str(),
+                    &file.relative,
+                    Some(&name),
+                    self.options.effective_file_timeout(),
+                    self.options.effective_file_timeout() * MAX_CASES_PER_FILE_BUDGET,
+                );
+                if !matches!(retried.status, FileStatus::Completed) {
+                    *worker = None;
+                    return;
+                }
+                let Some(fresh) = retried.records.into_iter().find(|record| {
+                    record.name == name && !matches!(record.status, TestStatus::Skipped { .. })
+                }) else {
+                    return;
+                };
+                let passed = fresh.status.is_passed();
+                if let Some(slot) = outcome
+                    .records
+                    .iter_mut()
+                    .find(|record| record.name == name)
+                {
+                    slot.status = fresh.status;
+                    slot.attempts = attempt;
+                }
+                if passed {
+                    break;
+                }
+            }
         }
-        let completed = state.completed.fetch_add(1, Ordering::Relaxed) + 1;
-        observer.file_finished(completed, state.total, &report);
-        (plan, report)
+    }
+
+    fn bailed(&self, state: &RunState) -> bool {
+        match self.options.bail {
+            Bail::Off => false,
+            Bail::After(limit) => state.failures.load(Ordering::SeqCst) >= limit.get(),
+        }
     }
 }
 
-fn not_run(entry: &ScheduleEntry) -> FileReport {
-    FileReport {
-        file: entry.file.to_string(),
-        status: FileStatus::NotRun,
-        duration_micros: 0,
-        records: Vec::new(),
-    }
-}
+/// How much longer than one case's budget a whole file may take.
+///
+/// A file is many cases, and the per-case budget is what bounds a hanging
+/// test; this is the backstop for a worker that stops answering entirely, so
+/// it is deliberately generous.
+const MAX_CASES_PER_FILE_BUDGET: u32 = 60;
 
+/// Shared state across the pool.
+#[derive(Debug)]
 struct RunState {
+    next: AtomicUsize,
     failures: AtomicUsize,
     completed: AtomicUsize,
     total: usize,
+    outcomes: Mutex<Vec<Option<FileReport>>>,
 }
 
-/// Put the per-file outcomes back into one deterministic report.
+impl RunState {
+    fn record(&self, at: usize, report: FileReport, observer: &dyn RunObserver) {
+        let completed = self.completed.fetch_add(1, Ordering::SeqCst) + 1;
+        observer.file_finished(completed, self.total, &report);
+        if let Ok(mut outcomes) = self.outcomes.lock() {
+            outcomes[at] = Some(report);
+        }
+    }
+}
+
+fn sources_of<'a>(files: &[&'a TestFile]) -> Vec<(&'a str, &'a str)> {
+    files
+        .iter()
+        .map(|file| (file.relative.as_str(), file.source.as_str()))
+        .collect()
+}
+
+/// Put the report together from what the workers returned.
+///
+/// Files are sorted by path, not by the order they finished, so the report
+/// does not depend on the schedule.
 fn assemble(
-    outcomes: Vec<(TestPlan, FileReport)>,
+    outcomes: Vec<Option<FileReport>>,
+    selected: &[&TestFile],
     schedule: &[ScheduleEntry],
     started: Instant,
     bail: Bail,
-    state: &RunState,
+    failures: usize,
 ) -> TestRunReport {
-    let (plans, mut files): (Vec<TestPlan>, Vec<FileReport>) = outcomes.into_iter().unzip();
+    let mut files: Vec<FileReport> = Vec::with_capacity(outcomes.len());
+    for (at, outcome) in outcomes.into_iter().enumerate() {
+        files.push(outcome.unwrap_or_else(|| FileReport {
+            file: schedule[at].file.to_string(),
+            status: FileStatus::NotRun,
+            duration_micros: 0,
+            records: Vec::new(),
+        }));
+    }
     files.sort_by(|a, b| a.file.cmp(&b.file));
 
-    let plan = merge_plans(plans);
-    let mut summary = summarize(&plan, &files);
-    summary.scheduled_warm = schedule
-        .iter()
-        .filter(|entry| entry.basis == ScheduleBasis::Recorded)
-        .count();
-    summary.scheduled_cold = schedule.len() - summary.scheduled_warm;
-    summary.bailed = bail.is_reached(state.failures.load(Ordering::Relaxed));
-    summary.duration_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    let plan = merge_plans(
+        selected
+            .iter()
+            .map(|file| crate::discovery::discover_tests(&file.relative, &file.source)),
+    );
+
+    let mut summary = TestSummary {
+        files: files.len(),
+        unsupported_declarations: plan.unsupported.len(),
+        scheduled_warm: schedule
+            .iter()
+            .filter(|entry| matches!(entry.basis, crate::schedule::ScheduleBasis::Recorded))
+            .count(),
+        scheduled_cold: schedule
+            .iter()
+            .filter(|entry| !matches!(entry.basis, crate::schedule::ScheduleBasis::Recorded))
+            .count(),
+        duration_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+        bailed: matches!(bail, Bail::After(limit) if failures >= limit.get()),
+        ..TestSummary::default()
+    };
+    for file in &files {
+        if file.status.is_fatal() {
+            summary.failed_files += 1;
+        }
+        for record in &file.records {
+            match &record.status {
+                TestStatus::Passed => summary.passed += 1,
+                TestStatus::Failed { .. } => summary.failed += 1,
+                TestStatus::Skipped { .. } => summary.skipped += 1,
+                TestStatus::Todo => summary.todo += 1,
+            }
+        }
+    }
 
     TestRunReport {
         plan,
@@ -273,71 +512,43 @@ fn assemble(
     }
 }
 
-fn summarize(plan: &TestPlan, files: &[FileReport]) -> TestSummary {
-    let mut summary = TestSummary {
-        files: files.len(),
-        unsupported_declarations: plan.unsupported.len(),
-        ..TestSummary::default()
-    };
-
-    for file in files {
-        if file.status.is_fatal() {
-            summary.failed_files += 1;
-        }
-        for record in &file.records {
-            match &record.status {
-                TestStatus::Passed => summary.passed += 1,
-                TestStatus::Failed { unsupported, .. } => {
-                    summary.failed += 1;
-                    summary.unsupported_assertions += count_unsupported(unsupported);
-                }
-                TestStatus::Unsupported { assertions } => {
-                    summary.unsupported += 1;
-                    summary.unsupported_assertions += count_unsupported(assertions);
-                }
-                TestStatus::Skipped { .. } => summary.skipped += 1,
-                TestStatus::Todo => summary.todo += 1,
-            }
-        }
-    }
-
-    summary
-}
-
-fn count_unsupported(assertions: &[UnsupportedAssertion]) -> usize {
-    assertions.len()
-}
-
-/// Execute the native source-level test subset with default options.
+/// An observer that serialises calls to a closure.
 ///
-/// The one-line entry point: discovery, scheduling and execution over the given
-/// sources, on the global thread pool.
-pub fn run_tests<'a>(sources: impl IntoIterator<Item = (&'a str, &'a str)>) -> TestRunReport {
-    let sources: Vec<(&str, &str)> = sources.into_iter().collect();
-    TestRunner::new().run(&sources)
-}
-
-/// An observer that funnels every completion into one locked callback.
-///
-/// The lock is held only for the callback, and callers use it for a rate-limited
-/// progress line, so contention is a non-issue in practice.
-pub struct LockedObserver<F: FnMut(usize, usize, &FileReport) + Send> {
+/// Progress is drawn from several workers at once and a terminal is not
+/// re-entrant, so the closure is behind a lock rather than every caller
+/// remembering to take one.
+pub struct LockedObserver<F> {
     inner: Mutex<F>,
 }
 
-impl<F: FnMut(usize, usize, &FileReport) + Send> LockedObserver<F> {
-    /// Wrap `callback` so it can be called from worker threads.
-    pub fn new(callback: F) -> Self {
+impl<F> LockedObserver<F>
+where
+    F: FnMut(usize, usize, &FileReport) + Send,
+{
+    /// Wrap `body` so it is called from one thread at a time.
+    pub fn new(body: F) -> Self {
         Self {
-            inner: Mutex::new(callback),
+            inner: Mutex::new(body),
         }
     }
 }
 
-impl<F: FnMut(usize, usize, &FileReport) + Send> RunObserver for LockedObserver<F> {
+impl<F> RunObserver for LockedObserver<F>
+where
+    F: FnMut(usize, usize, &FileReport) + Send,
+{
     fn file_finished(&self, completed: usize, total: usize, report: &FileReport) {
-        if let Ok(mut callback) = self.inner.lock() {
-            callback(completed, total, report);
+        if let Ok(mut body) = self.inner.lock() {
+            body(completed, total, report);
         }
     }
+}
+
+/// Run `files` with default options on `host`.
+///
+/// # Errors
+///
+/// [`RunError`] when the host will not start.
+pub fn run_tests(files: &[TestFile], host: HostCommand) -> Result<TestRunReport, RunError> {
+    TestRunner::new().with_host(host).run(files)
 }

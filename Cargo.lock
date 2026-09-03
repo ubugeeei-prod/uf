@@ -3346,6 +3346,7 @@ dependencies = [
  "mimalloc",
  "serde",
  "serde_json",
+ "similar-asserts",
  "tempfile",
  "uf_bundle",
  "uf_check",

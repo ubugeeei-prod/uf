@@ -48,6 +48,9 @@ pub(super) fn watch(
     args: TestArgs,
 ) -> Result<()> {
     let mut files = collect_source_files(root, &config)?;
+    // Resolved once: a watch session that lost its host between runs would be
+    // reporting a different failure than the one the user is editing towards.
+    let host = super::test_host(root, &config)?;
     let mut graph = build_graph(&files);
     let filter = args.filter();
 
@@ -55,7 +58,7 @@ pub(super) fn watch(
     prime(&mut watcher, &files);
 
     let interval = watcher.interval();
-    run_and_report(ui, root, &files, &files, &args, None);
+    run_and_report(ui, root, &host, &files, &files, &args, None);
     announce(ui, files.len(), interval);
 
     let mut ticks: u32 = 0;
@@ -88,7 +91,7 @@ pub(super) fn watch(
             .filter(|file| rerun.iter().any(|path| path == &file.relative_path))
             .cloned()
             .collect();
-        run_and_report(ui, root, &files, &subset, &args, Some(&moved));
+        run_and_report(ui, root, &host, &files, &subset, &args, Some(&moved));
     }
 }
 
@@ -202,6 +205,7 @@ fn affected(
 fn run_and_report(
     ui: &mut Ui,
     root: &Utf8Path,
+    host: &uf_test::HostCommand,
     all_files: &[ProjectFile],
     subset: &[ProjectFile],
     args: &TestArgs,
@@ -221,8 +225,24 @@ fn run_and_report(
 
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(root);
-    let report = timer.measure("run", || run_once(ui, subset, args, timings.clone()));
+    let report = timer.measure("run", || {
+        run_once(ui, root, host, subset, args, timings.clone())
+    });
     let duration = timer.total();
+    // A run that could not start at all is reported and the watch continues:
+    // a host that went away is a thing to fix, not a reason to lose the
+    // session.
+    let report = match report {
+        Ok(report) => report,
+        Err(error) => {
+            let message = error.to_string();
+            ui.render(|renderer, out| {
+                renderer.blank(out);
+                renderer.status(out, Status::Error, &message);
+            });
+            return;
+        }
+    };
     let record_note = record_timings(root, timings, &report, all_files);
 
     render_report(
@@ -233,6 +253,7 @@ fn run_and_report(
         timer.phases(),
         duration,
         args,
+        host,
         timing_note.as_deref(),
         record_note.as_deref(),
     );

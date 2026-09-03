@@ -14,8 +14,8 @@ use uf_term::{
     format_duration, push_padded, push_spaces,
 };
 use uf_test::{
-    FileStatus, SkipReason, TestFilter, TestRecord, TestRunReport, TestStatus,
-    UnsupportedAssertion, discover_tests, merge_plans,
+    FileStatus, SkipReason, TestFilter, TestRecord, TestRunReport, TestStatus, discover_tests,
+    merge_plans,
 };
 
 use super::{SLOWEST_SHOWN, TestArgs, runner_plan, timings_label};
@@ -127,13 +127,12 @@ pub(super) fn render_report(
     phases: &[Phase],
     duration: Duration,
     args: &TestArgs,
+    host: &uf_test::HostCommand,
     timing_note: Option<&str>,
     record_note: Option<&str>,
 ) {
-    let runner = runner_plan();
     let label = project_label(root).to_string();
-    let runtime = format!("{:?}", runner.runtime);
-    let target = format!("{:?}", runner.performance_target);
+    let runtime = host.kind.program().to_string();
     let workers = args.options().concurrency.threads().to_string();
     let cache = timings_label(root);
     let cache = crate::support::relative_to(root, &cache);
@@ -214,13 +213,11 @@ pub(super) fn render_report(
                 KeyValue::toned("failed", &counts.failed, Tone::Bad),
                 KeyValue::toned("skipped", &counts.skipped, Tone::Muted),
                 KeyValue::toned("todo", &counts.todo, Tone::Muted),
-                KeyValue::toned("unsupported assertions", &counts.unsupported, Tone::Warn),
                 KeyValue::new("files", &counts.files),
                 KeyValue::new("workers", &workers),
                 KeyValue::new("schedule", &counts.schedule),
                 KeyValue::new("timings", &cache),
-                KeyValue::new("runtime", &runtime),
-                KeyValue::new("target", &target),
+                KeyValue::new("host", &runtime),
             ],
         );
 
@@ -246,15 +243,17 @@ fn status_of(status: &TestStatus) -> Status {
     match status {
         TestStatus::Passed => Status::Success,
         TestStatus::Failed { .. } => Status::Error,
-        TestStatus::Unsupported { .. } => Status::Warn,
         TestStatus::Skipped { .. } | TestStatus::Todo => Status::Skip,
     }
 }
 
-/// Draw a code frame under a failing or unsupported test.
+/// Draw a code frame, and what the matcher said, under a failing test.
 ///
-/// The frame points at the assertion, not at the `it(` line, because the `it(`
-/// line is not where the developer has to look.
+/// The frame points at the assertion rather than at the `it(` line, because
+/// the `it(` line is not where the developer has to look. When the matcher
+/// said what it wanted and what it got, those are printed under the frame:
+/// a rendered value is often longer than a line of source and belongs beside
+/// the frame rather than inside it.
 fn render_details(
     renderer: &uf_term::Renderer,
     out: &mut String,
@@ -266,55 +265,29 @@ fn render_details(
         .find(|file| file.relative_path == record.file)
         .map(|file| file.source.as_str());
 
-    match &record.status {
-        TestStatus::Failed {
-            failures,
-            unsupported,
-        } => {
-            for failure in failures {
-                let frame = CodeFrame {
-                    level: DiagnosticLevel::Error,
-                    rule: None,
-                    message: &failure.message,
-                    path: &record.file,
-                    line: failure.line,
-                    column: failure.column,
-                    span: failure.span,
-                    source_line: source.and_then(|source| line_at(source, failure.line)),
-                    label: None,
-                };
-                renderer.code_frame_at(out, &frame, 6);
-            }
-            render_unsupported(renderer, out, source, record, unsupported);
-        }
-        TestStatus::Unsupported { assertions } => {
-            render_unsupported(renderer, out, source, record, assertions)
-        }
-        _ => {}
-    }
-}
-
-fn render_unsupported(
-    renderer: &uf_term::Renderer,
-    out: &mut String,
-    source: Option<&str>,
-    record: &TestRecord,
-    assertions: &[UnsupportedAssertion],
-) {
-    for assertion in assertions {
-        let message = assertion.reason.describe();
+    for failure in record.status.failures() {
         let frame = CodeFrame {
-            level: DiagnosticLevel::Warning,
-            rule: Some("unsupported"),
-            message: &message,
+            level: DiagnosticLevel::Error,
+            rule: None,
+            message: &failure.message,
             path: &record.file,
-            line: assertion.line,
-            column: assertion.column,
-            span: assertion.span,
-            source_line: source.and_then(|source| line_at(source, assertion.line)),
+            line: failure.line,
+            column: failure.column,
+            span: failure.span,
+            source_line: source.and_then(|source| line_at(source, failure.line)),
             label: None,
         };
         renderer.code_frame_at(out, &frame, 6);
+        if let (Some(expected), Some(received)) = (&failure.expected, &failure.received) {
+            renderer.key_values(
+                out,
+                8,
+                &[
+                    KeyValue::toned("expected", expected, Tone::Good),
+                    KeyValue::toned("received", received, Tone::Bad),
+                ],
+            );
+        }
     }
 }
 
@@ -331,7 +304,6 @@ struct Counts {
     failed: String,
     skipped: String,
     todo: String,
-    unsupported: String,
     files: String,
     schedule: String,
 }
@@ -343,7 +315,6 @@ fn counts(report: &TestRunReport) -> Counts {
         failed: summary.failed.to_string(),
         skipped: summary.skipped.to_string(),
         todo: summary.todo.to_string(),
-        unsupported: summary.unsupported_assertions.to_string(),
         files: summary.files.to_string(),
         schedule: format!(
             "{} recorded, {} by size",
@@ -360,9 +331,6 @@ fn summary_line(report: &TestRunReport, duration: Duration) -> String {
     }
     if summary.todo > 0 {
         line.push_str(&format!(", {} todo", summary.todo));
-    }
-    if summary.unsupported_assertions > 0 {
-        line.push_str(&format!(", {} unsupported", summary.unsupported_assertions));
     }
     if summary.unsupported_declarations > 0 {
         line.push_str(&format!(

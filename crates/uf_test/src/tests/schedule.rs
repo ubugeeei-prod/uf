@@ -1,8 +1,8 @@
 //! Longest-first ordering, and the cold heuristic behind it.
 
 use crate::{
-    COLD_NANOS_PER_BYTE, Concurrency, RunOptions, ScheduleBasis, TestRunner, TestTimings,
-    cold_weight_micros, makespan_micros, schedule_files,
+    COLD_NANOS_PER_BYTE, ScheduleBasis, TestRunner, TestTimings, cold_weight_micros,
+    makespan_micros, schedule_files,
 };
 
 fn files(sizes: &[(&'static str, usize)]) -> Vec<(&'static str, String)> {
@@ -161,28 +161,30 @@ fn the_makespan_of_an_empty_schedule_is_zero() {
 }
 
 #[test]
-fn a_run_reports_how_many_files_were_scheduled_warm() {
+fn a_schedule_says_which_files_were_ordered_from_a_recording() {
     let mut timings = TestTimings::new();
     timings.record("a.test.js", 1_000);
+    let owned = files(&[("a.test.js", 10), ("b.test.js", 10)]);
+    let pairs = as_pairs(&owned);
 
-    let runner = TestRunner::new()
-        .with_timings(timings)
-        .with_options(RunOptions::serial());
-    let report = runner.run(&[
-        ("a.test.js", "it('a', () => {});"),
-        ("b.test.js", "it('b', () => {});"),
-    ]);
+    let schedule = schedule_files(&pairs, &timings);
 
-    assert_eq!(report.summary.scheduled_warm, 1);
-    assert_eq!(report.summary.scheduled_cold, 1);
+    let warm = schedule
+        .iter()
+        .filter(|entry| entry.basis == ScheduleBasis::Recorded)
+        .count();
+    assert_eq!(warm, 1);
+    assert_eq!(schedule.len() - warm, 1);
 }
 
 #[test]
 fn a_runner_exposes_the_schedule_it_would_use() {
-    let owned = files(&[("small.js", 10), ("large.js", 10_000)]);
-    let pairs = as_pairs(&owned);
+    let files = [
+        crate::TestFile::new("small.js", "/p/small.js", "x".repeat(10)),
+        crate::TestFile::new("large.js", "/p/large.js", "x".repeat(10_000)),
+    ];
 
-    let schedule = TestRunner::new().schedule(&pairs);
+    let schedule = TestRunner::new().schedule(&files);
     assert_eq!(schedule[0].file, "large.js");
 }
 
@@ -196,28 +198,4 @@ fn a_schedule_entry_round_trips_through_json() {
     assert!(json.contains("\"basis\":\"size\""));
     let back: crate::ScheduleEntry = serde_json::from_str(&json).unwrap();
     assert_eq!(back, schedule[0]);
-}
-
-#[test]
-fn a_fixed_worker_count_still_runs_every_file() {
-    let runner = TestRunner::new().with_options(RunOptions {
-        concurrency: Concurrency::Fixed(std::num::NonZeroUsize::new(3).unwrap()),
-        ..RunOptions::default()
-    });
-    let sources: Vec<(String, String)> = (0..20)
-        .map(|index| {
-            (
-                format!("t{index}.test.js"),
-                format!("it('case {index}', () => {{ expect(1).toBe(1); }});"),
-            )
-        })
-        .collect();
-    let pairs: Vec<(&str, &str)> = sources
-        .iter()
-        .map(|(name, source)| (name.as_str(), source.as_str()))
-        .collect();
-
-    let report = runner.run(&pairs);
-    assert_eq!(report.summary.passed, 20);
-    assert_eq!(report.files.len(), 20);
 }

@@ -1,0 +1,136 @@
+---
+title: "Commands · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# Commands
+
+<div className="lede">
+Every subcommand, what it does, and what it exits with. Global flags come
+before the subcommand; a subcommand's own flags come after it.
+</div>
+
+## Global flags
+
+| Flag | Meaning |
+| --- | --- |
+| `--cwd DIR` | Treat DIR as the project root instead of the working directory |
+| `--color auto\|always\|never` | Colour output. `auto` colours a terminal and nothing else |
+| `-h`, `--help` | Help for uf or for a subcommand |
+| `-V`, `--version` | The version |
+
+## Project
+
+### uf create app NAME
+
+Scaffolds an application: `uf.config.js`, `app.js`, a layout, a page and a
+`package.json`. Writes files and nothing else — no install, no git.
+
+### uf create lib NAME
+
+Scaffolds a library rather than an application: no router, no document, and a
+`package.json` shaped for publishing.
+
+### uf info
+
+Prints the version, the resolved JavaScript host, and the project uf found.
+The first thing to run when something is behaving unexpectedly.
+
+### uf inspect
+
+Prints what uf resolved from your config — the effective options, the route
+table, and the config handed to Vite. `--json` for the machine-readable form.
+
+## Running and building
+
+### uf dev
+
+Starts the dev server. `--port PORT` overrides `dev.port`. `--host HOST` binds a
+routable address, which requires a non-empty `dev.allowedHosts`.
+
+### uf build
+
+Builds the client and server bundles and prerenders what can be prerendered.
+`--size-report` prints the cost of each chunk.
+
+### uf run SCRIPT [ARGS...]
+
+Runs a script from `uf.config.js` through the task runner, forwarding
+everything after the script name.
+
+### uf exec PACKAGE [ARGS...]
+
+Runs a package's binary on the resolved host, the way `npx` would.
+
+## Correctness
+
+### uf check
+
+Type-checks the project with Flow. `--json` for the machine-readable report.
+
+### uf lint
+
+Runs uf's rules and Flow's built-in lints. `--json` for the report.
+
+### uf fmt
+
+Formats the project. `--check` reports what would change and exits non-zero
+instead of writing.
+
+### uf test [PATH...]
+
+Runs the test suite. A PATH argument keeps only files whose path contains it.
+
+| Flag | Meaning |
+| --- | --- |
+| `-t PATTERN` | Only tests whose fully qualified name contains PATTERN |
+| `-j N`, `--threads N` | At most N files at once; defaults to one per core |
+| `--bail[=N]` | Stop after N failures; N defaults to 1 |
+| `--retry N` | Re-run a failing test up to N more times |
+| `--watch` | Re-run affected tests when a source file changes |
+| `--watch-interval MS` | How often `--watch` looks for changes |
+| `--list` | Print what would run without running it |
+| `--json` | The whole report on stdout, machine-readable |
+
+## Environment
+
+### uf install
+
+Installs dependencies with the host's package manager.
+
+### uf use RUNTIME
+
+Pins the project to `node`, `bun` or `deno`, writing the choice into the config.
+
+### uf env
+
+Inspects the resolved environment: which hosts were found, which was chosen and
+why.
+
+### uf upgrade
+
+Replaces the uf binary with the newest release.
+
+## Publishing
+
+### uf prepare
+
+Builds whatever a package needs before it can be published.
+
+### uf release BUMP
+
+Bumps the version — `patch`, `minor`, `major`, `alpha`, `beta`, `rc` — and
+tags it.
+
+### uf publish
+
+Publishes the package to the registry.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success; for `fmt --check`, nothing would change |
+| `1` | The command ran and reported a problem: a failing test, a lint error, a type error, a file that needs formatting |
+| `2` | uf could not run the command: a bad flag, a missing config, no usable host |

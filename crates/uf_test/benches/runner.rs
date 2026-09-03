@@ -1,4 +1,5 @@
-//! What a thousand-file suite costs: discovery, scheduling, and the whole run.
+//! What a thousand-file suite costs uf: discovery, scheduling, and the import
+//! graph — the work that happens before any JavaScript runs.
 //!
 //! The suite is synthetic but shaped like a real one — a long tail of small
 //! files, a handful of large ones — because a uniform suite hides the only
@@ -6,13 +7,9 @@
 //! headline number is files/second.
 
 use std::hint::black_box;
-use std::num::NonZeroUsize;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use uf_test::{
-    Concurrency, ImportGraph, RunOptions, TestRunner, TestTimings, discover_tests, merge_plans,
-    schedule_files,
-};
+use uf_test::{ImportGraph, TestTimings, discover_tests, merge_plans, schedule_files};
 
 /// How many files the synthetic suite holds.
 const SUITE_FILES: usize = 1_000;
@@ -111,49 +108,26 @@ fn bench_runner(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("run serial", |b| {
-        let runner = TestRunner::new().with_options(RunOptions::serial());
-        b.iter(|| black_box(runner.run(&sources)));
-    });
-
-    group.bench_function("run parallel", |b| {
-        let runner = TestRunner::new().with_options(RunOptions {
-            concurrency: Concurrency::Auto,
-            ..RunOptions::default()
-        });
-        b.iter(|| black_box(runner.run(&sources)));
-    });
-
-    group.bench_function("run parallel warm schedule", |b| {
-        let runner = TestRunner::new()
-            .with_timings(warm.clone())
-            .with_options(RunOptions {
-                concurrency: Concurrency::Auto,
-                ..RunOptions::default()
-            });
-        b.iter(|| black_box(runner.run(&sources)));
-    });
-
-    for threads in [2usize, 4, 8] {
-        let Some(threads) = NonZeroUsize::new(threads) else {
-            continue;
-        };
-        group.bench_function(format!("run on {threads} workers"), |b| {
-            let runner = TestRunner::new().with_options(RunOptions {
-                concurrency: Concurrency::Fixed(threads),
-                ..RunOptions::default()
-            });
-            b.iter(|| black_box(runner.run(&sources)));
-        });
-    }
-
+    // What a *run* costs is not measured here. It is dominated by starting
+    // worker processes and by the host executing the code, neither of which
+    // criterion can measure meaningfully from inside a Rust process; the
+    // end-to-end numbers, against Bun and Vitest, are in
+    // `docs/architecture.md`. What is measured above is exactly the work uf
+    // does itself.
     group.finish();
 
+    // Discovery is the one stage whose cost is a function of source size
+    // rather than file count, so it is also reported per byte.
     let mut bytes = c.benchmark_group("uf_test bytes");
     bytes.throughput(Throughput::Bytes(total_bytes));
-    bytes.bench_function("run parallel", |b| {
-        let runner = TestRunner::new();
-        b.iter(|| black_box(runner.run(&sources)));
+    bytes.bench_function("discover", |b| {
+        b.iter(|| {
+            black_box(merge_plans(
+                sources
+                    .iter()
+                    .map(|(file, source)| discover_tests(file, source)),
+            ))
+        });
     });
     bytes.finish();
 }

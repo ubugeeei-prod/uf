@@ -1,0 +1,105 @@
+---
+title: "Your first project · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Your first project
+
+<div className="lede">
+From an empty directory to a built site, with every file explained. There are
+five of them.
+</div>
+
+## Scaffold
+
+<div className="command"><code>uf create app my-site</code></div>
+
+`uf create` writes a project and nothing else — no `node_modules`, no lockfile,
+no git history. What it writes is:
+
+```
+my-site/
+  uf.config.js      the only config file
+  app.js            the application entry
+  app/
+    _uf.layout.js   the document: <html>, <head>, <body>
+    _uf.page.js     the page at "/"
+  package.json      dependencies, and nothing else
+```
+
+There is no `vite.config.ts`, no `babel.config.js`, no `.eslintrc`, no
+`tsconfig.json` and no `vitest.config.ts`. That is the point of the exercise.
+
+## Run it
+
+<div className="command"><code>uf dev</code></div>
+
+This starts Vite through the host, with uf's plugin installed and your config
+translated into Vite's shape. Hot reload works, including React Fast Refresh
+through `component` declarations.
+
+## The config
+
+```js
+// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    router: { entry: "app.js", root: "app" },
+  },
+});
+```
+
+`defineConfig` is a typed identity function: it exists so Flow checks the object
+against the config schema at the place you write it, rather than at the place uf
+reads it. Every option and its default is in [the reference](/reference/config).
+
+## The layout and the page
+
+A layout renders the document. It is a `component`, and it receives the page as
+`children`:
+
+```js
+// @flow
+import * as React from "@uniflowed/react";
+
+export component Layout(children: React.Node) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <title>my site</title>
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+A page is the default export of `_uf.page.js`:
+
+```js
+// @flow
+export default component Home() {
+  return <h1>Hello</h1>;
+}
+```
+
+Both are Flow, both use `component` syntax, and neither needs a plugin declared
+anywhere. [Routing](/guide/routing) covers nesting, parameters and loaders.
+
+## Build it
+
+<div className="command"><code>uf build</code></div>
+
+produces static HTML for every route it can prerender, plus the client bundle,
+under `dist/`. Add `--size-report` to see what each chunk cost.
+
+## Everything else
+
+<div className="command"><code>uf check</code></div>
+
+runs Flow over the project. `uf fmt` formats it, `uf lint` lints it, and
+`uf test` runs the tests. None of those need to be configured first.

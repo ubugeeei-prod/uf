@@ -111,7 +111,9 @@ fn runner_plan_is_runtime_agnostic_and_faster_than_bun_targeted() {
     assert!(plan.accepts_import("@uniflowed/test"));
     assert!(plan.accepts_import("@uniflowed/testing"));
     assert!(!plan.accepts_import("jest"));
-    assert!(plan.react_testing_library_native);
+    // `@uniflowed/react-testing` still needs a DOM; the plan says so rather
+    // than claiming a surface that raises when it is called.
+    assert!(!plan.react_testing_library_native);
     assert!(plan.official_flow_parser);
 }
 

@@ -14,11 +14,39 @@
 // differently, so there is no invalidation to get wrong.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isFlowModule, transformFlow } from "../transform.js";
+
+/**
+ * Write `contents` to `target` so a concurrent reader never sees half of it.
+ *
+ * `uf test` runs one of these processes per core and they all import the same
+ * few modules at once, so two writers and a reader meet on the same cache
+ * entry constantly. `writeFileSync` is not atomic — a reader can observe a
+ * truncated file and report a module that "does not provide an export" — so
+ * the content goes to a private temporary name first and is then renamed,
+ * which is atomic within a filesystem.
+ *
+ * A failure here is not a failure: a read-only checkout still runs, just
+ * without the cache.
+ */
+function writeAtomically(target, contents) {
+  const temporary = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}`;
+  try {
+    mkdirSync(cacheDirectory, { recursive: true });
+    writeFileSync(temporary, contents);
+    renameSync(temporary, target);
+  } catch {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // Nothing to clean up.
+    }
+  }
+}
 
 /** Bumped whenever the transform's output shape changes, to retire old entries. */
 const CACHE_VERSION = "2";
@@ -77,12 +105,7 @@ async function cachedTransform(source, filename) {
     : out.code;
 
   if (entry) {
-    try {
-      mkdirSync(cacheDirectory, { recursive: true });
-      writeFileSync(entry, output);
-    } catch {
-      // A read-only checkout still runs; it just runs without the cache.
-    }
+    writeAtomically(entry, output);
   }
   return output;
 }
