@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use uf_config::FmtConfig;
-use uf_fmt::{format_source, lexer::tokenize};
+use uf_fmt::format_source;
 
 /// Build a synthetic Flow + JSX source file of roughly `components` components.
 fn synthetic_source(components: usize) -> String {
@@ -70,9 +70,6 @@ fn bench_format(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("uf_fmt");
     group.throughput(Throughput::Bytes(bytes));
-    group.bench_function("tokenize large flow react file", |bencher| {
-        bencher.iter(|| black_box(tokenize(black_box(&source)).len()));
-    });
     group.bench_function("format large flow react file", |bencher| {
         bencher.iter(|| black_box(format_source(black_box(&source), &config).expect("format")));
     });

@@ -88,6 +88,7 @@ smallvec = { version = "1.15.1", features = ["serde"] }
 tempfile = "3.25.0"
 thiserror = "2.0.17"
 toml = "1.1.4"
+unicode-width = "0.2.2"
 walkdir = "2.5.0"
 
 [profile.release]

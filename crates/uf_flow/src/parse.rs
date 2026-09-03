@@ -1,0 +1,598 @@
+//! The parse entry point: the official port's syntax tree for one source file.
+//!
+//! [`validate_source`](crate::validate_source) answers "does this parse", which
+//! is what the linter asks. Anything that *rewrites* source — the formatter, a
+//! transform — needs the tree itself, and it needs the parser's own tree rather
+//! than a copy: a second definition of Flow syntax is a second place for the
+//! grammar to drift, which is the mistake this crate exists to prevent. So the
+//! port's types are re-exported here as [`ast`] and [`Loc`], and [`parse`]
+//! hands back a [`Parsed`] built from them.
+//!
+//! # Ceilings
+//!
+//! The port is a recursive-descent parser, and a stack overflow cannot be
+//! caught, so two limits are enforced *before* it runs: [`MAX_PARSE_BYTES`] on
+//! the size of the source and [`MAX_NESTING_DEPTH`] on how deeply brackets
+//! nest. Both come back as a typed [`ParseFailure`] so a caller formatting a
+//! whole project sees one refused file rather than its own crash. Syntax errors
+//! are deliberately not failures: the port recovers and reports them, and they
+//! ride along as [`Parsed::diagnostics`].
+
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
+use flow_parser::ParseOptions;
+use flow_parser::parse_error::ParseError;
+use thiserror::Error;
+
+pub use flow_parser::ast;
+pub use flow_parser::loc::{Loc, Position};
+
+use crate::ParseDiagnostic;
+
+/// Longest source [`parse`] will accept, in bytes.
+///
+/// The same ceiling as [`MAX_STRIP_BYTES`](crate::MAX_STRIP_BYTES), for the
+/// same reason: a dependency can put a generated or hostile file in
+/// `node_modules`, and every scan in `uf` has an explicit limit above it rather
+/// than trusting the input to be a reasonable size.
+pub const MAX_PARSE_BYTES: usize = 8 * 1024 * 1024;
+
+/// Deepest bracket nesting [`parse`] will accept.
+///
+/// The port spends stack in proportion to this number, and a formatter that
+/// walks the tree recursively again doubles the exposure. A file that nests
+/// brackets hundreds deep is not something a person wrote; refusing it with a
+/// typed error is the alternative to a stack overflow. The number is generous
+/// for real code — generated tables rarely pass fifty — and, together with
+/// [`PARSE_STACK_BYTES`], one the parser has been measured to survive.
+pub const MAX_NESTING_DEPTH: usize = 300;
+
+/// Stack a thread needs to run [`parse`] on any source under
+/// [`MAX_NESTING_DEPTH`].
+///
+/// The port's frames are large: measured on an unoptimized build, an object
+/// literal costs about 150 KiB of stack per level of nesting, so the ceiling
+/// alone needs some 45 MiB — far more than the 8 MiB a main thread or the
+/// 2 MiB a test thread gets. Callers run the parser (and whatever recursive
+/// walk they do over its tree) on a thread of this size; the reservation is
+/// virtual and only the pages actually touched cost anything. A test below
+/// parses at the ceiling on such a thread, so the two constants cannot drift
+/// apart unnoticed.
+pub const PARSE_STACK_BYTES: usize = 128 * 1024 * 1024;
+
+/// Parse options aligned with the `uf` project defaults.
+///
+/// Every syntax `uf` ships in templates or lints is on — component and hook
+/// syntax, enums, pattern matching, records, Flow types, and types in
+/// comments. Decorators stay off because generated projects never emit them.
+/// This mirrors the options [`validate_source`](crate::validate_source) uses,
+/// so the formatter and the linter always agree on what parses.
+const UF_PARSE_OPTIONS: ParseOptions = ParseOptions {
+    components: true,
+    enums: true,
+    pattern_matching: true,
+    records: true,
+    esproposal_decorators: false,
+    types: true,
+    ambiguous_types: true,
+    enable_types_in_comments: true,
+    use_strict: false,
+    assert_operator: false,
+    module_ref_prefix: None,
+    ambient: false,
+    allow_return_outside_function: false,
+};
+
+/// One Flow source file, parsed by the official port.
+///
+/// The port recovers from syntax errors, so a program is always produced;
+/// [`Parsed::diagnostics`] says whether it is the program the author meant.
+/// Anything that rewrites source from the tree must refuse to when there are
+/// diagnostics, because a recovered tree is the parser's best guess and
+/// printing a guess loses code.
+#[derive(Debug, Clone)]
+pub struct Parsed {
+    /// The syntax tree, in the port's own types.
+    pub program: ast::Program<Loc, Loc>,
+    /// Syntax errors in source order; empty for a clean parse.
+    pub diagnostics: Vec<ParseDiagnostic>,
+}
+
+impl Parsed {
+    /// Whether the source parsed without a single syntax error.
+    #[must_use]
+    pub fn is_ok(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
+
+    /// Every comment in the file, in source order, whether or not the parser
+    /// attached it to a node.
+    ///
+    /// Comment text excludes its delimiters: `// a` carries `" a"` and
+    /// `/* b */` carries `" b "`. A printer adds them back from
+    /// [`ast::Comment::kind`].
+    #[must_use]
+    pub fn comments(&self) -> &[ast::Comment<Loc>] {
+        &self.program.all_comments
+    }
+}
+
+/// Why [`parse`] refused a source before the parser saw it.
+///
+/// Syntax errors are not a failure: they come back as
+/// [`Parsed::diagnostics`], with the recovered tree beside them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ParseFailure {
+    /// The source is larger than [`MAX_PARSE_BYTES`].
+    #[error("source is {bytes} bytes, over the {limit} byte ceiling")]
+    SourceTooLarge {
+        /// Size of the rejected source.
+        bytes: usize,
+        /// The ceiling, always [`MAX_PARSE_BYTES`].
+        limit: usize,
+    },
+    /// Brackets nest deeper than [`MAX_NESTING_DEPTH`].
+    #[error("brackets nest {depth} deep, over the {limit} level ceiling")]
+    TooDeeplyNested {
+        /// The nesting the scanner measured.
+        depth: usize,
+        /// The ceiling, always [`MAX_NESTING_DEPTH`].
+        limit: usize,
+    },
+    /// The port panicked instead of reporting a diagnostic.
+    ///
+    /// Not expected for any input, but a parser is the part of a toolchain
+    /// most exposed to hostile bytes, and a caller that formats files in bulk
+    /// must see one bad file as an error, not as its own crash.
+    #[error("the Flow parser failed on this source")]
+    ParserPanicked,
+}
+
+/// Parse `source` with the official Flow port and return its syntax tree.
+///
+/// Run it on a thread with [`PARSE_STACK_BYTES`] of stack: the port recurses
+/// once per level of nesting, and [`MAX_NESTING_DEPTH`] levels do not fit in
+/// a default thread.
+///
+/// # Errors
+///
+/// Returns [`ParseFailure::SourceTooLarge`] past [`MAX_PARSE_BYTES`] and
+/// [`ParseFailure::TooDeeplyNested`] past [`MAX_NESTING_DEPTH`]; both are
+/// decided before the parser runs. Syntax errors are not errors here: see
+/// [`Parsed::diagnostics`].
+pub fn parse(source: &str) -> Result<Parsed, ParseFailure> {
+    if source.len() > MAX_PARSE_BYTES {
+        return Err(ParseFailure::SourceTooLarge {
+            bytes: source.len(),
+            limit: MAX_PARSE_BYTES,
+        });
+    }
+    let depth = nesting_depth(source);
+    if depth > MAX_NESTING_DEPTH {
+        return Err(ParseFailure::TooDeeplyNested {
+            depth,
+            limit: MAX_NESTING_DEPTH,
+        });
+    }
+
+    let (program, errors) = catch_unwind(AssertUnwindSafe(|| {
+        flow_parser::parse_program_without_file(false, None, Some(UF_PARSE_OPTIONS), Ok(source))
+    }))
+    .map_err(|_| ParseFailure::ParserPanicked)?;
+
+    Ok(Parsed {
+        program,
+        diagnostics: errors.iter().map(diagnostic_from_error).collect(),
+    })
+}
+
+fn diagnostic_from_error((loc, error): &(Loc, ParseError)) -> ParseDiagnostic {
+    ParseDiagnostic {
+        message: error.to_string(),
+        line: u32::try_from(loc.start.line).ok(),
+        column: u32::try_from(loc.start.column).ok(),
+    }
+}
+
+/// What the depth scanner is inside: JavaScript, with the number of `{`
+/// opened since the frame began, or the literal text of a template.
+#[derive(Clone, Copy)]
+enum DepthFrame {
+    Js { braces: usize },
+    TemplateText,
+}
+
+/// What the previous significant token was, as far as deciding whether a `/`
+/// starts a regular expression needs to know.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Previous {
+    /// Nothing yet, or something a division cannot follow.
+    Operator,
+    /// A value: an identifier, a literal, or a closing bracket.
+    Value,
+}
+
+/// How deeply brackets nest in `source`, counting `(`, `[`, `{` and the `${`
+/// that opens a template substitution.
+///
+/// This is the guard behind [`MAX_NESTING_DEPTH`], so it has to see what the
+/// parser sees: brackets inside strings, comments and regular expressions are
+/// text, and the nesting hidden inside a template's `${ … }` counts to any
+/// depth or the ceiling could be walked around. It is a single pass of its own
+/// rather than a walk over [`scan::tokenize`](crate::scan::tokenize), which
+/// hands back a whole template literal as one token.
+///
+/// Unbalanced closers are ignored rather than reported: the answer is an upper
+/// bound on how deep the parser will recurse, and the parser is the one that
+/// diagnoses the mismatch.
+pub fn nesting_depth(source: &str) -> usize {
+    let bytes = source.as_bytes();
+    let mut at = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        3
+    } else {
+        0
+    };
+    if bytes[at..].starts_with(b"#!") {
+        at = line_end(bytes, at);
+    }
+
+    let mut frames: Vec<DepthFrame> = vec![DepthFrame::Js { braces: 0 }];
+    let mut depth = 0usize;
+    let mut deepest = 0usize;
+    let mut previous = Previous::Operator;
+
+    while at < bytes.len() {
+        let Some(&frame) = frames.last() else {
+            frames.push(DepthFrame::Js { braces: 0 });
+            continue;
+        };
+
+        if let DepthFrame::TemplateText = frame {
+            match bytes[at] {
+                b'\\' => at += 2,
+                b'`' => {
+                    frames.pop();
+                    previous = Previous::Value;
+                    at += 1;
+                }
+                b'$' if bytes.get(at + 1) == Some(&b'{') => {
+                    frames.push(DepthFrame::Js { braces: 0 });
+                    depth += 1;
+                    deepest = deepest.max(depth);
+                    previous = Previous::Operator;
+                    at += 2;
+                }
+                _ => at += 1,
+            }
+            continue;
+        }
+
+        let byte = bytes[at];
+        match byte {
+            b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c => at += 1,
+            b'/' if bytes.get(at + 1) == Some(&b'/') => at = line_end(bytes, at),
+            b'/' if bytes.get(at + 1) == Some(&b'*') => {
+                at = match find(bytes, at + 2, b"*/") {
+                    Some(end) => end + 2,
+                    None => bytes.len(),
+                };
+            }
+            b'"' | b'\'' => {
+                at = quoted_end(bytes, at, byte);
+                previous = Previous::Value;
+            }
+            b'`' => {
+                frames.push(DepthFrame::TemplateText);
+                at += 1;
+            }
+            b'/' => {
+                at = match previous {
+                    Previous::Operator => regex_end(bytes, at).unwrap_or(at + 1),
+                    Previous::Value => at + 1,
+                };
+                previous = Previous::Value;
+            }
+            b'(' | b'[' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+                previous = Previous::Operator;
+                at += 1;
+            }
+            b'{' => {
+                if let Some(DepthFrame::Js { braces }) = frames.last_mut() {
+                    *braces += 1;
+                }
+                depth += 1;
+                deepest = deepest.max(depth);
+                previous = Previous::Operator;
+                at += 1;
+            }
+            b')' | b']' => {
+                depth = depth.saturating_sub(1);
+                previous = Previous::Value;
+                at += 1;
+            }
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                previous = Previous::Value;
+                let closes_substitution = match frames.last_mut() {
+                    Some(DepthFrame::Js { braces }) if *braces > 0 => {
+                        *braces -= 1;
+                        false
+                    }
+                    Some(DepthFrame::Js { .. }) => frames.len() > 1,
+                    _ => false,
+                };
+                if closes_substitution {
+                    frames.pop();
+                }
+                at += 1;
+            }
+            b'0'..=b'9' => {
+                at = number_end(bytes, at);
+                previous = Previous::Value;
+            }
+            b'.' if matches!(bytes.get(at + 1), Some(b'0'..=b'9')) => {
+                at = number_end(bytes, at);
+                previous = Previous::Value;
+            }
+            _ if is_ident_start(byte) => {
+                let start = at;
+                at += 1;
+                while at < bytes.len() && is_ident_part(bytes[at]) {
+                    at += 1;
+                }
+                previous = if precedes_expression(&bytes[start..at]) {
+                    Previous::Operator
+                } else {
+                    Previous::Value
+                };
+            }
+            _ => {
+                previous = Previous::Operator;
+                at += 1;
+            }
+        }
+    }
+
+    deepest
+}
+
+/// Keywords after which a `/` begins a regular expression rather than dividing.
+fn precedes_expression(word: &[u8]) -> bool {
+    matches!(
+        word,
+        b"await"
+            | b"case"
+            | b"delete"
+            | b"do"
+            | b"else"
+            | b"in"
+            | b"instanceof"
+            | b"new"
+            | b"of"
+            | b"return"
+            | b"throw"
+            | b"typeof"
+            | b"void"
+            | b"yield"
+    )
+}
+
+fn is_ident_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_' || byte == b'$' || byte >= 0x80
+}
+
+fn is_ident_part(byte: u8) -> bool {
+    is_ident_start(byte) || byte.is_ascii_digit()
+}
+
+fn line_end(bytes: &[u8], from: usize) -> usize {
+    let mut at = from;
+    while at < bytes.len() && !matches!(bytes[at], b'\n' | b'\r') {
+        at += 1;
+    }
+    at
+}
+
+fn find(bytes: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
+    bytes
+        .get(from..)?
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|offset| from + offset)
+}
+
+/// One past the closing quote of the string starting at `from`, or the end
+/// of its line for an unterminated one.
+fn quoted_end(bytes: &[u8], from: usize, quote: u8) -> usize {
+    let mut at = from + 1;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at += 2,
+            b'\n' | b'\r' => return at,
+            byte if byte == quote => return at + 1,
+            _ => at += 1,
+        }
+    }
+    bytes.len()
+}
+
+fn number_end(bytes: &[u8], from: usize) -> usize {
+    let mut at = from;
+    while at < bytes.len() {
+        let byte = bytes[at];
+        let exponent_sign = matches!(byte, b'+' | b'-')
+            && at > from
+            && matches!(bytes[at - 1], b'e' | b'E')
+            && !bytes[from..at].starts_with(b"0x")
+            && !bytes[from..at].starts_with(b"0X");
+        if byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'.' || exponent_sign {
+            at += 1;
+        } else {
+            break;
+        }
+    }
+    at
+}
+
+/// One past the flags of the regular expression starting at `from`, or
+/// [`None`] when the slash turns out to be a division after all.
+fn regex_end(bytes: &[u8], from: usize) -> Option<usize> {
+    let mut at = from + 1;
+    let mut in_class = false;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at += 2,
+            b'\n' | b'\r' => return None,
+            b'[' => {
+                in_class = true;
+                at += 1;
+            }
+            b']' => {
+                in_class = false;
+                at += 1;
+            }
+            b'/' if !in_class => {
+                at += 1;
+                while at < bytes.len() && is_ident_part(bytes[at]) {
+                    at += 1;
+                }
+                return Some(at);
+            }
+            _ => at += 1,
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returns_the_tree_and_every_comment() {
+        let source = "// @flow\n/* a */ const x = 1; // b\n";
+
+        let parsed = parse(source).expect("parses");
+
+        assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.program.statements.len(), 1);
+        let comments: Vec<(&str, bool)> = parsed
+            .comments()
+            .iter()
+            .map(|comment| {
+                (
+                    &*comment.text,
+                    matches!(comment.kind, ast::CommentKind::Line),
+                )
+            })
+            .collect();
+        assert_eq!(comments, [(" @flow", true), (" a ", false), (" b", true)]);
+    }
+
+    #[test]
+    fn reports_syntax_errors_as_diagnostics_not_failures() {
+        let parsed = parse("const = ;\n").expect("the parser recovers");
+
+        assert!(!parsed.is_ok());
+        assert_eq!(parsed.diagnostics[0].line, Some(1));
+    }
+
+    #[test]
+    fn parses_every_modern_flow_construct_the_port_accepts() {
+        let source = r#"// @flow
+export component Page(a: string, ...rest: Props) renders React.Node {
+  return match (a) { "x" => <div>{a}</div>, _ => null };
+}
+hook useX(): number { return 1; }
+enum E of string { A = "a", B = "b" }
+type T<+A, -B, in C, out D, E extends string, F = number> = {| +a: A, b?: ?B, ...C |};
+declare module.exports: { x: number };
+const y = (x: any) as const;
+"#;
+
+        let parsed = parse(source).expect("parses");
+
+        assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.program.statements.len(), 6);
+    }
+
+    #[test]
+    fn refuses_oversized_sources_before_parsing() {
+        let source = "x".repeat(MAX_PARSE_BYTES + 1);
+
+        assert_eq!(
+            parse(&source).map(|_| ()),
+            Err(ParseFailure::SourceTooLarge {
+                bytes: MAX_PARSE_BYTES + 1,
+                limit: MAX_PARSE_BYTES,
+            })
+        );
+    }
+
+    #[test]
+    fn refuses_nesting_past_the_ceiling() {
+        let deep = "[".repeat(MAX_NESTING_DEPTH + 1) + &"]".repeat(MAX_NESTING_DEPTH + 1);
+
+        assert_eq!(
+            parse(&deep).map(|_| ()),
+            Err(ParseFailure::TooDeeplyNested {
+                depth: MAX_NESTING_DEPTH + 1,
+                limit: MAX_NESTING_DEPTH,
+            })
+        );
+    }
+
+    /// The ceiling has to be one the parser actually survives on the stack
+    /// callers are told to give it, or it is not a ceiling at all. Object
+    /// literals are the most expensive shape per level, so they are the
+    /// measurement that matters.
+    #[test]
+    fn survives_nesting_at_the_ceiling_on_the_documented_stack() {
+        let worker = std::thread::Builder::new()
+            .stack_size(PARSE_STACK_BYTES)
+            .spawn(|| {
+                for (open, close) in [
+                    ("[", "]"),
+                    ("(", ")"),
+                    ("{a:", "}"),
+                    ("`${", "}`"),
+                    ("f(", ")"),
+                ] {
+                    let source = format!(
+                        "x = {}1{};\n",
+                        open.repeat(MAX_NESTING_DEPTH),
+                        close.repeat(MAX_NESTING_DEPTH)
+                    );
+                    let parsed = parse(&source).expect("at the ceiling");
+                    assert!(parsed.is_ok(), "{open}: {:?}", parsed.diagnostics);
+                }
+            })
+            .expect("spawns");
+        worker.join().expect("parses at the ceiling");
+    }
+
+    #[test]
+    fn nesting_depth_counts_brackets_and_template_substitutions() {
+        assert_eq!(nesting_depth("f(a, [b])"), 2);
+        assert_eq!(nesting_depth("`${`${`${x}`}`}`"), 3);
+        assert_eq!(nesting_depth("`${(\"}\", `${x}`)}`"), 3);
+        assert_eq!(nesting_depth("`a${b}c${d}`"), 1);
+    }
+
+    #[test]
+    fn nesting_depth_ignores_brackets_that_are_text() {
+        assert_eq!(nesting_depth("f(\"{{{{\", /* [[[[ */ '(((')"), 1);
+        assert_eq!(nesting_depth("x = a / b / c; // ((((\n"), 0);
+        assert_eq!(nesting_depth("const r = /\\(/; const s = /[(]/;"), 0);
+        assert_eq!(nesting_depth("return /(/.test(x)"), 1);
+        assert_eq!(nesting_depth("`\\${(`"), 0);
+    }
+
+    #[test]
+    fn nesting_depth_never_underflows() {
+        assert_eq!(nesting_depth("}}}}((("), 3);
+        assert_eq!(nesting_depth(")))]]]"), 0);
+    }
+}

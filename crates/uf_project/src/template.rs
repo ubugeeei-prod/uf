@@ -173,9 +173,10 @@ const contactSchema = v.object({
 
 const greetingQuery = createQuery<string>({
   key: ["home", "greeting", apiBase],
-  query: () => effect(function* () {
-    return yield call(refreshGreeting);
-  }),
+  query: () =>
+    effect(function* () {
+      return yield call(refreshGreeting);
+    }),
 });
 
 const styles = stylex.create({

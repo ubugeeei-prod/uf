@@ -1,8 +1,7 @@
 // @flow
-const plain = 'convert me';
-const hasSingle = "it's fine";
-const hasDouble = 'say "hi"';
-const escapedBoth = 'a "b" c \'d\'';
-const empty = '';
-const jsx = <div className='attr' id='already'>text</div>;
-const template = `left "quoted" and 'quoted'`;
+const plain = 'double';
+const apostrophe = "it's";
+const quoted = 'say "hi"';
+const both = 'mixed "double" and \'single\'';
+const jsx = <div className="x" title="y" />;
+const key = { 'a-b': 1, c: 'd' };

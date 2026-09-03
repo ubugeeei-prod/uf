@@ -1,4 +1,5 @@
-//! `uf fmt`: which files changed, and whether the check passed.
+//! `uf fmt`: which files changed, which could not be read, and whether the
+//! check passed.
 
 use std::fs;
 
@@ -15,7 +16,7 @@ use crate::ui::Ui;
 pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
     // Discovery returns `package.json` too, because the linter reads it. The
-    // formatter must not touch it: it is a JavaScript formatter, and running it
+    // formatter must not touch it: it is a Flow formatter, and running it
     // over JSON inserts a statement terminator and leaves the file unparseable.
     let files = collect_source_files(&resolved.root, &resolved.config)?
         .into_iter()
@@ -23,9 +24,20 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         .collect::<Vec<_>>();
     let scanned = files.len();
     let mut changed = Vec::new();
+    let mut skipped = Vec::new();
 
     for file in files {
-        let result = format_source(&file.source, &resolved.config.fmt)?;
+        // A file the parser refuses is reported and left exactly as it is:
+        // the formatter prints from a syntax tree, and there is no tree to
+        // print when the source does not parse. Rewriting the parser's
+        // guess at what was meant would lose code.
+        let result = match format_source(&file.source, &resolved.config.fmt) {
+            Ok(result) => result,
+            Err(error) => {
+                skipped.push(format!("{}: {error}", file.relative_path));
+                continue;
+            }
+        };
         if result.changed {
             if !check {
                 fs::write(&file.absolute_path, result.output)
@@ -36,7 +48,8 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     }
 
     let paths = changed.iter().map(String::as_str).collect::<Vec<_>>();
-    let failing = check && !changed.is_empty();
+    let skipped_paths = skipped.iter().map(String::as_str).collect::<Vec<_>>();
+    let failing = (check && !changed.is_empty()) || !skipped.is_empty();
     let summary = if check {
         format!(
             "{} of {} {} formatting",
@@ -51,11 +64,25 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     ui.render(|renderer, out| {
         renderer.banner(out, "uf fmt", None);
         renderer.blank(out);
-        if paths.is_empty() {
+        if paths.is_empty() && skipped_paths.is_empty() {
             renderer.status(out, Status::Success, "every file is already formatted");
         } else {
-            renderer.bullet_list(out, 2, &paths);
-            renderer.blank(out);
+            if !paths.is_empty() {
+                renderer.bullet_list(out, 2, &paths);
+                renderer.blank(out);
+            }
+            if !skipped_paths.is_empty() {
+                renderer.status(
+                    out,
+                    Status::Warn,
+                    &format!(
+                        "{} could not be parsed",
+                        plural(skipped_paths.len(), "file")
+                    ),
+                );
+                renderer.bullet_list(out, 2, &skipped_paths);
+                renderer.blank(out);
+            }
             renderer.status(
                 out,
                 if failing {
@@ -68,6 +95,9 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         }
     });
 
+    if !skipped.is_empty() {
+        bail!("{} could not be parsed", plural(skipped.len(), "file"));
+    }
     if failing {
         bail!("{} need formatting", plural(changed.len(), "file"));
     }
