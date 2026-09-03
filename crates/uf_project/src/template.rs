@@ -39,7 +39,12 @@ fn app_package_json(name: &str) -> String {
   "private": true,
   "type": "module",
   "dependencies": {{
-    "@uniflowed/core": "latest"
+    "@uniflowed/core": "latest",
+    "@uniflowed/react": "latest",
+    "@uniflowed/router": "latest",
+    "@uniflowed/vite": "latest",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }}
 }}
 "#

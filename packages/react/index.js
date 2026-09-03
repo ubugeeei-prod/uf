@@ -1,44 +1,78 @@
 // @flow
 //
-// `@uniflowed/react`.
+// `@uniflowed/react`: React, re-exported by name.
+//
+// This is the real `react` package, not a declaration of it. Naming every
+// export rather than `export *` keeps the surface explicit — a name not listed
+// here is not part of what uf documents — and lets a bundler drop the ones an
+// application never touches. The Flow types come from Flow's own library
+// definition for `react`, so `import type { Node } from "@uniflowed/react"`
+// is exactly `import type { Node } from "react"`.
 
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+import * as React from "react";
 
-const MODULE = "@uniflowed/core/react";
+export type {
+  AbstractComponent,
+  ChildrenArray,
+  ComponentType,
+  Config,
+  Context,
+  Element,
+  ElementConfig,
+  ElementProps,
+  ElementRef,
+  ElementType,
+  Key,
+  MixedElement,
+  Node,
+  Portal,
+  Ref,
+  RefSetter,
+  StatelessFunctionalComponent,
+} from "react";
 
-export type Node = mixed;
+export {
+  Children,
+  Component,
+  Fragment,
+  Profiler,
+  PureComponent,
+  StrictMode,
+  Suspense,
+  act,
+  cache,
+  cloneElement,
+  createContext,
+  createElement,
+  createRef,
+  forwardRef,
+  isValidElement,
+  lazy,
+  memo,
+  startTransition,
+  use,
+  useActionState,
+  useCallback,
+  useContext,
+  useDebugValue,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useOptimistic,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  version,
+} from "react";
+
+/** The setter shape `useState` hands back. */
 export type SetState<S> = S | ((previous: S) => S);
-
-export component Suspense(fallback?: Node, children?: Node) renders Node {
-  return nativeRuntimeRequired(MODULE, "Suspense");
-}
-
-export function use<T>(usable: Promise<T> | T): T {
-  return nativeRuntimeRequired(MODULE, "use");
-}
-
-export function useState<S>(initial: S): [S, (next: SetState<S>) => void] {
-  return nativeRuntimeRequired(MODULE, "useState");
-}
-
-export function cache<TArgs: $ReadOnlyArray<mixed>, TReturn>(
-  fn: (...TArgs) => TReturn,
-): (...TArgs) => TReturn {
-  return nativeRuntimeRequired(MODULE, "cache");
-}
-
-/**
- * Namespace object for `import React from "@uniflowed/react"`.
- *
- * Also exported by name, because `uf_lib`'s registry lists `React` among the
- * exports of this specifier and a named import must be able to reach it.
- */
-const React: {
-  +Suspense: typeof Suspense,
-  +use: typeof use,
-  +useState: typeof useState,
-  +cache: typeof cache,
-} = { Suspense, use, useState, cache };
 
 export { React };
 export default React;

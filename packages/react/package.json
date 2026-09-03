@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/react",
   "version": "0.0.0-alpha.0",
-  "description": "Flow declarations for @uniflowed/react, part of the Unified Toolchain for Flow.",
+  "description": "React, re-exported by name with its Flow types, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,12 +11,13 @@
     "directory": "packages/react"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js"
   ],
-  "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.0"
+  "peerDependencies": {
+    "react": ">=19"
   }
 }

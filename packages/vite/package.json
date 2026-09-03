@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/vite",
-  "version": "0.0.1",
-  "description": "uf's build stages as a Vite plugin: Flow erasure, RSC prologue, JSX lowering.",
+  "version": "0.0.0-alpha.0",
+  "description": "Vite, driven by uf.config.js: every Flow module through `uf transform`, MDX, the file-system router and static rendering as Vite plugins.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,12 +11,31 @@
     "directory": "packages/vite"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./driver": "./driver.js",
+    "./register": "./register.js",
+    "./bun-preload": "./bun-preload.js",
+    "./transform": "./transform.js",
+    "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "driver.js",
+    "register.js",
+    "bun-preload.js",
+    "transform.js",
+    "internal"
   ],
+  "dependencies": {
+    "@mdx-js/rollup": "^3.1.1",
+    "rehype-slug": "^6.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx-frontmatter": "^5.2.0",
+    "vite": "^8.2.2"
+  },
   "peerDependencies": {
-    "vite": ">=6"
+    "react": ">=19",
+    "react-dom": ">=19"
   }
 }

@@ -82,12 +82,13 @@ The current CLI already executes the first native vertical slice:
 
 - `uf create app react` and `uf create lib` generate `.js` + `// @flow`
   projects without npm scripts.
-- `uf build` discovers file-system routes, writes `router.js`, and writes
-  `dist/uf-build-manifest.json` with the internal Vite/Rolldown-compatible
-  contract.
-- `uf dev` still starts the transitional Rust HTTP development server, writes
-  `.uf/dev-server.json`, and exposes `/__uf/health`; this slice is being
-  replaced by Vite as the long-term dev server.
+- `uf build` discovers file-system routes, writes `router.js`, runs the RSC
+  analysis, then builds through Vite: a client bundle, a server bundle, and
+  every static route prerendered to HTML, with `dist/uf-build-manifest.json`
+  and a shipped-size report beside them.
+- `uf dev` starts Vite's dev server through `@uniflowed/vite` on the project's
+  JavaScript host, renders every document on the server, and hot-reloads
+  through Vite with React Fast Refresh.
 - `uf test` discovers `describe`/`it`/`test` declarations and executes the
   native source-level assertion subset for `expect(...).toBe`,
   `expect(...).toEqual`, thrown `Error`s, and React Testing Library-style

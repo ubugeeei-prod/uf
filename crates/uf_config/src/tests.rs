@@ -270,7 +270,7 @@ fn parses_the_dev_server_access_control_surface() {
 
 #[test]
 fn dev_server_access_control_defaults_to_nothing_extra() {
-    // The built-in deny list lives in `uf_devserver`, not here: configuring
+    // The built-in deny list is Vite's, not uf's: configuring
     // `dev.fs.deny` adds to it and cannot shrink it.
     let dev = DevConfig::default();
     assert_eq!(dev.host, "127.0.0.1");

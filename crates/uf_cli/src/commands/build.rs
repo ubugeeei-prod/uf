@@ -1,26 +1,42 @@
 //! `uf build`: banner, per-phase timings, a summary, and what was produced.
+//!
+//! The build is Vite's, driven through `@uniflowed/vite` on the project's
+//! JavaScript host (see [`super::vite`]): a client bundle, a server bundle,
+//! and every static route prerendered to HTML. uf's own phases run around it:
+//! the config, the route table and its generated types, the server-component
+//! analysis, and — once Vite has written `dist/` — the shipped-size report and
+//! the budgets it enforces.
 
 use std::fs;
 
 use anyhow::{Context, Result, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde_json::json;
 use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ReportOptions, build_report, collect_assets,
     evaluate, write_report,
 };
-use uf_bundler::{BundleOptions, BundleOutput, build_entries, build_pipeline};
-use uf_config::{PipelineMode, load_config};
+use uf_config::load_config;
 use uf_router::{Route, discover_routes, write_router_manifest};
 use uf_rsc::{BuildId, ProjectScanOptions, analyze_project};
 use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
 
+use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
 use crate::support::{plural, project_label, relative_to, write_json_file};
 use crate::ui::Ui;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
+
+/// What Vite reported building.
+#[derive(Debug, Default)]
+struct ViteBuild {
+    /// Prerendered pages, as `(url, file)`.
+    pages: Vec<(String, String)>,
+    /// Warnings Vite logged, shown after the summary.
+    warnings: Vec<String>,
+}
 
 pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()> {
     let mut timer = PhaseTimer::start();
@@ -28,6 +44,7 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
 
     progress.draw("loading configuration");
     let resolved = timer.measure("config", || load_config(cwd))?;
+    let root = resolved.root.clone();
 
     progress.tick("discovering routes");
     let routes = timer.measure("routes", || {
@@ -39,37 +56,6 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
 
     let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
     fs::create_dir_all(&out_dir).with_context(|| format!("failed to create {out_dir}"))?;
-    let build_manifest = out_dir.join("uf-build-manifest.json");
-    let payload = json!({
-        "version": 1,
-        "engine": "uf-native",
-        "pluginContract": "uf-plugin-v1",
-        "entries": resolved.config.build.entries,
-        "routes": routes.iter().map(|route| json!({
-            "path": route.path,
-            "page": route.page,
-            "layout": route.has_layout,
-            "middleware": route.has_middleware,
-            "params": route.params.iter().map(|param| json!({
-                "name": param.name,
-                "kind": format!("{:?}", param.kind),
-            })).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-        "runtime": {
-            "default": resolved.config.app.runtime.default,
-            "capabilityJsHost": &resolved.config.app.runtime.capability_js_host,
-            "wintertc": true,
-            "hermes": false,
-        },
-        "cache": {
-            "route": resolved.config.app.rendering.cache.route,
-            "fetch": resolved.config.app.rendering.cache.fetch,
-            "data": resolved.config.app.rendering.cache.data,
-            "actions": resolved.config.app.rendering.cache.actions,
-        },
-    });
-    progress.tick("writing manifest");
-    timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
 
     progress.tick("analysing server components");
     let rsc = timer.measure("rsc analysis", || {
@@ -79,32 +65,84 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
             &ProjectScanOptions::default(),
         )
     })?;
-    let rsc_manifest = timer.measure("rsc manifest", || {
-        uf_rsc::write_manifest(&out_dir, &rsc.manifest())
+
+    progress.tick("resolving the JavaScript host");
+    let host = resolve_host(&resolved.config)?;
+    let package = package_dir(&root)?;
+
+    progress.tick("building with vite");
+    let vite = timer.measure("vite", || -> Result<ViteBuild> {
+        let mut driver = Driver::spawn(
+            &host,
+            &package,
+            &root,
+            "build",
+            &[
+                String::from("--out-dir"),
+                resolved.config.build.out_dir.to_string(),
+            ],
+        )?;
+        let mut report = ViteBuild::default();
+        while let Some(event) = driver.next_event()? {
+            match event {
+                Event::Phase { name } => progress.tick(&format!("vite: {name}")),
+                Event::Page { url, file, .. } => report.pages.push((url, file)),
+                Event::Log { level, message } => match level {
+                    crate::commands::vite::LogLevel::Warn => report.warnings.push(message),
+                    crate::commands::vite::LogLevel::Error => render_log(ui, level, &message),
+                    crate::commands::vite::LogLevel::Info => {}
+                },
+                Event::Error(error) => {
+                    let failure = render_error(ui, &root, &error);
+                    let _ = driver.finish("uf build");
+                    return Err(failure);
+                }
+                Event::ConfigLoaded { .. }
+                | Event::Listening { .. }
+                | Event::Done { .. }
+                | Event::Config { .. } => {}
+            }
+        }
+        driver.finish("the Vite build")?;
+        Ok(report)
     })?;
 
-    progress.tick("bundling");
-    let container = timer.measure("pipeline", || {
-        build_pipeline(
-            &resolved.config,
-            &resolved.root,
-            PipelineMode::Build,
-            &routes,
-        )
-    })?;
-    let entries = build_entries(&resolved.config, &resolved.root, &routes);
-    let bundle_options = BundleOptions::new(resolved.root.clone(), out_dir.clone())
-        .with_entries(entries)
-        .with_sourcemap(resolved.config.build.sourcemap);
-    let bundled = timer.measure("bundle", || uf_bundler::bundle(&bundle_options, &container))?;
-    let written = timer.measure("emit", || {
-        uf_bundler::write_bundle(&bundle_options, &bundled, &container)
+    // Written after Vite so `emptyOutDir` cannot sweep them away, and so the
+    // manifest describes the build that actually happened.
+    progress.tick("writing manifests");
+    let build_manifest = out_dir.join("uf-build-manifest.json");
+    let payload = json!({
+        "version": 2,
+        "engine": "vite",
+        "transform": "uf transform",
+        "host": host.name(),
+        "entries": resolved.config.build.entries,
+        "routes": routes.iter().map(|route| json!({
+            "path": route.path,
+            "page": relative_to(&resolved.root, &route.page),
+            "params": route.params.iter().map(|param| param.name.as_str()).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "pages": vite.pages.iter().map(|(url, file)| json!({ "url": url, "file": file })).collect::<Vec<_>>(),
+        "runtime": {
+            "default": resolved.config.app.runtime.default,
+            "capabilityJsHost": &resolved.config.app.runtime.capability_js_host,
+        },
+        "cache": {
+            "route": resolved.config.app.rendering.cache.route,
+            "fetch": resolved.config.app.rendering.cache.fetch,
+            "data": resolved.config.app.rendering.cache.data,
+            "actions": resolved.config.app.rendering.cache.actions,
+        },
+    });
+    timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
+    let rsc_manifest = timer.measure("rsc manifest", || {
+        uf_rsc::write_manifest(&out_dir, &rsc.manifest())
     })?;
 
     progress.tick("measuring shipped assets");
     let (size, size_report_path) = timer.measure("bundle size", || -> Result<_> {
         let assets = collect_assets(&out_dir, &ReportOptions::default())?;
-        let report = build_report(assets, &route_assets(&resolved.root, &routes, &bundled));
+        let report = build_report(assets, &route_assets(&out_dir, &routes));
         let path = write_report(&out_dir, &report)?;
         Ok((report, path))
     })?;
@@ -121,14 +159,11 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
         .collect::<Vec<_>>()
         .join(", ");
     let route_count = routes.len().to_string();
+    let page_count = vite.pages.len().to_string();
     let module_count = rsc.graph.modules().len().to_string();
     let client_count = rsc.graph.client_boundaries().len().to_string();
     let action_count = rsc.callable_action_count().to_string();
     let diagnostic_count = rsc.graph.diagnostics().len().to_string();
-
-    let chunk_count = bundled.stats.chunks.to_string();
-    let bundled_module_count = bundled.stats.modules_kept.to_string();
-    let dropped_export_count = bundled.stats.exports_dropped.to_string();
 
     let mut outputs = vec![
         relative_to(&resolved.root, &build_manifest),
@@ -138,12 +173,13 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     if let Some(manifest) = &router_manifest {
         outputs.push(relative_to(&resolved.root, manifest));
     }
-    for path in &written {
-        outputs.push(relative_to(&resolved.root, path));
+    for (_, file) in &vite.pages {
+        outputs.push(file.clone());
     }
     outputs.sort();
+    outputs.dedup();
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
-    let root = project_label(&resolved.root).to_string();
+    let project = project_label(&resolved.root).to_string();
     let phases = timer.phases().to_vec();
     let summary = format!("build succeeded in {}", format_duration(total));
 
@@ -167,9 +203,11 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     } else {
         Vec::new()
     };
+    let warnings = vite.warnings.clone();
+    let host_name = host.name();
 
     ui.render(|renderer, out| {
-        renderer.banner(out, "uf build", Some(project_label(&resolved.root)));
+        renderer.banner(out, "uf build", Some(&project));
         renderer.blank(out);
         renderer.timings(out, 2, &phases, Some(total));
         renderer.blank(out);
@@ -177,12 +215,12 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
             out,
             2,
             &[
+                KeyValue::new("engine", "vite"),
+                KeyValue::toned("host", host_name, Tone::Muted),
                 KeyValue::new("entries", &entries),
                 KeyValue::toned("routes", &route_count, Tone::Number),
+                KeyValue::toned("prerendered pages", &page_count, Tone::Number),
                 KeyValue::toned("modules", &module_count, Tone::Number),
-                KeyValue::toned("bundled modules", &bundled_module_count, Tone::Number),
-                KeyValue::toned("chunks", &chunk_count, Tone::Number),
-                KeyValue::toned("dropped exports", &dropped_export_count, Tone::Number),
                 KeyValue::toned("client components", &client_count, Tone::Number),
                 KeyValue::toned("server actions", &action_count, Tone::Number),
                 KeyValue::toned("rsc diagnostics", &diagnostic_count, Tone::Number),
@@ -225,33 +263,66 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
         renderer.tree(
             out,
             4,
-            &Tree::from_paths(&root, output_paths.iter().copied()),
+            &Tree::from_paths(&project, output_paths.iter().copied()),
         );
         renderer.blank(out);
+        for warning in &warnings {
+            renderer.status(out, Status::Warn, warning);
+        }
         renderer.status(out, Status::Success, &summary);
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)
 }
 
-/// Attribute emitted chunks to the routes that need them.
+/// Attribute the client entry to every route.
 ///
-/// A route's initial JavaScript is the transitive closure of its entry chunk:
-/// every file a browser downloads before the route can render. Nothing is
-/// attributed lazily yet, because nothing is code-split behind a dynamic
-/// `import()` yet — so the lazy column is honestly empty rather than a guess.
+/// Vite's manifest names the entry chunk and the stylesheets it pulls in;
+/// every route loads those before it can render. Route-level code splitting
+/// is attributed lazily once the router's dynamic imports are measured.
 fn route_assets(
-    root: &Utf8Path,
+    out_dir: &Utf8Path,
     routes: &[Route],
-    bundled: &BundleOutput,
 ) -> Vec<(CompactString, Vec<CompactString>, Vec<CompactString>)> {
+    let initial = entry_assets(out_dir);
     routes
         .iter()
-        .map(|route| {
-            let module = route.page.strip_prefix(root).unwrap_or(&route.page);
-            (route.path.clone(), bundled.closure_of(module), Vec::new())
-        })
+        .map(|route| (route.path.clone(), initial.clone(), Vec::new()))
         .collect()
+}
+
+/// The entry chunk and its stylesheets from `.vite/manifest.json`, or nothing
+/// when the manifest is missing.
+fn entry_assets(out_dir: &Utf8Path) -> Vec<CompactString> {
+    let manifest: Utf8PathBuf = out_dir.join(".vite/manifest.json");
+    let Ok(text) = fs::read_to_string(&manifest) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let Some(entries) = value.as_object() else {
+        return Vec::new();
+    };
+    let mut assets = Vec::new();
+    for chunk in entries.values() {
+        if chunk.get("isEntry").and_then(serde_json::Value::as_bool) != Some(true) {
+            continue;
+        }
+        if let Some(file) = chunk.get("file").and_then(serde_json::Value::as_str) {
+            assets.push(CompactString::new(file));
+        }
+        for css in chunk
+            .get("css")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+        {
+            assets.push(CompactString::new(css));
+        }
+    }
+    assets
 }
 
 /// Fail the build when a shipped asset breaks `build.budgets`.

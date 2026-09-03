@@ -1,15 +1,12 @@
 [workspace]
 members = [
   "crates/uf_bundle",
-  "crates/uf_bundler",
   "crates/uf_check",
   "crates/uf_cli",
   "crates/uf_config",
-  "crates/uf_devserver",
   "crates/uf_flow",
   "crates/uf_fmt",
   "crates/uf_infra",
-  "crates/uf_jsx",
   "crates/uf_lib",
   "crates/uf_lint",
   "crates/uf_plugin",
@@ -62,10 +59,6 @@ oxc_semantic = "0.147.0"
 oxc_sourcemap = "8.1.2"
 oxc_span = "0.147.0"
 oxc_transformer = "0.147.0"
-rolldown = "1.2.6"
-rolldown_common = "1.2.6"
-rolldown_plugin = "1.2.6"
-tokio = { version = "1", features = ["rt-multi-thread"] }
 flow_parser_utils = { path = "upstream/flow/rust_port/crates/flow_parser_utils" }
 flow_parsing = { path = "upstream/flow/rust_port/crates/flow_parsing" }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }

@@ -31,5 +31,10 @@ done
 
 (
   cd "$repo_root"
+  # The docs are a uf project: `@uniflowed/*` resolve to this repository's
+  # packages through the npm workspace, and Vite runs on Node.js.
+  if [ ! -d node_modules ]; then
+    npm ci --no-audit --no-fund
+  fi
   cargo run --release --package uf_cli --bin uf -- --cwd docs build --size-report
 )

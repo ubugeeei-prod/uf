@@ -18,15 +18,15 @@ in `uf`.
 ## P0: Toolchain Spine
 
 - Keep the first executable native slice green: `uf create`, `uf build`,
-  `uf dev --once`, `uf install`, `uf upgrade`, `uf use`, `uf publish`,
+  `uf dev`, `uf install`, `uf upgrade`, `uf use`, `uf publish`,
   `uf release`, `ufx`, `uf test`, `uf prepare`, and `uf lsp` already produce
   local artifacts or protocol responses.
 - Finish parser/typechecker integration against Flow's maintained parser and
   type checker boundary.
 - Replace whitespace formatter core with a Flow AST printer backed by the
   official Flow Rust parser, and route non-Flow files to Biome formatting.
-- Wire `uf build` and `uf dev` to Vite's bundler, dev server, and plugin
-  container.
+- `uf build` and `uf dev` run on Vite through `@uniflowed/vite`, with every
+  module going through `uf transform` (done).
 - Keep `uf.config.js` as the single config and task surface; generated projects
   do not use npm scripts, and task execution goes through Vite Task.
 - Keep app execution runtime-agnostic through Capability JS Hosts: Node.js,

@@ -134,12 +134,10 @@
 
 ## P4: Build, Runtime, Package Manager, Publish
 
-- [ ] Wire `uf build` to Vite itself and the Vite plugin container.
+- [x] Wire `uf build` to Vite itself and the Vite plugin container.
 - [x] Measure emitted bundle size and enforce `build.budgets` from `uf build`.
 - [x] Write native build manifest and generated router types from `uf build`.
-- [ ] Wire production builds to Rolldown where possible.
-- [ ] Wire `uf dev` to Vite's dev server.
-- [x] Start Rust-native dev HTTP server state, health endpoint, and route metadata.
+- [x] Wire `uf dev` to Vite's dev server.
 - [x] Start self-hosted `@uniflowed/pm` package manager planning.
 - [ ] Implement native package resolver.
 - [x] Implement native workspace lockfile and content-addressed store entries.

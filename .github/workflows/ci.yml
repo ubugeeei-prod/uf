@@ -51,6 +51,13 @@ jobs:
         with:
           toolchain: nightly-2026-08-01
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # `uf dev` and `uf build` run Vite on a JavaScript host, and the end-to-end
+      # tests build the docs site through it, so the workspace's npm packages
+      # are installed the way a project's would be.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo test --workspace

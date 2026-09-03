@@ -205,8 +205,8 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         "ui": ui_components(),
         "engines": {
             "parser": "official-flow-parser",
-            "build": "uf-native",
-            "devServer": "uf-native",
+            "build": "vite",
+            "devServer": "vite",
             "runtime": "capability-js-host-contract",
             "runtimeContract": runtime,
             "server": {

@@ -60,6 +60,8 @@ fn inspect_reports_zero_config_defaults() {
         value["engines"]["packageManager"]["resolver"],
         serde_json::json!("uf-native")
     );
+    assert_eq!(value["engines"]["build"], serde_json::json!("vite"));
+    assert_eq!(value["engines"]["devServer"], serde_json::json!("vite"));
     assert_eq!(
         value["engines"]["runtimeManager"]["acquisition"],
         serde_json::json!("auto")

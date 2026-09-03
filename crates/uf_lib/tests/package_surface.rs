@@ -10,6 +10,12 @@
 //! - every `exports` subpath resolves and every shipped module is reachable,
 //! - every shipped `package.json` declares `"sideEffects": false`,
 //! - the Rust registry in `uf_lib` and the shipped subpaths agree.
+//!
+//! One package is exempt from the Flow rules: `@uniflowed/vite` is executed
+//! by the JavaScript host *before* any transform exists — it is how the
+//! transform is reached — so it is plain JavaScript by necessity, and its
+//! entry points (`register.js`, `bun-preload.js`, `driver.js`) run at import
+//! time by design. Everything else about it is held to the same bar.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -23,6 +29,19 @@ use walkdir::WalkDir;
 /// `package.json#exports`, so `@uniflowed/core/internal/*` is unresolvable.
 const INTERNAL_DIR: &str = "internal";
 
+/// Packages the host runs directly, before any Flow transform exists. See the
+/// module docs for why they are plain JavaScript.
+const HOST_EXECUTED_PACKAGES: &[&str] = &["vite"];
+
+/// Whether `module` (relative to `packages/`) belongs to a host-executed
+/// package.
+fn is_host_executed(module: &Utf8Path) -> bool {
+    module
+        .iter()
+        .next()
+        .is_some_and(|package| HOST_EXECUTED_PACKAGES.contains(&package))
+}
+
 /// Keywords a top-level statement in a shipped module may begin with. Anything
 /// else runs when the module is imported.
 const DECLARATION_KEYWORDS: &[&str] = &[
@@ -34,6 +53,7 @@ const DECLARATION_KEYWORDS: &[&str] = &[
     "enum",
     "export",
     "function",
+    "hook",
     "import",
     "interface",
     "let",
@@ -365,6 +385,9 @@ fn shipped_package_contains_only_modules_and_manifests() {
 #[test]
 fn shipped_modules_start_with_the_flow_pragma() {
     for module in shipped_modules() {
+        if is_host_executed(&module) {
+            continue;
+        }
         let source = read(&module);
         assert!(
             source.starts_with("// @flow\n"),
@@ -393,6 +416,9 @@ fn shipped_modules_never_use_star_re_exports() {
 #[test]
 fn shipped_modules_have_no_import_time_side_effects() {
     for module in shipped_modules() {
+        if is_host_executed(&module) {
+            continue;
+        }
         let code = code_only(&read(&module));
         for token in top_level_statement_tokens(&code) {
             assert!(
@@ -404,17 +430,24 @@ fn shipped_modules_have_no_import_time_side_effects() {
     }
 }
 
+/// A placeholder module — one that reaches for `nativeRuntimeRequired` —
+/// raises only through that helper, so the "native runtime required" message
+/// has one shape. A module that implements its surface raises its own errors,
+/// and those are its own business.
 #[test]
-fn shipped_modules_raise_through_the_shared_helper() {
+fn placeholder_modules_raise_only_through_the_shared_helper() {
     for module in shipped_modules() {
         if module == Utf8Path::new("core/internal/native-runtime.js") {
             continue;
         }
         let code = code_only(&read(&module));
+        if !code.contains("nativeRuntimeRequired(") {
+            continue;
+        }
         assert!(
             !code.contains("throw new"),
-            "{module} raises its own error; the message format lives in \
-             core/internal/native-runtime.js and nowhere else"
+            "{module} raises its own error beside nativeRuntimeRequired; the \
+             message format lives in core/internal/native-runtime.js and nowhere else"
         );
     }
 }

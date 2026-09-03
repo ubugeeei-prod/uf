@@ -211,141 +211,31 @@ fn creating_over_an_existing_project_reports_the_conflict_on_stderr() {
     assert!(stderr.contains("--force"));
 }
 
+/// A project that has not installed `@uniflowed/vite` is told what to do,
+/// after uf's own phases have run.
 #[test]
-fn build_writes_native_manifest_and_router_types() {
+fn build_without_the_vite_package_names_the_fix() {
     let dir = tempfile::tempdir().unwrap();
     let app = dir.path().join("app");
     create_app(&app);
 
     let output = uf().arg("--cwd").arg(&app).arg("build").output().unwrap();
 
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("uf build"));
-    assert!(stdout.contains("uf-build-manifest.json"));
-    assert!(stdout.contains("uf-rsc-manifest.json"));
-    assert!(stdout.contains("router.js"));
-    assert!(stdout.contains("✓ build succeeded in"));
-    assert_plain(&stdout);
-    assert!(
-        String::from_utf8(output.stderr).unwrap().is_empty(),
-        "a successful build must not write to stderr"
-    );
-
-    let manifest_path = app.join("dist/uf-build-manifest.json");
-    let manifest: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(manifest_path).unwrap()).unwrap();
-    assert_eq!(manifest["engine"], serde_json::json!("uf-native"));
-    assert_eq!(
-        manifest["pluginContract"],
-        serde_json::json!("uf-plugin-v1")
-    );
-    assert_eq!(manifest["runtime"]["wintertc"], serde_json::json!(true));
-    assert_eq!(manifest["runtime"]["default"], serde_json::json!("node"));
-    assert_eq!(
-        manifest["runtime"]["capabilityJsHost"]["hosts"],
-        serde_json::json!(["node", "deno", "bun"])
-    );
-    assert_eq!(manifest["runtime"]["hermes"], serde_json::json!(false));
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("@uniflowed/vite"), "{stderr}");
+    assert!(stderr.contains("uf install"), "{stderr}");
+    // The route types are still generated: they do not need a build.
     assert!(app.join("router.js").exists());
     assert!(
         fs::read_to_string(app.join("router.js"))
             .unwrap()
             .contains("export type RoutePath")
     );
-
-    let rsc_manifest: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(app.join("dist/uf-rsc-manifest.json")).unwrap())
-            .unwrap();
-    assert_eq!(
-        rsc_manifest["clientBundleRoots"],
-        serde_json::json!(["app/client/Counter.js"])
-    );
-    assert_eq!(
-        rsc_manifest["serverActions"][0]["module"],
-        serde_json::json!("server/actions.js")
-    );
-    assert_eq!(rsc_manifest["diagnostics"], serde_json::json!([]));
 }
 
-#[test]
-fn build_reports_each_phase_timing_and_a_summary() {
-    let dir = tempfile::tempdir().unwrap();
-    let app = dir.path().join("app");
-    create_app(&app);
-
-    let output = uf().arg("--cwd").arg(&app).arg("build").output().unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-
-    for phase in ["config", "routes", "rsc analysis", "manifest", "total"] {
-        assert!(
-            stdout.contains(phase),
-            "missing phase {phase} in:\n{stdout}"
-        );
-    }
-    assert!(stdout.contains("client components"));
-    assert!(stdout.contains("server actions"));
-    assert!(stdout.contains("output"));
-}
-
-#[test]
-fn dev_once_writes_native_server_state() {
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("uf.config.js"),
-        r#"
-            export default defineConfig({
-              dev: { port: 0 },
-            });
-        "#,
-    )
-    .unwrap();
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["dev", "--once"])
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("uf dev"));
-    assert!(stdout.contains("uf-native"));
-    assert!(stdout.contains("http://127.0.0.1:"));
-    assert!(stdout.contains("/__uf/health"));
-    assert!(stdout.contains("✓ dev server ready"));
-
-    let state: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dir.path().join(".uf/dev-server.json")).unwrap())
-            .unwrap();
-    assert_eq!(state["engine"], serde_json::json!("uf-native"));
-    assert!(state["port"].as_u64().unwrap() > 0);
-
-    // The access-control posture is part of the reported state, and the default
-    // is loopback with no allowlists. See `docs/security.md`.
-    assert!(stdout.contains("exposure"), "{stdout}");
-    assert!(stdout.contains("loopback"), "{stdout}");
-    assert!(stdout.contains("0 hosts, 0 origins, 1 root"), "{stdout}");
-    assert_eq!(state["exposure"], serde_json::json!("loopback"));
-    assert_eq!(state["allowedHosts"], serde_json::json!([]));
-    assert_eq!(state["allowedOrigins"], serde_json::json!([]));
-    assert!(
-        state["fsDeny"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!(".env*"))
-    );
-}
-
+/// Exposing the dev server needs an allowlist, and the refusal comes before
+/// anything is started. See `docs/security.md`.
 #[test]
 fn dev_host_without_an_allowed_hosts_list_refuses_to_start() {
     let dir = tempfile::tempdir().unwrap();
@@ -362,7 +252,7 @@ fn dev_host_without_an_allowed_hosts_list_refuses_to_start() {
     let output = uf()
         .arg("--cwd")
         .arg(dir.path())
-        .args(["dev", "--host", "0.0.0.0", "--once"])
+        .args(["dev", "--host", "0.0.0.0"])
         .output()
         .unwrap();
 
@@ -372,33 +262,20 @@ fn dev_host_without_an_allowed_hosts_list_refuses_to_start() {
 }
 
 #[test]
-fn dev_host_with_an_allowed_hosts_list_starts_exposed() {
+fn dev_without_the_vite_package_names_the_fix() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("uf.config.js"),
-        r#"
-            export default defineConfig({
-              dev: { port: 0, allowedHosts: ["dev.internal"] },
-            });
-        "#,
-    )
-    .unwrap();
+    fs::write(dir.path().join("uf.config.js"), "export default {};\n").unwrap();
 
     let output = uf()
         .arg("--cwd")
         .arg(dir.path())
-        .args(["dev", "--host", "0.0.0.0", "--once"])
+        .arg("dev")
         .output()
         .unwrap();
 
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("exposed"), "{stdout}");
-    assert!(stdout.contains("1 host, 0 origins, 1 root"), "{stdout}");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("@uniflowed/vite"), "{stderr}");
 }
 
 #[test]

@@ -149,9 +149,9 @@ impl Default for DevConfig {
 ///
 /// `allow` names extra roots beyond the project root, which is always allowed.
 /// `deny` is a glob list evaluated on the canonical path, and deny wins over
-/// allow. Entries are *added* to `uf_devserver`'s built-in deny list — which
-/// already covers `.env*`, `**/.git/**`, `*.pem`, `*.key`, `*.crt`, and
-/// `**/.uf/**` — and cannot remove one. See `docs/security.md`.
+/// allow. Both are handed to Vite's `server.fs` unchanged, on top of Vite's
+/// own built-in deny list (`.env`, `.env.*`, `*.{crt,pem}`, `**/.git/**`).
+/// See `docs/security.md`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
