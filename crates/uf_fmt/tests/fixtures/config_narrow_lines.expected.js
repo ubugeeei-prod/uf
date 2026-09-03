@@ -1,17 +1,31 @@
 // @flow
-render(
+call(
   alpha,
   beta,
   gamma,
   delta,
   epsilon,
-  zeta
 );
-const short = [1, 2, 3];
-const wide = {
-  alpha: 1,
-  beta: 2,
-  gamma: 3,
-  delta: 4
+const object = {
+  first: 1,
+  second: 2,
+  third: 3,
 };
-const kept = compute(oneArgumentThatIsVeryLongIndeed);
+const chain = promise
+  .then(onFulfilled)
+  .catch(onRejected);
+type Union = "alpha" | "beta" | "gamma";
+function f(
+  first: string,
+  second: number,
+): void {}
+const jsx = (
+  <Component
+    first={1}
+    second={2}
+    third={3}
+  />
+);
+const ternary = condition
+  ? consequent
+  : alternate;

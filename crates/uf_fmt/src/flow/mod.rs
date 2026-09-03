@@ -1,0 +1,95 @@
+//! The Flow printer: from the official parser's tree to Prettier's output.
+//!
+//! The pipeline is parse → attach comments → build a doc → lay it out, and
+//! each stage lives in its own module: [`text`] indexes the source,
+//! [`node`] gives the tree one shape, [`comments`] decides where each
+//! comment belongs, and [`print`] holds the node printers. This module is
+//! the seam between them and the crate's public entry point, and it is
+//! where the formatter's promise not to lose a comment is enforced: the
+//! printer marks every comment it emits, and a comment left unmarked turns
+//! the whole run into an error rather than into silently shorter output.
+
+pub mod comments;
+pub mod node;
+pub mod print;
+pub mod text;
+
+use thiserror::Error;
+use uf_config::FmtConfig;
+use uf_flow::{ParseFailure, Parsed};
+use uf_infra::Bump;
+
+use crate::doc::Docs;
+use crate::doc::printer::{PrintOptions, print};
+use comments::Comments;
+use print::{Options, Printer};
+use text::SourceText;
+
+/// Why a Flow source could not be formatted.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum FlowFormatError {
+    /// The source did not parse. The file is left as it is: a recovered
+    /// tree is the parser's guess, and printing a guess loses code.
+    #[error("syntax error at {line}:{column}: {message}")]
+    Syntax {
+        /// One-based line of the first error.
+        line: u32,
+        /// Zero-based column of the first error.
+        column: u32,
+        /// The parser's message.
+        message: String,
+    },
+    /// The source was refused before parsing: too large or too deeply
+    /// nested.
+    #[error(transparent)]
+    Refused(#[from] ParseFailure),
+    /// The printer emitted the tree but not every comment in it. This is a
+    /// bug in the printer, reported rather than hidden because the
+    /// alternative is output that silently dropped a `$FlowFixMe`.
+    #[error("{count} comment(s) would have been lost, the first at byte {first_offset}")]
+    CommentsLost {
+        /// How many comments were not printed.
+        count: usize,
+        /// Byte offset of the first of them.
+        first_offset: usize,
+    },
+}
+
+/// Format `source` (already normalised to LF line endings, without a BOM)
+/// as Flow, returning the text without its final newline handling applied.
+pub fn format(source: &str, config: &FmtConfig) -> Result<String, FlowFormatError> {
+    let parsed: Parsed = uf_flow::parse(source)?;
+    if let Some(diagnostic) = parsed.diagnostics.first() {
+        return Err(FlowFormatError::Syntax {
+            line: diagnostic.line.unwrap_or(0),
+            column: diagnostic.column.unwrap_or(0),
+            message: diagnostic.message.clone(),
+        });
+    }
+
+    let text = SourceText::new(source);
+    let comments = Comments::attach(&parsed.program, &text);
+    let arena = Bump::with_capacity(source.len() * 4 + 4096);
+    let docs = Docs::new(&arena);
+    let options = Options::from_config(config);
+    let mut printer = Printer::new(docs, &text, comments, options, &parsed.program);
+    let doc = printer.print_program();
+
+    let unprinted = printer.comments.unprinted();
+    if let Some(first) = unprinted.first() {
+        return Err(FlowFormatError::CommentsLost {
+            count: unprinted.len(),
+            first_offset: first.span.start,
+        });
+    }
+
+    let group_count = printer.docs.group_count();
+    Ok(print(
+        doc,
+        PrintOptions {
+            width: options.line_width,
+            indent_width: options.indent_width,
+        },
+        group_count,
+    ))
+}

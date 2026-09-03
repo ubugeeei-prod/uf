@@ -30,9 +30,13 @@
       The port's typing crates need `box_patterns`, removed from the floating
       nightly channel, so `rust-toolchain.toml` pins `nightly-2026-08-01`.
       68 ms to merge builtins, ~4 ms per file. See docs/architecture.md.
-- [ ] Replace whitespace formatter with a Flow AST printer backed by the
-      official Flow Rust parser.
+- [x] Replace whitespace formatter with a Flow AST printer backed by the
+      official Flow Rust parser. Prettier-compatible, checked against
+      `prettier --parser hermes` by 27 fixtures; idempotent,
+      tree-preserving, comment-preserving and total.
 - [x] Route non-Flow formatter configuration to Biome.
+- [ ] Actually run Biome for `.json`, `.jsonc`, `.css` and `.ts`: the config
+      key exists, the routing does not.
 - [x] Default formatter settings to double quotes and semicolons.
 - [ ] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.

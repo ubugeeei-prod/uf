@@ -199,6 +199,70 @@ codepoint offset table, so `uf_check` resolves every path against a synthetic
 absolute root that cannot exist — the read always misses, and the columns stay in
 the **bytes** that `uf_term`'s code frames and `uf_lint` both measure in.
 
+## Formatting
+
+`uf fmt` prints Flow from the official parser's syntax tree. There is no
+token-stream formatter left: the previous one rewrote whitespace between
+tokens, which cannot decide where a line should break, and misformatted
+valid Flow it could not tell apart from JavaScript.
+
+The pipeline is four stages, one module each in `uf_fmt`:
+
+| Stage | Module | What it owns |
+| --- | --- | --- |
+| Parse | `uf_flow::parse` | the port's `ast::Program`, its comments, and the size and nesting ceilings |
+| Index | `flow::text` | byte offsets from the parser's line/column positions, and the questions layout asks of the source: is the next line blank, what is the next character that is not a comment |
+| Attach | `flow::comments` | which node each comment belongs to, and whether it prints before it, after it, or inside it |
+| Print | `flow::print` → `doc` | a Wadler document, then a width-driven layout pass |
+
+**The document IR** is Prettier's, ported: `text`, `line`, `softline`,
+`hardline`, `literalline`, `group`, `conditionalGroup`, `indent`, `align`,
+`ifBreak`, `indentIfBreak`, `fill`, `lineSuffix`, `breakParent` and `trim`.
+Node printers never measure a line; they say which pieces belong together
+and where a break is allowed, and `doc::printer` decides group by group
+whether the flat form fits. Documents live in a `Bump` arena, so building
+one never clones a subtree, and every node carries the "contains a hard
+break" flag that Prettier computes in a separate `propagateBreaks` pass.
+
+**Comment attachment** is the part a printer usually gets wrong. A comment
+is not in the syntax tree, so before printing, each one is given an
+enclosing, a preceding and a following node, classified by the newlines
+around it — own line, end of line, or code on both sides — and handed to
+the same list of special cases Prettier keeps (`if (a /* c */)`, a comment
+before `else`, a comment in an empty argument list). What is left falls to
+the defaults: own-line comments lead the following node, end-of-line
+comments trail the preceding one, and a comment with code on both sides is
+a *tie*, broken by the whitespace between it and what follows.
+
+**Four guarantees**, each a test rather than an intention:
+
+- **Prettier-compatible.** 27 fixtures under `crates/uf_fmt/tests/fixtures`
+  pair an input with the output of `prettier --parser hermes
+  --plugin prettier-plugin-hermes-parser`, and are compared byte for byte.
+- **Idempotent.** `format(format(x)) == format(x)`.
+- **Tree-preserving.** The output re-parses to the same tree as the input,
+  compared as JSON with locations, comments, `raw` spellings and the other
+  things a formatter may rewrite normalised away.
+- **Comment-preserving.** Every comment appears exactly once in the output.
+  The printer marks each comment as it emits it, and a comment left
+  unmarked fails the whole run rather than shortening the file.
+- **Total.** Invalid syntax is a typed error and the file is left alone;
+  no input panics. The parser recurses, so `uf_flow` refuses sources past
+  8 MiB or 300 levels of bracket nesting *before* parsing, and the work
+  runs on a thread with the stack that ceiling was measured against.
+
+Parentheses are not in the port's tree, so every pair in the output is
+recomputed from precedence and position. That is what makes the
+tree-preserving test meaningful: a pair the grammar needs is always
+printed, one it does not is dropped, and `(a?.b)()` keeps the parentheses
+that end its optional chain because dropping them would change what the
+program does.
+
+Non-Flow files (JSON, CSS, TypeScript) are configured to route to Biome's
+formatters through `fmt.nonFlow.formatter`, but that routing is not
+implemented yet: `uf fmt` still formats `.js` only, and `package.json` is
+read by the linter and never rewritten.
+
 ## Flow And React
 
 The default app preset is Flow-first React. New app templates use Flow component

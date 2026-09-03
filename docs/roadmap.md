@@ -23,8 +23,9 @@ in `uf`.
   local artifacts or protocol responses.
 - Finish parser/typechecker integration against Flow's maintained parser and
   type checker boundary.
-- Replace whitespace formatter core with a Flow AST printer backed by the
-  official Flow Rust parser, and route non-Flow files to Biome formatting.
+- Route non-Flow files (JSON, CSS, TypeScript) to Biome formatting. The Flow
+  side is done: `uf fmt` prints from the official parser's syntax tree and
+  matches Prettier on a fixture corpus.
 - `uf build` and `uf dev` run on Vite through `@uniflowed/vite`, with every
   module going through `uf transform` (done).
 - Keep `uf.config.js` as the single config and task surface; generated projects

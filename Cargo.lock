@@ -3397,9 +3397,13 @@ version = "0.0.0-alpha.0"
 dependencies = [
  "criterion",
  "memchr",
+ "serde_json",
  "similar-asserts",
  "thiserror",
  "uf_config",
+ "uf_flow",
+ "uf_infra",
+ "unicode-width",
 ]
 
 [[package]]

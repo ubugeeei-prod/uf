@@ -1,22 +1,15 @@
 // @flow
 const a = 1
-const b = compute()
-let c = { key: "value" }
-
+let b = 2
 function f() {
-  const local = a + b
-  return local
+  return a
 }
-
-for (let i = 0; i < 3; i++) {
-  f()
+class K {
+  p = 1
+  m() {}
 }
-
-while (poll());
-
-class Widget {
-  value = 1
-  render() {
-    return this.value
-  }
-}
+const arrow = () => {}
+;[1, 2].forEach((n) => n)
+;`template`
+;(function () {})()
+type T = string
