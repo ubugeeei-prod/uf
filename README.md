@@ -90,10 +90,12 @@ The current CLI already executes the first native vertical slice:
 - `uf dev` starts Vite's dev server through `@uniflowed/vite` on the project's
   JavaScript host, renders every document on the server, and hot-reloads
   through Vite with React Fast Refresh.
-- `uf test` discovers `describe`/`it`/`test` declarations and executes the
-  native source-level assertion subset for `expect(...).toBe`,
-  `expect(...).toEqual`, thrown `Error`s, and React Testing Library-style
-  visibility checks.
+- `uf test` runs the suite for real: it discovers and orders the files, fans
+  them across worker processes on the project's JavaScript host, and executes
+  each one through `@uniflowed/test` — `describe`/`it`, hooks, `.only`/`.skip`/
+  `.todo`/`.each`, async tests, spies, and a full matcher set. About nine times
+  faster than Vitest on a 1,000-test suite, and still about three times slower
+  than Bun's built-in runner; see `docs/architecture.md`.
 - `uf install` discovers workspace `package.json` files, rejects npm scripts by
   default, writes `uf.lock`, writes `.uf/store/manifest.json`, and materializes
   content-addressed package entries in `.uf/store/packages`.

@@ -9,6 +9,10 @@
 //! * **How to say it** — a live progress line on stderr, code frames under the
 //!   failures, and a summary; or, under `--json`, one machine-readable document
 //!   on stdout and nothing else.
+//!
+//! Executing a test body is not one of them. That happens on the project's
+//! JavaScript host, in `@uniflowed/test`'s worker, which imports each file
+//! through the same `uf transform` a build uses — see [`uf_test::host`].
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -19,9 +23,12 @@ use uf_config::load_config;
 use uf_project::{ProjectFile, collect_source_files};
 use uf_term::PhaseTimer;
 use uf_test::{
-    Bail, Concurrency, FileStatus, LockedObserver, NativeTestRunnerPlan, RetryPolicy, RunOptions,
-    TestFilter, TestRunReport, TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
+    Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
+    RetryPolicy, RunOptions, TestFile, TestFilter, TestRunReport, TestRunner, TestTimings,
+    WatchOptions, load_timings, save_timings,
 };
+
+use crate::commands::vite::{package_dir, resolve_host};
 
 use crate::support::plural;
 use crate::ui::Ui;
@@ -113,9 +120,13 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return watch::watch(ui, &root, resolved.config, args);
     }
 
+    let host = test_host(&root, &resolved.config)?;
+    let files = test_bearing(files);
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
-    let report = timer.measure("run", || run_once(ui, &files, &args, timings.clone()));
+    let report = timer.measure("run", || {
+        run_once(ui, &root, &host, &files, &args, timings.clone())
+    })?;
     let duration = timer.total();
 
     let recorded = record_timings(&root, timings, &report, &files);
@@ -130,6 +141,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             timer.phases(),
             duration,
             &args,
+            &host,
             timing_note.as_deref(),
             recorded.as_deref(),
         );
@@ -138,22 +150,75 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     finish(&report)
 }
 
+/// The host `uf test` runs its workers on.
+///
+/// The worker and the loader both live in the project's `node_modules`, so a
+/// project that has not installed its dependencies is told that rather than
+/// being handed a module-not-found from inside a worker.
+pub(crate) fn test_host(
+    root: &Utf8Path,
+    config: &uf_config::UniflowedConfig,
+) -> Result<HostCommand> {
+    let host = resolve_host(config)?;
+    let vite = package_dir(root)?;
+    let worker = vite
+        .parent()
+        .map(|scope| scope.join("test/worker.js"))
+        .filter(|worker| worker.is_file())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "`@uniflowed/test` is not installed for {root}; add it to the project's \
+                 dependencies and run the package manager (`uf install`)"
+            )
+        })?;
+
+    let kind = match host.kind {
+        uf_config::CapabilityJsHost::Node => HostKind::Node,
+        uf_config::CapabilityJsHost::Bun => HostKind::Bun,
+        uf_config::CapabilityJsHost::Deno => HostKind::Deno,
+    };
+    let host_name = host.name();
+    let mut command = HostCommand::new(kind, host.program, worker, root.to_path_buf())
+        .with_flow_loader(
+            Utf8Path::new("@uniflowed/vite/register"),
+            &vite.join("bun-preload.js"),
+        );
+    // The worker transforms through the binary that started it, never a
+    // different `uf` that happens to be on PATH.
+    if let Ok(binary) = std::env::current_exe()
+        && let Ok(binary) = Utf8PathBuf::from_path_buf(binary)
+    {
+        command = command.with_uf_binary(binary);
+    }
+    if !command.loads_flow() {
+        bail!(
+            "`uf test` cannot run on {} yet: it has no Flow loader, so a test file written in \
+             Flow could not be imported. Install Node.js or Bun.",
+            host_name
+        );
+    }
+    Ok(command)
+}
+
 /// Run the suite once, drawing a progress line while it goes.
 pub(crate) fn run_once(
     ui: &Ui,
+    root: &Utf8Path,
+    host: &HostCommand,
     files: &[ProjectFile],
     args: &TestArgs,
     timings: TestTimings,
-) -> TestRunReport {
-    let sources = sources_of(files);
+) -> Result<TestRunReport> {
+    let sources = test_files(root, files);
     let runner = TestRunner::new()
         .with_options(args.options())
         .with_filter(args.filter())
-        .with_timings(timings);
+        .with_timings(timings)
+        .with_host(host.clone());
 
     let mut progress = ui.progress();
     if !progress.is_enabled() {
-        return runner.run(&sources);
+        return Ok(runner.run(&sources)?);
     }
 
     let mut line = String::new();
@@ -167,14 +232,39 @@ pub(crate) fn run_once(
         line.push_str(&report.file);
         progress.tick(&line);
     });
-    runner.run_observed(&sources, &observer)
+    Ok(runner.run_observed(&sources, &observer)?)
 }
 
-/// Borrow every collected file as a `(path, source)` pair.
-pub(crate) fn sources_of(files: &[ProjectFile]) -> Vec<(&str, &str)> {
+/// The files that declare at least one test.
+///
+/// Every module in a project is not a test: importing one to find out would
+/// run its side effects and cost a process, and a config file or a component
+/// has nothing to report. Discovery answers the question by reading, which is
+/// the same answer `uf test --list` shows.
+pub(crate) fn test_bearing(files: Vec<ProjectFile>) -> Vec<ProjectFile> {
+    files
+        .into_iter()
+        .filter(|file| {
+            uf_test::discover_tests(&file.relative_path, &file.source).runnable_count() > 0
+        })
+        .collect()
+}
+
+/// Every collected file, as the runner wants them.
+///
+/// The worker imports by absolute path — a relative one would resolve against
+/// the worker's own directory — while the report keeps the relative path a
+/// person reads.
+pub(crate) fn test_files(root: &Utf8Path, files: &[ProjectFile]) -> Vec<TestFile> {
     files
         .iter()
-        .map(|file| (file.relative_path.as_str(), file.source.as_str()))
+        .map(|file| {
+            TestFile::new(
+                file.relative_path.clone(),
+                root.join(&file.relative_path),
+                file.source.clone(),
+            )
+        })
         .collect()
 }
 
@@ -249,12 +339,6 @@ fn finish(report: &TestRunReport) -> Result<()> {
         bail!(
             "uf test could not run {}",
             plural(summary.failed_files, "file")
-        );
-    }
-    if summary.unsupported_assertions > 0 {
-        bail!(
-            "uf test found {}",
-            plural(summary.unsupported_assertions, "unsupported assertion")
         );
     }
     if summary.unsupported_declarations > 0 {

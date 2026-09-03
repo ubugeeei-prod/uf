@@ -117,12 +117,14 @@
 - [x] Implement `import { describe, it, expect } from '@uniflowed/testing'`.
 - [x] Start self-hosted `@uniflowed/test` runner planning.
 - [x] Execute the first native source-level assertion subset in `uf test`.
-- [ ] Make `@uniflowed/test` execute full Flow suites through Capability JS
+- [x] Replace that subset with real execution on a Capability JS Host.
+- [x] Make `@uniflowed/test` execute full Flow suites through Capability JS
       Hosts while keeping scheduling and reporting in Rust.
-- [ ] Benchmark `@uniflowed/test` against Bun Test and Vitest and keep the faster-than-Bun target visible.
+- [x] Benchmark `@uniflowed/test` against Bun Test and Vitest and keep the faster-than-Bun target visible.
+      Measured: 9x faster than Vitest, 3x slower than Bun. See docs/architecture.md.
 - [ ] Implement native React Testing Library-compatible DOM queries.
 - [ ] Implement native React Native testing utilities.
-- [ ] Add watch mode with dependency-aware reruns.
+- [x] Add watch mode with dependency-aware reruns.
 - [ ] Add strict CLI integration tests for every command.
 - [ ] Add snapshot tests for generated templates and router types.
 - [ ] Add e2e type-safety fixtures for app, server actions, router, query, effect, and UI.

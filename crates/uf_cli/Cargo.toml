@@ -55,4 +55,5 @@ serde_json.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
+similar-asserts.workspace = true
 tempfile.workspace = true

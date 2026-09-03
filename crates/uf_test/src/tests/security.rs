@@ -215,8 +215,8 @@ fn a_deeply_nested_source_does_not_overflow_the_stack() {
 #[test]
 fn a_source_of_only_open_delimiters_terminates() {
     let source = "it('a', () => {".repeat(10_000);
-    let report = crate::run_tests([("a.test.js", source.as_str())]);
-    assert_eq!(report.files.len(), 1);
+    let plan = crate::discover_tests("a.test.js", &source);
+    assert!(plan.runnable_count() <= 10_000);
 }
 
 #[test]
@@ -227,11 +227,11 @@ fn a_source_of_only_quotes_terminates() {
 }
 
 #[test]
-fn a_pathological_expect_chain_terminates() {
+fn a_pathological_nested_call_terminates() {
     let mut source = String::from("it('a', () => { expect(");
     source.push_str(&"(".repeat(5_000));
     source.push_str("); });");
 
-    let report = crate::run_tests([("a.test.js", source.as_str())]);
-    assert_eq!(report.files.len(), 1);
+    let plan = crate::discover_tests("a.test.js", &source);
+    assert_eq!(plan.runnable_count(), 1);
 }

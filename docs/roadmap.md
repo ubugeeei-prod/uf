@@ -59,10 +59,12 @@ in `uf`.
 
 ## P2: Native Test Runner
 
-- Keep `@uniflowed/test` self-hosted in Rust, with JavaScript execution
-  delegated to Capability JS Hosts.
-- Target faster-than-Bun-Test and faster-than-Vitest execution for Flow-heavy suites.
-- Implement JavaScript execution backend.
+- Keep scheduling, bounds and reporting in Rust, with JavaScript execution
+  delegated to Capability JS Hosts. **Done.**
+- Target faster-than-Bun-Test and faster-than-Vitest execution for Flow-heavy
+  suites. Vitest is beaten by about 9x; Bun's runner is still about 3x faster,
+  and closing that needs a worker pool that survives between runs.
+- Implement JavaScript execution backend. **Done.**
 - Add React DOM and React Native renderers.
 - Add native terminal renderers and snapshots through `@uniflowed/tui`.
 - Add Testing Library-compatible queries and user events.

@@ -73,34 +73,6 @@ pub(crate) fn code_byte_mask(source: &str) -> Vec<bool> {
     mask
 }
 
-pub(crate) fn extract_quoted(source: &str) -> Option<String> {
-    let mut chars = source.chars();
-    let quote = chars.next()?;
-    if quote != '\'' && quote != '"' {
-        return None;
-    }
-
-    let mut output = String::new();
-    let mut escaped = false;
-    for ch in chars {
-        if escaped {
-            output.push(ch);
-            escaped = false;
-            continue;
-        }
-        if ch == '\\' {
-            escaped = true;
-            continue;
-        }
-        if ch == quote {
-            return Some(output);
-        }
-        output.push(ch);
-    }
-
-    None
-}
-
 pub(crate) fn matching_delimiter(
     source: &str,
     open: usize,
@@ -183,10 +155,6 @@ pub(crate) fn matching_delimiter(
     }
 
     None
-}
-
-pub(crate) fn is_call_at(source: &str, offset: usize, ident: &str) -> bool {
-    matches!(call_shape_at(source, offset, ident), Some(CallShape::Plain))
 }
 
 /// The shape of a registration call found at `offset`.

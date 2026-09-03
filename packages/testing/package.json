@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/testing",
   "version": "0.0.0-alpha.0",
-  "description": "Flow declarations for @uniflowed/testing, part of the Unified Toolchain for Flow.",
+  "description": "The test API under its other name: every binding re-exported from @uniflowed/test.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.0",
-    "@uniflowed/react-testing": "0.0.0-alpha.0"
+    "@uniflowed/react-testing": "0.0.0-alpha.0",
+    "@uniflowed/test": "0.0.0-alpha.0"
   }
 }

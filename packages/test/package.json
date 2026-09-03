@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/test",
   "version": "0.0.0-alpha.0",
-  "description": "Flow declarations for @uniflowed/test, part of the Unified Toolchain for Flow.",
+  "description": "The test API and worker for `uf test`: describe/it, a full matcher set, and the process uf fans test files out to.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,13 +11,13 @@
     "directory": "packages/test"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./worker": "./worker.js",
+    "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
-  ],
-  "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.0",
-    "@uniflowed/testing": "0.0.0-alpha.0"
-  }
+    "index.js",
+    "worker.js",
+    "internal"
+  ]
 }

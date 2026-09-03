@@ -186,8 +186,22 @@ fn write_generated_file(path: &Utf8Path, contents: &str, force: bool) -> Result<
     })
 }
 
+/// Directories no project owns, whatever the configuration says.
+///
+/// `.uf` is uf's own working directory — the transform cache, compiled
+/// configs, build output — and a project cannot opt back into having its
+/// tooling's scratch files linted, formatted or run as tests. The others are
+/// removable from `lint.ignore`, which is why they are not here.
+const ALWAYS_IGNORED: &[&str] = &[".uf", ".git"];
+
 fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> bool {
     let relative = path.strip_prefix(root).unwrap_or(path).as_str();
+    if relative
+        .split('/')
+        .any(|segment| ALWAYS_IGNORED.contains(&segment))
+    {
+        return true;
+    }
     config
         .lint
         .ignore

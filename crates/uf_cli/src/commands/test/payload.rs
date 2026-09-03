@@ -18,8 +18,6 @@ pub(super) fn test_payload(report: &TestRunReport) -> Value {
         "failed": summary.failed,
         "skipped": summary.skipped,
         "todo": summary.todo,
-        "unsupported": summary.unsupported,
-        "unsupportedAssertions": summary.unsupported_assertions,
         "unsupportedDeclarations": summary.unsupported_declarations,
         "failedFiles": summary.failed_files,
         "scheduledWarm": summary.scheduled_warm,
@@ -52,8 +50,8 @@ fn status_name(status: &FileStatus) -> &'static str {
     match status {
         FileStatus::Completed => "completed",
         FileStatus::TimedOut { .. } => "timed-out",
-        FileStatus::TooLarge { .. } => "too-large",
-        FileStatus::Panicked { .. } => "panicked",
+        FileStatus::LoadFailed { .. } => "load-failed",
+        FileStatus::HostFailed { .. } => "host-failed",
         FileStatus::NotRun => "not-run",
     }
 }
@@ -65,20 +63,14 @@ fn record_payload(record: &TestRecord) -> Value {
         "line": record.line,
         "column": record.column,
         "attempts": record.attempts,
+        "durationMicros": record.duration_micros,
         "status": test_status_name(&record.status),
-        "failures": match &record.status {
-            TestStatus::Failed { failures, .. } => failures.iter().map(|failure| json!({
-                "message": failure.message,
-                "line": failure.line,
-                "column": failure.column,
-            })).collect::<Vec<_>>(),
-            _ => Vec::new(),
-        },
-        "unsupported": record.status.unsupported_assertions().iter().map(|assertion| json!({
-            "expression": assertion.expression,
-            "reason": assertion.reason.describe(),
-            "line": assertion.line,
-            "column": assertion.column,
+        "failures": record.status.failures().iter().map(|failure| json!({
+            "message": failure.message,
+            "line": failure.line,
+            "column": failure.column,
+            "expected": failure.expected,
+            "received": failure.received,
         })).collect::<Vec<_>>(),
     })
 }
@@ -87,7 +79,6 @@ fn test_status_name(status: &TestStatus) -> &'static str {
     match status {
         TestStatus::Passed => "passed",
         TestStatus::Failed { .. } => "failed",
-        TestStatus::Unsupported { .. } => "unsupported",
         TestStatus::Skipped {
             reason: SkipReason::Explicit,
         } => "skipped",

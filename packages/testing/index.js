@@ -1,51 +1,29 @@
 // @flow
 //
-// `@uniflowed/testing`. Owns the base test API; the React Testing Library
-// surface is re-exported by name from `./react-testing.js`.
+// `@uniflowed/testing`: the test API under its other name.
+//
+// There is one implementation, in `@uniflowed/test`. This package exists
+// because both names are documented and a project should not have to know
+// which one the runner happens to be called; every binding is re-exported by
+// name so a bundler still drops what an application does not use.
+//
+// The React Testing Library surface is re-exported from
+// `@uniflowed/react-testing`, which still needs a DOM and says so when called.
 
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export type { Body as TestBody, TestOptions } from "@uniflowed/test";
 
-const MODULE = "@uniflowed/core/testing";
-
-export type TestBody = () => mixed | Promise<mixed>;
-
-export interface Expectation<T> {
-  toBe(expected: T): void,
-  toEqual(expected: mixed): void,
-  toBeVisible(): void,
-  resolves: Expectation<T>,
-  rejects: Expectation<T>,
-}
-
-export function describe(name: string, body: TestBody): void {
-  return nativeRuntimeRequired(MODULE, "describe");
-}
-
-export function it(name: string, body: TestBody): void {
-  return nativeRuntimeRequired(MODULE, "it");
-}
-
-export function test(name: string, body: TestBody): void {
-  return nativeRuntimeRequired(MODULE, "test");
-}
-
-export function beforeEach(body: TestBody): void {
-  return nativeRuntimeRequired(MODULE, "beforeEach");
-}
-
-export function afterEach(body: TestBody): void {
-  return nativeRuntimeRequired(MODULE, "afterEach");
-}
-
-export function expect<T>(value: T): Expectation<T> {
-  return nativeRuntimeRequired(MODULE, "expect");
-}
+export {
+  AssertionError,
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  test,
+} from "@uniflowed/test";
 
 export type { RenderResult, Screen } from "@uniflowed/react-testing";
-export {
-  fireEvent,
-  render,
-  screen,
-  userEvent,
-  waitFor,
-} from "@uniflowed/react-testing";
+export { fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
