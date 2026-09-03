@@ -15,6 +15,7 @@ pub use crate::reserved::{
 pub const RESERVED_LAYOUT: &str = "_uf.layout.js";
 pub const RESERVED_PAGE: &str = "_uf.page.js";
 pub const RESERVED_MIDDLEWARE: &str = "_uf.middleware.js";
+pub const RESERVED_ROUTE: &str = "_uf.route.js";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteParamKind {
@@ -344,16 +345,33 @@ mod tests {
     }
 
     #[test]
+    fn a_route_handler_is_a_reserved_file_rather_than_a_violation() {
+        // `_uf.route.js` answers a request instead of rendering a page. It was
+        // an unknown name until route handlers existed, and the two tests that
+        // used it as their example of an invalid one now use `_uf.handler.js`.
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::create_dir_all(root.join("app/api")).unwrap();
+        fs::write(root.join("app/api/_uf.route.js"), "// @flow\n").unwrap();
+
+        let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
+        assert!(violations.is_empty(), "{violations:?}");
+
+        let classified = classify_reserved_file(RESERVED_ROUTE);
+        assert!(!classified.is_unknown());
+    }
+
+    #[test]
     fn finds_invalid_reserved_files() {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app")).unwrap();
-        fs::write(root.join("app/_uf.route.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/_uf.handler.js"), "// @flow\n").unwrap();
 
         let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
 
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].path.file_name(), Some("_uf.route.js"));
+        assert_eq!(violations[0].path.file_name(), Some("_uf.handler.js"));
     }
 
     #[test]

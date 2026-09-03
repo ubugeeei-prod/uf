@@ -5,7 +5,10 @@ use super::*;
 
 #[test]
 fn router_reserved_files_are_constrained() {
-    let diagnostics = lint_one("router/reserved-files", "app/_uf.route.js", "// @flow\n");
+    // `_uf.handler.js` looks like a reserved name and is not one. `_uf.route.js`
+    // used to be this test's example, and it became a real role when route
+    // handlers landed.
+    let diagnostics = lint_one("router/reserved-files", "app/_uf.handler.js", "// @flow\n");
 
     assert!(fired(&diagnostics, "router/reserved-files"));
 }
@@ -20,6 +23,7 @@ fn router_reserved_files_accepts_platform_and_test_variants() {
         "app/_uf.layout.js",
         "app/_uf.page.js",
         "app/_uf.middleware.js",
+        "app/api/_uf.route.js",
         "app/_uf.page.native.js",
         "app/_uf.page.ios.js",
         "app/_uf.page.android.js",
@@ -39,7 +43,7 @@ fn router_reserved_files_accepts_platform_and_test_variants() {
 #[test]
 fn router_reserved_files_still_rejects_names_uf_does_not_define() {
     for name in [
-        "app/_uf.route.js",
+        "app/_uf.handler.js",
         "app/_uf.page.server.js",
         "app/_uf.page.native.test.js",
         "app/_uf.page.jsx",
