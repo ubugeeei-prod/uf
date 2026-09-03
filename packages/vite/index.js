@@ -1,128 +1,316 @@
-// @flow
+// Plain JavaScript: Vite imports this module directly, before any transform.
 //
-// `@uniflowed/vite` — uf's build stages as a Vite plugin.
+// `@uniflowed/vite` — uf, as Vite plugins.
 //
-// Vite runs the dev server, the module graph, HMR and the production build.
-// uf contributes only what is specific to Flow: erasing types, blanking the
-// RSC directive prologue, and lowering JSX. Those are native, so this pipes
-// each module through one long-lived `uf transform` process rather than
-// re-entering the binary per file.
+// Vite is the dev server, the module graph, hot module replacement, the
+// bundler and the plugin system; uf contributes what is specific to a Flow
+// React application and nothing that Vite already does:
+//
+// * `uf:flow`   — every Flow module goes through `uf transform` (the official
+//                 Flow parser, Flow's own lowering rules, the official React
+//                 Compiler, oxc), plus the React Fast Refresh wiring in
+//                 development and the virtual modules that make a directory
+//                 of pages an application: the route table, the client entry
+//                 that hydrates it, and the server entry that renders it. In
+//                 development it also renders every HTML request on the
+//                 server, so `uf dev` serves the same markup `uf build` writes.
+// * `uf:mdx`    — `@mdx-js/rollup`, configured for React with GitHub-flavoured
+//                 markdown, front matter and heading ids, so `.mdx` works with
+//                 no configuration.
+//
+// `uniflowed(options)` returns the array; a project that wants to add a plugin
+// declares it in `uf.config.js` and the driver appends it after these.
 
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
+import { readdirSync } from "node:fs";
+import path from "node:path";
 
-/**
- * One `uf transform` process, with requests answered in the order they were
- * sent.
- *
- * `uf transform` replies once per request, in order, so a plain queue of
- * resolvers is enough to pair a reply with its caller — no correlation ids and
- * no map to leak.
- */
-function startService(command, cwd) {
-  const child = spawn(command, ["--cwd", cwd, "transform"], {
-    stdio: ["pipe", "pipe", "inherit"],
-  });
-  const pending = [];
-  let failure = null;
+import mdx from "@mdx-js/rollup";
+import rehypeSlug from "rehype-slug";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkGfm from "remark-gfm";
+import remarkMdxFrontmatter from "remark-mdx-frontmatter";
 
-  const settleAll = (error) => {
-    failure = error;
-    while (pending.length > 0) pending.shift().reject(error);
-  };
+import {
+  RUNTIME_PUBLIC_PATH,
+  RUNTIME_RESOLVED_ID,
+  addRefreshWrapper,
+  preambleCode,
+  refreshRuntimeSource,
+} from "./internal/refresh.js";
+import {
+  VIRTUAL,
+  clientModuleSource,
+  routesModuleSource,
+  scanRoutes,
+  serverModuleSource,
+} from "./internal/routes.js";
+import { TransformService, isFlowModule } from "./transform.js";
 
-  createInterface({ input: child.stdout }).on("line", (line) => {
-    const waiting = pending.shift();
-    if (!waiting) return;
-    let reply;
-    try {
-      reply = JSON.parse(line);
-    } catch (error) {
-      waiting.reject(new Error(`uf transform sent a malformed reply: ${line}`));
-      return;
-    }
-    if (reply.error) waiting.reject(new Error(reply.error));
-    else waiting.resolve(reply.code ?? null);
-  });
+/** A resolved virtual id: Vite's convention is a leading NUL byte. */
+const resolved = (id) => `\0${id}`;
+const VIRTUAL_IDS = new Set(Object.values(VIRTUAL));
 
-  child.on("error", (error) =>
-    settleAll(new Error(`could not run \`${command} transform\`: ${error.message}`)),
-  );
-  // Any exit is final. Recording it even when nothing is outstanding means a
-  // request made after an idle exit is rejected at once rather than queued
-  // against a process that will never answer.
-  child.on("close", (code) => {
-    settleAll(new Error(`uf transform exited (${code})`));
-  });
-
-  return {
-    transform(id, code) {
-      if (failure) return Promise.reject(failure);
-      return new Promise((resolve, reject) => {
-        pending.push({ resolve, reject });
-        child.stdin.write(`${JSON.stringify({ id, code })}\n`);
-      });
-    },
-    close() {
-      child.stdin.end();
-      child.kill();
-    },
-  };
+/** The URL a NUL-prefixed module is served at in development. */
+export function devUrlFor(id) {
+  return `/@id/__x00__${id}`;
 }
 
 /**
- * Whether uf is responsible for transforming this module.
+ * Options for the plugin set.
  *
- * Mirrors `uf_bundler::is_project_module`, and must keep mirroring it: a `uf
- * dev` session and a `uf build` that disagree about which files are Flow
- * disagree about what the code is.
- *
- * `@uniflowed/*` under `node_modules` is included on purpose — those packages
- * ship Flow source, and skipping them leaves `// @flow` in front of a bundler
- * that reports `Flow is not supported`.
+ * @typedef {object} UniflowedOptions
+ * @property {string} [root] absolute project root; Vite's root by default
+ * @property {object} [config] the loaded `uf.config.js` object
+ * @property {string} [command] the `uf` binary to transform through
  */
-function isProjectModule(id) {
-  if (!id.endsWith(".js") || id.startsWith("\0")) return false;
-  const at = id.lastIndexOf("/node_modules/");
-  return at === -1 || id.slice(at).startsWith("/node_modules/@uniflowed/");
-}
 
 /**
- * uf's Vite plugin.
+ * uf's Vite plugins.
  *
- * `command` is the `uf` binary to talk to; the default assumes it is on PATH,
- * which is what the installer arranges.
+ * @param {UniflowedOptions} [options]
  */
-export default function uniflowed(options) {
-  const command = options?.command ?? "uf";
-  let service = null;
+export default function uniflowed(options = {}) {
+  const ufConfig = options.config ?? {};
+  const app = ufConfig.app ?? {};
+  const routerRoot = app.router?.root ?? "app";
+  const appEntry = app.router?.entry ?? ufConfig.build?.entries?.[0] ?? "app.js";
+  const markdown = app.builtins?.markdown ?? {};
+
+  return [flowPlugin({ routerRoot, appEntry, command: options.command }), mdxPlugin(markdown)];
+}
+
+function flowPlugin({ routerRoot, appEntry, command }) {
   let root = process.cwd();
+  let isProduction = false;
+  let base = "/";
+  let appRoot = "";
+  let entryPath = "";
+  /** @type {import("vite").ViteDevServer | null} */
+  let server = null;
+  /** @type {TransformService | null} */
+  let service = null;
+
+  const ensureService = () => {
+    service ??= new TransformService({ command, root });
+    return service;
+  };
 
   return {
-    name: "uniflowed",
-    // Ahead of Vite's own esbuild/oxc transform, which does not know Flow and
-    // would reject the annotations this removes.
+    name: "uf:flow",
     enforce: "pre",
 
+    config(userConfig, env) {
+      const projectRoot = path.resolve(userConfig.root ?? process.cwd());
+      isProduction = env.mode === "production" || env.command === "build";
+      return {
+        // uf serves HTML itself; there is no index.html to fall back to.
+        appType: "custom",
+        resolve: {
+          dedupe: ["react", "react-dom"],
+        },
+        optimizeDeps: {
+          include: [
+            "react",
+            "react/jsx-runtime",
+            "react/jsx-dev-runtime",
+            "react/compiler-runtime",
+            "react-dom",
+            "react-dom/client",
+          ],
+          // uf's packages ship Flow. The dependency optimiser pre-bundles
+          // with a JavaScript parser and would reject every one of them.
+          exclude: uniflowedPackages(projectRoot),
+        },
+        ssr: {
+          // Same reason on the server: Node cannot import Flow, so these go
+          // through the plugin like project code rather than being
+          // externalised.
+          noExternal: [/^@uniflowed\//],
+        },
+      };
+    },
+
     configResolved(config) {
-      root = config.root ?? root;
+      root = config.root;
+      base = config.base;
+      appRoot = path.resolve(root, routerRoot);
+      entryPath = path.resolve(root, appEntry);
     },
 
     buildStart() {
-      service ??= startService(command, root);
+      ensureService();
     },
 
-    async transform(code, id) {
-      if (!isProjectModule(id)) return null;
-      const transformed = await service.transform(id, code);
-      // `null` means no stage changed anything, so Vite keeps the original
-      // module and its existing source map rather than taking a copy.
-      return transformed === null ? null : { code: transformed, map: null };
+    resolveId(id) {
+      if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
+      if (VIRTUAL_IDS.has(id)) return resolved(id);
+      return null;
+    },
+
+    load(id) {
+      if (id === RUNTIME_RESOLVED_ID) return refreshRuntimeSource();
+      if (id === resolved(VIRTUAL.routes)) return routesModuleSource(scanRoutes(appRoot));
+      if (id === resolved(VIRTUAL.client)) return clientModuleSource(entryPath);
+      if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
+      return null;
+    },
+
+    async transform(code, id, transformOptions) {
+      if (!isFlowModule(id)) return null;
+      const ssr = transformOptions?.ssr === true || this.environment?.name === "ssr";
+      const refresh = !isProduction && !ssr && server != null;
+      const out = await ensureService().transform(cleanId(id), code, {
+        development: !isProduction,
+        refresh,
+        sourceMap: true,
+      });
+      if (out == null) return null;
+      for (const diagnostic of out.diagnostics) {
+        this.warn?.(`${diagnostic.function ?? "a function"}: ${diagnostic.message}`);
+      }
+      const map = out.map == null ? null : JSON.parse(out.map);
+      if (!refresh) return { code: out.code, map };
+      const relative = path.relative(root, cleanId(id)).split(path.sep).join("/");
+      return addRefreshWrapper(out.code, map, relative);
     },
 
     buildEnd() {
-      service?.close();
-      service = null;
+      // A dev server keeps its service for the whole session; a build is
+      // done with it here.
+      if (server == null) {
+        service?.close();
+        service = null;
+      }
+    },
+
+    transformIndexHtml() {
+      if (isProduction) return [];
+      return [
+        {
+          tag: "script",
+          attrs: { type: "module" },
+          children: preambleCode(base),
+          injectTo: "head-prepend",
+        },
+      ];
+    },
+
+    configureServer(devServer) {
+      server = devServer;
+      devServer.httpServer?.once("close", () => {
+        service?.close();
+        service = null;
+      });
+
+      // A page or layout appearing or disappearing changes the route table,
+      // which lives in a virtual module the watcher knows nothing about.
+      const reserved = /\/_uf\.(page|layout|middleware|not-found)(\.[a-z]+)?\.(js|jsx|mdx)$/;
+      const onRouteFile = (file) => {
+        if (!reserved.test(file) || !file.startsWith(appRoot)) return;
+        const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
+        if (routes) devServer.moduleGraph.invalidateModule(routes);
+        devServer.ws.send({ type: "full-reload", path: "*" });
+      };
+      devServer.watcher.on("add", onRouteFile);
+      devServer.watcher.on("unlink", onRouteFile);
+
+      // After Vite's own middlewares, so `/@vite/client`, `/@id/...` and
+      // static files are served first and only a document request reaches
+      // the renderer.
+      return () => {
+        devServer.middlewares.use(async (request, response, next) => {
+          if (!wantsDocument(request)) return next();
+          try {
+            const url = request.url ?? "/";
+            const { render } = await importServerEntry(devServer);
+            const result = await render(url, {
+              scripts: [devUrlFor(VIRTUAL.client)],
+              styles: [],
+              preloads: [],
+            });
+            const html = await devServer.transformIndexHtml(url, result.html);
+            response.statusCode = result.status;
+            response.setHeader("Content-Type", "text/html; charset=utf-8");
+            for (const [name, value] of Object.entries(result.headers ?? {})) {
+              response.setHeader(name, value);
+            }
+            response.end(html);
+          } catch (error) {
+            devServer.ssrFixStacktrace(error);
+            next(error);
+          }
+        });
+      };
     },
   };
+}
+
+function mdxPlugin(markdown) {
+  const mdxConfig = markdown.mdx ?? {};
+  if (mdxConfig.enabled === false) return { name: "uf:mdx" };
+  return {
+    enforce: "pre",
+    ...mdx({
+      jsxImportSource: "react",
+      remarkPlugins: [remarkGfm, remarkFrontmatter, [remarkMdxFrontmatter, { name: "frontmatter" }]],
+      rehypePlugins: [rehypeSlug],
+    }),
+    name: "uf:mdx",
+  };
+}
+
+/**
+ * Import `virtual:uf/server` through the dev server's module runner.
+ *
+ * Vite 6 introduced the environment API and its module runner; `ssrLoadModule`
+ * is the older path and is kept as the fallback.
+ */
+async function importServerEntry(devServer) {
+  const ssr = devServer.environments?.ssr;
+  if (ssr != null) {
+    if (ssr.runner == null) {
+      const { createServerModuleRunner } = await import("vite");
+      ssr.runner = createServerModuleRunner(ssr, { hmr: { logger: false } });
+    }
+    return ssr.runner.import(VIRTUAL.server);
+  }
+  return devServer.ssrLoadModule(VIRTUAL.server);
+}
+
+function wantsDocument(request) {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  const url = request.url ?? "/";
+  if (url.startsWith("/@") || url.startsWith("/node_modules/")) return false;
+  const accept = request.headers.accept ?? "";
+  if (!accept.includes("text/html")) return false;
+  const pathname = url.split("?")[0];
+  // A request for a file — `/favicon.svg`, `/assets/x.js` — that no static
+  // middleware answered is a 404, not a page.
+  return !/\.[a-z0-9]+$/i.test(pathname);
+}
+
+function cleanId(id) {
+  const at = id.indexOf("?");
+  return at === -1 ? id : id.slice(0, at);
+}
+
+/**
+ * Every `@uniflowed/*` package the project can resolve, for
+ * `optimizeDeps.exclude`, which takes names rather than patterns.
+ */
+function uniflowedPackages(root) {
+  const names = new Set();
+  let directory = root;
+  for (let depth = 0; depth < 16; depth += 1) {
+    const scope = path.join(directory, "node_modules", "@uniflowed");
+    try {
+      for (const entry of readdirSync(scope)) names.add(`@uniflowed/${entry}`);
+    } catch {
+      // no packages at this level
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return [...names].sort();
 }

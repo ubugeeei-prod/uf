@@ -108,10 +108,12 @@ fn color_always_writes_escape_sequences_to_a_pipe() {
     let app = dir.path().join("app");
     create_app(&app);
 
+    // `uf lint` runs entirely in this process, so the test needs no
+    // JavaScript host or installed packages.
     let output = uf()
         .arg("--cwd")
         .arg(&app)
-        .args(["build", "--color", "always"])
+        .args(["lint", "--color", "always"])
         .output()
         .unwrap();
 
@@ -127,8 +129,7 @@ fn color_always_writes_escape_sequences_to_a_pipe() {
     );
     assert!(stdout.contains("\u{1b}[0m"), "styles must be reset");
     // Styling must not change what the output says.
-    assert!(stdout.contains("uf build"));
-    assert!(stdout.contains("uf-build-manifest.json"));
+    assert!(stdout.contains("uf lint"));
 }
 
 #[test]
@@ -140,13 +141,17 @@ fn color_never_writes_no_escape_sequences() {
     let output = uf()
         .arg("--cwd")
         .arg(&app)
-        .args(["build", "--color", "never"])
+        .args(["lint", "--color", "never"])
         .env("FORCE_COLOR", "3")
         .env("CLICOLOR_FORCE", "1")
         .output()
         .unwrap();
 
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_plain(&String::from_utf8(output.stdout).unwrap());
 }
 

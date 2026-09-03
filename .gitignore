@@ -2,7 +2,8 @@
 /dist/
 /docs/dist/
 /docs/router.js
-/node_modules/
+node_modules/
+.uf/
 /.wrangler/
 /.direnv/
 .terraform/

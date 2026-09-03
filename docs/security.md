@@ -34,48 +34,25 @@ Every CVE identifier below was verified against the NVD API before being cited.
 
 ## Dev server and file serving
 
-The Vite dev server has been bypassed four separate ways in one year, all
-variations on "the deny check ran against a string that was not the path that
-was eventually opened."
+The dev server is Vite's, run through `@uniflowed/vite` on the project's
+JavaScript host. `uf` used to carry a Rust HTTP server with its own request
+pipeline and a corpus of the four `server.fs.deny` bypasses Vite shipped in one
+year; that server is gone, because a second implementation of Vite's surface
+is a second place for the same class of bug, and because the mitigations now
+live upstream where every Vite project gets them.
 
-| Past failure | Structural decision in `uf` | Test |
+What `uf` keeps is the policy around the server, which is where the structural
+decisions are:
+
+| Concern | Decision in `uf` | Where |
 | --- | --- | --- |
-| [CVE-2025-30208](https://github.com/advisories/GHSA-x574-m823-4x7w) — `?raw??` and `?import&raw??` bypass `server.fs.deny` | Query suffixes are stripped and the request is canonicalized to an absolute path *before* any access decision; the decision is made on the resolved path only | `uf_devserver::target`, `uf_devserver::resolve`, `attack_corpus` |
-| [CVE-2025-31125](https://nvd.nist.gov/vuln/detail/CVE-2025-31125) — `?import` / `?inline` / `?raw` traversal | Loader selection is a table lookup over a closed enum, not a string suffix match | `uf_devserver::target`, `attack_corpus` |
-| [CVE-2025-32395](https://nvd.nist.gov/vuln/detail/CVE-2025-32395) — invalid `request-target` bypass | Requests whose target is not a valid origin-form path are rejected before routing, not normalized into one | `uf_devserver::target`, `attack_corpus` |
-| [CVE-2025-62522](https://nvd.nist.gov/vuln/detail/CVE-2025-62522) — Windows trailing backslash bypass | `\` is treated as a path separator on every platform when deciding access, never only on Windows | `uf_devserver::resolve`, `attack_corpus` |
-| Traversal, double encoding, poisoned `%00`, and symlinks out of the project root | One pipeline: percent-decode once (a still-encoded result is rejected, not decoded again), normalize lexically, resolve symlinks, decide, then open. `ResolvedFile` carries the open handle and exposes the approved path only as a non-path `CheckedPath`, so a caller has nothing to re-derive | `uf_devserver::resolve`, `attack_corpus` |
-| Vite's `/@fs/` absolute-path prefix, the entry point for the four rows above | There is no such prefix. A request whose first normalized segment is `@fs` is a typed refusal, so the absence is asserted rather than incidental | `uf_devserver::resolve`, `attack_corpus` |
-| A deny list weakened by project configuration | `dev.fs.deny` entries are *added* to a built-in list (`.env*`, `**/.git/**`, `*.pem`, `*.key`, `*.crt`, `**/.uf/**`) and cannot remove one. Patterns are matched by a two-pointer globber with a single backtrack point — no regex, no exponential blow-up | `uf_devserver::policy`, `attack_corpus` |
-| DNS rebinding, and cross-origin requests with side effects | Loopback bind by default; `--host` fails to start without a non-empty `dev.allowedHosts`, with exposure read from the *bound socket* rather than the config string. A `Host` outside the list is refused, and anything that is not a simple `GET`/`HEAD` needs an `Origin` in `dev.allowedOrigins`. `*` is rejected in either list | `uf_devserver::network`, `uf_devserver::server`, `attack_corpus`, `uf_cli` |
-| Inbound headers that steer dispatch — [CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927)'s class, at the dev server's own surface | `RequestHead` retains the method, the request target, `Host` and `Origin`, and nothing else: there is no header map for a handler to consult. The two retained headers can only refuse a request, never select a root, loader, handler, or path | `uf_devserver::http`, `attack_corpus` |
-| `Last-Event-ID`, the resume cursor the server-sent-events specification defines, letting a client choose what the update stream sends — the same bug class, at the surface most likely to reproduce it | The hot-reload stream is served by the same listener behind the same `Host`/`Origin` allowlists. Its response head is a `&'static [u8]` with no substitution point and no `Access-Control-Allow-Origin`, and a subscriber's cursor is assigned by the server at `subscribe`. `no_inbound_header_changes_what_the_update_stream_sends` drives `Last-Event-ID`, `x-middleware-subrequest` and friends and asserts every response is byte-identical | `uf_devserver::hmr::channel`, `uf_devserver::server` |
-| Hot module replacement as a second way to reach a file — an update payload naming a path the request pipeline would refuse | An update carries origin-form *request targets*, built by `update_target` from already-normalized module paths and re-parsed under the same grammar an inbound target is parsed with; a path it cannot spell becomes a full reload, not a target. Fetching is `fetch_update`, which is `resolve_with_policy` behind a name. `an_hmr_fetch_is_refused_exactly_like_a_plain_request` drives the whole corpus, `../../.env` included, down both paths and asserts the refusals are equal | `uf_devserver::hmr::update`, `attack_corpus` |
-| A file watcher announcing a path the server would never serve, turning the update channel into a disclosure of what exists | The poll watcher shares the dev server's `FsPolicy` deny list, watches `.js` only, skips dot-directories and a fixed table of build directories, and refuses to follow a symlink. Editing `.env` produces no update at all | `uf_devserver::hmr::watch` |
-| Unbounded work from a hostile project tree: a directory nested to the filesystem's limit, an import cycle, a module graph with no ceiling | Every walk is an explicit worklist with a per-side seen set — no recursion in the graph, the invalidation, or the watcher — and each has a typed bound: `MAX_MODULES`, `MAX_MODULE_DEPTH`, `MAX_MODULE_IMPORTS`, `MAX_MODULE_BYTES`, `MAX_WATCH_DEPTH`, `MAX_WATCHED_FILES`, `MAX_SUBSCRIBERS`, `MAX_BUFFERED_UPDATES`. Exceeding the invalidation depth degrades to a reported full reload rather than a hang | `uf_devserver::hmr::graph`, `uf_devserver::hmr::invalidate`, `uf_devserver::hmr::watch`, `uf_devserver::hmr::channel` |
-
-`attack_corpus` is `crates/uf_devserver/tests/attack_corpus.rs`: a table of
-request targets that must never produce a file, each row naming the trick it
-plays and the status the server must answer with. Every new bypass anyone
-thinks of becomes a row there before it becomes a fix.
-
-The dev server binds loopback by default. Exposing it requires `uf dev --host`
-*and* a non-empty `dev.allowedHosts`; a cross-origin request with side effects
-additionally requires an `Origin` in `dev.allowedOrigins`. Neither list has a
-default, neither accepts `*`, and a server that cannot name its allowed hosts
-does not start.
-
-What the dev server does today is serve static files under the project root,
-answer `/__uf/health`, and stream hot-module-replacement updates on
-`/__uf/hmr`. The loaders it names (`?raw`, `?inline`, `?url`, `?worker`) are
-selected from the closed enum and reported on the response, but do not yet
-transform the body; when they do, the transform must consume the `ResolvedFile`
-rather than re-open anything.
-
-The update stream is a second *surface*, not a second *server*: same listener,
-same port, same `Host` and `Origin` allowlists, and the modules an update names
-are fetched back through `resolve_with_policy` like any other request. The only
-new refusal it introduces is a subscriber ceiling, answered with `503`.
+| The four `server.fs.deny` bypasses ([CVE-2025-30208](https://github.com/advisories/GHSA-x574-m823-4x7w), [CVE-2025-31125](https://nvd.nist.gov/vuln/detail/CVE-2025-31125), [CVE-2025-32395](https://nvd.nist.gov/vuln/detail/CVE-2025-32395), [CVE-2025-62522](https://nvd.nist.gov/vuln/detail/CVE-2025-62522)) | `@uniflowed/vite` depends on a Vite line that contains every fix, and the dependency is what `uf install` resolves — a project cannot end up on an older server by naming one | `packages/vite/package.json` |
+| DNS rebinding, and cross-origin requests with side effects | Loopback bind by default. `uf dev --host` refuses to start without a non-empty `dev.allowedHosts`, before any process is spawned, and the list is handed to Vite's `server.allowedHosts` unchanged; `*` is never written for the user | `uf_cli::commands::dev`, `packages/vite/driver.js` |
+| A deny list weakened by project configuration | `dev.fs.deny` entries are handed to Vite's `server.fs.deny` on top of its built-in list (`.env`, `.env.*`, `*.{crt,pem}`, `**/.git/**`); there is no configuration that removes a built-in entry | `packages/vite/driver.js` |
+| A dev server that outlives the command that started it | The driver's stdin is a pipe `uf` holds open and never writes to; when `uf` exits, for any reason, the pipe closes and the driver exits | `uf_cli::commands::vite` |
+| A different `uf` on PATH transforming the project's modules | The driver is told which binary started it (`UF_BINARY`) and every transform goes through that one | `uf_cli::commands::vite`, `packages/vite/internal/transform.js` |
+| Unbounded work from a hostile module | Every stage of the transform has a ceiling — source size, tree depth — and a typed error above it; the transform service runs on a thread with a fixed large stack so a pathological input fails with a message | `uf_transform` |
+| Inbound headers that steer dispatch — [CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927)'s class | Vite's middleware chain is the only dispatch, and `uf` adds one middleware: render a document for a `GET`/`HEAD` whose `Accept` includes `text/html` and whose path has no file extension. It reads nothing else from the request | `packages/vite/index.js` |
 
 ## Framework, RSC, and server actions
 
@@ -132,7 +109,7 @@ on a CI machine, or a formatter silently changing program meaning.
 | Stack overflow on deeply nested input | Depth is tracked on an explicit stack, never the call stack, and bounded | todo |
 | Quadratic or exponential scanning | Single-pass lexing with byte scanning; no backtracking regex on source text | todo |
 | A formatter that changes the token stream | Formatting is verified token-preserving: the lexer output of input and output must match, ignoring trivia | todo |
-| Unbounded memory on a hostile file | File size caps with typed errors | `uf_rsc::scan`, `uf_pm::detect`, `uf_bundle::size`, `uf_devserver::hmr::graph` |
+| Unbounded memory on a hostile file | File size caps with typed errors | `uf_rsc::scan`, `uf_pm::detect`, `uf_bundle::size`, `uf_transform::estree` |
 | Non-UTF-8 and lone-surrogate input | Rejected at the boundary with a typed error; never sliced blindly | todo |
 
 `uf` used to reach Flow's grammar through a QuickJS-hosted build of Flow's

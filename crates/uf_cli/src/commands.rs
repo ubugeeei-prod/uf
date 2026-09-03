@@ -17,3 +17,4 @@ pub(crate) mod release;
 pub(crate) mod task;
 pub(crate) mod test;
 pub(crate) mod transform;
+pub(crate) mod vite;

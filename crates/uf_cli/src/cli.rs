@@ -45,8 +45,9 @@ pub(crate) enum Commands {
         /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
         #[arg(long, value_name = "HOST")]
         host: Option<String>,
-        #[arg(long, hide = true)]
-        once: bool,
+        /// Listen on this port instead of `dev.port`.
+        #[arg(long, value_name = "PORT")]
+        port: Option<u16>,
     },
     Env {
         #[command(subcommand)]

@@ -108,12 +108,12 @@ copy of each crate, outside the workspace, where the relative path to
 `upstream/flow` no longer resolves — and a path dependency is relative by
 definition, so no crate can fix it from its own manifest.
 
-Five crates are excluded from that check: `uf_flow` and `uf_check` name the
-submodule, and `uf_bundler`, `uf_cli` and `uf_lint` reach it transitively,
-because cargo resolves a path dependency whether or not the feature using it is
-enabled. That leaves 37 of 42 crates gated, which is worth more than switching
-the gate off — but the list grows as more crates use the parser, and it already
-includes three of the more interesting public APIs.
+Five crates are excluded from that check: `uf_flow`, `uf_check` and
+`uf_transform` name the submodule, and `uf_cli` and `uf_lint` reach it
+transitively, because cargo resolves a path dependency whether or not the
+feature using it is enabled. That leaves most crates gated, which is worth more
+than switching the gate off — but the list grows as more crates use the parser,
+and it already includes three of the more interesting public APIs.
 
 If it grows to where the gate covers little, the fix is to make the upstream
 dependency a rev-pinned git dependency, which cargo resolves from any directory,
@@ -291,12 +291,40 @@ Native engines being deepened:
 ## Build And Dev
 
 `uf.config.js` mirrors the Vite style because it replaces the user-authored
-`vite.config.ts`. Vite remains the dev server, bundler facade, and plugin
-system; `uf` owns the Flow-specific config surface, generated route/RSC data,
-Rust lint/typecheck/format/test work, and the translation from uf plugins to the
-underlying Vite plugin container. Users should not need `vite.config.*`;
-project-specific build, dev, plugin, lint, format, test, and task settings live
-in `uf.config.js`.
+`vite.config.ts`. Vite *is* the dev server, the bundler and the plugin system;
+`uf` owns the Flow-specific config surface, the generated route and RSC data,
+the Rust lint/typecheck/format/test work, and the transform every module goes
+through. Users never write `vite.config.*`.
+
+`uf dev` and `uf build` start `@uniflowed/vite`'s driver on the project's
+Capability JS Host — Node.js, Bun or Deno, whichever `uf.config.js` names and
+the machine has — and keep the terminal: the driver writes one JSON event per
+line and `uf` renders them. The driver loads `uf.config.js` (through `uf
+transform`, since the config is Flow), builds Vite's inline config from it,
+and registers uf's plugins:
+
+- `uf:flow` pipes every Flow module through `uf transform`, adds the React
+  Fast Refresh wiring in development, and serves the virtual modules that make
+  a directory of pages an application — the route table generated from `app/`,
+  the client entry that hydrates it, and the server entry that renders it. In
+  development it renders every document request on the server, so `uf dev`
+  serves the markup `uf build` writes.
+- `uf:mdx` is `@mdx-js/rollup` with GitHub-flavoured markdown, front matter and
+  heading ids, so `_uf.page.mdx` works with no configuration.
+
+A build is three passes: the client bundle (with a manifest, so the renderer
+knows which script and stylesheet tags to write), the server bundle (kept
+under `.uf/build/server/`, never in `dist/`), and every static route
+prerendered to `dist/<route>/index.html` — with `generateStaticParams` on a
+page enumerating a parameterised route. `uf` then measures `dist/` and
+enforces `build.budgets`.
+
+`@uniflowed/router` is the runtime the virtual modules call into: matching
+(`[param]`, `[...rest]`, `(group)`, most specific wins), nested layouts,
+`loader` data embedded for hydration, `metadata` hoisted into `<head>`,
+client-side navigation with `Link` prefetching on intent, and `notFound()`/
+`redirect()`. A page or layout exports its component as `default` or as the
+named `Page`/`Layout` that `uf create` scaffolds.
 
 Generated projects do not use npm scripts. Tasks are declared in
 `uf.config.js` and executed by `uf run` through Vite Task.
