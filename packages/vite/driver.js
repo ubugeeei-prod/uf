@@ -138,13 +138,27 @@ async function dev() {
   const assets = { scripts: [`/@id/${VIRTUAL.client}`], styles: [], preloads: [] };
 
   server.middlewares.use(async (request, response, next) => {
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      next();
-      return;
-    }
     const url = request.originalUrl ?? request.url ?? "/";
     try {
       const entry = await server.ssrLoadModule(VIRTUAL.server);
+
+      // Route handlers first, and for every method: a handler is the only
+      // thing that answers a POST, and it may also answer a GET for a path
+      // that has no page.
+      const handled = await entry.dispatch(await toRequest(request, server.config));
+      if (handled != null) {
+        await send(response, handled);
+        return;
+      }
+
+      // Only a navigation reaches the renderer. A page cannot answer a POST,
+      // and letting one try would turn a missing handler into a rendered page
+      // with a 200 rather than a 404.
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        next();
+        return;
+      }
+
       const result = await entry.render(url, assets);
       const html = await server.transformIndexHtml(url, result.html);
       response.statusCode = result.status ?? 200;
@@ -171,6 +185,62 @@ async function dev() {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+/**
+ * A Node request as a `Request`.
+ *
+ * The handler contract is the platform's, so the adapter belongs here rather
+ * than in every handler. The body is read as a stream where the host supports
+ * it, because a handler that accepts an upload should not need the whole thing
+ * buffered before it starts.
+ */
+async function toRequest(incoming, config) {
+  const host = incoming.headers.host ?? "localhost";
+  const protocol = config?.server?.https == null ? "http" : "https";
+  const url = new URL(incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${host}`);
+
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(incoming.headers)) {
+    if (value == null) continue;
+    for (const entry of Array.isArray(value) ? value : [value]) {
+      headers.append(name, entry);
+    }
+  }
+
+  const method = (incoming.method ?? "GET").toUpperCase();
+  const init = { method, headers };
+  if (method !== "GET" && method !== "HEAD") {
+    // `duplex` is required by the specification whenever a body is a stream,
+    // and Node throws without it.
+    init.body = incoming;
+    init.duplex = "half";
+  }
+  return new Request(url, init);
+}
+
+/** Write a `Response` to a Node response. */
+async function send(outgoing, result) {
+  outgoing.statusCode = result.status;
+  if (result.statusText !== "") {
+    outgoing.statusMessage = result.statusText;
+  }
+  for (const [name, value] of result.headers) {
+    outgoing.setHeader(name, value);
+  }
+  if (result.body == null) {
+    outgoing.end();
+    return;
+  }
+  // Streamed rather than buffered, so a handler returning a large or
+  // open-ended body is not read into memory first.
+  const reader = result.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    outgoing.write(value);
+  }
+  outgoing.end();
 }
 
 async function preview() {

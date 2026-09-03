@@ -21,6 +21,8 @@ pub enum ReservedRole {
     Page,
     /// Runs before a route resolves.
     Middleware,
+    /// Answers a request instead of rendering a page.
+    Route,
 }
 
 impl ReservedRole {
@@ -31,6 +33,7 @@ impl ReservedRole {
             Self::Layout => "layout",
             Self::Page => "page",
             Self::Middleware => "middleware",
+            Self::Route => "route",
         }
     }
 
@@ -49,6 +52,7 @@ impl FromStr for ReservedRole {
             "layout" => Ok(Self::Layout),
             "page" => Ok(Self::Page),
             "middleware" => Ok(Self::Middleware),
+            "route" => Ok(Self::Route),
             _ => Err(()),
         }
     }
@@ -309,7 +313,7 @@ mod tests {
     #[test]
     fn an_unknown_role_is_rejected() {
         for name in [
-            "_uf.route.js",
+            "_uf.handler.js",
             "_uf.loader.js",
             "_uf.js",
             "_uf.page",

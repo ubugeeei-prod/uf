@@ -21,6 +21,7 @@ Four names are reserved. Everything else in `app/` is an ordinary module.
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
 | `_uf.middleware.js` | Runs before the route resolves — redirects, auth, headers. |
+| `_uf.route.js` | Answers a request instead of rendering a page. |
 
 Any of them may be `.mdx` instead of `.js`. A directory whose name starts with
 `_` is not a route, which is where shared components belong — this site keeps
@@ -98,6 +99,53 @@ import { Link } from "@uniflowed/router";
 `prefetch="off"` never does. `useRouter()` navigates imperatively;
 `useRoute()` gives the current path, params and search — which is what the
 sidebar on this page uses to mark the open entry.
+
+## Route handlers
+
+A path can answer a request instead of rendering. `app/api/users/[id]/_uf.route.js`
+serves `/api/users/42`:
+
+```js
+// @flow
+import type { HandlerContext } from "@uniflowed/router/handler";
+
+export async function GET(request: Request, context: HandlerContext): Promise<Response> {
+  const user = await find(context.params.id);
+  return user == null
+    ? new Response("not found", { status: 404 })
+    : Response.json(user);
+}
+
+export async function POST(request: Request, context: HandlerContext): Promise<Response> {
+  return Response.json(await request.json(), { status: 201 });
+}
+```
+
+A handler takes a `Request` and returns a `Response` — the platform's own
+types, not a framework's wrapper. That is what runs unchanged on Node.js, Bun,
+Deno and a Cloudflare Worker, which is the whole point of treating the host as
+a capability rather than a target.
+
+One export per method: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
+`OPTIONS`. Anything else a module exports is a helper, not a method — a
+dispatcher that treated every export as one would answer requests with your
+utility functions.
+
+Three things the dispatcher does so every handler does not have to:
+
+- **`HEAD` falls back to `GET`**, with the body dropped. A client asking for
+  headers expects that, and nobody remembers to write it.
+- **`405` carries `Allow`.** When the path matches and the method does not,
+  the response names the methods that do — which is what lets a client tell
+  "you may not do that here" from "there is nothing here".
+- **The most specific path wins.** `/api/users/new` beats `/api/users/[id]`,
+  which beats `/api/[...rest]`, whatever order the files are in.
+
+What it deliberately does not do is catch your errors. A handler that throws is
+a bug, and turning it into a 500 here would hide it from the host's own error
+reporting — and leave you unable to tell a 500 you meant from one you caused.
+
+A handler is not prerendered and its module never reaches the browser.
 
 ## Types for routes
 

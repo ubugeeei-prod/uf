@@ -42,6 +42,9 @@ export const DATA_ID = "__uf_data";
 /**
  * Build a `render(url, assets)` for one app.
  */
+export type { Handler, HandlerContext, HandlerModule, HandlerRecord } from "./handler.js";
+export { createDispatcher } from "./handler.js";
+
 export function createRenderer(options: {|
   +App: React.ComponentType<AppProps>,
   +routes: RouteTable["routes"],

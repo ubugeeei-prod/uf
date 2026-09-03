@@ -21,6 +21,7 @@ export const RESERVED = Object.freeze({
   page: "_uf.page",
   middleware: "_uf.middleware",
   notFound: "_uf.not-found",
+  route: "_uf.route",
 });
 
 /** Extensions a page or layout may use; `.mdx` is a page written as content. */
@@ -44,6 +45,16 @@ const MAX_DEPTH = 32;
  */
 
 /**
+ * One route handler — a path that answers a request instead of rendering.
+ *
+ * @typedef {object} Handler
+ * @property {string} path route path such as `/api/users/:id`
+ * @property {string} pattern the same path with `*` for catch-alls
+ * @property {ReadonlyArray<{name: string, catchAll: boolean}>} params
+ * @property {string} module absolute path of the handler module
+ */
+
+/**
  * Scan `appRoot` for routes.
  *
  * Returns routes sorted by path, which is the order `uf_router` uses too.
@@ -55,8 +66,9 @@ const MAX_DEPTH = 32;
  */
 export function scanRoutes(appRoot) {
   const routes = [];
+  const handlers = [];
   let notFound = null;
-  if (!isDirectory(appRoot)) return { routes, notFound };
+  if (!isDirectory(appRoot)) return { routes, handlers, notFound };
 
   const walk = (directory, segments, layouts, middleware, depth) => {
     if (depth > MAX_DEPTH) return;
@@ -82,6 +94,15 @@ export function scanRoutes(appRoot) {
         mdx: page.endsWith(".mdx"),
       });
     }
+    // A handler answers the request itself, so it takes no layouts and is not
+    // MDX. It may sit beside a page: `/feed` can render for a browser and
+    // `/feed.xml` answer for a reader, and both are the same directory tree.
+    const handler = findModule(directory, RESERVED.route, MODULE_EXTENSIONS);
+    if (handler) {
+      const { path: routePath, pattern, params } = routeFromSegments(segments);
+      handlers.push({ path: routePath, pattern, params, module: handler });
+    }
+
     if (depth === 0) {
       const own = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS);
       if (own) notFound = { page: own, layouts: nextLayouts, mdx: own.endsWith(".mdx") };
@@ -103,8 +124,10 @@ export function scanRoutes(appRoot) {
   };
 
   walk(appRoot, [], [], [], 0);
-  routes.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { routes, notFound };
+  const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  routes.sort(byPath);
+  handlers.sort(byPath);
+  return { routes, handlers, notFound };
 }
 
 function isDirectory(candidate) {
@@ -206,9 +229,24 @@ export function routesModuleSource(table) {
 }`
     : "null";
 
+  // Handlers are a separate table because nothing on the client wants them:
+  // a route handler answers a request, so shipping its module to the browser
+  // would ship server code to the page.
+  const handlerEntries = (table.handlers ?? []).map(
+    (handler) => `  {
+    path: ${JSON.stringify(handler.path)},
+    params: ${JSON.stringify(handler.params)},
+    file: ${JSON.stringify(handler.module)},
+    load: () => import(${JSON.stringify(handler.module)}),
+  }`,
+  );
+
   return `${layoutImports.join("\n")}
 export const routes = [
 ${entries.join(",\n")}
+];
+export const handlers = [
+${handlerEntries.join(",\n")}
 ];
 export const notFound = ${notFound};
 export default routes;
@@ -234,10 +272,11 @@ hydrate({ App, routes, notFound });
  * The source of `virtual:uf/server`: render one URL to HTML.
  */
 export function serverModuleSource(appEntry) {
-  return `import { createRenderer } from "@uniflowed/router/server";
-import { routes, notFound } from ${JSON.stringify(VIRTUAL.routes)};
+  return `import { createDispatcher, createRenderer } from "@uniflowed/router/server";
+import { routes, handlers, notFound } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-export { routes, notFound };
+export { routes, handlers, notFound };
 export const render = createRenderer({ App, routes, notFound });
+export const dispatch = createDispatcher({ handlers });
 `;
 }
