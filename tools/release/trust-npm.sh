@@ -53,3 +53,7 @@ done
 
 echo
 echo "Done. A 'uf@*' tag now publishes these over OIDC, with no token anywhere."
+echo
+echo "Run this again after adding a name to published-packages.txt. The publish"
+echo "job cannot check the bindings itself — it authenticates as a workflow and"
+echo "'npm trust list' reads them as you — so an unbound name fails mid-release."
