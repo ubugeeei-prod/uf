@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/vite",
-  "version": "0.0.0-alpha.1",
+  "version": "0.0.0-alpha.2",
   "description": "Vite, driven by uf.config.js: every Flow module through `uf transform`, MDX, the file-system router and static rendering as Vite plugins.",
   "type": "module",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/pm",
-  "version": "0.0.0-alpha.1",
+  "version": "0.0.0-alpha.2",
   "description": "Flow declarations for @uniflowed/pm, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/config": "0.0.0-alpha.1",
-    "@uniflowed/core": "0.0.0-alpha.1"
+    "@uniflowed/config": "0.0.0-alpha.2",
+    "@uniflowed/core": "0.0.0-alpha.2"
   }
 }
