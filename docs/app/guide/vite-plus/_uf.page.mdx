@@ -1,0 +1,92 @@
+---
+title: "uf and Vite+ · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# uf and Vite+
+
+<div className="lede">
+Vite+ is the toolchain uf will be compared to, and the comparison is simpler
+than it looks: they answer different questions. Vite+ unifies the JavaScript
+and TypeScript toolchain. uf makes Flow's React syntax usable.
+</div>
+
+## uf is not a competitor to Vite
+
+Start here, because it is the thing most often assumed the other way round.
+
+uf's dev server **is** Vite. Its production build **is** Vite. uf resolves your
+config, decides what Vite should be handed, starts it on a JavaScript host and
+drives it over a JSON protocol. Vite's plugin ecosystem keeps working, because
+it is really Vite — `plugins` in `uf.config.js` is a list of Vite plugins.
+
+Replacing Vite would have meant rebuilding the best-tested bundler pipeline in
+the ecosystem in order to change one thing about it. The one thing uf changes
+is what happens to a module before Vite sees it.
+
+## Where they differ
+
+| | Vite+ | uf |
+| --- | --- | --- |
+| Language it is built around | TypeScript | Flow |
+| React syntax it understands | JSX and TypeScript | `component`, `hook`, `renders`, `match`, Flow `enum` |
+| Transform | Oxc | Meta's Flow parser → Hermes lowering passes → the React Compiler crate → oxc |
+| Bundler and dev server | Vite and Rolldown | Vite |
+| Config | `vite.config.ts` | `uf.config.js`, in Flow |
+| Maturity | a funded product with a team behind it | `0.0.0-alpha`, and it says so on every page |
+
+The row that matters is the first one. Everything else follows from it.
+
+## What "TypeScript-first" costs you if you write Flow
+
+A TypeScript-first toolchain does not refuse Flow — it simply has no path for
+it, so you build one. That means Babel back in the pipeline: a preset to strip
+the types, a plugin to understand `component` and `hook`, another for the React
+Compiler, and then the same syntax explained again to the test runner, the
+linter and the formatter, each in its own configuration.
+
+Every one of those is a place two tools can disagree about what your code
+means, and the disagreement shows up somewhere unrelated: a test that passes
+and a build that fails, or a formatter that reflows syntax the linter then
+rejects.
+
+uf's answer is that the parse should happen once, in the binary, and everything
+should read that tree. [Why Flow](/guide/why) is the longer form of the
+argument.
+
+## What Vite+ has that uf does not
+
+Being straight about this is more useful than a feature table.
+
+**A team, a company and a support contract.** uf is pre-release software with
+no stability guarantee. If you are choosing a toolchain for work that has to
+keep running in three years, that difference is the whole decision.
+
+**The TypeScript ecosystem.** Every typed package on npm, every editor
+integration, every answer to every question. uf inherits Flow's ecosystem,
+which is much smaller. [Why Flow](/guide/why#and-what-it-does-not-say) does not
+pretend otherwise.
+
+**Monorepo tooling at scale.** uf runs tasks and builds a project. It has not
+been near a thousand-package repository.
+
+## When uf is the right choice
+
+- You write React and you want the syntax Flow has for it: props inferred from
+  a parameter list, the rules of hooks enforced by the checker, components that
+  can require particular children, exhaustive `match`, real enums.
+- You would rather have one binary and one config file than six tools that have
+  to be taught the same thing.
+- You can live with pre-release software, and with an ecosystem where a package
+  without Flow types is `any` until somebody writes them.
+
+If you write TypeScript, Vite+ is a better answer than uf will ever be for you,
+and this page is not trying to talk you out of it.
+
+## Can they be used together?
+
+Partly, today. uf's task runner is Vite's, and uf drives standard Vite, so a
+project already using Vite's ecosystem keeps it. What does not compose is the
+transform: a module is Flow or it is TypeScript, and uf's pipeline is the Flow
+one.

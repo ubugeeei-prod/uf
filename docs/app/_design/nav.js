@@ -31,6 +31,16 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "The argument for one toolchain, and what it costs you.",
       },
       {
+        href: "/guide/why",
+        title: "Why Flow",
+        blurb: "What Flow says about React that nothing else can, and what it costs.",
+      },
+      {
+        href: "/guide/vite-plus",
+        title: "uf and Vite+",
+        blurb: "Where uf sits next to the toolchain it will be compared to.",
+      },
+      {
         href: "/guide/install",
         title: "Install",
         blurb: "One binary, three runtimes, no plugins to add.",

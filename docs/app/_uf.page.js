@@ -84,8 +84,8 @@ export default component Home() {
           <Link className="button" to="/guide/install">
             Install uf
           </Link>
-          <Link className="button button-quiet" to="/guide">
-            Read the guide
+          <Link className="button button-quiet" to="/guide/why">
+            Why Flow
           </Link>
         </div>
 

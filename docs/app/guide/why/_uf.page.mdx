@@ -1,0 +1,135 @@
+---
+title: "Why Flow · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Why Flow
+
+<div className="lede">
+React is written in Flow. The type system that describes React best is the one
+React is built with — and it is the one with no toolchain. That gap is the
+whole reason this project exists.
+</div>
+
+## The argument in one paragraph
+
+Flow has spent the last few years growing syntax that exists specifically to
+describe React: component and hook declarations, render types, pattern
+matching, enums. Nothing else has any of it. But using that syntax means
+assembling Babel, a preset, a plugin for the React Compiler, and then teaching
+your bundler, your test runner, your linter and your formatter about the same
+syntax, separately, in four more config files. The most expressive way to write
+React is the least pleasant to set up. uf is the removal of that tax and
+nothing else.
+
+## What Flow says that other type systems cannot
+
+### A component is a kind of declaration, not a shape you annotate
+
+```js
+component Avatar(src: string, size: number = 32, alt?: string) {
+  return <img src={src} width={size} height={size} alt={alt ?? ""} />;
+}
+```
+
+The props type *is* the parameter list. There is no second declaration to keep
+in step with the signature, defaults live where the parameter is declared, and
+a missing prop is an error at the call site naming the parameter. The
+equivalent elsewhere is a separate interface, a destructuring pattern, and a
+defaults object — three places that describe one thing and can disagree.
+
+It also means the compiler *knows* this is a component. React's own compiler
+is told so directly rather than inferring it from a capital letter.
+
+### The rules of hooks are a type error
+
+```js
+hook useNow(interval: number): Date { … }
+```
+
+Flow will not let you call that from anything but a component or another hook.
+Not a lint rule you remember to install and configure — a type error, from the
+same checker that checks everything else. The most common class of React bug
+stops being a matter of discipline.
+
+### A component can require its children
+
+```js
+component Tab(label: string) renders React.Node { … }
+component Tabs(children: renders* Tab) { … }
+```
+
+`renders Tab` is exactly one, `renders? Tab` zero or one, `renders* Tab` any
+number. `<Tabs><Button /></Tabs>` does not compile. "These two components only
+make sense together" becomes something the type system enforces instead of
+something the documentation asks for.
+
+### Exhaustiveness you cannot forget
+
+```js
+enum Status { Idle, Loading, Failed }
+
+const label = match (status) {
+  Status.Idle => "Ready",
+  Status.Loading => "Working…",
+  Status.Failed => "Failed",
+};
+```
+
+Add a member to the enum and every `match` over it stops compiling until it is
+handled. Flow enums are real runtime values too — iterable, castable, and not
+comparable to a bare string by accident — which a union of string literals is
+not.
+
+### Exactness and variance are the default, not a flag
+
+Flow object types are exact unless you say otherwise, and property variance is
+written down: `+field` is covariant, `-field` contravariant. A read-only prop
+is expressible as a property of the type rather than as a convention. These are
+the places where a type system quietly lies to you, and Flow's answers are
+stricter.
+
+## And what it does not say
+
+Being honest about this matters more than the list above.
+
+**The ecosystem is TypeScript's.** Most libraries ship `.d.ts` and no libdef.
+`flow-typed` exists and Flow can read some TypeScript declarations, but a
+package with no Flow types is `any` until somebody writes them. If your project
+lives on twenty typed dependencies, this is the cost you are paying.
+
+**Editor support is thinner.** Flow's language server is good and uf ships
+`uf lsp`, but the number of people working on TypeScript tooling is not a
+number Flow will match.
+
+**Fewer people know it.** Hiring, Stack Overflow answers, and the odds that a
+contributor has seen `renders` before all favour TypeScript.
+
+uf does not argue that Flow wins on those. It argues that if you are writing
+React — and if the type system's job is to describe *React* precisely rather
+than to describe JavaScript generally — Flow says things nothing else can say,
+and the only thing standing between you and them was the toolchain.
+
+## Why a whole toolchain, rather than a plugin
+
+Because a plugin is the problem restated. The moment two tools have to agree
+about what `component` means, they have to be configured to agree, and they
+can be configured to disagree — silently, until a build fails where a test
+passed.
+
+uf compiles Meta's own Flow parser into a single binary and everything reads
+that one tree: the dev server, the production build, the test runner, the
+formatter, the linter. There is one answer to "what does this file mean"
+because there is one implementation of the question.
+
+That is also why `uf.config.js` is the only config file, and why it is written
+in Flow — the configuration for your type system should be checked by your type
+system.
+
+## Where to go next
+
+[Flow, the modern parts](/guide/flow) is the same syntax with the lowering
+explained: what each construct becomes, and which upstream implementation does
+it. [uf and Vite+](/guide/vite-plus) is where uf sits next to the toolchain
+most people will compare it to.
