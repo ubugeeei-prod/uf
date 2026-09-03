@@ -180,7 +180,10 @@ enables:
   to Biome formatting
 
 No Babel, Jest, Yarn, npm scripts, or `.flowconfig` is required for generated
-projects. Project automation belongs in `uf.config.js` tasks and runs through
+projects. Flow becomes JavaScript through `uf transform`: the official Flow
+Rust parser, Flow's own lowering rules for `component`/`hook`/`match`/enums,
+the official React Compiler (Rust, `syntax` mode) and oxc for JSX and code
+generation — no Babel anywhere. Project automation belongs in `uf.config.js` tasks and runs through
 Vite Task.
 
 When config is needed, use the Vite-like entrypoint through Flow syntax. The

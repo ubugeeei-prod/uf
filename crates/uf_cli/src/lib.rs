@@ -86,7 +86,7 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
         Commands::Fmt { check } => commands::fmt::fmt(&cwd, ui, check),
         Commands::Info => commands::info::info(&cwd, ui),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
-        Commands::Transform => commands::transform::transform(&cwd),
+        Commands::Transform => commands::transform::transform_service(&cwd),
         Commands::Install => commands::pm::install(&cwd, ui),
         Commands::Lint { json } => {
             commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json)

@@ -4691,6 +4691,7 @@ dependencies = [
  "uf_runtime",
  "uf_term",
  "uf_test",
+ "uf_transform",
  "uf_tui",
 ]
 
@@ -4973,6 +4974,30 @@ dependencies = [
  "thiserror",
  "uf_infra",
  "uf_rsc",
+]
+
+[[package]]
+name = "uf_transform"
+version = "0.0.0-alpha.0"
+dependencies = [
+ "criterion",
+ "flow_parser",
+ "indexmap",
+ "oxc_allocator",
+ "oxc_codegen",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_sourcemap",
+ "oxc_span",
+ "oxc_transformer",
+ "react_compiler",
+ "react_compiler_ast",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "similar-asserts",
+ "thiserror",
+ "uf_infra",
 ]
 
 [[package]]

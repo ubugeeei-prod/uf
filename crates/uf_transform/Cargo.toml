@@ -1,0 +1,35 @@
+[package]
+name = "uf_transform"
+description = "Flow to JavaScript for uf: the official Flow parser, Flow's own lowering rules, the official React Compiler, and oxc for JSX and code generation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+flow_parser.workspace = true
+indexmap.workspace = true
+oxc_allocator.workspace = true
+oxc_codegen.workspace = true
+oxc_parser.workspace = true
+oxc_semantic.workspace = true
+oxc_sourcemap.workspace = true
+oxc_span.workspace = true
+oxc_transformer.workspace = true
+react_compiler.workspace = true
+react_compiler_ast.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uf_infra = { path = "../uf_infra" }
+
+[dev-dependencies]
+criterion.workspace = true
+similar-asserts.workspace = true
+
+[[bench]]
+name = "transform"
+harness = false
