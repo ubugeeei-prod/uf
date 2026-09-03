@@ -25,6 +25,7 @@ members = [
   "crates/uf_stylex",
   "crates/uf_term",
   "crates/uf_test",
+  "crates/uf_transform",
   "crates/uf_tui",
 ]
 exclude = ["upstream"]
@@ -54,6 +55,13 @@ flow_common_errors = { path = "upstream/flow/rust_port/crates/flow_common_errors
 flow_flowlib = { path = "upstream/flow/rust_port/crates/flow_flowlib" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
+oxc_allocator = "0.147.0"
+oxc_codegen = "0.147.0"
+oxc_parser = "0.147.0"
+oxc_semantic = "0.147.0"
+oxc_sourcemap = "8.1.2"
+oxc_span = "0.147.0"
+oxc_transformer = "0.147.0"
 rolldown = "1.2.6"
 rolldown_common = "1.2.6"
 rolldown_plugin = "1.2.6"
@@ -69,6 +77,7 @@ flow_typing_utils = { path = "upstream/flow/rust_port/crates/flow_typing_utils" 
 flow_utils_concurrency = { path = "upstream/flow/rust_port/crates/flow_utils_concurrency" }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 ignore = "0.4.25"
+indexmap = "2"
 json5 = "1.3.1"
 memchr = "2.7.6"
 mimalloc = "0.1.52"

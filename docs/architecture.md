@@ -31,6 +31,7 @@ integrated feature coverage.
 - `uf_runtime`: Capability JS Host, WinterTC, and deploy-anywhere runtime contract
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
 - `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
+- `uf_transform`: Flow → JavaScript — official parser, Flow's lowering rules, the official React Compiler, oxc for JSX and code generation
 - `uf_tui`: OpenTUI-compatible native TUI framework contracts
 
 These are the crates that survive. `uf` used to ship a Rust crate per library
@@ -121,6 +122,43 @@ the submodule has charged: `cargo fmt --all` visiting vendored code, every CI jo
 needing `tools/upstream/sync.sh` before cargo will parse the workspace at all,
 and the `include_str!` paths reaching outside `rust_port`. The trade is that the
 built code and the readable checkout stop being the same bytes by construction.
+
+## Flow To JavaScript
+
+Every host runs JavaScript, and `uf` projects are Flow. `uf_transform` is the
+one place that turns one into the other, and it is assembled from the code
+that owns each step rather than from anything `uf` invented. There is no Babel
+in the pipeline.
+
+| Step | Implementation |
+| --- | --- |
+| Parse | Meta's Flow Rust port (`flow_parser`), rendered as ESTree by its own translator |
+| Lower `component`/`hook`, `match`, enums; erase types | Ports of `hermes-parser`'s `TransformComponentSyntax`, `TransformMatchSyntax`, `TransformEnumSyntax` and `StripFlowTypes` — the rules Flow's own toolchain applies |
+| Babel AST + scopes | A port of `hermes-parser`'s `TransformESTreeToBabel`, plus a scope analysis in Babel's terms, because that is the contract the compiler consumes |
+| React Compiler | The official Rust implementation (`react_compiler` on crates.io) in `syntax` mode: only `component` and `hook` declarations are memoised |
+| JSX, Fast Refresh, code generation, source maps | oxc — the engine inside Vite and Rolldown — so a module is byte-identical whether Vite or `uf test` asked for it |
+
+The output is the JavaScript Flow documents: a `match` becomes the
+`typeof x === "object" && x !== null` and `"k" in x` tests Flow specifies, a
+`component Foo(a: A, ...rest: R)` becomes `function Foo({ a, ...rest })`, and
+an enum becomes a frozen object with the `flow-enums-runtime` contract
+(`cast`, `isValid`, `members`, `getName`), with the runtime prepended to the
+module so no import is needed.
+
+`uf transform` serves this as a long-lived process: newline-delimited JSON in,
+replies in request order out. `@uniflowed/vite`, the Node loader hook and the
+Bun preload all speak that protocol, and every one of them applies the same
+module policy first (`is_flow_module`): project `.js` files and `@uniflowed/*`
+under `node_modules` are uf's to transform, a third-party dependency is not,
+and a build driver's own virtual modules never are.
+
+Source maps point at the Flow source. The printer records a mapping for every
+node the author wrote and none for nodes the compiler or the lowering passes
+invented, and oxc's map over the printed text is composed with those, so a
+debugger lands on the author's line or nowhere — never on the wrong line.
+
+The compiler's panic threshold is `none`: a function it cannot compile is left
+as written and reported as a diagnostic on the reply, never a failed build.
 
 ## Type Checking
 

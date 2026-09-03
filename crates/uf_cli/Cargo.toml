@@ -49,6 +49,7 @@ uf_rsc = { path = "../uf_rsc" }
 uf_runtime = { path = "../uf_runtime" }
 uf_term = { path = "../uf_term" }
 uf_test = { path = "../uf_test" }
+uf_transform = { path = "../uf_transform" }
 uf_tui = { path = "../uf_tui" }
 compact_str.workspace = true
 mimalloc.workspace = true

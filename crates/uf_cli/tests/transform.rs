@@ -1,4 +1,5 @@
-//! `uf transform`, the service `@uniflowed/vite` pipes modules through.
+//! `uf transform`, the service `@uniflowed/vite` and the host loaders pipe
+//! modules through.
 //!
 //! The protocol is what a Vite build depends on, so these exercise it as a
 //! caller does: write requests, read replies, in order.
@@ -49,7 +50,7 @@ fn project() -> tempfile::TempDir {
 }
 
 #[test]
-fn a_flow_module_comes_back_as_javascript() {
+fn a_flow_module_comes_back_as_javascript_with_a_map() {
     let dir = project();
     let replies = exchange(
         dir.path(),
@@ -59,48 +60,76 @@ fn a_flow_module_comes_back_as_javascript() {
         })],
     );
 
-    assert_eq!(replies.len(), 1);
     let code = replies[0]["code"].as_str().expect("transformed");
-    assert!(!code.contains(": string"), "annotation survived:\n{code}");
-    assert!(code.contains("function greet(who"), "body lost:\n{code}");
+    assert!(code.contains("function greet(who)"), "{code}");
+    assert!(!code.contains(": string"), "{code}");
+    let map: serde_json::Value =
+        serde_json::from_str(replies[0]["map"].as_str().expect("a map")).unwrap();
+    assert_eq!(map["sources"][0], "/app/main.js");
 }
 
-/// Replies are paired with requests by order, which is what the plugin relies
-/// on — it keeps a queue of resolvers, not a map of ids.
+/// Flow's own syntax — components, `match`, enums, JSX — comes out as the
+/// JavaScript Flow specifies, memoised by the official React Compiler.
 #[test]
-fn replies_come_back_in_the_order_the_requests_were_sent() {
+fn modern_flow_syntax_is_lowered_and_compiled() {
     let dir = project();
-    let requests: Vec<_> = (0..8)
+    let replies = exchange(
+        dir.path(),
+        &[serde_json::json!({
+            "id": "/app/Toggle.js",
+            "code": "// @flow\nimport {useState} from 'react';\nenum Mode { On, Off }\nexport component Toggle(label: string) {\n  const [mode, setMode] = useState<Mode>(Mode.On);\n  const text = match (mode) { Mode.On => 'on', Mode.Off => 'off' };\n  return <button onClick={() => setMode(Mode.Off)}>{label}: {text}</button>;\n}\n",
+        })],
+    );
+
+    let code = replies[0]["code"].as_str().expect("transformed");
+    assert!(code.contains("function Toggle"), "{code}");
+    assert!(code.contains("$$ufEnumMirrored"), "{code}");
+    assert!(code.contains("react/compiler-runtime"), "{code}");
+    assert!(code.contains("react/jsx-runtime"), "{code}");
+    assert!(!code.contains("match ("), "{code}");
+    assert!(!code.contains("component "), "{code}");
+}
+
+/// The order *is* the protocol: a caller pairs replies with requests by
+/// position.
+#[test]
+fn replies_arrive_in_request_order() {
+    let dir = project();
+    let requests: Vec<serde_json::Value> = (0..8)
         .map(|index| {
             serde_json::json!({
                 "id": format!("/app/m{index}.js"),
-                "code": format!("// @flow\nexport const value: number = {index};\n"),
+                "code": format!("export const v{index}: number = {index};\n"),
             })
         })
         .collect();
 
     let replies = exchange(dir.path(), &requests);
 
-    assert_eq!(replies.len(), requests.len());
+    assert_eq!(replies.len(), 8);
     for (index, reply) in replies.iter().enumerate() {
         assert_eq!(reply["id"], format!("/app/m{index}.js"));
         let code = reply["code"].as_str().expect("transformed");
-        assert!(code.contains(&format!("= {index};")), "{index}: {code}");
+        assert!(code.contains(&format!("v{index} = {index}")), "{code}");
     }
 }
 
-/// A module needing no stage reports no code, so the caller keeps the original
-/// source and its source map rather than taking a copy.
+/// Development requests get readable output and Fast Refresh registrations.
 #[test]
-fn a_module_with_nothing_to_do_reports_no_code() {
+fn development_output_registers_for_fast_refresh() {
     let dir = project();
     let replies = exchange(
         dir.path(),
-        &[serde_json::json!({"id": "/app/plain.js", "code": "export const a = 1;\n"})],
+        &[serde_json::json!({
+            "id": "/app/App.js",
+            "code": "// @flow\nexport component App() { return <p>hi</p>; }\n",
+            "options": { "development": true, "refresh": true },
+        })],
     );
 
-    assert!(replies[0]["code"].is_null(), "{:?}", replies[0]);
-    assert!(replies[0]["error"].is_null(), "{:?}", replies[0]);
+    let code = replies[0]["code"].as_str().expect("transformed");
+    assert!(code.contains("$RefreshReg$"), "{code}");
+    assert!(code.contains("jsxDEV"), "{code}");
 }
 
 /// uf's own packages ship Flow, so they are transformed even under
@@ -129,8 +158,20 @@ fn only_uf_packages_are_transformed_under_node_modules() {
     );
 }
 
-/// A module that cannot be transformed reports the failure instead of silently
-/// handing back something the bundler will misread.
+/// A syntax error names its position, so a build can point at the line.
+#[test]
+fn a_syntax_error_is_reported_with_its_position() {
+    let dir = project();
+    let replies = exchange(
+        dir.path(),
+        &[serde_json::json!({"id": "/app/bad.js", "code": "// @flow\nconst a = ;\n"})],
+    );
+
+    assert!(replies[0]["error"].as_str().is_some(), "{:?}", replies[0]);
+    assert_eq!(replies[0]["line"], 2);
+}
+
+/// A request that cannot be read is reported instead of silently dropped.
 #[test]
 fn a_malformed_request_is_reported_rather_than_ignored() {
     let dir = project();
