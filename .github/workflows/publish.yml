@@ -31,6 +31,11 @@ jobs:
           package-manager-cache: false
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
+      # The suite drives the docs site through the real `@uniflowed/vite`, and
+      # those tests now fail rather than skip when the workspace is not
+      # installed. Without this the publish job failed on a missing fixture
+      # while the packages it was about to publish were fine.
+      - run: npm ci --no-audit --no-fund
       - run: cargo test --workspace
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the set that is implemented. Publishing a declaration module whose
