@@ -39,6 +39,7 @@ which is the fastest way to answer "what is it actually using".
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test` |
 | `plugins` | Vite plugins, appended to uf's own |
+| `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
 | `package`, `publish`, `release`, `pm` | Packaging and releasing |
 | `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
@@ -129,6 +130,34 @@ uf's rule table, and a test asserts the table matches the descriptors.
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
 | `runner.officialFlowParser` | `true` | Discovery reads Flow with the official parser |
 | `reactTestingLibraryNative` | `false` | Whether component tests can run without a DOM |
+
+## vite
+
+Vite's own configuration, merged over the one uf generates. uf does not read
+it, which is the point: an option added to Vite tomorrow works in a uf project
+tomorrow rather than after a uf release that names it.
+
+```js
+export default defineConfig({
+  vite: {
+    server: { warmup: { clientFiles: ["./src/big-module.js"] } },
+    build: { target: "es2022" },
+    resolve: { alias: { "~": "/src" } },
+  },
+});
+```
+
+Objects merge key by key and arrays replace, so `server.fs.allow` means that
+list rather than that list plus uf's. Three things stay uf's whatever this
+says: `root` and `configFile`, because a `vite.config.ts` beside
+`uf.config.js` is two files disagreeing about one project; and uf's own
+plugins, which are kept and put first — dropping the Flow transform would
+leave a project whose source no longer compiles, which is not something anyone
+means to configure.
+
+Everything else is yours to set, **including options uf sets itself**. A
+default is a convenience, not an architecture. The reasoning is in
+[Architecture](/guide/architecture).
 
 ## tasks and plugins
 
