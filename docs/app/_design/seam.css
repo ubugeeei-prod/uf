@@ -1,0 +1,855 @@
+/*
+ * The uf documentation system.
+ *
+ * The concept is a seam. uf's argument is that a toolchain should not be a
+ * pile of tools bolted together — there is one place where your code meets
+ * the tools, and it is `uf`. So the page has one continuous hairline running
+ * down it, content hangs off that line, and section markers sit on it. The
+ * brand spectrum appears exactly once per page: as a short gradient at the
+ * top of the seam, fading into the hairline. Nothing else is decorated.
+ *
+ * The register is a technical manual, not a product page: paper-coloured
+ * ground, ink-coloured text, rules and whitespace instead of cards and
+ * shadows, tables where a table is the honest shape, and colour reserved for
+ * meaning — a link, a diagnostic, a diff. If a rule and a box would both
+ * work, it is a rule.
+ *
+ * Everything here is derived from `brand/tokens.css` (`--uf-*`); this file
+ * adds only the decisions the documentation itself needs, under `--doc-*`, so
+ * a brand change moves the site without editing this file.
+ */
+
+:root {
+  color-scheme: light;
+
+  --doc-paper: #fbfaf8;
+  --doc-paper-sunk: #f4f2ee;
+  --doc-ink: #16171a;
+  --doc-ink-muted: #5b6068;
+  --doc-ink-faint: #8b9098;
+  --doc-rule: #e0ddd6;
+  --doc-rule-strong: #c9c5bc;
+  --doc-link: #1a56d6;
+  --doc-link-visited: #6b3fb8;
+  --doc-good: #0f7a4a;
+  --doc-warn: #8a5a00;
+  --doc-bad: #b3261e;
+  --doc-code-ground: #f4f2ee;
+  --doc-selection: #dfe7fb;
+
+  /* The measure a paragraph is set to. Wider than this and the eye loses
+     the line; narrower and code samples wrap for no reason. */
+  --doc-measure: 68ch;
+  --doc-seam: 1px;
+  --doc-gutter: clamp(1.25rem, 4vw, 3rem);
+}
+
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+
+    --doc-paper: #0c0d0f;
+    --doc-paper-sunk: #141619;
+    --doc-ink: #e8e6e1;
+    --doc-ink-muted: #9aa0a8;
+    --doc-ink-faint: #6a7078;
+    --doc-rule: #24272c;
+    --doc-rule-strong: #363a41;
+    --doc-link: #7fb0ff;
+    --doc-link-visited: #c0a2ff;
+    --doc-good: #4ac08a;
+    --doc-warn: #d9a441;
+    --doc-bad: #ff6f61;
+    --doc-code-ground: #131518;
+    --doc-selection: #1d2c4d;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --doc-paper: #0c0d0f;
+  --doc-paper-sunk: #141619;
+  --doc-ink: #e8e6e1;
+  --doc-ink-muted: #9aa0a8;
+  --doc-ink-faint: #6a7078;
+  --doc-rule: #24272c;
+  --doc-rule-strong: #363a41;
+  --doc-link: #7fb0ff;
+  --doc-link-visited: #c0a2ff;
+  --doc-good: #4ac08a;
+  --doc-warn: #d9a441;
+  --doc-bad: #ff6f61;
+  --doc-code-ground: #131518;
+  --doc-selection: #1d2c4d;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--doc-paper);
+  color: var(--doc-ink);
+  font-family: var(--uf-font-body);
+  font-size: 17px;
+  line-height: 1.7;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+::selection {
+  background: var(--doc-selection);
+}
+
+/* ------------------------------------------------------------------ *
+ * Typography
+ * ------------------------------------------------------------------ */
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--uf-font-display);
+  font-weight: 640;
+  letter-spacing: -0.021em;
+  line-height: 1.2;
+  margin: 0;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3.1rem);
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  font-size: 1.55rem;
+  margin-top: 3.2rem;
+}
+
+h3 {
+  font-size: 1.15rem;
+  margin-top: 2.2rem;
+}
+
+h4 {
+  font-size: 1rem;
+  margin-top: 1.8rem;
+}
+
+p,
+ul,
+ol,
+blockquote,
+table,
+pre {
+  margin: 1.1em 0;
+}
+
+a {
+  color: var(--doc-link);
+  text-decoration-color: color-mix(in srgb, var(--doc-link) 35%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+a:visited {
+  color: var(--doc-link-visited);
+}
+
+strong {
+  font-weight: 630;
+}
+
+/* An eyebrow: the small mono label above a heading that says what kind of
+   thing follows. It is the manual's running head, not decoration. */
+.eyebrow {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+}
+
+/* The one paragraph under a title that says what the page is for. */
+.lede {
+  color: var(--doc-ink-muted);
+  font-size: 1.18rem;
+  line-height: 1.55;
+  margin-top: 1rem;
+  max-width: 56ch;
+}
+
+/* ------------------------------------------------------------------ *
+ * The seam
+ * ------------------------------------------------------------------ */
+
+.seam {
+  --seam-x: 0px;
+  position: relative;
+  padding-left: 1.75rem;
+}
+
+/* The hairline itself, and the one place the brand spectrum appears: the
+   first 9rem of it, fading out. */
+.seam::before {
+  background:
+    linear-gradient(
+      180deg,
+      var(--uf-color-cyan-500) 0%,
+      var(--uf-color-blue-500) 22%,
+      var(--uf-color-violet-500) 48%,
+      var(--uf-color-magenta-500) 66%,
+      transparent 100%
+    )
+    no-repeat 0 0 / var(--doc-seam) 9rem,
+    linear-gradient(var(--doc-rule), var(--doc-rule));
+  bottom: 0;
+  content: "";
+  left: var(--seam-x);
+  position: absolute;
+  top: 0;
+  width: var(--doc-seam);
+}
+
+/* A marker on the seam, level with a section heading. */
+.seam-mark {
+  position: relative;
+}
+
+.seam-mark::before {
+  background: var(--doc-paper);
+  border: 1px solid var(--doc-rule-strong);
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  left: calc(-1.75rem - 3px);
+  position: absolute;
+  top: 0.62em;
+  width: 7px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Page frame
+ * ------------------------------------------------------------------ */
+
+.shell {
+  margin: 0 auto;
+  max-width: 82rem;
+  padding: 0 var(--doc-gutter);
+}
+
+.masthead {
+  align-items: baseline;
+  border-bottom: 1px solid var(--doc-rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding: 1.4rem 0;
+}
+
+.masthead-brand {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  font-family: var(--uf-font-display);
+  font-size: 1.05rem;
+  font-weight: 660;
+  gap: 0.55rem;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.masthead-brand img {
+  display: block;
+  height: 22px;
+  width: 22px;
+}
+
+.masthead-brand .version {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.masthead-nav {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.92rem;
+  gap: 1.35rem;
+}
+
+.masthead-nav a {
+  color: var(--doc-ink-muted);
+  text-decoration: none;
+}
+
+.masthead-nav a:hover,
+.masthead-nav a[aria-current="page"] {
+  color: var(--doc-ink);
+}
+
+.masthead-nav a[aria-current="page"] {
+  box-shadow: inset 0 -1px 0 0 currentColor;
+}
+
+.colophon {
+  border-top: 1px solid var(--doc-rule);
+  color: var(--doc-ink-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  gap: 1.25rem;
+  justify-content: space-between;
+  margin-top: 5rem;
+  padding: 1.6rem 0 3rem;
+}
+
+.colophon a {
+  color: inherit;
+}
+
+/* The skip link is visible the moment it is focused and nowhere else. */
+.skip {
+  background: var(--doc-paper);
+  border: 1px solid var(--doc-rule-strong);
+  clip-path: inset(50%);
+  height: 1px;
+  left: 0.5rem;
+  overflow: hidden;
+  padding: 0.5rem 0.9rem;
+  position: absolute;
+  top: 0.5rem;
+  white-space: nowrap;
+  width: 1px;
+  z-index: 10;
+}
+
+.skip:focus-visible {
+  clip-path: none;
+  height: auto;
+  width: auto;
+}
+
+:focus-visible {
+  outline: 2px solid var(--doc-link);
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ *
+ * The manual: sidebar, content, contents
+ * ------------------------------------------------------------------ */
+
+.manual {
+  display: grid;
+  gap: 0 3.25rem;
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 2.5rem;
+}
+
+@media (min-width: 60rem) {
+  .manual {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 84rem) {
+  .manual {
+    grid-template-columns: 15rem minmax(0, 1fr) 13rem;
+  }
+}
+
+.manual-nav {
+  font-size: 0.92rem;
+}
+
+@media (min-width: 60rem) {
+  .manual-nav {
+    align-self: start;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+    position: sticky;
+    top: 2rem;
+  }
+}
+
+.manual-nav h2 {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  margin: 1.9rem 0 0.6rem;
+  text-transform: uppercase;
+}
+
+.manual-nav h2:first-child {
+  margin-top: 0;
+}
+
+.manual-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manual-nav li {
+  margin: 0;
+}
+
+.manual-nav a {
+  border-left: 1px solid var(--doc-rule);
+  color: var(--doc-ink-muted);
+  display: block;
+  padding: 0.28rem 0 0.28rem 0.85rem;
+  text-decoration: none;
+}
+
+.manual-nav a:hover {
+  border-left-color: var(--doc-rule-strong);
+  color: var(--doc-ink);
+}
+
+.manual-nav a[aria-current="page"] {
+  border-left-color: var(--uf-color-blue-500);
+  color: var(--doc-ink);
+  font-weight: 560;
+}
+
+.contents {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 83.99rem) {
+  .contents {
+    display: none;
+  }
+}
+
+.contents h2 {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.6rem;
+  text-transform: uppercase;
+}
+
+.contents ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.contents a {
+  color: var(--doc-ink-muted);
+  display: block;
+  padding: 0.22rem 0;
+  text-decoration: none;
+}
+
+.contents a:hover {
+  color: var(--doc-ink);
+}
+
+.contents .depth-3 {
+  padding-left: 0.9rem;
+}
+
+@media (min-width: 84rem) {
+  .contents {
+    align-self: start;
+    position: sticky;
+    top: 2rem;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Prose
+ * ------------------------------------------------------------------ */
+
+.prose {
+  max-width: var(--doc-measure);
+  padding-bottom: 2rem;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose li {
+  margin: 0.35em 0;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.35rem;
+}
+
+.prose blockquote {
+  border-left: 2px solid var(--uf-color-blue-500);
+  color: var(--doc-ink-muted);
+  margin-left: 0;
+  padding: 0.15rem 0 0.15rem 1.1rem;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--doc-rule);
+  margin: 3rem 0;
+}
+
+.prose img {
+  max-width: 100%;
+}
+
+/* A heading a reader can link to. The anchor appears on hover and is always
+   reachable by keyboard. */
+.prose :is(h2, h3, h4) > a.anchor {
+  color: var(--doc-ink-faint);
+  margin-left: 0.4rem;
+  opacity: 0;
+  text-decoration: none;
+}
+
+.prose :is(h2, h3, h4):hover > a.anchor,
+.prose a.anchor:focus-visible {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------ *
+ * Code
+ * ------------------------------------------------------------------ */
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--uf-font-mono);
+  font-size: 0.87em;
+  font-variant-ligatures: none;
+}
+
+:not(pre) > code {
+  background: var(--doc-code-ground);
+  border-radius: 3px;
+  padding: 0.1em 0.32em;
+  white-space: nowrap;
+}
+
+pre {
+  background: var(--doc-code-ground);
+  border-left: 2px solid var(--doc-rule-strong);
+  line-height: 1.6;
+  overflow-x: auto;
+  padding: 0.95rem 1.1rem;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  white-space: pre;
+}
+
+/* A command a reader is meant to run. The `$` is generated, so copying the
+   line copies the command and not the prompt. */
+.command {
+  background: var(--doc-code-ground);
+  border-left: 2px solid var(--uf-color-blue-500);
+  display: flex;
+  gap: 0.7rem;
+  overflow-x: auto;
+  padding: 0.8rem 1.1rem;
+}
+
+.command::before {
+  color: var(--doc-ink-faint);
+  content: "$";
+  flex: none;
+  user-select: none;
+}
+
+.command code {
+  background: none;
+  padding: 0;
+  white-space: pre;
+}
+
+/* Real terminal output, reproduced. Never invented: what is shown here is
+   what the command printed. */
+.terminal {
+  background: var(--doc-paper-sunk);
+  border: 1px solid var(--doc-rule);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  margin: 1.4rem 0;
+  overflow-x: auto;
+  padding: 1rem 1.15rem;
+}
+
+/* The figure is the frame; the `pre` inside it is only there because that is
+   what preformatted text is. Without this it would draw a second box. */
+.terminal pre {
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.terminal .ok {
+  color: var(--doc-good);
+}
+
+.terminal .bad {
+  color: var(--doc-bad);
+}
+
+.terminal .muted {
+  color: var(--doc-ink-faint);
+}
+
+/* ------------------------------------------------------------------ *
+ * Tables
+ * ------------------------------------------------------------------ */
+
+table {
+  border-collapse: collapse;
+  display: block;
+  font-size: 0.93rem;
+  overflow-x: auto;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--doc-rule);
+  padding: 0.55rem 1.1rem 0.55rem 0;
+  text-align: left;
+  vertical-align: baseline;
+}
+
+th {
+  color: var(--doc-ink-faint);
+  font-family: var(--uf-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+tbody tr:last-child :is(td, th) {
+  border-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Home
+ * ------------------------------------------------------------------ */
+
+.hero {
+  /* Block only: the inline padding belongs to `.seam` and a shorthand here
+     would silently reset it. */
+  padding-block: 4.5rem 1rem;
+}
+
+.hero .lede {
+  font-size: 1.32rem;
+  max-width: 46ch;
+}
+
+.hero-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem;
+  margin-top: 2.2rem;
+}
+
+.button {
+  background: var(--doc-ink);
+  border: 1px solid var(--doc-ink);
+  color: var(--doc-paper);
+  display: inline-block;
+  font-size: 0.95rem;
+  font-weight: 560;
+  padding: 0.55rem 1.15rem;
+  text-decoration: none;
+}
+
+.button:visited {
+  color: var(--doc-paper);
+}
+
+.button:hover {
+  background: transparent;
+  color: var(--doc-ink);
+}
+
+.button-quiet {
+  background: transparent;
+  border-color: var(--doc-rule-strong);
+  color: var(--doc-ink);
+}
+
+.button-quiet:visited {
+  color: var(--doc-ink);
+}
+
+.button-quiet:hover {
+  border-color: var(--doc-ink);
+}
+
+/* The claims list: each row is a claim and the page that proves it. No
+   icons, no cards — a claim and its evidence, which is a definition list. */
+.claims {
+  border-top: 1px solid var(--doc-rule);
+  margin: 3.5rem 0 0;
+}
+
+.claims > div {
+  border-bottom: 1px solid var(--doc-rule);
+  display: grid;
+  gap: 0.35rem 2.5rem;
+  padding: 1.35rem 0;
+}
+
+@media (min-width: 48rem) {
+  .claims > div {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+}
+
+.claims dt {
+  font-family: var(--uf-font-display);
+  font-size: 1rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+
+.claims dd {
+  color: var(--doc-ink-muted);
+  margin: 0;
+  max-width: 60ch;
+}
+
+.claims dd a {
+  white-space: nowrap;
+}
+
+/* A warning banner for the one thing a visitor must know before trying
+   anything: this is not released yet. */
+.notice {
+  border: 1px solid var(--doc-rule-strong);
+  border-left: 2px solid var(--uf-color-magenta-500);
+  color: var(--doc-ink-muted);
+  font-size: 0.93rem;
+  margin: 2.5rem 0 0;
+  padding: 0.9rem 1.15rem;
+}
+
+.notice strong {
+  color: var(--doc-ink);
+}
+
+/* ------------------------------------------------------------------ *
+ * Theme toggle
+ * ------------------------------------------------------------------ */
+
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--doc-rule);
+  color: var(--doc-ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.6rem;
+}
+
+.theme-toggle:hover {
+  border-color: var(--doc-rule-strong);
+  color: var(--doc-ink);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Next page
+ * ------------------------------------------------------------------ */
+
+.next-page {
+  border-top: 1px solid var(--doc-rule);
+  margin-top: 3.5rem;
+  padding-top: 1.4rem;
+}
+
+.next-page a {
+  font-family: var(--uf-font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-decoration: none;
+}
+
+.next-page a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* ------------------------------------------------------------------ *
+ * Not found
+ * ------------------------------------------------------------------ */
+
+.not-found {
+  padding-block: 6rem 4rem;
+}
+
+.not-found ul {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+}
+
+.not-found li {
+  border-bottom: 1px solid var(--doc-rule);
+  padding: 0.7rem 0;
+}
+
+.not-found li:first-child {
+  border-top: 1px solid var(--doc-rule);
+}
+
+/* The home page is one seam from the masthead to the colophon — the whole
+   argument is that there is one of these, so drawing a fresh gradient per
+   section would be arguing against it. */
+.home {
+  max-width: 64rem;
+}
+
+.home-section {
+  margin-top: 3.5rem;
+}
+
+.home-section > :is(p, pre, .command, .terminal) {
+  max-width: var(--doc-measure);
+}

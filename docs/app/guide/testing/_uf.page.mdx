@@ -1,0 +1,133 @@
+---
+title: "Testing · uf"
+---
+
+<p className="eyebrow">The tools</p>
+
+# Testing
+
+<div className="lede">
+`uf test` is a Rust runner with JavaScript workers. Rust decides what runs, in
+what order, on how many cores, and what the report says; the host runs the
+bodies, because running JavaScript is the one thing Rust cannot do.
+</div>
+
+## Writing a test
+
+```js
+// @flow
+import { describe, expect, it } from "@uniflowed/test";
+
+import { total } from "./cart.js";
+
+describe("total", () => {
+  it("sums the line items", () => {
+    expect(total([{ price: 300 }, { price: 120 }])).toBe(420);
+  });
+
+  it("rejects a negative price", async () => {
+    await expect(total([{ price: -1 }])).rejects.toThrow("negative");
+  });
+});
+```
+
+Test files are Flow like everything else — `component`, `hook`, `match` and
+enums all work inside one, because each worker imports its file through the same
+transform a build uses.
+
+`describe`, `it`, `test`, `beforeAll`, `beforeEach`, `afterEach` and `afterAll`
+are there, with `.only`, `.skip`, `.todo` and `.each` on `it` and `describe`.
+`expect` has 25 matchers, `.not`, `.resolves`, `.rejects`, and `fn()` for spies.
+
+## Running them
+
+<div className="command"><code>uf test</code></div>
+
+<figure className="terminal">
+
+```
+ PASS  src/cart.test.js       12 tests   4ms
+ PASS  src/router.test.js     31 tests  11ms
+ FAIL  src/format.test.js      8 tests   3ms
+
+  format > wraps long lines
+    src/format.test.js:24
+
+    22 |   it("wraps long lines", () => {
+    23 |     const out = format(input, { width: 40 });
+  > 24 |     expect(out.split("\n").length).toBe(3);
+       |                                    ^
+    25 |   });
+
+    expected  3
+    received  4
+
+ 51 tests, 50 passed, 1 failed   in 0.21s
+```
+
+</figure>
+
+The frame points at the Flow source: the transform emits a source map, the
+worker runs with source maps on, and the runner's own stack frames are trimmed
+out so the top frame is yours.
+
+## Flags worth knowing
+
+| Flag | What it does |
+| --- | --- |
+| `-t PATTERN` | Only tests whose full name contains PATTERN |
+| `PATH...` | Only files whose path contains one of these |
+| `--watch` | Re-run what the change affected |
+| `--bail[=N]` | Stop after N failures; N defaults to 1 |
+| `--retry N` | Re-run a failing test up to N more times |
+| `-j N` | Run at most N files at once; defaults to one per core |
+| `--list` | Print what would run without running it |
+| `--json` | The whole report, machine-readable |
+
+## What it gets right
+
+**A file that throws while importing is a file failure, not "0 tests".**
+Reporting a module that could not load as having no failing tests would be a
+lie.
+
+**A test that never settles is failed, not hung.** The worker races each case
+against its budget, and Rust keeps its own wall-clock deadline and kills the
+process — because a wedged event loop would never have run the worker's timer
+either.
+
+**A retry re-runs the file**, filtered to one case. A case cannot be re-entered
+without re-importing its module, and a retry has to see the module state a first
+run would.
+
+**`.only` is decided after the module body runs**, since a file's `.only` can
+appear below the tests it excludes.
+
+## Where it stands
+
+50 files, 1,000 tests, 2,000 assertions, on an 8-core M-series Mac, best of
+five, each runner on its own idiomatic input:
+
+| Runner | Time |
+| --- | --- |
+| `bun test` | 0.06 s |
+| `uf test`, warm transform cache | 0.20 s |
+| `uf test`, cold | 0.30 s |
+| `vitest run` | 1.96 s |
+
+About nine times faster than Vitest. About **three times slower than Bun**,
+which is the bar uf is aiming at and does not clear yet.
+
+The gap is process start-up and inter-process messaging. Bun runs everything in
+one process with the runner built into the engine; uf spawns a worker per core
+and each one loads the test API before it can do anything. That is also why
+`-j 4` beats `-j 8` on this suite — past a point, another worker costs more to
+start than the work it takes. Closing the gap needs a worker pool that survives
+between runs and a pre-bundled worker. Neither exists yet.
+
+## Not there yet
+
+- No snapshots, no coverage, and no concurrent cases within a single file.
+- `@uniflowed/react-testing` needs a DOM and says so when called; component
+  tests need one supplied.
+- Deno has no Flow loader, so `uf test` refuses it with a message rather than
+  failing later on syntax it cannot read.

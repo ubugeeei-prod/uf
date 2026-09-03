@@ -1,0 +1,143 @@
+---
+title: "uf.config.js · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# uf.config.js
+
+<div className="lede">
+The only config file. It is Flow, so `defineConfig` type-checks it where you
+write it, and every key below has a default — a project that wants uf's
+opinions can leave the file nearly empty.
+</div>
+
+```js
+// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    router: { entry: "app.js", root: "app" },
+  },
+});
+```
+
+`uf inspect --json` prints the config as uf resolved it, defaults filled in,
+which is the fastest way to answer "what is it actually using".
+
+## Top level
+
+| Key | What it configures |
+| --- | --- |
+| `app` | The application: router, runtime, React, rendering, built-ins |
+| `build` | The production build: entries, output, budgets, source maps |
+| `dev` | The dev server: host, port, file access, allowed hosts |
+| `docs` | The documentation build, if the project has one |
+| `env` | Which env files are loaded and which environment is active |
+| `fmt` | `uf fmt` |
+| `lint` | `uf lint` and Flow's built-in lints |
+| `test` | `uf test` |
+| `plugins` | Vite plugins, appended to uf's own |
+| `tasks` | Named tasks for `uf run` |
+| `package`, `publish`, `release`, `pm` | Packaging and releasing |
+| `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
+
+## app
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `router.entry` | `"app.js"` | The module exporting `routerView()` |
+| `router.root` | `"app"` | The directory scanned for routes |
+| `router.enabled` | `true` | Turning it off makes the project a library |
+| `runtime.default` | `"node"` | The JavaScript host to prefer |
+| `runtime.capabilityJsHost.hosts` | `["node", "deno", "bun"]` | Hosts uf may use |
+| `runtime.capabilityJsHost.autoDetect` | `true` | Pick a host by what is installed |
+| `react.*` | — | React Compiler mode and React-specific options |
+| `builtins.markdown` | on | Markdown and MDX |
+| `builtins.reactCompiler` | on | The official React Compiler |
+| `builtins.style` | — | The style engine |
+| `targets` | — | Runtime targets the build must satisfy |
+
+## dev
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `host` | `"127.0.0.1"` | Interface to bind |
+| `port` | `5173` | Port to listen on |
+| `strictPort` | `false` | Fail rather than move to the next free port |
+| `allowedHosts` | `[]` | Host headers accepted when binding a routable address |
+| `allowedOrigins` | `[]` | Origins accepted for cross-origin dev requests |
+| `fs.allow` | `[]` | Extra roots the dev server may serve from |
+| `fs.deny` | `[]` | Globs it may never serve; deny beats allow |
+
+`--host` refuses to bind a routable address while `allowedHosts` is empty. A dev
+server reachable from the network with no host allow-list is a file server for
+your source tree; the reasoning is in
+[`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
+
+## build
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `entries` | `["app.js"]` | Entry modules |
+| `outDir` | `"dist"` | Output directory |
+| `sourcemap` | `true` | Emit source maps |
+| `staticBuild` | `false` | Prerender everything and emit no server bundle |
+| `budgets` | unset | Size budgets that fail the build when exceeded |
+| `hooks` | `{}` | Commands to run around the build |
+
+Budgets are unset on purpose: failing a build nobody asked uf to police is worse
+than reporting the size and moving on.
+
+## fmt
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `lineWidth` | `100` | Where the printer wraps |
+| `indentWidth` | `2` | Spaces per level |
+| `quotes` | `"double"` | Quote style |
+| `semicolons` | `true` | Keep semicolons |
+| `maxBlankLines` | `1` | Consecutive blank lines kept |
+| `flow.parser` | `"official-flow-rust"` | The parser Flow files are formatted with |
+| `nonFlow.*` | — | What Biome is handed for the rest |
+
+## lint
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `engine` | `"rust"` | The lint engine |
+| `rules` | uf's table | Rule name to `"off"`, `"warn"` or `"error"` |
+| `files` | all | Globs to lint |
+| `ignore` | `[]` | Globs to skip |
+| `flow.builtins` | `"mixed"` | Run Flow's own lints alongside uf's |
+| `flow.parser` | `"official-flow-rust"` | The parser used to read Flow files |
+
+Flow defaults every built-in lint to `off`. uf does not: a linter nobody
+switches on catches nothing. Every rule's level and the reason for it is in
+uf's rule table, and a test asserts the table matches the descriptors.
+
+## test
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `module` | `"@uniflowed/test"` | The module test files import |
+| `runner.jsHosts` | `["node", "deno", "bun"]` | Hosts that may run workers |
+| `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
+| `runner.officialFlowParser` | `true` | Discovery reads Flow with the official parser |
+| `reactTestingLibraryNative` | `false` | Whether component tests can run without a DOM |
+
+## tasks and plugins
+
+```js
+export default defineConfig({
+  tasks: {
+    ci: { run: "uf fmt --check && uf lint && uf check && uf test" },
+  },
+  plugins: [svgr()],
+});
+```
+
+`uf run ci` runs the task. `plugins` are Vite plugins, appended to the ones uf
+installs; entries are resolved by `uf_plugin`, which rejects any that reach
+outside the project root.

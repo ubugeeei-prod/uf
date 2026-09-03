@@ -1,0 +1,94 @@
+---
+title: "Packages · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# Packages
+
+<div className="lede">
+Every `@uniflowed/*` package, what it is for, and whether it is real yet. They
+are plain Flow — no native bindings — so what runs in the browser is what you
+can read.
+</div>
+
+Three rules hold across all of them, and `uf_lib` has tests that enforce each:
+no `export *`, so the surface is a list somebody wrote; no side effects at
+import time, so a bundler can drop what you do not use; and a `// @flow` pragma
+on every file.
+
+## Core
+
+| Package | What it is |
+| --- | --- |
+| `@uniflowed/core` | The pieces every other package builds on |
+| `@uniflowed/react` | React, re-exported by name, with Flow's own types |
+| `@uniflowed/jsx-runtime` | The JSX runtime uf compiles to |
+| `@uniflowed/react-compiler` | The official React Compiler, wired for uf |
+| `@uniflowed/runtime` | Host capabilities, resolved at run time |
+| `@uniflowed/std` | The standard library |
+
+## Application
+
+| Package | What it is |
+| --- | --- |
+| `@uniflowed/router` | The file-system router: matching, layouts, loaders, `Link` |
+| `@uniflowed/server` | The server adapter |
+| `@uniflowed/config` | `defineConfig`, and the config's Flow types |
+| `@uniflowed/vite` | The Vite plugin, the driver, and the host Flow loaders |
+| `@uniflowed/loader` | Module loading on each host |
+| `@uniflowed/markdown` | Markdown and MDX |
+| `@uniflowed/web` | Web platform bindings |
+
+## Data
+
+| Package | What it is |
+| --- | --- |
+| `@uniflowed/fetch` | Typed HTTP |
+| `@uniflowed/query` | Caching, revalidation, request de-duplication |
+| `@uniflowed/effect` | Typed effects: failures in the type, not in a `catch` |
+| `@uniflowed/state` | Atomic state |
+| `@uniflowed/cell` | Fine-grained reactivity |
+| `@uniflowed/validator` | Schemas that parse rather than assert |
+| `@uniflowed/orm` | Database access |
+| `@uniflowed/graphql`, `@uniflowed/relay` | GraphQL |
+
+## Interface
+
+| Package | What it is |
+| --- | --- |
+| `@uniflowed/ui` | Components you own, built on the render types |
+| `@uniflowed/hooks` | The hook library |
+| `@uniflowed/motion` | Animation |
+| `@uniflowed/stylex` | Static styles |
+| `@uniflowed/react-native` | React Native bindings |
+| `@uniflowed/tui` | Terminal interfaces |
+
+## Testing
+
+| Package | What it is |
+| --- | --- |
+| `@uniflowed/test` | `describe`, `it`, `expect`, the hooks, and the worker `uf test` spawns |
+| `@uniflowed/testing` | The same API under its other name |
+| `@uniflowed/react-testing` | React Testing Library's surface. Needs a DOM |
+| `@uniflowed/mock` | Mocking |
+| `@uniflowed/browser` | Browser automation |
+| `@uniflowed/story`, `@uniflowed/vrt` | Stories and visual regression |
+
+## Tooling
+
+| Package | What it is |
+| --- | --- |
+| `@uniflowed/cli` | The CLI's JavaScript half |
+| `@uniflowed/lint` | Lint rule types |
+| `@uniflowed/lib` | The registry every package is declared in |
+| `@uniflowed/pm`, `@uniflowed/rm` | Package and runtime management |
+| `@uniflowed/prepare`, `@uniflowed/pwa` | Build preparation, progressive web apps |
+| `@uniflowed/brand` | The design tokens this site is built from |
+| `@uniflowed/temporal` | Dates and times |
+
+## Publishing status
+
+None of these are on npm yet. Until they are, they resolve through the
+repository's npm workspace, which is how this site — a real uf project in
+`docs/` — imports them.

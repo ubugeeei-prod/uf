@@ -95,3 +95,44 @@ fn collects_source_files_and_ignores_generated_dirs() {
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "app/index.js");
 }
+
+#[test]
+fn a_build_directory_is_ignored_wherever_it_sits() {
+    // uf's own documentation builds into `docs/dist`. Anchoring the ignore
+    // list at the project root left those bundles to be linted and offered up
+    // for reformatting.
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("docs/app")).unwrap();
+    fs::create_dir_all(root.join("docs/dist/assets")).unwrap();
+    fs::create_dir_all(root.join("packages/ui/node_modules")).unwrap();
+    fs::write(root.join("docs/app/index.js"), "// @flow\n").unwrap();
+    fs::write(root.join("docs/dist/assets/app.js"), "// built\n").unwrap();
+    fs::write(root.join("packages/ui/node_modules/dep.js"), "// vendor\n").unwrap();
+
+    let files = collect_source_files(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].relative_path, "docs/app/index.js");
+}
+
+#[test]
+fn an_ignore_entry_with_a_separator_still_means_one_place() {
+    // `dist` names a kind of directory; `app/dist` names one directory. A
+    // project that ignores the latter has not asked for the former.
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/generated")).unwrap();
+    fs::create_dir_all(root.join("lib/generated")).unwrap();
+    fs::write(root.join("app/generated/routes.js"), "// @flow\n").unwrap();
+    fs::write(root.join("lib/generated/keep.js"), "// @flow\n").unwrap();
+
+    let mut config = UniflowedConfig::default();
+    config.lint.ignore.push("app/generated".into());
+    config.lint.files.push("lib".into());
+
+    let files = collect_source_files(&root, &config).unwrap();
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].relative_path, "lib/generated/keep.js");
+}

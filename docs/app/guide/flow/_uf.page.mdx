@@ -1,0 +1,147 @@
+---
+title: "Flow, the modern parts · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Flow, the modern parts
+
+<div className="lede">
+uf is built around the syntax Flow has added for React: component and hook
+declarations, render types, pattern matching and enums. This page is what each
+one is for, and exactly what uf turns it into.
+</div>
+
+## component
+
+A component declaration is a function whose parameters are its props:
+
+```js
+// @flow
+export component Avatar(src: string, size: number = 32, alt?: string) {
+  return <img src={src} width={size} height={size} alt={alt ?? ""} />;
+}
+```
+
+Flow infers the props type from the parameter list, so there is no separate
+`Props` object to keep in step with the signature, and a missing prop is an
+error at the call site with the parameter's name in it. Defaults live where the
+parameter is declared.
+
+Rest props are written the way they are read:
+
+```js
+type InputProps = {| +name: string, +required?: boolean |};
+
+export component Field(label: string, ...input: InputProps) {
+  return (
+    <label>
+      {label}
+      <input {...input} />
+    </label>
+  );
+}
+```
+
+The rest parameter has to be an object type, and it is spread onto the element
+it belongs to — so the props a `Field` forwards are declared, not whatever
+happened to be passed.
+
+uf lowers a `component` to a plain function, and — this is the part that
+matters — hands it to the **official React Compiler** as a known component, so
+memoization sees a component declaration rather than guessing from a
+capitalized name.
+
+## hook
+
+A hook declaration is a function Flow will only let you call from a component or
+another hook:
+
+```js
+export hook useNow(interval: number): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), interval);
+    return () => clearInterval(id);
+  }, [interval]);
+  return now;
+}
+```
+
+The rules of hooks stop being a lint rule you might have installed and become a
+type error you cannot ignore. As with `component`, uf passes the declaration
+through to the React Compiler rather than letting it infer from the `use` prefix.
+
+## renders
+
+A render type says what a component may return, and lets a parent require a
+particular child:
+
+```js
+component Tab(label: string) renders React.Node { ... }
+component Tabs(children: renders* Tab) { ... }
+```
+
+`renders Tab` is exactly one, `renders? Tab` is zero or one, `renders* Tab` is
+any number. Passing a `<Button />` where `renders Tab` is expected is a type
+error, not a runtime surprise — which is how a component library expresses
+"these two only make sense together".
+
+## match
+
+`match` is an expression, and it is exhaustive:
+
+```js
+const label = match (status) {
+  "idle" => "Ready",
+  "loading" => "Working…",
+  {kind: "failed", code} if code >= 500 => "Server error",
+  {kind: "failed"} => "Failed",
+};
+```
+
+It destructures, it guards with `if`, and Flow rejects it when a case is
+missing. A `match` over a Flow enum with a case left out does not compile,
+which makes adding a variant a compiler-guided task instead of a search.
+
+uf lowers `match` to conditionals and temporaries, evaluating the subject once.
+
+## enum
+
+Flow enums are real values with a real runtime:
+
+```js
+enum Status {
+  Idle,
+  Loading,
+  Failed,
+}
+
+Status.cast(input);      // Status | void
+Status.members();        // an iterator
+Status.Idle.toString();  // "Idle"
+```
+
+They are exhaustively checkable, they cannot be compared to a plain string by
+accident, and unlike a union of string literals they exist at runtime, so you
+can iterate them. uf lowers an enum to a call into `@uniflowed/enums`, a tiny
+runtime with no dependencies.
+
+## What uf does with all of it
+
+Every Flow file goes through one pipeline, entirely in Rust, with no Babel
+anywhere in it:
+
+| Stage | What does it |
+| --- | --- |
+| Parse | `flow_parser` — Meta's own parser, the one Flow itself uses |
+| Lower | Ports of Hermes' passes: `component`, `hook`, `match`, `enum`, then type stripping |
+| Optimize | The official React Compiler crate, in `syntax` mode |
+| Emit | oxc — JSX automatic runtime, Fast Refresh in dev, codegen, source maps |
+
+The same pipeline runs for the dev server, the production build, the test
+runner and anything that imports a Flow module on the host. There is one answer
+to what a file means because there is one implementation of the question.
+
+Source maps compose across every stage, so a stack trace in a test failure and a
+breakpoint in the dev server both land on the line you wrote.
