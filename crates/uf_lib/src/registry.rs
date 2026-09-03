@@ -405,7 +405,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             "@uniflowed/ui",
             NativeModuleKind::Ui,
             Stability::Experimental,
-            &["Button", "Dialog", "Form", "Table", "Tabs", "Tooltip"],
+            &["Checkbox", "Dialog", "Field", "Switch", "Tabs"],
         ),
         NativeModule::new(
             "@uniflowed/react-compiler",

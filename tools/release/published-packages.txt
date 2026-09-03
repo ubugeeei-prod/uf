@@ -11,6 +11,8 @@
 # registry is the source of truth for what each one is.
 config
 react
+react-testing
 router
+ui
 vite
 test

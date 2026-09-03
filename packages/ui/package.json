@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/ui",
   "version": "0.0.0-alpha.1",
-  "description": "Flow declarations for @uniflowed/ui, part of the Unified Toolchain for Flow.",
+  "description": "Headless, accessible React components whose composition Flow checks, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -17,14 +17,13 @@
     "./types/renders": "./types/renders.js"
   },
   "files": [
-    "dialog/types.js",
-    "form/types.js",
     "index.js",
-    "types/renders.js"
+    "internal"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.1",
-    "@uniflowed/react": "0.0.0-alpha.1",
-    "@uniflowed/validator": "0.0.0-alpha.1"
+    "@uniflowed/react": "0.0.0-alpha.1"
+  },
+  "peerDependencies": {
+    "react": ">=19"
   }
 }

@@ -1,184 +1,103 @@
 // @flow
 //
-// `@uniflowed/ui`.
+// `@uniflowed/ui`: components you own, with the behaviour you would get wrong.
 //
-// Every component is a placeholder that raises when it is rendered and names
-// the part it stands for, so a missing runtime reports `Dialog.Trigger` rather
-// than a bare `undefined is not a function`. Each top-level binding carries a
-// pure annotation: without it a bundler must assume a top-level call could have
-// side effects and would keep all forty-eight of them.
+// The premise is the one shadcn established and it is the right one: a
+// component library that ships styles is a library you fight, so these ship
+// none. Every part takes `className` and every other DOM prop and passes it
+// through; what they contribute is the part that is genuinely hard and
+// genuinely invisible when it is missing.
+//
+// That part is behaviour, and specifically keyboard and screen-reader
+// behaviour: a roving `tabindex` so a twelve-tab list does not take twelve Tab
+// presses to get past, a focus trap that actually cannot be escaped, focus
+// restored to whatever opened a dialog, `aria-describedby` pointing only at
+// elements that are in the document. None of it is visible in a screenshot and
+// all of it is what separates a component from a div that looks like one.
+//
+// # Composition is type-checked
+//
+// This is where Flow says something no other type system can. `Tabs.List`
+// declares `renders* Tabs.Tab`, so a `<button>` in a tab list is a *type
+// error* — not a review comment, not a runtime warning, not a screen reader
+// announcing "button" where the reader expected "tab, 2 of 5". A library
+// written in TypeScript can document that constraint; it cannot state it.
 
-import type * as React from "@uniflowed/react";
-import type { Schema } from "@uniflowed/validator";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+import {
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldRoot,
+} from "./internal/field.js";
+import {
+  DialogClose,
+  DialogContent,
+  DialogRoot,
+  DialogTitle,
+  DialogTrigger,
+} from "./internal/dialog.js";
+import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./internal/tabs.js";
+import { Checkbox, Switch } from "./internal/switch.js";
 
-const MODULE = "@uniflowed/core/ui";
-
-export type HeadlessProps = {
-  +className?: string,
-  +children?: React.Node,
-  +variant?: string,
-  +size?: string,
-  +disabled?: boolean,
-};
-
-export type HeadlessComponent = component(
-  className?: string,
-  children?: React.Node,
-  variant?: string,
-  size?: string,
-  disabled?: boolean,
-) renders React.Node;
-
-export type CompoundComponent = {
-  +Root: HeadlessComponent,
-  +Trigger?: HeadlessComponent,
-  +Overlay?: HeadlessComponent,
-  +Body?: HeadlessComponent,
-  +Header?: HeadlessComponent,
-  +Footer?: HeadlessComponent,
-  +Title?: HeadlessComponent,
-  +Description?: HeadlessComponent,
-  +Close?: HeadlessComponent,
-  +Item?: HeadlessComponent,
-  +Content?: HeadlessComponent,
-  +List?: HeadlessComponent,
-  +Input?: HeadlessComponent,
-  +Label?: HeadlessComponent,
-  +Control?: HeadlessComponent,
-  +Message?: HeadlessComponent,
-};
-
-export type FormRoot = component<T: {...}>(
-  schema: Schema<T>,
-  defaultValue?: T,
-  children?: React.Node,
-  onSubmit?: (value: T) => mixed | Promise<mixed>,
-) renders React.Node;
-
-export type FormComponent = {
-  +Root: FormRoot,
-  +Field: HeadlessComponent,
-  +Label: HeadlessComponent,
-  +Control: HeadlessComponent,
-  +Message: HeadlessComponent,
-  +Submit: HeadlessComponent,
-};
-
-/** Placeholder for one headless part, e.g. `Dialog.Trigger`. */
-function headless(binding: string): HeadlessComponent {
-  return function HeadlessBinding(props: HeadlessProps): empty {
-    return nativeRuntimeRequired(MODULE, binding);
-  };
-}
+export { Checkbox, Switch };
 
 /**
- * Placeholder for a compound component: every optional part is materialised so
- * `Dialog.Body` is a component that raises rather than `undefined`.
+ * An accessible form field.
+ *
+ * `Field.Control` takes a render function rather than rendering an `<input>`,
+ * because a field wraps a select, a textarea or somebody else's component just
+ * as often, and each needs the same attributes.
+ *
+ *   <Field.Root invalid={error != null}>
+ *     <Field.Label>Email</Field.Label>
+ *     <Field.Control render={(props) => <input type="email" {...props} />} />
+ *     <Field.Description>We will not share it.</Field.Description>
+ *     <Field.Error>{error}</Field.Error>
+ *   </Field.Root>
  */
-function compound(name: string): CompoundComponent {
-  return {
-    Root: headless(`${name}.Root`),
-    Trigger: headless(`${name}.Trigger`),
-    Overlay: headless(`${name}.Overlay`),
-    Body: headless(`${name}.Body`),
-    Header: headless(`${name}.Header`),
-    Footer: headless(`${name}.Footer`),
-    Title: headless(`${name}.Title`),
-    Description: headless(`${name}.Description`),
-    Close: headless(`${name}.Close`),
-    Item: headless(`${name}.Item`),
-    Content: headless(`${name}.Content`),
-    List: headless(`${name}.List`),
-    Input: headless(`${name}.Input`),
-    Label: headless(`${name}.Label`),
-    Control: headless(`${name}.Control`),
-    Message: headless(`${name}.Message`),
-  };
-}
-
-/** Placeholder for the schema-bound `Form.Root`. */
-function formRoot(): FormRoot {
-  return function FormRootBinding<T: {...}>(props: {
-    +schema: Schema<T>,
-    +defaultValue?: T,
-    +children?: React.Node,
-    +onSubmit?: (value: T) => mixed | Promise<mixed>,
-  }): empty {
-    return nativeRuntimeRequired(MODULE, "Form.Root");
-  };
-}
-
-export const Accordion: CompoundComponent =
-  /*#__PURE__*/ compound("Accordion");
-export const Alert: CompoundComponent = /*#__PURE__*/ compound("Alert");
-export const AlertDialog: CompoundComponent =
-  /*#__PURE__*/ compound("AlertDialog");
-export const AspectRatio: CompoundComponent =
-  /*#__PURE__*/ compound("AspectRatio");
-export const Avatar: CompoundComponent = /*#__PURE__*/ compound("Avatar");
-export const Badge: HeadlessComponent = /*#__PURE__*/ headless("Badge");
-export const Breadcrumb: CompoundComponent =
-  /*#__PURE__*/ compound("Breadcrumb");
-export const Button: HeadlessComponent = /*#__PURE__*/ headless("Button");
-export const Calendar: CompoundComponent = /*#__PURE__*/ compound("Calendar");
-export const Card: CompoundComponent = /*#__PURE__*/ compound("Card");
-export const Carousel: CompoundComponent = /*#__PURE__*/ compound("Carousel");
-export const Chart: CompoundComponent = /*#__PURE__*/ compound("Chart");
-export const Checkbox: CompoundComponent = /*#__PURE__*/ compound("Checkbox");
-export const Collapsible: CompoundComponent =
-  /*#__PURE__*/ compound("Collapsible");
-export const Command: CompoundComponent = /*#__PURE__*/ compound("Command");
-export const ContextMenu: CompoundComponent =
-  /*#__PURE__*/ compound("ContextMenu");
-export const DataTable: CompoundComponent =
-  /*#__PURE__*/ compound("DataTable");
-export const DatePicker: CompoundComponent =
-  /*#__PURE__*/ compound("DatePicker");
-export const Dialog: CompoundComponent = /*#__PURE__*/ compound("Dialog");
-export const Drawer: CompoundComponent = /*#__PURE__*/ compound("Drawer");
-export const DropdownMenu: CompoundComponent =
-  /*#__PURE__*/ compound("DropdownMenu");
-export const Form: FormComponent = {
-  Root: /*#__PURE__*/ formRoot(),
-  Field: /*#__PURE__*/ headless("Form.Field"),
-  Label: /*#__PURE__*/ headless("Form.Label"),
-  Control: /*#__PURE__*/ headless("Form.Control"),
-  Message: /*#__PURE__*/ headless("Form.Message"),
-  Submit: /*#__PURE__*/ headless("Form.Submit"),
+export const Field = {
+  Root: FieldRoot,
+  Label: FieldLabel,
+  Control: FieldControl,
+  Description: FieldDescription,
+  Error: FieldError,
 };
-export const HoverCard: CompoundComponent =
-  /*#__PURE__*/ compound("HoverCard");
-export const Input: HeadlessComponent = /*#__PURE__*/ headless("Input");
-export const InputOtp: CompoundComponent = /*#__PURE__*/ compound("InputOtp");
-export const Label: HeadlessComponent = /*#__PURE__*/ headless("Label");
-export const Menubar: CompoundComponent = /*#__PURE__*/ compound("Menubar");
-export const NavigationMenu: CompoundComponent =
-  /*#__PURE__*/ compound("NavigationMenu");
-export const Pagination: CompoundComponent =
-  /*#__PURE__*/ compound("Pagination");
-export const Popover: CompoundComponent = /*#__PURE__*/ compound("Popover");
-export const Progress: HeadlessComponent = /*#__PURE__*/ headless("Progress");
-export const RadioGroup: CompoundComponent =
-  /*#__PURE__*/ compound("RadioGroup");
-export const Resizable: CompoundComponent =
-  /*#__PURE__*/ compound("Resizable");
-export const ScrollArea: CompoundComponent =
-  /*#__PURE__*/ compound("ScrollArea");
-export const Select: CompoundComponent = /*#__PURE__*/ compound("Select");
-export const Separator: HeadlessComponent =
-  /*#__PURE__*/ headless("Separator");
-export const Sheet: CompoundComponent = /*#__PURE__*/ compound("Sheet");
-export const Sidebar: CompoundComponent = /*#__PURE__*/ compound("Sidebar");
-export const Skeleton: HeadlessComponent = /*#__PURE__*/ headless("Skeleton");
-export const Slider: CompoundComponent = /*#__PURE__*/ compound("Slider");
-export const Sonner: CompoundComponent = /*#__PURE__*/ compound("Sonner");
-export const Switch: CompoundComponent = /*#__PURE__*/ compound("Switch");
-export const Table: CompoundComponent = /*#__PURE__*/ compound("Table");
-export const Tabs: CompoundComponent = /*#__PURE__*/ compound("Tabs");
-export const Textarea: HeadlessComponent = /*#__PURE__*/ headless("Textarea");
-export const Toast: CompoundComponent = /*#__PURE__*/ compound("Toast");
-export const Toggle: HeadlessComponent = /*#__PURE__*/ headless("Toggle");
-export const ToggleGroup: CompoundComponent =
-  /*#__PURE__*/ compound("ToggleGroup");
-export const Tooltip: CompoundComponent = /*#__PURE__*/ compound("Tooltip");
+
+/**
+ * Tabs, with the arrow-key behaviour the pattern requires.
+ *
+ *   <Tabs.Root defaultValue="one">
+ *     <Tabs.List>
+ *       <Tabs.Tab value="one">One</Tabs.Tab>
+ *       <Tabs.Tab value="two">Two</Tabs.Tab>
+ *     </Tabs.List>
+ *     <Tabs.Panel value="one">…</Tabs.Panel>
+ *     <Tabs.Panel value="two">…</Tabs.Panel>
+ *   </Tabs.Root>
+ */
+export const Tabs = {
+  Root: TabsRoot,
+  List: TabsList,
+  Tab: TabsTab,
+  Panel: TabsPanel,
+};
+
+/**
+ * A modal dialog: focus moved in, kept in, and given back.
+ *
+ *   <Dialog.Root>
+ *     <Dialog.Trigger>Open</Dialog.Trigger>
+ *     <Dialog.Content>
+ *       <Dialog.Title>Are you sure?</Dialog.Title>
+ *       <Dialog.Close>Cancel</Dialog.Close>
+ *     </Dialog.Content>
+ *   </Dialog.Root>
+ */
+export const Dialog = {
+  Root: DialogRoot,
+  Trigger: DialogTrigger,
+  Content: DialogContent,
+  Title: DialogTitle,
+  Close: DialogClose,
+};
