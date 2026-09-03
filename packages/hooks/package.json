@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/hooks",
   "version": "0.0.0-alpha.1",
-  "description": "Flow declarations for @uniflowed/hooks, part of the Unified Toolchain for Flow.",
+  "description": "The React hooks an application writes anyway, prerender-safe, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -14,9 +14,13 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.1"
+    "@uniflowed/react": "0.0.0-alpha.1"
+  },
+  "peerDependencies": {
+    "react": ">=19"
   }
 }

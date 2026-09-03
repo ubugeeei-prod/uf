@@ -1,71 +1,60 @@
 // @flow
 //
-// `@uniflowed/hooks`.
+// `@uniflowed/hooks`: the hooks a React application writes anyway.
+//
+// Not a large collection. Every hook here is one that people write by hand in
+// every project and get subtly wrong in the same way each time — a timer that
+// calls a stale closure, a subscription re-established on every keystroke, a
+// slow request overwriting a fast one, persisted state that differs between the
+// server render and the first paint.
+//
+// # Prerendering is the constraint that shapes the surface
+//
+// uf prerenders every static route, so each of these runs once where there is
+// no `window`. The browser hooks are built on `useSyncExternalStore`, which
+// takes the server's value as a separate argument — so what a prerender sees is
+// *stated* rather than being whatever a `typeof window` check fell through to,
+// and React reads the value when it commits rather than when it renders, which
+// is what stops a media query that changes mid-render from tearing.
+//
+// Where there is no honest default, the caller supplies one: a page that hides
+// its sidebar under 48rem wants `false` on the server and one that renders a
+// mobile menu wants `true`, and a library cannot know which.
 
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export type { Async } from "./internal/async.js";
 
-const MODULE = "@uniflowed/core/hooks";
-
-export function useAsync<T>(
-  body: () => Promise<T>,
-  deps: $ReadOnlyArray<mixed>,
-): {
-  +value: null | T,
-  +error: null | Error,
-  +pending: boolean,
-} {
-  return nativeRuntimeRequired(MODULE, "useAsync");
-}
-
-export function useDebouncedValue<T>(value: T, delayMs: number): T {
-  return nativeRuntimeRequired(MODULE, "useDebouncedValue");
-}
-
-export function useEvent<TEvent>(
-  handler: (event: TEvent) => mixed,
-): (event: TEvent) => void {
-  return nativeRuntimeRequired(MODULE, "useEvent");
-}
-
-export function useInterval(
-  callback: () => mixed,
-  delayMs: null | number,
-): void {
-  return nativeRuntimeRequired(MODULE, "useInterval");
-}
-
-export function useIsomorphicLayoutEffect(
-  setup: () => void | (() => void),
-  deps: $ReadOnlyArray<mixed>,
-): void {
-  return nativeRuntimeRequired(MODULE, "useIsomorphicLayoutEffect");
-}
-
-export function useLocalStorage<T>(
-  key: string,
-  initial: T,
-): [T, (next: T) => void] {
-  return nativeRuntimeRequired(MODULE, "useLocalStorage");
-}
-
-export function useMediaQuery(query: string): boolean {
-  return nativeRuntimeRequired(MODULE, "useMediaQuery");
-}
-
-export function useMounted(): boolean {
-  return nativeRuntimeRequired(MODULE, "useMounted");
-}
-
-export function usePrevious<T>(value: T): void | T {
-  return nativeRuntimeRequired(MODULE, "usePrevious");
-}
-
-export function useStableCallback<TArgs: $ReadOnlyArray<mixed>, TReturn>(
-  callback: (...TArgs) => TReturn,
-): (...TArgs) => TReturn {
-  return nativeRuntimeRequired(MODULE, "useStableCallback");
-}
-
-export function useServerValue<T>(value: T): T {
-  return nativeRuntimeRequired(MODULE, "useServerValue");
-}
+export { useAsync } from "./internal/async.js";
+export {
+  useIsomorphicLayoutEffect,
+  useMount,
+  useMounted,
+  usePrevious,
+  useRerender,
+  useStableCallback,
+  useUnmount,
+} from "./internal/lifecycle.js";
+export {
+  useDebouncedCallback,
+  useDebouncedValue,
+  useInterval,
+  useThrottledCallback,
+  useTimeout,
+} from "./internal/timing.js";
+export {
+  useDocumentVisible,
+  useMediaQuery,
+  useOnline,
+  usePrefersReducedMotion,
+  usePreferredColorScheme,
+  useWindowSize,
+} from "./internal/browser.js";
+export {
+  useClickOutside,
+  useElementRef,
+  useElementSize,
+  useEventListener,
+  useFocusWithin,
+  useHover,
+  useIntersecting,
+} from "./internal/element.js";
+export { useCounter, useStorage, useToggle } from "./internal/state.js";
