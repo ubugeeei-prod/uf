@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/state",
-  "version": "0.0.0-alpha.1",
+  "version": "0.0.0-alpha.2",
   "description": "Atoms and the React binding for @uniflowed/state, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/cell": "0.0.0-alpha.1",
-    "@uniflowed/react": "0.0.0-alpha.1"
+    "@uniflowed/cell": "0.0.0-alpha.2",
+    "@uniflowed/react": "0.0.0-alpha.2"
   }
 }
