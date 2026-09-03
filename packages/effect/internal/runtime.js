@@ -16,6 +16,7 @@ type FiberCarrier<+A, +E> = {
   +__value: () => A,
   +__error: () => E,
   +__promise: Promise<Exit<mixed, mixed>>,
+  +__fiber: FiberState,
 };
 
 type EffectCarrier<+A, +E, +R> = {
@@ -46,9 +47,23 @@ type ScopeState = {
   finalizers: Array<() => Effect<void, mixed, empty>>,
 };
 
+/**
+ * The interruption state one fiber shares with everything running inside it.
+ *
+ * `interrupted` is the flag combinators check between steps; `wakers` is how a
+ * pending `sleep` finds out, because a timer that has already been scheduled
+ * cannot be talked out of firing and a fiber that waited for it would stay
+ * alive for the full delay after being cancelled.
+ */
+type FiberState = {
+  interrupted: boolean,
+  wakers: Set<() => void>,
+};
+
 type Context = {
   services: { [string]: mixed },
   scope: ?ScopeState,
+  fiber: FiberState,
 };
 
 /**
@@ -101,12 +116,16 @@ function absurd(): empty {
   throw Error("@uniflowed/effect phantom value");
 }
 
+function fiberState(): FiberState {
+  return { interrupted: false, wakers: new Set() };
+}
+
 function context(): Context {
-  return { services: {}, scope: null };
+  return { services: {}, scope: null, fiber: fiberState() };
 }
 
 function withScope(parent: Context): Context {
-  return { services: parent.services, scope: { finalizers: [] } };
+  return { services: parent.services, scope: { finalizers: [] }, fiber: parent.fiber };
 }
 
 function withService<Service>(
@@ -117,7 +136,28 @@ function withService<Service>(
   return {
     services: { ...parent.services, [readTag(serviceTag)]: service },
     scope: parent.scope,
+    fiber: parent.fiber,
   };
+}
+
+/**
+ * A context whose interruption is independent of its parent's.
+ *
+ * Forking is the only place this happens. A child that shared its parent's
+ * flag could not be cancelled on its own, and a fork whose whole purpose is
+ * "run this beside me and let me stop it" would be unable to stop anything.
+ */
+function withFiber(parent: Context): Context {
+  return { services: parent.services, scope: parent.scope, fiber: fiberState() };
+}
+
+/** Whether the fiber this context belongs to has been interrupted. */
+function isInterrupted(runContext: Context): boolean {
+  return runContext.fiber.interrupted;
+}
+
+function interruptedExit<A, E>(): Exit<A, E> {
+  return failure({ kind: "interrupt" });
 }
 
 function makeEffect<A, E, R>(kernel: EffectKernel): Effect<A, E, R> {
@@ -134,12 +174,13 @@ function readKernel<A, E, R>(self: Effect<A, E, R>): EffectKernel {
   return (self: any).__kernel;
 }
 
-function makeFiber<A, E>(promise: Promise<Exit<mixed, mixed>>): Fiber<A, E> {
+function makeFiber<A, E>(promise: Promise<Exit<mixed, mixed>>, fiber: FiberState): Fiber<A, E> {
   return ({
     __kind: "Fiber",
     __value: absurd,
     __error: absurd,
     __promise: promise,
+    __fiber: fiber,
   }: any);
 }
 
@@ -267,8 +308,37 @@ function throwable<E>(cause: Cause<E>): mixed {
   return error == null ? Error(causeMessage(cause)) : error;
 }
 
-function delay(millis: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, Math.max(0, millis)));
+/**
+ * Wait, and stop waiting early if the fiber is interrupted.
+ *
+ * A bare `setTimeout` cannot be talked out of firing, so a cancelled fiber
+ * sleeping for a minute would keep the process alive for a minute after
+ * nobody wanted its answer. Registering a waker is what makes cancellation
+ * take effect now rather than at the end of the delay.
+ */
+function pause(millis: number, runContext?: Context): Promise<void> {
+  return new Promise((resolve) => {
+    const fiber = runContext == null ? null : runContext.fiber;
+    let timer = null;
+    const finish = () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (fiber != null) {
+        fiber.wakers.delete(finish);
+      }
+      resolve();
+    };
+    if (fiber != null) {
+      if (fiber.interrupted) {
+        resolve();
+        return;
+      }
+      fiber.wakers.add(finish);
+    }
+    timer = setTimeout(finish, Math.max(0, millis));
+  });
 }
 
 function fibonacci(index: number): number {
@@ -460,6 +530,13 @@ export function effect<A, E, R>(body: () => EffectGenerator<A, E, R>): Effect<A,
         return defect(error);
       }
       while (true) {
+        // The checkpoint is between steps, never inside one. An effect that has
+        // started runs to its own end; interruption decides whether the *next*
+        // one starts, which is the only point where stopping is safe without
+        // knowing what the body was in the middle of.
+        if (isInterrupted(runContext)) {
+          return interruptedExit();
+        }
         let step;
         try {
           step = iterator.next(input);
@@ -535,6 +612,9 @@ export function flatMap<A, B, E1, E2, R1, R2>(
       if (exit.kind === "failure") {
         return (exit: any);
       }
+      if (isInterrupted(runContext)) {
+        return interruptedExit();
+      }
       try {
         return await runKernel(next(exit.value), runContext);
       } catch (error) {
@@ -580,6 +660,10 @@ export function all<A, E, R>(
       let failed = null;
       async function worker(): Promise<void> {
         while (failed == null && nextIndex < effects.length) {
+          if (isInterrupted(runContext)) {
+            failed = interruptedExit();
+            return;
+          }
           const index = nextIndex;
           nextIndex += 1;
           const exit = await runKernel(effects[index], runContext);
@@ -696,11 +780,11 @@ export function retry<A, E, R>(
           return exit;
         }
         const millis = scheduleDelay(schedule, attempt);
-        if (millis == null) {
+        if (millis == null || isInterrupted(runContext)) {
           return exit;
         }
         attempt += 1;
-        await delay(millis);
+        await pause(millis, runContext);
       }
     },
   });
@@ -714,7 +798,7 @@ export function timeout<A, E, R>(
     run: (runContext) =>
       Promise.race([
         runKernel(self, runContext),
-        delay(millis).then(() => failure(failCause({ kind: "timeout", millis }))),
+        pause(millis, runContext).then(() => failure(failCause({ kind: "timeout", millis }))),
       ]),
   });
 }
@@ -824,22 +908,164 @@ export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
   });
 }
 
+/**
+ * Start `self` beside the current fiber and hand back a handle to it.
+ *
+ * The child gets its own interruption state, so cancelling it does not cancel
+ * the fiber that forked it, and cancelling the parent does not silently take
+ * the child down with it. Anything else makes `fork` unusable for the case it
+ * exists for: starting work you intend to be able to stop.
+ */
 export function fork<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty, R> {
   return makeEffect({
-    run: (runContext) => Promise.resolve(success(makeFiber(runKernel(self, runContext)))),
+    run: (runContext) => {
+      const child = withFiber(runContext);
+      return Promise.resolve(success(makeFiber(runKernel(self, child), child.fiber)));
+    },
   });
 }
 
+/** Wait for a fiber and take its result as this effect's result. */
 export function join<A, E>(fiber: Fiber<A, E>): Effect<A, E> {
   return makeEffect({
     run: async () => (await readFiber(fiber).__promise: any),
   });
 }
 
+/**
+ * Cancel a fiber and wait for it to actually stop.
+ *
+ * Interruption is cooperative — the flag is read between steps, and a `sleep`
+ * is woken — so this resolves once the fiber has reached its next checkpoint,
+ * not once the request was filed. Returning the `Exit` rather than `void` is
+ * what makes that observable: a fiber that had already finished reports the
+ * value it produced, and one that stopped reports `interrupt`, so a caller can
+ * tell "cancelled in time" from "too late, it was done".
+ */
 export function interrupt<A, E>(fiber: Fiber<A, E>): Effect<Exit<A, E>> {
   return makeEffect({
-    run: async () => success(((await readFiber(fiber).__promise): any)),
+    run: async () => {
+      const carrier = readFiber(fiber);
+      carrier.__fiber.interrupted = true;
+      for (const wake of Array.from(carrier.__fiber.wakers)) {
+        wake();
+      }
+      return success(((await carrier.__promise): any));
+    },
   });
+}
+
+
+/**
+ * Wait, doing nothing.
+ *
+ * Interruptible: cancelling the fiber ends the wait now, rather than leaving a
+ * timer holding the process open until it fires.
+ */
+export function sleep(millis: number): Effect<void> {
+  return makeEffect({
+    run: async (runContext) => {
+      await pause(millis, runContext);
+      return isInterrupted(runContext) ? interruptedExit() : success(undefined);
+    },
+  });
+}
+
+/** Run `self` after waiting, keeping its result. */
+export function delay<A, E, R>(self: Effect<A, E, R>, millis: number): Effect<A, E, R> {
+  return andThen(sleep(millis), self);
+}
+
+/**
+ * Look at a success without changing it.
+ *
+ * The point of a `tap` is that it cannot alter the value by accident: logging
+ * a result inside a `map` means one careless edit turns the log's return value
+ * into the pipeline's value, and this shape makes that impossible.
+ */
+export function tap<A, E1, E2, R1, R2>(
+  self: Effect<A, E1, R1>,
+  body: (value: A) => Effect<mixed, E2, R2>,
+): Effect<A, E1 | E2, R1 | R2> {
+  return flatMap(self, (value) => map(body(value), () => value));
+}
+
+/** Look at a failure without recovering from it. */
+export function tapError<A, E, R1, R2>(
+  self: Effect<A, E, R1>,
+  body: (error: E) => Effect<mixed, mixed, R2>,
+): Effect<A, E, R1 | R2> {
+  return catchAll(self, (error) => andThen(orDie(body(error)), fail(error)));
+}
+
+/** Turn any failure of `self` into a defect, so its error type is `empty`. */
+function orDie<A, E, R>(self: Effect<A, E, R>): Effect<A, empty, R> {
+  return makeEffect({
+    run: async (runContext) => {
+      const settled = await runKernel(self, runContext);
+      return settled.kind === "success"
+        ? (settled: any)
+        : failure(dieCause(causeMessage(settled.cause)));
+    },
+  });
+}
+
+/**
+ * Run `finalizer` however `self` ends: success, failure, defect, interruption.
+ *
+ * `acquireRelease` needs a `Scope`; this does not, which makes it the right
+ * tool for the ordinary "close this when the block is done" case that would
+ * otherwise force a scope on the caller's type just to run one cleanup.
+ */
+export function ensuring<A, E, R>(
+  self: Effect<A, E, R>,
+  finalizer: () => Effect<mixed, mixed, empty>,
+): Effect<A, E, R> {
+  return makeEffect({
+    run: async (runContext) => {
+      const settled = await runKernel(self, runContext);
+      // The finalizer runs in a context that is not interrupted, because a
+      // cleanup that is itself cancelled is not a cleanup.
+      const released = await runKernel(finalizer(), withFiber(runContext));
+      if (released.kind === "failure" && settled.kind === "success") {
+        return (released: any);
+      }
+      return (settled: any);
+    },
+  });
+}
+
+/**
+ * Reify the outcome, so a failure is a value instead of a short circuit.
+ *
+ * `either` narrows to the typed error and loses defects and interruption;
+ * this keeps the whole `Exit`, which is what a supervisor or a test that
+ * asserts on *how* something failed actually needs.
+ */
+export function exit<A, E, R>(self: Effect<A, E, R>): Effect<Exit<A, E>, empty, R> {
+  return makeEffect({
+    run: async (runContext) => success(((await runKernel(self, runContext)): any)),
+    runSync: (runContext) => success((runSyncKernel(self, runContext): any)),
+  });
+}
+
+/**
+ * Keep a success only when it passes `predicate`, failing with `error` if not.
+ *
+ * The alternative is a `flatMap` whose body is an `if` returning `succeed` or
+ * `fail`, written out at every call site.
+ */
+export function filterOrFail<A, E1, E2, R>(
+  self: Effect<A, E1, R>,
+  predicate: (value: A) => boolean,
+  error: (value: A) => E2,
+): Effect<A, E1 | E2, R> {
+  return flatMap(self, (value) => (predicate(value) ? succeed(value) : fail(error(value))));
+}
+
+/** Replace a success with a constant, keeping the failure channel. */
+export function as<A, B, E, R>(self: Effect<A, E, R>, value: B): Effect<B, E, R> {
+  return map(self, () => value);
 }
 
 export async function runPromise<A, E>(self: Effect<A, E>): Promise<A> {
@@ -850,10 +1076,29 @@ export async function runPromise<A, E>(self: Effect<A, E>): Promise<A> {
   throw throwable(exit.cause);
 }
 
+/** Run a synchronous effect, returning its outcome rather than raising. */
 export function runSyncExit<A, E>(self: Effect<A, E>): Exit<A, E> {
   return runSyncKernel(self, context());
 }
 
+/**
+ * Run a synchronous effect, raising whatever it failed with.
+ *
+ * The counterpart of `runPromise` for effects with no asynchronous step. An
+ * effect that turns out to have one fails as a defect rather than returning a
+ * promise nobody is awaiting, because a silently-unawaited promise is how a
+ * synchronous-looking call ends up returning `undefined`.
+ */
+export function runSync<A, E>(self: Effect<A, E>): A {
+  const settled = runSyncExit(self);
+  if (settled.kind === "success") {
+    return settled.value;
+  }
+  throw throwable(settled.cause);
+}
+
+/** Start an effect from outside the runtime and keep a handle on it. */
 export function runFork<A, E>(self: Effect<A, E>): Fiber<A, E> {
-  return makeFiber(runKernel(self, context()));
+  const runContext = context();
+  return makeFiber(runKernel(self, runContext), runContext.fiber);
 }

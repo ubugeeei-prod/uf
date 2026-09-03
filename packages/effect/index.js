@@ -1,6 +1,7 @@
 // @flow
 //
-// `@uniflowed/effect`.
+// `@uniflowed/effect`: named exports only, so an application ships the
+// combinators it actually calls.
 
 export type {
   Cause,
@@ -19,13 +20,18 @@ export {
   acquireRelease,
   all,
   andThen,
+  as,
   call,
   catchAll,
   catchTag,
+  delay,
   die,
   effect,
   either,
+  ensuring,
+  exit,
   fail,
+  filterOrFail,
   flatMap,
   forEach,
   fork,
@@ -41,15 +47,21 @@ export {
   promise,
   provide,
   provideService,
+  race,
   retry,
   runFork,
   runPromise,
+  runSync,
   runSyncExit,
   scoped,
+  sleep,
   succeed,
   suspend,
   sync,
   tag,
+  tap,
+  tapError,
   timeout,
   tryPromise,
+  zip,
 } from "./internal/runtime.js";
