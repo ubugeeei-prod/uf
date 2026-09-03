@@ -238,6 +238,35 @@ function quoteString(value: string): string {
  * or refuses. Depth, breadth and total size are bounded, because a failure
  * message that scrolls the terminal is a failure message nobody reads.
  */
+/**
+ * An element's opening tag, or `null` if this is not an element.
+ *
+ * Duck-typed rather than `instanceof Element`, because this module must not
+ * depend on a DOM existing: a test process without a document simply never has
+ * a value that answers to this shape.
+ */
+function elementTag(value: mixed): string | null {
+  const node: $FlowFixMe = value;
+  if (
+    node == null ||
+    typeof node.tagName !== "string" ||
+    typeof node.getAttribute !== "function" ||
+    node.nodeType !== 1
+  ) {
+    return null;
+  }
+  const name = node.tagName.toLowerCase();
+  const attributes = Array.from(node.attributes ?? [])
+    .slice(0, MAX_RENDER_ENTRIES)
+    .map((attribute: $FlowFixMe) => ` ${attribute.name}="${attribute.value}"`)
+    .join("");
+  const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
+  const shown = text.length > 40 ? `${text.slice(0, 40)}…` : text;
+  return shown === ""
+    ? `<${name}${attributes} />`
+    : `<${name}${attributes}>${shown}</${name}>`;
+}
+
 export function render(value: mixed, depth: number = 0, seen: Array<mixed> = []): string {
   const text = renderInner(value, depth, seen);
   return text.length > MAX_RENDER_BYTES ? `${text.slice(0, MAX_RENDER_BYTES)}… (elided)` : text;
@@ -278,6 +307,14 @@ function renderInner(value: mixed, depth: number, seen: Array<mixed>): string {
   const nested = [...seen, value];
   const inner = (item: mixed) => renderInner(item, depth + 1, nested);
 
+  // An element, before the object branch reaches it. A DOM node's own
+  // properties are event-listener maps and parent pointers, so rendering it as
+  // an object buries the failure under a page of internals — and the whole
+  // document, through the parent chain. Its opening tag is what a reader needs.
+  const tag = elementTag(value);
+  if (tag != null) {
+    return tag;
+  }
   if (value instanceof Date) {
     return `Date(${value.toISOString()})`;
   }
