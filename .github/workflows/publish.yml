@@ -32,31 +32,34 @@ jobs:
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo test --workspace
-      # Every package under `packages/` is published, `core` first because the
-      # others declare it as a dependency and npm rejects a manifest whose
-      # dependency is not yet on the registry.
+      # Only the packages in `tools/release/published-packages.txt`, which is
+      # the set that is implemented. Publishing a declaration module whose
+      # functions throw would squat the name and would need a trusted-publisher
+      # configuration of its own, which is a manual step on npmjs.com.
+      #
+      # The first version of each of these was published by hand — npm will not
+      # configure a trusted publisher for a package that does not exist yet, so
+      # OIDC cannot bootstrap itself. See tools/release/bootstrap-npm.sh.
       - name: Publish
         run: |
           set -eu
           publish() {
-            name="$(node -p "require('./$1/package.json').name")"
-            version="$(node -p "require('./$1/package.json').version")"
+            directory="packages/$1"
+            name="$(node -p "require('./${directory}/package.json').name")"
+            version="$(node -p "require('./${directory}/package.json').version")"
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
               echo "::notice::${name}@${version} is already published"
               return 0
             fi
-            tag_args=()
+            tag=latest
             case "$version" in
-              *-alpha*) tag_args=(--tag alpha) ;;
-              *-beta*) tag_args=(--tag beta) ;;
-              *-rc*) tag_args=(--tag rc) ;;
+              *-alpha*) tag=alpha ;;
+              *-beta*) tag=beta ;;
+              *-rc*) tag=rc ;;
             esac
-            ( cd "$1" && npm publish --access public "${tag_args[@]}" )
+            ( cd "$directory" && npm publish --access public --tag "$tag" )
           }
 
-          publish packages/core
-          for manifest in packages/*/package.json; do
-            directory="${manifest%/package.json}"
-            [ "$directory" = "packages/core" ] && continue
-            publish "$directory"
+          for package in $(grep -vE '^\s*(#|$)' tools/release/published-packages.txt); do
+            publish "$package"
           done
