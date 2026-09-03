@@ -8,7 +8,8 @@
 // name so a bundler still drops what an application does not use.
 //
 // The React Testing Library surface is re-exported from
-// `@uniflowed/react-testing`, which still needs a DOM and says so when called.
+// `@uniflowed/react-testing`, which installs a document on the host the first
+// time a test renders.
 
 export type { Body as TestBody, TestOptions } from "@uniflowed/test";
 
@@ -26,4 +27,13 @@ export {
 } from "@uniflowed/test";
 
 export type { RenderResult, Screen } from "@uniflowed/react-testing";
-export { fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
+export {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+  within,
+} from "@uniflowed/react-testing";

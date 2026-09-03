@@ -314,7 +314,168 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
         args,
       );
     },
+
+    // ---------------------------------------------------------------- //
+    // Elements
+    //
+    // These read properties of whatever they are given, so this module still
+    // needs no DOM and no dependency on one: an element is an object with a
+    // `tagName`, and a process without a document simply never has one to
+    // pass in. `element` says so when it does not.
+    // ---------------------------------------------------------------- //
+
+    toBeInTheDocument: () => {
+      const node = element("toBeInTheDocument");
+      const root = node.ownerDocument;
+      return simple(
+        root != null && root.contains(node),
+        "to be in the document",
+      );
+    },
+    toBeVisible: () => {
+      const node = element("toBeVisible");
+      return simple(isVisible(node), "to be visible");
+    },
+    toBeDisabled: () => {
+      const node = element("toBeDisabled");
+      return simple(isDisabled(node), "to be disabled");
+    },
+    toBeEnabled: () => {
+      const node = element("toBeEnabled");
+      return simple(!isDisabled(node), "to be enabled");
+    },
+    toBeChecked: () => {
+      const node = element("toBeChecked");
+      const aria = node.getAttribute("aria-checked");
+      const checked = aria != null ? aria === "true" : (node: $FlowFixMe).checked === true;
+      return simple(checked, "to be checked");
+    },
+    toBeRequired: () => {
+      const node = element("toBeRequired");
+      return simple(
+        (node: $FlowFixMe).required === true || node.getAttribute("aria-required") === "true",
+        "to be required",
+      );
+    },
+    toHaveFocus: () => {
+      const node = element("toHaveFocus");
+      return simple(node.ownerDocument?.activeElement === node, "to have focus");
+    },
+    toHaveAttribute: (name: mixed, value?: mixed) => {
+      const node = element("toHaveAttribute");
+      const actual = node.getAttribute(String(name));
+      if (value === undefined) {
+        return simple(actual != null, `to have the attribute ${render(name)}`, name);
+      }
+      return {
+        pass: actual === String(value),
+        expected: render(value),
+        received: render(actual),
+        failure: () =>
+          `expected ${render(name)} to be ${render(value)}, not ${render(actual)}`,
+      };
+    },
+    toHaveClass: (...names: $ReadOnlyArray<mixed>) => {
+      const node = element("toHaveClass");
+      const classes = (node.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
+      const wanted = names.map(String);
+      return {
+        pass: wanted.every((name) => classes.includes(name)),
+        expected: render(wanted),
+        received: render(classes),
+        failure: () =>
+          `expected the class list ${render(classes)} to include ${render(wanted)}`,
+      };
+    },
+    toHaveTextContent: (expected: mixed) => {
+      const node = element("toHaveTextContent");
+      const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
+      const pass =
+        expected instanceof RegExp ? expected.test(text) : text.includes(String(expected));
+      return {
+        pass,
+        expected: render(expected),
+        received: render(text),
+        failure: () => `expected the text ${render(text)} to contain ${render(expected)}`,
+      };
+    },
+    toHaveValue: (expected: mixed) => {
+      const node = element("toHaveValue");
+      const actual = (node: $FlowFixMe).value;
+      return {
+        pass: equals(actual, expected),
+        expected: render(expected),
+        received: render(actual),
+        failure: () => `expected the value ${render(actual)} to be ${render(expected)}`,
+      };
+    },
   };
+
+  /**
+   * The received value as an element, or a failure that says what it was.
+   *
+   * An element matcher applied to a string is almost always a query whose
+   * result was used without being awaited, and "received a Promise" is a much
+   * better message than a `TypeError` about `getAttribute`.
+   */
+  function element(matcher: string): Element {
+    const node: $FlowFixMe = received;
+    if (node == null || typeof node.getAttribute !== "function") {
+      throw new AssertionError(
+        `${matcher} needs an element, and received ${render(received)}`,
+      );
+    }
+    return node;
+  }
+}
+
+/**
+ * Whether a reader would see this element.
+ *
+ * Walks the ancestors, because `display: none` on a parent hides a child whose
+ * own style says nothing. `hidden`, `aria-hidden` and a `details` that is not
+ * open each hide their subtree too.
+ */
+function isVisible(node: Element): boolean {
+  let current: $FlowFixMe = node;
+  while (current != null && current.nodeType === 1) {
+    if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
+      return false;
+    }
+    if (
+      current.tagName === "DETAILS" &&
+      !current.hasAttribute("open") &&
+      current !== node
+    ) {
+      return false;
+    }
+    const style = current.ownerDocument?.defaultView?.getComputedStyle?.(current);
+    if (style != null) {
+      if (style.display === "none" || style.visibility === "hidden") {
+        return false;
+      }
+      if (style.opacity === "0") {
+        return false;
+      }
+    }
+    current = current.parentElement;
+  }
+  return true;
+}
+
+/** Whether the control is disabled, by its own attribute or a fieldset's. */
+function isDisabled(node: Element): boolean {
+  let current: $FlowFixMe = node;
+  while (current != null && current.nodeType === 1) {
+    if (current.hasAttribute("disabled")) {
+      return true;
+    }
+    if (current.getAttribute("aria-disabled") === "true") {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
 }
 
 /**
