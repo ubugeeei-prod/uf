@@ -6,7 +6,7 @@
 // and can produce the awkward cases on demand — a 500, a hang, a body that is
 // not what the header said.
 
-import { describe, expect, fn, it } from "@uniflowed/test";
+import { describe, expect, it } from "@uniflowed/test";
 import { FetchError, createFetch } from "@uniflowed/fetch";
 import { parser, v } from "@uniflowed/validator";
 
