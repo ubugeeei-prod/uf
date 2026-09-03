@@ -73,6 +73,7 @@ jobs:
         env:
           UF_TARGET: ${{ matrix.target }}
           UF_VERSION: ${{ steps.version.outputs.version }}
+          UF_CARGO_PROFILE: dist
         run: tools/release/package-binaries.sh
 
       # The point of the whole workflow is that `curl … | sh` works. Prove it
@@ -142,6 +143,10 @@ jobs:
           set -eu
           version="${INPUT_VERSION:-${REF_NAME#uf@}}"
           tag="uf@${version}"
+          release_kind_args=()
+          case "$version" in
+            *-alpha*|*-beta*|*-rc*) release_kind_args=(--prerelease) ;;
+          esac
           assets="artifacts/VERSION"
           for file in artifacts/uf-*.tar.gz artifacts/uf-*.tar.gz.sha256 \
                       artifacts/manifest.json artifacts/manifest-*.json; do
@@ -149,10 +154,11 @@ jobs:
           done
           # shellcheck disable=SC2086
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" "${release_kind_args[@]}"
             gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber $assets
           else
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
-              --title "uf ${version}" --generate-notes $assets
+              --title "uf ${version}" --generate-notes "${release_kind_args[@]}" $assets
           fi
 
       - name: Mirror to R2

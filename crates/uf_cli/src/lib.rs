@@ -127,6 +127,12 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
 }
 
 /// Parse the process arguments, expanding the `ufr` and `ufx` aliases.
+///
+/// Alias binaries behave like their longhand commands for real work, but keep
+/// the root command's version surface. Release smoke tests exercise the binary
+/// after installation, before any project or script exists, so `ufr --version`
+/// and `ufx --version` must never be interpreted as `uf run --version` or
+/// `uf exec --version`.
 fn parse_cli() -> Result<Cli> {
     let mut args = std::env::args_os().collect::<Vec<_>>();
     let bin_name = args
@@ -136,16 +142,31 @@ fn parse_cli() -> Result<Cli> {
         .unwrap_or("uf");
 
     match bin_name {
-        "ufr" => {
+        "ufr" if !args_request_root_version(&args) => {
             args.insert(1, "run".into());
             Cli::try_parse_from(args).map_err(Into::into)
         }
-        "ufx" => {
+        "ufx" if !args_request_root_version(&args) => {
             args.insert(1, "exec".into());
             Cli::try_parse_from(args).map_err(Into::into)
         }
         _ => Cli::try_parse_from(args).map_err(Into::into),
     }
+}
+
+fn args_request_root_version(args: &[std::ffi::OsString]) -> bool {
+    let mut args = args.iter().skip(1);
+    while let Some(arg) = args.next().and_then(|arg| arg.to_str()) {
+        match arg {
+            "--version" | "-V" => return true,
+            "--cwd" | "--color" => {
+                let _ = args.next();
+            }
+            arg if arg.starts_with("--cwd=") || arg.starts_with("--color=") => {}
+            _ => return false,
+        }
+    }
+    false
 }
 
 fn resolve_cwd(cwd: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
