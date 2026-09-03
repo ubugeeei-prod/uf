@@ -87,6 +87,7 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
         Commands::Exec { package, args } => commands::task::exec_package(&cwd, ui, &package, &args),
         Commands::Fmt { check } => commands::fmt::fmt(&cwd, ui, check),
         Commands::Info => commands::info::info(&cwd, ui),
+        Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
         Commands::Install => commands::pm::install(&cwd, ui),

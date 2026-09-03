@@ -63,6 +63,16 @@ pub(crate) enum Commands {
         check: bool,
     },
     Info,
+    /// Say what a command will do, and which provider does each part.
+    ///
+    /// `uf inspect` prints the resolved configuration; this answers the
+    /// question someone asks when a command surprises them.
+    Explain {
+        /// The command to describe: dev, build, test, fmt, lint or check.
+        command: String,
+        #[arg(long)]
+        json: bool,
+    },
     Inspect {
         #[arg(long)]
         json: bool,
@@ -132,6 +142,7 @@ impl Commands {
         matches!(
             self,
             Self::Check { json: true }
+                | Self::Explain { json: true, .. }
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true }
                 | Self::Test { json: true, .. }
