@@ -469,7 +469,12 @@ fn bail_stops_the_run_and_says_so() {
         .collect();
     let project = Project::new(&borrowed);
 
-    let document = json(project.path(), &["--bail"]);
+    // One worker, so the claim is about bail and not about how many cores the
+    // machine running this happens to have. Every worker takes a file before
+    // any of them can report a failure, so on a host with twelve cores all
+    // twelve files start and none is left unscheduled — which said nothing
+    // about whether bail worked.
+    let document = json(project.path(), &["--bail", "-j", "1"]);
 
     assert_eq!(document["bailed"], true, "{document}");
     let not_run = document["fileReports"]
@@ -478,9 +483,9 @@ fn bail_stops_the_run_and_says_so() {
         .iter()
         .filter(|file| file["status"] == "not-run")
         .count();
-    assert!(
-        not_run > 0,
-        "bailing must leave files unscheduled: {document}"
+    assert_eq!(
+        not_run, 11,
+        "one worker must stop after the file that failed: {document}"
     );
 }
 
