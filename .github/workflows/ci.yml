@@ -13,8 +13,33 @@ permissions:
   contents: read
 
 jobs:
+  toolchain:
+    name: Toolchain
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - run: cargo install wild-linker --version 0.10.0 --locked
+      - run: wild --version
+      # Built once and shared, because every job below runs its checks through
+      # `uf run` — this repository is a uf project, and its pipeline uses the
+      # toolchain it ships rather than a second description of the same checks.
+      - run: cargo build --release --bin uf
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: uf-ci
+          path: target/release/uf
+          retention-days: 1
+
   format:
     name: Format
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,10 +51,16 @@ jobs:
           toolchain: nightly-2026-08-01
           components: rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo fmt --all -- --check
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run rust:fmt:check
 
   clippy:
     name: Clippy
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,10 +74,16 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run rust:clippy
 
   test:
     name: Test
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,10 +103,16 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - run: cargo test --workspace
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run rust:test
 
   library:
     name: Library
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,11 +132,16 @@ jobs:
       # The `@uniflowed/*` packages are Flow, so `cargo test` cannot run a line
       # of them — their tests are uf tests, run by the runner this repository
       # ships. Without this job the library has a suite nothing executes.
-      - run: cargo build --release --bin uf
-      - run: ./target/release/uf --cwd tests/library test
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run test:lib
 
   installer:
     name: Installer
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -111,10 +159,16 @@ jobs:
       # Packages a release and installs it with the real installer. Keeps
       # install.sh and package-binaries.sh from drifting apart between releases,
       # when the only thing that notices is a user running `curl … | sh`.
-      - run: tools/release/test-install.sh
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run install:test
 
   bench-compile:
     name: Bench Compile
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,10 +181,16 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - run: cargo bench --workspace --no-run
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run rust:bench
 
   metadata:
     name: Metadata
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -143,13 +203,19 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: cargo metadata --format-version 1 --locked
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run rust:metadata
       # Every package manifest, not just one: there are 44 of them now, and a
       # manifest that does not parse is a package that cannot be installed.
-      - run: node -e "for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))"
+      - run: ./target/release/uf run manifests
 
   upstream-flow:
     name: Upstream Flow
+    needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     env:
       # `rust-toolchain.toml` pins the release nightly and overrides
@@ -172,6 +238,11 @@ jobs:
       # than discovered when it breaks. Only the parser: the typing crates need
       # `box_patterns`, which the current nightly no longer has, which is
       # exactly what this job is here to tell us about.
-      - run: cargo clippy -p uf_flow --all-targets -- -D warnings
-      - run: cargo test -p uf_flow
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run flow:clippy
+      - run: ./target/release/uf run flow:test
 

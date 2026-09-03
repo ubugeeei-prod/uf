@@ -37,5 +37,12 @@ done
   if [ ! -d node_modules ]; then
     npm ci --no-audit --no-fund
   fi
-  cargo run --release --package uf_cli --bin uf -- --cwd docs build --size-report
+  # `UF_BIN` is set by anything that has already built the toolchain — CI
+  # builds it once and shares it, and rebuilding here would cost minutes for
+  # a binary that is already on disk.
+  if [ -n "${UF_BIN:-}" ]; then
+    "$UF_BIN" --cwd docs build --size-report
+  else
+    cargo run --release --package uf_cli --bin uf -- --cwd docs build --size-report
+  fi
 )

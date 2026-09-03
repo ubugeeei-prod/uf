@@ -59,7 +59,12 @@ jobs:
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: npm ci --no-audit --no-fund
-      - run: tools/docs/build.sh
+      # This repository is a uf project: the site is built by the task in
+      # `uf.config.js`, with the toolchain it ships.
+      - run: cargo build --release --bin uf
+      - run: ./target/release/uf run docs:build
+        env:
+          UF_BIN: ./target/release/uf
       - run: npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.docs.jsonc
       - run: npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.setup.jsonc
 
@@ -88,6 +93,11 @@ jobs:
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: npm ci --no-audit --no-fund
-      - run: tools/docs/build.sh
+      # This repository is a uf project: the site is built by the task in
+      # `uf.config.js`, with the toolchain it ships.
+      - run: cargo build --release --bin uf
+      - run: ./target/release/uf run docs:build
+        env:
+          UF_BIN: ./target/release/uf
       - run: npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.docs.jsonc
       - run: npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.setup.jsonc

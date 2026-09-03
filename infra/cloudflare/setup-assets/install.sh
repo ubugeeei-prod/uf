@@ -10,12 +10,44 @@ requested_version="${UF_VERSION:-latest}"
 install_root="${UF_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/uf}"
 bin_dir="${UF_BIN_DIR:-$HOME/.local/bin}"
 
+# Colour, unless the terminal or the reader has said not to.
+#
+# `NO_COLOR` is the convention, and a redirected stream is not a terminal — an
+# installer whose output is being piped into a log should not fill it with
+# escape sequences.
+if [ -n "${NO_COLOR:-}" ] || [ ! -t 2 ]; then
+  uf_colour=""
+else
+  uf_colour="yes"
+fi
+
+uf_paint() {
+  if [ -z "$uf_colour" ]; then
+    printf '%s\n' "$2" >&2
+  else
+    printf '\033[38;2;%sm%s\033[0m\n' "$1" "$2" >&2
+  fi
+}
+
+# The mark, in the brand's five stops from top to bottom.
+#
+# One colour per row rather than per character: a per-character gradient means
+# slicing a string that is full of multi-byte block characters, and `cut -c`
+# counts bytes — it cuts them in half and prints replacement characters.
 uf_brand() {
-  printf '%s\n' \
-    "uf  Unified Toolchain for Flow" \
-    "    All-in-one toolchain for Flow and React." \
-    "    ----------------------------------------" \
-    "    Unified  Fast  Elegant  Modern  Developer-first" >&2
+  printf '\n' >&2
+  uf_paint '53;214;246'  "  ██    ██   ████████"
+  uf_paint '38;119;255'  "  ██    ██   ██"
+  uf_paint '92;73;255'   "  ██    ██   ██████"
+  uf_paint '143;75;255'  "  ██    ██   ██"
+  uf_paint '216;75;255'  "   ██████    ██"
+  printf '\n' >&2
+  if [ -z "$uf_colour" ]; then
+    printf '  %s\n\n' "Unified Toolchain for Flow" >&2
+  else
+    printf '  \033[1m%s\033[0m \033[2m%s\033[0m\n\n' \
+      "Unified Toolchain for Flow" "· one binary for Flow and React" >&2
+  fi
 }
 
 uf_step() {
