@@ -15,7 +15,8 @@
 //                 development it also renders every HTML request on the
 //                 server, so `uf dev` serves the same markup `uf build` writes.
 // * `uf:mdx`    — `@mdx-js/rollup`, configured for React with GitHub-flavoured
-//                 markdown, front matter and heading ids, so `.mdx` works with
+//                 markdown, front matter, heading ids and build-time syntax
+//                 highlighting, so `.mdx` works with
 //                 no configuration.
 //
 // `uniflowed(options)` returns the array; a project that wants to add a plugin
@@ -26,6 +27,8 @@ import path from "node:path";
 
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
+
+import { highlightPlugin } from "./internal/highlight.js";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMdxFrontmatter from "remark-mdx-frontmatter";
@@ -248,12 +251,19 @@ function flowPlugin({ routerRoot, appEntry, command }) {
 function mdxPlugin(markdown) {
   const mdxConfig = markdown.mdx ?? {};
   if (mdxConfig.enabled === false) return { name: "uf:mdx" };
+
+  // Highlighting is on unless a project turns it off, and it happens here
+  // rather than in the browser: the colours are in the HTML, so a code sample
+  // is readable before any JavaScript loads and no highlighter is shipped.
+  const highlight = highlightPlugin(mdxConfig.highlight);
+  const rehypePlugins = highlight == null ? [rehypeSlug] : [rehypeSlug, highlight];
+
   return {
     enforce: "pre",
     ...mdx({
       jsxImportSource: "react",
       remarkPlugins: [remarkGfm, remarkFrontmatter, [remarkMdxFrontmatter, { name: "frontmatter" }]],
-      rehypePlugins: [rehypeSlug],
+      rehypePlugins,
     }),
     name: "uf:mdx",
   };

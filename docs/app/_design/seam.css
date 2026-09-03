@@ -1035,3 +1035,76 @@ tbody tr:last-child :is(td, th) {
 .home-section > :is(p, pre, .command, .terminal) {
   max-width: var(--doc-measure);
 }
+
+/* ------------------------------------------------------------------ *
+ * Highlighted code
+ * ------------------------------------------------------------------ */
+
+/*
+ * The build writes both themes into every token as CSS variables, because it
+ * cannot know which the reader prefers. These rules pick one — and only the
+ * token colours: the block keeps this site's own paper ground and hairline
+ * rather than the theme's background, so a code sample sits in the page
+ * instead of on top of it.
+ */
+.prose .shiki,
+.home-section .shiki {
+  background: var(--doc-code-ground) !important;
+  color: var(--shiki-light);
+}
+
+.shiki span {
+  color: var(--shiki-light);
+}
+
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    .prose .shiki,
+    .home-section .shiki,
+    .shiki span {
+      color: var(--shiki-dark);
+    }
+  }
+}
+
+:root[data-theme="dark"] .prose .shiki,
+:root[data-theme="dark"] .home-section .shiki,
+:root[data-theme="dark"] .shiki span {
+  color: var(--shiki-dark);
+}
+
+/*
+ * Flow's own keywords.
+ *
+ * A JavaScript grammar reads `component`, `hook`, `renders` and `match` as
+ * identifiers, so the build marks them and the colour is decided here. Two
+ * values, because a build cannot know which theme the reader will get; they
+ * are the keyword colours of the two default themes, so Flow's keywords look
+ * like the keywords beside them. A project that configures different
+ * `highlight.themes` sets these to match.
+ */
+.uf-flow-keyword {
+  --doc-keyword-light: #d73a49;
+  --doc-keyword-dark: #f47067;
+  color: var(--doc-keyword-light) !important;
+}
+
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    .uf-flow-keyword {
+      color: var(--doc-keyword-dark) !important;
+    }
+  }
+}
+
+:root[data-theme="dark"] .uf-flow-keyword {
+  color: var(--doc-keyword-dark) !important;
+}
+
+/* Shiki wraps each line in a span, so a long line has to be allowed to scroll
+   with the block rather than wrapping mid-token. */
+.shiki code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+}

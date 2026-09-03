@@ -55,6 +55,44 @@ markdown, front matter and heading ids. `app.builtins.markdown` in
 [the config](/reference/config) turns pieces of it off or points them
 elsewhere.
 
+## Syntax highlighting
+
+Fenced code is highlighted during the build, so the colours are in the HTML and
+no highlighter is shipped to the browser:
+
+```mdx
+```js
+component Counter(initial: number) { … }
+```
+```
+
+Both a light and a dark theme are emitted together as CSS variables, because a
+build cannot know which the reader prefers; the stylesheet picks one. Flow's own
+keywords — `component`, `hook`, `renders`, `match` — are marked as keywords even
+though no highlighter has a Flow grammar and a JavaScript one reads them as
+plain names.
+
+To change the themes, or to add a language:
+
+```js
+export default defineConfig({
+  app: {
+    builtins: {
+      markdown: {
+        mdx: {
+          highlight: {
+            themes: { light: "min-light", dark: "vitesse-dark" },
+            langs: ["python", "sql"],
+          },
+        },
+      },
+    },
+  },
+});
+```
+
+`highlight.enabled: false` turns it off.
+
 ## Public files
 
 Anything in `public/` is served from the root and copied into the build
