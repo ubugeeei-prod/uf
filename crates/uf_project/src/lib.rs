@@ -194,19 +194,30 @@ fn write_generated_file(path: &Utf8Path, contents: &str, force: bool) -> Result<
 /// removable from `lint.ignore`, which is why they are not here.
 const ALWAYS_IGNORED: &[&str] = &[".uf", ".git"];
 
+/// Whether a path is excluded from linting, formatting and test discovery.
+///
+/// An ignore entry is read one of two ways, chosen by whether it contains a
+/// separator. A bare name — `dist`, `node_modules`, `target` — names a kind of
+/// directory and matches wherever it appears, because a build directory is
+/// still a build directory two levels down: this project's own documentation
+/// builds into `docs/dist`, and a root-anchored `dist` did not cover it, so
+/// `uf fmt` walked into generated bundles and offered to reformat them. A
+/// path — `src/generated`, `packages/legacy/vendor` — names one place and is
+/// matched as a prefix, which is what someone writing a path means.
 fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> bool {
     let relative = path.strip_prefix(root).unwrap_or(path).as_str();
-    if relative
-        .split('/')
-        .any(|segment| ALWAYS_IGNORED.contains(&segment))
-    {
+    let mut segments = relative.split('/');
+    if segments.any(|segment| ALWAYS_IGNORED.contains(&segment)) {
         return true;
     }
-    config
-        .lint
-        .ignore
-        .iter()
-        .any(|ignored| relative.starts_with(ignored.as_str()))
+    config.lint.ignore.iter().any(|ignored| {
+        let ignored = ignored.as_str();
+        if ignored.contains('/') {
+            relative.starts_with(ignored)
+        } else {
+            relative.split('/').any(|segment| segment == ignored)
+        }
+    })
 }
 
 #[cfg(test)]

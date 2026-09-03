@@ -222,21 +222,51 @@ function readManifest(outDir) {
  * The entry is found by its `isEntry` flag rather than by key, because a
  * virtual module's manifest key is an implementation detail of the bundler.
  */
+/**
+ * The tags a prerendered document needs.
+ *
+ * Two walks over the manifest, because the two answers are different. A
+ * `modulepreload` is worth emitting only for a chunk this document will
+ * certainly load, which is the entry's *static* imports. A stylesheet has to
+ * be emitted for anything the page might render, and the router loads every
+ * route module dynamically — so a stylesheet imported by a layout is reached
+ * through `dynamicImports` and through nothing else. Following only the static
+ * graph, as this did, meant a layout could import a stylesheet and the built
+ * HTML would silently ship without it.
+ *
+ * The cost is that a project with per-route stylesheets links all of them on
+ * every page. Narrowing that needs the route table to say which chunk each
+ * route came from, which the manifest alone cannot tell us.
+ */
 function assetsFromManifest(manifest) {
   const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
   if (entry == null) throw new Error("uf: the client manifest has no entry chunk");
+
   const styles = new Set(entry.css ?? []);
+  const seen = new Set();
+  const collectStyles = (chunk) => {
+    for (const imported of [...(chunk.imports ?? []), ...(chunk.dynamicImports ?? [])]) {
+      if (seen.has(imported)) continue;
+      seen.add(imported);
+      const dependency = manifest[imported];
+      if (dependency == null) continue;
+      for (const css of dependency.css ?? []) styles.add(css);
+      collectStyles(dependency);
+    }
+  };
+  collectStyles(entry);
+
   const preloads = new Set();
-  const visit = (chunk) => {
+  const collectPreloads = (chunk) => {
     for (const imported of chunk.imports ?? []) {
       const dependency = manifest[imported];
       if (dependency == null || preloads.has(dependency.file)) continue;
       preloads.add(dependency.file);
-      for (const css of dependency.css ?? []) styles.add(css);
-      visit(dependency);
+      collectPreloads(dependency);
     }
   };
-  visit(entry);
+  collectPreloads(entry);
+
   return {
     scripts: [`/${entry.file}`],
     styles: [...styles].map((file) => `/${file}`),

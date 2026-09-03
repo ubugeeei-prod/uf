@@ -1,276 +1,152 @@
 // @flow
+//
+// The home page.
+//
+// It leads with the thing itself — one command, and what that command really
+// prints — because the argument for uf is not a feature list, it is that the
+// list collapses into one binary. Every claim below links to the page that
+// backs it, and the ones uf loses are on that list too.
+
 import * as React from "@uniflowed/react";
-import {
-  ufBrand,
-  ufBrandAssets,
-  ufCommands,
-  ufPalette,
-  ufRadiusScale,
-  ufSpacingScale,
-  ufTextScale,
-} from "@uniflowed/brand";
+import { Link } from "@uniflowed/router";
 
-const cyan = ufPalette[0];
-const blue = ufPalette[1];
-const indigo = ufPalette[2];
-const violet = ufPalette[3];
-const magenta = ufPalette[4];
-const ink = ufPalette[5];
-const slate = ufPalette[6];
-const mist = ufPalette[7];
+import { Claims, Command, Eyebrow, Lede, Terminal } from "./_design/parts.js";
 
-const textXs = ufTextScale[0];
-const textSm = ufTextScale[1];
-const textMd = ufTextScale[2];
-const textLg = ufTextScale[3];
-const textXl = ufTextScale[4];
-const text2xl = ufTextScale[5];
+/**
+ * Output of `uf build` on this site, pasted from a real run.
+ *
+ * Trimmed to the phases and the summary — the size table underneath it is
+ * fifty rows long — but not otherwise edited. When the build changes shape
+ * this block is re-pasted rather than adjusted by hand: a page that shows
+ * invented output is wrong the first time somebody checks it.
+ */
+const BUILD_OUTPUT = [
+  { text: "uf build  docs" },
+  { text: "──────────────", tone: "muted" },
+  { text: "" },
+  { text: "  config       ························ 105.2µs" },
+  { text: "  routes       ························ 402.2µs" },
+  { text: "  router types ························ 300.7µs" },
+  { text: "  rsc analysis ························   4.7ms" },
+  { text: "  vite         ························   2.11s" },
+  { text: "  manifest     ························ 134.7µs" },
+  { text: "  total        ························   6.44s" },
+  { text: "" },
+  { text: "  engine             vite", tone: "muted" },
+  { text: "  host               node", tone: "muted" },
+  { text: "  prerendered pages  14", tone: "muted" },
+  { text: "  modules            12", tone: "muted" },
+];
 
-const space1 = ufSpacingScale[0];
-const space2 = ufSpacingScale[1];
-const space3 = ufSpacingScale[2];
-const space4 = ufSpacingScale[3];
-const space6 = ufSpacingScale[4];
-const space8 = ufSpacingScale[5];
-const space12 = ufSpacingScale[6];
-
-const radiusSm = ufRadiusScale[0];
-const radiusMd = ufRadiusScale[1];
-const radiusLg = ufRadiusScale[2];
-const radiusXl = ufRadiusScale[3];
-const radiusPill = ufRadiusScale[4];
-const markSrc = "/" + ufBrandAssets.mark;
-
-export component Page() {
+export default component Home() {
   return (
-    <main className="shell">
-      <nav className="topbar" aria-label="Primary">
-        <a className="brand-lockup" href="/">
-          <img src={markSrc} alt="" width="40" height="40" />
-          <span>{ufBrand.name}</span>
-        </a>
-        <div className="nav-links">
-          <a href="/install/">Install</a>
-          <a href="/brand/tokens.json">Tokens</a>
-        </div>
-      </nav>
-
+    <div className="home seam" id="content">
       <section className="hero">
-        <div className="logo-stage">
-          <img src={markSrc} alt="uf gradient mark" />
+        <Eyebrow>Unified toolchain for Flow</Eyebrow>
+        <h1>
+          One binary between
+          <br />
+          your code and the web.
+        </h1>
+        <Lede>
+          uf runs, builds, tests, formats and lints Flow and React from a single
+          command. No Babel in the pipeline, no plugin list to assemble, and one
+          config file for all of it.
+        </Lede>
+
+        <div className="hero-actions">
+          <Link className="button" to="/guide/install">
+            Install uf
+          </Link>
+          <Link className="button button-quiet" to="/guide">
+            Read the guide
+          </Link>
         </div>
-        <div className="hero-copy">
-          <p className="eyebrow">uf Design System</p>
-          <h1>{ufBrand.name}</h1>
-          <h2>{ufBrand.headline}</h2>
-          <p>{ufBrand.tagline}</p>
-          <div className="accent-line" />
-          <ul className="capabilities">
-            <li>Unified</li>
-            <li>Fast</li>
-            <li>Elegant</li>
-            <li>Modern</li>
-            <li>Developer-first</li>
-          </ul>
-        </div>
-      </section>
 
-      <section className="token-grid" aria-label="Design tokens">
-        <article className="panel palette-panel">
-          <h3>Color Tokens</h3>
-          <ul className="swatches">
-            <li>
-              <span className="swatch" style={{ backgroundColor: cyan.value }} />
-              <strong>{cyan.name}</strong>
-              <code>{cyan.token}</code>
-              <span>{cyan.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: blue.value }} />
-              <strong>{blue.name}</strong>
-              <code>{blue.token}</code>
-              <span>{blue.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: indigo.value }} />
-              <strong>{indigo.name}</strong>
-              <code>{indigo.token}</code>
-              <span>{indigo.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: violet.value }} />
-              <strong>{violet.name}</strong>
-              <code>{violet.token}</code>
-              <span>{violet.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: magenta.value }} />
-              <strong>{magenta.name}</strong>
-              <code>{magenta.token}</code>
-              <span>{magenta.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: ink.value }} />
-              <strong>{ink.name}</strong>
-              <code>{ink.token}</code>
-              <span>{ink.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: slate.value }} />
-              <strong>{slate.name}</strong>
-              <code>{slate.token}</code>
-              <span>{slate.value}</span>
-            </li>
-            <li>
-              <span className="swatch" style={{ backgroundColor: mist.value }} />
-              <strong>{mist.name}</strong>
-              <code>{mist.token}</code>
-              <span>{mist.value}</span>
-            </li>
-          </ul>
-        </article>
-
-        <article className="panel">
-          <h3>Typography Tokens</h3>
-          <div className="type-spec">
-            <strong>Satoshi</strong>
-            <span>Display / Headings</span>
-          </div>
-          <div className="type-spec body">
-            <strong>Inter</strong>
-            <span>Body / UI Text</span>
-          </div>
-          <div className="type-spec mono">
-            <strong>JetBrains Mono</strong>
-            <span>Code / Monospace</span>
-          </div>
-          <ul className="token-list">
-            <li>
-              <code>{textXs.token}</code>
-              <span>{textXs.value}</span>
-            </li>
-            <li>
-              <code>{textSm.token}</code>
-              <span>{textSm.value}</span>
-            </li>
-            <li>
-              <code>{textMd.token}</code>
-              <span>{textMd.value}</span>
-            </li>
-            <li>
-              <code>{textLg.token}</code>
-              <span>{textLg.value}</span>
-            </li>
-            <li>
-              <code>{textXl.token}</code>
-              <span>{textXl.value}</span>
-            </li>
-            <li>
-              <code>{text2xl.token}</code>
-              <span>{text2xl.value}</span>
-            </li>
-          </ul>
-        </article>
-
-        <article className="panel">
-          <h3>Spacing Tokens</h3>
-          <ul className="bars">
-            <li>
-              <code>{space1.token}</code>
-              <span>{space1.value}</span>
-              <i style={{ width: space1.value }} />
-            </li>
-            <li>
-              <code>{space2.token}</code>
-              <span>{space2.value}</span>
-              <i style={{ width: space2.value }} />
-            </li>
-            <li>
-              <code>{space3.token}</code>
-              <span>{space3.value}</span>
-              <i style={{ width: space3.value }} />
-            </li>
-            <li>
-              <code>{space4.token}</code>
-              <span>{space4.value}</span>
-              <i style={{ width: space4.value }} />
-            </li>
-            <li>
-              <code>{space6.token}</code>
-              <span>{space6.value}</span>
-              <i style={{ width: space6.value }} />
-            </li>
-            <li>
-              <code>{space8.token}</code>
-              <span>{space8.value}</span>
-              <i style={{ width: space8.value }} />
-            </li>
-            <li>
-              <code>{space12.token}</code>
-              <span>{space12.value}</span>
-              <i style={{ width: space12.value }} />
-            </li>
-          </ul>
-        </article>
-
-        <article className="panel">
-          <h3>Radius Tokens</h3>
-          <ul className="radius-list">
-            <li>
-              <span style={{ borderRadius: radiusSm.value }} />
-              <code>{radiusSm.token}</code>
-              <em>{radiusSm.value}</em>
-            </li>
-            <li>
-              <span style={{ borderRadius: radiusMd.value }} />
-              <code>{radiusMd.token}</code>
-              <em>{radiusMd.value}</em>
-            </li>
-            <li>
-              <span style={{ borderRadius: radiusLg.value }} />
-              <code>{radiusLg.token}</code>
-              <em>{radiusLg.value}</em>
-            </li>
-            <li>
-              <span style={{ borderRadius: radiusXl.value }} />
-              <code>{radiusXl.token}</code>
-              <em>{radiusXl.value}</em>
-            </li>
-            <li>
-              <span style={{ borderRadius: radiusPill.value }} />
-              <code>{radiusPill.token}</code>
-              <em>{radiusPill.value}</em>
-            </li>
-          </ul>
-        </article>
-      </section>
-
-      <section className="terminal-section">
-        <div className="terminal">
-          <div className="traffic">
-            <span />
-            <span />
-            <span />
-            <strong>uf</strong>
-          </div>
-          <pre><code>{`uf v0.1.0
-Unified Toolchain for Flow
-
-$ ${ufCommands.curl}
-$ ${ufCommands.nixProfile}
-$ ${ufCommands.info}
-
-All set: Happy coding.`}</code></pre>
-        </div>
-        <div className="install-copy">
-          <h3>Install</h3>
-          <p>Use the hosted installer, or install the flake package directly.</p>
-          <pre><code>{`${ufCommands.curl}
-${ufCommands.nixRun}
-${ufCommands.nixProfile}`}</code></pre>
-          <a className="primary-action" href="/install/">Open install docs</a>
+        <div className="notice">
+          <strong>Pre-release.</strong> uf is at{" "}
+          <code>0.0.0-alpha</code>. Interfaces move without warning and the
+          packages are not on npm yet. The guide says what works today and{" "}
+          <Link to="/guide/testing">where it loses</Link> to the tools it means
+          to replace.
         </div>
       </section>
-    </main>
+
+      <section className="home-section">
+        <h2 className="seam-mark">What a build looks like</h2>
+        <Command>uf build</Command>
+        <Terminal lines={BUILD_OUTPUT} label="Output of uf build" />
+        <p>
+          There is no <code>vite.config.ts</code> next to that, no{" "}
+          <code>babel.config.js</code>, and no <code>@babel/preset-flow</code>{" "}
+          in the dependency tree. Flow reaches JavaScript through Meta's own
+          Rust parser and React's own compiler, both linked into the binary.
+        </p>
+      </section>
+
+      <section className="home-section">
+        <h2 className="seam-mark">What it claims</h2>
+        <Claims
+          items={[
+            {
+              title: "Flow without Babel",
+              body: (
+                <>
+                  The official Flow parser, the official React Compiler and oxc,
+                  in one Rust pipeline. <code>component</code>, <code>hook</code>,{" "}
+                  <code>match</code> and enums are lowered where they are parsed.{" "}
+                  <Link to="/guide/flow">How it works</Link>
+                </>
+              ),
+            },
+            {
+              title: "Vite, not a fork of it",
+              body: (
+                <>
+                  The dev server and the production build are Vite 8. uf decides
+                  what Vite is handed and drives it over a JSON protocol, so
+                  Vite's plugin ecosystem keeps working.{" "}
+                  <Link to="/guide/dev">Dev and build</Link>
+                </>
+              ),
+            },
+            {
+              title: "Tests that actually run",
+              body: (
+                <>
+                  Rust owns discovery, ordering, the worker pool and the report;
+                  the host runs the bodies. About nine times faster than Vitest
+                  on 1,000 tests — and about three times slower than Bun, which
+                  the guide explains rather than hides.{" "}
+                  <Link to="/guide/testing">Testing</Link>
+                </>
+              ),
+            },
+            {
+              title: "One config file",
+              body: (
+                <>
+                  <code>uf.config.js</code> configures the runtime, the router,
+                  the build, the test runner and the formatter. It is Flow, so
+                  it is type-checked like the rest of your code.{" "}
+                  <Link to="/reference/config">Every option</Link>
+                </>
+              ),
+            },
+            {
+              title: "Any JavaScript host",
+              body: (
+                <>
+                  Node.js, Bun and Deno are capabilities, not targets: uf asks
+                  the host what it can do and picks one. The same project builds
+                  and tests on all three.{" "}
+                  <Link to="/guide/install">Install</Link>
+                </>
+              ),
+            },
+          ]}
+        />
+      </section>
+    </div>
   );
 }

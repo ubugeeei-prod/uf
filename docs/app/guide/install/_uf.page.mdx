@@ -1,0 +1,63 @@
+---
+title: "Install · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Install
+
+<div className="lede">
+uf is a single native binary. It needs a JavaScript host — Node.js, Bun or
+Deno — because Vite and your test bodies run there, but it is not installed
+through one.
+</div>
+
+## From a release
+
+Every tagged release publishes binaries for macOS and Linux, on both x86-64 and
+ARM64:
+
+<div className="command"><code>curl -fsSL https://github.com/ubugeeei-prod/uf/releases/latest/download/uf-install.sh | sh</code></div>
+
+The script downloads the binary for your platform, verifies its checksum against
+the release manifest, and puts it on your `PATH`. Read it before you run it; it
+is short.
+
+## From source
+
+uf builds with a pinned nightly Rust toolchain — Flow's own crates need
+`box_patterns`, which is still unstable — and vendors the Flow and React
+Compiler sources as submodules.
+
+<div className="command"><code>git clone --recurse-submodules https://github.com/ubugeeei-prod/uf</code></div>
+<div className="command"><code>cd uf && cargo build --release --bin uf</code></div>
+
+The toolchain file in the repository selects the right nightly, so `rustup` will
+fetch it on the first build. Expect the first build to take a while: it compiles
+the Flow parser and the React Compiler.
+
+## The JavaScript host
+
+uf does the parsing, transforming, scheduling and reporting itself, and hands
+the rest to a host:
+
+| Host | Dev and build | Tests | Notes |
+| --- | --- | --- | --- |
+| Node.js | yes | yes | The default. Flow modules load through `module.register()`. |
+| Bun | yes | yes | Flow modules load through a `--preload` plugin. |
+| Deno | yes | not yet | No Flow loader; `uf test` refuses it with a message rather than failing later on a syntax error. |
+
+uf detects what is available and picks one. To pin a project to a host:
+
+<div className="command"><code>uf use bun</code></div>
+
+which writes the choice into `uf.config.js`. `uf info` prints what was detected
+and what was chosen.
+
+## Checking the install
+
+<div className="command"><code>uf info</code></div>
+
+prints the version, the resolved host, and the project it found. If it reports
+no project, you are outside one — that is fine, and [the next
+page](/guide/project) starts one.

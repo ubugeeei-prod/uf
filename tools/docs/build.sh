@@ -3,15 +3,16 @@ set -eu
 
 script_dir="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 repo_root="$(CDPATH= cd "$script_dir/../.." && pwd)"
-out_dir="$repo_root/docs/dist/docs"
-static_dir="$repo_root/docs/static"
+public_dir="$repo_root/docs/public/brand"
 
-rm -rf "$out_dir"
-mkdir -p "$out_dir/brand" "$out_dir/install"
-
-cp "$static_dir/index.html" "$out_dir/index.html"
-cp "$static_dir/install/index.html" "$out_dir/install/index.html"
-cp "$static_dir/docs.css" "$out_dir/docs.css"
+# The brand assets are shared with the README and the release pages, so they
+# live at the repository root rather than inside the site. Staging them into
+# Vite's public directory — rather than copying them over the build afterwards
+# — means `uf dev` serves them too, and the build cannot wipe them: it empties
+# its own output directory before it writes, which is why copying them there
+# first never worked.
+rm -rf "$public_dir"
+mkdir -p "$public_dir"
 
 for asset in \
   favicon.svg \
@@ -26,7 +27,7 @@ for asset in \
   uniflowed-wordmark.png \
   uniflowed-wordmark.svg
 do
-  cp "$repo_root/brand/$asset" "$out_dir/brand/$asset"
+  cp "$repo_root/brand/$asset" "$public_dir/$asset"
 done
 
 (

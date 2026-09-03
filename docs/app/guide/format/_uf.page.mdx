@@ -1,0 +1,69 @@
+---
+title: "Formatting and linting · uf"
+---
+
+<p className="eyebrow">The tools</p>
+
+# Formatting and linting
+
+<div className="lede">
+Both read the same tree the compiler does. The formatter is a Rust printer over
+Meta's Flow parser; the linter runs uf's own rules alongside Flow's built-in
+ones, in one pass, with one report.
+</div>
+
+## uf fmt
+
+<div className="command"><code>uf fmt</code></div>
+
+Formats every Flow, JavaScript, JSON, Markdown and CSS file in the project.
+`--check` exits non-zero instead of writing, which is what CI should run.
+
+Flow files go through the official Flow parser and a printer written for it, so
+`component`, `hook`, `renders`, `match` and enums are formatted as first-class
+syntax rather than survived. The output follows Prettier's conventions —
+80 columns, double quotes, trailing commas, the same line-breaking decisions —
+because the point of a formatter is that nobody argues about it, and Prettier
+already won that argument.
+
+Files uf has no opinion about are handed to Biome, which is also Rust and also
+fast, so a repository with a `README.md` and a `package.json` in it does not
+need a second formatter installed.
+
+Measured on a 133 kB Flow and JSX file:
+
+| | Time | Throughput |
+| --- | --- | --- |
+| Parse alone | 10.4 ms | 12.9 MiB/s |
+| Parse and format | 17.9 ms | 7.4 MiB/s |
+| `--check`, already formatted | 18.0 ms | 7.5 MiB/s |
+
+The parser is 58% of that. The target is 10 MB/s end to end, and the printer is
+not what is standing between here and there.
+
+## uf lint
+
+<div className="command"><code>uf lint</code></div>
+
+Runs uf's rules and Flow's own lints together and prints one list. `--json`
+emits the report machine-readably.
+
+Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
+`unnecessary-optional-chain` and the rest — are configured in `uf.config.js`
+alongside uf's rules rather than in a separate `.flowconfig` section, because a
+project should have one place where "this is an error here" is written down.
+
+## uf check
+
+<div className="command"><code>uf check</code></div>
+
+Runs Flow's type checker over the project and reports what it says. uf does not
+type-check anything itself: Flow is the type system, and reimplementing it
+would only create a second opinion about your code, which is the thing this
+whole toolchain exists to avoid.
+
+## In CI
+
+<div className="command"><code>uf fmt --check && uf lint && uf check && uf test</code></div>
+
+Four commands, no configuration, and each one exits non-zero when it should.

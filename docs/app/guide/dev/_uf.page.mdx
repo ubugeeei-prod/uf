@@ -1,0 +1,80 @@
+---
+title: "Dev and build · uf"
+---
+
+<p className="eyebrow">The tools</p>
+
+# Dev and build
+
+<div className="lede">
+Both are Vite. uf decides what Vite is handed, starts it on a JavaScript host,
+and drives it over a protocol — it does not fork it, wrap it or reimplement it.
+</div>
+
+## How it fits together
+
+```
+uf dev                  Rust: reads uf.config.js, resolves the host,
+  │                     builds the Vite config, owns the terminal
+  ▼
+node/bun/deno           @uniflowed/vite's driver: starts Vite, reports
+  │                     back one JSON event per line
+  ▼
+Vite 8                  dev server, HMR, plugin pipeline, rollup build
+  │
+  ▼
+uf transform            one long-lived process; every Flow module goes
+                        through it
+```
+
+Two things follow from this shape. Vite's plugins keep working, because it is
+really Vite. And the Flow transform is not a plugin that shells out per file —
+`@uniflowed/vite` spawns `uf transform` once and pipes every module through it,
+so the process start-up cost is paid once rather than thousands of times.
+
+## uf dev
+
+<div className="command"><code>uf dev</code></div>
+
+Binds loopback on the port from `dev.port`. React Fast Refresh works through
+`component` declarations. Editing a Flow file re-transforms only that module.
+
+To reach the dev server from another device, `--host` binds a routable address —
+but only if `dev.allowedHosts` in your config is non-empty. That is deliberate:
+a dev server on `0.0.0.0` with no host allow-list is how a local project ends up
+readable from the coffee shop's network. The threat model is written down in
+[`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
+
+## uf build
+
+<div className="command"><code>uf build</code></div>
+
+Builds the client bundle, builds the server bundle, then prerenders every route
+that can be rendered without a request. What comes out is static HTML plus
+hashed assets under `dist/`.
+
+`--size-report` prints what each chunk cost, so a dependency that doubled the
+bundle is visible in the same command that built it.
+
+## Reaching past uf
+
+uf generates the Vite config; it does not hide it. A `plugins` array at the top
+level of `uf.config.js` is appended to the plugins uf installs, and `dev` and
+`build` are passed through to Vite's own options — so a Vite plugin, an alias or
+a server option can be added without leaving uf:
+
+```js
+// @flow
+import { defineConfig } from "@uniflowed/config";
+import svgr from "vite-plugin-svgr";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  plugins: [svgr()],
+  dev: { port: 4000 },
+});
+```
+
+`uf inspect --json` prints what uf resolved, including the config it handed the
+driver, which is the thing to look at when Vite is doing something you did not
+ask for.

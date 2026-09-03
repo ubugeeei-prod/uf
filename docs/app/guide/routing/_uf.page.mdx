@@ -1,0 +1,115 @@
+---
+title: "Routing · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Routing
+
+<div className="lede">
+Files under `app/` are the route table. There is no route configuration to
+write and no list to keep in step with the directory.
+</div>
+
+## The file names
+
+Four names are reserved. Everything else in `app/` is an ordinary module.
+
+| File | What it is |
+| --- | --- |
+| `_uf.page.js` | The page at this path. Its default export is a component. |
+| `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
+| `_uf.not-found.js` | Rendered when nothing under this path matches. |
+| `_uf.middleware.js` | Runs before the route resolves — redirects, auth, headers. |
+
+Any of them may be `.mdx` instead of `.js`. A directory whose name starts with
+`_` is not a route, which is where shared components belong — this site keeps
+its design system in `app/_design/`.
+
+## Paths
+
+A directory is a path segment:
+
+```
+app/_uf.page.js              →  /
+app/guide/_uf.page.mdx       →  /guide
+app/guide/install/_uf.page.mdx  →  /guide/install
+```
+
+A segment in brackets is a parameter, and a segment in brackets with a spread
+captures the rest:
+
+```
+app/posts/[slug]/_uf.page.js      →  /posts/anything
+app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
+```
+
+Parameters arrive as props:
+
+```js
+// @flow
+import type { PageProps } from "@uniflowed/router";
+
+export default component Post(params: {| +slug: string |}) {
+  return <article>{params.slug}</article>;
+}
+```
+
+## Layouts nest
+
+Every layout on the path wraps the page, outermost first. This site has two: the
+root layout renders the document and the masthead, and `app/guide/_uf.layout.js`
+adds the sidebar and the prose column. `/reference` re-exports the second one
+rather than copying it.
+
+A layout does not re-render when navigating between pages that share it, so
+scroll position and state in a sidebar survive navigation.
+
+## Loading data
+
+A page or layout may export a `loader`, which runs before the component and
+before the response is sent:
+
+```js
+export async function loader({ params }: LoaderArgs) {
+  return { post: await readPost(params.slug) };
+}
+
+export default component Post(data: {| +post: Post |}) {
+  return <h1>{data.post.title}</h1>;
+}
+```
+
+`redirect()`, `permanentRedirect()` and `notFound()` are thrown from a loader
+rather than returned, so the type of the data does not have to admit "or a
+redirect".
+
+## Navigating
+
+`Link` navigates on the client and prefetches on hover by default:
+
+```js
+import { Link } from "@uniflowed/router";
+
+<Link to="/guide/install">Install</Link>
+```
+
+`prefetch="render"` fetches as soon as the link is on screen, and
+`prefetch="off"` never does. `useRouter()` navigates imperatively;
+`useRoute()` gives the current path, params and search — which is what the
+sidebar on this page uses to mark the open entry.
+
+## Types for routes
+
+`uf build` and `uf dev` write a `router.js` next to your config, declaring the
+paths that exist and the parameters each takes. Importing `route` from it gives
+a link builder Flow checks:
+
+```js
+import { route } from "../router.js";
+
+route("/posts/[slug]", { slug: post.slug });
+```
+
+A path that does not exist, or a missing parameter, is a type error rather than
+a 404 in production.

@@ -1,0 +1,67 @@
+---
+title: "Styling and content · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Styling and content
+
+<div className="lede">
+CSS, Markdown and MDX all work without being switched on. This page is written
+in MDX and imports nothing to say so.
+</div>
+
+## CSS
+
+Import a stylesheet from any module:
+
+```js
+import "./_design/seam.css";
+```
+
+Vite bundles it, hashes it, and — because uf prerenders — links it from the
+generated HTML. CSS Modules work with the usual `.module.css` suffix, and so do
+the preprocessors Vite supports, if you install one.
+
+There is no CSS-in-JS in uf and none is planned. A stylesheet that the browser
+can cache separately from the JavaScript is faster than one it cannot, and the
+prerendered HTML needs the styles before hydration anyway.
+
+## Markdown and MDX
+
+A `_uf.page.mdx` is a page. Markdown is GitHub-flavoured, front matter is
+parsed, and headings get ids so they can be linked:
+
+```mdx
+export const frontmatter = { title: "Release notes" };
+
+# Release notes
+
+Tables, footnotes and task lists all work.
+```
+
+MDX means components in prose. Import one and use it:
+
+```mdx
+import { Chart } from "../_design/chart.js";
+
+Last quarter looked like this:
+
+<Chart data={data} />
+```
+
+The MDX pipeline is on by default, configured for React with GitHub-flavoured
+markdown, front matter and heading ids. `app.builtins.markdown` in
+[the config](/reference/config) turns pieces of it off or points them
+elsewhere.
+
+## Public files
+
+Anything in `public/` is served from the root and copied into the build
+untouched. `public/brand/favicon.svg` is `/brand/favicon.svg`.
+
+## What this page is
+
+This page is `app/guide/styling/_uf.page.mdx`. The `.lede` paragraph above it
+is plain HTML in the MDX, the sidebar comes from the layout two directories up,
+and the whole thing is one route in a table nobody wrote.
