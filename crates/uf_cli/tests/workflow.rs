@@ -132,14 +132,14 @@ fn publish_and_release_report_trusted_publish_plan() {
 }
 
 #[test]
-fn install_reports_native_package_manager_plan() {
+fn install_runs_the_package_manager_that_drives_the_project() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("package.json"),
         r#"{
   "name": "install-demo",
   "dependencies": {
-    "@uniflowed/core": "latest"
+    "definitely-not-a-real-package-ufsdfkj": "1.0.0"
   }
 }
 "#,
@@ -153,22 +153,20 @@ fn install_reports_native_package_manager_plan() {
         .output()
         .unwrap();
 
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    // The point of the test is that something really tried to install. uf used
+    // to write a lockfile, print "installed 1 package" and exit 0 without
+    // reaching a registry, so a green exit proved nothing; a dependency that
+    // cannot exist must now make the command fail.
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("resolver       UfNative"));
-    assert!(stdout.contains("scripts        Forbid"));
-    assert!(stdout.contains("uf.lock"));
-    assert!(stdout.contains(".uf/store/manifest.json"));
-    assert!(stdout.contains("packages       1"));
-    assert!(stdout.contains("store entries  1"));
-    assert!(stdout.contains("✓ installed 1 package"));
-    assert!(dir.path().join("uf.lock").exists());
-    assert!(dir.path().join(".uf/store/manifest.json").exists());
-    assert!(dir.path().join(".uf/store/packages").exists());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        !output.status.success(),
+        "installing a package that does not exist must fail:\n{stdout}{stderr}"
+    );
+    assert!(
+        stdout.contains("uf install"),
+        "the banner should still be rendered:\n{stdout}"
+    );
 }
 
 #[test]

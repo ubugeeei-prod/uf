@@ -570,9 +570,14 @@ pre code {
 }
 
 /* A command a reader is meant to run. The `$` is generated, so copying the
-   line copies the command and not the prompt. */
+   line copies the command and not the prompt.
+
+   It carries its own block margin because it is a `div` rather than a `pre`,
+   and so is not covered by the block-margin rule near the top of this file —
+   without this it sits flush against the heading above it. */
 .command {
   background: var(--doc-code-ground);
+  margin: 1.25rem 0;
   border-left: 2px solid var(--uf-color-blue-500);
   display: flex;
   gap: 0.7rem;
@@ -666,12 +671,41 @@ tbody tr:last-child :is(td, th) {
 .hero {
   /* Block only: the inline padding belongs to `.seam` and a shorthand here
      would silently reset it. */
-  padding-block: 4.5rem 1rem;
+  align-items: center;
+  column-gap: 3rem;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  justify-content: space-between;
+  padding-block: 4.5rem 0;
+}
+
+.hero-copy {
+  flex: 1 1 26rem;
+}
+
+/* The mark is the one place on the site the brand is stated at size, so it
+   gets to be as large as the row allows. It shrinks with the viewport and
+   drops above the copy — the `wrap-reverse` above — before it would squeeze
+   the headline. The width here and the `sizes` attribute on the element have
+   to agree, or the browser picks its file from the wrong number. */
+.hero-mark {
+  flex: 0 1 auto;
+  height: auto;
+  margin-bottom: 1.5rem;
+  width: clamp(9rem, 46vw, 26rem);
+}
+
+.hero-tail {
+  padding-block: 0 1rem;
 }
 
 .hero .lede {
   font-size: 1.32rem;
   max-width: 46ch;
+}
+
+.hero h1 {
+  margin-top: 0;
 }
 
 .hero-actions {
@@ -847,7 +881,11 @@ tbody tr:last-child :is(td, th) {
 }
 
 .home-section {
-  margin-top: 3.5rem;
+  margin-top: 4.5rem;
+}
+
+.home-section > h2 {
+  margin-bottom: 1.75rem;
 }
 
 .home-section > :is(p, pre, .command, .terminal) {

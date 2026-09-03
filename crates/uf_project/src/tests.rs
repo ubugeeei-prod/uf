@@ -15,29 +15,48 @@ fn creates_zero_config_react_flow_app() {
     )
     .unwrap();
 
-    assert_eq!(report.files.len(), 12);
+    assert_eq!(report.files.len(), 8);
     assert!(root.join("app.js").exists());
     assert!(root.join("uf.config.js").exists());
     assert!(root.join("app/_uf.page.js").exists());
-    assert!(root.join("app/_uf.page.native.js").exists());
-    assert!(root.join("server/actions.js").exists());
+    assert!(root.join("app/Counter.js").exists());
 
     let package = fs::read_to_string(root.join("package.json")).unwrap();
     assert!(!package.contains(r#""scripts""#));
 
+    // Every dependency a scaffolded project declares has to be a package that
+    // is actually implemented, or the project cannot start. The declaration
+    // packages that throw when called must not appear here.
+    for stub in [
+        "@uniflowed/core",
+        "@uniflowed/effect",
+        "@uniflowed/fetch",
+        "@uniflowed/loader",
+        "@uniflowed/query",
+        "@uniflowed/react-native",
+        "@uniflowed/react-testing",
+        "@uniflowed/relay",
+        "@uniflowed/server",
+        "@uniflowed/stylex",
+        "@uniflowed/ui",
+    ] {
+        assert!(!package.contains(stub), "{stub} is not implemented yet");
+        for file in &report.files {
+            let contents = fs::read_to_string(file).unwrap();
+            assert!(
+                !contents.contains(stub),
+                "{file} imports {stub}, which is not implemented yet"
+            );
+        }
+    }
+
     let page = fs::read_to_string(root.join("app/_uf.page.js")).unwrap();
     assert!(page.contains("component Page()"));
-    assert!(page.contains("@uniflowed/query"));
-    assert!(page.contains("@uniflowed/effect"));
-    assert!(page.contains("@uniflowed/state"));
-    assert!(page.contains("@uniflowed/fetch"));
-    assert!(page.contains("@uniflowed/loader"));
-    assert!(page.contains("@uniflowed/validator"));
-    assert!(page.contains("@uniflowed/stylex"));
-    assert!(page.contains("@uniflowed/relay"));
-    assert!(page.contains("Form.Root"));
-    assert!(page.contains("Dialog.Body"));
-    assert!(root.join("app/client/useCounter.js").exists());
+    assert!(page.contains("enum Mood"));
+    assert!(page.contains("match (mood)"));
+
+    let hook = fs::read_to_string(root.join("app/useCounter.js")).unwrap();
+    assert!(hook.contains("hook useCounter"));
 }
 
 #[test]

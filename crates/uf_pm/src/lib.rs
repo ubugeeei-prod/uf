@@ -9,6 +9,7 @@
 
 pub mod command;
 pub mod detect;
+pub mod run;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -30,6 +31,7 @@ pub use crate::detect::{
     WorkspaceMarker, YarnEdition, detect_package_manager, detect_package_manager_with,
     parse_package_manager_field, scan_lockfiles, yarn_edition_in,
 };
+pub use crate::run::{InstallRun, InstallRunError, run_install};
 
 /// JSON object keys that must never be treated as data.
 ///

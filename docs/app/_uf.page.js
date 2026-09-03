@@ -42,18 +42,44 @@ export default component Home() {
   return (
     <div className="home seam" id="content">
       <section className="hero">
-        <Eyebrow>Unified toolchain for Flow</Eyebrow>
-        <h1>
-          One binary between
-          <br />
-          your code and the web.
-        </h1>
-        <Lede>
-          uf runs, builds, tests, formats and lints Flow and React from a single
-          command. No Babel in the pipeline, no plugin list to assemble, and one
-          config file for all of it.
-        </Lede>
+        <div className="hero-copy">
+          <Eyebrow>Unified toolchain for Flow</Eyebrow>
+          <h1>
+            One binary between
+            <br />
+            your code and the web.
+          </h1>
+          <Lede>
+            uf runs, builds, tests, formats and lints Flow and React from a
+            single command. No Babel in the pipeline, no plugin list to
+            assemble, and one config file for all of it.
+          </Lede>
+        </div>
 
+        {/*
+          Decorative: the name is already in the heading and in the masthead,
+          so announcing the mark again would only repeat it.
+
+          The mark exists at two sizes and neither is a vector — the `.svg` in
+          `brand/` is a PNG in an SVG wrapper. `srcset` lets a phone take the
+          512px file and a retina desktop take the 1254px one, rather than
+          every visitor paying 400 kB or every retina screen getting a soft
+          mark. The intrinsic size is declared so the row does not reflow when
+          it arrives.
+        */}
+        <img
+          className="hero-mark"
+          src="/brand/uniflowed-mark.png"
+          srcSet="/brand/uniflowed-mark.png 512w, /brand/uf.png 1254w"
+          sizes="(max-width: 48rem) 46vw, 26rem"
+          alt=""
+          width="1254"
+          height="1254"
+          fetchPriority="high"
+        />
+      </section>
+
+      <section className="hero-tail">
         <div className="hero-actions">
           <Link className="button" to="/guide/install">
             Install uf
@@ -70,6 +96,27 @@ export default component Home() {
           <Link to="/guide/testing">where it loses</Link> to the tools it means
           to replace.
         </div>
+      </section>
+
+      <section className="home-section">
+        <h2 className="seam-mark">Install it</h2>
+        <p>
+          One binary. It reads the checksum from the release manifest before it
+          writes anything, and it is short enough to read first.
+        </p>
+        <Command>curl -fsSL https://setup.uniflowed.dev | sh</Command>
+        <p>
+          Then a project, and a dev server, with nothing to configure in
+          between:
+        </p>
+        <Command>uf create app my-site</Command>
+        <Command>cd my-site &amp;&amp; uf dev</Command>
+        <p>
+          That is the whole setup. No <code>npm install</code> of a toolchain,
+          no config to copy from somewhere. If you would rather build from
+          source, or pin the project to Bun or Deno,{" "}
+          <Link to="/guide/install">the install page</Link> covers both.
+        </p>
       </section>
 
       <section className="home-section">

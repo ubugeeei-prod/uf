@@ -28,20 +28,37 @@ fn docs_root() -> PathBuf {
 
 /// Whether the fixture can be built here: Node on PATH and the workspace
 /// installed.
+///
+/// A missing fixture is a failure, not a skip. These two tests are the only
+/// thing standing between a broken dev server or build and a release, and when
+/// they skipped themselves they did it silently — cargo hides a passing test's
+/// output, so "1 passed" was printed for a `uf dev` that answered every request
+/// with "Cannot GET /". Set `UF_ALLOW_FIXTURE_SKIP=1` to opt out on a machine
+/// that genuinely cannot run them; CI sets nothing and so can never skip.
 fn fixture_ready() -> bool {
-    let node = Command::new("node")
+    let mut missing = Vec::new();
+    if !Command::new("node")
         .arg("--version")
         .output()
-        .is_ok_and(|o| o.status.success());
-    let installed = docs_root()
-        .join("../node_modules/@uniflowed/vite/driver.js")
-        .is_file();
-    if !node || !installed {
-        eprintln!(
-            "skipping: the docs fixture needs `node` on PATH and `npm ci` at the workspace root"
-        );
+        .is_ok_and(|output| output.status.success())
+    {
+        missing.push("`node` is not on PATH".to_owned());
     }
-    node && installed
+    let driver = docs_root().join("../node_modules/@uniflowed/vite/driver.js");
+    if !driver.is_file() {
+        missing.push(format!("{} does not exist; run `npm ci`", driver.display()));
+    }
+
+    if missing.is_empty() {
+        return true;
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "the docs fixture is not available, so this test would prove nothing: {}",
+        missing.join("; ")
+    );
+    eprintln!("skipping: {}", missing.join("; "));
+    false
 }
 
 #[test]
@@ -158,11 +175,12 @@ fn dev_serves_the_docs_site_through_vite() {
         return;
     }
     let root = docs_root();
+    let port = free_port();
 
     let mut child = Command::new(uf_path())
         .arg("--cwd")
         .arg(&root)
-        .args(["dev", "--port", "0"])
+        .args(["dev", "--port", &port.to_string()])
         .env_remove("NO_COLOR")
         .env("TERM", "xterm-256color")
         .stdin(Stdio::piped())
@@ -173,30 +191,21 @@ fn dev_serves_the_docs_site_through_vite() {
     let stdout = child.stdout.take().unwrap();
     let server = DevServer(child);
 
-    // Read the banner until the server reports where it listens.
+    // Wait for the port to answer rather than for a line of the banner to look
+    // a particular way. Parsing the rendered banner made this test depend on
+    // colour and on the exact wording, and a parse that quietly found nothing
+    // ended the test before it asserted anything — which is how a dev server
+    // that answered every request with "Cannot GET /" passed it.
     let mut lines = BufReader::new(stdout).lines();
-    let mut url = None;
-    let started = Instant::now();
-    while started.elapsed() < Duration::from_secs(60) {
-        let Some(Ok(line)) = lines.next() else {
-            break;
-        };
-        if let Some(rest) = line.trim().strip_prefix("local") {
-            url = Some(rest.trim().to_owned());
-        }
-        if line.contains("dev server ready") {
-            break;
-        }
-    }
-    let url = url.expect("the dev server reported a local URL");
-    let (host, port) = {
-        let without_scheme = url.trim_start_matches("http://").trim_end_matches('/');
-        let (host, port) = without_scheme.rsplit_once(':').unwrap();
-        (host.to_owned(), port.parse::<u16>().unwrap())
-    };
+    std::thread::spawn(move || while let Some(Ok(_)) = lines.next() {});
 
-    let body = http_get(&host, port, "/");
-    assert!(body.starts_with("HTTP/1.1 200"), "{body}");
+    let body = wait_for_http(port, "/", Duration::from_secs(90))
+        .expect("the dev server never answered on its port");
+
+    assert!(
+        body.starts_with("HTTP/1.1 200"),
+        "the dev server must render the page, not 404:\n{body}"
+    );
     assert!(body.contains("<!doctype html>"), "{body}");
     assert!(
         body.contains("Unified Toolchain for Flow"),
@@ -211,7 +220,40 @@ fn dev_serves_the_docs_site_through_vite() {
         "the refresh preamble was not injected:\n{body}"
     );
 
+    // A nested route proves the router ran, not just that something answered.
+    let guide = http_get("127.0.0.1", port, "/guide/");
+    assert!(guide.starts_with("HTTP/1.1 200"), "{guide}");
+    assert!(guide.contains("What uf is"), "{guide}");
+
+    // And a path with no route must not be answered with somebody else's page.
+    let missing = http_get("127.0.0.1", port, "/definitely-not-a-page/");
+    assert!(
+        missing.starts_with("HTTP/1.1 404"),
+        "an unrouted path must be a 404:\n{missing}"
+    );
+
     drop(server);
+}
+
+/// A port nothing is listening on, released before the server binds it.
+fn free_port() -> u16 {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    listener.local_addr().unwrap().port()
+}
+
+/// Poll until the server answers, or give up.
+fn wait_for_http(port: u16, path: &str, budget: Duration) -> Option<String> {
+    let started = Instant::now();
+    while started.elapsed() < budget {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            let body = http_get("127.0.0.1", port, path);
+            if !body.is_empty() {
+                return Some(body);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    None
 }
 
 /// One plain HTTP/1.1 request, so the test depends on nothing but the server.
