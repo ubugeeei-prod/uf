@@ -15,6 +15,8 @@
 // "tab, 2 of 5".
 
 import * as React from "@uniflowed/react";
+
+import { composeHandlers, composeRefs, withoutComposed } from "./props.js";
 import {
   createContext,
   useCallback,
@@ -29,9 +31,20 @@ type TabsState = {|
   +base: string,
   +selected: string,
   +select: (value: string) => void,
-  +register: (value: string, element: HTMLElement | null) => void,
-  /** Focus the tab `pick` chooses, given where we are and how many there are. */
-  +focusBy: (from: string, pick: (at: number, count: number) => number) => void,
+  +register: (value: string, element: HTMLElement | null, disabled: boolean) => void,
+  /**
+   * Focus the tab `pick` chooses, given where we are and how many there are.
+   *
+   * `pick` returns the index to aim for and the direction to keep searching in
+   * when that tab is disabled. The direction cannot be inferred from the
+   * index: `End` aims at the last tab and, if it is disabled, has to walk
+   * *backwards* to the last enabled one — inferring "forwards" from the target
+   * being ahead of us wrapped around to the first tab instead.
+   */
+  +focusBy: (
+    from: string,
+    pick: (at: number, count: number) => [number, 1 | -1],
+  ) => void,
 |};
 
 const TabsContext: React.Context<TabsState | null> = createContext(null);
@@ -76,31 +89,55 @@ export component TabsRoot(
     [value, onValueChange],
   );
 
-  const register = useCallback((tab: string, element: HTMLElement | null) => {
-    if (element == null) {
-      order.current = order.current.filter((entry) => entry !== tab);
-      delete elements.current[tab];
-      return;
-    }
-    if (!order.current.includes(tab)) {
-      order.current.push(tab);
-    }
-    elements.current[tab] = element;
-  }, []);
+  const disabledTabs = useRef<{ [string]: boolean }>({});
 
+  const register = useCallback(
+    (tab: string, element: HTMLElement | null, disabled: boolean) => {
+      if (element == null) {
+        order.current = order.current.filter((entry) => entry !== tab);
+        delete elements.current[tab];
+        delete disabledTabs.current[tab];
+        return;
+      }
+      if (!order.current.includes(tab)) {
+        order.current.push(tab);
+      }
+      elements.current[tab] = element;
+      disabledTabs.current[tab] = disabled;
+    },
+    [],
+  );
+
+  /**
+   * Focus and select the first enabled tab at or after `index`.
+   *
+   * Disabled tabs are stepped over rather than landed on. Selecting one meant
+   * the panel changed to a tab that cannot take focus, so focus stayed where
+   * it was and the next arrow press started from the wrong place — after which
+   * the tabs beyond the disabled one were unreachable by keyboard.
+   */
   const focusAt = useCallback(
-    (index: number) => {
+    (index: number, step: number = 1) => {
       const tabs = order.current;
       if (tabs.length === 0) {
         return;
       }
-      const wrapped = ((index % tabs.length) + tabs.length) % tabs.length;
-      const tab = tabs[wrapped];
-      select(tab);
-      // Selection follows focus, which is the pattern for tabs whose panels
-      // are already in the document: it means one key press per tab rather
-      // than an arrow and then a space.
-      elements.current[tab]?.focus();
+      const wrap = (at: number) => ((at % tabs.length) + tabs.length) % tabs.length;
+      const direction = step === 0 ? 1 : step;
+
+      for (let tried = 0; tried < tabs.length; tried += 1) {
+        const tab = tabs[wrap(index + tried * direction)];
+        if (disabledTabs.current[tab] === true) {
+          continue;
+        }
+        select(tab);
+        // Selection follows focus, which is the pattern for tabs whose panels
+        // are already in the document: one key press per tab rather than an
+        // arrow and then a space.
+        elements.current[tab]?.focus();
+        return;
+      }
+      // Every tab is disabled, so there is nowhere to go.
     },
     [select],
   );
@@ -111,8 +148,15 @@ export component TabsRoot(
       selected,
       select,
       register,
-      focusBy: (from: string, pick: (at: number, count: number) => number) => {
-        focusAt(pick(order.current.indexOf(from), order.current.length));
+      focusBy: (
+        from: string,
+        pick: (at: number, count: number) => [number, 1 | -1],
+      ) => {
+        const [target, direction] = pick(
+          order.current.indexOf(from),
+          order.current.length,
+        );
+        focusAt(target, direction);
       },
     }),
     [base, selected, select, register, focusAt],
@@ -134,7 +178,7 @@ export component TabsRoot(
  */
 export component TabsList(children: renders* TabsTab, ...rest: { +[string]: mixed }) {
   return (
-    <div role="tablist" {...rest}>
+    <div {...rest} role="tablist">
       {children}
     </div>
   );
@@ -150,18 +194,24 @@ export component TabsTab(
   const tabs = useTabs("Tabs.Tab");
   const active = tabs.selected === value;
 
+  const passed = withoutComposed(rest, ["onClick", "onKeyDown", "ref"]);
+
   return (
     <button
+      // `passed` first, and everything this component owns after it. A caller
+      // `ref` used to replace the registration ref, which took the tab out of
+      // the keyboard order without any sign that it had.
+      {...passed}
       aria-controls={`${tabs.base}-panel-${value}`}
       aria-selected={active ? "true" : "false"}
       disabled={disabled}
       id={`${tabs.base}-tab-${value}`}
-      onClick={() => {
+      onClick={composeHandlers(rest.onClick, () => {
         if (!disabled) {
           tabs.select(value);
         }
-      }}
-      onKeyDown={(event) => {
+      })}
+      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         const intent = arrowKey(event.key);
         if (intent == null) {
           return;
@@ -174,20 +224,19 @@ export component TabsTab(
         // to `arrowKey` stops compiling here until it is handled.
         tabs.focusBy(value, (at, count) =>
           match (intent) {
-            "previous" => at - 1,
-            "next" => at + 1,
-            "first" => 0,
-            "last" => count - 1,
+            "previous" => [at - 1, -1],
+            "next" => [at + 1, 1],
+            "first" => [0, 1],
+            "last" => [count - 1, -1],
           },
         );
-      }}
-      ref={(element) => tabs.register(value, element)}
+      })}
+      ref={composeRefs(rest.ref, (element) => tabs.register(value, element, disabled))}
       role="tab"
       // The roving tabindex: Tab reaches the selected tab and nothing else in
       // the list, so it moves past the whole set in one press.
       tabIndex={active ? 0 : -1}
       type="button"
-      {...rest}
     >
       {children}
     </button>
@@ -206,13 +255,13 @@ export component TabsPanel(
   }
   return (
     <div
+      {...rest}
       aria-labelledby={`${tabs.base}-tab-${value}`}
       id={`${tabs.base}-panel-${value}`}
       role="tabpanel"
       // The panel itself is focusable so that Tab out of the tab list lands on
       // the content the tab describes, which is where the reader expects to go.
       tabIndex={0}
-      {...rest}
     >
       {children}
     </div>
