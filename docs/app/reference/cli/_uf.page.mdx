@@ -42,6 +42,37 @@ The first thing to run when something is behaving unexpectedly.
 Prints what uf resolved from your config — the effective options, the route
 table, and the config handed to Vite. `--json` for the machine-readable form.
 
+### uf explain COMMAND
+
+Says what a command will do and **which provider does each part** — `dev`,
+`build`, `test`, `fmt`, `lint` or `check`. `--json` for the machine-readable
+form.
+
+```
+uf dev
+
+  1. configuration
+      provider  uf
+      what      uf.config.js, with `vite` merged over what uf generates
+  2. JavaScript host
+      provider  node
+  3. dev server
+      provider  vite (@uniflowed/vite driver)
+  4. Flow to JavaScript
+      provider  uf transform (in this binary)
+  5. rendering
+      provider  @uniflowed/router
+
+configuration
+  - ./uf.config.js
+  - package.json
+```
+
+`uf inspect` answers "what is my configuration"; this answers the question
+people actually ask when a command surprises them, which is "who is doing
+this, and which file decided that". An integrated toolchain that cannot say
+what it is doing is a black box — see [Architecture](/guide/architecture).
+
 ## Running and building
 
 ### uf dev

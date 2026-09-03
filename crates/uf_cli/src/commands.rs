@@ -8,6 +8,7 @@ pub(crate) mod check;
 pub(crate) mod create;
 pub(crate) mod dev;
 pub(crate) mod env;
+pub(crate) mod explain;
 pub(crate) mod fmt;
 pub(crate) mod info;
 pub(crate) mod inspect;

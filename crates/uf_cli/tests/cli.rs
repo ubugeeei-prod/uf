@@ -175,6 +175,92 @@ fn creates_react_app_from_cli() {
     assert!(stdout.contains("✓ created 8 files"));
 }
 
+/// `uf explain` says which provider runs each stage.
+///
+/// An integrated toolchain that cannot say what it is doing is a black box,
+/// and a black box is where an integration's problems stop being annoying and
+/// become unfixable. See `docs/red-lines.md`, line 7.
+#[test]
+fn explain_names_the_provider_for_every_stage() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({});\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "dev"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // The providers, named — that uf drives Vite rather than being it is the
+    // thing this command exists to make visible.
+    assert!(stdout.contains("vite"), "{stdout}");
+    assert!(stdout.contains("uf transform"), "{stdout}");
+    assert!(stdout.contains("@uniflowed/router"), "{stdout}");
+    // And where the answers came from.
+    assert!(stdout.contains("uf.config.js"), "{stdout}");
+}
+
+#[test]
+fn explain_says_which_commands_it_knows() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "deploy"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("does not describe"), "{stderr}");
+    // Listing them beats making the reader guess.
+    assert!(
+        stderr.contains("dev, build, test, fmt, lint, check"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn explain_emits_json_when_asked() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({});\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "build", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("uf explain --json emits JSON");
+    assert_eq!(value["command"], "uf build");
+    assert!(
+        value["stages"].as_array().is_some_and(|s| !s.is_empty()),
+        "{value}"
+    );
+    assert!(
+        value["configurationSources"].as_array().is_some(),
+        "{value}"
+    );
+}
+
 #[test]
 fn creating_a_library_suggests_running_its_tests() {
     let dir = tempfile::tempdir().unwrap();
