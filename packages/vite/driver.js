@@ -23,6 +23,7 @@ import { pathToFileURL } from "node:url";
 
 import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
+import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
 
 function argument(name) {
@@ -80,14 +81,18 @@ async function viteConfig(config, mode) {
   const port = Number(argument("--port") ?? dev.port ?? 5173);
   const allowedHosts = Array.isArray(dev.allowedHosts) && dev.allowedHosts.length > 0 ? dev.allowedHosts : undefined;
 
-  return {
+  // What uf generates from the semantics it owns: where the project is, which
+  // plugins make Flow compile, and the few settings uf enforces rather than
+  // merely passes on — `allowedHosts` gates binding a routable address, and
+  // `manifest` is how the prerender finds its assets.
+  const generated = {
     root,
     configFile: false,
     envFile: false,
     mode,
     clearScreen: false,
     customLogger: eventLogger(argument("--log-level") ?? "info"),
-    plugins: [uniflowed({ root, config }), ...userPlugins],
+    plugins: [uniflowed({ root, config })],
     server: {
       host,
       port,
@@ -106,6 +111,14 @@ async function viteConfig(config, mode) {
       emptyOutDir: true,
     },
   };
+
+  // Then the project's own Vite configuration, merged over it. uf does not
+  // read this and does not need to: an option added to Vite tomorrow works in
+  // a uf project tomorrow, rather than after a uf release that names it.
+  return withProjectConfig(generated, {
+    ...(config.vite ?? {}),
+    plugins: [...(config.vite?.plugins ?? []), ...userPlugins],
+  });
 }
 
 /**

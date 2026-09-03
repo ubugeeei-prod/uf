@@ -16,15 +16,17 @@
     "./register": "./register.js",
     "./bun-preload": "./bun-preload.js",
     "./transform": "./transform.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./merge": "./merge.js"
   },
   "files": [
-    "index.js",
-    "driver.js",
-    "register.js",
     "bun-preload.js",
-    "transform.js",
-    "internal"
+    "driver.js",
+    "index.js",
+    "internal",
+    "merge.js",
+    "register.js",
+    "transform.js"
   ],
   "dependencies": {
     "@mdx-js/rollup": "^3.1.1",

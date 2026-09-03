@@ -60,6 +60,14 @@ pub struct UniflowedConfig {
     pub task_runner: TaskRunnerConfig,
     pub tasks: BTreeMap<CompactString, TaskDefinition>,
     pub test: TestConfig,
+    /// The project's own Vite configuration, passed through untouched.
+    ///
+    /// uf does not read this and does not need to. Re-declaring an upstream
+    /// tool's options — as `dev` and `build` still do — makes every option uf
+    /// has not enumerated unreachable until uf ships a release naming it,
+    /// which is the structure that made `react-scripts` the bottleneck every
+    /// ecosystem upgrade had to pass through. See `docs/red-lines.md`.
+    pub vite: Option<serde_json::Value>,
     pub vrt: VrtConfig,
 }
 
