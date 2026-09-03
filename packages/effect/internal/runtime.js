@@ -188,8 +188,68 @@ function readFiber<A, E>(fiber: Fiber<A, E>): FiberCarrier<A, E> {
   return (fiber: any);
 }
 
+/**
+ * A tag, which is also the effect that reads the service it names.
+ *
+ * Both, on purpose: `provideService` and `provide` put a service into the run
+ * context, and something has to take it out again. Giving the tag an effect
+ * kernel means the way to ask for a service is to use the tag as one —
+ * `yield Clock` inside `effect`, or `flatMap(Clock, …)` — so there is no
+ * second accessor function to learn, and a tag can be handed to any combinator
+ * that takes an effect.
+ *
+ * Reading a service that was never provided is a defect rather than a typed
+ * failure. Flow's `R` parameter already tracks which services an effect
+ * requires, so reaching this at run time means the type was bypassed, and that
+ * is a bug in the program rather than a condition it should be recovering
+ * from.
+ */
 function makeTag<Service>(identifier: string): Tag<Service> {
-  return ({ __kind: "Tag", __service: absurd, identifier }: any);
+  const kernel: EffectKernel = {
+    run: async (runContext) => readService(runContext, identifier),
+    runSync: (runContext) => readService(runContext, identifier),
+  };
+  return ({
+    __kind: "Tag",
+    __service: absurd,
+    identifier,
+    // Being an Effect as well as a Tag: `readKernel` finds this.
+    __kernel: kernel,
+    __value: absurd,
+    __error: absurd,
+    __requires: absurd,
+  }: any);
+}
+
+/**
+ * Whether a failure is the kind another attempt could settle.
+ *
+ * A typed failure describes a condition — a request that timed out, a row that
+ * was not there — and those come and go. A defect is a bug in the program and
+ * an interruption is a decision already taken; repeating either just repeats
+ * it. A composite cause is retriable when any leaf in it is.
+ */
+function isRetriable(cause: Cause<mixed>): boolean {
+  switch (cause.kind) {
+    case "fail":
+      return true;
+    case "die":
+    case "interrupt":
+    case "empty":
+      return false;
+    case "sequential":
+    case "parallel":
+      return cause.causes.some(isRetriable);
+    default:
+      return false;
+  }
+}
+
+function readService(runContext: Context, identifier: string): Exit<mixed, mixed> {
+  if (!Object.prototype.hasOwnProperty.call(runContext.services, identifier)) {
+    return defect(`service ${identifier} was not provided`);
+  }
+  return success(runContext.services[identifier]);
 }
 
 function readTag<Service>(serviceTag: Tag<Service>): string {
@@ -483,14 +543,14 @@ export function promise<A>(body: () => Promise<A>): Effect<A> {
 
 export function tryPromise<A, E>(options: {
   +try: () => Promise<A>,
-  +catch_: (error: mixed) => E,
+  +catch: (error: mixed) => E,
 }): Effect<A, E> {
   return makeEffect({
     run: async () => {
       try {
         return success(await options.try());
       } catch (error) {
-        return failure(failCause(options.catch_(error)));
+        return failure(failCause(options.catch(error)));
       }
     },
   });
@@ -779,6 +839,13 @@ export function retry<A, E, R>(
         if (exit.kind === "success") {
           return exit;
         }
+        // Only a typed failure is worth another attempt. A defect is a bug, so
+        // running it again runs the bug again; an interruption is a decision
+        // that has already been taken. Retrying either would turn one wrong
+        // answer into several.
+        if (!isRetriable(exit.cause)) {
+          return exit;
+        }
         const millis = scheduleDelay(schedule, attempt);
         if (millis == null || isInterrupted(runContext)) {
           return exit;
@@ -865,9 +932,19 @@ export function provide<A, E, R, Out, LayerError, In>(
       }
       const services = { ...runContext.services };
       for (const key in built.value) {
-        services[key] = built.value[key];
+        if (Object.prototype.hasOwnProperty.call(built.value, key)) {
+          services[key] = built.value[key];
+        }
       }
-      return await runKernel(self, { services, scope: runContext.scope });
+      // The fiber has to come through with the services. Every interruption
+      // check reads `runContext.fiber`, so a context assembled without it
+      // makes anything that can be interrupted throw instead — which nothing
+      // noticed while no effect under a layer ever checked.
+      return await runKernel(self, {
+        services,
+        scope: runContext.scope,
+        fiber: runContext.fiber,
+      });
     },
   });
 }
