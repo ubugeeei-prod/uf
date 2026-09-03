@@ -108,13 +108,21 @@ fn publish_and_release_report_trusted_publish_plan() {
         String::from_utf8_lossy(&release.stderr)
     );
     let stdout = String::from_utf8(release.stdout).unwrap();
-    // `uf release` bumps this crate's own version, so a literal tag here fails
-    // on the next version bump rather than when the plan is wrong. The bump
-    // arithmetic is pinned by the unit tests next to `bump_semver`.
+    // `uf release` bumps this crate's own version, so a literal tag here would
+    // fail on the next version bump rather than when the plan is wrong. The
+    // bump arithmetic itself is pinned by the unit tests next to
+    // `bump_semver`; this only has to predict the same answer for whatever
+    // version the workspace is on right now — including one that is already a
+    // prerelease, which the previous `strip_suffix(".0")` got wrong the first
+    // time a release moved off `0.0.0-alpha.0`.
     let current = env!("CARGO_PKG_VERSION");
-    let expected = current
-        .strip_suffix(".0")
-        .map_or(format!("{current}-alpha.0"), |prefix| format!("{prefix}.1"));
+    let expected = match current.split_once("-alpha.") {
+        Some((core, count)) => {
+            let count: u64 = count.parse().expect("the alpha count is numeric");
+            format!("{core}-alpha.{}", count + 1)
+        }
+        None => format!("{current}-alpha.0"),
+    };
     assert!(stdout.contains("bump             Alpha"));
     assert!(stdout.contains(&format!("tag              uf@{expected}")));
     assert!(stdout.contains("command          uf release alpha"));
