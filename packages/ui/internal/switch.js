@@ -15,6 +15,8 @@
 import * as React from "@uniflowed/react";
 import { useCallback, useState } from "@uniflowed/react";
 
+import { composeHandlers, withoutComposed } from "./props.js";
+
 /** Space toggles, and so does Enter, because both do on a native control. */
 function toggleKeys(
   event: SyntheticKeyboardEvent<HTMLElement>,
@@ -59,24 +61,25 @@ export component Switch(
   ...rest: { +[string]: mixed }
 ) {
   const [on, toggle] = useToggle(checked, defaultChecked, onCheckedChange);
+  const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
 
   return (
     <button
+      {...passed}
       aria-checked={on ? "true" : "false"}
       disabled={disabled}
-      onClick={() => {
+      onClick={composeHandlers(rest.onClick, () => {
         if (!disabled) {
           toggle();
         }
-      }}
-      onKeyDown={(event) => {
+      })}
+      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         if (!disabled) {
           toggleKeys(event, toggle);
         }
-      }}
+      })}
       role="switch"
       type="button"
-      {...rest}
     >
       {children}
     </button>
@@ -94,26 +97,27 @@ export component Checkbox(
   ...rest: { +[string]: mixed }
 ) {
   const [on, toggle] = useToggle(checked, defaultChecked, onCheckedChange);
+  const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
 
   return (
     <button
+      {...passed}
       // "mixed" is the third state, and it is why a checkbox cannot simply be
       // a switch with a different label.
       aria-checked={indeterminate ? "mixed" : on ? "true" : "false"}
       disabled={disabled}
-      onClick={() => {
+      onClick={composeHandlers(rest.onClick, () => {
         if (!disabled) {
           toggle();
         }
-      }}
-      onKeyDown={(event) => {
+      })}
+      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         if (!disabled) {
           toggleKeys(event, toggle);
         }
-      }}
+      })}
       role="checkbox"
       type="button"
-      {...rest}
     >
       {children}
     </button>

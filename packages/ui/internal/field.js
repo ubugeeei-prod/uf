@@ -96,8 +96,10 @@ export component FieldRoot(
 /** The label, pointing at the control by id rather than by nesting. */
 export component FieldLabel(children: React.Node, ...rest: { +[string]: mixed }) {
   const field = useField("Field.Label");
+  // `rest` first: a caller `id` here would break the relationship the control
+  // points at, and it would break it silently.
   return (
-    <label htmlFor={field.controlId} id={field.labelId} {...rest}>
+    <label {...rest} htmlFor={field.controlId} id={field.labelId}>
       {children}
     </label>
   );
@@ -131,7 +133,7 @@ export component FieldDescription(children: React.Node, ...rest: { +[string]: mi
   }, [field]);
 
   return (
-    <p id={field.descriptionId} {...rest}>
+    <p {...rest} id={field.descriptionId}>
       {children}
     </p>
   );
@@ -154,7 +156,7 @@ export component FieldError(children: React.Node, ...rest: { +[string]: mixed })
     return null;
   }
   return (
-    <p id={field.errorId} role="alert" {...rest}>
+    <p {...rest} id={field.errorId} role="alert">
       {children}
     </p>
   );

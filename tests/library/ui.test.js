@@ -382,3 +382,172 @@ describe("Switch and Checkbox", () => {
     expect(screen.getByText("on")).toBeInTheDocument();
   });
 });
+
+describe("caller props never disable the component", () => {
+  it("keeps the focus trap when the caller passes a ref", async () => {
+    // The ref used to replace the dialog's own, leaving it null — so the Tab
+    // handler returned early and the trap was off while the dialog still
+    // announced aria-modal="true".
+    const seen = { current: null };
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Content ref={seen}>
+          <Dialog.Title>Title</Dialog.Title>
+          <button type="button">first</button>
+          <button type="button">last</button>
+        </Dialog.Content>
+      </Dialog.Root>,
+    );
+    const dialog = screen.getByRole("dialog");
+    // The caller's ref is set too, not instead.
+    expect(seen.current).toBe(dialog);
+
+    const last = within(dialog).getByRole("button", { name: "last" });
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(within(dialog).getByRole("button", { name: "first" })).toHaveFocus();
+  });
+
+  it("keeps Escape closing the dialog when the caller passes onKeyDown", async () => {
+    const theirs = fn();
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Content onKeyDown={theirs}>
+          <Dialog.Title>Title</Dialog.Title>
+        </Dialog.Content>
+      </Dialog.Root>,
+    );
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    // Both ran: the caller's handler and the component's behaviour.
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(screen.queryByRole("dialog")).toBe(null);
+  });
+
+  it("lets a caller handler stop the component's behaviour deliberately", () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Content onKeyDown={(event) => event.preventDefault()}>
+          <Dialog.Title>Title</Dialog.Title>
+        </Dialog.Content>
+      </Dialog.Root>,
+    );
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    // `preventDefault` is how the DOM says "I handled this", so the dialog
+    // does not also act on it.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("keeps a tab selectable when the caller passes onClick", async () => {
+    const theirs = fn();
+    render(
+      <Tabs.Root defaultValue="one">
+        <Tabs.List>
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab onClick={theirs} value="two">
+            Two
+          </Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first</Tabs.Panel>
+        <Tabs.Panel value="two">second</Tabs.Panel>
+      </Tabs.Root>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(screen.getByRole("tabpanel").textContent).toBe("second");
+  });
+
+  it("keeps a switch toggling when the caller passes onClick", async () => {
+    const theirs = fn();
+    render(<Switch aria-label="Notifications" onClick={theirs} />);
+    await userEvent.click(screen.getByRole("switch"));
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(screen.getByRole("switch")).toBeChecked();
+  });
+
+  it("keeps the field's ids authoritative", () => {
+    render(
+      <Field.Root>
+        <Field.Label id="theirs">Name</Field.Label>
+        <Field.Control render={(props) => <input {...props} />} />
+      </Field.Root>,
+    );
+    const control = screen.getByLabelText("Name");
+    const label: any = screen.getByText("Name");
+    // A caller id used to win, and the control then pointed at an id that no
+    // longer existed.
+    expect(label.getAttribute("id")).toBe(control.getAttribute("aria-labelledby"));
+    expect(label.getAttribute("for")).toBe(control.getAttribute("id"));
+  });
+
+  it("does not treat a control inside aria-hidden as a focus stop", () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Content>
+          <Dialog.Title>Title</Dialog.Title>
+          <div aria-hidden="true">
+            <button type="button">concealed</button>
+          </div>
+          <button type="button">real</button>
+        </Dialog.Content>
+      </Dialog.Root>,
+    );
+    // Focus goes to the first stop a reader can actually reach.
+    expect(screen.getByRole("button", { name: "real" })).toHaveFocus();
+  });
+});
+
+describe("keyboard navigation skips disabled tabs", () => {
+  component WithDisabled() {
+    return (
+      <Tabs.Root defaultValue="one">
+        <Tabs.List>
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab disabled value="two">
+            Two
+          </Tabs.Tab>
+          <Tabs.Tab value="three">Three</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first</Tabs.Panel>
+        <Tabs.Panel value="two">second</Tabs.Panel>
+        <Tabs.Panel value="three">third</Tabs.Panel>
+      </Tabs.Root>
+    );
+  }
+
+  it("steps over a disabled tab instead of landing on it", async () => {
+    render(<WithDisabled />);
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowRight}");
+    // Selecting the disabled tab changed the panel to one whose tab cannot
+    // take focus, and every tab past it became unreachable by keyboard.
+    expect(screen.getByRole("tabpanel").textContent).toBe("third");
+    expect(screen.getByRole("tab", { name: "Three" })).toHaveFocus();
+  });
+
+  it("steps over it backwards too", async () => {
+    render(<WithDisabled />);
+    await userEvent.click(screen.getByRole("tab", { name: "Three" }));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("first");
+  });
+
+  it("lands End on the last enabled tab", async () => {
+    render(
+      <Tabs.Root defaultValue="one">
+        <Tabs.List>
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+          <Tabs.Tab disabled value="three">
+            Three
+          </Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first</Tabs.Panel>
+        <Tabs.Panel value="two">second</Tabs.Panel>
+        <Tabs.Panel value="three">third</Tabs.Panel>
+      </Tabs.Root>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second");
+  });
+});

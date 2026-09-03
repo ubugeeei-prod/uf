@@ -47,6 +47,29 @@ jobs:
       # the OIDC id-token GitHub mints for it. There is no npm token in this
       # repository, in its secrets, or on anyone's machine.
       # See tools/release/trust-npm.sh.
+      # Check every name is bound to this workflow before publishing any of
+      # them. A package added to the list without `npm trust` being run for it
+      # fails on `npm publish`, and by then the earlier packages are already on
+      # the registry and cannot be taken back — a half-published release. This
+      # turns that into one failure, before anything is sent, naming the fix.
+      - name: Check trusted publishers
+        run: |
+          set -eu
+          missing=""
+          for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt); do
+            name="@uniflowed/${package}"
+            if npm view "$name" version >/dev/null 2>&1; then
+              if ! npm trust list "$name" 2>/dev/null | grep -q "file: publish.yml"; then
+                missing="${missing} ${name}"
+              fi
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not bound to this workflow:${missing}"
+            echo "::error::run tools/release/trust-npm.sh once, then re-run this job"
+            exit 1
+          fi
+          echo "every package is bound to publish.yml"
       - name: Publish
         run: |
           set -eu

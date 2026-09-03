@@ -19,6 +19,8 @@
 // trigger in the accessibility tree, which is where a screen reader looks.
 
 import * as React from "@uniflowed/react";
+
+import { composeHandlers, composeRefs, withoutComposed } from "./props.js";
 import {
   createContext,
   useCallback,
@@ -80,16 +82,18 @@ export component DialogRoot(
 /** What opens the dialog, and what focus comes back to when it closes. */
 export component DialogTrigger(children: React.Node, ...rest: { +[string]: mixed }) {
   const dialog = useDialog("Dialog.Trigger");
+  const passed = withoutComposed(rest, ["onClick", "ref"]);
+
   return (
     <button
+      {...passed}
       aria-expanded={dialog.open ? "true" : "false"}
       aria-haspopup="dialog"
-      onClick={() => dialog.setOpen(true)}
-      ref={(element) => {
+      onClick={composeHandlers(rest.onClick, () => dialog.setOpen(true))}
+      ref={composeRefs(rest.ref, (element) => {
         dialog.triggerRef.current = element;
-      }}
+      })}
       type="button"
-      {...rest}
     >
       {children}
     </button>
@@ -129,12 +133,20 @@ export component DialogContent(children: React.Node, ...rest: { +[string]: mixed
     return null;
   }
 
+  const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
+
   return (
     <div
+      // `passed` first. A caller `ref` used to replace `contentRef`, which
+      // left it null, made the Tab branch below return early, and turned the
+      // focus trap off while the dialog still announced `aria-modal="true"`.
+      // A caller `onKeyDown` used to replace this one, and Escape stopped
+      // closing the dialog.
+      {...passed}
       aria-labelledby={`${dialog.base}-title`}
       aria-modal="true"
       id={`${dialog.base}-content`}
-      onKeyDown={(event) => {
+      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         if (event.key === "Escape") {
           event.preventDefault();
           dialog.setOpen(false);
@@ -165,13 +177,12 @@ export component DialogContent(children: React.Node, ...rest: { +[string]: mixed
           event.preventDefault();
           first.focus();
         }
-      }}
-      ref={(element) => {
+      })}
+      ref={composeRefs(rest.ref, (element) => {
         contentRef.current = element;
-      }}
+      })}
       role="dialog"
       tabIndex={-1}
-      {...rest}
     >
       {children}
     </div>
@@ -182,7 +193,7 @@ export component DialogContent(children: React.Node, ...rest: { +[string]: mixed
 export component DialogTitle(children: React.Node, ...rest: { +[string]: mixed }) {
   const dialog = useDialog("Dialog.Title");
   return (
-    <h2 id={`${dialog.base}-title`} {...rest}>
+    <h2 {...rest} id={`${dialog.base}-title`}>
       {children}
     </h2>
   );
@@ -191,8 +202,14 @@ export component DialogTitle(children: React.Node, ...rest: { +[string]: mixed }
 /** A button that closes the dialog. */
 export component DialogClose(children: React.Node, ...rest: { +[string]: mixed }) {
   const dialog = useDialog("Dialog.Close");
+  const passed = withoutComposed(rest, ["onClick"]);
+
   return (
-    <button onClick={() => dialog.setOpen(false)} type="button" {...rest}>
+    <button
+      {...passed}
+      onClick={composeHandlers(rest.onClick, () => dialog.setOpen(false))}
+      type="button"
+    >
       {children}
     </button>
   );
@@ -208,10 +225,13 @@ export component DialogClose(children: React.Node, ...rest: { +[string]: mixed }
 function focusable(root: HTMLElement): Array<HTMLElement> {
   const selector =
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(root.querySelectorAll(selector)).filter((element: any) => {
-    if (element.getAttribute("aria-hidden") === "true") {
-      return false;
-    }
-    return element.closest("[hidden]") == null;
-  });
+  return Array.from(root.querySelectorAll(selector)).filter(
+    (element: any) =>
+      // Both attributes hide a whole subtree, so both are checked on the
+      // ancestors. Reading `aria-hidden` off the element alone returned a
+      // button inside `<div aria-hidden="true">` as a focus stop, and the trap
+      // then moved focus to a control no screen reader exposes.
+      element.closest("[hidden]") == null &&
+      element.closest('[aria-hidden="true"]') == null,
+  );
 }
