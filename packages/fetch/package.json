@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/fetch",
   "version": "0.0.0-alpha.1",
-  "description": "Flow declarations for @uniflowed/fetch, part of the Unified Toolchain for Flow.",
+  "description": "Typed HTTP over the platform fetch, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -14,9 +14,8 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal"
   ],
-  "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.1"
-  }
+  "dependencies": {}
 }
