@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/react-testing",
   "version": "0.0.0-alpha.1",
-  "description": "Flow declarations for @uniflowed/react-testing, part of the Unified Toolchain for Flow.",
+  "description": "React Testing Library over a real DOM, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -14,10 +14,16 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.1",
-    "@uniflowed/react": "0.0.0-alpha.1"
+    "@uniflowed/react": "0.0.0-alpha.1",
+    "happy-dom": "^20.13.2"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
   }
 }

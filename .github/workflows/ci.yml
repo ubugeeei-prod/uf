@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+# Every job here reads the repository and writes nothing to it. Saying so at
+# the top rather than per job means a job added later inherits the narrow
+# token instead of the default one.
+permissions:
+  contents: read
+
 jobs:
   format:
     name: Format
@@ -61,6 +67,30 @@ jobs:
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo test --workspace
+
+  library:
+    name: Library
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: cargo install wild-linker --version 0.10.0 --locked
+      - run: wild --version
+      # The `@uniflowed/*` packages are Flow, so `cargo test` cannot run a line
+      # of them — their tests are uf tests, run by the runner this repository
+      # ships. Without this job the library has a suite nothing executes.
+      - run: cargo build --release --bin uf
+      - run: ./target/release/uf --cwd tests/library test
 
   installer:
     name: Installer
