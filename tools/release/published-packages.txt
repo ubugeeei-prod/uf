@@ -1,0 +1,16 @@
+# The packages that go to npm, one per line.
+#
+# Not every directory under `packages/`. Most of them are declaration modules
+# whose functions throw `nativeRuntimeRequired` when called, and publishing a
+# name with code behind it that cannot run is worse than not publishing the
+# name: it squats the name, and it needs a trusted-publisher configuration of
+# its own on npmjs.com, which is a manual step per package.
+#
+# This list is the closure a real uf project needs, plus the test runner. Add a
+# package here when it is implemented, not when it is declared. `uf_lib`'s
+# registry is the source of truth for what each one is.
+config
+react
+router
+vite
+test
