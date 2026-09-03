@@ -70,6 +70,13 @@ fn bench_format(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("uf_fmt");
     group.throughput(Throughput::Bytes(bytes));
+
+    // The parser is the floor the formatter builds on: everything the
+    // printer does happens after this, so the two numbers together say
+    // where the time goes.
+    group.bench_function("parse large flow react file", |bencher| {
+        bencher.iter(|| black_box(uf_flow::parse(black_box(&source)).expect("parses")));
+    });
     group.bench_function("format large flow react file", |bencher| {
         bencher.iter(|| black_box(format_source(black_box(&source), &config).expect("format")));
     });
