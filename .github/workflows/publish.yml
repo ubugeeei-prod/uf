@@ -37,9 +37,11 @@ jobs:
       # functions throw would squat the name and would need a trusted-publisher
       # configuration of its own, which is a manual step on npmjs.com.
       #
-      # The first version of each of these was published by hand — npm will not
-      # configure a trusted publisher for a package that does not exist yet, so
-      # OIDC cannot bootstrap itself. See tools/release/bootstrap-npm.sh.
+      # Every one of these is bound to this workflow by `npm trust`, so this
+      # job is the only thing that can publish them and it authenticates with
+      # the OIDC id-token GitHub mints for it. There is no npm token in this
+      # repository, in its secrets, or on anyone's machine.
+      # See tools/release/trust-npm.sh.
       - name: Publish
         run: |
           set -eu
