@@ -29,6 +29,7 @@ export {
   object,
   optional,
   parse,
+  parser,
   partial,
   pipe,
   record,

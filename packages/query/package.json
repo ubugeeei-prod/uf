@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/query",
   "version": "0.0.0-alpha.1",
-  "description": "Flow declarations for @uniflowed/query, part of the Unified Toolchain for Flow.",
+  "description": "A query cache with de-duplication and stale-while-revalidate, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -14,9 +14,14 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.1"
+    "@uniflowed/hooks": "0.0.0-alpha.1",
+    "@uniflowed/react": "0.0.0-alpha.1"
+  },
+  "peerDependencies": {
+    "react": ">=19"
   }
 }

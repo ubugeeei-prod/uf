@@ -2,15 +2,18 @@
 //
 // Running a promise from a component.
 //
-// The two bugs a hand-written version has: it sets state after the component
-// has gone, and a slow first request overwrites a fast second one. The first is
-// a warning; the second is a wrong answer on screen, which is worse and much
-// harder to notice. A generation counter fixes both — a result is only used if
-// it belongs to the newest run.
+// Two bugs a hand-written version has, and only one of them is a warning:
+// setting state after the component has gone, and a slow first request
+// overwriting a fast second one. The second is the dangerous one — it puts a
+// wrong answer on screen and nothing says so.
+//
+// Both are fixed by the effect's own cleanup rather than by a ref: the effect
+// that started a request is the thing that knows it has been superseded,
+// because React runs its cleanup before running it again. That is the shape
+// React's own documentation uses, and it means there is no "latest" anything
+// to keep in a ref and no generation counter to keep in step.
 
-import { useCallback, useEffect, useRef, useState } from "@uniflowed/react";
-
-import { useStableCallback } from "./lifecycle.js";
+import { useCallback, useEffect, useState } from "@uniflowed/react";
 
 /** What an in-flight, settled or failed call looks like. */
 export type Async<T> = {|
@@ -32,50 +35,46 @@ export function useAsync<T>(
   body: () => Promise<T>,
   deps: $ReadOnlyArray<mixed>,
 ): Async<T> {
-  const stable = useStableCallback(body);
-  const [state, setState] = useState<{| value: T | null, error: Error | null, pending: boolean |}>(
-    { value: null, error: null, pending: true },
-  );
+  const [state, setState] = useState<{|
+    value: T | null,
+    error: Error | null,
+    pending: boolean,
+  |}>({ value: null, error: null, pending: true });
 
-  // Which run is allowed to write. Incremented on every start, so a result
-  // from an older run is dropped rather than overwriting a newer one.
-  const generation = useRef(0);
-  const live = useRef(true);
+  // Changing this is what re-runs the effect, so `reload` is a state change
+  // rather than a function the effect has to be told about.
+  const [attempt, setAttempt] = useState(0);
+  const reload = useCallback(() => setAttempt((current) => current + 1), []);
 
   useEffect(() => {
-    live.current = true;
-    return () => {
-      live.current = false;
-    };
-  }, []);
-
-  const run = useCallback(() => {
-    generation.current += 1;
-    const mine = generation.current;
+    // Set when this effect is superseded — by a dependency change, a reload,
+    // or an unmount. React runs the cleanup before the next run, so the
+    // request that is no longer wanted knows not to write.
+    let ignore = false;
     setState((current) => ({ ...current, pending: true }));
 
-    stable().then(
+    body().then(
       (value) => {
-        if (live.current && generation.current === mine) {
+        if (!ignore) {
           setState({ value, error: null, pending: false });
         }
       },
-      (error) => {
-        if (live.current && generation.current === mine) {
+      (thrown) => {
+        if (!ignore) {
           setState({
             value: null,
-            error: error instanceof Error ? error : new Error(String(error)),
+            error: thrown instanceof Error ? thrown : new Error(String(thrown)),
             pending: false,
           });
         }
       },
     );
-  }, [stable]);
 
-  useEffect(() => {
-    run();
-    // eslint-disable-next-line
-  }, deps);
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, attempt]);
 
-  return { ...state, reload: run };
+  return { ...state, reload };
 }

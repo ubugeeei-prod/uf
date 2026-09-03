@@ -152,13 +152,20 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             "@uniflowed/query",
             NativeModuleKind::Data,
             Stability::Experimental,
-            &["createQuery", "createMutation", "QueryClient", "useQuery"],
+            &[
+                "QueryCache",
+                "QueryProvider",
+                "hash",
+                "useMutation",
+                "useQuery",
+                "useQueryCache",
+            ],
         ),
         NativeModule::new(
             "@uniflowed/fetch",
             NativeModuleKind::Data,
             Stability::Experimental,
-            &["createFetch", "request"],
+            &["FetchError", "createFetch"],
         ),
         NativeModule::new(
             "@uniflowed/loader",

@@ -10,9 +10,12 @@
 # package here when it is implemented, not when it is declared. `uf_lib`'s
 # registry is the source of truth for what each one is.
 config
+fetch
+hooks
+query
 react
 react-testing
 router
+test
 ui
 vite
-test

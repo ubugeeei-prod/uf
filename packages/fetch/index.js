@@ -1,33 +1,19 @@
 // @flow
 //
-// `@uniflowed/fetch`.
+// `@uniflowed/fetch`: typed HTTP over the platform's own `fetch`.
+//
+// The platform's `fetch` is the right primitive and this does not replace it:
+// `raw` hands the `Response` straight back. What it adds is the three things
+// every application writes around it and gets subtly wrong — a failed response
+// being a resolved promise, no timeout at all, and retrying things that must
+// not be retried.
 
-import type { NativeHandle } from "@uniflowed/core/native";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export type {
+  FetchClient,
+  FetchConfig,
+  FetchFailure,
+  Parse,
+  RequestOptions,
+} from "./internal/client.js";
 
-const MODULE = "@uniflowed/core/fetch";
-
-export opaque type FetchClient = NativeHandle<"@uniflowed/core/fetch#FetchClient">;
-
-export type FetchConfig = {
-  +baseURL?: string,
-  +headers?: { +[string]: string },
-};
-
-export type RequestOptions = {
-  +method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
-  +body?: mixed,
-  +headers?: { +[string]: string },
-};
-
-export function createFetch(config?: FetchConfig): FetchClient {
-  return nativeRuntimeRequired(MODULE, "createFetch");
-}
-
-export function request<T>(
-  client: FetchClient,
-  path: string,
-  init?: RequestOptions,
-): Promise<T> {
-  return nativeRuntimeRequired(MODULE, "request");
-}
+export { FetchError, createFetch } from "./internal/client.js";

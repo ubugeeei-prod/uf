@@ -654,6 +654,20 @@ export function parse<T>(schema: Schema<T>, value: mixed): T {
 }
 
 /** Parse into a result, so failure is a value rather than control flow. */
+/**
+ * A schema as a standalone function.
+ *
+ * `safeParse(schema, value)` needs both halves at the call site, which is fine
+ * where the schema is in scope and useless where it is not — a boundary that
+ * wants to validate what arrives takes a *function*, not a schema and an
+ * import of this module. `parser(User)` is that function, and it is why
+ * `@uniflowed/fetch` can check a response body without depending on the
+ * validator at all.
+ */
+export function parser<T>(schema: Schema<T>): (value: mixed) => Result<T> {
+  return (value: mixed) => safeParse(schema, value);
+}
+
 export function safeParse<T>(schema: Schema<T>, value: mixed): Result<T> {
   return parseInternal(schema, value, []);
 }
