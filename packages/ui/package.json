@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/ui",
-  "version": "0.0.0-alpha.0",
+  "version": "0.0.0-alpha.1",
   "description": "Flow declarations for @uniflowed/ui, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -23,8 +23,8 @@
     "types/renders.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.0",
-    "@uniflowed/react": "0.0.0-alpha.0",
-    "@uniflowed/validator": "0.0.0-alpha.0"
+    "@uniflowed/core": "0.0.0-alpha.1",
+    "@uniflowed/react": "0.0.0-alpha.1",
+    "@uniflowed/validator": "0.0.0-alpha.1"
   }
 }

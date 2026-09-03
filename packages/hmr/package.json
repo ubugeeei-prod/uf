@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/hmr",
-  "version": "0.0.0-alpha.0",
+  "version": "0.0.0-alpha.1",
   "description": "Flow declarations for @uniflowed/hmr, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -18,6 +18,6 @@
     "internal"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.0"
+    "@uniflowed/core": "0.0.0-alpha.1"
   }
 }

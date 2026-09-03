@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/test",
-  "version": "0.0.0-alpha.0",
+  "version": "0.0.0-alpha.1",
   "description": "The test API and worker for `uf test`: describe/it, a full matcher set, and the process uf fans test files out to.",
   "type": "module",
   "license": "MIT",
