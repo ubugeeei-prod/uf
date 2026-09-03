@@ -32,8 +32,8 @@ pub struct NativeTestRunnerPlan {
     pub imports: TestImportList,
     /// Whether React Testing Library-compatible helpers are implemented.
     ///
-    /// They are not: `@uniflowed/react-testing` still needs a DOM, and says so
-    /// when it is called rather than pretending.
+    /// They are: `@uniflowed/react-testing` installs a document on the host on
+    /// first render, so a component test needs nothing configured.
     pub react_testing_library_native: bool,
     /// Whether discovery and transform use the official Flow parser line.
     pub official_flow_parser: bool,
@@ -51,7 +51,7 @@ impl Default for NativeTestRunnerPlan {
                 "@uniflowed/test".to_compact_string(),
                 "@uniflowed/testing".to_compact_string(),
             ],
-            react_testing_library_native: false,
+            react_testing_library_native: true,
             official_flow_parser: true,
         }
     }
