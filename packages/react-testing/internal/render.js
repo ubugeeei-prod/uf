@@ -10,7 +10,10 @@
 
 import { createRequire } from "node:module";
 
-import * as React from "@uniflowed/react";
+// A type-only import: `React.Node` is the only thing this module needs from
+// React itself, and importing the namespace as a value left an unused binding
+// in the bundle.
+import type * as React from "@uniflowed/react";
 import { act } from "@uniflowed/react";
 
 import { installDom } from "./dom.js";
