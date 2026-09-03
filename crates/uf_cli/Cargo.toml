@@ -36,6 +36,7 @@ uf_config = { path = "../uf_config" }
 uf_devserver = { path = "../uf_devserver" }
 uf_flow = { path = "../uf_flow" }
 uf_fmt = { path = "../uf_fmt" }
+uf_jsx = { path = "../uf_jsx" }
 uf_lib = { path = "../uf_lib" }
 uf_lint = { path = "../uf_lint" }
 uf_plugin = { path = "../uf_plugin" }
@@ -51,6 +52,7 @@ uf_test = { path = "../uf_test" }
 uf_tui = { path = "../uf_tui" }
 compact_str.workspace = true
 mimalloc.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

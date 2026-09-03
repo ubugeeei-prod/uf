@@ -67,6 +67,13 @@ pub(crate) enum Commands {
         json: bool,
     },
     Install,
+    /// Serve uf's module transform over stdin/stdout, for the Vite plugin.
+    ///
+    /// Not a command a person runs: `@uniflowed/vite` spawns it once per build
+    /// and pipes every module through it, so one process does the work a
+    /// per-file `uf` invocation would have paid startup for thousands of times.
+    #[command(hide = true)]
+    Transform,
     Lint {
         #[arg(long)]
         json: bool,
@@ -133,7 +140,7 @@ impl Commands {
     /// Whether this invocation hands stdout to a protocol or a child process
     /// rather than to a reader, in which case nothing may be rendered onto it.
     pub(crate) fn owns_stdout(&self) -> bool {
-        matches!(self, Self::Lsp | Self::Run { .. })
+        matches!(self, Self::Lsp | Self::Run { .. } | Self::Transform)
     }
 }
 
