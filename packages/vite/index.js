@@ -48,10 +48,11 @@ function startService(command, cwd) {
   child.on("error", (error) =>
     settleAll(new Error(`could not run \`${command} transform\`: ${error.message}`)),
   );
+  // Any exit is final. Recording it even when nothing is outstanding means a
+  // request made after an idle exit is rejected at once rather than queued
+  // against a process that will never answer.
   child.on("close", (code) => {
-    if (pending.length > 0) {
-      settleAll(new Error(`uf transform exited (${code}) with requests outstanding`));
-    }
+    settleAll(new Error(`uf transform exited (${code})`));
   });
 
   return {
