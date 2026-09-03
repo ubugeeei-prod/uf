@@ -139,7 +139,7 @@ fn ufx_alias_runs_uniflowed_create_package() {
     assert!(stdout.contains("ufx  @uniflowed/create"));
     assert!(stdout.contains("UfNative"));
     assert!(stdout.contains("exec-cache"));
-    assert!(stdout.contains("created 12 files"));
+    assert!(stdout.contains("created 8 files"));
     assert!(dir.path().join("app.js").exists());
     assert!(
         dir.path()
@@ -158,8 +158,8 @@ fn creates_react_app_from_cli() {
     assert!(app.join("app.js").exists());
     assert!(app.join("uf.config.js").exists());
     assert!(app.join("app/_uf.page.js").exists());
-    assert!(app.join("app/_uf.page.native.js").exists());
-    assert!(app.join("server/actions.js").exists());
+    assert!(app.join("app/Counter.js").exists());
+    assert!(app.join("app/useCounter.js").exists());
 
     let package = fs::read_to_string(app.join("package.json")).unwrap();
     assert!(!package.contains(r#""scripts""#));
@@ -167,13 +167,12 @@ fn creates_react_app_from_cli() {
     // The generated files are shown as a tree, not as a flat count.
     assert!(stdout.contains("uf create"));
     assert!(stdout.contains("├─ app"));
-    assert!(stdout.contains("│  ├─ client"));
     assert!(stdout.contains("└─ uf.config.js"));
     assert!(stdout.contains("next steps"));
     assert!(stdout.contains("1. cd app"));
     assert!(stdout.contains("2. uf install"));
     assert!(stdout.contains("3. uf dev"));
-    assert!(stdout.contains("✓ created 12 files"));
+    assert!(stdout.contains("✓ created 8 files"));
 }
 
 #[test]

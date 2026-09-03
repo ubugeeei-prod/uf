@@ -61,22 +61,54 @@ case "$requested_version" in
   uf@*) requested_version="${requested_version#uf@}" ;;
 esac
 
-if [ -n "$release_base" ]; then
-  channel_url="${release_base}/${requested_version}"
-elif [ "$requested_version" = "latest" ]; then
-  channel_url="https://github.com/${repo}/releases/latest/download"
-else
-  channel_url="https://github.com/${repo}/releases/download/uf@${requested_version}"
-fi
+# The newest release including prereleases.
+#
+# `releases/latest` is GitHub's *stable* channel: it has no answer while every
+# release so far is a prerelease, which is every release uf has published. So
+# `latest` resolves in two steps — the stable channel first, because that is
+# what `latest` should mean the day a stable release exists, then the releases
+# list, which includes prereleases and is ordered newest first. Drafts are not
+# in that list for an anonymous caller, so the first entry is the answer.
+#
+# Parsed with sed rather than jq, because an installer cannot require a JSON
+# parser to be installed before it can install anything.
+newest_prerelease_tag() {
+  curl -fsSL -H 'accept: application/vnd.github+json' \
+    "https://api.github.com/repos/${repo}/releases?per_page=1" 2>/dev/null |
+    tr ',' '\n' |
+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
+    head -1
+}
 
 version="$requested_version"
-if [ "$requested_version" = "latest" ]; then
-  if ! version="$(curl -fsSL "${channel_url}/VERSION" | tr -d '[:space:]')" \
-    || [ -z "$version" ]; then
-    echo "uf installer: could not resolve the latest version from ${channel_url}/VERSION" >&2
-    echo "uf installer: set UF_VERSION to install a specific release" >&2
-    exit 1
+if [ -n "$release_base" ]; then
+  channel_url="${release_base}/${requested_version}"
+  if [ "$requested_version" = "latest" ]; then
+    if ! version="$(curl -fsSL "${channel_url}/VERSION" | tr -d '[:space:]')" \
+      || [ -z "$version" ]; then
+      echo "uf installer: could not resolve the latest version from ${channel_url}/VERSION" >&2
+      echo "uf installer: set UF_VERSION to install a specific release" >&2
+      exit 1
+    fi
   fi
+elif [ "$requested_version" = "latest" ]; then
+  stable_url="https://github.com/${repo}/releases/latest/download"
+  if version="$(curl -fsSL "${stable_url}/VERSION" 2>/dev/null | tr -d '[:space:]')" \
+    && [ -n "$version" ]; then
+    channel_url="$stable_url"
+  else
+    uf_step "no stable release yet, taking the newest prerelease"
+    tag="$(newest_prerelease_tag)"
+    version="${tag#uf@}"
+    if [ -z "$version" ]; then
+      echo "uf installer: could not resolve a release for ${repo}" >&2
+      echo "uf installer: set UF_VERSION to install a specific release" >&2
+      exit 1
+    fi
+    channel_url="https://github.com/${repo}/releases/download/uf@${version}"
+  fi
+else
+  channel_url="https://github.com/${repo}/releases/download/uf@${requested_version}"
 fi
 uf_step "version ${version}"
 

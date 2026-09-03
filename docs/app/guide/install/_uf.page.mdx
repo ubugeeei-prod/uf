@@ -17,11 +17,16 @@ through one.
 Every tagged release publishes binaries for macOS and Linux, on both x86-64 and
 ARM64:
 
-<div className="command"><code>curl -fsSL https://github.com/ubugeeei-prod/uf/releases/latest/download/uf-install.sh | sh</code></div>
+<div className="command"><code>curl -fsSL https://setup.uniflowed.dev | sh</code></div>
 
-The script downloads the binary for your platform, verifies its checksum against
-the release manifest, and puts it on your `PATH`. Read it before you run it; it
-is short.
+The script picks the binary for your platform, checks it against the checksum in
+the release manifest, and puts it on your `PATH`. It works under `sh`, `bash`
+and `zsh`. Read it before you run it — it is short, and it is served from
+`https://setup.uniflowed.dev/install.sh` if you would rather fetch it first.
+
+On Windows, PowerShell:
+
+<div className="command"><code>irm https://setup.uniflowed.dev/install.ps1 | iex</code></div>
 
 ## From source
 

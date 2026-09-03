@@ -108,10 +108,55 @@ async function viteConfig(config, mode) {
   };
 }
 
+/**
+ * The dev server.
+ *
+ * Vite in middleware mode serves nothing on its own: with no `index.html` at
+ * the project root it answers every navigation with "Cannot GET /", which is
+ * what `uf dev` used to do for every project it started. A uf project has no
+ * `index.html` — the document comes from a layout — so the server has to render
+ * it, which is what this middleware does:
+ *
+ *   1. load the server entry through `ssrLoadModule`, so it is transformed the
+ *      same way the browser's copy is and picks up edits without a restart;
+ *   2. render the URL, pointing the client script at the dev entry rather than
+ *      at a built asset;
+ *   3. hand the HTML to `transformIndexHtml`, which is what injects the HMR
+ *      client and lets any Vite plugin see the document.
+ *
+ * Anything Vite already serves — a module, a public file — never reaches this,
+ * because the middleware runs after Vite's own.
+ */
 async function dev() {
   const { createServer } = await import("vite");
   const config = await loadConfig();
-  const server = await createServer(await viteConfig(config, "development"));
+  const inline = await viteConfig(config, "development");
+  const server = await createServer({ ...inline, appType: "custom" });
+
+  // In dev the browser loads the client entry from Vite, not from a manifest;
+  // its stylesheets arrive through that module rather than as <link> tags.
+  const assets = { scripts: [`/@id/${VIRTUAL.client}`], styles: [], preloads: [] };
+
+  server.middlewares.use(async (request, response, next) => {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      next();
+      return;
+    }
+    const url = request.originalUrl ?? request.url ?? "/";
+    try {
+      const entry = await server.ssrLoadModule(VIRTUAL.server);
+      const result = await entry.render(url, assets);
+      const html = await server.transformIndexHtml(url, result.html);
+      response.statusCode = result.status ?? 200;
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end(html);
+    } catch (error) {
+      // Map the stack back onto the Flow source before it reaches the overlay.
+      if (error instanceof Error) server.ssrFixStacktrace(error);
+      next(error);
+    }
+  });
+
   await server.listen();
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
