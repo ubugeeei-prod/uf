@@ -1,0 +1,127 @@
+---
+title: "Architecture · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Architecture
+
+<div className="lede">
+uf is an all-in-one toolchain, which is the same shape as create-react-app.
+This page is the list of things uf will not do, and where it does not yet
+comply with its own rules.
+</div>
+
+## What went wrong with create-react-app
+
+CRA was not a bad tool. It was the right design for 2016 that could not keep up
+with what React applications came to need, and the way it failed is close to a
+specification for how uf could fail.
+
+`react-scripts` hid webpack, Babel, ESLint, Jest and PostCSS behind one
+dependency. That was its whole appeal and it worked — right up until you needed
+one webpack plugin it had not anticipated. Then the only route was `eject`,
+which wrote the entire hidden configuration into your repository and could not
+be undone. Between *zero config* and *fully customisable* there was nothing.
+
+The second failure was structural. Every upgrade in the ecosystem had to travel
+through one package:
+
+```
+ecosystem change  →  react-scripts  →  you
+```
+
+A vulnerability in a transitive dependency could not be fixed by updating it;
+you waited for a `react-scripts` release. One package serialised the upgrade
+path of everything it contained.
+
+The third is the one React's own deprecation notice leads with: CRA solved the
+build and stopped. Routing, data fetching and code splitting turned out not to
+be three problems but one — a router that knows a route's data can fetch the
+code and the data in parallel instead of discovering the second after the first
+has rendered. CRA could not integrate them, so every production application
+built its own framework on top of CRA, which is the problem CRA existed to
+remove.
+
+The one-line lesson:
+
+> Abstraction without composability eventually becomes a bottleneck.
+
+## uf's position
+
+**uf owns orchestration, not implementation.** It decides what runs, when, and
+how the pieces connect. It does not own the bundler, the dev server, the
+formatter or the runtime.
+
+> Unified interface, federated implementation.
+
+Those are different things, and assuming they must match is what turns an
+integrated tool into a monolith. `uf dev`, `uf build`, `uf test` is an
+all-in-one experience; underneath, Vite is Vite and the Flow parser is Meta's.
+
+## The red lines
+
+1. Never fork Vite or Rolldown behaviour unless it is unavoidable.
+2. Never mirror the complete configuration schema of an upstream tool.
+3. Every built-in provider must be replaceable.
+4. No `eject` command.
+5. No single package controls ecosystem dependency versions.
+6. Core must not depend on a specific JavaScript runtime.
+7. All orchestration must be inspectable.
+8. Provider-specific functionality must remain accessible.
+9. Defaults are conveniences, never architectural requirements.
+10. uf's core owns the graph, not the tools.
+
+### The continuum that replaces `eject`
+
+```
+convention  →  configuration  →  provider replacement  →  raw provider API
+```
+
+Each step is a smaller decision than the one before it, and none is a door that
+locks behind you. A project that needs one Vite plugin adds one Vite plugin. It
+does not inherit a build system.
+
+### Three runtimes, not one
+
+"Runtime" is three questions, and collapsing them is how a toolchain ends up
+unable to target anything new:
+
+| | |
+| --- | --- |
+| Orchestration host | where uf itself runs — a native binary |
+| Plugin runtime | where JavaScript plugins run — Node.js, Bun, Deno |
+| Target runtime | where the output runs — a browser, a worker, a server |
+
+All three differ in an ordinary build: a native binary driving Vite on Node.js
+to produce a bundle for a Cloudflare Worker.
+
+## Where uf does not yet comply
+
+A list of rules with no audit against it is decoration.
+
+**Mirroring Vite's schema (2).** `dev` and `build` in `uf.config.js` re-declare
+Vite's options one at a time, and the driver maps them across by hand. A Vite
+option uf has not heard of is unreachable — exactly the `react-scripts`
+failure. uf should keep only what it genuinely owns and pass the rest through.
+
+**Replaceability is aspirational (3).** The lint engine, the formatter's
+parser, the task runner and the package resolver are each an enumeration with
+exactly one variant. The shape exists; nothing is actually replaceable yet.
+
+**Lockstep versions (5).** Every `@uniflowed/*` package pins its siblings
+exactly and one script sets them all. That is right while the packages are one
+thing, and it is the beginning of the chokepoint. Adapters need to move
+independently before 1.0.
+
+**Inspectability is partial (7).** `uf inspect --json` prints the resolved
+configuration. Nothing yet says which provider runs each stage of `uf dev`, at
+what version, and which files the configuration came from.
+
+**uf owns two tools (10).** The formatter and the test runner are uf's own
+implementations rather than orchestrated providers — a deliberate choice, since
+a Flow-aware version of neither existed. Each has to stay replaceable, or it
+becomes the thing this page is about.
+
+The full record, including the reasoning, is
+[`docs/red-lines.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md).
