@@ -130,19 +130,28 @@ h1 {
   letter-spacing: -0.03em;
 }
 
+/* A heading owns the space under it. Leaving that to the next element's own
+   margin gave a section heading the same gap as an ordinary paragraph break,
+   which read as though the heading belonged to the text above it. */
 h2 {
   font-size: 1.55rem;
-  margin-top: 3.2rem;
+  margin-block: 3.6rem 1.35rem;
 }
 
 h3 {
   font-size: 1.15rem;
-  margin-top: 2.2rem;
+  margin-block: 2.6rem 0.9rem;
 }
 
 h4 {
   font-size: 1rem;
-  margin-top: 1.8rem;
+  margin-block: 2rem 0.7rem;
+}
+
+/* The first element after a heading has no margin of its own to add: the
+   heading has already set the distance. */
+:is(h2, h3, h4) + :is(p, ul, ol, pre, table, blockquote, .command, .terminal) {
+  margin-top: 0;
 }
 
 p,
@@ -368,16 +377,52 @@ strong {
   .manual {
     grid-template-columns: 15rem minmax(0, 1fr);
   }
-}
 
-@media (min-width: 84rem) {
-  .manual {
-    grid-template-columns: 15rem minmax(0, 1fr) 13rem;
+  /* The sidebar is second in the document and first on screen. */
+  .manual-nav {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .manual > .prose {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 
 .manual-nav {
+  border-top: 1px solid var(--doc-rule);
   font-size: 0.92rem;
+  margin-top: 3rem;
+  padding-top: 1.75rem;
+}
+
+.manual-nav-title {
+  font-family: var(--uf-font-display);
+  font-size: 1.05rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.25rem;
+  text-transform: none;
+}
+
+@media (min-width: 60rem) {
+  .manual-nav {
+    border-top: 0;
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  /* On a wide screen the sidebar is the navigation and needs no title; the
+     section headings inside it already say what it is. */
+  .manual-nav-title {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
 }
 
 @media (min-width: 60rem) {
@@ -824,6 +869,105 @@ tbody tr:last-child :is(td, th) {
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Phones
+ * ------------------------------------------------------------------ */
+
+@media (max-width: 40rem) {
+  html {
+    font-size: 16px;
+  }
+
+  :root {
+    /* The seam still runs down the page, but it may not take a fifth of the
+       width to do it. */
+    --doc-gutter: 1.1rem;
+  }
+
+  .seam {
+    padding-left: 1.1rem;
+  }
+
+  .seam-mark::before {
+    left: calc(-1.1rem - 3px);
+  }
+
+  .masthead {
+    gap: 0.75rem 1.1rem;
+    padding: 1rem 0;
+  }
+
+  .masthead-nav {
+    font-size: 0.88rem;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  /* The theme control goes last and to the end of the row, so the three
+     destinations read as one group. */
+  .theme-toggle {
+    margin-left: auto;
+  }
+
+  .manual {
+    padding-top: 1.75rem;
+  }
+
+  .hero {
+    padding-block: 2rem 0;
+  }
+
+  .hero .lede {
+    font-size: 1.1rem;
+  }
+
+  .hero-actions {
+    gap: 0.75rem;
+  }
+
+  .button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  /* A code block on a phone is read by scrolling it, so it may use the full
+     width of the screen rather than sitting inside the gutter. */
+  pre,
+  .command,
+  .terminal {
+    border-radius: 0;
+    margin-inline: calc(-1 * var(--doc-gutter) - 1.1rem) calc(-1 * var(--doc-gutter));
+    padding-inline: calc(var(--doc-gutter) + 1.1rem) var(--doc-gutter);
+  }
+
+  pre {
+    font-size: 0.8rem;
+  }
+
+  .terminal {
+    font-size: 0.72rem;
+  }
+
+  /* A definition list cannot be two columns in 375px. */
+  .claims > div {
+    gap: 0.3rem;
+  }
+
+  table {
+    font-size: 0.86rem;
+  }
+
+  th,
+  td {
+    padding-right: 0.9rem;
+  }
+
+  .colophon {
+    gap: 0.6rem;
+    margin-top: 3rem;
   }
 }
 

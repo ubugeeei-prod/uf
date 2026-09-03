@@ -18,11 +18,19 @@ export component Layout(children: React.Node) {
 
   return (
     <div className="manual">
-      <ManualNav />
+      {/*
+        The article comes first in the document and the sidebar second, with
+        the grid putting the sidebar on the left at reading widths. On a phone
+        there is one column, so a reader lands on the heading they followed a
+        link to rather than scrolling past thirteen navigation links to reach
+        it — and the contents are still there, below, where "what else is
+        there" is the question being asked.
+      */}
       <main className="prose seam" id="content">
         {children}
         {next != null ? <NextPage href={next.href} title={next.title} /> : null}
       </main>
+      <ManualNav />
     </div>
   );
 }

@@ -87,6 +87,7 @@ export component ManualNav() {
 
   return (
     <nav className="manual-nav" aria-label="Documentation">
+      <h2 className="manual-nav-title">All pages</h2>
       {sections.map((section) => (
         <React.Fragment key={section.title}>
           <h2>{section.title}</h2>
