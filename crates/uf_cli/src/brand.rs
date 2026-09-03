@@ -1,6 +1,6 @@
 //! Brand-aware terminal snippets shared by human-facing CLI commands.
 
-use uf_term::{Cell, Color, Column, Renderer, Style, Table, Tone, push_repeat};
+use uf_term::{Cell, Color, Column, GlyphSet, Renderer, Style, Table, Tone, push_repeat};
 
 pub(crate) const HEADLINE: &str = "Unified Toolchain for Flow";
 pub(crate) const TAGLINE: &str = "All-in-one toolchain for Flow and React.";
@@ -26,6 +26,71 @@ pub(crate) const PALETTE: &[(&str, &str)] = &[
     ("--uf-color-slate-600", "#475569"),
     ("--uf-color-mist-50", "#F8FAFC"),
 ];
+
+/// The mark, five rows tall, in the brand's five stops.
+///
+/// One colour per row rather than per character: a per-character gradient
+/// would have to slice a string made of multi-byte block characters, and the
+/// result is worth less than the cost. Top to bottom is also the direction the
+/// documentation site runs its own gradient, so the two read as one thing.
+const MARK: [&str; 5] = [
+    "██    ██   ████████",
+    "██    ██   ██",
+    "██    ██   ██████",
+    "██    ██   ██",
+    " ██████    ██",
+];
+
+/// The same mark where block characters cannot be drawn.
+///
+/// A terminal in a non-UTF-8 locale, or one calling itself `dumb`, gets `#` —
+/// which is not as handsome and is legible, and the second matters more. The
+/// rest of this CLI already falls back the same way, so a mark that did not
+/// would be the one thing on screen printing replacement characters.
+const ASCII_MARK: [&str; 5] = [
+    "##    ##   ########",
+    "##    ##   ##",
+    "##    ##   ######",
+    "##    ##   ##",
+    " ######    ##",
+];
+
+/// The mark and the headline, for the moments that deserve it.
+///
+/// Not on every command. `uf test` printing a five-row logo before a hundred
+/// test results is not beautiful, it is in the way — this is for first contact
+/// (`uf create`) and for the command whose whole job is to say what you have
+/// (`uf info`).
+pub(crate) fn render_mark(renderer: &Renderer, out: &mut String, context: &str) {
+    let stops = [CYAN, BLUE, INDIGO, VIOLET, MAGENTA];
+    let rows = match renderer.glyph_set() {
+        GlyphSet::Ascii => &ASCII_MARK,
+        GlyphSet::Unicode => &MARK,
+    };
+
+    out.push('\n');
+    for (row, colour) in rows.iter().zip(stops) {
+        out.push_str("  ");
+        Style::new()
+            .fg(colour)
+            .bold()
+            .paint(renderer.color(), row, out);
+        out.push('\n');
+    }
+    out.push('\n');
+
+    out.push_str("  ");
+    renderer
+        .theme()
+        .title
+        .paint(renderer.color(), HEADLINE, out);
+    out.push_str("  ");
+    renderer
+        .theme()
+        .subtitle
+        .paint(renderer.color(), context, out);
+    out.push('\n');
+}
 
 pub(crate) fn render_product_card(renderer: &Renderer, out: &mut String, context: &str) {
     let title = renderer.theme().title;

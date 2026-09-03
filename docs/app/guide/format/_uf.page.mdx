@@ -70,3 +70,22 @@ whole toolchain exists to avoid.
 <div className="command"><code>uf fmt --check && uf lint && uf check && uf test</code></div>
 
 Four commands, no configuration, and each one exits non-zero when it should.
+
+Better still, name them once. `uf.config.js` takes tasks, `uf run ci` runs
+them, and the pipeline calls the same thing:
+
+```js
+export default defineConfig({
+  tasks: {
+    "fmt:check": "uf fmt --check",
+    lint: "uf lint",
+    check: "uf check",
+    test: "uf test",
+    ci: { command: "echo ok", dependsOn: ["fmt:check", "lint", "check", "test"] },
+  },
+});
+```
+
+A check that is in the pipeline and not in `uf.config.js` is a check a
+contributor cannot run before pushing. uf's own repository is set up this way —
+its CI builds `uf` once and every job runs `uf run <task>`.

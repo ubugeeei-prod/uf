@@ -13,7 +13,7 @@ pub(crate) fn info(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let host = format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS);
 
     ui.render(|renderer, out| {
-        brand::render_product_card(renderer, out, "uf info");
+        brand::render_mark(renderer, out, "uf info");
         renderer.blank(out);
 
         renderer.heading(out, 2, "distribution");

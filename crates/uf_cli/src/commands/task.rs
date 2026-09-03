@@ -46,13 +46,22 @@ fn run_named_task(
     execute_task(resolved, script, task, args)
 }
 
+/// Run one task.
+///
+/// A task that names a command is run by uf, because `uf.config.js` is where
+/// its meaning is written down and Vite Task has no way to read it — handing
+/// `ci` to `vp run ci` asked Vite+ for a script it had never heard of, so
+/// every task defined here failed on a machine that had `vp` and on one that
+/// did not. A task with no command of its own is Vite+'s, and is handed over.
 fn execute_task(
     resolved: &ResolvedConfig,
     script: &str,
     task: &TaskDefinition,
     args: &[String],
 ) -> Result<()> {
-    if resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask {
+    if task.command().trim().is_empty()
+        && resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
+    {
         return execute_vite_task(resolved, script, args);
     }
 

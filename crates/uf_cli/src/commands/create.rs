@@ -5,6 +5,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use uf_project::{CreateKind, CreateOptions, create_project};
 use uf_term::{Status, Tree};
 
+use crate::brand;
 use crate::cli::{AppTemplate, CreateCommand};
 use crate::support::{plural, project_label, relative_to};
 use crate::ui::Ui;
@@ -52,6 +53,10 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
     });
 
     ui.render(|renderer, out| {
+        // First contact with the toolchain, which is the one moment a mark
+        // earns its five rows.
+        brand::render_mark(renderer, out, "uf create");
+        renderer.blank(out);
         renderer.banner(out, "uf create", Some(&label));
         renderer.blank(out);
         renderer.tree(out, 2, &Tree::from_paths(&root, paths.iter().copied()));
