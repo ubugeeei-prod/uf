@@ -305,6 +305,51 @@ pub enum MdxPipelinePluginConfig {
     BuiltIn,
 }
 
+/// Build-time syntax highlighting for fenced code in Markdown and MDX.
+///
+/// On by default: a documentation page whose samples are undifferentiated grey
+/// is not "MDX works out of the box". The colours are computed during the build
+/// and written into the HTML, so nothing is shipped to the browser to do it,
+/// and both themes are emitted together as CSS variables because a build
+/// cannot know whether the reader prefers light or dark.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct HighlightConfig {
+    pub enabled: bool,
+    pub themes: HighlightThemes,
+    /// Grammars to load beyond the ones a uf project uses by default.
+    pub langs: Vec<CompactString>,
+}
+
+impl Default for HighlightConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            themes: HighlightThemes::default(),
+            langs: Vec::new(),
+        }
+    }
+}
+
+/// The theme used for each of the reader's two preferences.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct HighlightThemes {
+    pub light: CompactString,
+    pub dark: CompactString,
+}
+
+impl Default for HighlightThemes {
+    fn default() -> Self {
+        Self {
+            light: CompactString::const_new("github-light"),
+            dark: CompactString::const_new("github-dark-dimmed"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]

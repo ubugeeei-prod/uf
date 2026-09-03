@@ -14,11 +14,12 @@ mod runtime;
 
 pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
-    EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, LinkPrefetchMode, LoaderConfig,
-    MarkdownConfig, MarkdownEngineConfig, MdxConfig, MdxPipelinePluginConfig, MotionConfig,
-    MotionEngineConfig, OrmConfig, PwaConfig, ReactCompilerConfig, ReactCompilerImplementation,
-    ReactCompilerMode, ReactConfig, RenderingConfig, RenderingMode, RouterConfig, RouterConvention,
-    RuntimeTarget, StyleEngine, TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
+    EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, HighlightConfig, HighlightThemes,
+    LinkPrefetchMode, LoaderConfig, MarkdownConfig, MarkdownEngineConfig, MdxConfig,
+    MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, OrmConfig, PwaConfig,
+    ReactCompilerConfig, ReactCompilerImplementation, ReactCompilerMode, ReactConfig,
+    RenderingConfig, RenderingMode, RouterConfig, RouterConvention, RuntimeTarget, StyleEngine,
+    TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
 };
 pub use lint::{
     FlowBuiltinLintMode, FlowLintConfig, FlowLintParser, LintConfig, LintEngine, RuleLevel,
