@@ -15,12 +15,17 @@
 //! * [`strip`] erases Flow types, which is what turns a `// @flow` module into
 //!   the JavaScript a browser runs.
 
+pub mod parse;
 pub mod scan;
 pub mod strip;
 mod upstream;
 
 use thiserror::Error;
 
+pub use parse::{
+    Loc, MAX_NESTING_DEPTH, MAX_PARSE_BYTES, PARSE_STACK_BYTES, ParseFailure, Parsed, Position,
+    ast, parse,
+};
 pub use strip::{MAX_STRIP_BYTES, StripError, Stripped, strip_types};
 
 /// A single syntax diagnostic reported by the active Flow parser.
