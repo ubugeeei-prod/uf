@@ -108,10 +108,11 @@ copy of each crate, outside the workspace, where the relative path to
 `upstream/flow` no longer resolves — and a path dependency is relative by
 definition, so no crate can fix it from its own manifest.
 
-Five crates are excluded from that check: `uf_flow`, `uf_check` and
-`uf_transform` name the submodule, and `uf_cli` and `uf_lint` reach it
-transitively, because cargo resolves a path dependency whether or not the
-feature using it is enabled. That leaves most crates gated, which is worth more
+Six crates are excluded from that check: `uf_flow`, `uf_check` and
+`uf_transform` name the submodule, and `uf_cli`, `uf_fmt` and `uf_lint` reach
+it transitively, because cargo resolves a path dependency whether or not the
+feature using it is enabled. `uf_fmt` joined them when the formatter started
+printing from the parser's syntax tree. That leaves most crates gated, which is worth more
 than switching the gate off — but the list grows as more crates use the parser,
 and it already includes three of the more interesting public APIs.
 

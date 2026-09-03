@@ -34,10 +34,12 @@ jobs:
           # submodule no longer resolves. A path dependency is relative by
           # definition, so this is not something a crate can fix.
           #
-          # `uf_flow`, `uf_check` and `uf_transform` name the submodule; the other two reach it
-          # transitively, and cargo resolves a path dependency whether or not the
-          # feature using it is enabled. Excluding them keeps 37 of 43 crates
-          # gated, which is worth more than switching the gate off.
+          # `uf_flow`, `uf_check` and `uf_transform` name the submodule; the
+          # other three reach it transitively, and cargo resolves a path
+          # dependency whether or not the feature using it is enabled.
+          # Excluding them keeps most crates gated, which is worth more than
+          # switching the gate off. `uf_fmt` joined the list when the
+          # formatter started printing from the parser's syntax tree.
           #
           # Only a version change rebuilds the baseline outside the workspace,
           # so a crate missing from this list passes every PR until a release
@@ -46,4 +48,4 @@ jobs:
           #
           # The list grows as more crates use the parser. See
           # docs/architecture.md for what to do when it covers too little.
-          exclude: uf_check,uf_cli,uf_flow,uf_lint,uf_transform
+          exclude: uf_check,uf_cli,uf_flow,uf_fmt,uf_lint,uf_transform
