@@ -129,7 +129,17 @@ pub fn collect_source_files(
     config: &UniflowedConfig,
 ) -> Result<Vec<ProjectFile>, ProjectError> {
     let mut files = Vec::new();
-    for entry in WalkDir::new(root) {
+    // A directory holding a `.git` is another repository — a submodule, or a
+    // checkout that happens to live inside this one. Its contents are not this
+    // project's to read, and formatting them writes into somebody else's
+    // history: `uf fmt` reformatted the vendored Flow sources, and the next
+    // submodule sync would have thrown the result away.
+    let walk = WalkDir::new(root).into_iter().filter_entry(|entry| {
+        entry.path() == root.as_std_path()
+            || !entry.file_type().is_dir()
+            || !entry.path().join(".git").exists()
+    });
+    for entry in walk {
         let entry = entry.map_err(|source| ProjectError::Walk {
             path: root.to_path_buf(),
             source,

@@ -21,10 +21,13 @@ Formats every Flow, JavaScript, JSON, Markdown and CSS file in the project.
 
 Flow files go through the official Flow parser and a printer written for it, so
 `component`, `hook`, `renders`, `match` and enums are formatted as first-class
-syntax rather than survived. The output follows Prettier's conventions —
-80 columns, double quotes, trailing commas, the same line-breaking decisions —
-because the point of a formatter is that nobody argues about it, and Prettier
-already won that argument.
+syntax rather than survived. The output follows Prettier's conventions — double quotes, trailing commas,
+the same line-breaking decisions — because the point of a formatter is that
+nobody argues about it, and Prettier already won that argument. The default
+width is 100 rather than Prettier's 80; `fmt.lineWidth` changes it.
+
+That claim is checked rather than asserted: every fixture in `uf_fmt`'s suite
+is compared byte for byte against Prettier's own output for the same input.
 
 Files uf has no opinion about are handed to Biome, which is also Rust and also
 fast, so a repository with a `README.md` and a `package.json` in it does not

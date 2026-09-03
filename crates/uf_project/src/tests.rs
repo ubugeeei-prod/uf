@@ -136,6 +136,24 @@ fn a_build_directory_is_ignored_wherever_it_sits() {
 }
 
 #[test]
+fn a_nested_repository_is_not_this_project() {
+    // `upstream/flow` is Meta's source, vendored as a submodule. `uf fmt`
+    // reformatted it, and the next sync would have discarded the result —
+    // a directory with a `.git` in it belongs to another history.
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::create_dir_all(root.join("vendor/upstream/.git")).unwrap();
+    fs::write(root.join("app/index.js"), "// @flow\n").unwrap();
+    fs::write(root.join("vendor/upstream/lib.js"), "// @flow\n").unwrap();
+
+    let files = collect_source_files(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].relative_path, "app/index.js");
+}
+
+#[test]
 fn an_ignore_entry_with_a_separator_still_means_one_place() {
     // `dist` names a kind of directory; `app/dist` names one directory. A
     // project that ignores the latter has not asked for the former.
