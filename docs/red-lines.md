@@ -29,6 +29,13 @@ experience is all-in-one; the implementation is federated.
 
 Those are different things, and CRA's mistake was assuming they had to match.
 
+This is the target, and uf does not meet it today: `uf_fmt` and `uf_test` are
+uf's own implementations. That is deliberate — a Flow-aware formatter and a
+Flow-aware test runner did not exist, and "orchestrate the provider that does
+not exist" is not a plan — but it is an exception rather than a revision of the
+principle, and the audit below treats it as one. An exception stays an
+exception by staying replaceable.
+
 ## The red lines
 
 1. **Never fork Vite or Rolldown behaviour unless it is unavoidable.**
@@ -53,7 +60,7 @@ Those are different things, and CRA's mistake was assuming they had to match.
 
 ## The continuum that replaces `eject`
 
-```
+```text
 convention  →  configuration  →  provider replacement  →  raw provider API
 ```
 

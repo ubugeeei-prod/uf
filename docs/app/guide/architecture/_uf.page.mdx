@@ -59,6 +59,12 @@ Those are different things, and assuming they must match is what turns an
 integrated tool into a monolith. `uf dev`, `uf build`, `uf test` is an
 all-in-one experience; underneath, Vite is Vite and the Flow parser is Meta's.
 
+This is the target, and uf does not meet it today: the formatter and the test
+runner are uf's own. That is deliberate — a Flow-aware version of neither
+existed, and "orchestrate the provider that does not exist" is not a plan — but
+it is an exception rather than a revision of the principle, and the audit below
+treats it as one. An exception stays an exception by staying replaceable.
+
 ## The red lines
 
 1. Never fork Vite or Rolldown behaviour unless it is unavoidable.
