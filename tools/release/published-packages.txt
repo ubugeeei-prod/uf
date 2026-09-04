@@ -9,6 +9,16 @@
 # This list is the closure a real uf project needs, plus the test runner. Add a
 # package here when it is implemented, not when it is declared. `uf_lib`'s
 # registry is the source of truth for what each one is.
+#
+# Adding a name here is half the job. `publish.yml` publishes over OIDC, and a
+# name that `npm trust` has not bound to that workflow fails the job *after* the
+# names before it have gone out — so a release is half-sent by adding a package
+# and tagging. Pair every addition with:
+#
+#   npm login
+#   tools/release/trust-npm.sh
+#
+# and run `uf run release:preflight` before tagging to see where things stand.
 config
 fetch
 graphql

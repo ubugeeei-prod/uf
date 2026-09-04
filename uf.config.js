@@ -121,6 +121,11 @@ export default defineConfig({
     // Each is a step the release workflow runs, named so it can be run by
     // hand first. A release step nobody can rehearse is a release step that
     // is debugged in production.
+    //
+    // `release:preflight` is the one to run before tagging: a name `npm trust`
+    // has not bound fails the publish job *after* the names before it have
+    // gone out, which half-sends a release.
+    "release:preflight": "tools/release/preflight.sh",
     "install:test": "tools/release/test-install.sh",
     "release:manifest": "tools/release/build-manifest.sh",
     "release:package": "tools/release/package-binaries.sh",
