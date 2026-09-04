@@ -175,6 +175,13 @@ pub(crate) enum Commands {
         /// Re-run a failing test up to N more times.
         #[arg(long, value_name = "N", default_value_t = 0)]
         retry: u32,
+        /// Rewrite any snapshot that did not match.
+        ///
+        /// Off by default, and deliberately: a snapshot that updates itself
+        /// whenever the code changes is not a test, it is a record of what the
+        /// code did.
+        #[arg(short = 'u', long)]
+        update_snapshots: bool,
         /// Run at most N files at once; defaults to one per core.
         #[arg(short = 'j', long, value_name = "N")]
         threads: Option<usize>,
