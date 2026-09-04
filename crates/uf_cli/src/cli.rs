@@ -28,18 +28,32 @@ impl From<ColorOption> for ColorChoice {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Commands {
+    /// Build the project for production.
+    ///
+    /// Runs Vite through `@uniflowed/vite`, with every module transformed by
+    /// `uf transform`, then writes the build manifest and enforces
+    /// `build.budgets`.
     Build {
+        /// Print the emitted bundle's size, by chunk.
         #[arg(long)]
         size_report: bool,
     },
+    /// Lint the project, then type check it with Flow.
+    ///
+    /// `uf lint` answers whether the source is well formed and idiomatic; this
+    /// answers that and whether the types hold. A file that opts out with
+    /// `@noflow` is parsed but not inferred.
     Check {
+        /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
     },
+    /// Scaffold a new application or library.
     Create {
         #[command(subcommand)]
         command: CreateCommand,
     },
+    /// Start the development server, with hot module replacement.
     Dev {
         /// Bind a routable address instead of loopback. Requires a non-empty
         /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
@@ -49,20 +63,19 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
     },
+    /// Inspect and switch the Capability JS Host uf runs JavaScript on.
     Env {
         #[command(subcommand)]
         command: EnvCommand,
     },
+    /// Run a package's binary without installing it. Also `ufx`.
     Exec {
+        /// The package to fetch and run, for example `@uniflowed/create`.
         package: String,
+        /// Everything after the package name, handed to it untouched.
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    Fmt {
-        #[arg(long)]
-        check: bool,
-    },
-    Info,
     /// Say what a command will do, and which provider does each part.
     ///
     /// `uf inspect` prints the resolved configuration; this answers the
@@ -73,10 +86,24 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Format every file in the project.
+    ///
+    /// Flow source is printed from the official Flow parser's syntax tree.
+    Fmt {
+        /// Report what would change and exit non-zero, writing nothing.
+        #[arg(long)]
+        check: bool,
+    },
+    /// Print the toolchain's version, host, and resolved paths.
+    Info,
+    /// Print the resolved configuration, after defaults and plugins.
     Inspect {
+        /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
     },
+    /// Install the project's dependencies. Also `uf i`.
+    #[command(visible_alias = "i")]
     Install,
     /// Serve uf's module transform over stdin/stdout, for the Vite plugin.
     ///
@@ -85,22 +112,33 @@ pub(crate) enum Commands {
     /// per-file `uf` invocation would have paid startup for thousands of times.
     #[command(hide = true)]
     Transform,
+    /// Lint the project without type checking it.
     Lint {
+        /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
     },
+    /// Serve the language server over stdin/stdout, for an editor.
     Lsp,
+    /// Run the checks and code generation a commit should not go without.
     Prepare,
+    /// Publish the project's packages to the registry.
     Publish,
+    /// Cut a release: calculate the next version and write its metadata.
     Release {
+        /// How far to move the version.
         #[arg(value_enum)]
         bump: ReleaseBump,
     },
+    /// Run a task from `uf.config.js`. Also `ufr`.
     Run {
+        /// The task to run, as named under `tasks` in `uf.config.js`.
         script: String,
+        /// Everything after the task name, handed to it untouched.
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
+    /// Run the project's tests.
     Test {
         /// List what would run instead of running it.
         #[arg(long)]
@@ -130,10 +168,13 @@ pub(crate) enum Commands {
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
     },
+    /// Upgrade the project's dependencies and the toolchain.
+    Upgrade,
+    /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
     Use {
+        /// The toolchain to activate.
         runtime: String,
     },
-    Upgrade,
 }
 
 impl Commands {

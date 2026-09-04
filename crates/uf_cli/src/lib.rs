@@ -24,6 +24,7 @@ use crate::ui::{OutputMode, Ui};
 #[derive(Debug, Parser)]
 #[command(version, about = "Unified Toolchain for Flow (React)")]
 struct Cli {
+    /// Run as if uf had been started in DIR instead of the current directory.
     #[arg(long, global = true, value_name = "DIR")]
     cwd: Option<Utf8PathBuf>,
     /// When to colourise output.
