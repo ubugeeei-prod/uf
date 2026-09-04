@@ -14,6 +14,7 @@
 
 import type { SpyCall } from "./spy.js";
 import * as asymmetric from "./asymmetric.js";
+import * as snapshot from "./snapshot.js";
 import { isSpy } from "./spy.js";
 import { equals, matchesObject, render } from "./equality.js";
 
@@ -240,6 +241,38 @@ function verdicts(received: mixed): {
       ),
     toSatisfy: (predicate: (value: mixed) => boolean) =>
       simple(predicate(received) === true, "to satisfy the predicate"),
+    toMatchSnapshot: (hint?: string): Verdict => {
+      const verdict = snapshot.matchSnapshot(received, hint);
+      return {
+        pass: verdict.pass,
+        expected: verdict.expected ?? "(no snapshot yet)",
+        received: verdict.received,
+        // The whole of both sides, because a mismatch that says only "the
+        // snapshot did not match" makes a reader open two files.
+        failure: () =>
+          `snapshot did not match.\n\nstored:\n${verdict.expected ?? "(none)"}\n\n` +
+          `received:\n${verdict.received}\n\n` +
+          "Run `uf test -u` if the new value is the right one.",
+        negatedFailure: () => "expected the value not to match its snapshot",
+      };
+    },
+    toMatchInlineSnapshot: (expected?: string): Verdict => {
+      const verdict = snapshot.matchInlineSnapshot(received, expected);
+      return {
+        pass: verdict.pass,
+        expected: verdict.expected ?? "(no inline snapshot yet)",
+        received: verdict.received,
+        failure: () =>
+          verdict.expected == null
+            ? // uf does not rewrite a test file — a tool that edits the file you
+              // are editing is a tool that loses work — so it reports what to
+              // paste in and leaves the decision to a person.
+              `no inline snapshot yet. Paste this into the call:\n\n\`\`\`\n${verdict.received}\n\`\`\``
+            : `inline snapshot did not match.\n\nstored:\n${verdict.expected}\n\n` +
+              `received:\n${verdict.received}`,
+        negatedFailure: () => "expected the value not to match its inline snapshot",
+      };
+    },
     toThrow: (...rest: $ReadOnlyArray<mixed>) => {
       const expected = rest[0];
       if (typeof received !== "function") {

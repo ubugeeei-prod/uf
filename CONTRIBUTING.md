@@ -1,21 +1,28 @@
 # Contributing
 
-## Clone
-
-`uf_flow` builds against Meta's official Flow Rust port, which is not published
-to crates.io, so the repository carries it as the `upstream/flow` submodule.
-Cargo resolves path dependencies even when the feature that uses them is off, so
-the submodule must exist before any cargo command:
+## Getting a checkout working
 
 ```sh
 git clone https://github.com/ubugeeei-prod/uf
 cd uf
-tools/upstream/sync.sh
+nix develop
+tools/upstream/sync.sh && cargo build --release --bin uf   # the bootstrap
+uf run setup
 ```
 
-`tools/upstream/sync.sh` fetches one shallow, blobless commit and checks out only
-`rust_port/`, which costs about 40 MB instead of the full 190 MB repository. It
-is idempotent, so re-run it after pulling a submodule bump.
+After that one bootstrap line, everything in this repository is a `uf` command.
+`uf run` on its own lists them.
+
+The bootstrap cannot itself be a `uf` command, and the reason is structural
+rather than an oversight: `upstream/flow` is a *path* dependency, so cargo
+cannot build `uf` until the submodule is checked out, and `uf run` needs a
+built `uf`. One command breaks that circle.
+
+`uf run upstream:sync` fetches one shallow, blobless commit of Meta's official
+Flow Rust port and checks out only `rust_port/`, which costs about 40 MB
+instead of the full 190 MB repository. `uf_flow` builds against that port,
+which is not published to crates.io. The sync is idempotent, so re-run it after
+pulling a submodule bump — `uf run setup` does.
 
 ## Commit Style
 
@@ -49,13 +56,29 @@ Use `nix develop ./tools/nix` for the pinned development environment.
 
 ## Verification
 
-Run the local gate before opening a PR:
+One command, and it is the one CI runs:
 
 ```sh
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo bench --workspace --no-run
+uf run ci
+```
+
+This repository is a uf project, so its pipeline uses the toolchain it ships
+rather than a second description of the same checks. A check that is in CI and
+not in `uf run ci` is a check a contributor cannot run before pushing, which is
+the thing that arrangement exists to prevent.
+
+The individual steps have names too, for when one of them is what you are
+working on:
+
+```sh
+uf run rust:fmt:check   # cargo fmt --all -- --check
+uf run rust:clippy      # cargo clippy --workspace --all-targets -- -D warnings
+uf run rust:test        # cargo test --workspace
+uf run rust:bench       # cargo bench --workspace --no-run
+uf run fmt:check        # uf's own formatter, over this repository's Flow
+uf run test:lib         # uf test#library, the @uniflowed/* suite
+uf run docs:build       # uf build#docs
+uf run docs:dev         # uf dev#docs, to look at the site while editing it
 ```
 
 `rust-toolchain.toml` pins `nightly-2026-08-01`, and every command above uses
@@ -64,7 +87,7 @@ with Meta's official Rust port, 23 of whose crates declare
 `#![feature(box_patterns)]` — a feature the compiler removed around the
 2026-09-01 nightly. That date is the newest nightly that still accepts it.
 
-Run `tools/upstream/sync.sh` before any cargo command; the port lives in the
+Run `uf run upstream:sync` before any cargo command; the port lives in the
 `upstream/flow` submodule and nothing builds without it.
 
 The `Upstream Flow` CI job builds the parser alone on the floating `nightly`

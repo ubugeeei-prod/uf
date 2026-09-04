@@ -1,0 +1,13 @@
+// uf snapshot file. Read the diff — a snapshot nobody reads is not a test.
+
+exports[`toMatchSnapshot > handles a value with backticks and a substitution in it 1`] = `"a \`backtick\` and a \${substitution}"`;
+
+exports[`toMatchSnapshot > keys two snapshots in one test apart 1`] = `"first"`;
+
+exports[`toMatchSnapshot > keys two snapshots in one test apart 2`] = `"second"`;
+
+exports[`toMatchSnapshot > matches a primitive 1`] = `"uniflowed"`;
+
+exports[`toMatchSnapshot > matches an object 1`] = `{ name: "uf", tags: ["flow", "react"], version: 1 }`;
+
+exports[`toMatchSnapshot > takes a hint, which lands in the key: the happy path 1`] = `{ ok: true }`;

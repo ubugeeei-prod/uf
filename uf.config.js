@@ -39,6 +39,19 @@ export default defineConfig({
   },
 
   tasks: {
+    // --- Getting a checkout working ------------------------------------
+    //
+    // Everything after the bootstrap is a `uf run`. The bootstrap itself
+    // cannot be, and the reason is structural rather than an oversight:
+    // `upstream/flow` is a *path* dependency, so cargo cannot build `uf`
+    // until the submodule is checked out, and `uf run` needs a built `uf`.
+    // One command breaks that circle, and it is in CONTRIBUTING.md.
+    "upstream:sync": "tools/upstream/sync.sh",
+    setup: {
+      command: "echo 'ready: run `uf run ci` to check everything'",
+      dependsOn: ["upstream:sync", "build"],
+    },
+
     // --- Rust ----------------------------------------------------------
     "rust:fmt": "cargo fmt --all",
     "rust:fmt:check": "cargo fmt --all -- --check",
@@ -97,7 +110,26 @@ export default defineConfig({
       command: "UF_BIN=./target/release/uf tools/docs/build.sh",
       dependsOn: ["build"],
     },
+    // The documentation site, in a browser, while you edit it.
+    "docs:dev": {
+      command: "./target/release/uf dev#docs",
+      dependsOn: ["build"],
+    },
+
+    // --- Release --------------------------------------------------------
+    //
+    // Each is a step the release workflow runs, named so it can be run by
+    // hand first. A release step nobody can rehearse is a release step that
+    // is debugged in production.
+    //
+    // `release:preflight` is the one to run before tagging: a name `npm trust`
+    // has not bound fails the publish job *after* the names before it have
+    // gone out, which half-sends a release.
+    "release:preflight": "tools/release/preflight.sh",
     "install:test": "tools/release/test-install.sh",
+    "release:manifest": "tools/release/build-manifest.sh",
+    "release:package": "tools/release/package-binaries.sh",
+    "release:bump": "tools/release/bump-version.sh",
 
     // --- Manifests -----------------------------------------------------
     manifests:

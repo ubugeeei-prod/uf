@@ -9,6 +9,7 @@
 // driven by the worker, by a unit test, or by a future host that is not
 // Node.js, without any of them re-deciding what `.only` means.
 
+import * as snapshot from "./snapshot.js";
 import { AssertionError } from "./expect.js";
 import { firstUserSite, userFrames } from "./frames.js";
 import { type Body, type Case, type Suite, collected } from "./registry.js";
@@ -43,6 +44,13 @@ export type RunOptions = {|
   readonly filter?: string | null,
   /** Wall-clock budget for one case, in milliseconds. */
   readonly timeoutMs?: number,
+  /**
+   * Absolute path of the file being run.
+   *
+   * Snapshots live beside the file that took them, so the runner has to say
+   * which file that is — a test's name alone does not locate it.
+   */
+  readonly file?: string,
 |};
 
 /** Default budget for one case, matching what most runners use. */
@@ -149,6 +157,10 @@ async function runCase(
   emit: (result: Result) => void,
 ): Promise<boolean> {
   const name = fullName([...context.path, test.name]);
+  // Snapshots are keyed by the running test, so the module has to be told which
+  // one it is — and told again that none is, so one taken outside a test fails
+  // with something better than a wrong key.
+  snapshot.enterTest(options.file ?? "", name);
   const started = performance.now();
   const report = (outcome: Outcome) => {
     emit({
@@ -199,6 +211,10 @@ async function runCase(
       }
     }
   }
+  // No test is running once this one is reported, so a snapshot taken outside
+  // one fails with something better than a key belonging to whichever test
+  // happened to run last.
+  snapshot.exitTest();
   report(outcome);
   return outcome.status !== "failed";
 }
