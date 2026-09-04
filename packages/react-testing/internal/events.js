@@ -45,6 +45,27 @@ const EVENT_TYPES: { readonly [string]: string } = {
 /** Events that do not bubble, whatever else is said about them. */
 const NON_BUBBLING = new Set(["focus", "blur", "mouseenter", "mouseleave"]);
 
+/**
+ * The bubbling event React actually listens for, for each one that does not
+ * bubble.
+ *
+ * React attaches every listener to the root container rather than to the
+ * element, so it can only hear events that reach the root. `focus` and `blur`
+ * never do. React's answer is to listen for `focusin` and `focusout` — which
+ * are the same moments and do bubble — and surface them to a component as
+ * `onFocus` and `onBlur`.
+ *
+ * So dispatching a bare `focus` calls nothing: the element's own listener, if
+ * a test added one directly, and no React handler at all. The test then
+ * asserts on a component that never re-rendered and reads as a component bug.
+ * Firing the pair is what a browser does anyway — a real focus is a `focus`
+ * and a `focusin` — so this is less a workaround than the missing half.
+ */
+const ALSO_BUBBLES: { readonly [string]: string } = {
+  focus: "focusin",
+  blur: "focusout",
+};
+
 function construct(name: string, init: { readonly [string]: mixed }): Event {
   const interfaceName = EVENT_TYPES[name] ?? "Event";
   const Constructor = (globalThis as any)[interfaceName] ?? globalThis.Event;
@@ -74,9 +95,15 @@ export function dispatch(
   init?: { readonly [string]: mixed },
 ): boolean {
   const event = construct(name, init ?? {});
+  const paired = ALSO_BUBBLES[name];
   let ran = true;
   actively(() => {
     ran = target.dispatchEvent(event);
+    if (paired != null) {
+      // Both, in the order a browser sends them, and inside the same `act` so
+      // the component re-renders once rather than twice.
+      target.dispatchEvent(construct(paired, init ?? {}));
+    }
   });
   return ran;
 }

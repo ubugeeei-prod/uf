@@ -215,6 +215,47 @@ describe("fireEvent", () => {
     const form: any = container.querySelector("form");
     expect(fireEvent.submit(form)).toBe(false);
   });
+
+  it("reaches onFocus and onBlur, which React hears as focusin and focusout", () => {
+    // React attaches its listeners to the root container, so it only hears
+    // events that bubble — and `focus` does not. Dispatching a bare `focus`
+    // used to call nothing at all, and a test written against it read as a
+    // component that ignored focus rather than as an event that never arrived.
+    component Field() {
+      const [state, setState] = useState("idle");
+      return (
+        <input
+          aria-label="name"
+          onFocus={() => setState("focused")}
+          onBlur={() => setState("blurred")}
+          value={state}
+          readOnly={true}
+        />
+      );
+    }
+    render(<Field />);
+    const field = screen.getByLabelText("name") as HTMLInputElement;
+
+    fireEvent.focus(field);
+    expect(field.value).toBe("focused");
+
+    fireEvent.blur(field);
+    expect(field.value).toBe("blurred");
+  });
+
+  it("still sends the non-bubbling event itself", () => {
+    // Anything listening on the element directly — which is what a `focus`
+    // listener has to do — must still hear it.
+    const { container } = render(<input aria-label="name" />);
+    const field = container.querySelector("input") as HTMLInputElement;
+    const heard: Array<string> = [];
+    field.addEventListener("focus", () => heard.push("focus"));
+    field.addEventListener("focusin", () => heard.push("focusin"));
+
+    fireEvent.focus(field);
+
+    expect(heard).toEqual(["focus", "focusin"]);
+  });
 });
 
 describe("userEvent", () => {
