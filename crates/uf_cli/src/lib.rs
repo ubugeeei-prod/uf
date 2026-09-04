@@ -7,6 +7,7 @@
 mod brand;
 mod cli;
 mod commands;
+mod suggest;
 mod support;
 mod ui;
 
@@ -35,8 +36,8 @@ struct Cli {
 }
 
 pub fn main() -> ExitCode {
-    let cli = match parse_cli() {
-        Ok(cli) => cli,
+    let (cli, target) = match parse_cli() {
+        Ok(parsed) => parsed,
         Err(error) => return report_startup_error(&error),
     };
     let mode = if cli.command.wants_json() || cli.command.owns_stdout() {
@@ -46,7 +47,7 @@ pub fn main() -> ExitCode {
     };
     let mut ui = Ui::new(cli.color.into(), mode);
 
-    match run(cli, &mut ui) {
+    match run(cli, target.as_deref(), &mut ui) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             ui.error(&error);
@@ -74,12 +75,21 @@ fn report_startup_error(error: &anyhow::Error) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
+fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
     let cwd = resolve_cwd(cli.cwd)?;
+    let cwd = match target {
+        Some(target) => enter_workspace(&cwd, target)?,
+        None => cwd,
+    };
 
     match cli.command {
         Commands::Build { size_report } => commands::build::build(&cwd, ui, size_report),
         Commands::Check { json } => commands::check::check(&cwd, ui, json),
+        Commands::Completion { shell } => {
+            commands::completion::completion(ui, shell);
+            Ok(())
+        }
+        Commands::Complete { words } => commands::completion::complete(&cwd, ui, &words),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
         Commands::Dev { host, port } => {
             commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port })
@@ -99,7 +109,10 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
         Commands::Prepare => commands::release::prepare(&cwd, ui),
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
-        Commands::Run { script, args } => commands::task::run_task(&cwd, &script, &args),
+        Commands::Run { script, args } => match script {
+            Some(script) => commands::task::run_task(&cwd, &script, &args),
+            None => commands::task::list_tasks(&cwd, ui),
+        },
         Commands::Test {
             list,
             watch,
@@ -137,7 +150,7 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
 /// after installation, before any project or script exists, so `ufr --version`
 /// and `ufx --version` must never be interpreted as `uf run --version` or
 /// `uf exec --version`.
-fn parse_cli() -> Result<Cli> {
+fn parse_cli() -> Result<(Cli, Option<String>)> {
     let mut args = std::env::args_os().collect::<Vec<_>>();
     let bin_name = args
         .first()
@@ -146,16 +159,56 @@ fn parse_cli() -> Result<Cli> {
         .unwrap_or("uf");
 
     match bin_name {
-        "ufr" if !args_request_root_version(&args) => {
-            args.insert(1, "run".into());
-            Cli::try_parse_from(args).map_err(Into::into)
-        }
-        "ufx" if !args_request_root_version(&args) => {
-            args.insert(1, "exec".into());
-            Cli::try_parse_from(args).map_err(Into::into)
-        }
-        _ => Cli::try_parse_from(args).map_err(Into::into),
+        "ufr" if !args_request_root_version(&args) => args.insert(1, "run".into()),
+        "ufx" if !args_request_root_version(&args) => args.insert(1, "exec".into()),
+        _ => {}
     }
+
+    let target = take_workspace_selector(&mut args);
+    Ok((Cli::try_parse_from(args)?, target))
+}
+
+/// Split a `#member` selector off the subcommand, if there is one.
+///
+/// `uf dev#docs` runs `uf dev` in the `docs` member. The selector is written on
+/// the command rather than as a flag because it changes *where* the command
+/// runs rather than how, and because it reads in the order it happens — which
+/// is also why it is stripped here, before clap sees an argument it would
+/// otherwise reject as an unknown subcommand.
+///
+/// Only the subcommand carries one. A `#` anywhere else belongs to whatever
+/// argument it is part of: a task name, a filter, a path.
+fn take_workspace_selector(args: &mut [std::ffi::OsString]) -> Option<String> {
+    let at = subcommand_index(args)?;
+    let (command, target) = args[at].to_str()?.split_once('#')?;
+    if target.is_empty() {
+        return None;
+    }
+    let target = target.to_owned();
+    args[at] = command.into();
+    Some(target)
+}
+
+/// Where the subcommand is, skipping the global flags and their values.
+///
+/// `--cwd` and `--color` take a value, and that value is not the subcommand —
+/// which is what `uf --cwd /tmp dev#docs` gets wrong if the first non-flag
+/// argument is taken to be one.
+fn subcommand_index(args: &[std::ffi::OsString]) -> Option<usize> {
+    let mut index = 1;
+    while index < args.len() {
+        let argument = args[index].to_str()?;
+        if argument == "--cwd" || argument == "--color" {
+            index += 2;
+            continue;
+        }
+        if argument.starts_with('-') || argument.is_empty() {
+            index += 1;
+            continue;
+        }
+        return Some(index);
+    }
+    None
 }
 
 fn args_request_root_version(args: &[std::ffi::OsString]) -> bool {
@@ -171,6 +224,38 @@ fn args_request_root_version(args: &[std::ffi::OsString]) -> bool {
         }
     }
     false
+}
+
+/// The directory the `#member` selector names.
+///
+/// # Errors
+///
+/// Names the members that do exist, and the closest spellings of the one that
+/// does not, because "no such workspace" on its own is the least useful thing
+/// this could say.
+fn enter_workspace(cwd: &Utf8PathBuf, target: &str) -> Result<Utf8PathBuf> {
+    let resolved = uf_config::load_config(cwd)?;
+    let workspaces = uf_project::discover_workspaces(&resolved.root, &resolved.config);
+
+    match uf_project::resolve_workspace(&workspaces, target) {
+        Ok(workspace) => Ok(resolved.root.join(&workspace.path)),
+        Err(available) if available.is_empty() => Err(anyhow!(
+            "no workspace named {target:?}\n\n  this project has no members; a member is a \
+             directory with its own uf.config.js"
+        )),
+        Err(available) => {
+            let names = available.iter().map(compact_str::CompactString::as_str);
+            let suggestions = crate::suggest::closest(target, names.clone());
+            let mut message = format!("no workspace named {target:?}");
+            if !suggestions.is_empty() {
+                message.push_str("\n\n  did you mean: ");
+                message.push_str(&suggestions.join(", "));
+            }
+            message.push_str("\n\n  workspaces: ");
+            message.push_str(&names.collect::<Vec<_>>().join(", "));
+            Err(anyhow!(message))
+        }
+    }
 }
 
 fn resolve_cwd(cwd: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
@@ -211,6 +296,64 @@ mod tests {
     #[test]
     fn an_unknown_color_value_is_rejected() {
         assert!(Cli::try_parse_from(["uf", "build", "--color", "beige"]).is_err());
+    }
+
+    fn args(line: &[&str]) -> Vec<std::ffi::OsString> {
+        line.iter().map(Into::into).collect()
+    }
+
+    #[test]
+    fn a_selector_is_taken_off_the_subcommand() {
+        let mut line = args(&["uf", "dev#docs"]);
+
+        assert_eq!(take_workspace_selector(&mut line), Some("docs".to_owned()));
+        assert_eq!(line, args(&["uf", "dev"]));
+    }
+
+    /// `--cwd` takes a value, and that value is not the subcommand.
+    #[test]
+    fn global_flags_before_the_subcommand_do_not_hide_it() {
+        let mut line = args(&["uf", "--cwd", "/tmp", "--color", "never", "build#site"]);
+
+        assert_eq!(take_workspace_selector(&mut line), Some("site".to_owned()));
+        assert_eq!(
+            line,
+            args(&["uf", "--cwd", "/tmp", "--color", "never", "build"])
+        );
+    }
+
+    /// Only the subcommand carries a selector. A `#` in a task name, a filter
+    /// or a path belongs to that argument.
+    #[test]
+    fn a_hash_after_the_subcommand_is_left_alone() {
+        let mut line = args(&["uf", "run", "build#2"]);
+
+        assert_eq!(take_workspace_selector(&mut line), None);
+        assert_eq!(line, args(&["uf", "run", "build#2"]));
+    }
+
+    #[test]
+    fn a_command_with_no_selector_is_untouched() {
+        let mut line = args(&["uf", "dev"]);
+
+        assert_eq!(take_workspace_selector(&mut line), None);
+        assert_eq!(line, args(&["uf", "dev"]));
+    }
+
+    /// An empty selector is a typo, not a request for the root; leaving the
+    /// `#` on makes clap say so rather than silently running somewhere.
+    #[test]
+    fn an_empty_selector_is_not_a_selector() {
+        let mut line = args(&["uf", "dev#"]);
+
+        assert_eq!(take_workspace_selector(&mut line), None);
+        assert_eq!(line, args(&["uf", "dev#"]));
+    }
+
+    #[test]
+    fn a_line_with_no_subcommand_has_no_selector() {
+        assert_eq!(take_workspace_selector(&mut args(&["uf"])), None);
+        assert_eq!(take_workspace_selector(&mut args(&["uf", "--help"])), None);
     }
 
     #[test]

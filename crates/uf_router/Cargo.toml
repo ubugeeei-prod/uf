@@ -17,6 +17,10 @@ walkdir.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+similar-asserts.workspace = true
+# The generated router types are checked against the formatter uf ships, so a
+# project cannot be scaffolded with code `uf fmt --check` rejects.
+uf_fmt = { path = "../uf_fmt" }
 tempfile.workspace = true
 
 [[bench]]

@@ -53,16 +53,48 @@ export default defineConfig({
     "flow:test": "cargo test -p uf_flow",
 
     // --- The toolchain, used on itself ---------------------------------
+    //
+    // Each of these is a first-class uf command run against a workspace of
+    // this repository, not a script that reimplements one. `uf test#library`
+    // is the command a contributor types; the task exists so CI types it too,
+    // and so `uf run ci` covers it.
     build: "cargo build --release --bin uf",
 
     // Every `@uniflowed/*` package is Flow, so `cargo test` cannot run a line
     // of it. These are uf tests, run by the runner this repository ships.
     "test:lib": {
-      command: "./target/release/uf --cwd tests/library test",
+      command: "./target/release/uf test#library",
       dependsOn: ["build"],
     },
+
+    // The linter, over this repository's own Flow. uf is the only thing that
+    // can lint uf's packages, so a regression here is invisible to every other
+    // check in the pipeline.
+    //
+    // Not in `ci` yet, and the reason is written down rather than left to be
+    // rediscovered: it reports 315 errors today. The largest groups are
+    // `flow/unclear-type` (125), `flow/react-intrinsic-overlap` (89) and
+    // `react/hooks-rules` (86), and each needs looking at on its own terms —
+    // some are real findings in uf's packages, and some are rules that are
+    // wrong the way `flow/ambiguous-object-type` was wrong.
+    "check:lib": {
+      command: "./target/release/uf lint",
+      dependsOn: ["build"],
+    },
+
+    // The formatter, over the same. `--check` rather than a write, because CI
+    // reporting a diff is useful and CI committing one is not.
+    "fmt:check": {
+      command: "./target/release/uf fmt --check",
+      dependsOn: ["build"],
+    },
+
+    // The documentation site, built by the framework it documents. The script
+    // stages the brand assets — shared with the README and the release pages,
+    // so they live at the repository root — into Vite's public directory
+    // first, and then runs `uf build#docs`.
     "docs:build": {
-      command: "tools/docs/build.sh",
+      command: "UF_BIN=./target/release/uf tools/docs/build.sh",
       dependsOn: ["build"],
     },
     "install:test": "tools/release/test-install.sh",
@@ -81,7 +113,9 @@ export default defineConfig({
         "rust:fmt:check",
         "rust:clippy",
         "rust:test",
+        "fmt:check",
         "test:lib",
+        "docs:build",
         "rust:metadata",
         "manifests",
       ],

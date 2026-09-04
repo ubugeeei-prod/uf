@@ -48,6 +48,22 @@ pub(crate) enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Print a shell completion script.
+    ///
+    /// The script asks `uf` what may follow what, so a task added to
+    /// `uf.config.js` completes immediately with nothing to regenerate.
+    Completion {
+        /// The shell to generate for.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    /// Answer a completion request. Not a command a person runs.
+    #[command(hide = true, name = "__complete")]
+    Complete {
+        /// The words typed after `uf`, with the one being completed last.
+        #[arg(trailing_var_arg = true)]
+        words: Vec<String>,
+    },
     /// Scaffold a new application or library.
     Create {
         #[command(subcommand)]
@@ -130,10 +146,11 @@ pub(crate) enum Commands {
         #[arg(value_enum)]
         bump: ReleaseBump,
     },
-    /// Run a task from `uf.config.js`. Also `ufr`.
+    /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
         /// The task to run, as named under `tasks` in `uf.config.js`.
-        script: String,
+        /// Omit it to see what this project defines.
+        script: Option<String>,
         /// Everything after the task name, handed to it untouched.
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
@@ -192,8 +209,18 @@ impl Commands {
 
     /// Whether this invocation hands stdout to a protocol or a child process
     /// rather than to a reader, in which case nothing may be rendered onto it.
+    ///
+    /// `uf run` with no task name is the exception in its own command: it runs
+    /// nothing and lists what it could have run, so stdout is a reader's again.
     pub(crate) fn owns_stdout(&self) -> bool {
-        matches!(self, Self::Lsp | Self::Run { .. } | Self::Transform)
+        match self {
+            // `uf completion` is piped into `eval` and `uf __complete` into a
+            // completion list; a banner on either is a syntax error in
+            // somebody's shell.
+            Self::Complete { .. } | Self::Completion { .. } | Self::Lsp | Self::Transform => true,
+            Self::Run { script, .. } => script.is_some(),
+            _ => false,
+        }
     }
 }
 
@@ -215,6 +242,20 @@ pub(crate) enum CreateCommand {
         #[arg(long)]
         force: bool,
     },
+}
+
+/// A shell uf can generate completion for.
+// `PowerShell` ends in the enum's own name, which clippy reads as a stutter.
+// It is the shell's name, and renaming it would be worse than the lint.
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+    Elvish,
+    #[value(name = "powershell")]
+    PowerShell,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -254,10 +295,18 @@ mod tests {
         assert!(Commands::Lsp.owns_stdout());
         assert!(
             Commands::Run {
-                script: "build".to_string(),
+                script: Some("build".to_string()),
                 args: Vec::new(),
             }
             .owns_stdout()
+        );
+        assert!(
+            !Commands::Run {
+                script: None,
+                args: Vec::new(),
+            }
+            .owns_stdout(),
+            "listing tasks renders, so it must keep stdout"
         );
         assert!(!Commands::Build { size_report: false }.owns_stdout());
     }

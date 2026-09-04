@@ -173,3 +173,61 @@ fn an_ignore_entry_with_a_separator_still_means_one_place() {
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "lib/generated/keep.js");
 }
+
+/// The `test` task a scaffolded project gets must run its tests.
+///
+/// Both templates shipped `uf test --list`, which lists what would run and
+/// runs none of it. A generated project therefore had a green `uf run test`
+/// that executed nothing, which is worse than having no task at all: it is a
+/// check that reports success without checking.
+#[test]
+fn a_scaffolded_project_gets_a_test_task_that_runs_tests() {
+    for (kind, files) in [("app", app_react_files("demo")), ("lib", lib_files("demo"))] {
+        let config = files
+            .iter()
+            .find(|(path, _)| *path == "uf.config.js")
+            .map(|(_, contents)| contents.clone())
+            .unwrap_or_else(|| panic!("the {kind} template writes a uf.config.js"));
+
+        assert!(
+            config.contains(r#"test: { command: "uf test" }"#),
+            "the {kind} template's test task must run the tests:\n{config}"
+        );
+        assert!(
+            !config.contains("--list"),
+            "`uf test --list` runs nothing, so a task that uses it always passes:\n{config}"
+        );
+    }
+}
+
+/// Every task a template scaffolds has to name a command uf actually has.
+#[test]
+fn scaffolded_tasks_name_real_commands() {
+    const COMMANDS: &[&str] = &[
+        "build", "check", "create", "dev", "env", "exec", "explain", "fmt", "info", "inspect",
+        "install", "lint", "lsp", "prepare", "publish", "release", "run", "test", "upgrade", "use",
+    ];
+
+    for (kind, files) in [("app", app_react_files("demo")), ("lib", lib_files("demo"))] {
+        let config = files
+            .iter()
+            .find(|(path, _)| *path == "uf.config.js")
+            .map(|(_, contents)| contents.clone())
+            .expect("a config");
+
+        for line in config.lines() {
+            let Some(rest) = line.split_once(r#"command: "uf "#) else {
+                continue;
+            };
+            let command = rest
+                .1
+                .split([' ', '"'])
+                .next()
+                .expect("a command follows `uf `");
+            assert!(
+                COMMANDS.contains(&command),
+                "the {kind} template scaffolds `uf {command}`, which is not a uf command"
+            );
+        }
+    }
+}

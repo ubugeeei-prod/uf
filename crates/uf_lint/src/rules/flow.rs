@@ -44,10 +44,19 @@ use RuleRequirement::{SourceText, TypeChecker};
 ///
 /// The order must match [`FlowBuiltinLint`]'s discriminant order.
 pub(crate) static FLOW_META: [FlowLintMeta; FlowBuiltinLint::COUNT] = [
-    // ambiguous-object-type: a large codebase cannot afford object types whose
-    // exactness depends on a config flag; readers must see `{| |}` or `{ ... }`.
+    // ambiguous-object-type: off, because the ambiguity it is named after no
+    // longer exists. The rule dates from when a `.flowconfig` could set
+    // `exact_by_default=false` and `{ a: b }` meant different things in
+    // different projects. Flow has defaulted to exact since 2023 and now
+    // rejects `exact_by_default=false` as deprecated, so `{ a: b }` is exact,
+    // full stop — and the `{| |}` this rule asks for is the legacy spelling of
+    // what the plain braces already say. Left on, it reported 152 errors
+    // against uf's own packages for writing modern Flow.
+    //
+    // Still selectable: a codebase migrating from an older Flow may want every
+    // object type marked while both spellings are in the tree.
     meta(
-        RuleLevel::Error,
+        RuleLevel::Off,
         SourceText,
         "object type annotations must state exactness explicitly",
     ),

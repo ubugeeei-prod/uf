@@ -5,6 +5,7 @@
 
 pub(crate) mod build;
 pub(crate) mod check;
+pub(crate) mod completion;
 pub(crate) mod create;
 pub(crate) mod dev;
 pub(crate) mod env;

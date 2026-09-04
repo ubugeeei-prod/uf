@@ -149,20 +149,29 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
 
     // Exact, because the generated table *is* the whole set of routes: an
     // inexact type would let a caller pass a path this router does not serve,
-    // which is the mistake the generated types exist to prevent. It also keeps a
-    // freshly scaffolded project passing `flow/ambiguous-object-type`, which uf
-    // turns on by default — generated code has to satisfy the rules uf ships.
-    output.push_str("export type RouteParams = {|\n");
-    for route in routes {
-        output.push_str(&format!(
-            "  \"{}\": {},\n",
-            route.path,
-            route_params_type(&route.params)
-        ));
+    // which is the mistake the generated types exist to prevent. Plain braces
+    // say exactly that in modern Flow, which has been exact by default since
+    // 2023 — `{| |}` is the legacy spelling of the same thing.
+    if routes.is_empty() {
+        output.push_str("export type RouteParams = {};\n\n");
+    } else {
+        output.push_str("export type RouteParams = {\n");
+        for route in routes {
+            output.push_str(&format!(
+                "  \"{}\": {},\n",
+                route.path,
+                route_params_type(&route.params)
+            ));
+        }
+        output.push_str("};\n\n");
     }
-    output.push_str("|};\n\n");
+    // Written the way `uf fmt` writes it, down to the trailing comma: uf
+    // scaffolds a project and then checks it with its own formatter, so a
+    // generated file the formatter disagrees with fails `uf fmt --check` on
+    // code nobody wrote. `the_generated_router_is_already_formatted` is what
+    // keeps the two in step.
     output.push_str(
-        "declare export function route < Path extends RoutePath > (\n  path: Path,\n  params: RouteParams[Path]\n): string;\n",
+        "declare export function route<Path extends RoutePath>(\n  path: Path,\n  params: RouteParams[Path],\n): string;\n",
     );
     output
 }
@@ -249,143 +258,8 @@ fn route_params_type(params: &[RouteParam]) -> String {
         .join(", ");
     // Exact for the same reason: a route's parameters are exactly the segments
     // in its path.
-    format!("{{| {fields} |}}")
+    format!("{{ {fields} }}")
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn discovers_root_and_dynamic_routes() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        fs::create_dir_all(root.join("app/users/[id]")).unwrap();
-        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-        fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-        fs::write(root.join("app/users/[id]/_uf.page.js"), "// @flow\n").unwrap();
-        fs::write(root.join("app/users/[id]/_uf.middleware.js"), "// @flow\n").unwrap();
-
-        let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
-
-        assert_eq!(routes.len(), 2);
-        assert_eq!(routes[0].path, "/");
-        assert!(routes[0].has_layout);
-        assert_eq!(routes[1].path, "/users/:id");
-        assert_eq!(routes[1].params[0].name, "id");
-        assert!(routes[1].has_middleware);
-    }
-
-    #[test]
-    fn generates_router_flow_with_params() {
-        let route = Route {
-            path: "/users/:id".into(),
-            directory: "app/users/[id]".into(),
-            page: "app/users/[id]/_uf.page.js".into(),
-            params: vec![RouteParam {
-                name: "id".into(),
-                kind: RouteParamKind::Single,
-            }],
-            has_layout: false,
-            has_middleware: false,
-        };
-
-        let source = generate_router_flow(&[route]);
-
-        assert!(source.contains("export type RoutePath = \"/users/:id\";"));
-        assert!(source.contains("\"/users/:id\": {| id: string |}"));
-    }
-
-    /// Generated code has to satisfy the rules uf ships enabled.
-    ///
-    /// `flow/ambiguous-object-type` is on by default, so a `{ … }` in the
-    /// generated router made a freshly scaffolded project fail `uf check` on a
-    /// file the user never wrote.
-    #[test]
-    fn generated_router_types_are_exact() {
-        let source = generate_router_flow(&[Route {
-            path: "/users/:id".into(),
-            directory: Utf8PathBuf::from("app/users/[id]"),
-            page: Utf8PathBuf::from("app/users/[id]/_uf.page.js"),
-            params: vec![RouteParam {
-                name: "id".into(),
-                kind: RouteParamKind::Single,
-            }],
-            has_layout: false,
-            has_middleware: false,
-        }]);
-
-        // An object type opens inexactly when `{` is not immediately followed
-        // by `|`, which is exactly what the lint rule looks for.
-        for line in source.lines() {
-            let bytes = line.as_bytes();
-            for (index, byte) in bytes.iter().enumerate() {
-                if *byte != b'{' {
-                    continue;
-                }
-                assert_eq!(
-                    bytes.get(index + 1),
-                    Some(&b'|'),
-                    "generated router opens an inexact object type, which \
-                     `flow/ambiguous-object-type` rejects: {line}"
-                );
-            }
-        }
-        assert!(source.contains("export type RouteParams = {|"));
-        assert!(source.ends_with("string;\n"));
-    }
-
-    #[test]
-    fn an_empty_project_still_generates_exact_types() {
-        let source = generate_router_flow(&[]);
-
-        assert!(source.contains("export type RoutePath = empty;"));
-        assert!(source.contains("export type RouteParams = {|"));
-        assert!(!source.contains("= {\n"));
-    }
-
-    #[test]
-    fn a_route_handler_is_a_reserved_file_rather_than_a_violation() {
-        // `_uf.route.js` answers a request instead of rendering a page. It was
-        // an unknown name until route handlers existed, and the two tests that
-        // used it as their example of an invalid one now use `_uf.handler.js`.
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        fs::create_dir_all(root.join("app/api")).unwrap();
-        fs::write(root.join("app/api/_uf.route.js"), "// @flow\n").unwrap();
-
-        let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
-        assert!(violations.is_empty(), "{violations:?}");
-
-        let classified = classify_reserved_file(RESERVED_ROUTE);
-        assert!(!classified.is_unknown());
-    }
-
-    #[test]
-    fn finds_invalid_reserved_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        fs::create_dir_all(root.join("app")).unwrap();
-        fs::write(root.join("app/_uf.handler.js"), "// @flow\n").unwrap();
-
-        let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
-
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].path.file_name(), Some("_uf.handler.js"));
-    }
-
-    #[test]
-    fn writes_router_manifest() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        fs::create_dir_all(root.join("app")).unwrap();
-        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-
-        let manifest = write_router_manifest(&root, &UniflowedConfig::default())
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(manifest.file_name(), Some("router.js"));
-        assert!(fs::read_to_string(manifest).unwrap().contains("RoutePath"));
-    }
-}
+mod tests;

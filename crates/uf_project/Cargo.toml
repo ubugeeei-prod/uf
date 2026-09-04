@@ -9,6 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+compact_str.workspace = true
 camino.workspace = true
 uf_config = { path = "../uf_config" }
 thiserror.workspace = true

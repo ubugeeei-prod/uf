@@ -10,17 +10,114 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::PackageManagerPlan;
-use uf_term::{KeyValue, Status, Tone};
+use uf_term::{Cell, Column, KeyValue, Status, Table, Tone, display_width, truncate_to_width};
 
 use crate::cli::{AppTemplate, CreateCommand};
 use crate::commands::{create, pm, test};
-use crate::support::{safe_file_label, write_json_file};
+use crate::suggest::closest;
+use crate::support::{plural, project_label, safe_file_label, write_json_file};
 use crate::ui::Ui;
 
 pub(crate) fn run_task(cwd: &Utf8Path, script: &str, args: &[String]) -> Result<()> {
     let resolved = load_config(cwd)?;
     let mut visited = BTreeSet::new();
     run_named_task(&resolved, script, args, &mut visited)
+}
+
+/// Widest a command is printed at in the task table.
+///
+/// A task may legitimately be a hundred characters of shell — this repository
+/// has one — and printing it in full pushes every column after it off the
+/// screen. The name is what the reader needs; the command is context.
+const COMMAND_WIDTH: usize = 56;
+
+/// `text`, cut to `width` columns with a trailing ellipsis if it did not fit.
+fn elide(text: &str, width: usize) -> String {
+    if display_width(text) <= width {
+        return text.to_owned();
+    }
+    let mut out = truncate_to_width(text, width.saturating_sub(1)).to_owned();
+    out.push('…');
+    out
+}
+
+/// `uf run` with no task name: what this project can do.
+///
+/// A tool that requires a name before it will tell you the names is a tool you
+/// have to read the config to use. This is the answer to "what can I run here",
+/// and it is the same list the unknown-task error points at.
+pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let tasks = &resolved.config.tasks;
+
+    if tasks.is_empty() {
+        ui.render(|renderer, out| {
+            renderer.banner(out, "uf run", None);
+            renderer.blank(out);
+            renderer.status(
+                out,
+                Status::Info,
+                "this project defines no tasks; add them under `tasks` in uf.config.js",
+            );
+        });
+        return Ok(());
+    }
+
+    // Owned first, borrowed second: `Table` holds `&str`, so every cell's text
+    // has to outlive the table rather than be built into it.
+    let rows = tasks
+        .iter()
+        .map(|(name, task)| {
+            let (command, after) = match task {
+                TaskDefinition::Command(command) => (command.to_string(), String::new()),
+                TaskDefinition::Detailed(details) => (
+                    details.command.to_string(),
+                    details
+                        .depends_on
+                        .iter()
+                        .map(compact_str::CompactString::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+            };
+            // A task with no command of its own is Vite Task's, and saying so
+            // is more useful than an empty cell.
+            let runs = if command.trim().is_empty() {
+                String::from("vite task")
+            } else {
+                elide(&command, COMMAND_WIDTH)
+            };
+            (name.to_string(), runs, after)
+        })
+        .collect::<Vec<_>>();
+
+    let mut table = Table::new(vec![
+        Column::left("task"),
+        Column::left("runs"),
+        Column::left("after"),
+    ]);
+    for (name, runs, after) in &rows {
+        table.push(vec![
+            Cell::toned(name, Tone::Accent),
+            Cell::new(runs),
+            Cell::toned(after, Tone::Muted),
+        ]);
+    }
+
+    let count = tasks.len();
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf run", Some(project_label(&resolved.root)));
+        renderer.blank(out);
+        renderer.table(out, 2, &table);
+        renderer.blank(out);
+        renderer.status(
+            out,
+            Status::Info,
+            &format!("{}; run one with `uf run <task>`", plural(count, "task")),
+        );
+    });
+
+    Ok(())
 }
 
 fn run_named_task(
@@ -34,7 +131,7 @@ fn run_named_task(
     }
 
     let Some(task) = resolved.config.tasks.get(script) else {
-        bail!("task {script:?} is not defined in uf.config.js");
+        bail!(unknown_task(resolved, script));
     };
 
     if let TaskDefinition::Detailed(details) = task {
@@ -44,6 +141,50 @@ fn run_named_task(
     }
 
     execute_task(resolved, script, task, args)
+}
+
+/// The error for a task name that is not in `uf.config.js`.
+///
+/// `task "biuld" is not defined in uf.config.js` is true and unhelpful: the
+/// reader knows what they typed, and what they want is the name they meant.
+/// So the message names the closest tasks, and — when there are few enough to
+/// read — every task the project defines, because someone who has just arrived
+/// in a repository does not know what is on offer and should not have to open
+/// the config to find out.
+fn unknown_task(resolved: &ResolvedConfig, script: &str) -> String {
+    let names = resolved
+        .config
+        .tasks
+        .keys()
+        .map(compact_str::CompactString::as_str)
+        .collect::<Vec<_>>();
+
+    let mut message = format!("task {script:?} is not defined in uf.config.js");
+    if names.is_empty() {
+        message.push_str("\n\n  this project defines no tasks");
+        return message;
+    }
+
+    let suggestions = closest(script, names.iter().copied());
+    if !suggestions.is_empty() {
+        message.push_str("\n\n  did you mean: ");
+        message.push_str(&suggestions.join(", "));
+    }
+
+    // A long list is a wall of text rather than an answer; past this many, the
+    // suggestions are the help and `uf run` with no task name is where the rest
+    // lives.
+    const LISTED_IN_FULL: usize = 12;
+    if names.len() <= LISTED_IN_FULL {
+        message.push_str("\n\n  tasks: ");
+        message.push_str(&names.join(", "));
+    } else {
+        message.push_str(&format!(
+            "\n\n  {} tasks are defined; `uf run` lists them",
+            names.len()
+        ));
+    }
+    message
 }
 
 /// Run one task.
