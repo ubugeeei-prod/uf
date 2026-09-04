@@ -213,8 +213,28 @@ fn fmt_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "everything else",
-            provider: format!("{:?}", resolved.config.fmt.non_flow.formatter),
-            detail: "JSON, Markdown and CSS".to_string(),
+            // The provider's own name rather than the variant's, because it is
+            // the binary uf runs and the thing a reader would install.
+            provider: resolved.config.fmt.non_flow.formatter.as_str().to_string(),
+            detail: match uf_fmt::non_flow::invocation(
+                resolved.config.fmt.non_flow.formatter,
+                false,
+                &resolved.config.fmt,
+            ) {
+                // The exact command, so `uf explain` answers "what will it run"
+                // rather than "which one is selected".
+                Some(invocation) => format!(
+                    "JSON, CSS and TypeScript, by `{} {}`",
+                    invocation.program,
+                    invocation
+                        .arguments
+                        .iter()
+                        .map(compact_str::CompactString::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
+                None => "nothing: JSON, CSS and TypeScript are left alone".to_string(),
+            },
         },
     ]
 }

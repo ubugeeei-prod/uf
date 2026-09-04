@@ -15,7 +15,7 @@
 export type { Body as TestBody, Case, Modifier, Suite, TestOptions } from "./internal/registry.js";
 export type { Outcome, Result, RunOptions } from "./internal/run.js";
 export type { Site } from "./internal/frames.js";
-export type { SpyCall } from "./internal/expect.js";
+export type { SpyCall, SpyResult } from "./internal/spy.js";
 export type { Strictness } from "./internal/equality.js";
 
 export {
@@ -28,7 +28,19 @@ export {
   test,
 } from "./internal/registry.js";
 
-export { AssertionError, expect, fn } from "./internal/expect.js";
+export { AssertionError, expect } from "./internal/expect.js";
+
+export { fn, spyOn } from "./internal/spy.js";
+
+/**
+ * Vitest's namespace, under its own name.
+ *
+ * A project moving to uf should not have to rewrite the parts of its tests
+ * that were never about Vite: `vi.fn`, `vi.spyOn` and `vi.stubEnv` are a
+ * vocabulary, and a second one for the same operations would cost every
+ * migration and buy nothing.
+ */
+export { UnsupportedError, vi } from "./internal/vi.js";
 
 export { DEFAULT_TIMEOUT_MS, NAME_SEPARATOR } from "./internal/run.js";
 

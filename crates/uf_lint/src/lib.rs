@@ -39,8 +39,8 @@ use crate::rules::deprecated_aliases_for;
 use crate::runner::{
     run_fetch_no_global_override, run_flow_ambiguous_object_type, run_flow_deprecated_type,
     run_flow_export_renamed_default, run_flow_internal_type, run_flow_mixed_import_and_require,
-    run_flow_non_const_var_export, run_flow_react_intrinsic_overlap, run_flow_syntax,
-    run_flow_unclear_type, run_flow_unnecessary_optional_chain, run_flow_unsafe_getters_setters,
+    run_flow_non_const_var_export, run_flow_syntax, run_flow_unclear_type,
+    run_flow_unnecessary_optional_chain, run_flow_unsafe_getters_setters,
     run_flow_unsafe_object_assign, run_no_npm_script_invocation, run_no_tabs,
     run_no_trailing_whitespace, run_package_no_npm_scripts, run_react_compiler_rules,
     run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
@@ -232,7 +232,6 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_flow_mixed_import_and_require(&scan, config, &mut diagnostics);
     run_flow_non_const_var_export(&scan, config, &mut diagnostics);
     run_flow_export_renamed_default(&scan, config, &mut diagnostics);
-    run_flow_react_intrinsic_overlap(&scan, config, &mut diagnostics);
 
     run_react_component_syntax(&scan, config, &mut diagnostics);
     run_react_hook_syntax(&scan, config, &mut diagnostics);

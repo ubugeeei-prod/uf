@@ -4,8 +4,8 @@
 //
 // Node.js module customization hooks that transform Flow on import.
 //
-// Registered by `@uniflowed/vite/register` (through `node:module`'s
-// `register()`), which makes `node --import @uniflowed/vite/register app.js`
+// Registered by `@uniflowed/host/register` (through `node:module`'s
+// `register()`), which makes `node --import @uniflowed/host/register app.js`
 // run a Flow project directly: every `.js` module uf is responsible for is
 // transformed as it is loaded through `uf transform`, and everything else is
 // left to Node.

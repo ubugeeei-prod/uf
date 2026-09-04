@@ -5,7 +5,7 @@ use camino::Utf8Path;
 use serde_json::json;
 use uf_config::load_config;
 use uf_lint::{Diagnostic, LintReport, Severity, SourceFile, lint_sources};
-use uf_project::collect_source_files;
+use uf_project::{SourceKind, collect_source_files};
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
 };
@@ -68,9 +68,16 @@ pub(crate) fn lint_command(
 
 pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>)> {
     let resolved = load_config(cwd)?;
+    // Flow only. Discovery also returns the JSON, CSS and TypeScript that
+    // `uf fmt` hands to the non-Flow formatter, and uf's linter is a Flow
+    // linter — parsing a stylesheet with it produces a syntax error about a
+    // file nobody asked it to read. `package.json` is the exception it already
+    // made: the linter reads it, which is why `is_flow` is the wrong question
+    // for the formatter and the right one here.
     let files = collect_source_files(&resolved.root, &resolved.config)?;
     let sources = files
         .into_iter()
+        .filter(|file| file.kind.is_flow() || file.kind == SourceKind::PackageManifest)
         .map(|file| SourceFile {
             path: file.relative_path,
             source: file.source,

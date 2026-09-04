@@ -1,75 +1,28 @@
 // @flow
 //
-// `@uniflowed/react`: React, re-exported by name.
+// `@uniflowed/react`: React, re-exported.
 //
-// This is the real `react` package, not a declaration of it. Naming every
-// export rather than `export *` keeps the surface explicit — a name not listed
-// here is not part of what uf documents — and lets a bundler drop the ones an
-// application never touches. The Flow types come from Flow's own library
-// definition for `react`, so `import type { Node } from "@uniflowed/react"`
-// is exactly `import type { Node } from "react"`.
+// This is the real `react` package, not a declaration of it. `export *` rather
+// than a list of names, because the list was a second copy of React's export
+// surface that someone had to keep in step with the first — and the failure
+// mode of falling behind is an `undefined` an application finds at runtime,
+// long after the name was added upstream.
+//
+// The Flow types come from Flow's own library definition for `react`, so
+// `import type { Node } from "@uniflowed/react"` is exactly
+// `import type { Node } from "react"`.
+//
+// # Which React
+//
+// A peer dependency, so the version is the project's and not uf's. A uf
+// release does not get to decide when an application moves to the next React,
+// and an application can pin or override one with its package manager's
+// `resolutions` without waiting for uf — red line 5, which exists because
+// `react-scripts` was the package that serialised exactly this.
+
+export * from "react";
 
 import * as React from "react";
-
-export type {
-  AbstractComponent,
-  ChildrenArray,
-  ComponentType,
-  Config,
-  Context,
-  Element,
-  ElementConfig,
-  ElementProps,
-  ElementRef,
-  ElementType,
-  Key,
-  MixedElement,
-  Node,
-  Portal,
-  Ref,
-  RefSetter,
-  StatelessFunctionalComponent,
-} from "react";
-
-export {
-  Children,
-  Component,
-  Fragment,
-  Profiler,
-  PureComponent,
-  StrictMode,
-  Suspense,
-  act,
-  cache,
-  cloneElement,
-  createContext,
-  createElement,
-  createRef,
-  forwardRef,
-  isValidElement,
-  lazy,
-  memo,
-  startTransition,
-  use,
-  useActionState,
-  useCallback,
-  useContext,
-  useDebugValue,
-  useDeferredValue,
-  useEffect,
-  useId,
-  useImperativeHandle,
-  useInsertionEffect,
-  useLayoutEffect,
-  useMemo,
-  useOptimistic,
-  useReducer,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  useTransition,
-  version,
-} from "react";
 
 /** The setter shape `useState` hands back. */
 export type SetState<S> = S | ((previous: S) => S);

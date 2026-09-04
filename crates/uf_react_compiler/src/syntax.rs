@@ -94,8 +94,13 @@ pub fn return_type_body(tokens: &[Token], open: usize) -> Option<usize> {
 
     let close = matching_close(tokens, open, b'(', b')')?;
     let colon = tokens.get(close + 1)?;
+    // No annotation: the body is the next `{`, and the walk still has to be
+    // told to skip the parameter list — a parameter whose *type* is an object,
+    // `component P(a: { readonly x: number })`, puts a `{` in front of the body
+    // that would otherwise consume the scope the declaration just opened.
     if !colon.is_punct(b':') {
-        return None;
+        return (close + 1..(close + BUDGET).min(tokens.len()))
+            .find(|at| tokens[*at].is_punct(b'{'));
     }
 
     let mut depth = 0usize;
@@ -104,8 +109,13 @@ pub fn return_type_body(tokens: &[Token], open: usize) -> Option<usize> {
         match token.kind {
             TokenKind::Punct(b'(' | b'[') => depth += 1,
             TokenKind::Punct(b')' | b']') => depth = depth.checked_sub(1)?,
-            // A `{` at depth zero is the body; nested, it is an object type.
-            TokenKind::Punct(b'{') if depth == 0 => return Some(at),
+            // A `{` at depth zero is the body — unless it opens an object
+            // *type*, which is what `(): {| … |} {` and `(): { a: N } {` both
+            // begin with. Taking the first one for the body left the real body
+            // classified as a plain block, and every hook a `useX` function
+            // with an object return type called was reported as being called
+            // outside a component or hook.
+            TokenKind::Punct(b'{') if depth == 0 && !opens_a_type(tokens, at) => return Some(at),
             TokenKind::Punct(b'{') => depth += 1,
             TokenKind::Punct(b'}') => depth = depth.checked_sub(1)?,
             TokenKind::Punct(b';') => return None,
@@ -113,6 +123,24 @@ pub fn return_type_body(tokens: &[Token], open: usize) -> Option<usize> {
         }
     }
     None
+}
+
+/// Whether the `{` at `at` opens an object type rather than a function body.
+///
+/// Decided by what precedes it, which is the one place the two differ: a type
+/// follows the punctuation that introduces a type — `:` after the parameter
+/// list, `|` or `&` inside a union or intersection, `<` inside a type argument
+/// list, `,` between members, and `=>` in a function type. A body follows the
+/// *end* of a type: `}`, `]`, `>`, `)`, or a bare name.
+fn opens_a_type(tokens: &[Token], at: usize) -> bool {
+    let Some(previous) = at.checked_sub(1).and_then(|before| tokens.get(before)) else {
+        return false;
+    };
+    previous.kind == TokenKind::Arrow
+        || matches!(
+            previous.kind,
+            TokenKind::Punct(b':' | b'|' | b'&' | b'<' | b',' | b'(')
+        )
 }
 
 /// The parameter names declared in the list opening at `open`.

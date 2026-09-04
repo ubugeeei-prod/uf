@@ -21,7 +21,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { transformFlow } from "../transform.js";
+import { transformFlow } from "@uniflowed/host/transform";
 
 /** The one config file name uf reads. */
 export const CONFIG_FILES = ["uf.config.js"];

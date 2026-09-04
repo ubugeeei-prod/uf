@@ -1,15 +1,15 @@
 :root {
-  --uf-color-cyan-500: #35D6F6;
-  --uf-color-blue-500: #2677FF;
-  --uf-color-indigo-500: #5C49FF;
-  --uf-color-violet-500: #8F4BFF;
-  --uf-color-magenta-500: #D84BFF;
-  --uf-color-ink-900: #0F172A;
+  --uf-color-cyan-500: #35d6f6;
+  --uf-color-blue-500: #2677ff;
+  --uf-color-indigo-500: #5c49ff;
+  --uf-color-violet-500: #8f4bff;
+  --uf-color-magenta-500: #d84bff;
+  --uf-color-ink-900: #0f172a;
   --uf-color-slate-600: #475569;
-  --uf-color-mist-50: #F8FAFC;
-  --uf-color-success-500: #34D399;
-  --uf-color-warning-500: #F59E0B;
-  --uf-color-danger-500: #EF4444;
+  --uf-color-mist-50: #f8fafc;
+  --uf-color-success-500: #34d399;
+  --uf-color-warning-500: #f59e0b;
+  --uf-color-danger-500: #ef4444;
   --uf-font-display: "Satoshi", "Inter", ui-sans-serif, system-ui, sans-serif;
   --uf-font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
   --uf-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -36,6 +36,6 @@
   --uf-duration-fast: 120ms;
   --uf-duration-normal: 200ms;
   --uf-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --uf-gradient-flow: linear-gradient(90deg, #35D6F6 0%, #2677FF 32%, #8F4BFF 68%, #D84BFF 100%);
-  --uf-gradient-mark: linear-gradient(135deg, #35D6F6 0%, #2677FF 38%, #8F4BFF 72%, #D84BFF 100%);
+  --uf-gradient-flow: linear-gradient(90deg, #35d6f6 0%, #2677ff 32%, #8f4bff 68%, #d84bff 100%);
+  --uf-gradient-mark: linear-gradient(135deg, #35d6f6 0%, #2677ff 38%, #8f4bff 72%, #d84bff 100%);
 }

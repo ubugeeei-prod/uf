@@ -138,12 +138,24 @@ pub(crate) static FLOW_META: [FlowLintMeta; FlowBuiltinLint::COUNT] = [
         TypeChecker,
         "`@flow strict` modules may only import other strict modules",
     ),
-    // react-intrinsic-overlap: shadowing `div`/`span` silently changes what JSX
-    // means at the use site.
+    // react-intrinsic-overlap: needs type inference, and uf's syntactic version
+    // was a misreading.
+    //
+    // uf flagged any `const`/`let`/`var` whose name matched an HTML element,
+    // on the grounds that it "silently changes what JSX means". It does not:
+    // a lowercase tag is *always* an intrinsic, resolved to the string, never
+    // from scope — `const body = 42; <body />` still compiles to
+    // `_jsx("body")`. The rule reported 90 errors against uf's own packages for
+    // naming variables `source`, `table`, `text` and `slot`.
+    //
+    // Flow's rule of this name is a different check entirely: a `mixed`-typed
+    // base used where a component is expected. That needs inference, so it
+    // belongs with the rules uf reports as unavailable rather than with the
+    // ones it pretends to run.
     meta(
         RuleLevel::Error,
-        SourceText,
-        "local bindings must not shadow a JSX intrinsic element name",
+        TypeChecker,
+        "a value used as a component must not overlap a JSX intrinsic",
     ),
     // require-explicit-enum-checks: warn, because the explicit form is verbose and
     // the implicit form is not itself a bug.

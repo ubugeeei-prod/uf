@@ -42,7 +42,10 @@ use std::borrow::Cow;
 use thiserror::Error;
 use uf_config::FmtConfig;
 
+pub mod non_flow;
+
 pub use flow::FlowFormatError;
+pub use non_flow::{Invocation, NonFlowError};
 
 /// The largest [`FmtConfig::indent_width`] the formatter accepts.
 ///

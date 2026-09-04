@@ -26,11 +26,15 @@ export const FLOW_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs"];
  * dev` session and a `uf test` run that disagree about which files are Flow
  * disagree about what the code is.
  *
- * A build driver synthesises modules of its own (`\0vite/client`, Rolldown's
- * shims), and a third-party dependency ships JavaScript that is already
- * JavaScript; neither is Flow. `@uniflowed/*` under `node_modules` is the
- * deliberate exception: those packages ship Flow source, because that is what
- * uf tells everyone to write.
+ * A build tool synthesises modules of its own — ids beginning with a NUL byte,
+ * a bundler's shims — and a third-party dependency ships JavaScript that is
+ * already JavaScript; neither is Flow. `@uniflowed/*` under `node_modules` is
+ * the deliberate exception: those packages ship Flow source, because that is
+ * what uf tells everyone to write.
+ *
+ * Which build tool is deliberately not named. This loader runs Flow on a
+ * Capability JS Host and has no bundler in it; naming one would tie the answer
+ * to a tool that is not in this file's dependency graph.
  */
 export function isFlowModule(id) {
   if (id.startsWith("\0")) return false;

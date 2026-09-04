@@ -52,6 +52,13 @@ pub enum SourceKind {
     JavaScript,
     /// A `package.json` manifest. Read by the linter, never rewritten.
     PackageManifest,
+    /// JSON or JSONC that is not a package manifest.
+    Json,
+    /// A stylesheet: `.css`, `.scss`, `.less`.
+    Style,
+    /// TypeScript, which a uf project may still hold at its edges — a config
+    /// file, a generated declaration, a dependency's shim.
+    TypeScript,
 }
 
 impl SourceKind {
@@ -63,11 +70,26 @@ impl SourceKind {
         }
         match path.extension() {
             Some("js" | "jsx" | "mjs" | "cjs") => Some(Self::JavaScript),
+            Some("json" | "jsonc") => Some(Self::Json),
+            Some("css" | "scss" | "less") => Some(Self::Style),
+            Some("ts" | "tsx" | "mts" | "cts") => Some(Self::TypeScript),
             _ => None,
         }
     }
 
-    /// Whether `uf fmt` may rewrite a file of this kind.
+    /// Whether this file is Flow, and so uf's own to parse, lint and print.
+    ///
+    /// The other kinds are discovered so that `uf fmt` can hand them to a
+    /// formatter that understands them; nothing else in uf reads them.
+    #[must_use]
+    pub const fn is_flow(self) -> bool {
+        match self {
+            Self::JavaScript => true,
+            Self::PackageManifest | Self::Json | Self::Style | Self::TypeScript => false,
+        }
+    }
+
+    /// Whether `uf fmt` may rewrite a file of this kind with its own printer.
     ///
     /// A `match` rather than a comparison, so a new kind cannot default into
     /// being formattable by omission.
@@ -75,7 +97,20 @@ impl SourceKind {
     pub const fn is_formattable(self) -> bool {
         match self {
             Self::JavaScript => true,
-            Self::PackageManifest => false,
+            Self::PackageManifest | Self::Json | Self::Style | Self::TypeScript => false,
+        }
+    }
+
+    /// Whether `uf fmt` hands a file of this kind to the non-Flow formatter.
+    ///
+    /// `package.json` is deliberately excluded. uf writes it during
+    /// `uf install` and `uf create`, a formatter would reorder or re-indent
+    /// what uf just wrote, and the two would fight on every run.
+    #[must_use]
+    pub const fn is_non_flow_formattable(self) -> bool {
+        match self {
+            Self::Json | Self::Style | Self::TypeScript => true,
+            Self::JavaScript | Self::PackageManifest => false,
         }
     }
 }

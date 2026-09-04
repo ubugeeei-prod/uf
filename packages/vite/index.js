@@ -49,7 +49,7 @@ import {
   scanRoutes,
   serverModuleSource,
 } from "./internal/routes.js";
-import { TransformService, isFlowModule } from "./transform.js";
+import { TransformService, isFlowModule } from "@uniflowed/host/transform";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
