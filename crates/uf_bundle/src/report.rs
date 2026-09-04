@@ -5,7 +5,6 @@ use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{CompactString, ToCompactString};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -278,25 +277,22 @@ pub fn collect_assets(
         }
     }
 
-    let mut assets = files
-        .into_par_iter()
-        .map(|(path, relative)| {
-            let contents = fs::read(&path).map_err(|source| ReportError::Read {
-                path: path.clone(),
-                source,
-            })?;
-            let size = measure(&contents).map_err(|source| ReportError::Measure {
-                path: path.clone(),
-                source,
-            })?;
+    let mut assets = uf_infra::parallel::map(&files, |(path, relative)| {
+        let contents = fs::read(path).map_err(|source| ReportError::Read {
+            path: path.clone(),
+            source,
+        })?;
+        let size = measure(&contents).map_err(|source| ReportError::Measure {
+            path: path.clone(),
+            source,
+        })?;
 
-            Ok(AssetEntry {
-                kind: AssetKind::from_path(&path),
-                path: relative,
-                size,
-            })
+        Ok(AssetEntry {
+            kind: AssetKind::from_path(path),
+            path: relative.clone(),
+            size,
         })
-        .collect::<Result<Vec<_>, ReportError>>()?;
+    })?;
 
     assets.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(assets)
