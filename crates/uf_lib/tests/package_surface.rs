@@ -317,6 +317,143 @@ fn is_identifier_part(value: char) -> bool {
     value.is_alphanumeric() || value == '_' || value == '$'
 }
 
+/// Every module specifier `source` imports or re-exports from.
+///
+/// Deliberately not `code_only` + a substring search: that helper blanks string
+/// *bodies* and keeps their delimiters, which is exactly the half a specifier
+/// lives in. So this is its own scanner over the raw text, skipping comments and
+/// recording a string literal whenever the last word before it was `from` or
+/// `import` — which covers `import x from "s"`, `export { x } from "s"`,
+/// `import type { T } from "s"`, the side-effect `import "s"`, and the dynamic
+/// `import("s")`.
+///
+/// Template literals cannot be static specifiers, so they are skipped rather
+/// than recorded; a dynamic `import(`./${name}.js`)` is not resolvable here and
+/// the shipped surface contains none.
+fn module_specifiers(source: &str) -> Vec<String> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum State {
+        Code,
+        LineComment,
+        BlockComment,
+    }
+
+    let chars = source.chars().collect::<Vec<_>>();
+    let mut specifiers = Vec::new();
+    let mut state = State::Code;
+    let mut last_word = String::new();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        let current = chars[index];
+        let next = chars.get(index + 1).copied();
+        match state {
+            State::Code => match (current, next) {
+                ('/', Some('/')) => {
+                    state = State::LineComment;
+                    index += 2;
+                }
+                ('/', Some('*')) => {
+                    state = State::BlockComment;
+                    index += 2;
+                }
+                ('"' | '\'', _) => {
+                    let quote = current;
+                    let mut literal = String::new();
+                    index += 1;
+                    while index < chars.len() && chars[index] != quote {
+                        if chars[index] == '\\' {
+                            index += 1;
+                        }
+                        if index < chars.len() {
+                            literal.push(chars[index]);
+                            index += 1;
+                        }
+                    }
+                    index += 1;
+                    if last_word == "from" || last_word == "import" {
+                        specifiers.push(literal);
+                    }
+                    last_word.clear();
+                }
+                ('`', _) => {
+                    // Skip the whole template, substitutions and all: brace
+                    // depth is not needed because no shipped template contains
+                    // a nested backtick.
+                    index += 1;
+                    while index < chars.len() && chars[index] != '`' {
+                        if chars[index] == '\\' {
+                            index += 1;
+                        }
+                        index += 1;
+                    }
+                    index += 1;
+                    last_word.clear();
+                }
+                _ if is_identifier_start(current) => {
+                    let start = index;
+                    while index < chars.len() && is_identifier_part(chars[index]) {
+                        index += 1;
+                    }
+                    last_word = chars[start..index].iter().collect();
+                }
+                _ => {
+                    // `(` is transparent so `import("./m.js")` still reads as an
+                    // import; every other non-space character ends the word, which
+                    // is what keeps `const text = "./m.js"` from looking like one.
+                    if !current.is_whitespace() && current != '(' {
+                        last_word.clear();
+                    }
+                    index += 1;
+                }
+            },
+            State::LineComment => {
+                if current == '\n' {
+                    state = State::Code;
+                }
+                index += 1;
+            }
+            State::BlockComment => {
+                if current == '*' && next == Some('/') {
+                    state = State::Code;
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+            }
+        }
+    }
+
+    specifiers
+}
+
+/// Resolve `specifier` against the directory holding `module`, both relative to
+/// `packages/`, collapsing `.` and `..` without touching the filesystem.
+///
+/// Returns `None` when the specifier climbs above `packages/`, which no shipped
+/// module may do.
+fn resolve_relative(module: &Utf8Path, specifier: &str) -> Option<Utf8PathBuf> {
+    let mut segments: Vec<&str> = module
+        .parent()
+        .unwrap_or(Utf8Path::new(""))
+        .as_str()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+
+    for segment in specifier.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            other => segments.push(other),
+        }
+    }
+
+    Some(segments.join("/").into())
+}
+
 /// Every `package.json` under `packages`, relative to that directory.
 fn shipped_manifests() -> Vec<Utf8PathBuf> {
     shipped_files()
@@ -635,6 +772,136 @@ fn every_shipped_module_is_reachable_through_exports() {
             );
         }
     }
+}
+
+/// Every relative import in a shipped module must resolve to a shipped file.
+///
+/// `exports` subpaths are checked by the test above; this is the other half of
+/// the same guarantee. A module that re-exports from a sibling nobody wrote is
+/// not a type error a consumer ever sees — Flow does not run over an installed
+/// `node_modules` — it is an `ERR_MODULE_NOT_FOUND` thrown on the first import.
+/// `@uniflowed/core`'s root entry point shipped in exactly that state: it
+/// re-exported `./testing.js` and `./config.js`, neither of which existed, so
+/// `import { describe } from "@uniflowed/core"` failed to resolve at all.
+#[test]
+fn every_relative_import_resolves_to_a_shipped_file() {
+    let shipped = shipped_files().into_iter().collect::<BTreeSet<_>>();
+    let mut dangling = BTreeSet::new();
+
+    for module in shipped_modules() {
+        for specifier in module_specifiers(&read(&module)) {
+            if !specifier.starts_with('.') {
+                continue;
+            }
+            match resolve_relative(&module, &specifier) {
+                Some(target) if shipped.contains(&target) => {}
+                Some(target) => {
+                    dangling.insert(format!(
+                        "{module} imports {specifier} ({target} does not exist)"
+                    ));
+                }
+                None => {
+                    dangling.insert(format!(
+                        "{module} imports {specifier}, which climbs out of packages/"
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        dangling.is_empty(),
+        "{} relative imports do not resolve:\n{}",
+        dangling.len(),
+        dangling.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// A relative import may not leave the package that contains it.
+///
+/// Each directory under `packages/` is published as its own npm package, so a
+/// relative path that walks into a sibling names a file that exists in this
+/// repository and nowhere in an installed tree. Siblings are reached by
+/// specifier — that is what the specifier is for — and the workspace symlinks
+/// in `node_modules` would otherwise hide the breakage until publish.
+#[test]
+fn relative_imports_stay_inside_their_package() {
+    let mut escaping = BTreeSet::new();
+
+    for module in shipped_modules() {
+        let package = module
+            .iter()
+            .next()
+            .expect("a shipped module lives inside a package");
+        for specifier in module_specifiers(&read(&module)) {
+            if !specifier.starts_with('.') {
+                continue;
+            }
+            let Some(target) = resolve_relative(&module, &specifier) else {
+                escaping.insert(format!(
+                    "{module} imports {specifier}, which climbs out of packages/"
+                ));
+                continue;
+            };
+            if target.iter().next() != Some(package) {
+                escaping.insert(format!(
+                    "{module} imports {specifier}, which resolves to {target} in another package"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        escaping.is_empty(),
+        "{} relative imports leave their package:\n{}",
+        escaping.len(),
+        escaping.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn module_specifiers_reads_every_import_form() {
+    let source = r#"// @flow
+// from "./comment-not-an-import.js"
+import "./side-effect.js";
+import def from "./default.js";
+import type { T } from "./type-only.js";
+export { name } from "./re-export.js";
+export type { U } from "./type-re-export.js";
+const lazy = import("./dynamic.js");
+const text = "./not-an-import.js";
+"#;
+
+    assert_eq!(
+        module_specifiers(source),
+        vec![
+            "./side-effect.js",
+            "./default.js",
+            "./type-only.js",
+            "./re-export.js",
+            "./type-re-export.js",
+            "./dynamic.js",
+        ]
+    );
+}
+
+#[test]
+fn resolve_relative_collapses_dot_segments_and_refuses_to_escape() {
+    let module = Utf8Path::new("core/internal/native-runtime.js");
+
+    assert_eq!(
+        resolve_relative(module, "./sibling.js").as_deref(),
+        Some(Utf8Path::new("core/internal/sibling.js"))
+    );
+    assert_eq!(
+        resolve_relative(module, "../index.js").as_deref(),
+        Some(Utf8Path::new("core/index.js"))
+    );
+    assert_eq!(
+        resolve_relative(module, "../../react/index.js").as_deref(),
+        Some(Utf8Path::new("react/index.js"))
+    );
+    assert_eq!(resolve_relative(module, "../../../escaped.js"), None);
 }
 
 #[test]
