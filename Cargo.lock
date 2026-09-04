@@ -3363,6 +3363,7 @@ dependencies = [
  "uf_router",
  "uf_rsc",
  "uf_runtime",
+ "uf_stylex",
  "uf_term",
  "uf_test",
  "uf_transform",

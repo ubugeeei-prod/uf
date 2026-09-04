@@ -66,8 +66,10 @@ fn lib_package_json(name: &str) -> String {
   "exports": {{
     ".": "./index.js"
   }},
-  "dependencies": {{
-    "@uniflowed/core": "latest"
+  "devDependencies": {{
+    "@uniflowed/config": "latest",
+    "@uniflowed/test": "latest",
+    "@uniflowed/vite": "latest"
   }}
 }}
 "#
