@@ -93,7 +93,7 @@ export function fn(implementation?: (...args: $ReadOnlyArray<mixed>) => mixed): 
 }
 
 function isSpy(value: mixed): boolean {
-  return typeof value === "function" && (value: $FlowFixMe).mock != null;
+  return typeof value === "function" && (value as $FlowFixMe).mock != null;
 }
 
 function propertyAt(
@@ -105,10 +105,10 @@ function propertyAt(
     if (current == null) {
       return { found: false, value: undefined };
     }
-    if (!Object.prototype.hasOwnProperty.call((current: $FlowFixMe), key)) {
+    if (!Object.prototype.hasOwnProperty.call(current as $FlowFixMe, key)) {
       return { found: false, value: undefined };
     }
-    current = (current: $FlowFixMe)[key];
+    current = (current as $FlowFixMe)[key];
   }
   return { found: true, value: current };
 }
@@ -129,7 +129,7 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
     return message === expected.message;
   }
   if (typeof expected === "function") {
-    return thrown instanceof (expected: $FlowFixMe);
+    return thrown instanceof (expected as $FlowFixMe);
   }
   return equals(thrown, expected);
 }
@@ -151,7 +151,8 @@ function verdicts(received: mixed): {
     failure: () => `expected ${shown()} ${what}`,
     negatedFailure: () => `expected ${shown()} not ${what}`,
   });
-  const spyCalls = (): Array<SpyCall> => (isSpy(received) ? (received: $FlowFixMe).mock.calls : []);
+  const spyCalls = (): Array<SpyCall> =>
+    isSpy(received) ? (received as $FlowFixMe).mock.calls : [];
   const requireSpy = (matcher: string) => {
     if (!isSpy(received)) {
       throw new AssertionError(
@@ -193,32 +194,32 @@ function verdicts(received: mixed): {
     toBeNaN: () => simple(typeof received === "number" && Number.isNaN(received), "to be NaN"),
     toBeGreaterThan: (expected: mixed) =>
       simple(
-        (received: $FlowFixMe) > (expected: $FlowFixMe),
+        (received as $FlowFixMe) > (expected as $FlowFixMe),
         `to be greater than ${render(expected)}`,
         expected,
       ),
     toBeGreaterThanOrEqual: (expected: mixed) =>
       simple(
-        (received: $FlowFixMe) >= (expected: $FlowFixMe),
+        (received as $FlowFixMe) >= (expected as $FlowFixMe),
         `to be at least ${render(expected)}`,
         expected,
       ),
     toBeLessThan: (expected: mixed) =>
       simple(
-        (received: $FlowFixMe) < (expected: $FlowFixMe),
+        (received as $FlowFixMe) < (expected as $FlowFixMe),
         `to be less than ${render(expected)}`,
         expected,
       ),
     toBeLessThanOrEqual: (expected: mixed) =>
       simple(
-        (received: $FlowFixMe) <= (expected: $FlowFixMe),
+        (received as $FlowFixMe) <= (expected as $FlowFixMe),
         `to be at most ${render(expected)}`,
         expected,
       ),
     toBeCloseTo: (expected: number, digits?: number) => {
       const places = digits ?? 2;
       const tolerance = 10 ** -places / 2;
-      const difference = Math.abs((received: $FlowFixMe) - expected);
+      const difference = Math.abs((received as $FlowFixMe) - expected);
       return simple(
         difference < tolerance,
         `to be within ${tolerance} of ${expected}, but it is off by ${difference}`,
@@ -249,7 +250,7 @@ function verdicts(received: mixed): {
       );
     },
     toHaveLength: (expected: number) => {
-      const length = received == null ? undefined : (received: $FlowFixMe).length;
+      const length = received == null ? undefined : (received as $FlowFixMe).length;
       return simple(
         length === expected,
         `to have length ${expected}, not ${render(length)}`,
@@ -270,14 +271,16 @@ function verdicts(received: mixed): {
     toMatch: (expected: mixed) => {
       const text = typeof received === "string" ? received : String(received);
       const pass =
-        typeof expected === "string" ? text.includes(expected) : (expected: $FlowFixMe).test(text);
+        typeof expected === "string"
+          ? text.includes(expected)
+          : (expected as $FlowFixMe).test(text);
       return simple(pass, `to match ${render(expected)}`, expected);
     },
     toMatchObject: (expected: mixed) =>
       simple(matchesObject(received, expected), `to match ${render(expected)}`, expected),
     toBeInstanceOf: (expected: mixed) =>
       simple(
-        typeof expected === "function" && received instanceof (expected: $FlowFixMe),
+        typeof expected === "function" && received instanceof (expected as $FlowFixMe),
         `to be an instance of ${render(expected)}`,
         expected,
       ),
@@ -378,13 +381,13 @@ function verdicts(received: mixed): {
     toBeChecked: () => {
       const node = element("toBeChecked");
       const aria = node.getAttribute("aria-checked");
-      const checked = aria != null ? aria === "true" : (node: $FlowFixMe).checked === true;
+      const checked = aria != null ? aria === "true" : (node as $FlowFixMe).checked === true;
       return simple(checked, "to be checked");
     },
     toBeRequired: () => {
       const node = element("toBeRequired");
       return simple(
-        (node: $FlowFixMe).required === true || node.getAttribute("aria-required") === "true",
+        (node as $FlowFixMe).required === true || node.getAttribute("aria-required") === "true",
         "to be required",
       );
     },
@@ -430,7 +433,7 @@ function verdicts(received: mixed): {
     },
     toHaveValue: (expected: mixed) => {
       const node = element("toHaveValue");
-      const actual = (node: $FlowFixMe).value;
+      const actual = (node as $FlowFixMe).value;
       return {
         pass: equals(actual, expected),
         expected: render(expected),
@@ -540,7 +543,7 @@ function settled(promise: mixed, wanted: "resolve" | "reject", negated: boolean)
       let value: mixed;
       let rejected = false;
       try {
-        value = await (promise: $FlowFixMe);
+        value = await (promise as $FlowFixMe);
       } catch (error) {
         rejected = true;
         value = error;

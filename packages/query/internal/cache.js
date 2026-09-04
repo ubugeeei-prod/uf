@@ -118,7 +118,7 @@ export class QueryCache {
   ): () => void {
     const id = hash(key);
     const slot = this.slot(id);
-    slot.query = (query: $FlowFixMe);
+    slot.query = query as $FlowFixMe;
 
     const unsubscribe = this.subscribe(key, options.listener);
     if (this.isStale(key, options.staleTime)) {
@@ -139,7 +139,7 @@ export class QueryCache {
     const id = hash(key);
     const slot = this.slot(id);
     if (slot.inFlight != null) {
-      return (slot.inFlight: $FlowFixMe);
+      return slot.inFlight as $FlowFixMe;
     }
 
     this.write(id, { pending: true });
@@ -231,11 +231,11 @@ export class QueryCache {
 
   write(id: string, patch: { readonly [string]: mixed }): void {
     const slot = this.slot(id);
-    slot.entry = ({
+    slot.entry = {
       ...slot.entry,
       ...patch,
       version: slot.entry.version + 1,
-    }: $FlowFixMe);
+    } as $FlowFixMe;
     for (const listener of Array.from(slot.listeners)) {
       if (slot.listeners.has(listener)) {
         listener();
@@ -258,8 +258,8 @@ export class QueryCache {
     }, this.garbageMillis);
     // A timer must not hold the process open — a test that finishes before the
     // collection is due should still exit.
-    if (typeof (slot.collect: $FlowFixMe)?.unref === "function") {
-      (slot.collect: $FlowFixMe).unref();
+    if (typeof (slot.collect as $FlowFixMe)?.unref === "function") {
+      (slot.collect as $FlowFixMe).unref();
     }
   }
 }

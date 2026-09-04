@@ -86,19 +86,19 @@ export function installDom(): mixed {
   const win = new Window({ url: "http://localhost/" });
 
   for (const name of CLASSES) {
-    const value = (win: any)[name];
+    const value = (win as any)[name];
     if (value !== undefined) {
       define(name, value);
     }
   }
   for (const name of FUNCTIONS) {
-    const value = (win: any)[name];
+    const value = (win as any)[name];
     if (typeof value === "function") {
       define(name, value.bind(win));
     }
   }
   for (const name of OBJECTS) {
-    const value = (win: any)[name];
+    const value = (win as any)[name];
     if (value !== undefined && globalThis[name] === undefined) {
       define(name, value);
     }
@@ -106,8 +106,8 @@ export function installDom(): mixed {
 
   // React reads these to decide it is in a browser and to pick its event
   // system, and they must be the objects the elements belong to.
-  define("window", (win: any));
-  define("document", (win: any).document);
+  define("window", win as any);
+  define("document", (win as any).document);
 
   installed = win;
   return installed;
@@ -131,5 +131,5 @@ function define(name: string, value: mixed): void {
 /** The document tests query, installing one if the process has none. */
 export function documentOf(): Document {
   installDom();
-  return (globalThis.document: any);
+  return globalThis.document as any;
 }

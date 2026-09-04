@@ -393,6 +393,6 @@ describe("what the review found", () => {
     // run the legacy setter and changed the prototype instead.
     expect(Object.prototype.hasOwnProperty.call(result.value, "__proto__")).toBe(true);
     expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
-    expect(({}: any).__proto__).toBe(Object.prototype);
+    expect(({} as any).__proto__).toBe(Object.prototype);
   });
 });

@@ -92,9 +92,9 @@ function forms(name: string, find: Function, root: () => ParentNode): { [string]
 function queriesFor(root: () => ParentNode): Queries {
   const queries = {};
   for (const name of Object.keys(FINDERS)) {
-    Object.assign(queries, forms(name, (FINDERS: any)[name], root));
+    Object.assign(queries, forms(name, (FINDERS as any)[name], root));
   }
-  return (queries: any);
+  return queries as any;
 }
 
 /**

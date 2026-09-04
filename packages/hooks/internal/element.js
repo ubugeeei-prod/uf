@@ -48,7 +48,7 @@ export function useEventListener<TEvent extends Event>(
     if (node == null) {
       return;
     }
-    const listener = (event: Event) => stable((event: any));
+    const listener = (event: Event) => stable(event as any);
     node.addEventListener(name, listener, { capture, passive, once });
     return () => node.removeEventListener(name, listener, { capture });
   }, [target, name, stable, capture, passive, once]);
@@ -174,10 +174,10 @@ function resolve(
   if (typeof target === "function") {
     return target();
   }
-  if (typeof (target: any).addEventListener === "function") {
-    return (target: any);
+  if (typeof (target as any).addEventListener === "function") {
+    return target as any;
   }
-  return (target: any).current ?? null;
+  return (target as any).current ?? null;
 }
 
 /** A ref for one of the hooks above, typed for the element you will attach it to. */
