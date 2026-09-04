@@ -196,6 +196,7 @@ fn type_check_payload(types: &TypeCheck) -> Value {
     });
     if let Some(report) = types.report() {
         value["filesChecked"] = json!(report.files_checked);
+        value["filesSkipped"] = json!(report.files_skipped);
         value["elapsedMs"] = json!(report.elapsed.as_secs_f64() * 1000.0);
         value["builtinsMs"] = json!(report.builtins.cold_elapsed.as_secs_f64() * 1000.0);
         value["builtinsCold"] = json!(report.builtins.cold);
@@ -379,18 +380,21 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 report.builtins.cold_elapsed,
                 if report.builtins.cold { "cold" } else { "warm" }
             );
+            // Only shown when it happened. A project with nothing opted out
+            // should not have to read a line saying so.
+            let skipped = report.files_skipped.to_string();
+            let mut rows = vec![
+                KeyValue::toned("types checked", &files, Tone::Number),
+                KeyValue::toned("inference", &inference, Tone::Muted),
+                KeyValue::toned("builtins", &builtins, Tone::Muted),
+            ];
+            if report.files_skipped > 0 {
+                rows.insert(1, KeyValue::toned("@noflow", &skipped, Tone::Muted));
+            }
             let untyped = untyped_module_list(report);
             ui.render(|renderer, out| {
                 renderer.blank(out);
-                renderer.key_values(
-                    out,
-                    2,
-                    &[
-                        KeyValue::toned("types checked", &files, Tone::Number),
-                        KeyValue::toned("inference", &inference, Tone::Muted),
-                        KeyValue::toned("builtins", &builtins, Tone::Muted),
-                    ],
-                );
+                renderer.key_values(out, 2, &rows);
                 if !untyped.is_empty() {
                     renderer.blank(out);
                     push_spaces(out, 2);

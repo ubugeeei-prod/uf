@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: Vite imports this module directly, before any transform.
 //
 // `@uniflowed/vite` — uf, as Vite plugins.

@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: executed by the host that runs Vite, before any transform.
 //
 // Merging a project's own Vite configuration over the one uf generates.

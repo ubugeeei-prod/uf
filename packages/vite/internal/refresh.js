@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: executed by the host that runs Vite, before any transform.
 //
 // React Fast Refresh wiring for `uf dev`. The runtime itself is

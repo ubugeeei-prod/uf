@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: this *is* the loader, so it cannot be Flow.
 //
 // Node.js module customization hooks that transform Flow on import.

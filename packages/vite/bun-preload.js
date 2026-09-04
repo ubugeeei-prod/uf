@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: this file registers the loader, so it cannot need one.
 //
 // `bun --preload @uniflowed/vite/bun-preload app.js` runs a Flow project on
