@@ -19,10 +19,10 @@ export type NativeModuleKind =
   | "ui";
 
 export type NativeModule = {
-  +specifier: string,
-  +kind: NativeModuleKind,
-  +stability: "experimental" | "planned" | "stable",
-  +flowExports: $ReadOnlyArray<string>,
+  readonly specifier: string,
+  readonly kind: NativeModuleKind,
+  readonly stability: "experimental" | "planned" | "stable",
+  readonly flowExports: $ReadOnlyArray<string>,
 };
 
 /**

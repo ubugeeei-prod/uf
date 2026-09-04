@@ -120,17 +120,31 @@ fn check_batch(sources: &[Source<'_>], limits: &CheckLimits) -> Result<CheckRepo
 
     let started = Instant::now();
     let mut diagnostics = Vec::new();
+    let mut skipped = 0usize;
     for source in sources {
-        diagnostics.extend(check_one(&master_cx, &options, limits, source, &untyped)?);
+        let outcome = check_one(&master_cx, &options, limits, source, &untyped)?;
+        if outcome.skipped {
+            skipped += 1;
+        }
+        diagnostics.extend(outcome.diagnostics);
     }
 
     Ok(CheckReport {
         diagnostics,
-        files_checked: sources.len(),
+        files_checked: sources.len() - skipped,
+        files_skipped: skipped,
         untyped_modules: untyped.borrow().iter().cloned().collect(),
         builtins,
         elapsed: started.elapsed(),
     })
+}
+
+/// What checking one file produced, and whether it was checked at all.
+struct FileOutcome {
+    /// Diagnostics for the file. A skipped file can still have parse errors.
+    diagnostics: Vec<TypeDiagnostic>,
+    /// Whether the file opted out of inference with `@noflow`.
+    skipped: bool,
 }
 
 /// Module specifiers that resolved to nothing typed, shared across a batch.
@@ -145,7 +159,7 @@ fn check_one(
     limits: &CheckLimits,
     source: &Source<'_>,
     untyped: &UntypedModules,
-) -> Result<Vec<TypeDiagnostic>, CheckError> {
+) -> Result<FileOutcome, CheckError> {
     // Checked before the parser sees the text: the AST alone is several times
     // the size of the source, so an unbounded file is an unbounded allocation.
     if source.source.len() > limits.max_source_bytes {
@@ -160,11 +174,24 @@ fn check_one(
     let parsed = parse::parse_file(file_key.dupe(), source.source, options, false);
     if !parsed.is_parseable() {
         let errors = printable(&parsed, parse_error_set(&parsed));
-        return Ok(convert::diagnostics(
-            &errors,
-            &ConcreteLocPrintableErrorSet::empty(),
-            source.path,
-        ));
+        return Ok(FileOutcome {
+            diagnostics: convert::diagnostics(
+                &errors,
+                &ConcreteLocPrintableErrorSet::empty(),
+                source.path,
+            ),
+            // A file that does not parse is broken whatever its docblock says,
+            // so it is reported — but it was not checked either.
+            skipped: !parsed.is_checked(),
+        });
+    }
+
+    // `@noflow`. The file parsed, and that is all uf asked of it.
+    if !parsed.is_checked() {
+        return Ok(FileOutcome {
+            diagnostics: Vec::new(),
+            skipped: true,
+        });
     }
 
     let metadata = parsed.metadata.clone();
@@ -203,7 +230,10 @@ fn check_one(
     .map_err(|error| job_error(source.path, error))?;
 
     let (errors, warnings) = suppressed(&cx, &parsed, cx.errors());
-    Ok(convert::diagnostics(&errors, &warnings, source.path))
+    Ok(FileOutcome {
+        diagnostics: convert::diagnostics(&errors, &warnings, source.path),
+        skipped: false,
+    })
 }
 
 fn job_error(path: &str, error: JobError) -> CheckError {

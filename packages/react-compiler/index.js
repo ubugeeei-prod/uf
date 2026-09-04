@@ -10,9 +10,9 @@ export type ReactCompilerMode = "syntax";
 export type ReactCompilerImplementation = "official-rust";
 
 export interface ReactCompilerConfig {
-  readonly enabled: boolean,
-  readonly implementation: ReactCompilerImplementation,
-  readonly mode: ReactCompilerMode,
+  readonly enabled: boolean;
+  readonly implementation: ReactCompilerImplementation;
+  readonly mode: ReactCompilerMode;
 }
 
 /** Default configuration: syntax mode, enabled. */
@@ -22,8 +22,6 @@ export const syntaxMode: ReactCompilerConfig = {
   mode: "syntax",
 };
 
-export function compiler(
-  config?: Partial<ReactCompilerConfig>,
-): ReactCompilerConfig {
+export function compiler(config?: Partial<ReactCompilerConfig>): ReactCompilerConfig {
   return nativeRuntimeRequired(MODULE, "compiler");
 }

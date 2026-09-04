@@ -13,24 +13,24 @@ export type PackageStoreStrategy = "content-addressed";
 export type PackageLinkMode = "hardlink-then-copy";
 
 export type WorkspacePackage = {
-  +name: string,
-  +path: string,
+  readonly name: string,
+  readonly path: string,
 };
 
 export type PackageStore = {
-  +strategy: PackageStoreStrategy,
-  +directory: string,
+  readonly strategy: PackageStoreStrategy,
+  readonly directory: string,
 };
 
 export type PackageManagerPlan = {
-  +resolver: PackageResolver,
-  +lockfile: "uf.lock" | string,
-  +registry: string,
-  +scripts: PackageScriptPolicy,
-  +store: PackageStore,
-  +linkMode: PackageLinkMode,
-  +workspacePackages: $ReadOnlyArray<WorkspacePackage>,
-  +steps: $ReadOnlyArray<
+  readonly resolver: PackageResolver,
+  readonly lockfile: "uf.lock" | string,
+  readonly registry: string,
+  readonly scripts: PackageScriptPolicy,
+  readonly store: PackageStore,
+  readonly linkMode: PackageLinkMode,
+  readonly workspacePackages: $ReadOnlyArray<WorkspacePackage>,
+  readonly steps: $ReadOnlyArray<
     | "read-config"
     | "resolve-graph"
     | "verify-integrity"
@@ -40,9 +40,7 @@ export type PackageManagerPlan = {
   >,
 };
 
-export function inferFromConfig(
-  config: UniflowedConfig,
-): PackageManagerPlan {
+export function inferFromConfig(config: UniflowedConfig): PackageManagerPlan {
   return nativeRuntimeRequired(MODULE, "inferFromConfig");
 }
 

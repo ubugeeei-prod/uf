@@ -21,7 +21,7 @@ export type Matcher = string | RegExp | ((content: string, element: Element) => 
 /** How exactly a string matcher has to match. */
 export type MatcherOptions = {|
   /** `false` matches a substring, case-insensitively. Defaults to `true`. */
-  +exact?: boolean,
+  readonly exact?: boolean,
 |};
 
 /**
@@ -35,7 +35,12 @@ export function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function matches(content: string, element: Element, matcher: Matcher, options?: MatcherOptions): boolean {
+function matches(
+  content: string,
+  element: Element,
+  matcher: Matcher,
+  options?: MatcherOptions,
+): boolean {
   if (typeof matcher === "function") {
     return matcher(content, element);
   }
@@ -80,7 +85,7 @@ export function allByText(
 export function allByRole(
   root: ParentNode,
   role: string,
-  options?: {| +name?: Matcher, +exact?: boolean |},
+  options?: {| readonly name?: Matcher, readonly exact?: boolean |},
 ): Array<Element> {
   const found = candidates(root, "*").filter((element) => roleOf(element) === role);
   const name = options?.name;
@@ -174,7 +179,7 @@ function cssEscape(value: string): string {
 }
 
 /** Roles a tag has without being told. */
-const IMPLICIT_ROLES: { +[string]: string } = {
+const IMPLICIT_ROLES: { readonly [string]: string } = {
   a: "link",
   article: "article",
   aside: "complementary",
@@ -209,7 +214,7 @@ const IMPLICIT_ROLES: { +[string]: string } = {
 };
 
 /** The input types that are not a textbox. */
-const INPUT_ROLES: { +[string]: string } = {
+const INPUT_ROLES: { readonly [string]: string } = {
   button: "button",
   checkbox: "checkbox",
   email: "textbox",
@@ -301,7 +306,6 @@ export function queryFailure(
         : JSON.stringify(matcher);
   const html = (root: any).innerHTML ?? "";
   const shown = html.length > 2000 ? `${html.slice(0, 2000)}\n…` : html;
-  const count =
-    found === 0 ? "found nothing" : `found ${found} elements and needed exactly one`;
+  const count = found === 0 ? "found nothing" : `found ${found} elements and needed exactly one`;
   return new Error(`${kind} ${description}: ${count}\n\n${shown}`);
 }

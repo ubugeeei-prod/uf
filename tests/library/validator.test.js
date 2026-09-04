@@ -239,9 +239,7 @@ describe("unions", () => {
 
 describe("lazy", () => {
   it("describes a recursive shape", () => {
-    const comment = lazy<mixed>(() =>
-      object({ text: string(), replies: array(comment) }),
-    );
+    const comment = lazy<mixed>(() => object({ text: string(), replies: array(comment) }));
     const tree = { text: "root", replies: [{ text: "child", replies: [] }] };
     expect(parse(comment, tree)).toEqual(tree);
     expect(safeParse(comment, { text: "root", replies: [{ text: 1, replies: [] }] }).ok).toBe(
@@ -264,7 +262,11 @@ describe("pipe", () => {
   });
 
   it("transforms after validating", () => {
-    const length = pipe(string(), minLength(2), transform((text: string) => text.length));
+    const length = pipe(
+      string(),
+      minLength(2),
+      transform((text: string) => text.length),
+    );
     expect(parse(length, "abc")).toBe(3);
     expect(safeParse(length, "a").ok).toBe(false);
   });
@@ -307,7 +309,10 @@ describe("pipe", () => {
   });
 
   it("takes an arbitrary predicate through check", () => {
-    const even = pipe(number(), check((n: number) => n % 2 === 0, "expected an even number"));
+    const even = pipe(
+      number(),
+      check((n: number) => n % 2 === 0, "expected an even number"),
+    );
     expect(parse(even, 4)).toBe(4);
     const failed = safeParse(even, 5);
     expect(failed.ok).toBe(false);

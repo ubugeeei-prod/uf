@@ -14,7 +14,6 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
-use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::RscError;
@@ -97,19 +96,16 @@ pub fn analyze_project(
 ) -> Result<RscAnalysis, RscError> {
     let paths = collect_module_paths(root, options)?;
 
-    let modules = paths
-        .par_iter()
-        .map(|(absolute, relative)| {
-            let bytes = std::fs::read(absolute).map_err(|source| RscError::Read {
-                path: relative.clone(),
-                source,
-            })?;
-            let source = uf_infra::validate_utf8(&bytes).map_err(|_| RscError::NonUtf8Source {
-                path: relative.clone(),
-            })?;
-            Ok(RscModuleInput::from_source(relative.clone(), source))
-        })
-        .collect::<Result<Vec<_>, RscError>>()?;
+    let modules = uf_infra::parallel::map(&paths, |(absolute, relative)| {
+        let bytes = std::fs::read(absolute).map_err(|source| RscError::Read {
+            path: relative.clone(),
+            source,
+        })?;
+        let source = uf_infra::validate_utf8(&bytes).map_err(|_| RscError::NonUtf8Source {
+            path: relative.clone(),
+        })?;
+        Ok(RscModuleInput::from_source(relative.clone(), source))
+    })?;
 
     let mut builder = RscGraphBuilder::new();
     for module in modules {

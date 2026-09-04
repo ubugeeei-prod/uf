@@ -49,16 +49,18 @@ export {
 
 /** Props a page receives. */
 export type PageProps<
-  TParams: { +[string]: string | $ReadOnlyArray<string> } = {},
+  TParams extends { readonly [string]: string | $ReadOnlyArray<string> } = {},
   TData = void,
 > = {|
-  +params: TParams,
-  +searchParams: { +[string]: string },
-  +data: TData,
+  readonly params: TParams,
+  readonly searchParams: { readonly [string]: string },
+  readonly data: TData,
 |};
 
 /** Props a layout receives. */
-export type LayoutProps<TParams: { +[string]: string | $ReadOnlyArray<string> } = {}> = {|
-  +params: TParams,
-  +children: React$Node,
+export type LayoutProps<
+  TParams extends { readonly [string]: string | $ReadOnlyArray<string> } = {},
+> = {|
+  readonly params: TParams,
+  readonly children: React$Node,
 |};

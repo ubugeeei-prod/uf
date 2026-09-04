@@ -12,18 +12,18 @@ export type MotionProperty = "transform" | "opacity" | "color";
 export type MotionEasing = "linear" | "out" | "spring";
 
 export type MotionTrack = {
-  +id: string,
-  +property: MotionProperty,
-  +durationMs: number,
-  +easing?: MotionEasing,
+  readonly id: string,
+  readonly property: MotionProperty,
+  readonly durationMs: number,
+  readonly easing?: MotionEasing,
 };
 
 export type MotionContract = {
-  +engine: MotionEngine,
-  +tracks: $ReadOnlyArray<MotionTrack>,
-  +compilerSafe: true,
-  +serverComponentSafe: true,
-  +reducedMotionDefault: true,
+  readonly engine: MotionEngine,
+  readonly tracks: $ReadOnlyArray<MotionTrack>,
+  readonly compilerSafe: true,
+  readonly serverComponentSafe: true,
+  readonly reducedMotionDefault: true,
 };
 
 export function motion(contract?: MotionContract): MotionContract {
@@ -34,17 +34,11 @@ export function animate(track: MotionTrack): MotionContract {
   return nativeRuntimeRequired(MODULE, "animate");
 }
 
-export function timeline(
-  tracks: $ReadOnlyArray<MotionTrack>,
-): MotionContract {
+export function timeline(tracks: $ReadOnlyArray<MotionTrack>): MotionContract {
   return nativeRuntimeRequired(MODULE, "timeline");
 }
 
-export function spring(
-  id: string,
-  property: MotionProperty,
-  durationMs: number,
-): MotionTrack {
+export function spring(id: string, property: MotionProperty, durationMs: number): MotionTrack {
   return nativeRuntimeRequired(MODULE, "spring");
 }
 

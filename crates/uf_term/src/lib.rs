@@ -55,6 +55,7 @@
 mod capability;
 mod diagnostic;
 mod glyph;
+mod image;
 mod progress;
 mod render;
 mod style;
@@ -67,6 +68,7 @@ mod tree;
 pub use crate::capability::{Capabilities, ColorChoice, ColorLevel, GlyphSet, TerminalEnv, Tty};
 pub use crate::diagnostic::{CodeFrame, DiagnosticLevel};
 pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
+pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
 pub use crate::progress::{DEFAULT_TICK, Progress};
 pub use crate::render::{KeyValue, Renderer};
 pub use crate::style::{Attributes, Color, Style};

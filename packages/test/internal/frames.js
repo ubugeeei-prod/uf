@@ -14,7 +14,7 @@
 // regex-shaped.
 
 /** A position in a source file, one-based line and column. */
-export type Site = {| +line: number, +column: number |};
+export type Site = {| readonly line: number, readonly column: number |};
 
 /** Frames belonging to the runner itself, which no test author wrote. */
 const INTERNAL_MARKERS = [
@@ -54,7 +54,10 @@ export function frameSite(frame: string): Site | null {
 }
 
 /** The run of digits ending at `end`, with where it starts. */
-function digitsBefore(text: string, end: number): {| +value: number, +start: number |} | null {
+function digitsBefore(
+  text: string,
+  end: number,
+): {| readonly value: number, readonly start: number |} | null {
   let start = end;
   while (start > 0 && text[start - 1] >= "0" && text[start - 1] <= "9") {
     start -= 1;
@@ -71,7 +74,10 @@ function digitsBefore(text: string, end: number): {| +value: number, +start: num
  * `skipInternal` is false when the caller has already trimmed the runner's own
  * frames and wants the first frame whatever it is.
  */
-export function firstUserSite(stack: string | null | void, skipInternal: boolean = true): Site | null {
+export function firstUserSite(
+  stack: string | null | void,
+  skipInternal: boolean = true,
+): Site | null {
   if (stack == null) {
     return null;
   }

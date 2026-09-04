@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: executed by the host that runs Vite, before any transform.
 //
 // Merging a project's own Vite configuration over the one uf generates.
@@ -45,9 +47,8 @@ export function mergeConfig(base, overrides) {
   for (const key of Object.keys(overrides)) {
     const value = overrides[key];
     if (value === undefined) continue;
-    merged[key] = isPlainObject(value) && isPlainObject(base[key])
-      ? mergeConfig(base[key], value)
-      : value;
+    merged[key] =
+      isPlainObject(value) && isPlainObject(base[key]) ? mergeConfig(base[key], value) : value;
   }
   return merged;
 }
@@ -81,7 +82,6 @@ function isPlainObject(value) {
     value !== null &&
     !Array.isArray(value) &&
     // A plugin, a logger or a URL is a value to replace, not a shape to merge.
-    (Object.getPrototypeOf(value) === Object.prototype ||
-      Object.getPrototypeOf(value) === null)
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
   );
 }

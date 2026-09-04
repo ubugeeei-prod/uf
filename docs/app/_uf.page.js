@@ -50,9 +50,8 @@ export default component Home() {
             your code and the web.
           </h1>
           <Lede>
-            uf runs, builds, tests, formats and lints Flow and React from a
-            single command. No Babel in the pipeline, no plugin list to
-            assemble, and one config file for all of it.
+            uf runs, builds, tests, formats and lints Flow and React from a single command. No Babel
+            in the pipeline, no plugin list to assemble, and one config file for all of it.
           </Lede>
         </div>
 
@@ -90,31 +89,25 @@ export default component Home() {
         </div>
 
         <div className="notice">
-          <strong>Pre-release.</strong> uf is at{" "}
-          <code>0.0.0-alpha</code>. Interfaces move without warning and the
-          packages are not on npm yet. The guide says what works today and{" "}
-          <Link to="/guide/testing">where it loses</Link> to the tools it means
-          to replace.
+          <strong>Pre-release.</strong> uf is at <code>0.0.0-alpha</code>. Interfaces move without
+          warning and the packages are not on npm yet. The guide says what works today and{" "}
+          <Link to="/guide/testing">where it loses</Link> to the tools it means to replace.
         </div>
       </section>
 
       <section className="home-section">
         <h2 className="seam-mark">Install it</h2>
         <p>
-          One binary. It reads the checksum from the release manifest before it
-          writes anything, and it is short enough to read first.
+          One binary. It reads the checksum from the release manifest before it writes anything, and
+          it is short enough to read first.
         </p>
         <Command>curl -fsSL https://setup.uniflowed.dev | sh</Command>
-        <p>
-          Then a project, and a dev server, with nothing to configure in
-          between:
-        </p>
+        <p>Then a project, and a dev server, with nothing to configure in between:</p>
         <Command>uf create app my-site</Command>
         <Command>cd my-site &amp;&amp; uf dev</Command>
         <p>
-          That is the whole setup. No <code>npm install</code> of a toolchain,
-          no config to copy from somewhere. If you would rather build from
-          source, or pin the project to Bun or Deno,{" "}
+          That is the whole setup. No <code>npm install</code> of a toolchain, no config to copy
+          from somewhere. If you would rather build from source, or pin the project to Bun or Deno,{" "}
           <Link to="/guide/install">the install page</Link> covers both.
         </p>
       </section>
@@ -124,10 +117,9 @@ export default component Home() {
         <Command>uf build</Command>
         <Terminal lines={BUILD_OUTPUT} label="Output of uf build" />
         <p>
-          There is no <code>vite.config.ts</code> next to that, no{" "}
-          <code>babel.config.js</code>, and no <code>@babel/preset-flow</code>{" "}
-          in the dependency tree. Flow reaches JavaScript through Meta's own
-          Rust parser and React's own compiler, both linked into the binary.
+          There is no <code>vite.config.ts</code> next to that, no <code>babel.config.js</code>, and
+          no <code>@babel/preset-flow</code> in the dependency tree. Flow reaches JavaScript through
+          Meta's own Rust parser and React's own compiler, both linked into the binary.
         </p>
       </section>
 
@@ -139,10 +131,9 @@ export default component Home() {
               title: "Flow without Babel",
               body: (
                 <>
-                  The official Flow parser, the official React Compiler and oxc,
-                  in one Rust pipeline. <code>component</code>, <code>hook</code>,{" "}
-                  <code>match</code> and enums are lowered where they are parsed.{" "}
-                  <Link to="/guide/flow">How it works</Link>
+                  The official Flow parser, the official React Compiler and oxc, in one Rust
+                  pipeline. <code>component</code>, <code>hook</code>, <code>match</code> and enums
+                  are lowered where they are parsed. <Link to="/guide/flow">How it works</Link>
                 </>
               ),
             },
@@ -150,9 +141,8 @@ export default component Home() {
               title: "Vite, not a fork of it",
               body: (
                 <>
-                  The dev server and the production build are Vite 8. uf decides
-                  what Vite is handed and drives it over a JSON protocol, so
-                  Vite's plugin ecosystem keeps working.{" "}
+                  The dev server and the production build are Vite 8. uf decides what Vite is handed
+                  and drives it over a JSON protocol, so Vite's plugin ecosystem keeps working.{" "}
                   <Link to="/guide/dev">Dev and build</Link>
                 </>
               ),
@@ -161,10 +151,9 @@ export default component Home() {
               title: "Tests that actually run",
               body: (
                 <>
-                  Rust owns discovery, ordering, the worker pool and the report;
-                  the host runs the bodies. About nine times faster than Vitest
-                  on 1,000 tests — and about three times slower than Bun, which
-                  the guide explains rather than hides.{" "}
+                  Rust owns discovery, ordering, the worker pool and the report; the host runs the
+                  bodies. About nine times faster than Vitest on 1,000 tests — and about three times
+                  slower than Bun, which the guide explains rather than hides.{" "}
                   <Link to="/guide/testing">Testing</Link>
                 </>
               ),
@@ -173,10 +162,9 @@ export default component Home() {
               title: "One config file",
               body: (
                 <>
-                  <code>uf.config.js</code> configures the runtime, the router,
-                  the build, the test runner and the formatter. It is Flow, so
-                  it is type-checked like the rest of your code.{" "}
-                  <Link to="/reference/config">Every option</Link>
+                  <code>uf.config.js</code> configures the runtime, the router, the build, the test
+                  runner and the formatter. It is Flow, so it is type-checked like the rest of your
+                  code. <Link to="/reference/config">Every option</Link>
                 </>
               ),
             },
@@ -184,9 +172,8 @@ export default component Home() {
               title: "Any JavaScript host",
               body: (
                 <>
-                  Node.js, Bun and Deno are capabilities, not targets: uf asks
-                  the host what it can do and picks one. The same project builds
-                  and tests on all three.{" "}
+                  Node.js, Bun and Deno are capabilities, not targets: uf asks the host what it can
+                  do and picks one. The same project builds and tests on all three.{" "}
                   <Link to="/guide/install">Install</Link>
                 </>
               ),

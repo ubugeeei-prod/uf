@@ -25,13 +25,13 @@ export type QueryKey = $ReadOnlyArray<mixed>;
 
 /** What the cache holds for one key. */
 export type Entry<T> = {|
-  +value: T | void,
-  +error: Error | null,
+  readonly value: T | void,
+  readonly error: Error | null,
   /** When the value arrived, so staleness is a question the reader can ask. */
-  +updatedAt: number,
-  +pending: boolean,
+  readonly updatedAt: number,
+  readonly pending: boolean,
   /** Bumped on every change, so a snapshot can be compared by identity. */
-  +version: number,
+  readonly version: number,
 |};
 
 type Slot = {
@@ -70,10 +70,10 @@ const EMPTY: Entry<mixed> = {
  * decides another's result.
  */
 export class QueryCache {
-  +slots: Map<string, Slot> = new Map();
-  +garbageMillis: number;
+  readonly slots: Map<string, Slot> = new Map();
+  readonly garbageMillis: number;
 
-  constructor(options?: {| +garbageMillis?: number |}) {
+  constructor(options?: {| readonly garbageMillis?: number |}) {
     this.garbageMillis = options?.garbageMillis ?? DEFAULT_GARBAGE_MILLIS;
   }
 
@@ -114,7 +114,7 @@ export class QueryCache {
   watch<T>(
     key: QueryKey,
     query: () => Promise<T>,
-    options: {| +listener: () => void, +staleTime: number |},
+    options: {| readonly listener: () => void, readonly staleTime: number |},
   ): () => void {
     const id = hash(key);
     const slot = this.slot(id);
@@ -229,7 +229,7 @@ export class QueryCache {
     return slot;
   }
 
-  write(id: string, patch: { +[string]: mixed }): void {
+  write(id: string, patch: { readonly [string]: mixed }): void {
     const slot = this.slot(id);
     slot.entry = ({
       ...slot.entry,

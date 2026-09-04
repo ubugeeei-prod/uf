@@ -12,35 +12,29 @@ const MODULE = "@uniflowed/core/story";
 
 export opaque type Storybook = NativeHandle<"@uniflowed/core/story#Storybook">;
 
-export type StoryVariant<Props: {...}> = {
-  +name: string,
-  +props: Props,
+export type StoryVariant<Props extends { ... }> = {
+  readonly name: string,
+  readonly props: Props,
 };
 
-export function story<Props: {...}>(
+export function story<Props extends { ... }>(
   id: string,
   render: component(...Props) renders React.Node,
 ): Storybook {
   return nativeRuntimeRequired(MODULE, "story");
 }
 
-export function variant<Props: {...}>(
+export function variant<Props extends { ... }>(
   storybook: Storybook,
   variant: StoryVariant<Props>,
 ): Storybook {
   return nativeRuntimeRequired(MODULE, "variant");
 }
 
-export function withMocks(
-  storybook: Storybook,
-  mocks: MockRegistry,
-): Storybook {
+export function withMocks(storybook: Storybook, mocks: MockRegistry): Storybook {
   return nativeRuntimeRequired(MODULE, "withMocks");
 }
 
-export function withBrowser(
-  storybook: Storybook,
-  browser: BrowserPlan,
-): Storybook {
+export function withBrowser(storybook: Storybook, browser: BrowserPlan): Storybook {
   return nativeRuntimeRequired(MODULE, "withBrowser");
 }

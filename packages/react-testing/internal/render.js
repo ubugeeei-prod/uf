@@ -21,15 +21,15 @@ import { installDom } from "./dom.js";
 /** What `render` hands back. */
 export type RenderResult = {|
   /** The element the tree was mounted into. */
-  +container: Element,
+  readonly container: Element,
   /** The document body, which is where a portal ends up. */
-  +baseElement: Element,
+  readonly baseElement: Element,
   /** Render different elements into the same container. */
-  +rerender: (ui: React.Node) => void,
+  readonly rerender: (ui: React.Node) => void,
   /** Take the tree down and remove the container. */
-  +unmount: () => void,
+  readonly unmount: () => void,
   /** The container's markup, for a failure message. */
-  +asFragment: () => string,
+  readonly asFragment: () => string,
 |};
 
 type Mounted = {|
@@ -47,7 +47,7 @@ const mounted: Array<Mounted> = [];
  * make "there is exactly one Save button" false for reasons that have nothing
  * to do with the test being read.
  */
-export function render(ui: React.Node, options?: {| +container?: Element |}): RenderResult {
+export function render(ui: React.Node, options?: {| readonly container?: Element |}): RenderResult {
   installDom();
   cleanup();
 
@@ -147,7 +147,7 @@ export function actively<T>(body: () => T): T {
  */
 export async function waitFor<T>(
   body: () => T | Promise<T>,
-  options?: {| +timeout?: number, +interval?: number |},
+  options?: {| readonly timeout?: number, readonly interval?: number |},
 ): Promise<T> {
   const timeout = options?.timeout ?? 1000;
   const interval = options?.interval ?? 20;

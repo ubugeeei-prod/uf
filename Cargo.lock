@@ -3299,12 +3299,12 @@ dependencies = [
  "compact_str",
  "criterion",
  "flate2",
- "rayon",
  "serde",
  "serde_json",
  "smallvec",
  "tempfile",
  "thiserror",
+ "uf_infra",
 ]
 
 [[package]]
@@ -3441,7 +3441,6 @@ version = "0.0.0-alpha.2"
 dependencies = [
  "criterion",
  "phf",
- "rayon",
  "serde",
  "thiserror",
  "uf_config",
@@ -3549,7 +3548,6 @@ dependencies = [
  "camino",
  "compact_str",
  "criterion",
- "rayon",
  "serde",
  "serde_json",
  "sha2",
@@ -3613,7 +3611,6 @@ dependencies = [
  "camino",
  "compact_str",
  "criterion",
- "rayon",
  "serde",
  "serde_json",
  "similar-asserts",

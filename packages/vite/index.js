@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: Vite imports this module directly, before any transform.
 //
 // `@uniflowed/vite` — uf, as Vite plugins.
@@ -262,7 +264,11 @@ function mdxPlugin(markdown) {
     enforce: "pre",
     ...mdx({
       jsxImportSource: "react",
-      remarkPlugins: [remarkGfm, remarkFrontmatter, [remarkMdxFrontmatter, { name: "frontmatter" }]],
+      remarkPlugins: [
+        remarkGfm,
+        remarkFrontmatter,
+        [remarkMdxFrontmatter, { name: "frontmatter" }],
+      ],
       rehypePlugins,
     }),
     name: "uf:mdx",

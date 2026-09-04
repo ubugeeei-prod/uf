@@ -19,16 +19,7 @@
 // the cache is testable without rendering anything.
 
 export type { Entry, QueryKey } from "./internal/cache.js";
-export type {
-  MutationResult,
-  QueryOptions,
-  QueryResult,
-} from "./internal/react.js";
+export type { MutationResult, QueryOptions, QueryResult } from "./internal/react.js";
 
 export { QueryCache, hash } from "./internal/cache.js";
-export {
-  QueryProvider,
-  useMutation,
-  useQuery,
-  useQueryCache,
-} from "./internal/react.js";
+export { QueryProvider, useMutation, useQuery, useQueryCache } from "./internal/react.js";

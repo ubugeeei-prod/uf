@@ -13,7 +13,6 @@ uf_infra = { path = "../uf_infra" }
 uf_rsc = { path = "../uf_rsc" }
 camino.workspace = true
 compact_str.workspace = true
-rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true

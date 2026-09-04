@@ -9,20 +9,18 @@ const MODULE = "@uniflowed/core/lint";
 export type RuleSeverity = "off" | "warn" | "error";
 
 export type RuleContext = {
-  +filename: string,
-  +source: string,
+  readonly filename: string,
+  readonly source: string,
 };
 
 export type RuleDiagnostic = {
-  +rule: string,
-  +message: string,
-  +line: number,
-  +column: number,
+  readonly rule: string,
+  readonly message: string,
+  readonly line: number,
+  readonly column: number,
 };
 
-export type NativeRule = (
-  context: RuleContext,
-) => $ReadOnlyArray<RuleDiagnostic>;
+export type NativeRule = (context: RuleContext) => $ReadOnlyArray<RuleDiagnostic>;
 
 export function defineRule(name: string, rule: NativeRule): NativeRule {
   return nativeRuntimeRequired(MODULE, "defineRule");

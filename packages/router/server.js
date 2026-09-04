@@ -21,16 +21,16 @@ import {
 
 /** Asset URLs to reference from the document. */
 export type RenderAssets = {|
-  +scripts: $ReadOnlyArray<string>,
-  +styles: $ReadOnlyArray<string>,
-  +preloads: $ReadOnlyArray<string>,
+  readonly scripts: $ReadOnlyArray<string>,
+  readonly styles: $ReadOnlyArray<string>,
+  readonly preloads: $ReadOnlyArray<string>,
 |};
 
 /** A rendered document. */
 export type RenderResult = {|
-  +status: number,
-  +html: string,
-  +headers?: { +[string]: string },
+  readonly status: number,
+  readonly html: string,
+  readonly headers?: { readonly [string]: string },
 |};
 
 /** The id of the element the client hydrates when the app does not render `<html>`. */
@@ -46,9 +46,9 @@ export type { Handler, HandlerContext, HandlerModule, HandlerRecord } from "./ha
 export { createDispatcher } from "./handler.js";
 
 export function createRenderer(options: {|
-  +App: React.ComponentType<AppProps>,
-  +routes: RouteTable["routes"],
-  +notFound: RouteTable["notFound"],
+  readonly App: React.ComponentType<AppProps>,
+  readonly routes: RouteTable["routes"],
+  readonly notFound: RouteTable["notFound"],
 |}): (url: string, assets: RenderAssets) => Promise<RenderResult> {
   const table: RouteTable = { routes: options.routes, notFound: options.notFound };
   installRoutes(table);
@@ -96,7 +96,8 @@ function assemble(markup: string, resolved: ResolvedRoute, assets: RenderAssets)
       : markup.replace(/<html([^>]*)>/i, `<html$1><head>${head}</head>`);
     return `<!doctype html>\n${document}\n`;
   }
-  const title = resolved.metadata.title != null ? `<title>${escapeText(resolved.metadata.title)}</title>` : "";
+  const title =
+    resolved.metadata.title != null ? `<title>${escapeText(resolved.metadata.title)}</title>` : "";
   return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${title}${head}</head><body><div id="${ROOT_ID}">${markup}</div></body></html>\n`;
 }
 

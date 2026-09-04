@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: this file registers the loader, so it cannot need one.
 //
 // `node --import @uniflowed/vite/register app.js` runs a Flow project on

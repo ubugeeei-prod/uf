@@ -23,7 +23,7 @@ export type ModuleSpecifier = string;
  * `Name` is a distinct string literal per handle, which keeps two unrelated
  * handles from unifying even inside the module that defines them.
  */
-export type NativeHandle<Name: string> = { +__ufNative: Name };
+export type NativeHandle<Name extends string> = { readonly __ufNative: Name };
 
 /**
  * Phantom carrier for an opaque handle with an invariant type parameter.
@@ -31,8 +31,8 @@ export type NativeHandle<Name: string> = { +__ufNative: Name };
  * `T` sits behind a writable property, which is precisely what invariance
  * means: `Handle<Dog>` is neither a subtype nor a supertype of `Handle<Animal>`.
  */
-export type NativeHandleInvariant<Name: string, T> = {
-  +__ufNative: Name,
+export type NativeHandleInvariant<Name extends string, T> = {
+  readonly __ufNative: Name,
   __ufValue: T,
 };
 
@@ -42,9 +42,9 @@ export type NativeHandleInvariant<Name: string, T> = {
  * `T` only ever appears in a return position, so `Handle<Dog>` stays assignable
  * to `Handle<Animal>` — the guarantee a `+T` sigil makes to callers.
  */
-export type NativeHandleCovariant<Name: string, +T> = {
-  +__ufNative: Name,
-  +__ufValue: () => T,
+export type NativeHandleCovariant<Name extends string, out T> = {
+  readonly __ufNative: Name,
+  readonly __ufValue: () => T,
 };
 
 /**
@@ -53,10 +53,10 @@ export type NativeHandleCovariant<Name: string, +T> = {
  * Same guarantee as `NativeHandleCovariant`, for a handle that tracks two
  * things at once — a fiber's success and failure types, say.
  */
-export type NativeHandleCovariant2<Name: string, +A, +B> = {
-  +__ufNative: Name,
-  +__ufFirst: () => A,
-  +__ufSecond: () => B,
+export type NativeHandleCovariant2<Name extends string, out A, out B> = {
+  readonly __ufNative: Name,
+  readonly __ufFirst: () => A,
+  readonly __ufSecond: () => B,
 };
 
 /**
@@ -66,11 +66,11 @@ export type NativeHandleCovariant2<Name: string, +A, +B> = {
  * behind a function that returns it, which is what makes all three covariant
  * rather than merely declared so.
  */
-export type NativeHandleCovariant3<Name: string, +A, +B, +C> = {
-  +__ufNative: Name,
-  +__ufFirst: () => A,
-  +__ufSecond: () => B,
-  +__ufThird: () => C,
+export type NativeHandleCovariant3<Name extends string, out A, out B, out C> = {
+  readonly __ufNative: Name,
+  readonly __ufFirst: () => A,
+  readonly __ufSecond: () => B,
+  readonly __ufThird: () => C,
 };
 
 /**
@@ -103,9 +103,6 @@ export class NativeRuntimeRequiredError extends Error {
  * free of side effects so bundlers can drop the modules an application never
  * touches.
  */
-export function nativeRuntimeRequired(
-  moduleSpecifier: ModuleSpecifier,
-  binding: string,
-): empty {
+export function nativeRuntimeRequired(moduleSpecifier: ModuleSpecifier, binding: string): empty {
   throw new NativeRuntimeRequiredError(moduleSpecifier, binding);
 }

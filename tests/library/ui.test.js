@@ -117,9 +117,7 @@ describe("Tabs", () => {
 
   it("keeps exactly one tab in the page's tab order", () => {
     render(<Example />);
-    const stops = screen
-      .getAllByRole("tab")
-      .filter((tab) => tab.getAttribute("tabindex") === "0");
+    const stops = screen.getAllByRole("tab").filter((tab) => tab.getAttribute("tabindex") === "0");
     // The whole point of a roving tabindex: Tab moves past the list in one
     // press instead of one press per tab.
     expect(stops.length).toBe(1);
@@ -225,10 +223,7 @@ describe("Dialog", () => {
   it("is closed until it is opened", () => {
     render(<Example />);
     expect(screen.queryByRole("dialog")).toBe(null);
-    expect(screen.getByRole("button", { name: "Open" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    expect(screen.getByRole("button", { name: "Open" })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("opens, and says the rest of the page is unavailable", async () => {

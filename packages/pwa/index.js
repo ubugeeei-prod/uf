@@ -7,9 +7,9 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 const MODULE = "@uniflowed/core/pwa";
 
 export type PwaConfig = {
-  +name: string,
-  +shortName?: string,
-  +cache?: "opt-in",
+  readonly name: string,
+  readonly shortName?: string,
+  readonly cache?: "opt-in",
 };
 
 export function definePwa(config: PwaConfig): PwaConfig {

@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: the host runs this file directly.
 //
 // The driver `uf dev`, `uf build` and `uf preview` spawn.
@@ -79,7 +81,8 @@ async function viteConfig(config, mode) {
   const userPlugins = Array.isArray(config.plugins) ? config.plugins : [];
   const host = argument("--host") ?? dev.host ?? "127.0.0.1";
   const port = Number(argument("--port") ?? dev.port ?? 5173);
-  const allowedHosts = Array.isArray(dev.allowedHosts) && dev.allowedHosts.length > 0 ? dev.allowedHosts : undefined;
+  const allowedHosts =
+    Array.isArray(dev.allowedHosts) && dev.allowedHosts.length > 0 ? dev.allowedHosts : undefined;
 
   // What uf generates from the semantics it owns: where the project is, which
   // plugins make Flow compile, and the few settings uf enforces rather than
@@ -116,7 +119,7 @@ async function viteConfig(config, mode) {
   // read this and does not need to: an option added to Vite tomorrow works in
   // a uf project tomorrow, rather than after a uf release that names it.
   return withProjectConfig(generated, {
-    ...(config.vite ?? {}),
+    ...config.vite ?? {},
     plugins: [...(config.vite?.plugins ?? []), ...userPlugins],
   });
 }
@@ -189,7 +192,9 @@ async function dev() {
   emit("listening", {
     local: urls.local,
     network: urls.network,
-    routes: scanRoutes(path.resolve(root, config.app?.router?.root ?? "app")).routes.map((route) => route.path),
+    routes: scanRoutes(path.resolve(root, config.app?.router?.root ?? "app")).routes.map(
+      (route) => route.path,
+    ),
   });
 
   const shutdown = async () => {
@@ -319,13 +324,23 @@ async function build() {
     const file = htmlPathFor(outDir, url);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, result.html);
-    emit("page", { url, file: path.relative(root, file), status: result.status, bytes: Buffer.byteLength(result.html) });
+    emit("page", {
+      url,
+      file: path.relative(root, file),
+      status: result.status,
+      bytes: Buffer.byteLength(result.html),
+    });
   }
   if (server.notFound != null) {
     const result = await server.render("/__uf_not_found__", assets);
     const file = path.join(outDir, "404.html");
     writeFileSync(file, result.html);
-    emit("page", { url: "/404", file: path.relative(root, file), status: 404, bytes: Buffer.byteLength(result.html) });
+    emit("page", {
+      url: "/404",
+      file: path.relative(root, file),
+      status: 404,
+      bytes: Buffer.byteLength(result.html),
+    });
   }
 
   emit("done", { outDir: path.relative(root, outDir), pages: pages.length });
@@ -429,9 +444,12 @@ function fillParams(routePath, params) {
     .map((segment) => {
       if (segment.endsWith("*")) {
         const value = params[segment.slice(1, -1)];
-        return Array.isArray(value) ? value.map(encodeURIComponent).join("/") : encodeURIComponent(String(value ?? ""));
+        return Array.isArray(value)
+          ? value.map(encodeURIComponent).join("/")
+          : encodeURIComponent(String(value ?? ""));
       }
-      if (segment.startsWith(":")) return encodeURIComponent(String(params[segment.slice(1)] ?? ""));
+      if (segment.startsWith(":"))
+        return encodeURIComponent(String(params[segment.slice(1)] ?? ""));
       return segment;
     })
     .join("/");
@@ -439,5 +457,7 @@ function fillParams(routePath, params) {
 
 function htmlPathFor(outDir, url) {
   const pathname = url.split("?")[0].replace(/^\/+/, "");
-  return pathname === "" ? path.join(outDir, "index.html") : path.join(outDir, pathname, "index.html");
+  return pathname === ""
+    ? path.join(outDir, "index.html")
+    : path.join(outDir, pathname, "index.html");
 }

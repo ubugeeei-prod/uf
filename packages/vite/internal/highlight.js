@@ -1,3 +1,5 @@
+// @noflow
+//
 // Syntax highlighting for fenced code, at build time.
 //
 // uf's claim is that MDX works without a plugin list, and a documentation page
@@ -35,8 +37,6 @@ import rehypeShiki from "@shikijs/rehype";
  */
 const FLOW_KEYWORD_PATTERN =
   /(?<![.\w$])(?:component|hook|renders|match|opaque|mixed|empty)(?![\w$])/g;
-
-
 
 /**
  * The languages a documentation page actually uses.
@@ -98,8 +98,7 @@ function flowKeywords() {
         return;
       }
       const existing = node.properties.class;
-      node.properties.class =
-        existing == null ? KEYWORD_CLASS : `${existing} ${KEYWORD_CLASS}`;
+      node.properties.class = existing == null ? KEYWORD_CLASS : `${existing} ${KEYWORD_CLASS}`;
     },
   };
 }

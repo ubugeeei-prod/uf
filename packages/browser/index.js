@@ -8,16 +8,16 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 const MODULE = "@uniflowed/core/browser";
 
 export type Viewport = {
-  +name: string,
-  +width: number,
-  +height: number,
-  +deviceScaleFactor?: number,
+  readonly name: string,
+  readonly width: number,
+  readonly height: number,
+  readonly deviceScaleFactor?: number,
 };
 
 export type VisualSnapshot = {
-  +storyId: string,
-  +viewport: string,
-  +baseline: string,
+  readonly storyId: string,
+  readonly viewport: string,
+  readonly baseline: string,
 };
 
 export opaque type BrowserPlan = NativeHandle<"@uniflowed/core/browser#BrowserPlan">;

@@ -8,6 +8,8 @@
 
 use std::io::IsTerminal;
 
+use crate::image::{ImageEnv, ImageProtocol};
+
 /// Colour behaviour requested on the command line, i.e. `--color`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ColorChoice {
@@ -238,6 +240,7 @@ pub struct Capabilities {
     color: ColorLevel,
     glyphs: GlyphSet,
     tty: Tty,
+    image: Option<ImageProtocol>,
 }
 
 impl Capabilities {
@@ -254,11 +257,19 @@ impl Capabilities {
     /// 6. `CLICOLOR=0`
     /// 7. whether the stream is a terminal
     /// 8. `COLORTERM` / `TERM`
+    ///
+    /// The inline-image protocol is resolved here too, and gated on the same
+    /// two answers a caller would otherwise have to re-ask: an image is a large
+    /// escape sequence, so a stream that may not carry colour may not carry one
+    /// either, and a stream nobody is looking at gets bytes in a log rather
+    /// than a picture.
     pub fn detect(choice: ColorChoice, tty: Tty, env: &TerminalEnv) -> Self {
+        let color = detect_color(choice, tty, env);
         Self {
-            color: detect_color(choice, tty, env),
+            color,
             glyphs: detect_glyphs(env),
             tty,
+            image: detect_image(color, tty, &ImageEnv::from_process()),
         }
     }
 
@@ -280,13 +291,26 @@ impl Capabilities {
             color: ColorLevel::Never,
             glyphs: GlyphSet::Ascii,
             tty: Tty::Piped,
+            image: None,
         }
     }
 
     /// Build a capability directly, for tests and for callers that already know
     /// what they want.
     pub fn new(color: ColorLevel, glyphs: GlyphSet, tty: Tty) -> Self {
-        Self { color, glyphs, tty }
+        Self {
+            color,
+            glyphs,
+            tty,
+            image: None,
+        }
+    }
+
+    /// The same, with an inline-image protocol.
+    #[must_use]
+    pub fn with_image(mut self, image: Option<ImageProtocol>) -> Self {
+        self.image = image;
+        self
     }
 
     /// How much colour this stream can carry.
@@ -308,6 +332,23 @@ impl Capabilities {
     pub fn is_unicode(self) -> bool {
         matches!(self.glyphs, GlyphSet::Unicode)
     }
+
+    /// The inline-image protocol this stream accepts, if any.
+    pub fn image(self) -> Option<ImageProtocol> {
+        self.image
+    }
+}
+
+/// Which inline-image protocol may be used on a stream.
+///
+/// Separate from [`ImageEnv::protocol`] because that answers what the terminal
+/// *understands* and this answers what uf may *send*: the two differ whenever
+/// colour is off or the stream is not a terminal.
+fn detect_image(color: ColorLevel, tty: Tty, env: &ImageEnv) -> Option<ImageProtocol> {
+    if !color.is_enabled() || !matches!(tty, Tty::Interactive) {
+        return None;
+    }
+    env.protocol()
 }
 
 fn detect_color(choice: ColorChoice, tty: Tty, env: &TerminalEnv) -> ColorLevel {

@@ -6,15 +6,36 @@
 // the surface `uf_lib`'s Rust registry promises for the `@uniflowed/core`
 // specifier — the test API and the config entry point. Everything else lives
 // behind a subpath, and subpath imports are the supported entry points:
-// `@uniflowed/core/effect`, `@uniflowed/core/ui`, `@uniflowed/core/tui`, ...
+// `@uniflowed/core/native` is the one this package implements itself.
+//
+// The two re-exported surfaces are implemented in `@uniflowed/test` and
+// `@uniflowed/config` and reached by specifier, not by relative path: each
+// `packages/*` directory is published as its own npm package, so a relative
+// path into a sibling names a file that exists in this repository and nowhere
+// in an installed tree.
 //
 // There is deliberately no `export *` here. A star re-export forces a bundler
 // to keep the whole module graph reachable from this file, and a whole-surface
 // barrel could not exist anyway: several domains legitimately export the same
 // name (`graphql`, `Image`, `Markdown`, `plan`, `Text`, `contract`, ...).
 
-export type { Expectation, TestBody } from "./testing.js";
-export { afterEach, beforeEach, describe, expect, it, test } from "./testing.js";
+export type { TestBody, TestOptions } from "@uniflowed/test";
+export {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  test,
+} from "@uniflowed/test";
 
-export type { RuleLevel, TaskDefinition, UniflowedConfig } from "./config.js";
-export { defineConfig } from "./config.js";
+export type {
+  CapabilityJsHost,
+  RuleLevel,
+  TaskDefinition,
+  UniflowedConfig,
+} from "@uniflowed/config";
+export { defineConfig } from "@uniflowed/config";

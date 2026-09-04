@@ -10,6 +10,7 @@ use std::time::Duration;
 use crate::capability::{Capabilities, ColorLevel, GlyphSet};
 use crate::diagnostic::{CodeFrame, render_frame};
 use crate::glyph::{Glyphs, Status};
+use crate::image::ImageProtocol;
 use crate::style::Style;
 use crate::text::{display_width, push_repeat, push_spaces, push_usize};
 use crate::theme::{Theme, Tone};
@@ -91,6 +92,11 @@ impl Renderer {
     /// The glyph set in use.
     pub fn glyph_set(&self) -> GlyphSet {
         self.capabilities.glyphs()
+    }
+
+    /// The inline-image protocol this stream accepts, if any.
+    pub fn image(&self) -> Option<ImageProtocol> {
+        self.capabilities.image()
     }
 
     /// The palette in use.

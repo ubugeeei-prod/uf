@@ -32,27 +32,27 @@ export type Modifier = "none" | "only" | "skip" | "todo";
 
 /** One registered test case. */
 export type Case = {|
-  +kind: "test",
-  +name: string,
-  +body: Body | null,
-  +modifier: Modifier,
-  +timeoutMs: number | null,
-  +line: number,
-  +column: number,
+  readonly kind: "test",
+  readonly name: string,
+  readonly body: Body | null,
+  readonly modifier: Modifier,
+  readonly timeoutMs: number | null,
+  readonly line: number,
+  readonly column: number,
 |};
 
 /** One `describe` and everything inside it. */
 export type Suite = {|
-  +kind: "suite",
-  +name: string,
-  +modifier: Modifier,
-  +children: Array<Suite | Case>,
-  +beforeAll: Array<Body>,
-  +afterAll: Array<Body>,
-  +beforeEach: Array<Body>,
-  +afterEach: Array<Body>,
-  +line: number,
-  +column: number,
+  readonly kind: "suite",
+  readonly name: string,
+  readonly modifier: Modifier,
+  readonly children: Array<Suite | Case>,
+  readonly beforeAll: Array<Body>,
+  readonly afterAll: Array<Body>,
+  readonly beforeEach: Array<Body>,
+  readonly afterEach: Array<Body>,
+  readonly line: number,
+  readonly column: number,
 |};
 
 function suite(name: string, modifier: Modifier, line: number, column: number): Suite {
@@ -101,7 +101,7 @@ export function collected(): Suite {
  * not in a shape we understand, the position is `0`, which every consumer
  * treats as "unknown" rather than as line one.
  */
-function callSite(): {| +line: number, +column: number |} {
+function callSite(): {| readonly line: number, readonly column: number |} {
   return firstUserSite(new Error("position").stack) ?? { line: 0, column: 0 };
 }
 
@@ -118,7 +118,12 @@ function addSuite(name: string, body: Body, modifier: Modifier): void {
   }
 }
 
-function addCase(name: string, body: Body | null, modifier: Modifier, timeoutMs: number | null): void {
+function addCase(
+  name: string,
+  body: Body | null,
+  modifier: Modifier,
+  timeoutMs: number | null,
+): void {
   const position = callSite();
   current.children.push({
     kind: "test",
@@ -132,7 +137,7 @@ function addCase(name: string, body: Body | null, modifier: Modifier, timeoutMs:
 }
 
 /** Options a single test may carry. */
-export type TestOptions = {| +timeout?: number |};
+export type TestOptions = {| readonly timeout?: number |};
 
 /**
  * The `describe` API, and its modifiers.
@@ -155,13 +160,11 @@ function suiteApi(): $FlowFixMe {
   api.todo = (name: string, body?: Body) => {
     addSuite(name, body ?? (() => {}), "todo");
   };
-  api.each =
-    (table: $ReadOnlyArray<mixed>) =>
-    (name: string, body: (row: mixed) => mixed) => {
-      for (const row of table) {
-        addSuite(formatRow(name, row), () => body(row), "none");
-      }
-    };
+  api.each = (table: $ReadOnlyArray<mixed>) => (name: string, body: (row: mixed) => mixed) => {
+    for (const row of table) {
+      addSuite(formatRow(name, row), () => body(row), "none");
+    }
+  };
   return api;
 }
 
@@ -218,7 +221,7 @@ function formatRow(name: string, row: mixed): string {
   return name.replace(ROW_TOKEN, (token) => {
     const value = values[index];
     index += 1;
-    return token === "%j" ? (JSON.stringify(value) ?? "undefined") : String(value);
+    return token === "%j" ? JSON.stringify(value) ?? "undefined" : String(value);
   });
 }
 

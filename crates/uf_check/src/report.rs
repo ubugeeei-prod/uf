@@ -46,8 +46,15 @@ pub struct BuiltinsTiming {
 pub struct CheckReport {
     /// Every diagnostic, errors before warnings and ordered within each.
     pub diagnostics: Vec<TypeDiagnostic>,
-    /// How many files were checked.
+    /// How many files inference actually ran over.
     pub files_checked: usize,
+    /// How many files opted out of inference with `@noflow`.
+    ///
+    /// Kept apart from `files_checked` rather than folded into it, because a
+    /// clean check over a project that opted every file out is not the same
+    /// result as a clean check over the project, and a reader is entitled to
+    /// tell those apart at a glance.
+    pub files_skipped: usize,
     /// Module specifiers that resolved to nothing typed, sorted and de-duped.
     ///
     /// Every file is checked against Flow's standard library, but not yet

@@ -17,5 +17,9 @@
   "files": [
     "index.js",
     "internal/*.js"
-  ]
+  ],
+  "dependencies": {
+    "@uniflowed/config": "0.0.0-alpha.2",
+    "@uniflowed/test": "0.0.0-alpha.2"
+  }
 }

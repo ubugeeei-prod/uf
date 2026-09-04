@@ -1,8 +1,7 @@
 // GitHub Releases is where the release workflow publishes, and it is what
 // install.sh downloads from by default. Point metadata at the same place so the
 // two cannot disagree about what "latest" is.
-const RELEASE_BASE_URL =
-  "https://github.com/ubugeeei-prod/uf/releases/latest/download";
+const RELEASE_BASE_URL = "https://github.com/ubugeeei-prod/uf/releases/latest/download";
 const DOCS_INSTALL_URL = "https://docs.uniflowed.dev/install";
 
 function responseWithHeaders(response, headers) {
