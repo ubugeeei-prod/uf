@@ -21,7 +21,7 @@
 // they are composed rather than one replacing the other.
 
 /** Anything a caller can spread onto an element. */
-export type Rest = { +[string]: mixed };
+export type Rest = { readonly [string]: mixed };
 
 /**
  * Call the caller's handler and then the component's.
@@ -31,7 +31,7 @@ export type Rest = { +[string]: mixed };
  * `defaultPrevented` is the caller's way of saying "I handled this", which is
  * the same contract the DOM uses.
  */
-export function composeHandlers<TEvent: { +defaultPrevented?: boolean }>(
+export function composeHandlers<TEvent extends { readonly defaultPrevented?: boolean }>(
   theirs: mixed,
   ours: (event: TEvent) => mixed,
 ): (event: TEvent) => mixed {

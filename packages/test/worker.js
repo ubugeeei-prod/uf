@@ -28,12 +28,12 @@ import { run } from "./internal/run.js";
 
 /** What `uf` sends for one file. */
 type Request = {|
-  +file: string,
-  +filter?: string | null,
-  +timeoutMs?: number,
+  readonly file: string,
+  readonly filter?: string | null,
+  readonly timeoutMs?: number,
 |};
 
-function write(event: { +[string]: mixed }): void {
+function write(event: { readonly [string]: mixed }): void {
   process.stdout.write(`${JSON.stringify(event)}\n`);
 }
 
@@ -64,7 +64,14 @@ async function runFile(request: Request, generation: number): Promise<void> {
 
   try {
     await run({ filter: request.filter ?? null, timeoutMs: request.timeoutMs }, (result) => {
-      write({ event: "test", ...result.outcome, name: result.name, line: result.line, column: result.column, durationMicros: result.durationMicros });
+      write({
+        event: "test",
+        ...result.outcome,
+        name: result.name,
+        line: result.line,
+        column: result.column,
+        durationMicros: result.durationMicros,
+      });
     });
     write({
       event: "file",
@@ -103,7 +110,11 @@ function serve(): void {
     try {
       request = JSON.parse(line);
     } catch (error) {
-      write({ event: "file", status: "run-failed", message: `malformed request: ${String(error)}` });
+      write({
+        event: "file",
+        status: "run-failed",
+        message: `malformed request: ${String(error)}`,
+      });
       return;
     }
     generation += 1;

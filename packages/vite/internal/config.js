@@ -65,14 +65,18 @@ export async function loadUfConfig(root) {
 
   const source = readFileSync(file, "utf8");
   if (source.length > MAX_CONFIG_BYTES) {
-    throw new Error(`uf: ${file} is ${source.length} bytes, over the ${MAX_CONFIG_BYTES} byte ceiling`);
+    throw new Error(
+      `uf: ${file} is ${source.length} bytes, over the ${MAX_CONFIG_BYTES} byte ceiling`,
+    );
   }
 
   const compiled = await compileConfig(source, file, root);
   const module = await import(pathToFileURL(compiled).href);
   const config = module.default;
   if (config == null || typeof config !== "object") {
-    throw new Error(`uf: ${path.relative(root, file)} must \`export default defineConfig({ ... })\``);
+    throw new Error(
+      `uf: ${path.relative(root, file)} must \`export default defineConfig({ ... })\``,
+    );
   }
   return { config, file };
 }
@@ -128,7 +132,10 @@ export function projectConfig(config) {
     JSON.stringify(config, (key, value) => {
       if (typeof value === "function") return undefined;
       if (key === "plugins" && Array.isArray(value)) {
-        return value.flat(Infinity).map(pluginName).filter((name) => name != null);
+        return value
+          .flat(Infinity)
+          .map(pluginName)
+          .filter((name) => name != null);
       }
       return value;
     }),

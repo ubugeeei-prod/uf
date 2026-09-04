@@ -33,10 +33,10 @@ import {
 } from "@uniflowed/react";
 
 type DialogState = {|
-  +base: string,
-  +open: boolean,
-  +setOpen: (open: boolean) => void,
-  +triggerRef: { current: HTMLElement | null },
+  readonly base: string,
+  readonly open: boolean,
+  readonly setOpen: (open: boolean) => void,
+  readonly triggerRef: { current: HTMLElement | null },
 |};
 
 const DialogContext: React.Context<DialogState | null> = createContext(null);
@@ -80,7 +80,7 @@ export component DialogRoot(
 }
 
 /** What opens the dialog, and what focus comes back to when it closes. */
-export component DialogTrigger(children: React.Node, ...rest: { +[string]: mixed }) {
+export component DialogTrigger(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const dialog = useDialog("Dialog.Trigger");
   const passed = withoutComposed(rest, ["onClick", "ref"]);
 
@@ -106,7 +106,7 @@ export component DialogTrigger(children: React.Node, ...rest: { +[string]: mixed
  * `aria-modal` tells a screen reader that the rest of the page is not
  * available, which is the half of "modal" that CSS cannot express.
  */
-export component DialogContent(children: React.Node, ...rest: { +[string]: mixed }) {
+export component DialogContent(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const dialog = useDialog("Dialog.Content");
   const contentRef = useRef<HTMLElement | null>(null);
 
@@ -119,7 +119,7 @@ export component DialogContent(children: React.Node, ...rest: { +[string]: mixed
     // The first thing worth acting on, not the first thing in the document —
     // and the dialog itself if it contains nothing focusable, so focus is
     // inside it either way.
-    const target = content == null ? null : (focusable(content)[0] ?? content);
+    const target = content == null ? null : focusable(content)[0] ?? content;
     target?.focus();
 
     return () => {
@@ -190,7 +190,7 @@ export component DialogContent(children: React.Node, ...rest: { +[string]: mixed
 }
 
 /** The dialog's accessible name, which `aria-labelledby` points at. */
-export component DialogTitle(children: React.Node, ...rest: { +[string]: mixed }) {
+export component DialogTitle(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const dialog = useDialog("Dialog.Title");
   return (
     <h2 {...rest} id={`${dialog.base}-title`}>
@@ -200,7 +200,7 @@ export component DialogTitle(children: React.Node, ...rest: { +[string]: mixed }
 }
 
 /** A button that closes the dialog. */
-export component DialogClose(children: React.Node, ...rest: { +[string]: mixed }) {
+export component DialogClose(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const dialog = useDialog("Dialog.Close");
   const passed = withoutComposed(rest, ["onClick"]);
 
@@ -231,7 +231,6 @@ function focusable(root: HTMLElement): Array<HTMLElement> {
       // ancestors. Reading `aria-hidden` off the element alone returned a
       // button inside `<div aria-hidden="true">` as a focus stop, and the trap
       // then moved focus to a control no screen reader exposes.
-      element.closest("[hidden]") == null &&
-      element.closest('[aria-hidden="true"]') == null,
+      element.closest("[hidden]") == null && element.closest('[aria-hidden="true"]') == null,
   );
 }

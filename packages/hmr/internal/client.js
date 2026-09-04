@@ -30,12 +30,7 @@ export const LOG_PREFIX: string = "[uf hmr]";
 export type ChangeKind = "created" | "modified" | "deleted";
 
 /** What the browser and the server have to do about it. */
-export type UpdateKind =
-  | "inert"
-  | "hot"
-  | "route"
-  | "hot-and-route"
-  | "full-reload";
+export type UpdateKind = "inert" | "hot" | "route" | "hot-and-route" | "full-reload";
 
 /** Why an update could not be applied in place. */
 export type ReloadReason =
@@ -50,21 +45,21 @@ export type UpdateRole = "boundary" | "dependency";
 
 /** One module to re-fetch. */
 export type UpdateModule = {
-  +path: string,
-  +url: string,
-  +role: UpdateRole,
+  readonly path: string,
+  readonly url: string,
+  readonly role: UpdateRole,
 };
 
 /** One update, exactly as `uf_devserver::hmr::HmrUpdate` serializes it. */
 export type HmrUpdate = {
-  +id: number,
-  +path: string,
-  +change: ChangeKind,
-  +kind: UpdateKind,
-  +reason?: ReloadReason,
-  +modules: $ReadOnlyArray<UpdateModule>,
-  +routes: $ReadOnlyArray<string>,
-  +elapsedMicros: number,
+  readonly id: number,
+  readonly path: string,
+  readonly change: ChangeKind,
+  readonly kind: UpdateKind,
+  readonly reason?: ReloadReason,
+  readonly modules: $ReadOnlyArray<UpdateModule>,
+  readonly routes: $ReadOnlyArray<string>,
+  readonly elapsedMicros: number,
 };
 
 /**
@@ -78,17 +73,17 @@ export type RefreshHandler = (next: mixed) => void;
 
 /** What `connect` hands back. */
 export type HmrClient = {
-  +accept: (modulePath: string, handler: RefreshHandler) => void,
-  +apply: (update: HmrUpdate) => Promise<UpdateKind>,
-  +close: () => void,
-  +applied: () => number,
+  readonly accept: (modulePath: string, handler: RefreshHandler) => void,
+  readonly apply: (update: HmrUpdate) => Promise<UpdateKind>,
+  readonly close: () => void,
+  readonly applied: () => number,
 };
 
 /** How to open the channel. */
 export type ConnectOptions = {
-  +endpoint?: string,
-  +onUpdate?: (update: HmrUpdate) => void,
-  +onReload?: (reason: string) => void,
+  readonly endpoint?: string,
+  readonly onUpdate?: (update: HmrUpdate) => void,
+  readonly onReload?: (reason: string) => void,
 };
 
 /**
@@ -109,7 +104,7 @@ export function parseUpdate(data: string): HmrUpdate | null {
   if (parsed == null || typeof parsed !== "object") {
     return null;
   }
-  const candidate: { +[string]: mixed } = (parsed: $FlowFixMe);
+  const candidate: { readonly [string]: mixed } = (parsed: $FlowFixMe);
   if (typeof candidate.kind !== "string" || typeof candidate.path !== "string") {
     return null;
   }
@@ -135,8 +130,7 @@ export function isFullReload(update: HmrUpdate): boolean {
  */
 export function connect(options?: ConnectOptions): HmrClient {
   const settings: ConnectOptions = options == null ? {} : options;
-  const endpoint: string =
-    typeof settings.endpoint === "string" ? settings.endpoint : HMR_ENDPOINT;
+  const endpoint: string = typeof settings.endpoint === "string" ? settings.endpoint : HMR_ENDPOINT;
   const handlers: Map<string, RefreshHandler> = new Map();
   const global = getGlobal();
   const source = openStream(global, endpoint);
@@ -228,11 +222,7 @@ function applyModules(
         }
         const handler = handlers.get(module.path);
         if (handler == null) {
-          report(
-            global,
-            "warn",
-            module.path + " has no refresh handler registered",
-          );
+          report(global, "warn", module.path + " has no refresh handler registered");
           return false;
         }
         handler(next);

@@ -9,16 +9,16 @@
 
 /** A page in the manual. `href` is the route, not a file path. */
 export type Entry = {|
-  +href: string,
-  +title: string,
+  readonly href: string,
+  readonly title: string,
   /** One line, shown when a reader is deciding whether to open the page. */
-  +blurb: string,
+  readonly blurb: string,
 |};
 
 /** A run of pages under one heading. */
 export type Section = {|
-  +title: string,
-  +pages: $ReadOnlyArray<Entry>,
+  readonly title: string,
+  readonly pages: $ReadOnlyArray<Entry>,
 |};
 
 export const sections: $ReadOnlyArray<Section> = [
@@ -120,9 +120,7 @@ export const sections: $ReadOnlyArray<Section> = [
 ];
 
 /** Every page, flattened into reading order. */
-export const pages: $ReadOnlyArray<Entry> = sections.flatMap(
-  (section) => section.pages,
-);
+export const pages: $ReadOnlyArray<Entry> = sections.flatMap((section) => section.pages);
 
 /**
  * The entry for a pathname, or `null` for a page outside the manual (the home

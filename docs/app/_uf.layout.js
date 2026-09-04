@@ -23,7 +23,7 @@ const VERSION = "0.0.0-alpha";
  * result as a hoistable `<title>` — which is why there is no `<title>` in the
  * head below. Two of them is what you get if you write one here as well.
  */
-export const metadata: {| +title: string, +description: string |} = {
+export const metadata: {| readonly title: string, readonly description: string |} = {
   title: "uf — Unified Toolchain for Flow",
   description:
     "One binary that runs, builds, tests, formats and lints Flow and React. No Babel, no plugin list, no second config file.",
@@ -85,11 +85,7 @@ component ThemeToggle() {
   const [theme, setTheme] = useTheme();
 
   return (
-    <button
-      className="theme-toggle"
-      type="button"
-      onClick={() => setTheme(nextTheme(theme))}
-    >
+    <button className="theme-toggle" type="button" onClick={() => setTheme(nextTheme(theme))}>
       {themeLabel(theme)}
     </button>
   );
@@ -98,9 +94,7 @@ component ThemeToggle() {
 component Colophon() {
   return (
     <footer className="colophon">
-      <span>
-        uf is MIT licensed and pre-release. Nothing here is stable yet.
-      </span>
+      <span>uf is MIT licensed and pre-release. Nothing here is stable yet.</span>
       <span>
         Built with uf — this site is a uf project, in Flow, in{" "}
         <a href="https://github.com/ubugeeei-prod/uf/tree/main/docs">docs/</a>.

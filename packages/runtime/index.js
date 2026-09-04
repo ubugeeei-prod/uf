@@ -6,14 +6,7 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 
 const MODULE = "@uniflowed/core/runtime";
 
-export type RuntimeEngine =
-  | "uf"
-  | "node"
-  | "deno"
-  | "bun"
-  | "edge"
-  | "serverless"
-  | "container";
+export type RuntimeEngine = "uf" | "node" | "deno" | "bun" | "edge" | "serverless" | "container";
 
 export type CapabilityJsHost = "node" | "deno" | "bun";
 export type JavaScriptEngine = "capability-js-host" | "hermes";
@@ -52,11 +45,11 @@ export type RuntimeCapability =
   | "terminal-ui";
 
 export type RuntimeContract = {
-  +standard: "winter-tc",
-  +language: "flow",
-  +javascriptEngine: JavaScriptEngine,
-  +hosts: $ReadOnlyArray<RuntimeEngine>,
-  +capabilities: $ReadOnlyArray<RuntimeCapability>,
+  readonly standard: "winter-tc",
+  readonly language: "flow",
+  readonly javascriptEngine: JavaScriptEngine,
+  readonly hosts: $ReadOnlyArray<RuntimeEngine>,
+  readonly capabilities: $ReadOnlyArray<RuntimeCapability>,
 };
 
 export function run(entry: string): Promise<void> {
@@ -70,8 +63,8 @@ export function resolve(specifier: string, from?: string): Promise<string> {
 export function spawn(
   entry: string,
   options?: $ReadOnly<{
-    +runtime?: RuntimeEngine,
-    +adapter?: DeployAdapter,
+    readonly runtime?: RuntimeEngine,
+    readonly adapter?: DeployAdapter,
   }>,
 ): Promise<void> {
   return nativeRuntimeRequired(MODULE, "spawn");

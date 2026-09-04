@@ -31,26 +31,23 @@ import type { RouteParams } from "./internal/runtime.js";
 /** What a handler is given besides the request. */
 export type HandlerContext = {|
   /** The `[param]` and `[...rest]` segments of the matched path. */
-  +params: RouteParams,
+  readonly params: RouteParams,
   /** The parsed query string, for the common case of reading one value. */
-  +searchParams: URLSearchParams,
+  readonly searchParams: URLSearchParams,
 |};
 
 /** One exported method of a handler module. */
-export type Handler = (
-  request: Request,
-  context: HandlerContext,
-) => Response | Promise<Response>;
+export type Handler = (request: Request, context: HandlerContext) => Response | Promise<Response>;
 
 /** A handler module, as the generated table loads it. */
-export type HandlerModule = { +[method: string]: mixed };
+export type HandlerModule = { readonly [method: string]: mixed };
 
 /** One entry of the generated handler table. */
 export type HandlerRecord = {|
-  +path: string,
-  +params: $ReadOnlyArray<{| +name: string, +catchAll: boolean |}>,
-  +file: string,
-  +load: () => Promise<HandlerModule>,
+  readonly path: string,
+  readonly params: $ReadOnlyArray<{| readonly name: string, readonly catchAll: boolean |}>,
+  readonly file: string,
+  readonly load: () => Promise<HandlerModule>,
 |};
 
 /**
@@ -71,13 +68,11 @@ const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
  * it says so.
  */
 export function createDispatcher(options: {|
-  +handlers: $ReadOnlyArray<HandlerRecord>,
+  readonly handlers: $ReadOnlyArray<HandlerRecord>,
 |}): (request: Request) => Promise<Response | null> {
   // Longest path first, so `/api/users/new` wins over `/api/users/[id]` and a
   // catch-all is the last thing tried.
-  const table = [...options.handlers].sort(
-    (a, b) => specificity(b.path) - specificity(a.path),
-  );
+  const table = [...options.handlers].sort((a, b) => specificity(b.path) - specificity(a.path));
 
   return async function dispatch(request: Request): Promise<Response | null> {
     const url = new URL(request.url);

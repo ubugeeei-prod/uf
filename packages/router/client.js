@@ -18,9 +18,9 @@ import { DATA_ID, ROOT_ID } from "./server.js";
  * Hydrate the current document.
  */
 export async function hydrate(options: {|
-  +App: React.ComponentType<AppProps>,
-  +routes: RouteTable["routes"],
-  +notFound: RouteTable["notFound"],
+  readonly App: React.ComponentType<AppProps>,
+  readonly routes: RouteTable["routes"],
+  readonly notFound: RouteTable["notFound"],
 |}): Promise<void> {
   const table: RouteTable = { routes: options.routes, notFound: options.notFound };
   installRoutes(table);

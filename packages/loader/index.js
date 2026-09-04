@@ -14,20 +14,14 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 const MODULE = "@uniflowed/core/loader";
 
 export type LoaderState<T> =
-  | { +status: "idle" }
-  | { +status: "pending" }
-  | { +status: "ready", +value: T }
-  | { +status: "failed", +error: Error };
+  | { readonly status: "idle" }
+  | { readonly status: "pending" }
+  | { readonly status: "ready", readonly value: T }
+  | { readonly status: "failed", readonly error: Error };
 
-export opaque type Loader<T> = NativeHandleInvariant<
-  "@uniflowed/core/loader#Loader",
-  T,
->;
+export opaque type Loader<T> = NativeHandleInvariant<"@uniflowed/core/loader#Loader", T>;
 
-export function createLoader<T>(
-  key: string,
-  load: (client: FetchClient) => Promise<T>,
-): Loader<T> {
+export function createLoader<T>(key: string, load: (client: FetchClient) => Promise<T>): Loader<T> {
   return nativeRuntimeRequired(MODULE, "createLoader");
 }
 

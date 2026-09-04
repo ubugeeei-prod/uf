@@ -38,8 +38,8 @@ export component Command(children: string) {
 
 /** A line of terminal output, and how it should read. */
 export type OutputLine = {|
-  +text: string,
-  +tone?: "plain" | "ok" | "bad" | "muted",
+  readonly text: string,
+  readonly tone?: "plain" | "ok" | "bad" | "muted",
 |};
 
 /**
@@ -111,8 +111,8 @@ export component ManualNav() {
 
 /** A claim the project makes, and the page that backs it up. */
 export type Claim = {|
-  +title: string,
-  +body: React.Node,
+  readonly title: string,
+  readonly body: React.Node,
 |};
 
 /**

@@ -264,7 +264,11 @@ function mdxPlugin(markdown) {
     enforce: "pre",
     ...mdx({
       jsxImportSource: "react",
-      remarkPlugins: [remarkGfm, remarkFrontmatter, [remarkMdxFrontmatter, { name: "frontmatter" }]],
+      remarkPlugins: [
+        remarkGfm,
+        remarkFrontmatter,
+        [remarkMdxFrontmatter, { name: "frontmatter" }],
+      ],
       rehypePlugins,
     }),
     name: "uf:mdx",

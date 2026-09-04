@@ -22,101 +22,103 @@ import {
 } from "react";
 
 /** One parameter a route path captures. */
-export type RouteParamSpec = {| +name: string, +catchAll: boolean |};
+export type RouteParamSpec = {| readonly name: string, readonly catchAll: boolean |};
 
 /** The parameters captured from a URL. A catch-all captures the rest as a list. */
-export type RouteParams = { +[string]: string | $ReadOnlyArray<string> };
+export type RouteParams = { readonly [string]: string | $ReadOnlyArray<string> };
 
 /** The query string, as a read-only map. */
-export type SearchParams = { +[string]: string };
+export type SearchParams = { readonly [string]: string };
 
 /** What a page module may export. The component is `default` or `Page`. */
 export type PageModule = {
-  +default?: React.ComponentType<any>,
-  +Page?: React.ComponentType<any>,
-  +loader?: (args: LoaderArgs) => mixed | Promise<mixed>,
-  +metadata?: Metadata,
-  +generateMetadata?: (args: MetadataArgs) => Metadata | Promise<Metadata>,
-  +generateStaticParams?: () => $ReadOnlyArray<RouteParams> | Promise<$ReadOnlyArray<RouteParams>>,
-  +frontmatter?: { +title?: string, +description?: string, ... },
+  readonly default?: React.ComponentType<any>,
+  readonly Page?: React.ComponentType<any>,
+  readonly loader?: (args: LoaderArgs) => mixed | Promise<mixed>,
+  readonly metadata?: Metadata,
+  readonly generateMetadata?: (args: MetadataArgs) => Metadata | Promise<Metadata>,
+  readonly generateStaticParams?: () =>
+    | $ReadOnlyArray<RouteParams>
+    | Promise<$ReadOnlyArray<RouteParams>>,
+  readonly frontmatter?: { readonly title?: string, readonly description?: string, ... },
   ...
 };
 
 /** What a layout module may export. The component is `default` or `Layout`. */
 export type LayoutModule = {
-  +default?: React.ComponentType<any>,
-  +Layout?: React.ComponentType<any>,
-  +metadata?: Metadata,
+  readonly default?: React.ComponentType<any>,
+  readonly Layout?: React.ComponentType<any>,
+  readonly metadata?: Metadata,
   ...
 };
 
 /** Document metadata a page or layout declares. */
 export type Metadata = {
-  +title?: string,
-  +description?: string,
-  +openGraph?: {
-    +title?: string,
-    +description?: string,
-    +images?: $ReadOnlyArray<string>,
+  readonly title?: string,
+  readonly description?: string,
+  readonly openGraph?: {
+    readonly title?: string,
+    readonly description?: string,
+    readonly images?: $ReadOnlyArray<string>,
   },
 };
 
 /** Arguments a loader receives. */
 export type LoaderArgs = {|
-  +params: RouteParams,
-  +searchParams: SearchParams,
-  +pathname: string,
+  readonly params: RouteParams,
+  readonly searchParams: SearchParams,
+  readonly pathname: string,
 |};
 
 /** Arguments `generateMetadata` receives. */
 export type MetadataArgs = {|
-  +params: RouteParams,
-  +searchParams: SearchParams,
-  +data: mixed,
+  readonly params: RouteParams,
+  readonly searchParams: SearchParams,
+  readonly data: mixed,
 |};
 
 /** One entry of the generated route table. */
 export type RouteRecord = {|
-  +path: string,
-  +params: $ReadOnlyArray<RouteParamSpec>,
-  +mdx: boolean,
-  +file: string,
-  +page: () => Promise<PageModule>,
-  +layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
+  readonly path: string,
+  readonly params: $ReadOnlyArray<RouteParamSpec>,
+  readonly mdx: boolean,
+  readonly file: string,
+  readonly page: () => Promise<PageModule>,
+  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
 /** The not-found page, when the app declares one. */
 export type NotFoundRecord = {|
-  +mdx: boolean,
-  +file: string,
-  +page: () => Promise<PageModule>,
-  +layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
+  readonly mdx: boolean,
+  readonly file: string,
+  readonly page: () => Promise<PageModule>,
+  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
 /** A route table plus the not-found page. */
 export type RouteTable = {|
-  +routes: $ReadOnlyArray<RouteRecord>,
-  +notFound: ?NotFoundRecord,
+  readonly routes: $ReadOnlyArray<RouteRecord>,
+  readonly notFound: ?NotFoundRecord,
 |};
 
 /** A URL matched against the table. */
 export type RouteMatch = {|
-  +route: RouteRecord,
-  +params: RouteParams,
+  readonly route: RouteRecord,
+  readonly params: RouteParams,
 |};
 
 /** A match whose modules are loaded and whose loader has run. */
 export type ResolvedRoute = {|
-  +pathname: string,
-  +search: string,
-  +path: string,
-  +params: RouteParams,
-  +searchParams: SearchParams,
-  +page: PageModule,
-  +layouts: $ReadOnlyArray<LayoutModule>,
-  +data: mixed,
-  +metadata: Metadata,
-  +status: 200 | 404,
+  readonly pathname: string,
+  readonly search: string,
+  readonly path: string,
+  readonly params: RouteParams,
+  readonly searchParams: SearchParams,
+  readonly page: PageModule,
+  readonly layouts: $ReadOnlyArray<LayoutModule>,
+  readonly data: mixed,
+  readonly metadata: Metadata,
+  readonly status: 200 | 404,
 |};
 
 /** Thrown by `notFound()`; the renderer answers with the not-found page. */
@@ -145,9 +147,9 @@ export class RedirectError extends Error {
 // ---------------------------------------------------------------------------
 
 type Segment =
-  | {| +kind: "static", +value: string |}
-  | {| +kind: "param", +name: string |}
-  | {| +kind: "catchAll", +name: string |};
+  | {| readonly kind: "static", readonly value: string |}
+  | {| readonly kind: "param", readonly name: string |}
+  | {| readonly kind: "catchAll", readonly name: string |};
 
 function compile(routePath: string): $ReadOnlyArray<Segment> {
   return routePath
@@ -171,35 +173,37 @@ function compile(routePath: string): $ReadOnlyArray<Segment> {
 function specificity(segments: $ReadOnlyArray<Segment>): number {
   let score = 0;
   for (const segment of segments) {
-    score +=
-      match (segment) {
-        { kind: "static" } => 3,
-        { kind: "param" } => 2,
-        { kind: "catchAll" } => 1,
-      };
+    score += match (segment) {
+      {kind: "static"} => 3,
+      {kind: "param"} => 2,
+      {kind: "catchAll"} => 1,
+    };
   }
   return score;
 }
 
-function matchSegments(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>): ?RouteParams {
+function matchSegments(
+  segments: $ReadOnlyArray<Segment>,
+  parts: $ReadOnlyArray<string>,
+): ?RouteParams {
   const params: { [string]: string | $ReadOnlyArray<string> } = {};
   let index = 0;
   for (const segment of segments) {
     match (segment) {
-      { kind: "static", value: const value } => {
+      {kind: "static", value: const value} => {
         if (parts[index] !== value) {
           return null;
         }
         index += 1;
       }
-      { kind: "param", name: const name } => {
+      {kind: "param", name: const name} => {
         if (index >= parts.length) {
           return null;
         }
         params[name] = decodeSegment(parts[index]);
         index += 1;
       }
-      { kind: "catchAll", name: const name } => {
+      {kind: "catchAll", name: const name} => {
         params[name] = parts.slice(index).map(decodeSegment);
         index = parts.length;
       }
@@ -239,7 +243,7 @@ export function matchRoute(routes: $ReadOnlyArray<RouteRecord>, pathname: string
 }
 
 /** Split a URL into its pathname and search string. */
-export function splitUrl(url: string): {| +pathname: string, +search: string |} {
+export function splitUrl(url: string): {| readonly pathname: string, readonly search: string |} {
   const hash = url.indexOf("#");
   const withoutHash = hash === -1 ? url : url.slice(0, hash);
   const question = withoutHash.indexOf("?");
@@ -295,7 +299,7 @@ function loadOnce<T>(load: () => Promise<T>): Promise<T> {
 export async function resolveMatch(
   table: RouteTable,
   url: string,
-  options?: {| +data?: mixed, +skipLoader?: boolean |},
+  options?: {| readonly data?: mixed, readonly skipLoader?: boolean |},
 ): Promise<ResolvedRoute> {
   const { pathname, search } = splitUrl(url);
   const searchParams = parseSearch(search);
@@ -322,7 +326,11 @@ export async function resolveMatch(
     }
   }
 
-  const metadata = await resolveMetadata(page, layouts, { params: matched.params, searchParams, data });
+  const metadata = await resolveMetadata(page, layouts, {
+    params: matched.params,
+    searchParams,
+    data,
+  });
   return {
     pathname,
     search,
@@ -362,7 +370,11 @@ async function resolveNotFound(
     loadOnce(record.page),
     ...record.layouts.map((layout) => loadOnce(layout)),
   ]);
-  const metadata = await resolveMetadata(page, layouts, { params: {}, searchParams, data: undefined });
+  const metadata = await resolveMetadata(page, layouts, {
+    params: {},
+    searchParams,
+    data: undefined,
+  });
   return {
     pathname,
     search,
@@ -390,13 +402,17 @@ async function resolveMetadata(
   }
   if (page.frontmatter != null) {
     const { title, description } = page.frontmatter;
-    merged = { ...merged, ...(title != null ? { title } : {}), ...(description != null ? { description } : {}) };
+    merged = {
+      ...merged,
+      ...title != null ? { title } : {},
+      ...description != null ? { description } : {},
+    };
   }
   if (page.metadata != null) {
     merged = { ...merged, ...page.metadata };
   }
   if (typeof page.generateMetadata === "function") {
-    merged = { ...merged, ...(await page.generateMetadata(args)) };
+    merged = { ...merged, ...await page.generateMetadata(args) };
   }
   return merged;
 }
@@ -416,32 +432,32 @@ component DefaultNotFound() {
 // ---------------------------------------------------------------------------
 
 /** How a navigation is performed. */
-export type NavigateOptions = {| +replace?: boolean, +scroll?: boolean |};
+export type NavigateOptions = {| readonly replace?: boolean, readonly scroll?: boolean |};
 
 /** What `useRouter()` returns. */
 export type Router = {|
-  +push: (to: string, options?: NavigateOptions) => Promise<void>,
-  +replace: (to: string) => Promise<void>,
-  +prefetch: (to: string) => Promise<void>,
-  +refresh: () => Promise<void>,
-  +back: () => void,
-  +forward: () => void,
+  readonly push: (to: string, options?: NavigateOptions) => Promise<void>,
+  readonly replace: (to: string) => Promise<void>,
+  readonly prefetch: (to: string) => Promise<void>,
+  readonly refresh: () => Promise<void>,
+  readonly back: () => void,
+  readonly forward: () => void,
 |};
 
 /** What `useRoute()` returns. */
 export type RouteInfo = {|
-  +path: string,
-  +pathname: string,
-  +params: RouteParams,
-  +searchParams: SearchParams,
-  +data: mixed,
-  +pending: boolean,
+  readonly path: string,
+  readonly pathname: string,
+  readonly params: RouteParams,
+  readonly searchParams: SearchParams,
+  readonly data: mixed,
+  readonly pending: boolean,
 |};
 
 type RouterState = {|
-  +resolved: ResolvedRoute,
-  +router: Router,
-  +pending: boolean,
+  readonly resolved: ResolvedRoute,
+  readonly router: Router,
+  readonly pending: boolean,
 |};
 
 const RouterContext: React.Context<?RouterState> = createContext(null);
@@ -457,15 +473,17 @@ export function installRoutes(table: RouteTable): void {
 /** The registered table, or a clear error when the entry forgot to install it. */
 export function routeTable(): RouteTable {
   if (installedTable == null) {
-    throw new Error("@uniflowed/router: no route table is installed; start the app through `uf dev` or `uf build`");
+    throw new Error(
+      "@uniflowed/router: no route table is installed; start the app through `uf dev` or `uf build`",
+    );
   }
   return installedTable;
 }
 
 /** Props the app root receives from the client and server entries. */
 export type AppProps = {|
-  +url: string,
-  +initial: ResolvedRoute,
+  readonly url: string,
+  readonly initial: ResolvedRoute,
 |};
 
 const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
@@ -547,13 +565,19 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
         if (matched == null) {
           return;
         }
-        await Promise.all([loadOnce(matched.route.page), ...matched.route.layouts.map((layout) => loadOnce(layout))]);
+        await Promise.all([
+          loadOnce(matched.route.page),
+          ...matched.route.layouts.map((layout) => loadOnce(layout)),
+        ]);
       },
       refresh: async () => {
         if (!isBrowser) {
           return;
         }
-        const nextResolved = await resolveMatch(routeTable(), window.location.pathname + window.location.search);
+        const nextResolved = await resolveMatch(
+          routeTable(),
+          window.location.pathname + window.location.search,
+        );
         startTransition(() => {
           setResolved(nextResolved);
         });
@@ -572,14 +596,19 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     [navigate],
   );
 
-  const value = useMemo<RouterState>(() => ({ resolved, router, pending }), [resolved, router, pending]);
+  const value = useMemo<RouterState>(
+    () => ({ resolved, router, pending }),
+    [resolved, router, pending],
+  );
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 
 hook useRouterState(): RouterState {
   const state = useContext(RouterContext);
   if (state == null) {
-    throw new Error("@uniflowed/router: this hook must be used inside the app started by `routerView`");
+    throw new Error(
+      "@uniflowed/router: this hook must be used inside the app started by `routerView`",
+    );
   }
   return state;
 }
@@ -637,7 +666,9 @@ export component RouteView() {
 function pageComponent(module: PageModule): React.ComponentType<any> {
   const component = module.default ?? module.Page;
   if (component == null) {
-    throw new Error("@uniflowed/router: a page module must export a component as `default` or `Page`");
+    throw new Error(
+      "@uniflowed/router: a page module must export a component as `default` or `Page`",
+    );
   }
   return component;
 }
@@ -646,7 +677,9 @@ function pageComponent(module: PageModule): React.ComponentType<any> {
 function layoutComponent(module: LayoutModule): React.ComponentType<any> {
   const component = module.default ?? module.Layout;
   if (component == null) {
-    throw new Error("@uniflowed/router: a layout module must export a component as `default` or `Layout`");
+    throw new Error(
+      "@uniflowed/router: a layout module must export a component as `default` or `Layout`",
+    );
   }
   return component;
 }
@@ -658,9 +691,13 @@ component Head(metadata: Metadata) {
       {title != null ? <title>{title}</title> : null}
       {description != null ? <meta name="description" content={description} /> : null}
       {openGraph?.title != null ? <meta property="og:title" content={openGraph.title} /> : null}
-      {openGraph?.description != null ? <meta property="og:description" content={openGraph.description} /> : null}
+      {openGraph?.description != null ? (
+        <meta property="og:description" content={openGraph.description} />
+      ) : null}
       {openGraph?.images != null
-        ? openGraph.images.map((image) => <meta key={image} property="og:image" content={image} />)
+        ? openGraph.images.map((image) => (
+            <meta key={image} property="og:image" content={image} />
+          ))
         : null}
     </>
   );
@@ -683,7 +720,7 @@ export component Link(
   children?: React.Node,
   className?: string,
   onClick?: (event: SyntheticMouseEvent<HTMLAnchorElement>) => mixed,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const router = useRouter();
   const prefetched = React.useRef(false);

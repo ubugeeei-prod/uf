@@ -67,11 +67,7 @@ describe("render", () => {
 
 describe("queries", () => {
   it("finds by text, ignoring how the JSX was indented", () => {
-    render(
-      <p>
-        Save all of your changes
-      </p>,
-    );
+    render(<p>Save all of your changes</p>);
     expect(screen.getByText("Save all of your changes")).toBeTruthy();
   });
 
@@ -423,13 +419,7 @@ describe("element matchers", () => {
 
   it("asserts attributes, classes, text and value", () => {
     render(
-      <input
-        aria-label="field"
-        className="a b"
-        defaultValue="typed"
-        placeholder="hint"
-        required
-      />,
+      <input aria-label="field" className="a b" defaultValue="typed" placeholder="hint" required />,
     );
     const field = screen.getByLabelText("field");
     expect(field).toHaveAttribute("placeholder");
@@ -441,12 +431,7 @@ describe("element matchers", () => {
   });
 
   it("collapses whitespace before comparing text", () => {
-    render(
-      <p>
-        Save all of
-        your changes
-      </p>,
-    );
+    render(<p>Save all of your changes</p>);
     expect(screen.getByText(/Save/)).toHaveTextContent("Save all of your changes");
   });
 

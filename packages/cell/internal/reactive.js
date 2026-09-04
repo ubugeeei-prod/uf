@@ -41,18 +41,18 @@ type Listener = () => void;
 /** How far along a [`resource`]'s load is. */
 export type ResourceStatus = "idle" | "pending" | "success" | "failure";
 
-export type CellSnapshot<+T> = {
-  +scope: CellScope,
-  +value: T,
+export type CellSnapshot<out T> = {
+  readonly scope: CellScope,
+  readonly value: T,
 };
 
 type CellCarrier<T> = {
-  +__kind: "Cell",
-  +scope: CellScope,
-  +get: () => T,
-  +set: (T) => void,
-  +subscribe: (Listener) => Unsubscribe,
-  +observe: (Listener) => Unsubscribe,
+  readonly __kind: "Cell",
+  readonly scope: CellScope,
+  readonly get: () => T,
+  readonly set: (T) => void,
+  readonly subscribe: (Listener) => Unsubscribe,
+  readonly observe: (Listener) => Unsubscribe,
 };
 
 export opaque type Cell<T> = CellCarrier<T>;

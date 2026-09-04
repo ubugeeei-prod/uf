@@ -61,12 +61,8 @@ export function useMediaQuery(query: string, serverValue: boolean = false): bool
 }
 
 /** The reader's colour-scheme preference. */
-export function usePreferredColorScheme(
-  serverValue: "light" | "dark" = "light",
-): "light" | "dark" {
-  return useMediaQuery("(prefers-color-scheme: dark)", serverValue === "dark")
-    ? "dark"
-    : "light";
+export function usePreferredColorScheme(serverValue: "light" | "dark" = "light"): "light" | "dark" {
+  return useMediaQuery("(prefers-color-scheme: dark)", serverValue === "dark") ? "dark" : "light";
 }
 
 /** Whether the reader has asked for less motion. */
@@ -91,7 +87,7 @@ export function useOnline(serverValue: boolean = true): boolean {
 
   return useSyncExternalStore(
     subscribe,
-    () => (inBrowser() ? (windowOf().navigator?.onLine ?? true) : serverValue),
+    () => (inBrowser() ? windowOf().navigator?.onLine ?? true : serverValue),
     () => serverValue,
   );
 }
@@ -114,9 +110,12 @@ export function useDocumentVisible(serverValue: boolean = true): boolean {
 }
 
 /** The size of the viewport. */
-export function useWindowSize(serverValue?: {| +width: number, +height: number |}): {|
-  +width: number,
-  +height: number,
+export function useWindowSize(serverValue?: {|
+  readonly width: number,
+  readonly height: number,
+|}): {|
+  readonly width: number,
+  readonly height: number,
 |} {
   const fallback = serverValue ?? { width: 0, height: 0 };
 

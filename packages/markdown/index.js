@@ -8,33 +8,24 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 const MODULE = "@uniflowed/core/markdown";
 
 export type MarkdownOptions = {
-  +cache?: "opt-in",
-  +rsc?: true,
+  readonly cache?: "opt-in",
+  readonly rsc?: true,
 };
 
 export type MdxOptions = MarkdownOptions & {
-  +components?: { +[string]: mixed },
-  +jsxImportSource?: "@uniflowed/jsx-runtime",
+  readonly components?: { readonly [string]: mixed },
+  readonly jsxImportSource?: "@uniflowed/jsx-runtime",
 };
 
-export component Markdown(
-  source: string,
-  options?: MarkdownOptions,
-) renders React.Node {
+export component Markdown(source: string, options?: MarkdownOptions) renders React.Node {
   return nativeRuntimeRequired(MODULE, "Markdown");
 }
 
-export function renderMarkdown(
-  source: string,
-  options?: MarkdownOptions,
-): Promise<string> {
+export function renderMarkdown(source: string, options?: MarkdownOptions): Promise<string> {
   return nativeRuntimeRequired(MODULE, "renderMarkdown");
 }
 
-export function compileMarkdown(
-  source: string,
-  options?: MarkdownOptions,
-): Promise<React.Node> {
+export function compileMarkdown(source: string, options?: MarkdownOptions): Promise<React.Node> {
   return nativeRuntimeRequired(MODULE, "compileMarkdown");
 }
 
@@ -46,9 +37,6 @@ export function renderMdx(source: string, options?: MdxOptions): Promise<string>
   return nativeRuntimeRequired(MODULE, "renderMdx");
 }
 
-export function compileMdx(
-  source: string,
-  options?: MdxOptions,
-): Promise<React.Node> {
+export function compileMdx(source: string, options?: MdxOptions): Promise<React.Node> {
   return nativeRuntimeRequired(MODULE, "compileMdx");
 }

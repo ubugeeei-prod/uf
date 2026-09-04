@@ -32,7 +32,7 @@ function windowOf(): any {
  * covers the window, the document, and a node that does not exist yet at the
  * time the hook is called.
  */
-export function useEventListener<TEvent: Event>(
+export function useEventListener<TEvent extends Event>(
   target: Ref<EventTarget> | EventTarget | (() => EventTarget | null) | null,
   name: string,
   handler: (event: TEvent) => mixed,
@@ -61,10 +61,7 @@ export function useEventListener<TEvent: Event>(
  * open for the whole press — and because a click whose press started inside
  * the menu and ended outside it should not close it.
  */
-export function useClickOutside(
-  ref: Ref<HTMLElement>,
-  handler: (event: Event) => mixed,
-): void {
+export function useClickOutside(ref: Ref<HTMLElement>, handler: (event: Event) => mixed): void {
   const stable = useStableCallback(handler);
 
   useEffect(() => {
@@ -107,8 +104,8 @@ export function useFocusWithin(ref: Ref<HTMLElement>): boolean {
  * container query fires — none of which resizes the window.
  */
 export function useElementSize(ref: Ref<HTMLElement>): {|
-  +width: number,
-  +height: number,
+  readonly width: number,
+  readonly height: number,
 |} {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -141,7 +138,7 @@ export function useElementSize(ref: Ref<HTMLElement>): {|
 /** Whether the element is in the viewport. */
 export function useIntersecting(
   ref: Ref<HTMLElement>,
-  options?: {| +rootMargin?: string, +threshold?: number |},
+  options?: {| readonly rootMargin?: string, readonly threshold?: number |},
 ): boolean {
   const [intersecting, setIntersecting] = useState(false);
   const rootMargin = options?.rootMargin;
@@ -184,6 +181,6 @@ function resolve(
 }
 
 /** A ref for one of the hooks above, typed for the element you will attach it to. */
-export function useElementRef<T: HTMLElement>(): Ref<T> {
+export function useElementRef<T extends HTMLElement>(): Ref<T> {
   return useRef<T | null>(null);
 }
