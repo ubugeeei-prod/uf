@@ -3536,9 +3536,11 @@ dependencies = [
  "camino",
  "compact_str",
  "criterion",
+ "similar-asserts",
  "tempfile",
  "thiserror",
  "uf_config",
+ "uf_fmt",
  "walkdir",
 ]
 

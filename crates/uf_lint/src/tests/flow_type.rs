@@ -90,6 +90,49 @@ fn internal_type_accepts_the_public_equivalents() {
     assert!(diagnostics.is_empty());
 }
 
+/// The rule is off by default, and the reason is a fact about Flow rather than
+/// a matter of taste.
+///
+/// It exists for a world where `exact_by_default=false` was a `.flowconfig`
+/// option and `{ a: b }` meant different things in different projects. Flow has
+/// defaulted to exact since 2023 and now rejects that option as deprecated, so
+/// there is nothing left to disambiguate — and `{| |}`, which the rule asks
+/// for, is the legacy spelling of what plain braces already mean.
+#[test]
+fn ambiguous_object_type_is_off_by_default() {
+    let config = UniflowedConfig::default();
+
+    assert_eq!(
+        config.lint.rules.get("flow/ambiguous-object-type").copied(),
+        Some(RuleLevel::Off)
+    );
+
+    let report =
+        lint_source(&source("// @flow\ntype Props = { id: string };\n"), &config).expect("lint");
+
+    assert!(
+        report.diagnostics.is_empty(),
+        "modern Flow's exact object type must not be a default error: {:?}",
+        report.diagnostics
+    );
+}
+
+/// Off by default is not gone: a codebase migrating from an older Flow may
+/// want every object type marked while both spellings are in the tree.
+#[test]
+fn ambiguous_object_type_can_still_be_switched_on() {
+    let mut config = UniflowedConfig::default();
+    config.lint.rules.insert(
+        CompactString::const_new("flow/ambiguous-object-type"),
+        RuleLevel::Error,
+    );
+
+    let report =
+        lint_source(&source("// @flow\ntype Props = { id: string };\n"), &config).expect("lint");
+
+    assert_eq!(report.diagnostics.len(), 1);
+}
+
 #[test]
 fn ambiguous_object_type_rejects_unmarked_object_types() {
     let diagnostics = lint_js(
