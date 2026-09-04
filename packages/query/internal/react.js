@@ -114,12 +114,12 @@ export function useQuery<T>(
 
   return useMemo(
     () => ({
-      value: (entry.value: $FlowFixMe),
+      value: entry.value as $FlowFixMe,
       error: entry.error,
       pending: entry.pending,
       loading: entry.pending && entry.updatedAt === 0,
       stale: entry.updatedAt === 0 || Date.now() - entry.updatedAt >= staleTime,
-      refetch: (refetch: $FlowFixMe),
+      refetch: refetch as $FlowFixMe,
     }),
     [entry, staleTime, refetch],
   );

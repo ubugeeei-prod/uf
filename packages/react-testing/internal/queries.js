@@ -152,7 +152,7 @@ export function allByDisplayValue(
   options?: MatcherOptions,
 ): Array<Element> {
   return candidates(root, "input, textarea, select").filter((element) =>
-    matches(normalize((element: any).value ?? ""), element, matcher, options),
+    matches(normalize((element as any).value ?? ""), element, matcher, options),
   );
 }
 
@@ -165,7 +165,7 @@ export function allByDisplayValue(
 function controlFor(root: ParentNode, label: Element): Element | null {
   const id = label.getAttribute("for");
   if (id != null && id !== "") {
-    const byId = (root: any).querySelector?.(`#${cssEscape(id)}`);
+    const byId = (root as any).querySelector?.(`#${cssEscape(id)}`);
     if (byId != null) {
       return byId;
     }
@@ -267,7 +267,7 @@ export function accessibleName(element: Element): string {
       .split(/\s+/)
       .map((id) => element.ownerDocument?.getElementById(id))
       .filter(Boolean)
-      .map((target) => textOf((target: any)));
+      .map((target) => textOf(target as any));
     if (parts.length > 0) {
       return normalize(parts.join(" "));
     }
@@ -284,7 +284,7 @@ export function accessibleName(element: Element): string {
   if (element.tagName.toLowerCase() === "input") {
     const type = (element.getAttribute("type") ?? "").toLowerCase();
     if (type === "submit" || type === "button" || type === "reset") {
-      return normalize((element: any).value ?? "");
+      return normalize((element as any).value ?? "");
     }
   }
 
@@ -304,7 +304,7 @@ export function queryFailure(
       : matcher instanceof RegExp
         ? String(matcher)
         : JSON.stringify(matcher);
-  const html = (root: any).innerHTML ?? "";
+  const html = (root as any).innerHTML ?? "";
   const shown = html.length > 2000 ? `${html.slice(0, 2000)}\n…` : html;
   const count = found === 0 ? "found nothing" : `found ${found} elements and needed exactly one`;
   return new Error(`${kind} ${description}: ${count}\n\n${shown}`);

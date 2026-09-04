@@ -62,7 +62,7 @@ export function render(ui: React.Node, options?: {| readonly container?: Element
 
   return {
     container,
-    baseElement: (globalThis.document.body: any),
+    baseElement: globalThis.document.body as any,
     rerender: (next: React.Node) => {
       act(() => {
         root.render(next);
@@ -118,9 +118,9 @@ let client: mixed = null;
 function requireClient(): { createRoot: (Element) => any } {
   if (client == null) {
     const load = createRequire(import.meta.url);
-    client = (load("react-dom/client"): any);
+    client = load("react-dom/client") as any;
   }
-  return (client: any);
+  return client as any;
 }
 
 /**
@@ -135,7 +135,7 @@ export function actively<T>(body: () => T): T {
   act(() => {
     result = body();
   });
-  return (result: any);
+  return result as any;
 }
 
 /**

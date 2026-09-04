@@ -77,7 +77,7 @@ function makeCell<T>(carrier: CellCarrier<T>): Cell<T> {
 }
 
 function readCarrier<T>(source: Cell<T>): CellCarrier<T> {
-  return (source: any);
+  return source as any;
 }
 
 /**

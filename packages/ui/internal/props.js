@@ -39,7 +39,7 @@ export function composeHandlers<TEvent extends { readonly defaultPrevented?: boo
     return ours;
   }
   return (event: TEvent) => {
-    (theirs: $FlowFixMe)(event);
+    (theirs as $FlowFixMe)(event);
     if (event.defaultPrevented !== true) {
       ours(event);
     }
@@ -54,9 +54,9 @@ export function composeRefs<T>(
   return (value: T | null) => {
     ours(value);
     if (typeof theirs === "function") {
-      (theirs: $FlowFixMe)(value);
+      (theirs as $FlowFixMe)(value);
     } else if (theirs != null && typeof theirs === "object") {
-      (theirs: $FlowFixMe).current = value;
+      (theirs as $FlowFixMe).current = value;
     }
   };
 }

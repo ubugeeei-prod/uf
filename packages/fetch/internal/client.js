@@ -146,7 +146,7 @@ export function createFetch(config?: FetchConfig): FetchClient {
     request: async <T>(path: string, options?: RequestOptions<T>): Promise<T> => {
       const given = options ?? {};
       const response = await send(settings, path, given);
-      return (parse(response, given, resolveUrl(settings, path, given)): $FlowFixMe);
+      return parse(response, given, resolveUrl(settings, path, given)) as $FlowFixMe;
     },
     extend: (extra: FetchConfig) =>
       createFetch({
@@ -228,7 +228,7 @@ function requestInit(
     }
   }
 
-  return ({ method, headers, body, signal }: $FlowFixMe);
+  return { method, headers, body, signal } as $FlowFixMe;
 }
 
 /** Whether the platform can send this as-is. */

@@ -47,7 +47,7 @@ const NON_BUBBLING = new Set(["focus", "blur", "mouseenter", "mouseleave"]);
 
 function construct(name: string, init: { readonly [string]: mixed }): Event {
   const interfaceName = EVENT_TYPES[name] ?? "Event";
-  const Constructor = (globalThis: any)[interfaceName] ?? globalThis.Event;
+  const Constructor = (globalThis as any)[interfaceName] ?? globalThis.Event;
   const options = {
     bubbles: !NON_BUBBLING.has(name),
     cancelable: true,
@@ -94,10 +94,10 @@ export const fireEvent: any = new Proxy(
   {
     get(base, property) {
       if (typeof property !== "string") {
-        return (base: any)[property];
+        return (base as any)[property];
       }
       if (property in base) {
-        return (base: any)[property];
+        return (base as any)[property];
       }
       return (target: EventTarget, init?: { readonly [string]: mixed }) =>
         dispatch(target, property.toLowerCase(), init);
@@ -164,7 +164,7 @@ function tabbable(): Array<HTMLElement> {
 export const userEvent = {
   /** Press and release, with the events a real click produces, in order. */
   async click(element: HTMLElement, init?: { readonly [string]: mixed }): Promise<void> {
-    if ((element: any).disabled === true) {
+    if ((element as any).disabled === true) {
       return;
     }
     dispatch(element, "pointerdown", init);
@@ -198,7 +198,7 @@ export const userEvent = {
       const { key, code, text: printable } = describeKey(character);
       dispatch(element, "keydown", { key, code });
       if (printable != null && printable !== "\n") {
-        setValue(element, `${(element: any).value ?? ""}${printable}`);
+        setValue(element, `${(element as any).value ?? ""}${printable}`);
         dispatch(element, "input", { data: printable });
       }
       dispatch(element, "keyup", { key, code });
@@ -256,7 +256,7 @@ export const userEvent = {
     const wanted = typeof values === "string" ? [values] : values;
     const select: any = element;
     for (const option of Array.from(select.options ?? [])) {
-      (option: any).selected = wanted.includes((option: any).value);
+      (option as any).selected = wanted.includes((option as any).value);
     }
     dispatch(element, "input");
     dispatch(element, "change");
@@ -266,7 +266,7 @@ export const userEvent = {
   /** Move focus away, which is what makes a blur-validated field validate. */
   async tabAway(element: HTMLElement): Promise<void> {
     dispatch(element, "blur");
-    (element: any).blur?.();
+    (element as any).blur?.();
     await settle();
   },
 };
@@ -277,7 +277,7 @@ function focus(element: HTMLElement): void {
     return;
   }
   actively(() => {
-    (element: any).focus?.();
+    (element as any).focus?.();
   });
   if (globalThis.document.activeElement !== element) {
     // A host whose `focus` does not move `activeElement`; the events are what

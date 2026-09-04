@@ -21,6 +21,7 @@
 
 mod builtins;
 mod convert;
+mod environments;
 mod options;
 mod parse;
 
