@@ -40,9 +40,11 @@ done
   # `UF_BIN` is set by anything that has already built the toolchain — CI
   # builds it once and shares it, and rebuilding here would cost minutes for
   # a binary that is already on disk.
+  # `build#docs` rather than `--cwd docs`: the workspace selector is what a
+  # person types, so it is what this runs, and a break in it breaks here first.
   if [ -n "${UF_BIN:-}" ]; then
-    "$UF_BIN" --cwd docs build --size-report
+    "$UF_BIN" build#docs --size-report
   else
-    cargo run --release --package uf_cli --bin uf -- --cwd docs build --size-report
+    cargo run --release --package uf_cli --bin uf -- build#docs --size-report
   fi
 )

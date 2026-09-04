@@ -266,6 +266,140 @@ fn run_without_a_task_lists_them() {
     assert!(stdout.contains("uf run <task>"), "{stdout}");
 }
 
+/// A repository is commonly more than one project, and `uf dev#docs` is how a
+/// command says which one it means.
+#[test]
+fn a_command_runs_in_the_workspace_its_selector_names() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: { root: { command: "printf root" } },
+            });
+        "#,
+    )
+    .unwrap();
+    let member = dir.path().join("site");
+    fs::create_dir_all(&member).unwrap();
+    fs::write(
+        member.join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: { inner: { command: "printf inner" } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["run#site", "inner"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "inner");
+}
+
+/// The root is still the root when no selector is given.
+#[test]
+fn no_selector_leaves_the_command_where_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: { root: { command: "printf root" } },
+            });
+        "#,
+    )
+    .unwrap();
+    let member = dir.path().join("site");
+    fs::create_dir_all(&member).unwrap();
+    fs::write(
+        member.join("uf.config.js"),
+        "export default {};
+",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["run", "root"])
+        .output()
+        .unwrap();
+
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "root");
+}
+
+#[test]
+fn an_unknown_workspace_names_the_ones_that_exist() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default {};
+",
+    )
+    .unwrap();
+    let member = dir.path().join("docs");
+    fs::create_dir_all(&member).unwrap();
+    fs::write(
+        member.join("uf.config.js"),
+        "export default {};
+",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("inspect#dcos")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("did you mean"), "{stderr}");
+    assert!(stderr.contains("docs"), "{stderr}");
+}
+
+/// A `#` in an argument is part of that argument. Only the subcommand carries
+/// a selector, or a task named `build#2` would become a workspace lookup.
+#[test]
+fn a_hash_outside_the_subcommand_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: { "build#2": { command: "printf hashed" } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["run", "build#2"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "hashed");
+}
+
 #[test]
 fn alias_binaries_print_the_root_version() {
     for name in ["ufr", "ufx"] {

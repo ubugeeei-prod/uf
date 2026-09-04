@@ -3494,6 +3494,7 @@ name = "uf_project"
 version = "0.0.0-alpha.2"
 dependencies = [
  "camino",
+ "compact_str",
  "tempfile",
  "thiserror",
  "uf_config",
