@@ -13,6 +13,7 @@
 // the way the synchronous form does.
 
 import type { SpyCall } from "./spy.js";
+import * as asymmetric from "./asymmetric.js";
 import { isSpy } from "./spy.js";
 import { equals, matchesObject, render } from "./equality.js";
 
@@ -538,7 +539,7 @@ function settled(promise: mixed, wanted: "resolve" | "reject", negated: boolean)
  * await expect(load()).resolves.toHaveLength(3);
  * ```
  */
-export function expect(received: mixed): $FlowFixMe {
+function expectValue(received: mixed): $FlowFixMe {
   const expectation: $FlowFixMe = bind(received, false);
   Object.defineProperty(expectation, "resolves", {
     get: () => settled(received, "resolve", false),
@@ -546,3 +547,41 @@ export function expect(received: mixed): $FlowFixMe {
   Object.defineProperty(expectation, "rejects", { get: () => settled(received, "reject", false) });
   return expectation;
 }
+
+/**
+ * Assert about a value.
+ *
+ * Declared with its matchers attached rather than assigned afterwards: a
+ * shipped module may only declare, import and export at its top level, and
+ * `expect.any = …` is a statement that runs when the module is imported.
+ *
+ * The `expect.*` half are the matchers that stand in for a value instead of
+ * being one. `expect(user).toEqual({ id: expect.any(String), name: "uf" })`
+ * says what a test means; spelling out the id would either be a lie or a second
+ * source of truth. They work at any depth, because `equals` asks every value it
+ * meets whether it is one.
+ *
+ * `expect.not.*` is the negated form, spelled the way Jest and Vitest spell it
+ * — `expect.not.objectContaining({ error: expect.anything() })` reads better
+ * than a negated assertion around the whole object, and is the form a suite
+ * being ported will already have.
+ */
+export const expect: $FlowFixMe = Object.assign(expectValue, {
+  any: asymmetric.any,
+  anything: asymmetric.anything,
+  objectContaining: asymmetric.objectContaining,
+  arrayContaining: asymmetric.arrayContaining,
+  stringContaining: asymmetric.stringContaining,
+  stringMatching: asymmetric.stringMatching,
+  closeTo: asymmetric.closeTo,
+  not: {
+    objectContaining: (expected: interface {}) =>
+      asymmetric.not(asymmetric.objectContaining(expected)),
+    arrayContaining: (expected: $ReadOnlyArray<mixed>) =>
+      asymmetric.not(asymmetric.arrayContaining(expected)),
+    stringContaining: (substring: string) => asymmetric.not(asymmetric.stringContaining(substring)),
+    stringMatching: (pattern: string | RegExp) =>
+      asymmetric.not(asymmetric.stringMatching(pattern)),
+    closeTo: (value: number, digits?: number) => asymmetric.not(asymmetric.closeTo(value, digits)),
+  },
+});
