@@ -264,3 +264,36 @@ fn an_empty_variable_is_the_same_as_an_unset_one() {
         None
     );
 }
+
+// --- fitting a box to an image ------------------------------------------
+
+/// A square image needs a box twice as wide in cells as it is tall, because a
+/// cell is about twice as tall as it is wide.
+#[test]
+fn a_square_image_gets_a_square_box() {
+    assert_eq!(Placement::fitting(512, 512, 5), Placement::new(10, 5));
+    assert_eq!(Placement::fitting(128, 128, 4), Placement::new(8, 4));
+}
+
+#[test]
+fn a_wide_image_gets_a_wide_box() {
+    // 713x195 is roughly 3.66:1, so five rows want about 37 columns.
+    assert_eq!(Placement::fitting(713, 195, 5), Placement::new(37, 5));
+}
+
+#[test]
+fn a_tall_image_gets_a_narrow_box() {
+    assert_eq!(Placement::fitting(100, 400, 8), Placement::new(4, 8));
+}
+
+/// Never zero columns: a box no cells wide displays nothing at all.
+#[test]
+fn a_very_tall_image_still_gets_a_column() {
+    assert_eq!(Placement::fitting(1, 10_000, 1), Placement::new(1, 1));
+}
+
+#[test]
+fn a_degenerate_image_gets_a_square_box_rather_than_dividing_by_zero() {
+    assert_eq!(Placement::fitting(0, 100, 5), Placement::new(5, 5));
+    assert_eq!(Placement::fitting(100, 0, 5), Placement::new(5, 5));
+}

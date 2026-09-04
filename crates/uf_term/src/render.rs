@@ -121,9 +121,17 @@ impl Renderer {
         self.theme.title.paint(self.color(), title, out);
         let mut width = display_width(title);
         if let Some(subtitle) = subtitle {
-            out.push_str("  ");
+            // A separator rather than spacing: the command and what it is
+            // acting on are two things, and `uf install  my-app` reads as one
+            // phrase with an odd gap in it. In ASCII the dot is unavailable, so
+            // the spacing carries it alone.
+            let separator = match self.glyph_set() {
+                GlyphSet::Unicode => " · ",
+                GlyphSet::Ascii => "  ",
+            };
+            self.theme.muted.paint(self.color(), separator, out);
             self.theme.subtitle.paint(self.color(), subtitle, out);
-            width += 2 + display_width(subtitle);
+            width += display_width(separator) + display_width(subtitle);
         }
         out.push('\n');
         self.rule(out, width.clamp(MIN_RULE, MAX_RULE));

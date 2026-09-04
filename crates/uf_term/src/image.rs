@@ -48,11 +48,41 @@ pub struct Placement {
     pub rows: u16,
 }
 
+/// How much taller a terminal cell is than it is wide.
+///
+/// Not knowable from inside the process — it depends on the font — and close
+/// enough to 2 in every monospace face anyone reads code in that assuming it is
+/// what every terminal image tool does. It is the difference between a square
+/// mark drawn square and a square mark drawn as a letterbox.
+const CELL_ASPECT: u32 = 2;
+
 impl Placement {
     /// A placement `columns` wide and `rows` tall.
     #[must_use]
     pub const fn new(columns: u16, rows: u16) -> Self {
         Self { columns, rows }
+    }
+
+    /// A box `rows` tall that an image of `width` by `height` fills squarely.
+    ///
+    /// Both protocols scale an image into the box they are given, and kitty's
+    /// does not preserve the aspect ratio while doing it — so a square mark in
+    /// a box shaped for a wordmark comes out stretched. Deriving the width from
+    /// the image's own proportions means the box already has the right shape
+    /// and there is nothing left to distort.
+    ///
+    /// A degenerate image — zero in either dimension — gets a square box, since
+    /// there is no ratio to honour and no sensible way to fail here.
+    #[must_use]
+    pub const fn fitting(width: u32, height: u32, rows: u16) -> Self {
+        if width == 0 || height == 0 {
+            return Self::new(rows, rows);
+        }
+        // Cells are taller than they are wide, so a box `rows` tall is
+        // `rows * CELL_ASPECT` "square units" tall, and the width in cells that
+        // matches the image's ratio is that times width/height.
+        let columns = (rows as u32 * CELL_ASPECT * width).div_ceil(height);
+        Self::new(if columns == 0 { 1 } else { columns as u16 }, rows)
     }
 }
 

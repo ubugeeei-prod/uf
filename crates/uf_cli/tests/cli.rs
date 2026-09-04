@@ -601,7 +601,7 @@ fn ufx_alias_runs_uniflowed_create_package() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("ufx  @uniflowed/create"));
+    assert!(stdout.contains("ufx \u{b7} @uniflowed/create"), "{stdout}");
     assert!(stdout.contains("UfNative"));
     assert!(stdout.contains("exec-cache"));
     assert!(stdout.contains("created 8 files"));
