@@ -29,13 +29,14 @@ struct Stage {
 }
 
 /// The commands `uf explain` knows how to describe.
-const KNOWN: &[&str] = &["dev", "build", "test", "fmt", "lint", "check"];
+const KNOWN: &[&str] = &["dev", "build", "doc", "test", "fmt", "lint", "check"];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
     let stages = match command {
         "dev" => dev_stages(&resolved),
         "build" => build_stages(&resolved),
+        "doc" => doc_stages(),
         "test" => test_stages(&resolved),
         "fmt" => fmt_stages(&resolved),
         "lint" => lint_stages(&resolved),
@@ -175,6 +176,26 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "prerender",
             provider: "@uniflowed/router".to_string(),
             detail: "every route without parameters, to static HTML".to_string(),
+        },
+    ]
+}
+
+fn doc_stages() -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "discovery",
+            provider: "uf_project".to_string(),
+            detail: "project-owned JavaScript files, after `lint.ignore`".to_string(),
+        },
+        Stage {
+            name: "parse",
+            provider: "flow_parser (Meta official Rust port)".to_string(),
+            detail: "Flow syntax tree and source comments".to_string(),
+        },
+        Stage {
+            name: "render",
+            provider: "uf_doc".to_string(),
+            detail: "JSDoc on exported Flow declarations, to Markdown".to_string(),
         },
     ]
 }

@@ -45,7 +45,7 @@ table, and the config handed to Vite. `--json` for the machine-readable form.
 ### uf explain COMMAND
 
 Says what a command will do and **which provider does each part** — `dev`,
-`build`, `test`, `fmt`, `lint` or `check`. `--json` for the machine-readable
+`build`, `doc`, `test`, `fmt`, `lint` or `check`. `--json` for the machine-readable
 form.
 
 ```
@@ -84,6 +84,13 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 
 Builds the client and server bundles and prerenders what can be prerendered.
 `--size-report` prints the cost of each chunk.
+
+### uf doc
+
+Generates `api.md` from JSDoc attached to exported Flow declarations. The
+source is parsed with Meta's Flow parser, so Flow-only syntax is read directly.
+`--out DIR` writes somewhere other than `docs/api`; `--json` reports without
+writing.
 
 ### uf run SCRIPT [ARGS...]
 
