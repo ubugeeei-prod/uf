@@ -26,6 +26,7 @@
 // with the `Allow` header the specification requires — that is not the
 // handler's business, and every handler would otherwise write it.
 
+import { contextFor, drainDeferred, runWithContext } from "@uniflowed/server/host";
 import type { RouteParams } from "./internal/runtime.js";
 
 /** What a handler is given besides the request. */
@@ -89,10 +90,17 @@ export function createDispatcher(options: {|
         return methodNotAllowed(module);
       }
 
-      const response = await handler(request, {
-        params,
-        searchParams: url.searchParams,
-      });
+      // Inside the request, so a handler that calls `headers()`, `cookies()`
+      // or `after()` has something to answer about. `drainDeferred` runs after
+      // the response is in hand, which is what `after()` means.
+      const context = contextFor(request);
+      const response = await runWithContext(context, () =>
+        handler(request, {
+          params,
+          searchParams: url.searchParams,
+        }),
+      );
+      await drainDeferred(context);
 
       // A `HEAD` answered by `GET` must not carry the body. The test is
       // against the module's own `HEAD`, not `pick`'s — `pick` falls back to
