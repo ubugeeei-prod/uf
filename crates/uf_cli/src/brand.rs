@@ -1,6 +1,9 @@
 //! Brand-aware terminal snippets shared by human-facing CLI commands.
 
-use uf_term::{Cell, Color, Column, GlyphSet, Renderer, Style, Table, Tone, push_repeat};
+use uf_term::{
+    Cell, Color, Column, GlyphSet, Placement, Renderer, Style, Table, Tone, inline_image,
+    push_repeat,
+};
 
 pub(crate) const HEADLINE: &str = "Unified Toolchain for Flow";
 pub(crate) const TAGLINE: &str = "All-in-one toolchain for Flow and React.";
@@ -55,27 +58,34 @@ const ASCII_MARK: [&str; 5] = [
     " ######    ##",
 ];
 
+/// uf's logo, as the picture it is.
+///
+/// Compiled in rather than read from `brand/`: an installed `uf` is one binary
+/// and has no `brand/` directory to read. 24 KiB, which is nothing beside the
+/// checker.
+const LOGO_PNG: &[u8] = include_bytes!("../../../brand/uniflowed-logo.png");
+
+/// The box the logo is drawn into, in terminal cells.
+///
+/// The same footprint as the block mark it replaces — nineteen columns and five
+/// rows — so the banner is laid out identically whether a terminal can draw a
+/// picture or not, and nothing below it moves.
+const LOGO_PLACEMENT: Placement = Placement::new(19, 5);
+
 /// The mark and the headline, for the moments that deserve it.
 ///
 /// Not on every command. `uf test` printing a five-row logo before a hundred
 /// test results is not beautiful, it is in the way — this is for first contact
 /// (`uf create`) and for the command whose whole job is to say what you have
 /// (`uf info`).
+///
+/// Where the terminal can draw an image, it draws the real logo; everywhere
+/// else it draws the same shape out of block characters. The picture is not a
+/// different banner, it is the same banner rendered properly.
 pub(crate) fn render_mark(renderer: &Renderer, out: &mut String, context: &str) {
-    let stops = [CYAN, BLUE, INDIGO, VIOLET, MAGENTA];
-    let rows = match renderer.glyph_set() {
-        GlyphSet::Ascii => &ASCII_MARK,
-        GlyphSet::Unicode => &MARK,
-    };
-
     out.push('\n');
-    for (row, colour) in rows.iter().zip(stops) {
-        out.push_str("  ");
-        Style::new()
-            .fg(colour)
-            .bold()
-            .paint(renderer.color(), row, out);
-        out.push('\n');
+    if !render_logo_image(renderer, out) {
+        render_logo_blocks(renderer, out);
     }
     out.push('\n');
 
@@ -90,6 +100,43 @@ pub(crate) fn render_mark(renderer: &Renderer, out: &mut String, context: &str) 
         .subtitle
         .paint(renderer.color(), context, out);
     out.push('\n');
+}
+
+/// Draw the logo as a picture, or report that this terminal cannot.
+///
+/// The decision was made once at start-up, with the rest of the terminal's
+/// capability, so this asks the renderer rather than the environment — no write
+/// path in uf re-probes the process it is running in.
+fn render_logo_image(renderer: &Renderer, out: &mut String) -> bool {
+    let Some(protocol) = renderer.image() else {
+        return false;
+    };
+    let Some(escape) = inline_image(LOGO_PNG, protocol, LOGO_PLACEMENT) else {
+        return false;
+    };
+
+    out.push_str("  ");
+    out.push_str(&escape);
+    out.push('\n');
+    true
+}
+
+/// Draw the logo out of block characters, which every terminal can render.
+fn render_logo_blocks(renderer: &Renderer, out: &mut String) {
+    let stops = [CYAN, BLUE, INDIGO, VIOLET, MAGENTA];
+    let rows = match renderer.glyph_set() {
+        GlyphSet::Ascii => &ASCII_MARK,
+        GlyphSet::Unicode => &MARK,
+    };
+
+    for (row, colour) in rows.iter().zip(stops) {
+        out.push_str("  ");
+        Style::new()
+            .fg(colour)
+            .bold()
+            .paint(renderer.color(), row, out);
+        out.push('\n');
+    }
 }
 
 pub(crate) fn render_product_card(renderer: &Renderer, out: &mut String, context: &str) {
