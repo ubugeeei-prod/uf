@@ -11,10 +11,12 @@
 # registry is the source of truth for what each one is.
 config
 fetch
+graphql
 hooks
 query
 react
 react-testing
+relay
 router
 server
 stylex

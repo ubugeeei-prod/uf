@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/graphql",
   "version": "0.0.0-alpha.2",
-  "description": "Flow declarations for @uniflowed/graphql, part of the Unified Toolchain for Flow.",
+  "description": "The Relay environment, without the boilerplate, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.2",
-    "@uniflowed/fetch": "0.0.0-alpha.2"
+    "@uniflowed/fetch": "0.0.0-alpha.2",
+    "relay-runtime": "^21.0.1"
   }
 }

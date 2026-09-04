@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/relay",
   "version": "0.0.0-alpha.2",
-  "description": "Flow declarations for @uniflowed/relay, part of the Unified Toolchain for Flow.",
+  "description": "Relay, re-exported by name, for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -17,6 +17,9 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.2"
+    "react-relay": "^21.0.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
   }
 }
