@@ -3351,6 +3351,7 @@ dependencies = [
  "uf_bundle",
  "uf_check",
  "uf_config",
+ "uf_doc",
  "uf_flow",
  "uf_fmt",
  "uf_lib",
@@ -3384,6 +3385,20 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_bundle",
+]
+
+[[package]]
+name = "uf_doc"
+version = "0.0.0-alpha.2"
+dependencies = [
+ "camino",
+ "serde",
+ "similar-asserts",
+ "tempfile",
+ "thiserror",
+ "uf_config",
+ "uf_flow",
+ "uf_project",
 ]
 
 [[package]]

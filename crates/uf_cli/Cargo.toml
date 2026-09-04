@@ -32,6 +32,7 @@ clap.workspace = true
 uf_bundle = { path = "../uf_bundle" }
 uf_check = { path = "../uf_check", optional = true }
 uf_config = { path = "../uf_config" }
+uf_doc = { path = "../uf_doc" }
 uf_flow = { path = "../uf_flow" }
 uf_fmt = { path = "../uf_fmt" }
 uf_lib = { path = "../uf_lib" }

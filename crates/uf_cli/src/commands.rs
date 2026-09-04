@@ -8,6 +8,7 @@ pub(crate) mod check;
 pub(crate) mod completion;
 pub(crate) mod create;
 pub(crate) mod dev;
+pub(crate) mod doc;
 pub(crate) mod env;
 pub(crate) mod explain;
 pub(crate) mod fmt;

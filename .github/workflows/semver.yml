@@ -48,4 +48,4 @@ jobs:
           #
           # The list grows as more crates use the parser. See
           # docs/architecture.md for what to do when it covers too little.
-          exclude: uf_check,uf_cli,uf_flow,uf_fmt,uf_lint,uf_transform
+          exclude: uf_check,uf_cli,uf_doc,uf_flow,uf_fmt,uf_lint,uf_transform
