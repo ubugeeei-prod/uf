@@ -205,3 +205,45 @@ fn a_file_with_no_docblock_is_still_checked() {
          the way to say otherwise"
     );
 }
+
+/// A toolchain for React applications has to know what a `document` is.
+///
+/// Flow's `lib/` holds `core.js` and `react.js` and nothing else — every
+/// browser and Node global lives in `evals/flow-typed/environment`, which Flow
+/// loads through a `.flowconfig`'s `[libs]`. uf has no `.flowconfig`, so
+/// without merging them explicitly `uf check` reported 193
+/// `cannot-resolve-name` errors against uf's own packages, 41 of them for
+/// `Response`.
+#[test]
+fn the_platform_globals_resolve() {
+    require_checker!();
+
+    // One name from each environment that a uf project actually reaches for.
+    for (source, name) in [
+        ("const el: HTMLElement = document.body;", "dom/html"),
+        ("const r: Response = new Response();", "bom/fetch"),
+        (
+            "const u: URL = new URL(\"https://uniflowed.dev\");",
+            "bom/url",
+        ),
+        ("const w: number = window.innerWidth;", "bom/window"),
+        ("const p: string = process.platform;", "node"),
+        ("const s: Storage = localStorage;", "bom/storage"),
+        ("const t: EventTarget = new EventTarget();", "dom/events"),
+    ] {
+        let diagnostics = check_source(
+            Source::new("app.js", &format!("// @flow\n{source}\n")),
+            &CheckLimits::default(),
+        )
+        .expect("the checker runs");
+
+        let unresolved = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == Some("cannot-resolve-name"))
+            .collect::<Vec<_>>();
+        assert!(
+            unresolved.is_empty(),
+            "{name}: {source}\n  unresolved: {unresolved:?}"
+        );
+    }
+}

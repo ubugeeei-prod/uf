@@ -21,7 +21,12 @@ submodule_path="upstream/flow"
 # `lib/`, `prelude/`, and `tslib/`. Leaving those out builds fine until the day
 # someone enables the type checker, then fails with an unhelpful missing-file
 # error from a macro. Check them out up front.
-sparse_subtrees="rust_port lib prelude tslib"
+#
+# `evals/flow-typed/environment` is where Flow keeps the DOM, BOM and Node
+# globals. They are not in `lib/` — that holds only `core.js` and `react.js` —
+# and without them a type checker knows what a `Map` is and not what a
+# `document` is. `uf_check` embeds them from there.
+sparse_subtrees="rust_port lib prelude tslib evals/flow-typed/environment"
 
 git submodule update --init --depth 1 --filter=blob:none "$submodule_path"
 # shellcheck disable=SC2086 # deliberate word splitting: one argument per subtree
@@ -31,7 +36,10 @@ for required in \
   "rust_port/Cargo.toml" \
   "lib/core.js" \
   "lib/react.js" \
-  "prelude/prelude.js"
+  "prelude/prelude.js" \
+  "evals/flow-typed/environment/dom.js" \
+  "evals/flow-typed/environment/bom.js" \
+  "evals/flow-typed/environment/node.js"
 do
   if [ ! -f "$submodule_path/$required" ]; then
     echo "upstream sync failed: $submodule_path/$required is missing" >&2

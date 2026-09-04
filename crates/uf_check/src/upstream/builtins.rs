@@ -93,7 +93,13 @@ fn build() -> Result<Builtins, CompactString> {
     // Library definitions are merged in reverse declaration order: later
     // definitions shadow earlier ones, and `merge_lib_files` folds from the
     // front. This mirrors `flow_dot_js_wasm`.
-    let contents = flow_flowlib::contents_list(false);
+    // Flow's own `lib/`, then the platform environments. `core.js` and
+    // `react.js` are all `lib/` holds; `document` and `Response` come from
+    // `evals/flow-typed/environment`, which Flow loads through a
+    // `.flowconfig`'s `[libs]` and uf merges unconditionally. See
+    // [`super::environments`].
+    let mut contents = flow_flowlib::contents_list(false);
+    contents.extend(super::environments::ENVIRONMENTS.iter().copied());
     let options = options(&CheckLimits::default());
     let mut asts = Vec::with_capacity(contents.len());
     for (name, content) in contents.into_iter().rev() {

@@ -270,7 +270,7 @@ describe("resource", () => {
 
   it("does not start loading until something asks", () => {
     const load = fn(() => Promise.resolve(1));
-    const loaded = resource(() => (load(): $FlowFixMe));
+    const loaded = resource(() => load() as $FlowFixMe);
     expect(status(loaded)).toBe("idle");
     expect(load).not.toHaveBeenCalled();
     read(loaded);

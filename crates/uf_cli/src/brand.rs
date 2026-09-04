@@ -1,8 +1,8 @@
 //! Brand-aware terminal snippets shared by human-facing CLI commands.
 
 use uf_term::{
-    Cell, Color, Column, GlyphSet, Placement, Renderer, Style, Table, Tone, inline_image,
-    push_repeat,
+    Cell, Color, Column, GlyphSet, Placement, Renderer, Style, Table, Tone, display_width,
+    inline_image, push_repeat,
 };
 
 pub(crate) const HEADLINE: &str = "Unified Toolchain for Flow";
@@ -58,19 +58,28 @@ const ASCII_MARK: [&str; 5] = [
     " ######    ##",
 ];
 
-/// uf's logo, as the picture it is.
+/// uf's mark, as the picture it is.
+///
+/// The mark rather than the full lockup: the lockup carries the wordmark, and
+/// the line under the banner already says "Unified Toolchain for Flow" in a
+/// font the terminal chose. Drawing the words twice, once as pixels, is the
+/// kind of thing that looks like a mistake.
 ///
 /// Compiled in rather than read from `brand/`: an installed `uf` is one binary
-/// and has no `brand/` directory to read. 24 KiB, which is nothing beside the
-/// checker.
-const LOGO_PNG: &[u8] = include_bytes!("../../../brand/uniflowed-logo.png");
+/// and has no `brand/` directory to read.
+const MARK_PNG: &[u8] = include_bytes!("../../../brand/uniflowed-mark.png");
 
-/// The box the logo is drawn into, in terminal cells.
+/// The mark's own dimensions, which decide the shape of the box it is drawn in.
+const MARK_SIZE: (u32, u32) = (512, 512);
+
+/// How tall the banner's mark is, in rows.
 ///
-/// The same footprint as the block mark it replaces — nineteen columns and five
-/// rows — so the banner is laid out identically whether a terminal can draw a
-/// picture or not, and nothing below it moves.
-const LOGO_PLACEMENT: Placement = Placement::new(19, 5);
+/// Five, the height of the block mark it stands in for, so the banner occupies
+/// the same rows whether a terminal can draw a picture or not and nothing below
+/// it moves. The width follows from the mark's own proportions rather than
+/// being chosen: a square mark in a box shaped for a wordmark comes out
+/// stretched, and kitty's protocol will not stop it.
+const MARK_ROWS: u16 = 5;
 
 /// The mark and the headline, for the moments that deserve it.
 ///
@@ -94,12 +103,37 @@ pub(crate) fn render_mark(renderer: &Renderer, out: &mut String, context: &str) 
         .theme()
         .title
         .paint(renderer.color(), HEADLINE, out);
-    out.push_str("  ");
+    // A middle dot rather than two spaces: the headline and the command are
+    // two different things, and spacing alone reads as one long phrase.
+    separator(renderer, out);
     renderer
         .theme()
         .subtitle
         .paint(renderer.color(), context, out);
     out.push('\n');
+
+    // What uf is, under the mark that does not say it. This banner is first
+    // contact — `uf create` and `uf info` — and it is the one moment where a
+    // reader has no idea yet.
+    out.push_str("  ");
+    renderer.theme().muted.paint(renderer.color(), TAGLINE, out);
+    out.push('\n');
+}
+
+/// The separator between a headline and the thing it qualifies.
+///
+/// A middle dot is not ASCII, and a terminal in a non-UTF-8 locale or calling
+/// itself `dumb` gets the spacing alone — the same fallback the rest of this
+/// CLI makes, and the reason `uf_term` exposes the glyph set at all.
+fn separator(renderer: &Renderer, out: &mut String) {
+    let separator = match renderer.glyph_set() {
+        GlyphSet::Unicode => " · ",
+        GlyphSet::Ascii => "  ",
+    };
+    renderer
+        .theme()
+        .muted
+        .paint(renderer.color(), separator, out);
 }
 
 /// Draw the logo as a picture, or report that this terminal cannot.
@@ -111,7 +145,8 @@ fn render_logo_image(renderer: &Renderer, out: &mut String) -> bool {
     let Some(protocol) = renderer.image() else {
         return false;
     };
-    let Some(escape) = inline_image(LOGO_PNG, protocol, LOGO_PLACEMENT) else {
+    let placement = Placement::fitting(MARK_SIZE.0, MARK_SIZE.1, MARK_ROWS);
+    let Some(escape) = inline_image(MARK_PNG, protocol, placement) else {
         return false;
     };
 
@@ -149,7 +184,7 @@ pub(crate) fn render_product_card(renderer: &Renderer, out: &mut String, context
     magenta.paint(renderer.color(), "f", out);
     out.push_str("  ");
     title.paint(renderer.color(), HEADLINE, out);
-    out.push_str("  ");
+    separator(renderer, out);
     subtitle.paint(renderer.color(), context, out);
     out.push('\n');
 
@@ -157,11 +192,25 @@ pub(crate) fn render_product_card(renderer: &Renderer, out: &mut String, context
     subtitle.paint(renderer.color(), TAGLINE, out);
     out.push('\n');
 
+    // The rule is as wide as the line above it, in the brand's five stops.
+    // Derived rather than written down, so a reworded tagline does not leave a
+    // rule that overhangs it by three characters.
     out.push_str("    ");
-    for (color, width) in [(CYAN, 8), (BLUE, 8), (INDIGO, 8), (VIOLET, 8), (MAGENTA, 8)] {
+    let stops = [CYAN, BLUE, INDIGO, VIOLET, MAGENTA];
+    let width = display_width(TAGLINE);
+    let mut drawn = 0;
+    for (index, color) in stops.into_iter().enumerate() {
+        // The last stop takes the remainder, so the rule is exactly `width`
+        // however the division falls.
+        let segment = if index + 1 == stops.len() {
+            width - drawn
+        } else {
+            width / stops.len()
+        };
         Style::new().fg(color).open(renderer.color(), out);
-        push_repeat(out, renderer.glyphs().horizontal, width);
+        push_repeat(out, renderer.glyphs().horizontal, segment);
         Style::new().fg(color).close(renderer.color(), out);
+        drawn += segment;
     }
     out.push('\n');
 

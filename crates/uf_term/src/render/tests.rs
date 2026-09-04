@@ -42,7 +42,25 @@ fn a_banner_subtitle_widens_the_rule() {
     let out = render(|renderer, out| renderer.banner(out, "uf build", Some("demo-app")));
     let lines: Vec<_> = out.lines().collect();
 
+    assert_eq!(lines[0], "uf build · demo-app");
+    assert_eq!(display_width(lines[1]), display_width(lines[0]));
+}
+
+/// The separator is a middle dot, which is not ASCII: a terminal that cannot
+/// take box drawing cannot take this either.
+#[test]
+fn an_ascii_banner_separates_with_spacing_instead_of_a_dot() {
+    let renderer = Renderer::new(Capabilities::new(
+        ColorLevel::Never,
+        GlyphSet::Ascii,
+        Tty::Piped,
+    ));
+    let mut out = String::new();
+    renderer.banner(&mut out, "uf build", Some("demo-app"));
+    let lines: Vec<_> = out.lines().collect();
+
     assert_eq!(lines[0], "uf build  demo-app");
+    assert!(lines[0].is_ascii());
     assert_eq!(display_width(lines[1]), display_width(lines[0]));
 }
 

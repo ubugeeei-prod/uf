@@ -161,31 +161,31 @@ function interruptedExit<A, E>(): Exit<A, E> {
 }
 
 function makeEffect<A, E, R>(kernel: EffectKernel): Effect<A, E, R> {
-  return ({
+  return {
     __kind: "Effect",
     __value: absurd,
     __error: absurd,
     __requires: absurd,
     __kernel: kernel,
-  }: any);
+  } as any;
 }
 
 function readKernel<A, E, R>(self: Effect<A, E, R>): EffectKernel {
-  return (self: any).__kernel;
+  return (self as any).__kernel;
 }
 
 function makeFiber<A, E>(promise: Promise<Exit<mixed, mixed>>, fiber: FiberState): Fiber<A, E> {
-  return ({
+  return {
     __kind: "Fiber",
     __value: absurd,
     __error: absurd,
     __promise: promise,
     __fiber: fiber,
-  }: any);
+  } as any;
 }
 
 function readFiber<A, E>(fiber: Fiber<A, E>): FiberCarrier<A, E> {
-  return (fiber: any);
+  return fiber as any;
 }
 
 /**
@@ -209,7 +209,7 @@ function makeTag<Service>(identifier: string): Tag<Service> {
     run: async (runContext) => readService(runContext, identifier),
     runSync: (runContext) => readService(runContext, identifier),
   };
-  return ({
+  return {
     __kind: "Tag",
     __service: absurd,
     identifier,
@@ -218,7 +218,7 @@ function makeTag<Service>(identifier: string): Tag<Service> {
     __value: absurd,
     __error: absurd,
     __requires: absurd,
-  }: any);
+  } as any;
 }
 
 /**
@@ -253,21 +253,21 @@ function readService(runContext: Context, identifier: string): Exit<mixed, mixed
 }
 
 function readTag<Service>(serviceTag: Tag<Service>): string {
-  return (serviceTag: any).identifier;
+  return (serviceTag as any).identifier;
 }
 
 function makeLayer<Out, E, In>(kernel: LayerKernel): Layer<Out, E, In> {
-  return ({
+  return {
     __kind: "Layer",
     __out: absurd,
     __error: absurd,
     __in: absurd,
     __layer: kernel,
-  }: any);
+  } as any;
 }
 
 function readLayer<Out, E, In>(layer: Layer<Out, E, In>): LayerKernel {
-  return (layer: any).__layer;
+  return (layer as any).__layer;
 }
 
 function success<A, E>(value: A): Exit<A, E> {
@@ -291,7 +291,7 @@ function defect<A>(defectValue: mixed): Exit<A, empty> {
 }
 
 async function runKernel<A, E, R>(self: Effect<A, E, R>, runContext: Context): Promise<Exit<A, E>> {
-  return (await readKernel(self).run(runContext): any);
+  return (await readKernel(self).run(runContext)) as any;
 }
 
 function runSyncKernel<A, E, R>(self: Effect<A, E, R>, runContext: Context): Exit<A, E> {
@@ -299,14 +299,14 @@ function runSyncKernel<A, E, R>(self: Effect<A, E, R>, runContext: Context): Exi
   if (runSync == null) {
     return failure(dieCause("effect is asynchronous"));
   }
-  return (runSync(runContext): any);
+  return runSync(runContext) as any;
 }
 
 function isPromiseLike(value: mixed): boolean {
   return (
     value != null &&
     (typeof value === "object" || typeof value === "function") &&
-    typeof (value: any).then === "function"
+    typeof (value as any).then === "function"
   );
 }
 
@@ -605,9 +605,9 @@ export function effect<A, E, R>(body: () => EffectGenerator<A, E, R>): Effect<A,
         if (step.done) {
           return success(step.value);
         }
-        const exit = await runKernel((step.value: any), runContext);
+        const exit = await runKernel(step.value as any, runContext);
         if (exit.kind === "failure") {
-          return (exit: any);
+          return exit as any;
         }
         input = exit.value;
       }
@@ -623,7 +623,7 @@ export function map<A, B, E, R>(
     run: async (runContext) => {
       const exit = await runKernel(self, runContext);
       if (exit.kind === "failure") {
-        return (exit: any);
+        return exit as any;
       }
       try {
         return success(transform(exit.value));
@@ -634,7 +634,7 @@ export function map<A, B, E, R>(
     runSync: (runContext) => {
       const exit = runSyncKernel(self, runContext);
       if (exit.kind === "failure") {
-        return (exit: any);
+        return exit as any;
       }
       try {
         return success(transform(exit.value));
@@ -652,11 +652,11 @@ export function mapError<A, E, F, R>(
   return makeEffect({
     run: async (runContext) => {
       const exit = await runKernel(self, runContext);
-      return exit.kind === "failure" ? failure(mapCause(exit.cause, transform)) : (exit: any);
+      return exit.kind === "failure" ? failure(mapCause(exit.cause, transform)) : (exit as any);
     },
     runSync: (runContext) => {
       const exit = runSyncKernel(self, runContext);
-      return exit.kind === "failure" ? failure(mapCause(exit.cause, transform)) : (exit: any);
+      return exit.kind === "failure" ? failure(mapCause(exit.cause, transform)) : (exit as any);
     },
   });
 }
@@ -669,7 +669,7 @@ export function flatMap<A, B, E1, E2, R1, R2>(
     run: async (runContext) => {
       const exit = await runKernel(self, runContext);
       if (exit.kind === "failure") {
-        return (exit: any);
+        return exit as any;
       }
       if (isInterrupted(runContext)) {
         return interruptedExit();
@@ -683,7 +683,7 @@ export function flatMap<A, B, E1, E2, R1, R2>(
     runSync: (runContext) => {
       const exit = runSyncKernel(self, runContext);
       if (exit.kind === "failure") {
-        return (exit: any);
+        return exit as any;
       }
       try {
         return runSyncKernel(next(exit.value), runContext);
@@ -737,7 +737,7 @@ export function all<A, E, R>(
         .fill(null)
         .map(() => worker());
       await Promise.all(workers);
-      return failed == null ? success(results) : (failed: any);
+      return failed == null ? success(results) : (failed as any);
     },
   });
 }
@@ -772,18 +772,18 @@ export function catchAll<A, B, E, F, R1, R2>(
     run: async (runContext) => {
       const exit = await runKernel(self, runContext);
       if (exit.kind === "success") {
-        return (exit: any);
+        return exit as any;
       }
       const error = firstFailure(exit.cause);
-      return error == null ? (exit: any) : await runKernel(recover(error), runContext);
+      return error == null ? (exit as any) : await runKernel(recover(error), runContext);
     },
     runSync: (runContext) => {
       const exit = runSyncKernel(self, runContext);
       if (exit.kind === "success") {
-        return (exit: any);
+        return exit as any;
       }
       const error = firstFailure(exit.cause);
-      return error == null ? (exit: any) : runSyncKernel(recover(error), runContext);
+      return error == null ? (exit as any) : runSyncKernel(recover(error), runContext);
     },
   });
 }
@@ -794,7 +794,7 @@ export function catchTag<A, B, E, F, R1, R2>(
   recover: (error: E) => Effect<B, F, R2>,
 ): Effect<A | B, E | F, R1 | R2> {
   return catchAll(self, (error) => {
-    const actual = (error: any).kind == null ? (error: any).tag : (error: any).kind;
+    const actual = (error as any).kind == null ? (error as any).tag : (error as any).kind;
     return actual === tagName ? recover(error) : fail(error);
   });
 }
@@ -819,14 +819,14 @@ export function either<A, E, R>(
       if (exit.kind === "success") {
         return success({ ok: true, value: exit.value });
       }
-      return success({ ok: false, error: (throwable(exit.cause): any) });
+      return success({ ok: false, error: throwable(exit.cause) as any });
     },
     runSync: (runContext) => {
       const exit = runSyncKernel(self, runContext);
       if (exit.kind === "success") {
         return success({ ok: true, value: exit.value });
       }
-      return success({ ok: false, error: (throwable(exit.cause): any) });
+      return success({ ok: false, error: throwable(exit.cause) as any });
     },
   });
 }
@@ -890,7 +890,7 @@ export function acquireRelease<A, E, R>(
         const resource = exit.value;
         runContext.scope.finalizers.push(() => release(resource));
       }
-      return (exit: any);
+      return exit as any;
     },
   });
 }
@@ -904,10 +904,10 @@ export function scoped<A, E, R>(self: Effect<A, E, R | Scope>): Effect<A, E, R> 
       for (let index = finalizers.length - 1; index >= 0; index -= 1) {
         const released = await runKernel(finalizers[index](), runContext);
         if (released.kind === "failure" && exit.kind === "success") {
-          return (released: any);
+          return released as any;
         }
       }
-      return (exit: any);
+      return exit as any;
     },
   });
 }
@@ -935,7 +935,7 @@ export function provide<A, E, R, Out, LayerError, In>(
     run: async (runContext) => {
       const built = await readLayer(layer)(runContext);
       if (built.kind === "failure") {
-        return (built: any);
+        return built as any;
       }
       const services = { ...runContext.services };
       for (const key in built.value) {
@@ -966,7 +966,7 @@ export function layerEffect<Service, E, R>(
 ): Layer<Service, E, R> {
   return makeLayer(async (runContext) => {
     const exit = await runKernel(build, runContext);
-    return exit.kind === "failure" ? (exit: any) : success({ [readTag(serviceTag)]: exit.value });
+    return exit.kind === "failure" ? (exit as any) : success({ [readTag(serviceTag)]: exit.value });
   });
 }
 
@@ -977,11 +977,11 @@ export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
   return makeLayer(async (runContext) => {
     const leftExit = await readLayer(left)(runContext);
     if (leftExit.kind === "failure") {
-      return (leftExit: any);
+      return leftExit as any;
     }
     const rightExit = await readLayer(right)(runContext);
     if (rightExit.kind === "failure") {
-      return (rightExit: any);
+      return rightExit as any;
     }
     return success({ ...leftExit.value, ...rightExit.value });
   });
@@ -1007,7 +1007,7 @@ export function fork<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty,
 /** Wait for a fiber and take its result as this effect's result. */
 export function join<A, E>(fiber: Fiber<A, E>): Effect<A, E> {
   return makeEffect({
-    run: async () => (await readFiber(fiber).__promise: any),
+    run: async () => (await readFiber(fiber).__promise) as any,
   });
 }
 
@@ -1029,7 +1029,7 @@ export function interrupt<A, E>(fiber: Fiber<A, E>): Effect<Exit<A, E>> {
       for (const wake of Array.from(carrier.__fiber.wakers)) {
         wake();
       }
-      return success((await carrier.__promise: any));
+      return success((await carrier.__promise) as any);
     },
   });
 }
@@ -1079,7 +1079,7 @@ export function tapError<A, E, R1, R2>(
 /** Turn any failure of `self` into a defect, so its error type is `empty`. */
 function orDie<A, E, R>(self: Effect<A, E, R>): Effect<A, empty, R> {
   const convert = (settled) =>
-    settled.kind === "success" ? (settled: any) : failure(dieCause(causeMessage(settled.cause)));
+    settled.kind === "success" ? (settled as any) : failure(dieCause(causeMessage(settled.cause)));
 
   return makeEffect({
     run: async (runContext) => convert(await runKernel(self, runContext)),
@@ -1106,7 +1106,9 @@ export function ensuring<A, E, R>(
   // that is itself cancelled is not a cleanup. A finalizer that fails replaces
   // a success and is swallowed by a failure, which is already worse news.
   const combine = (settled, released) =>
-    released.kind === "failure" && settled.kind === "success" ? (released: any) : (settled: any);
+    released.kind === "failure" && settled.kind === "success"
+      ? (released as any)
+      : (settled as any);
 
   return makeEffect({
     run: async (runContext) => {
@@ -1131,8 +1133,8 @@ export function ensuring<A, E, R>(
  */
 export function exit<A, E, R>(self: Effect<A, E, R>): Effect<Exit<A, E>, empty, R> {
   return makeEffect({
-    run: async (runContext) => success((await runKernel(self, runContext): any)),
-    runSync: (runContext) => success((runSyncKernel(self, runContext): any)),
+    run: async (runContext) => success((await runKernel(self, runContext)) as any),
+    runSync: (runContext) => success(runSyncKernel(self, runContext) as any),
   });
 }
 

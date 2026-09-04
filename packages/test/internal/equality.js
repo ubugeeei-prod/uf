@@ -58,7 +58,7 @@ function ownKeys(value: interface {}, strictness: Strictness): Array<string | sy
   }
   // `toEqual` treats an absent property and one set to `undefined` as the
   // same thing, so a key holding `undefined` is not a difference.
-  return keys.filter((key) => (value: $FlowFixMe)[key] !== undefined);
+  return keys.filter((key) => (value as $FlowFixMe)[key] !== undefined);
 }
 
 function sameSet(
@@ -155,14 +155,14 @@ export function equals(
   }
   if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
     const leftBytes = new Uint8Array(
-      (left: $FlowFixMe).buffer,
-      (left: $FlowFixMe).byteOffset,
-      (left: $FlowFixMe).byteLength,
+      (left as $FlowFixMe).buffer,
+      (left as $FlowFixMe).byteOffset,
+      (left as $FlowFixMe).byteLength,
     );
     const rightBytes = new Uint8Array(
-      (right: $FlowFixMe).buffer,
-      (right: $FlowFixMe).byteOffset,
-      (right: $FlowFixMe).byteLength,
+      (right as $FlowFixMe).buffer,
+      (right as $FlowFixMe).byteOffset,
+      (right as $FlowFixMe).byteLength,
     );
     if (leftBytes.length !== rightBytes.length) {
       return false;
@@ -181,8 +181,8 @@ export function equals(
     return false;
   }
 
-  const leftKeys = ownKeys((left: $FlowFixMe), strictness);
-  const rightKeys = ownKeys((right: $FlowFixMe), strictness);
+  const leftKeys = ownKeys(left as $FlowFixMe, strictness);
+  const rightKeys = ownKeys(right as $FlowFixMe, strictness);
   if (leftKeys.length !== rightKeys.length) {
     return false;
   }
@@ -190,7 +190,7 @@ export function equals(
     if (!Object.prototype.hasOwnProperty.call(right, key)) {
       return false;
     }
-    if (!equals((left: $FlowFixMe)[key], (right: $FlowFixMe)[key], nested, strictness)) {
+    if (!equals((left as $FlowFixMe)[key], (right as $FlowFixMe)[key], nested, strictness)) {
       return false;
     }
   }
@@ -220,11 +220,11 @@ export function matchesObject(received: mixed, expected: mixed, seen: Array<Pair
     }
     return expected.every((item, index) => matchesObject(received[index], item, nested));
   }
-  for (const key of ownKeys((expected: $FlowFixMe), "loose")) {
+  for (const key of ownKeys(expected as $FlowFixMe, "loose")) {
     if (!Object.prototype.hasOwnProperty.call(received, key)) {
       return false;
     }
-    if (!matchesObject((received: $FlowFixMe)[key], (expected: $FlowFixMe)[key], nested)) {
+    if (!matchesObject((received as $FlowFixMe)[key], (expected as $FlowFixMe)[key], nested)) {
       return false;
     }
   }
@@ -294,7 +294,7 @@ function renderInner(value: mixed, depth: number, seen: Array<mixed>): string {
     case "symbol":
       return String(value);
     case "function": {
-      const name = (value: $FlowFixMe).name;
+      const name = (value as $FlowFixMe).name;
       return name === "" ? "[Function (anonymous)]" : `[Function ${name}]`;
     }
     default:

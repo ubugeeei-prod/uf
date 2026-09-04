@@ -634,7 +634,7 @@ export hook useRouter(): Router {
 /** The current page's loader data. */
 export hook useLoaderData<T>(): T {
   // $FlowFixMe[unclear-type] loader data is typed by the page that declares the loader.
-  return (useRouterState().resolved.data: any);
+  return useRouterState().resolved.data as any;
 }
 
 /**

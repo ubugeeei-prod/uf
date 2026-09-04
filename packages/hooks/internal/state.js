@@ -106,7 +106,7 @@ export function useStorage<T>(
       set.add(notify);
       listeners.set(key, set);
       const onStorage = (event: mixed) => {
-        if ((event: any)?.key === key) {
+        if ((event as any)?.key === key) {
           notify();
         }
       };

@@ -115,10 +115,10 @@ export function createDispatcher(options: {|
 function pick(module: HandlerModule, method: string): Handler | null {
   const own = module[method];
   if (typeof own === "function") {
-    return (own: $FlowFixMe);
+    return own as $FlowFixMe;
   }
   if (method === "HEAD" && typeof module.GET === "function") {
-    return (module.GET: $FlowFixMe);
+    return module.GET as $FlowFixMe;
   }
   return null;
 }
@@ -159,7 +159,7 @@ function matchPath(routePath: string, pathname: string): RouteParams | null {
     if (segment.startsWith(":") && segment.endsWith("*")) {
       // A catch-all takes the rest, and matches zero segments as well as many.
       params[segment.slice(1, -1)] = given.slice(index);
-      return (params: $FlowFixMe);
+      return params as $FlowFixMe;
     }
     if (index >= given.length) {
       return null;
@@ -173,7 +173,7 @@ function matchPath(routePath: string, pathname: string): RouteParams | null {
     }
   }
 
-  return wanted.length === given.length ? (params: $FlowFixMe) : null;
+  return wanted.length === given.length ? (params as $FlowFixMe) : null;
 }
 
 function segmentsOf(value: string): Array<string> {

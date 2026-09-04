@@ -104,14 +104,14 @@ export function parseUpdate(data: string): HmrUpdate | null {
   if (parsed == null || typeof parsed !== "object") {
     return null;
   }
-  const candidate: { readonly [string]: mixed } = (parsed: $FlowFixMe);
+  const candidate: { readonly [string]: mixed } = parsed as $FlowFixMe;
   if (typeof candidate.kind !== "string" || typeof candidate.path !== "string") {
     return null;
   }
   if (!Array.isArray(candidate.modules) || !Array.isArray(candidate.routes)) {
     return null;
   }
-  return (parsed: $FlowFixMe);
+  return parsed as $FlowFixMe;
 }
 
 /**
