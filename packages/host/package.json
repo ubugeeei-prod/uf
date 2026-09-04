@@ -1,0 +1,25 @@
+{
+  "name": "@uniflowed/host",
+  "version": "0.0.0-alpha.2",
+  "description": "Running Flow on a Capability JS Host, with no bundler in the way.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/host"
+  },
+  "exports": {
+    "./register": "./register.js",
+    "./bun-preload": "./bun-preload.js",
+    "./transform": "./transform.js",
+    "./internal/node-hooks.js": "./internal/node-hooks.js"
+  },
+  "files": [
+    "register.js",
+    "bun-preload.js",
+    "transform.js",
+    "internal/*.js"
+  ]
+}

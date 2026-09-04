@@ -28,7 +28,7 @@ use uf_test::{
     WatchOptions, load_timings, save_timings,
 };
 
-use crate::commands::vite::{package_dir, resolve_host};
+use crate::commands::vite::{installed_package, resolve_host};
 
 use crate::support::plural;
 use crate::ui::Ui;
@@ -160,8 +160,12 @@ pub(crate) fn test_host(
     config: &uf_config::UniflowedConfig,
 ) -> Result<HostCommand> {
     let host = resolve_host(config)?;
-    let vite = package_dir(root)?;
-    let worker = vite
+    // The loader, not the bundler. `uf test` transforms through `uf transform`
+    // and runs on a Capability JS Host; nothing in that path is Vite's, and
+    // asking for `@uniflowed/vite` made a test run depend on a bundler it never
+    // loads.
+    let loader = installed_package(root, "host", "register.js")?;
+    let worker = loader
         .parent()
         .map(|scope| scope.join("test/worker.js"))
         .filter(|worker| worker.is_file())
@@ -180,8 +184,8 @@ pub(crate) fn test_host(
     let host_name = host.name();
     let mut command = HostCommand::new(kind, host.program, worker, root.to_path_buf())
         .with_flow_loader(
-            Utf8Path::new("@uniflowed/vite/register"),
-            &vite.join("bun-preload.js"),
+            Utf8Path::new("@uniflowed/host/register"),
+            &loader.join("bun-preload.js"),
         );
     // The worker transforms through the binary that started it, never a
     // different `uf` that happens to be on PATH.

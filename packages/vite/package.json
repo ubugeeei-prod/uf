@@ -13,24 +13,19 @@
   "exports": {
     ".": "./index.js",
     "./driver": "./driver.js",
-    "./register": "./register.js",
-    "./bun-preload": "./bun-preload.js",
-    "./transform": "./transform.js",
     "./package.json": "./package.json",
     "./merge": "./merge.js"
   },
   "files": [
-    "bun-preload.js",
     "driver.js",
     "index.js",
     "internal",
-    "merge.js",
-    "register.js",
-    "transform.js"
+    "merge.js"
   ],
   "dependencies": {
     "@mdx-js/rollup": "^3.1.1",
     "@shikijs/rehype": "^3.23.0",
+    "@uniflowed/host": "0.0.0-alpha.2",
     "rehype-slug": "^6.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",

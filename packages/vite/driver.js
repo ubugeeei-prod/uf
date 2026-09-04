@@ -44,10 +44,15 @@ const root = path.resolve(argument("--root") ?? process.cwd());
 process.env.UF_PROJECT_ROOT = root;
 
 // The config imports `@uniflowed/config`, which is Flow. Node needs the loader
-// hooks for that; Bun is started with `--preload ./bun-preload.js` instead
-// and has no `register`.
+// hooks for that; Bun is started with `--preload` on the same package's
+// preload instead, and has no `register`.
+//
+// The hooks live in `@uniflowed/host` rather than here: they are how Flow runs
+// on a Capability JS Host, and nothing in them is Vite's. `uf test` reaches for
+// the same package, which is what stopped a test run from depending on a
+// bundler it never loads.
 if (typeof Bun === "undefined" && typeof Deno === "undefined") {
-  register("./internal/node-hooks.js", import.meta.url, { data: { root } });
+  register("@uniflowed/host/internal/node-hooks.js", import.meta.url, { data: { root } });
 }
 
 process.stdin.on("end", () => process.exit(0));

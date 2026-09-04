@@ -13,6 +13,7 @@ config
 fetch
 graphql
 hooks
+host
 query
 react
 react-testing

@@ -39,9 +39,9 @@ use crate::report::{AssertionFailure, FileStatus, TestRecord, TestStatus};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HostKind {
-    /// Node.js, with the loader hooks from `@uniflowed/vite/register`.
+    /// Node.js, with the loader hooks from `@uniflowed/host/register`.
     Node,
-    /// Bun, with the plugin from `@uniflowed/vite/bun-preload`.
+    /// Bun, with the plugin from `@uniflowed/host/bun-preload`.
     Bun,
     /// Deno.
     Deno,
@@ -119,7 +119,7 @@ impl HostCommand {
                 register.to_string(),
             ],
             HostKind::Bun => vec![String::from("--preload"), bun_preload.to_string()],
-            // Deno has no loader hook in `@uniflowed/vite` yet, so it can run
+            // Deno has no loader hook in `@uniflowed/host` yet, so it can run
             // plain JavaScript tests and nothing else. Saying so is better
             // than a syntax error from a file the host could not transform.
             HostKind::Deno => vec![String::from("run"), String::from("-A")],
@@ -484,7 +484,7 @@ mod tests {
             Utf8PathBuf::from("/p"),
         )
         .with_flow_loader(
-            Utf8Path::new("@uniflowed/vite/register"),
+            Utf8Path::new("@uniflowed/host/register"),
             Utf8Path::new("/p/bun-preload.js"),
         );
 
@@ -493,7 +493,7 @@ mod tests {
             [
                 "--enable-source-maps",
                 "--import",
-                "@uniflowed/vite/register"
+                "@uniflowed/host/register"
             ]
         );
         assert!(command.loads_flow());
@@ -508,7 +508,7 @@ mod tests {
             Utf8PathBuf::from("/p"),
         )
         .with_flow_loader(
-            Utf8Path::new("@uniflowed/vite/register"),
+            Utf8Path::new("@uniflowed/host/register"),
             Utf8Path::new("/p/bun-preload.js"),
         );
 

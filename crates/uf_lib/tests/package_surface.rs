@@ -29,9 +29,25 @@ use walkdir::WalkDir;
 /// `package.json#exports`, so `@uniflowed/core/internal/*` is unresolvable.
 const INTERNAL_DIR: &str = "internal";
 
+/// The internal modules that are nonetheless exported, and why.
+///
+/// Two, and both for the same structural reason: a sibling package is a
+/// different npm package and cannot reach another's internals by a relative
+/// path. `core`'s is the shared native-runtime bridge every `@uniflowed/*`
+/// raises through; `host`'s is the Node loader hook, which `@uniflowed/vite`
+/// hands to `node:module`'s `register()` by specifier.
+const EXPORTED_INTERNALS: &[&str] = &[
+    "core/internal/native-runtime.js",
+    "host/internal/node-hooks.js",
+];
+
 /// Packages the host runs directly, before any Flow transform exists. See the
 /// module docs for why they are plain JavaScript.
-const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["vite"];
+///
+/// `@uniflowed/host` is the loader itself — the hooks that make Flow run on
+/// Node or Bun — so it cannot be written in the language it exists to load.
+/// `@uniflowed/vite` is executed by Vite before any transform is reachable.
+const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["host", "vite"];
 
 /// Individual modules that are process entry points, and so run when they are
 /// loaded because that is what running them means. Everything else in their
@@ -821,10 +837,9 @@ fn every_shipped_module_is_reachable_through_exports() {
                 // sibling's internals through a relative path, so the shared
                 // native-runtime bridge is exported — under `./native`, which
                 // names it as the internal it is. Nothing else may be.
-                let bridge = package_dir.as_str() == "core"
-                    && inside.as_str() == "internal/native-runtime.js";
+                let exported = EXPORTED_INTERNALS.contains(&module.as_str());
                 assert!(
-                    bridge || !targets.contains(inside.as_str()),
+                    exported || !targets.contains(inside.as_str()),
                     "{relative} exports {inside}, which is an internal module"
                 );
                 continue;
@@ -966,6 +981,71 @@ fn resolve_relative_collapses_dot_segments_and_refuses_to_escape() {
         Some(Utf8Path::new("react/index.js"))
     );
     assert_eq!(resolve_relative(module, "../../../escaped.js"), None);
+}
+
+/// A module a browser can reach must not import a Node builtin.
+///
+/// `@uniflowed/server` is server-only and imports `node:async_hooks` to keep
+/// one request's context apart from another's. `@uniflowed/router`'s client
+/// entry took two string constants from its server entry, which re-exported the
+/// request dispatcher, which imports that package — so a browser bundle ended
+/// up importing `node:async_hooks`. Nothing called it, so a bundler dropped the
+/// code, but the import survived and Vite warned on every build.
+///
+/// Checked one hop at a time rather than transitively: every module is checked,
+/// so a chain is caught at whichever link first crosses the line, and that is
+/// the link worth naming.
+#[test]
+fn a_client_entry_never_imports_a_node_builtin() {
+    /// Packages that only ever run on a server, and may.
+    const SERVER_ONLY: &[&str] = &["server", "host", "vite", "test", "pm", "rm", "prepare"];
+    /// Modules that are a server entry inside a package that is not.
+    ///
+    /// `react-testing/internal/render.js` is the odd one: it installs a DOM on
+    /// a host that has none, which is a thing only a test runner does and never
+    /// a browser, where the DOM is already there.
+    const SERVER_MODULES: &[&str] = &[
+        "router/server.js",
+        "router/handler.js",
+        "react-testing/internal/render.js",
+    ];
+
+    let mut leaks = Vec::new();
+    for module in shipped_modules() {
+        let package = module.iter().next().unwrap_or_default();
+        if SERVER_ONLY.contains(&package) || SERVER_MODULES.contains(&module.as_str()) {
+            continue;
+        }
+        for specifier in module_specifiers(&read(&module)) {
+            if specifier.starts_with("node:") {
+                leaks.push(format!("{module} imports {specifier}"));
+            }
+        }
+    }
+
+    assert!(
+        leaks.is_empty(),
+        "{} browser-reachable modules import a Node builtin:\n{}",
+        leaks.len(),
+        leaks.join("\n")
+    );
+}
+
+/// The client half of the router must not import its server half.
+///
+/// The two constants they share live in `internal/document.js` precisely so
+/// this import does not have to exist.
+#[test]
+fn the_routers_client_entry_does_not_import_its_server_entry() {
+    let client = read(Utf8Path::new("router/client.js"));
+
+    for specifier in module_specifiers(&client) {
+        assert!(
+            !specifier.contains("server") && !specifier.contains("handler"),
+            "router/client.js imports {specifier}, which drags the request \
+             dispatcher into a browser bundle"
+        );
+    }
 }
 
 #[test]

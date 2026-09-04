@@ -7,6 +7,7 @@
 // `uf build` renders every static route through it once. Both produce the
 // same markup from the same code, which is the point.
 
+import { DATA_ID, ROOT_ID } from "./internal/document.js";
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 
@@ -33,15 +34,11 @@ export type RenderResult = {|
   readonly headers?: { readonly [string]: string },
 |};
 
-/** The id of the element the client hydrates when the app does not render `<html>`. */
-export const ROOT_ID = "uf-root";
-
-/** The id of the script carrying the loader data to the client. */
-export const DATA_ID = "__uf_data";
-
 /**
  * Build a `render(url, assets)` for one app.
  */
+export { DATA_ID, ROOT_ID } from "./internal/document.js";
+
 export type { Handler, HandlerContext, HandlerModule, HandlerRecord } from "./handler.js";
 export { createDispatcher } from "./handler.js";
 

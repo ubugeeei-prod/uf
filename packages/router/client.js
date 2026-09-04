@@ -12,7 +12,7 @@ import { startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 
 import { type AppProps, type RouteTable, installRoutes, resolveMatch } from "./internal/runtime.js";
-import { DATA_ID, ROOT_ID } from "./server.js";
+import { DATA_ID, ROOT_ID } from "./internal/document.js";
 
 /**
  * Hydrate the current document.

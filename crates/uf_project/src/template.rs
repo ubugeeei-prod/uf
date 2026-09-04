@@ -68,8 +68,8 @@ fn lib_package_json(name: &str) -> String {
   }},
   "devDependencies": {{
     "@uniflowed/config": "latest",
-    "@uniflowed/test": "latest",
-    "@uniflowed/vite": "latest"
+    "@uniflowed/host": "latest",
+    "@uniflowed/test": "latest"
   }}
 }}
 "#

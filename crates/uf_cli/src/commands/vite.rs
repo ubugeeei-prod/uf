@@ -134,16 +134,25 @@ fn is_executable(path: &std::path::Path) -> bool {
 /// Locate `@uniflowed/vite` from the project root, walking up through
 /// `node_modules` the way module resolution does.
 pub(crate) fn package_dir(root: &Utf8Path) -> Result<Utf8PathBuf> {
+    installed_package(root, "vite", DRIVER)
+}
+
+/// The directory of an installed `@uniflowed/<name>`, found by walking up.
+///
+/// `marker` is a file the package must contain, which is what distinguishes an
+/// installed package from a directory that merely has the right name — a
+/// workspace link that has not been built, most often.
+pub(crate) fn installed_package(root: &Utf8Path, name: &str, marker: &str) -> Result<Utf8PathBuf> {
     let mut directory = Some(root);
     while let Some(current) = directory {
-        let candidate = current.join("node_modules/@uniflowed/vite");
-        if candidate.join(DRIVER).is_file() {
+        let candidate = current.join("node_modules/@uniflowed").join(name);
+        if candidate.join(marker).is_file() {
             return Ok(candidate);
         }
         directory = current.parent();
     }
     bail!(
-        "`@uniflowed/vite` is not installed for {root}; add it to the project's dependencies \
+        "`@uniflowed/{name}` is not installed for {root}; add it to the project's dependencies \
          and run the package manager (`uf install`)"
     )
 }
