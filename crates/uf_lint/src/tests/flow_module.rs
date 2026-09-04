@@ -66,23 +66,23 @@ fn export_renamed_default_accepts_importing_the_default() {
     assert!(diagnostics.is_empty());
 }
 
+/// The rule is not a syntactic one, and uf's syntactic version was wrong.
+///
+/// It flagged any `const`/`let`/`var` whose name matched an HTML element, on
+/// the grounds that shadowing one "silently changes what JSX means". It does
+/// not: a lowercase tag is always an intrinsic, resolved to the string and
+/// never from scope — `const body = 42; <body />` still compiles to
+/// `_jsx("body")`. The rule reported 90 errors against uf's own packages for
+/// naming variables `source`, `table`, `text` and `slot`.
 #[test]
-fn react_intrinsic_overlap_rejects_shadowed_tag_names() {
+fn react_intrinsic_overlap_does_not_flag_an_ordinary_local_binding() {
     let diagnostics = lint_js(
         "flow/react-intrinsic-overlap",
-        "// @flow\nconst div = 1;\nexport function span() {}\n",
+        "// @flow\nconst div = 1;\nconst body = 42;\nconst table = [];\n",
     );
 
-    assert_eq!(diagnostics.len(), 2);
-    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 7));
-}
-
-#[test]
-fn react_intrinsic_overlap_accepts_ordinary_names() {
-    let diagnostics = lint_js(
-        "flow/react-intrinsic-overlap",
-        "// @flow\nconst divider = 1;\ncomponent Section() { return null; }\n",
+    assert!(
+        diagnostics.is_empty(),
+        "naming a variable after an element is not a bug: {diagnostics:?}"
     );
-
-    assert!(diagnostics.is_empty());
 }

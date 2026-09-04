@@ -58,10 +58,16 @@ impl<'a> Walk<'a> {
         }
     }
 
-    /// Step the walk over this declaration's return type, if it has one.
+    /// Step the walk from a declaration's parameter list to its body.
     ///
-    /// A `renders` clause is covered too: `component P() renders [Node] {` puts
-    /// the same brackets in the same place.
+    /// Neither the parameters nor the return type are code, and both can hold
+    /// the tokens the walk reacts to. A return type holds an `=>` that belongs
+    /// to a type — `hook useX(): [number, () => void] {` — which opened a frame
+    /// the real body then sat inside. A parameter holds a `{` when its type is
+    /// an object, which consumed the scope the declaration had just opened, so
+    /// the body became an ordinary function and every hook in it looked
+    /// misplaced. A `renders` clause is covered too: `component P() renders
+    /// [Node] {` puts the same brackets in the same place.
     fn skip_return_type(&mut self, open: usize) {
         if let Some(body) = return_type_body(self.tokens, open) {
             self.skip_until = Some(body);

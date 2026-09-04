@@ -276,3 +276,113 @@ fn a_hook_outside_a_hook_is_still_reported_with_a_tuple_return_type() {
         "expected a hook-placement finding, got {found:?}"
     );
 }
+
+/// A `useX` function with an object return type is still a hook.
+///
+/// `return_type_body` took the first `{` after the parameter list's `:` for the
+/// body, and for `(): {| … |} {` that `{` opens the *return type*. The real
+/// body then became a plain block, so every hook the function called was
+/// reported as being called outside a component or hook — 11 of the 86
+/// `react/hooks-rules` errors against uf's own packages.
+#[test]
+fn a_hook_with_an_object_return_type_may_call_hooks() {
+    for return_type in [
+        "{| readonly width: number |}",
+        "{ readonly width: number }",
+        "number",
+        "{| readonly a: {| readonly b: number |} |}",
+    ] {
+        let source = format!(
+            "// @flow\nimport {{ useState }} from 'react';\n\
+             export function useSize(): {return_type} {{\n\
+             \x20 const [size] = useState(0);\n\
+             \x20 return size;\n\
+             }}\n"
+        );
+
+        assert_eq!(
+            findings(&source),
+            Vec::<Finding>::new(),
+            "a useX function returning {return_type} may call hooks"
+        );
+    }
+}
+
+/// The same, with a multi-line parameter list and return type — which is how
+/// the shipped hooks are actually written.
+#[test]
+fn a_hook_whose_signature_spans_lines_may_call_hooks() {
+    let source = "// @flow\n\
+        import { useState } from 'react';\n\
+        export function useWindowSize(serverValue?: {|\n\
+        \x20 readonly width: number,\n\
+        |}): {|\n\
+        \x20 readonly width: number,\n\
+        |} {\n\
+        \x20 const [size] = useState(serverValue);\n\
+        \x20 return size ?? { width: 0 };\n\
+        }\n";
+
+    assert_eq!(findings(source), Vec::<Finding>::new());
+}
+
+/// The fix must not stop a genuinely misplaced hook being found.
+#[test]
+fn a_hook_called_outside_a_component_is_still_reported() {
+    let source = "// @flow\n\
+        import { useState } from 'react';\n\
+        export function ordinary(): {| readonly a: number |} {\n\
+        \x20 const [a] = useState(0);\n\
+        \x20 return { a };\n\
+        }\n";
+
+    assert_eq!(findings(source), vec![Finding::HookOutsideComponent]);
+}
+
+/// A parameter whose type is an object must not consume the scope the
+/// declaration just opened.
+///
+/// `component P(a: { readonly x: number })` puts a `{` in front of the body.
+/// The walk took it for the body's brace, so the real body opened as an
+/// ordinary function — and every hook in it was reported as misplaced. Twenty
+/// nine of the eighty six `react/hooks-rules` errors against uf's own packages
+/// were this one, including every component in `@uniflowed/ui`.
+#[test]
+fn a_component_with_an_object_typed_parameter_may_call_hooks() {
+    for parameters in [
+        "a: { readonly x: number }",
+        "a: {| readonly x: number |}",
+        "a: string, ...rest: { readonly [string]: mixed }",
+        "a: string,\n  b?: { readonly deep: {| readonly x: number |} },",
+    ] {
+        let source = format!(
+            "// @flow\nimport {{ useId }} from 'react';\n\
+             export component Card({parameters}) {{\n\
+             \x20 const id = useId();\n\
+             \x20 return <p>{{id}}</p>;\n\
+             }}\n"
+        );
+
+        assert_eq!(
+            findings(&source),
+            Vec::<Finding>::new(),
+            "a component taking {parameters} may call hooks"
+        );
+    }
+}
+
+/// The same for a `useX` function and a `hook`, which take the same route.
+#[test]
+fn an_object_typed_parameter_does_not_confuse_a_hook_either() {
+    let function = "// @flow\nimport { useId } from 'react';\n\
+        export function useThing(options: { readonly a: number }): string {\n\
+        \x20 return useId() + options.a;\n\
+        }\n";
+    let declared = "// @flow\nimport { useId } from 'react';\n\
+        hook useOther(options: { readonly a: number }): string {\n\
+        \x20 return useId() + options.a;\n\
+        }\n";
+
+    assert_eq!(findings(function), Vec::<Finding>::new());
+    assert_eq!(findings(declared), Vec::<Finding>::new());
+}
