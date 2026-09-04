@@ -24,6 +24,36 @@ pub(crate) fn run_task(cwd: &Utf8Path, script: &str, args: &[String]) -> Result<
     run_named_task(&resolved, script, args, &mut visited)
 }
 
+/// Widest a task's command is shown at on the menu.
+///
+/// Shorter than [`COMMAND_WIDTH`] because the menu also carries a name column
+/// and a two-space gutter, and a row that wraps stops being a row.
+const MENU_COMMAND_WIDTH: usize = 44;
+
+/// Every task this project defines: its name, and what it runs.
+///
+/// Returns nothing rather than an error when there is no config or it does not
+/// load. This is asked on the way to drawing a menu, and a directory that is
+/// not a uf project should get a menu of uf's commands rather than a parse
+/// error about a file the reader has not written yet.
+pub(crate) fn task_names(cwd: &Utf8Path) -> Vec<(String, String)> {
+    let Ok(resolved) = load_config(cwd) else {
+        return Vec::new();
+    };
+    resolved
+        .config
+        .tasks
+        .iter()
+        .map(|(name, task)| {
+            let command = match task {
+                TaskDefinition::Command(command) => command.to_string(),
+                TaskDefinition::Detailed(details) => details.command.to_string(),
+            };
+            (name.to_string(), elide(&command, MENU_COMMAND_WIDTH))
+        })
+        .collect()
+}
+
 /// Widest a command is printed at in the task table.
 ///
 /// A task may legitimately be a hundred characters of shell — this repository

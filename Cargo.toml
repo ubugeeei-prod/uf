@@ -99,8 +99,19 @@ walkdir = "2.5.0"
 # what a backtrace actually reads. `debug = true` gives a debugger local
 # variables as well; a contributor who wants that can turn it back on for the
 # one crate they are in, and pay for it there rather than everywhere.
+# Incremental is off for the same reason, and it is the larger half: its cache
+# reached 10 GB, and the six biggest entries in it were `flow_typing_utils`,
+# `flow_typing`, `flow_typing_statement`, `flow_typing_flow_js`,
+# `flow_typing_flow_common` and `flow_parser` — 2.5 GB between them, all of it
+# caching rebuilds of a submodule that changes only on an upstream sync.
+#
+# Cargo has no per-package switch for it, so this is all or nothing, and off is
+# the right side: the crates that would benefit are the two or three uf's own
+# work touches, and a full rebuild of one of those is under a minute. Set
+# `CARGO_INCREMENTAL=1` for a session spent inside a single crate.
 [profile.dev]
 debug = "line-tables-only"
+incremental = false
 
 [profile.dev.package."*"]
 debug = false
