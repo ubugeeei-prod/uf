@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
+import { after, cookies, headers } from "@uniflowed/server";
 
 /** A table entry whose module is given inline. */
 const record = (path, module) => ({
@@ -207,5 +208,62 @@ describe("errors", () => {
     expect(loaded).toBe(0);
     await dispatch(get("/api/lazy"));
     expect(loaded).toBe(1);
+  });
+});
+
+describe("the request a handler is inside", () => {
+  it("lets a handler read the request's headers and cookies with no argument", async () => {
+    // The dispatcher establishes the context; `headers()` and `cookies()` take
+    // nothing and answer about the request being handled.
+    const dispatch = createDispatcher({
+      handlers: [
+        {
+          path: "/api/who",
+          params: [],
+          file: "app/api/who/_uf.route.js",
+          load: async () => ({
+            GET: () =>
+              Response.json({
+                agent: headers().get("x-agent"),
+                session: cookies().get("session"),
+              }),
+          }),
+        },
+      ],
+    });
+
+    const response = await dispatch(
+      new Request("https://uniflowed.dev/api/who", {
+        headers: { "x-agent": "uf", cookie: "session=abc" },
+      }),
+    );
+
+    expect(await response?.json()).toEqual({ agent: "uf", session: "abc" });
+  });
+
+  it("runs deferred work after the handler has answered", async () => {
+    const done: Array<string> = [];
+    const dispatch = createDispatcher({
+      handlers: [
+        {
+          path: "/api/defer",
+          params: [],
+          file: "app/api/defer/_uf.route.js",
+          load: async () => ({
+            GET: () => {
+              after(() => {
+                done.push("deferred");
+              });
+              done.push("responded");
+              return new Response("ok");
+            },
+          }),
+        },
+      ],
+    });
+
+    await dispatch(new Request("https://uniflowed.dev/api/defer"));
+
+    expect(done).toEqual(["responded", "deferred"]);
   });
 });

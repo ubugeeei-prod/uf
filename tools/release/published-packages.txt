@@ -16,6 +16,7 @@ query
 react
 react-testing
 router
+server
 stylex
 test
 ui

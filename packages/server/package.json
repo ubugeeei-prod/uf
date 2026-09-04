@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/server",
   "version": "0.0.0-alpha.2",
-  "description": "Flow declarations for @uniflowed/server, part of the Unified Toolchain for Flow.",
+  "description": "Request-scoped server functions for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,12 +11,12 @@
     "directory": "packages/server"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./host": "./host.js"
   },
   "files": [
-    "index.js"
-  ],
-  "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.2"
-  }
+    "index.js",
+    "host.js",
+    "internal/*.js"
+  ]
 }
