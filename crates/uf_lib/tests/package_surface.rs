@@ -57,6 +57,14 @@ fn runs_at_import(module: &Utf8Path) -> bool {
     ENTRY_POINT_MODULES.contains(&module.as_str()) || is_plain_javascript(module)
 }
 
+/// Packages that exist to hand back somebody else's library under uf's name.
+///
+/// These may `export *`, because the alternative is a hand-maintained copy of
+/// an export surface uf does not control. Everything else lists its names: uf's
+/// own domains collide, and a star between them cannot say which `graphql` or
+/// which `Text` was meant.
+const RE_EXPORT_PACKAGES: &[&str] = &["react", "relay"];
+
 /// Keywords a top-level statement in a shipped module may begin with. Anything
 /// else runs when the module is imported.
 const DECLARATION_KEYWORDS: &[&str] = &[
@@ -581,10 +589,34 @@ fn shipped_modules_never_use_star_re_exports() {
         while let Some(offset) = rest.find("export") {
             rest = &rest[offset + "export".len()..];
             let next = rest.trim_start();
+            if !next.starts_with('*') {
+                continue;
+            }
+            // A star is allowed where the package *is* the re-export.
+            //
+            // The ban is about uf's own barrels: several domains legitimately
+            // export the same name — `graphql`, `Image`, `Markdown`, `plan`,
+            // `Text`, `contract` — so a star between them would collide, and
+            // hand-listing is the only way to say which one is meant.
+            //
+            // A package whose whole job is handing back somebody else's
+            // library has the opposite problem. The list is a second copy of an
+            // export surface uf does not control, kept in step by hand, and
+            // falling behind shows up as an `undefined` an application finds at
+            // runtime long after the name was added upstream.
             assert!(
-                !next.starts_with('*'),
-                "{module} re-exports with `export *`, which pins the whole \
-                 module graph and defeats tree-shaking; list the names instead"
+                RE_EXPORT_PACKAGES.contains(&module.iter().next().unwrap_or_default()),
+                "{module} re-exports with `export *`, which collides between \
+                 uf's own packages; list the names instead"
+            );
+            let specifier = next
+                .split_once("from")
+                .and_then(|(_, rest)| rest.trim_start().split('"').nth(1))
+                .unwrap_or_default();
+            assert!(
+                !specifier.starts_with("@uniflowed/") && !specifier.starts_with('.'),
+                "{module} stars a uf module ({specifier}); the exemption is for \
+                 re-exporting somebody else's library"
             );
         }
     }

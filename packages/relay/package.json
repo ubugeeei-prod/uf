@@ -16,10 +16,8 @@
   "files": [
     "index.js"
   ],
-  "dependencies": {
-    "react-relay": "^21.0.1"
-  },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": ">=19",
+    "react-relay": ">=20"
   }
 }

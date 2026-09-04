@@ -17,7 +17,9 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/fetch": "0.0.0-alpha.2",
-    "relay-runtime": "^21.0.1"
+    "@uniflowed/fetch": "0.0.0-alpha.2"
+  },
+  "peerDependencies": {
+    "relay-runtime": ">=20"
   }
 }
