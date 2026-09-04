@@ -20,8 +20,9 @@
 // This module runs on import by design — it is a process entry point, the way
 // `@uniflowed/vite`'s loaders are.
 
+import { writeChangedSnapshots } from "./internal/snapshot.js";
 import { createInterface } from "node:readline";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { reset } from "./internal/registry.js";
 import { run } from "./internal/run.js";
@@ -63,16 +64,24 @@ async function runFile(request: Request, generation: number): Promise<void> {
   }
 
   try {
-    await run({ filter: request.filter ?? null, timeoutMs: request.timeoutMs }, (result) => {
-      write({
-        event: "test",
-        ...result.outcome,
-        name: result.name,
-        line: result.line,
-        column: result.column,
-        durationMicros: result.durationMicros,
-      });
-    });
+    const absolute = fileURLToPath(pathToFileURL(request.file).href);
+    await run(
+      { filter: request.filter ?? null, timeoutMs: request.timeoutMs, file: absolute },
+      (result) => {
+        write({
+          event: "test",
+          ...result.outcome,
+          name: result.name,
+          line: result.line,
+          column: result.column,
+          durationMicros: result.durationMicros,
+        });
+      },
+    );
+    // Once, at the end of the file, rather than after each snapshot: a file
+    // with forty snapshots would otherwise rewrite its snapshot file forty
+    // times, and a crash halfway through would leave a partial one.
+    writeChangedSnapshots();
     write({
       event: "file",
       status: "completed",

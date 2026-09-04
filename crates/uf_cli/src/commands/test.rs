@@ -58,6 +58,8 @@ pub(crate) struct TestArgs {
     pub(crate) bail: Option<usize>,
     /// Re-run a failing test up to this many more times.
     pub(crate) retry: u32,
+    /// Rewrite any snapshot that did not match.
+    pub(crate) update_snapshots: bool,
     /// Run at most this many files at once.
     pub(crate) threads: Option<usize>,
     /// How often watch mode looks for changes, in milliseconds.
@@ -120,7 +122,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return watch::watch(ui, &root, resolved.config, args);
     }
 
-    let host = test_host(&root, &resolved.config)?;
+    let host = test_host(&root, &resolved.config)?.with_snapshot_updates(args.update_snapshots);
     let files = test_bearing(files);
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
