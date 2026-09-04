@@ -9,11 +9,11 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
 brotli.workspace = true
 camino.workspace = true
 compact_str.workspace = true
 flate2.workspace = true
-rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true

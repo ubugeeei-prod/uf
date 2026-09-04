@@ -257,3 +257,58 @@ fn case_insensitive_contains_handles_edges() {
     assert!(!contains_ignore_ascii_case("ab", "abc"));
     assert!(contains_ignore_ascii_case("abc", ""));
 }
+
+// --- inline images -----------------------------------------------------
+
+/// An image is a much larger escape sequence than a colour, so a stream that
+/// may not carry colour may not carry one either.
+#[test]
+fn colour_being_off_turns_inline_images_off() {
+    let kitty = ImageEnv::default().with_term("xterm-kitty");
+
+    assert_eq!(
+        detect_image(ColorLevel::Never, Tty::Interactive, &kitty),
+        None
+    );
+    assert_eq!(
+        detect_image(ColorLevel::TrueColor, Tty::Interactive, &kitty),
+        Some(ImageProtocol::Kitty)
+    );
+}
+
+/// A picture in a pipe is bytes in a log.
+#[test]
+fn a_piped_stream_never_gets_an_inline_image() {
+    let kitty = ImageEnv::default().with_term("xterm-kitty");
+
+    assert_eq!(
+        detect_image(ColorLevel::TrueColor, Tty::Piped, &kitty),
+        None
+    );
+}
+
+#[test]
+fn a_terminal_that_speaks_no_protocol_gets_no_image_however_capable_it_is() {
+    let plain = ImageEnv::default().with_term("xterm-256color");
+
+    assert_eq!(
+        detect_image(ColorLevel::TrueColor, Tty::Interactive, &plain),
+        None
+    );
+}
+
+#[test]
+fn the_conservative_floor_carries_no_image_protocol() {
+    assert_eq!(Capabilities::plain().image(), None);
+    assert_eq!(
+        Capabilities::new(ColorLevel::TrueColor, GlyphSet::Unicode, Tty::Interactive).image(),
+        None,
+        "a directly built capability opts in explicitly"
+    );
+    assert_eq!(
+        Capabilities::new(ColorLevel::TrueColor, GlyphSet::Unicode, Tty::Interactive)
+            .with_image(Some(ImageProtocol::ITerm2))
+            .image(),
+        Some(ImageProtocol::ITerm2)
+    );
+}

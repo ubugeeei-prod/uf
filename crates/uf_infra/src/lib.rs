@@ -4,6 +4,8 @@
 //! change as benchmarks teach us more, while downstream crates get one stable
 //! import path for the fast defaults we want everywhere.
 
+pub mod parallel;
+
 pub use bumpalo::{Bump, collections::Vec as ArenaVec};
 pub use compact_str::CompactString;
 pub use memchr::{memchr, memchr_iter};
