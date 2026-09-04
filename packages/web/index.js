@@ -1,98 +1,37 @@
 // @flow
 //
-// `@uniflowed/web`.
+// `@uniflowed/web`: the primitives a page is built from.
+//
+// The small number of things every web page needs and nearly every project
+// reimplements: an image that does not shift the layout, a date that survives
+// hydration, a live region a screen reader actually announces, a cookie that
+// reads the same on both sides.
+//
+// Each is here because the naive version is wrong in a way that only shows up
+// later — a font preload without `crossOrigin` that silently downloads twice, a
+// `toLocaleString` that makes the server and the browser disagree, a live
+// region rendered at the same moment as its text and therefore never read. The
+// per-component documentation says which mistake it exists to prevent.
+//
+// Routing is not here, and not re-exported either. `Link`, `useRoute` and
+// `useRouter` are `@uniflowed/router`'s, and passing them through this package
+// would give each of them two import paths, two places to document, and two
+// places to be wrong. It would also put this package's `Page` — a `<main>`
+// landmark — into the same import as the router's `PageProps`, which is a
+// route module's props and an entirely different idea.
+//
+// One name, one home. Import routing from the router.
 
-import type * as React from "@uniflowed/react";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export type { Loading, Source } from "./internal/media.js";
+export { Font, Image, Picture } from "./internal/media.js";
 
-const MODULE = "@uniflowed/core/web";
+export type { TimeFormat } from "./internal/time.js";
+export { Time, relative } from "./internal/time.js";
 
-export type LinkPrefetch = "off" | "intent" | "render";
-export type RoutePath = string;
-export type RouteParams = { readonly [string]: string };
+export { Announcer, Layout, Page, SkipLink } from "./internal/regions.js";
 
-export type LinkProps<TRoute extends RoutePath> = {
-  readonly to: TRoute,
-  readonly prefetch?: LinkPrefetch,
-  readonly children?: React.Node,
-};
+export type { Head, Link as HeadLink, Meta } from "./internal/head.js";
+export { useHead } from "./internal/head.js";
 
-export component Font(src: string, family: string, preload?: boolean) {
-  return nativeRuntimeRequired(MODULE, "Font");
-}
-
-export component Image(src: string, alt: string, width?: number, height?: number) {
-  return nativeRuntimeRequired(MODULE, "Image");
-}
-
-export component OgImage(title: string, description?: string) {
-  return nativeRuntimeRequired(MODULE, "OgImage");
-}
-
-export component Link<TRoute extends RoutePath>(
-  to: TRoute,
-  prefetch?: LinkPrefetch,
-  children?: React.Node,
-) renders React.Node {
-  return nativeRuntimeRequired(MODULE, "Link");
-}
-
-export component Page(children?: React.Node) renders React.Node {
-  return nativeRuntimeRequired(MODULE, "Page");
-}
-
-export component Layout(children?: React.Node) renders React.Node {
-  return nativeRuntimeRequired(MODULE, "Layout");
-}
-
-export component Time(value: Date | string, format?: string) renders React.Node {
-  return nativeRuntimeRequired(MODULE, "Time");
-}
-
-export component Announcer(children?: React.Node) renders React.Node {
-  return nativeRuntimeRequired(MODULE, "Announcer");
-}
-
-export component Picture(
-  src: string,
-  alt: string,
-  sources?: $ReadOnlyArray<string>,
-) renders React.Node {
-  return nativeRuntimeRequired(MODULE, "Picture");
-}
-
-export function useCookie<T>(
-  name: string,
-  options?: { readonly httpOnly?: boolean, readonly sameSite?: "lax" | "strict" | "none" },
-): [null | T, (next: T) => void] {
-  return nativeRuntimeRequired(MODULE, "useCookie");
-}
-
-export function useHead(head: {
-  readonly title?: string,
-  readonly meta?: $ReadOnlyArray<{ readonly name: string, readonly content: string }>,
-  readonly links?: $ReadOnlyArray<{ readonly rel: string, readonly href: string }>,
-}): void {
-  return nativeRuntimeRequired(MODULE, "useHead");
-}
-
-export function useRoute<TRoute extends RoutePath, TParams extends RouteParams>(): {
-  readonly path: TRoute,
-  readonly params: TParams,
-} {
-  return nativeRuntimeRequired(MODULE, "useRoute");
-}
-
-export function useRouter<TRoute extends RoutePath>(): {
-  readonly push: (to: TRoute) => void,
-  readonly replace: (to: TRoute) => void,
-  readonly prefetch: (to: TRoute) => Promise<void>,
-} {
-  return nativeRuntimeRequired(MODULE, "useRouter");
-}
-
-export function defineNavigationGuard<TRoute extends RoutePath>(
-  guard: (to: TRoute, from: TRoute) => boolean | Promise<boolean>,
-): (to: TRoute, from: TRoute) => Promise<boolean> {
-  return nativeRuntimeRequired(MODULE, "defineNavigationGuard");
-}
+export type { CookieOptions } from "./internal/cookie.js";
+export { useCookie } from "./internal/cookie.js";
