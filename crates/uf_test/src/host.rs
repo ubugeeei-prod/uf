@@ -77,6 +77,8 @@ pub struct HostCommand {
     pub root: Utf8PathBuf,
     /// The `uf` binary the worker's transform must go through.
     pub uf_binary: Option<Utf8PathBuf>,
+    /// Whether this run may rewrite a snapshot that did not match.
+    pub update_snapshots: bool,
 }
 
 impl HostCommand {
@@ -98,6 +100,7 @@ impl HostCommand {
             worker,
             root,
             uf_binary: None,
+            update_snapshots: false,
         }
     }
 
@@ -137,6 +140,17 @@ impl HostCommand {
     #[must_use]
     pub fn with_uf_binary(mut self, binary: Utf8PathBuf) -> Self {
         self.uf_binary = Some(binary);
+        self
+    }
+
+    /// Let this run rewrite a snapshot that did not match.
+    ///
+    /// Carried to the worker in the environment rather than in each request:
+    /// it is a property of the run, and putting it on every request would let
+    /// two files in one run disagree about it.
+    #[must_use]
+    pub fn with_snapshot_updates(mut self, update: bool) -> Self {
+        self.update_snapshots = update;
         self
     }
 }
@@ -256,6 +270,10 @@ impl Worker {
             .arg(command.worker.as_str())
             .current_dir(command.root.as_std_path())
             .env("UF_PROJECT_ROOT", command.root.as_str())
+            .env(
+                "UF_UPDATE_SNAPSHOTS",
+                if command.update_snapshots { "1" } else { "" },
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             // The worker's stderr is the host's own noise — an unhandled
