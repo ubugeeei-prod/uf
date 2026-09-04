@@ -6,8 +6,10 @@ use uf_config::UniflowedConfig;
 use walkdir::WalkDir;
 
 mod template;
+pub mod workspace;
 
 use template::{app_react_files, lib_files};
+pub use workspace::{Workspace, discover_workspaces, resolve_workspace};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreateKind {

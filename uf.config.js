@@ -53,16 +53,52 @@ export default defineConfig({
     "flow:test": "cargo test -p uf_flow",
 
     // --- The toolchain, used on itself ---------------------------------
+    //
+    // Each of these is a first-class uf command run against a workspace of
+    // this repository, not a script that reimplements one. `uf test#library`
+    // is the command a contributor types; the task exists so CI types it too,
+    // and so `uf run ci` covers it.
     build: "cargo build --release --bin uf",
 
     // Every `@uniflowed/*` package is Flow, so `cargo test` cannot run a line
     // of it. These are uf tests, run by the runner this repository ships.
     "test:lib": {
-      command: "./target/release/uf --cwd tests/library test",
+      command: "./target/release/uf test#library",
       dependsOn: ["build"],
     },
+
+    // The linter, over this repository's own Flow. uf is the only thing that
+    // can lint uf's packages, so a regression here is invisible to every other
+    // check in the pipeline.
+    //
+    // Not in `ci` yet, and the reason is written down rather than left to be
+    // rediscovered: it reports 467 errors today. A third of them are
+    // `flow/ambiguous-object-type`, a rule whose premise modern Flow has
+    // retired — objects are exact by default now, so `{ a: b }` is not
+    // ambiguous and the `{| |}` the rule asks for is the deprecated spelling.
+    // The rule is wrong before the code is.
+    "check:lib": {
+      command: "./target/release/uf lint",
+      dependsOn: ["build"],
+    },
+
+    // The formatter, over the same. `--check` rather than a write, because CI
+    // reporting a diff is useful and CI committing one is not.
+    //
+    // Not in `ci` yet either, for a smaller reason: the router types uf
+    // generates are not formatted the way uf formats, so `uf fmt --check`
+    // fails on a file uf wrote itself.
+    "fmt:check": {
+      command: "./target/release/uf fmt --check",
+      dependsOn: ["build"],
+    },
+
+    // The documentation site, built by the framework it documents. The script
+    // stages the brand assets — shared with the README and the release pages,
+    // so they live at the repository root — into Vite's public directory
+    // first, and then runs `uf build#docs`.
     "docs:build": {
-      command: "tools/docs/build.sh",
+      command: "UF_BIN=./target/release/uf tools/docs/build.sh",
       dependsOn: ["build"],
     },
     "install:test": "tools/release/test-install.sh",
@@ -82,6 +118,7 @@ export default defineConfig({
         "rust:clippy",
         "rust:test",
         "test:lib",
+        "docs:build",
         "rust:metadata",
         "manifests",
       ],
