@@ -55,6 +55,16 @@ import { TransformService, isFlowModule } from "./transform.js";
 const resolved = (id) => `\0${id}`;
 const VIRTUAL_IDS = new Set(Object.values(VIRTUAL));
 
+/**
+ * Prefix of the virtual module that carries one source module's StyleX rules.
+ *
+ * Not NUL-prefixed, unlike the virtual modules above: Vite's CSS pipeline keys
+ * off the `.css` extension of a *resolvable* id, and a NUL-prefixed id is
+ * excluded from it. The prefix is distinctive enough that nothing else can
+ * collide with it.
+ */
+const STYLE_PREFIX = "uf-style:";
+
 /** The URL a NUL-prefixed module is served at in development. */
 export function devUrlFor(id) {
   return `/@id/__x00__${id}`;
@@ -94,6 +104,15 @@ function flowPlugin({ routerRoot, appEntry, command }) {
   let server = null;
   /** @type {TransformService | null} */
   let service = null;
+  /**
+   * Each module's compiled stylesheet, keyed by the virtual id serving it.
+   *
+   * A map rather than one accumulated sheet: Vite asks for a module's CSS when
+   * it loads that module, re-asks when the module changes, and drops it when
+   * the module goes away. One shared sheet would have to be invalidated by
+   * hand, which is the part that goes wrong.
+   */
+  const styles = new Map();
 
   const ensureService = () => {
     service ??= new TransformService({ command, root });
@@ -149,6 +168,10 @@ function flowPlugin({ routerRoot, appEntry, command }) {
     resolveId(id) {
       if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
       if (VIRTUAL_IDS.has(id)) return resolved(id);
+      // A module's own stylesheet, which `transform` below asked for by
+      // importing this id. Returning it unchanged marks it resolved without
+      // Vite going to the filesystem for a file that does not exist.
+      if (id.startsWith(STYLE_PREFIX)) return id;
       return null;
     },
 
@@ -157,6 +180,7 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       if (id === resolved(VIRTUAL.routes)) return routesModuleSource(scanRoutes(appRoot));
       if (id === resolved(VIRTUAL.client)) return clientModuleSource(entryPath);
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
+      if (id.startsWith(STYLE_PREFIX)) return styles.get(id) ?? "";
       return null;
     },
 
@@ -174,9 +198,24 @@ function flowPlugin({ routerRoot, appEntry, command }) {
         this.warn?.(`${diagnostic.function ?? "a function"}: ${diagnostic.message}`);
       }
       const map = out.map == null ? null : JSON.parse(out.map);
-      if (!refresh) return { code: out.code, map };
+      // StyleX. `uf transform` compiled the module's `stylex.create` calls into
+      // class names and handed back the rules they declared; the rules become a
+      // module of their own that this one imports.
+      //
+      // Handing the CSS to Vite as a module, rather than collecting it here and
+      // writing a stylesheet at the end, is what keeps uf out of the CSS
+      // business: Vite already injects a stylesheet in dev, extracts it in a
+      // build, code-splits it per chunk, and replaces it over HMR. A module
+      // whose styles are gone stops importing it, and Vite notices.
+      let output = out.code;
+      if (out.css != null && out.css !== "") {
+        const styleId = `${STYLE_PREFIX}${cleanId(id)}.css`;
+        styles.set(styleId, out.css);
+        output = `import ${JSON.stringify(styleId)};\n${output}`;
+      }
+      if (!refresh) return { code: output, map };
       const relative = path.relative(root, cleanId(id)).split(path.sep).join("/");
-      return addRefreshWrapper(out.code, map, relative);
+      return addRefreshWrapper(output, map, relative);
     },
 
     buildEnd() {

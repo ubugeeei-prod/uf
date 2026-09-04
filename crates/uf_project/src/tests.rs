@@ -231,3 +231,57 @@ fn scaffolded_tasks_name_real_commands() {
         }
     }
 }
+
+/// Every `@uniflowed/*` a template scaffolds has to be a package that is
+/// actually published.
+///
+/// `uf create` writes a `package.json` and the next thing anyone runs is
+/// `uf install`. A dependency on a name npm does not serve makes that fail with
+/// a 404 — not uf's error message, npm's — and the project is unusable before
+/// it has been opened. This repository has shipped that failure before, with a
+/// scaffold that imported ten packages which did not exist.
+///
+/// `tools/release/published-packages.txt` is the list of names a release
+/// publishes, and it is deliberately shorter than `packages/`: most of those
+/// are declarations whose functions throw. A package earns its way onto that
+/// list by being implemented, and only then may a template depend on it.
+#[test]
+fn every_scaffolded_dependency_is_a_published_package() {
+    let list = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/release/published-packages.txt"),
+    )
+    .expect("the publish list is readable");
+    let published = list
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|name| format!("@uniflowed/{name}"))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let mut unpublished = Vec::new();
+    for (kind, files) in [("app", app_react_files("demo")), ("lib", lib_files("demo"))] {
+        let manifest = files
+            .iter()
+            .find(|(path, _)| *path == "package.json")
+            .map(|(_, contents)| contents.clone())
+            .expect("a manifest");
+
+        for line in manifest.lines() {
+            let Some(name) = line.split('"').nth(1) else {
+                continue;
+            };
+            if !name.starts_with("@uniflowed/") || published.contains(name) {
+                continue;
+            }
+            unpublished.push(format!("the {kind} template depends on {name}"));
+        }
+    }
+
+    assert!(
+        unpublished.is_empty(),
+        "{}\n\nadd the package to tools/release/published-packages.txt once it is \
+         implemented, and depend on it once a release has published it",
+        unpublished.join("\n")
+    );
+}

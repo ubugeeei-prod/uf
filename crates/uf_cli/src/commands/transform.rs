@@ -80,6 +80,13 @@ struct Reply {
     code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     map: Option<String>,
+    /// The CSS this module's StyleX rules produced, when it has any.
+    ///
+    /// Absent rather than empty for a module with no styles: the caller keys
+    /// "this module has a stylesheet" off the field being there at all, and an
+    /// empty string would make it import a stylesheet with nothing in it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    css: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     diagnostics: Vec<CompilerDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -161,6 +168,40 @@ fn serve(input: impl Read, out: &mut impl Write, project: &ProjectTransform) -> 
     Ok(())
 }
 
+/// One module's code after StyleX, and the CSS it contributed.
+struct Styled {
+    code: String,
+    css: Option<String>,
+}
+
+/// Compile a module's StyleX calls, or leave it exactly as it was.
+///
+/// A module that does not use StyleX comes back untouched and contributes no
+/// CSS, which is the overwhelmingly common case and costs one parse.
+///
+/// A module the StyleX compiler cannot read is *not* an error. The compiler
+/// parses JavaScript that has already been through the whole Flow chain, so a
+/// failure here is a disagreement between two parsers about valid code rather
+/// than a problem with the user's module — and failing the transform would
+/// turn a style that could not be extracted into a build that will not run.
+/// The `uf:style` plugin reports its own diagnostics for the cases that are
+/// genuinely the module's fault.
+fn compile_styles(code: &str) -> Styled {
+    match uf_stylex::compile_module(code) {
+        Ok(compiled) if compiled.changed => {
+            let css = compiled.sheet.to_css();
+            Styled {
+                code: compiled.code,
+                css: (!css.is_empty()).then_some(css),
+            }
+        }
+        Ok(_) | Err(_) => Styled {
+            code: code.to_owned(),
+            css: None,
+        },
+    }
+}
+
 fn handle(request: &Request, project: &ProjectTransform) -> Reply {
     if !is_flow_module(&request.id) {
         return Reply {
@@ -170,13 +211,22 @@ fn handle(request: &Request, project: &ProjectTransform) -> Reply {
     }
     let options = project.options(&request.id, &request.options);
     match transform(&request.code, &options) {
-        Ok(transformed) => Reply {
-            id: request.id.clone(),
-            code: Some(transformed.code),
-            map: transformed.map,
-            diagnostics: transformed.compiler_diagnostics,
-            ..Reply::default()
-        },
+        Ok(transformed) => {
+            // StyleX last, over the JavaScript the Flow chain produced. It is a
+            // source-to-source rewrite of `stylex.create` calls into the class
+            // names its stylesheet declares, so it wants the code in the shape
+            // the browser will see it — after the types are gone and after the
+            // React Compiler has had its pass.
+            let styled = compile_styles(&transformed.code);
+            Reply {
+                id: request.id.clone(),
+                code: Some(styled.code),
+                map: transformed.map,
+                css: styled.css,
+                diagnostics: transformed.compiler_diagnostics,
+                ..Reply::default()
+            }
+        }
         Err(error) => {
             let (line, column) = match &error {
                 TransformError::Syntax { line, column, .. } => (Some(*line), Some(*column)),
@@ -210,6 +260,50 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    /// StyleX is uf's style engine, and a module that uses it has to come back
+    /// with its rules extracted — not with the `stylex.create` call still in it.
+    ///
+    /// The compiler crate existed and nothing called it: `uf:style` was in the
+    /// resolved pipeline, `uf inspect` listed it, and `stylex.create({...})`
+    /// went through `uf transform` untouched and reached the runtime stub,
+    /// which throws.
+    #[test]
+    fn a_stylex_module_comes_back_compiled_and_with_its_css() {
+        let source = "// @flow\nimport { stylex } from \"@uniflowed/stylex\";\n\
+                      const styles = stylex.create({ root: { color: \"red\" } });\n\
+                      export const used: mixed = stylex.props(styles.root);\n";
+        let request = serde_json::json!({ "id": "/app/box.js", "code": source });
+        let replies = replies(&format!("{request}\n"));
+
+        let reply = &replies[0];
+        assert!(reply["error"].is_null(), "{reply}");
+
+        let css = reply["css"].as_str().unwrap_or_default();
+        assert!(
+            css.contains("color:red") || css.contains("color: red"),
+            "the module's rules must come back as CSS, got {css:?}"
+        );
+
+        let code = reply["code"].as_str().unwrap_or_default();
+        assert!(
+            !code.contains("stylex.create"),
+            "the call must be compiled away, got {code}"
+        );
+    }
+
+    /// A module with no styles must not carry an empty CSS payload: the caller
+    /// keys "this module has a stylesheet" off the field being present.
+    #[test]
+    fn a_module_without_styles_has_no_css() {
+        let request = serde_json::json!({
+            "id": "/app/plain.js",
+            "code": "// @flow\nexport const v: number = 1;\n",
+        });
+        let replies = replies(&format!("{request}\n"));
+
+        assert!(replies[0]["css"].is_null(), "{}", replies[0]);
     }
 
     #[test]
