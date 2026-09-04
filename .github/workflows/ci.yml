@@ -123,6 +123,13 @@ jobs:
         with:
           toolchain: nightly-2026-08-01
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # `uf fmt` hands the JSON and CSS to the non-Flow formatter, which is a
+      # dependency rather than a global install — so the dependencies have to be
+      # here even though nothing in this job runs JavaScript.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
       # `rust:fmt:check` is cargo's half. This is uf's: the formatter this
       # repository ships, over the Flow this repository is written in. It is
       # the only thing that checks the shipped packages' formatting at all.
