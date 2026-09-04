@@ -222,7 +222,7 @@ function fire(task: Task): void {
 export class RunawayTimersError extends Error {
   constructor(method: string) {
     super(
-      `vi.${method}: still firing after ${RUNAWAY_LIMIT} timers. ` +
+      `uf.${method}: still firing after ${RUNAWAY_LIMIT} timers. ` +
         "A timer that reschedules itself never drains — advance the clock by a " +
         "fixed amount instead.",
     );

@@ -1,6 +1,6 @@
 // @flow
 //
-// Internal to `@uniflowed/test`: the spy behind `fn` and `vi.spyOn`.
+// Internal to `@uniflowed/test`: the spy behind `fn` and `uft.spyOn`.
 //
 // Shaped after Vitest's, because a project moving to uf should not have to
 // rewrite its assertions. That means `mock.calls`, `mock.results`,
@@ -15,7 +15,7 @@
 // * `mockRestore` does what `mockReset` does and then puts the real method
 //   back on the object, which only a `spyOn` has to put back.
 //
-// Every spy is registered, so `vi.clearAllMocks` and its siblings can reach the
+// Every spy is registered, so `uft.clearAllMocks` and its siblings can reach the
 // ones a test never held a reference to.
 
 /** One call: what went in, and what came out. */
@@ -167,17 +167,17 @@ export function fn(implementation?: mixed): $FlowFixMe {
  * not have to reimplement it. `mockImplementation` is how a test says it wants
  * the other thing.
  *
- * The original is put back by `mockRestore`, and by `vi.restoreAllMocks`.
+ * The original is put back by `mockRestore`, and by `uft.restoreAllMocks`.
  */
 export function spyOn(object: mixed, method: string): $FlowFixMe {
   if (object == null || (typeof object !== "object" && typeof object !== "function")) {
-    throw new TypeError(`vi.spyOn: cannot spy on ${describe(object)}`);
+    throw new TypeError(`uft.spyOn: cannot spy on ${describe(object)}`);
   }
   const target = object as $FlowFixMe;
   const original = target[method];
   if (typeof original !== "function") {
     throw new TypeError(
-      `vi.spyOn: ${method} is ${describe(original)}, and only a method can be spied on`,
+      `uft.spyOn: ${method} is ${describe(original)}, and only a method can be spied on`,
     );
   }
 
