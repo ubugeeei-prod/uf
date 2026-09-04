@@ -72,7 +72,11 @@ pub enum FlowLintParser {
 const DEFAULT_LINT_RULES: [(&str, RuleLevel); 53] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
-    ("flow/ambiguous-object-type", RuleLevel::Error),
+    // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
+    // rejects `exact_by_default=false` as deprecated, so `{ a: b }` is exact and
+    // the `{| |}` this rule asks for is the legacy spelling. See
+    // `uf_lint::rules::flow::FLOW_META`.
+    ("flow/ambiguous-object-type", RuleLevel::Off),
     // Reading named exports off a default import is a CommonJS interop bug.
     ("flow/default-import-access", RuleLevel::Error),
     // `bool` is a legacy alias for `boolean`; mechanical fix.

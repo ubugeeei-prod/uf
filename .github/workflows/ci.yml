@@ -110,6 +110,29 @@ jobs:
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run rust:test
 
+  flow-format:
+    name: Flow format
+    needs: toolchain
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-08-01
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # `rust:fmt:check` is cargo's half. This is uf's: the formatter this
+      # repository ships, over the Flow this repository is written in. It is
+      # the only thing that checks the shipped packages' formatting at all.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-ci
+          path: target/release
+      - run: chmod +x target/release/uf
+      - run: ./target/release/uf run fmt:check
+
   docs:
     name: Docs build
     needs: toolchain

@@ -72,11 +72,11 @@ export default defineConfig({
     // check in the pipeline.
     //
     // Not in `ci` yet, and the reason is written down rather than left to be
-    // rediscovered: it reports 467 errors today. A third of them are
-    // `flow/ambiguous-object-type`, a rule whose premise modern Flow has
-    // retired — objects are exact by default now, so `{ a: b }` is not
-    // ambiguous and the `{| |}` the rule asks for is the deprecated spelling.
-    // The rule is wrong before the code is.
+    // rediscovered: it reports 315 errors today. The largest groups are
+    // `flow/unclear-type` (125), `flow/react-intrinsic-overlap` (89) and
+    // `react/hooks-rules` (86), and each needs looking at on its own terms —
+    // some are real findings in uf's packages, and some are rules that are
+    // wrong the way `flow/ambiguous-object-type` was wrong.
     "check:lib": {
       command: "./target/release/uf lint",
       dependsOn: ["build"],
@@ -84,10 +84,6 @@ export default defineConfig({
 
     // The formatter, over the same. `--check` rather than a write, because CI
     // reporting a diff is useful and CI committing one is not.
-    //
-    // Not in `ci` yet either, for a smaller reason: the router types uf
-    // generates are not formatted the way uf formats, so `uf fmt --check`
-    // fails on a file uf wrote itself.
     "fmt:check": {
       command: "./target/release/uf fmt --check",
       dependsOn: ["build"],
@@ -117,6 +113,7 @@ export default defineConfig({
         "rust:fmt:check",
         "rust:clippy",
         "rust:test",
+        "fmt:check",
         "test:lib",
         "docs:build",
         "rust:metadata",
