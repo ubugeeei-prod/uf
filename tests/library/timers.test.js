@@ -273,12 +273,50 @@ describe("the clock itself", () => {
   });
 
   it("a faked date is still a Date", () => {
-    // A subclass rather than a wrapper, so `instanceof` and every method come
-    // along unchanged.
+    // A proxy over the real constructor rather than a wrapper, so `instanceof`
+    // and every method come along unchanged.
     uft.useFakeTimers();
 
     expect(new Date() instanceof Date).toBe(true);
     expect(typeof new Date().toISOString()).toBe("string");
+  });
+
+  it("Date without new is still a string, as it is in every runtime", () => {
+    // `Date()` called as a function returns a string and ignores its
+    // arguments. A `class` cannot be called without `new` at all, so the
+    // subclass this used to be turned every such call into a TypeError —
+    // under fake timers only, which is the worst way for it to fail.
+    uft.useFakeTimers();
+    uft.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+    const text = Date();
+
+    expect(typeof text).toBe("string");
+    expect(text).toBe(new Date("2026-01-01T00:00:00.000Z").toString());
+  });
+
+  it("recognises a Date made before the clock was faked", () => {
+    // `instanceof Date` after installation asks about the *fake* Date, and an
+    // object built by the real one is not an instance of a subclass of it. A
+    // caller holding a date from before `useFakeTimers` had it silently read
+    // as a number.
+    const before = new Date("2026-03-01T00:00:00.000Z");
+    uft.useFakeTimers();
+
+    expect(before instanceof Date).toBe(true);
+
+    uft.setSystemTime(before);
+
+    expect(Date.now()).toBe(before.getTime());
+    expect(uft.getMockedSystemTime()?.toISOString()).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it("keeps the real constructor's own statics", () => {
+    uft.useFakeTimers();
+
+    expect(Date.parse("2020-05-05T00:00:00.000Z")).toBe(1_588_636_800_000);
+    expect(Date.UTC(2020, 4, 5)).toBe(1_588_636_800_000);
+    expect(Date.name).toBe("Date");
   });
 
   it("setSystemTime moves the clock without firing anything", () => {

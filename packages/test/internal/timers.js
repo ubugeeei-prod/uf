@@ -136,26 +136,55 @@ export function useRealTimers(): void {
   tasks = [];
 }
 
-/** A `Date` whose "now" is the fake clock's. */
+/**
+ * A `Date` whose "now" is the fake clock's.
+ *
+ * A proxy over the real constructor rather than a subclass of it, and the
+ * difference is three bugs rather than a preference:
+ *
+ * * `Date()` — called as a function, with no `new` — returns a string in every
+ *   runtime. A `class` cannot be called that way at all, so a subclass turned
+ *   every such call into a `TypeError`, under fake timers only.
+ * * `before instanceof Date`, for a date built *before* the clock was faked,
+ *   was false: the object's prototype chain runs through the real `Date` and a
+ *   subclass's prototype is not in it. Anything branching on that — including
+ *   `setSystemTime` below, once — silently took the wrong branch. A proxy has
+ *   no prototype of its own, so the check is the real one.
+ * * `Date.name` was `"FakeDate"`, and a subclass's own `toString` reads as
+ *   class source rather than native code.
+ *
+ * Only `now` is replaced. `parse`, `UTC`, and every prototype method are the
+ * real ones, reached through the proxy.
+ */
 function fakeDate(Real: $FlowFixMe): $FlowFixMe {
-  // A subclass rather than a wrapper, so `instanceof Date` still holds and
-  // every static and prototype method comes along unchanged.
-  class FakeDate extends Real {
-    constructor(...args: $ReadOnlyArray<mixed>) {
+  return new Proxy(Real, {
+    // `Date(anything)` ignores its arguments and returns the current time as a
+    // string, which on this clock is the fake one.
+    apply(): string {
+      return new Real(now).toString();
+    },
+
+    construct(target: $FlowFixMe, args: $ReadOnlyArray<mixed>, newTarget: $FlowFixMe) {
       // Only the no-argument form reads the clock; every other form is
       // constructing a specific date and has nothing to do with "now".
-      if (args.length === 0) {
-        super(now);
-      } else {
-        super(...args);
-      }
-    }
+      const actual = args.length === 0 ? [now] : args;
+      // `newTarget` rather than `Real`, so a subclass of the faked `Date` gets
+      // its own prototype instead of the real one's.
+      return Reflect.construct(Real, actual, newTarget === undefined ? Real : newTarget);
+    },
 
-    static now(): number {
-      return now;
-    }
-  }
-  return FakeDate;
+    get(target: $FlowFixMe, property: $FlowFixMe, receiver: $FlowFixMe): $FlowFixMe {
+      if (property === "now") {
+        return fakeNow;
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+/** `Date.now`, as its own function so the proxy hands back a stable identity. */
+function fakeNow(): number {
+  return now;
 }
 
 /** Put a task on the queue and hand back its id. */
@@ -311,9 +340,20 @@ export function runOnlyPendingTimers(): void {
   }
 }
 
-/** Move the wall clock without firing anything. */
+/**
+ * Move the wall clock without firing anything.
+ *
+ * Duck-typed rather than `instanceof Date`, and deliberately: `Date` here is
+ * whatever is installed, so the check would be asking about the *fake* one
+ * while the caller may be holding a date made before the clock was faked, or
+ * one from another realm. Either answered `false`, fell through to the number
+ * branch, and set the clock to an object — after which every comparison
+ * against it was `false` and no timer ever came due.
+ *
+ * Anything that can say what instant it is, is an instant.
+ */
 export function setSystemTime(time: number | Date): void {
-  now = time instanceof Date ? time.getTime() : time;
+  now = typeof time === "number" ? time : Number((time as $FlowFixMe).getTime());
 }
 
 /** What the fake clock currently reads. */
