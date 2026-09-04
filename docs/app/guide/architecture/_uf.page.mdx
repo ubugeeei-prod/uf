@@ -106,10 +106,12 @@ to produce a bundle for a Cloudflare Worker.
 
 A list of rules with no audit against it is decoration.
 
-**Mirroring Vite's schema (2).** `dev` and `build` in `uf.config.js` re-declare
-Vite's options one at a time, and the driver maps them across by hand. A Vite
-option uf has not heard of is unreachable — exactly the `react-scripts`
-failure. uf should keep only what it genuinely owns and pass the rest through.
+**Mirroring Vite's schema (2), half closed.** The `vite` key in `uf.config.js`
+is merged over what uf generates, so a Vite option uf has never heard of is
+reachable — that was the part of the `react-scripts` failure that actually
+stranded people. What remains: `dev` and `build` still re-declare Vite's options
+one at a time, and every one of those is a second name for a setting that
+already has one.
 
 **Replaceability is aspirational (3).** The lint engine, the formatter's
 parser, the task runner and the package resolver are each an enumeration with
@@ -120,14 +122,52 @@ exactly and one script sets them all. That is right while the packages are one
 thing, and it is the beginning of the chokepoint. Adapters need to move
 independently before 1.0.
 
-**Inspectability is partial (7).** `uf inspect --json` prints the resolved
-configuration. Nothing yet says which provider runs each stage of `uf dev`, at
-what version, and which files the configuration came from.
+**Inspectability, met (7).** `uf inspect --json` prints the resolved
+configuration, and `uf explain <command>` names the provider for every stage of
+`dev`, `build`, `test`, `fmt`, `lint` and `check` — which binary runs it and
+what it does. A stage that cannot be explained is a stage that should not
+exist.
 
 **uf owns two tools (10).** The formatter and the test runner are uf's own
 implementations rather than orchestrated providers — a deliberate choice, since
 a Flow-aware version of neither existed. Each has to stay replaceable, or it
 becomes the thing this page is about.
+
+## How the open lines get closed
+
+Naming a violation is the easy half, and "we should fix that" is how a red line
+becomes a permanent footnote. Each one has an exit criterion:
+
+| Line | Closed when |
+| --- | --- |
+| 2 — Vite's schema | a test fails on any config key whose only consumer is `viteConfig()` |
+| 3 — replaceability | one provider enumeration has a second variant a project can select, and `uf explain` names it |
+| 5 — lockstep versions | a sibling dependency is a range, and one package can be released without the rest |
+| 10 — the two owned tools | `uf fmt` and `uf test` resolve through the same seam as the bundler |
+
+## Not on the table
+
+Each of these sounds reasonable and is a step toward the thing this page is
+about.
+
+- **An `eject` command, in any spelling** — including a "print the effective
+  Vite config so you can copy it" flag, which becomes one in practice.
+- **A uf-shaped name for something Flow already names.** `@noflow` is how a
+  file says it is plain JavaScript; a `check.exclude` list would have been a
+  second answer to a question that has one.
+- **Vendoring a provider to make it fit.** Upstream or a plugin, never a fork.
+
+## The failure no red line prevents
+
+CRA's third failure was not architectural. It solved the build and stopped, and
+every production application built its own framework on top of the tool that
+existed to remove that work.
+
+Nothing above prevents that. It is prevented by uf being a framework as well as
+a toolchain — the router, the RSC graph, server actions, the data layer — and by
+those being answers uf ships rather than integration points it documents. The
+audit is about not becoming a bottleneck; this is about being worth using at
+all.
 
 The full record, including the reasoning, is
 [`docs/red-lines.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md).

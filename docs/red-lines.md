@@ -87,14 +87,15 @@ exotic one.
 
 Writing the list is worth nothing without saying where we stand against it.
 
-**Red line 2 is violated today.** `uf_config`'s `dev` and `build` re-declare
+**Red line 2 is half closed.** The `vite` key in `uf.config.js` is merged over
+what uf generates, so a Vite option uf has never heard of is now reachable —
+which is the part of the `react-scripts` failure that actually stranded people.
+What remains is the other half: `uf_config`'s `dev` and `build` still re-declare
 Vite's options one at a time — `host`, `port`, `strictPort`, `allowedHosts`,
 `fs.allow`, `fs.deny`, `outDir`, `sourcemap` — and `viteConfig()` in
-`@uniflowed/vite` maps them across by hand. A Vite option uf has not heard of
-is unreachable, which is precisely the `react-scripts` failure. Fixing this
-means uf keeping only the settings it genuinely owns (the ones with
-cross-tool meaning, or that uf *enforces*, such as the `allowedHosts` gate on
-binding a routable address) and passing everything else through natively.
+`@uniflowed/vite` maps them across by hand. Every one of those is a second name
+for a setting that already has one, and a second name is a thing to keep in
+sync.
 
 **Red line 3 is aspirational.** `LintEngine`, `FlowFormatParser`,
 `TaskRunnerEngine` and `PackageManagerResolver` are enumerations with exactly
@@ -108,16 +109,93 @@ siblings exactly. That is right for a pre-release where the packages are one
 thing, and it is the beginning of lockstep. Adapters need to be able to move
 independently before 1.0.
 
-**Red line 7 is partly met.** `uf inspect --json` prints the resolved
-configuration and the route table. There is no `uf explain <command>` yet:
-nothing says which provider will run each stage, at which version, and which
-files the configuration came from.
+**Red line 7 is met.** `uf inspect --json` prints the resolved configuration
+and the route table, and `uf explain <command>` names the provider for every
+stage of `dev`, `build`, `test`, `fmt`, `lint` and `check` — which binary runs
+it, and what it does. It stays met by covering every command a person runs, so
+a stage that cannot be explained is a stage that should not exist.
 
 **Red line 10 is the one to watch.** `uf_fmt` and `uf_test` are uf's own
 implementations rather than orchestrated providers. That is a deliberate
 choice — a Flow-aware formatter and a Flow-aware test runner did not exist —
 but each is a place where uf owns a tool rather than the graph, and each has
 to stay replaceable or it becomes the thing this document is about.
+
+## How each open line gets closed
+
+Naming a violation is the easy half. This is what closing each one looks like,
+and what would prove it closed — because "we should fix that" is how a red line
+becomes a permanent footnote.
+
+**Line 2 — stop re-declaring Vite's schema.** Keep only the settings uf
+genuinely owns: the ones with cross-tool meaning, and the ones uf *enforces*
+rather than forwards. `dev.allowedHosts` is the clearest keeper — uf refuses to
+bind a routable address without it, so it is a uf rule that happens to look like
+a Vite option. `build.budgets` is uf's own and has no Vite equivalent. Every
+remaining key whose entire effect is to be copied into Vite's config should go,
+and the `vite` passthrough is where it goes.
+
+*Closed when:* a test walks the config schema and fails on any key whose only
+consumer is `viteConfig()`.
+
+**Line 3 — make one provider actually replaceable.** `LintEngine`,
+`FlowFormatParser`, `TaskRunnerEngine` and `PackageManagerResolver` are each an
+enumeration with one variant, which is the shape of replaceability with none of
+the substance. The nearest real second variant is already half-specified: the
+formatter is supposed to route `.json`, `.jsonc`, `.css` and `.ts` to Biome, and
+today the config key exists and the routing does not.
+
+*Closed when:* at least one of those enumerations has a second variant that a
+project can select, `uf explain fmt` names whichever was selected, and the
+non-default one is exercised by a test.
+
+**Line 5 — let the adapters move apart.** `tools/release/bump-version.sh` sets
+every version in the repository to one value and every `@uniflowed/*` package
+pins its siblings exactly. That is honest for a pre-release where the packages
+are one thing shipped in pieces, and it is exactly the structure red line 5
+exists to forbid, so it has to end before the structure calcifies.
+
+*Closed when:* a sibling dependency is a range rather than an exact pin, and the
+release script can bump one package without bumping the rest.
+
+**Line 10 — keep the two owned tools replaceable.** `uf_fmt` and `uf_test` are
+uf's own implementations, and that will not change: a Flow-aware formatter and a
+Flow-aware test runner did not exist. What has to be true is that they are
+reached the same way every other provider is, so a project that wants a
+different one is configuring uf rather than fighting it.
+
+*Closed when:* `uf fmt` and `uf test` resolve their implementation through the
+same seam as the bundler and the dev server, and `uf explain` reports it.
+
+## What is not on the table
+
+Some things are worth naming as permanently out of scope, because each is a
+plausible-sounding step toward the thing this document is about.
+
+- **An `eject` command**, in any spelling. Not `uf eject`, not
+  `uf config --write`, not a "print the effective Vite config so you can copy
+  it" flag that becomes one in practice. The continuum above is the whole
+  answer, and every step on it is reversible.
+- **A uf-shaped name for a thing Flow already names.** `@noflow` is how a file
+  says it is plain JavaScript; a `check.exclude` list would have been a second
+  answer to a question with one, in a place a reader is not looking.
+- **Vendoring a provider to make it fit.** If uf needs behaviour Vite does not
+  have, the fix is upstream or a plugin, never a fork — red line 1, and the
+  reason it is first.
+
+## The failure this does not prevent
+
+CRA's third failure was not architectural. It solved the build and stopped:
+routing, data fetching and code splitting turned out to be one problem rather
+than three, CRA could not integrate them, and every production application built
+its own framework on top of the tool that existed to remove that work.
+
+No red line prevents that one. It is prevented by uf being a framework as well
+as a toolchain — the router, the RSC graph, server actions and the data layer —
+and by those being answers uf actually ships rather than integration points it
+documents. The audit above is about not becoming a bottleneck. This is about
+being worth using in the first place, and the roadmap is the only defence
+against it.
 
 ## Why this is written down
 
