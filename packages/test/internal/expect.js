@@ -12,6 +12,8 @@
 // matcher table to what came out, so `await expect(p).resolves.toBe(1)` reads
 // the way the synchronous form does.
 
+import type { SpyCall } from "./spy.js";
+import { isSpy } from "./spy.js";
 import { equals, matchesObject, render } from "./equality.js";
 
 /** Thrown when a matcher does not hold. */
@@ -40,61 +42,6 @@ type Verdict = {|
   readonly expected?: string,
   readonly received?: string,
 |};
-
-/** One recorded call to a spy. */
-export type SpyCall = {|
-  readonly args: $ReadOnlyArray<mixed>,
-  readonly returned?: mixed,
-  readonly threw?: mixed,
-|};
-
-/**
- * A spy that records its calls.
- *
- * `fn()` records and returns `undefined`; `fn(implementation)` records and
- * delegates. A throw is recorded and then re-thrown, so wrapping a function in
- * a spy never changes whether the code under test fails.
- */
-export function fn(implementation?: (...args: $ReadOnlyArray<mixed>) => mixed): $FlowFixMe {
-  const calls: Array<SpyCall> = [];
-  let current = implementation;
-
-  const spy: $FlowFixMe = (...args: $ReadOnlyArray<mixed>) => {
-    try {
-      const returned = current == null ? undefined : current(...args);
-      calls.push({ args, returned });
-      return returned;
-    } catch (thrown) {
-      calls.push({ args, threw: thrown });
-      throw thrown;
-    }
-  };
-  spy.mock = { calls };
-  spy.mockClear = () => {
-    calls.length = 0;
-  };
-  spy.mockReturnValue = (value: mixed) => {
-    current = () => value;
-    return spy;
-  };
-  spy.mockResolvedValue = (value: mixed) => {
-    current = () => Promise.resolve(value);
-    return spy;
-  };
-  spy.mockRejectedValue = (reason: mixed) => {
-    current = () => Promise.reject(reason);
-    return spy;
-  };
-  spy.mockImplementation = (next: (...args: $ReadOnlyArray<mixed>) => mixed) => {
-    current = next;
-    return spy;
-  };
-  return spy;
-}
-
-function isSpy(value: mixed): boolean {
-  return typeof value === "function" && (value as $FlowFixMe).mock != null;
-}
 
 function propertyAt(
   value: mixed,
