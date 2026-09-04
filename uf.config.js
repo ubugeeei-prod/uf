@@ -27,7 +27,15 @@ export default defineConfig({
     // `upstream/` is Meta's and React's source, vendored as submodules. It is
     // not ours to format or lint, and a diff there would be lost on the next
     // sync.
-    ignore: ["upstream", "dist", "target", "node_modules"],
+    //
+    // `crates/` is Rust. The only JavaScript under it is test fixtures — for
+    // the formatter, which needs badly formatted input, and for the checker,
+    // which needs input that fails to check. Both are exercised by the Rust
+    // tests that own them. Checking them again from the repository root would
+    // report every fixture's deliberate defect as this project's defect: 1868
+    // of the 3782 type errors `uf check` used to report here came from
+    // `crates/uf_fmt/tests/fixtures` alone.
+    ignore: ["upstream", "crates", "dist", "target", "node_modules"],
   },
 
   tasks: {

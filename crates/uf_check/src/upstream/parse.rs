@@ -1,13 +1,17 @@
 //! Parsing one file into everything the checker needs from it.
 //!
-//! The docblock is deliberately consumed here rather than stored. Upstream's
-//! `Docblock` type is private to `flow_parsing`, so the only thing an embedder
-//! can do with one is fold it into a [`Metadata`] immediately — which is also
-//! the only thing anyone wants it for.
+//! The docblock is folded into [`Metadata`] here rather than stored, because
+//! that is the only shape the checker takes it in. One bit is read out first:
+//! whether the file opted out of Flow entirely, which `Metadata` cannot carry
+//! — upstream sets `checked` from `@flow` but deliberately never clears it for
+//! `@noflow`, on the grounds that `--all` outranks the opt-out. uf runs with
+//! `all` on so that a file with no pragma is still checked, and then honours
+//! `@noflow` on top, so the two halves of that policy are decided here.
 
 use std::sync::Arc;
 
 use dupe::Dupe;
+use flow_common::docblock::FlowMode;
 use flow_common::options::Options;
 use flow_parser::PERMISSIVE_PARSE_OPTIONS;
 use flow_parser::ast;
@@ -32,12 +36,26 @@ pub(super) struct Parsed {
     pub(super) file_sig: Arc<FileSig>,
     /// Syntax errors, in source order. Non-empty means inference must not run.
     pub(super) parse_errors: Vec<(Loc, ParseError)>,
+    /// Whether the file's docblock says `@noflow`.
+    opted_out: bool,
 }
 
 impl Parsed {
     /// Whether the file parsed cleanly enough to type check.
     pub(super) fn is_parseable(&self) -> bool {
         self.parse_errors.is_empty()
+    }
+
+    /// Whether inference should run over this file.
+    ///
+    /// `@noflow` is Flow's own way for a file to say it is plain JavaScript,
+    /// and it is the only one uf offers: a config key listing paths would be a
+    /// second, uf-shaped answer to a question Flow has already answered, and
+    /// the file itself is where a reader looks. Parse errors are reported
+    /// either way — uf transforms every `.js` it owns regardless of docblock,
+    /// so a file that does not parse is broken whatever it opted out of.
+    pub(super) fn is_checked(&self) -> bool {
+        !self.opted_out
     }
 }
 
@@ -81,5 +99,6 @@ pub(super) fn parse_file(
         ast: Arc::new(ast),
         file_sig,
         parse_errors,
+        opted_out: matches!(docblock.flow(), Some(FlowMode::OptOut)),
     }
 }

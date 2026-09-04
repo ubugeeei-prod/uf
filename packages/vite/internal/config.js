@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: executed by the host that runs Vite, before any transform.
 //
 // Loading `uf.config.js`.

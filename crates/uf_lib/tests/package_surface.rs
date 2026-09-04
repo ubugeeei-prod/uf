@@ -31,23 +31,30 @@ const INTERNAL_DIR: &str = "internal";
 
 /// Packages the host runs directly, before any Flow transform exists. See the
 /// module docs for why they are plain JavaScript.
-const HOST_EXECUTED_PACKAGES: &[&str] = &["vite"];
+const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["vite"];
 
 /// Individual modules that are process entry points, and so run when they are
 /// loaded because that is what running them means. Everything else in their
-/// package is held to the ordinary bar.
-const HOST_EXECUTED_MODULES: &[&str] = &["test/worker.js"];
+/// package is held to the ordinary bar — including the Flow pragma: an entry
+/// point is still Flow, it just does something when it loads.
+const ENTRY_POINT_MODULES: &[&str] = &["test/worker.js"];
 
-/// Whether `module` (relative to `packages/`) belongs to a host-executed
-/// package.
-fn is_host_executed(module: &Utf8Path) -> bool {
-    if HOST_EXECUTED_MODULES.contains(&module.as_str()) {
-        return true;
-    }
+/// Whether `module` (relative to `packages/`) is plain JavaScript by necessity.
+///
+/// Kept apart from [`runs_at_import`] because the two exemptions answer
+/// different questions. Reaching for one predicate for both is how
+/// `packages/test/worker.js` — Flow, and a process entry point — ended up
+/// exempt from the `// @flow` pragma it in fact carries.
+fn is_plain_javascript(module: &Utf8Path) -> bool {
     module
         .iter()
         .next()
-        .is_some_and(|package| HOST_EXECUTED_PACKAGES.contains(&package))
+        .is_some_and(|package| PLAIN_JAVASCRIPT_PACKAGES.contains(&package))
+}
+
+/// Whether `module` is allowed to run something when it is imported.
+fn runs_at_import(module: &Utf8Path) -> bool {
+    ENTRY_POINT_MODULES.contains(&module.as_str()) || is_plain_javascript(module)
 }
 
 /// Keywords a top-level statement in a shipped module may begin with. Anything
@@ -530,13 +537,38 @@ fn shipped_package_contains_only_modules_and_manifests() {
 #[test]
 fn shipped_modules_start_with_the_flow_pragma() {
     for module in shipped_modules() {
-        if is_host_executed(&module) {
+        if is_plain_javascript(&module) {
             continue;
         }
         let source = read(&module);
         assert!(
             source.starts_with("// @flow\n"),
             "{module} must open with the `// @flow` pragma"
+        );
+    }
+}
+
+/// A module the host runs before any transform exists must say so in its own
+/// docblock, not only in this file's exemption list.
+///
+/// `@noflow` is Flow's declaration that a file is plain JavaScript, and it is
+/// the one uf reads: `uf check` runs inference over every `.js` in a project,
+/// because uf is Flow-first and a file with no pragma is still a file uf owns.
+/// Without this, `@uniflowed/vite` was exempt from the pragma rule here and
+/// nowhere else — so `uf check` type-checked it anyway and reported 258 errors
+/// against source that is plain JavaScript on purpose.
+#[test]
+fn plain_javascript_modules_declare_themselves_plain_javascript() {
+    for module in shipped_modules() {
+        if !is_plain_javascript(&module) {
+            continue;
+        }
+        let source = read(&module);
+        assert!(
+            source.starts_with("// @noflow\n"),
+            "{module} is exempt from the `// @flow` pragma, so it must open with \
+             `// @noflow` — the exemption has to be in the file the checker reads, \
+             not only in this test"
         );
     }
 }
@@ -561,7 +593,7 @@ fn shipped_modules_never_use_star_re_exports() {
 #[test]
 fn shipped_modules_have_no_import_time_side_effects() {
     for module in shipped_modules() {
-        if is_host_executed(&module) {
+        if runs_at_import(&module) {
             continue;
         }
         let code = code_only(&read(&module));

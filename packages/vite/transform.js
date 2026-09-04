@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: executed by the host that runs Vite, before any transform
 // exists — this module is how the transform is reached, so it cannot be Flow.
 //

@@ -1,3 +1,5 @@
+// @noflow
+//
 // Plain JavaScript: the host runs this file directly.
 //
 // The driver `uf dev`, `uf build` and `uf preview` spawn.

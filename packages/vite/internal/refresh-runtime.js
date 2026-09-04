@@ -1,3 +1,5 @@
+// @noflow
+//
 /* global window */
 /* eslint-disable eqeqeq, prefer-const, @typescript-eslint/no-empty-function */
 

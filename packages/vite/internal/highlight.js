@@ -1,3 +1,5 @@
+// @noflow
+//
 // Syntax highlighting for fenced code, at build time.
 //
 // uf's claim is that MDX works without a plugin list, and a documentation page
