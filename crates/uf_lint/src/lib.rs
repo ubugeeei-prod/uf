@@ -27,7 +27,6 @@ mod runner;
 mod scan;
 mod suppression;
 
-use rayon::prelude::*;
 use thiserror::Error;
 use uf_config::{RuleLevel, UniflowedConfig};
 
@@ -147,10 +146,7 @@ pub fn lint_sources(
     files: &[SourceFile],
     config: &UniflowedConfig,
 ) -> Result<LintReport, LintError> {
-    let per_file = files
-        .par_iter()
-        .map(|file| lint_file(file, config))
-        .collect::<Result<Vec<_>, _>>()?;
+    let per_file = uf_infra::parallel::map(files, |file| lint_file(file, config))?;
 
     let mut diagnostics = per_file.into_iter().flatten().collect::<Vec<_>>();
     sort_diagnostics(&mut diagnostics);

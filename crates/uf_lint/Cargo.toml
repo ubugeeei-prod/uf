@@ -15,7 +15,6 @@ uf_infra = { path = "../uf_infra" }
 uf_react_compiler = { path = "../uf_react_compiler" }
 uf_router = { path = "../uf_router" }
 phf.workspace = true
-rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
