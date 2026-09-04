@@ -67,6 +67,19 @@ impl Ui {
         write_all(&mut io::stderr().lock(), &self.buffer);
     }
 
+    /// Write text to stdout exactly as given, with no styling and no framing.
+    ///
+    /// The third kind of output, and genuinely distinct from the other two: a
+    /// rendered block is for a person, JSON is for a program, and this is for
+    /// another *language*. `uf completion bash` is piped into `eval` and
+    /// `uf __complete` into a completion list, so a banner, a colour, or a
+    /// trailing status line is a syntax error in somebody's shell — but so is
+    /// the silence [`Ui::render`] would give it, since both commands are in
+    /// JSON mode precisely because they own stdout.
+    pub(crate) fn plain(&mut self, text: &str) {
+        write_all(&mut io::stdout().lock(), text);
+    }
+
     /// Emit machine-readable JSON on stdout with no styling of any kind.
     pub(crate) fn json(&mut self, value: &serde_json::Value) -> serde_json::Result<()> {
         let mut rendered = serde_json::to_string_pretty(value)?;

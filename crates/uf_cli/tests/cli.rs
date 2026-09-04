@@ -117,6 +117,155 @@ fn alias_binaries_are_documented_as_the_commands_they_expand_to() {
     }
 }
 
+/// Completion output is consumed by a shell, so it must be nothing but the
+/// script: no banner, no colour, no status line.
+#[test]
+fn a_completion_script_is_the_script_and_nothing_else() {
+    for shell in ["bash", "zsh", "fish", "elvish", "powershell"] {
+        let output = uf().args(["completion", shell]).output().unwrap();
+
+        assert!(
+            output.status.success(),
+            "{shell}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.starts_with("# uf completion for"),
+            "{shell}: {stdout:?}"
+        );
+        assert!(
+            !stdout.contains('\u{1b}'),
+            "{shell}: a completion script must carry no escape sequences"
+        );
+        assert!(
+            stdout.contains("uf __complete"),
+            "{shell}: the script must ask uf for candidates"
+        );
+    }
+}
+
+/// The reason completion is computed by the binary rather than generated: a
+/// task added to `uf.config.js` is completable immediately.
+#[test]
+fn completion_offers_the_projects_own_task_names() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: {
+                "smoke:test": { command: "true" },
+                "smoke:build": { command: "true" },
+                unrelated: { command: "true" },
+              },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["__complete", "--", "run", "smoke"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut lines = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    lines.sort();
+
+    assert_eq!(lines, vec!["smoke:build", "smoke:test"]);
+}
+
+/// Completion in a directory with no project must be silent, not an error: an
+/// error here prints into the middle of somebody's command line.
+#[test]
+fn completion_outside_a_project_says_nothing_rather_than_failing() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["__complete", "--", "run", ""])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty(), "{:?}", output.stdout);
+}
+
+/// A mistyped task name should name the task that was meant.
+#[test]
+fn an_unknown_task_suggests_the_one_that_was_meant() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: { build: { command: "true" }, check: { command: "true" } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["run", "biuld"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("did you mean"), "{stderr}");
+    assert!(stderr.contains("build"), "{stderr}");
+    assert!(
+        stderr.contains("check"),
+        "a short list of tasks should be named in full: {stderr}"
+    );
+}
+
+/// `uf run` with no task name lists what the project defines.
+#[test]
+fn run_without_a_task_lists_them() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              tasks: { build: { command: "cargo build" } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("run")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("build"), "{stdout}");
+    assert!(stdout.contains("cargo build"), "{stdout}");
+    assert!(stdout.contains("uf run <task>"), "{stdout}");
+}
+
 #[test]
 fn alias_binaries_print_the_root_version() {
     for name in ["ufr", "ufx"] {

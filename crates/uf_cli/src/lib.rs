@@ -7,6 +7,7 @@
 mod brand;
 mod cli;
 mod commands;
+mod suggest;
 mod support;
 mod ui;
 
@@ -80,6 +81,11 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
     match cli.command {
         Commands::Build { size_report } => commands::build::build(&cwd, ui, size_report),
         Commands::Check { json } => commands::check::check(&cwd, ui, json),
+        Commands::Completion { shell } => {
+            commands::completion::completion(ui, shell);
+            Ok(())
+        }
+        Commands::Complete { words } => commands::completion::complete(&cwd, ui, &words),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
         Commands::Dev { host, port } => {
             commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port })
@@ -99,7 +105,10 @@ fn run(cli: Cli, ui: &mut Ui) -> Result<()> {
         Commands::Prepare => commands::release::prepare(&cwd, ui),
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
-        Commands::Run { script, args } => commands::task::run_task(&cwd, &script, &args),
+        Commands::Run { script, args } => match script {
+            Some(script) => commands::task::run_task(&cwd, &script, &args),
+            None => commands::task::list_tasks(&cwd, ui),
+        },
         Commands::Test {
             list,
             watch,
