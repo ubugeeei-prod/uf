@@ -18,6 +18,8 @@
 // * `toEqual` ignores `undefined` properties and `toStrictEqual` does not,
 //   which is the one place the two matchers differ besides prototypes.
 
+import { isAsymmetric, matchesAsymmetric } from "./asymmetric.js";
+
 /** How strictly two values are compared. */
 export type Strictness = "loose" | "strict";
 
@@ -119,6 +121,16 @@ export function equals(
   if (Object.is(left, right)) {
     return true;
   }
+  // A matcher stands in for a value rather than being one, and either side may
+  // be the expectation depending on which way round the caller passed them.
+  // Asking here rather than at the top level is what makes a matcher nested six
+  // levels down work for the same reason a top-level one does.
+  if (isAsymmetric(right)) {
+    return matchesAsymmetric(right, left);
+  }
+  if (isAsymmetric(left)) {
+    return matchesAsymmetric(left, right);
+  }
   if (!isObject(left) || !isObject(right)) {
     return false;
   }
@@ -204,6 +216,9 @@ export function equals(
  * fine, missing or different ones are not.
  */
 export function matchesObject(received: mixed, expected: mixed, seen: Array<Pair> = []): boolean {
+  if (isAsymmetric(expected)) {
+    return matchesAsymmetric(expected, received);
+  }
   if (!isObject(expected) || !isObject(received)) {
     return equals(received, expected, seen);
   }
