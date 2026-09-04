@@ -97,11 +97,18 @@ Vite's options one at a time — `host`, `port`, `strictPort`, `allowedHosts`,
 for a setting that already has one, and a second name is a thing to keep in
 sync.
 
-**Red line 3 is aspirational.** `LintEngine`, `FlowFormatParser`,
-`TaskRunnerEngine` and `PackageManagerResolver` are enumerations with exactly
-one variant each. The shape of replaceability exists; nothing is actually
-replaceable. Until a second provider exists for at least one of them, this
-line is a statement of intent.
+**Red line 3 is met for one provider.** `fmt.nonFlow.formatter` selects who
+formats the JSON, CSS and TypeScript uf's Flow printer has no business touching:
+Biome, Prettier, or nobody. uf runs the binary the project already has rather
+than linking one in — a project can upgrade its formatter without waiting for
+uf, which is the point — and translates uf's own settings into whichever
+provider's vocabulary, so `fmt.indentWidth` means the same thing on both sides
+of the seam. `uf explain fmt` names the provider and the exact command.
+
+The rest are still aspirational. `LintEngine`, `FlowFormatParser`,
+`TaskRunnerEngine` and `PackageManagerResolver` are enumerations with one
+variant each: the shape of replaceability with none of the substance, which is
+what `NonFlowFormatter` was until something read it.
 
 **Red line 5 is at risk.** `tools/release/bump-version.sh` sets every version
 in the repository to one value, and every `@uniflowed/*` package pins its

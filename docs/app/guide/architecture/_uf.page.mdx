@@ -113,9 +113,13 @@ stranded people. What remains: `dev` and `build` still re-declare Vite's options
 one at a time, and every one of those is a second name for a setting that
 already has one.
 
-**Replaceability is aspirational (3).** The lint engine, the formatter's
-parser, the task runner and the package resolver are each an enumeration with
-exactly one variant. The shape exists; nothing is actually replaceable yet.
+**Replaceability, met for one provider (3).** `fmt.nonFlow.formatter` picks who
+formats the JSON, CSS and TypeScript uf's Flow printer must not touch — Biome,
+Prettier, or nobody — and uf runs the binary the project already has rather than
+linking one in, translating its own settings into that provider's vocabulary.
+`uf explain fmt` names the provider and the command. The lint engine, the
+formatter's parser, the task runner and the package resolver are still
+one-variant enumerations.
 
 **Lockstep versions (5).** Every `@uniflowed/*` package pins its siblings
 exactly and one script sets them all. That is right while the packages are one
@@ -141,7 +145,7 @@ becomes a permanent footnote. Each one has an exit criterion:
 | Line | Closed when |
 | --- | --- |
 | 2 — Vite's schema | a test fails on any config key whose only consumer is `viteConfig()` |
-| 3 — replaceability | one provider enumeration has a second variant a project can select, and `uf explain` names it |
+| 3 — replaceability | ~~done for `fmt.nonFlow.formatter`~~; the lint engine, formatter parser, task runner and package resolver still have one variant each |
 | 5 — lockstep versions | a sibling dependency is a range, and one package can be released without the rest |
 | 10 — the two owned tools | `uf fmt` and `uf test` resolve through the same seam as the bundler |
 

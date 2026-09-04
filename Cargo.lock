@@ -3398,10 +3398,13 @@ dependencies = [
 name = "uf_fmt"
 version = "0.0.0-alpha.2"
 dependencies = [
+ "camino",
+ "compact_str",
  "criterion",
  "memchr",
  "serde_json",
  "similar-asserts",
+ "tempfile",
  "thiserror",
  "uf_config",
  "uf_flow",

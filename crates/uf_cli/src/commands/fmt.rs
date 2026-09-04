@@ -18,7 +18,16 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     // Discovery returns `package.json` too, because the linter reads it. The
     // formatter must not touch it: it is a Flow formatter, and running it
     // over JSON inserts a statement terminator and leaves the file unparseable.
-    let files = collect_source_files(&resolved.root, &resolved.config)?
+    let discovered = collect_source_files(&resolved.root, &resolved.config)?;
+    // Two piles, because they go to two different formatters. uf prints Flow
+    // from the official parser's syntax tree; JSON, CSS and TypeScript go to a
+    // formatter that understands them, which uf runs rather than writes.
+    let non_flow = discovered
+        .iter()
+        .filter(|file| file.kind.is_non_flow_formattable())
+        .map(|file| file.relative_path.clone())
+        .collect::<Vec<_>>();
+    let files = discovered
         .into_iter()
         .filter(|file| file.kind.is_formattable())
         .collect::<Vec<_>>();
@@ -47,9 +56,33 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         }
     }
 
+    // The other formatter, over the other pile. A failure here is reported
+    // beside uf's own rather than raised: a project whose Biome is missing
+    // should still learn what uf's formatter found.
+    let formatter = resolved.config.fmt.non_flow.formatter;
+    let formatter_name = formatter.as_str();
+    let mut non_flow_unformatted = false;
+    // Kept apart from `skipped`, which is "the parser refused this file". A
+    // formatter that is not installed is a different problem with a different
+    // fix, and folding the two together reported a missing binary as an
+    // unparseable file.
+    let mut non_flow_failure = None;
+    match uf_fmt::non_flow::run(
+        formatter,
+        &resolved.root,
+        &non_flow,
+        check,
+        &resolved.config.fmt,
+    ) {
+        Ok(formatted) => non_flow_unformatted = !formatted,
+        Err(error) => non_flow_failure = Some(error.to_string()),
+    }
+
     let paths = changed.iter().map(String::as_str).collect::<Vec<_>>();
     let skipped_paths = skipped.iter().map(String::as_str).collect::<Vec<_>>();
-    let failing = (check && !changed.is_empty()) || !skipped.is_empty();
+    let failing = (check && (!changed.is_empty() || non_flow_unformatted))
+        || !skipped.is_empty()
+        || non_flow_failure.is_some();
     let summary = if check {
         format!(
             "{} of {} {} formatting",
@@ -64,7 +97,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     ui.render(|renderer, out| {
         renderer.banner(out, "uf fmt", None);
         renderer.blank(out);
-        if paths.is_empty() && skipped_paths.is_empty() {
+        if paths.is_empty()
+            && skipped_paths.is_empty()
+            && non_flow_failure.is_none()
+            && !non_flow_unformatted
+        {
             renderer.status(out, Status::Success, "every file is already formatted");
         } else {
             if !paths.is_empty() {
@@ -83,6 +120,21 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
                 renderer.bullet_list(out, 2, &skipped_paths);
                 renderer.blank(out);
             }
+            if let Some(failure) = non_flow_failure.as_deref() {
+                renderer.status(out, Status::Warn, failure);
+                renderer.blank(out);
+            }
+            if non_flow_unformatted {
+                renderer.status(
+                    out,
+                    Status::Warn,
+                    &format!(
+                        "{formatter_name} reports that some non-Flow files need formatting; \
+                         run `uf fmt` to fix them"
+                    ),
+                );
+                renderer.blank(out);
+            }
             renderer.status(
                 out,
                 if failing {
@@ -97,6 +149,9 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
 
     if !skipped.is_empty() {
         bail!("{} could not be parsed", plural(skipped.len(), "file"));
+    }
+    if let Some(failure) = non_flow_failure {
+        bail!("{failure}");
     }
     if failing {
         bail!("{} need formatting", plural(changed.len(), "file"));

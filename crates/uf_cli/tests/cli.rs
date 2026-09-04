@@ -400,6 +400,121 @@ fn a_hash_outside_the_subcommand_is_left_alone() {
     assert_eq!(String::from_utf8(output.stdout).unwrap(), "hashed");
 }
 
+/// Red line 3, as a test: a built-in provider a project can actually replace.
+///
+/// `NonFlowFormatter` had one variant and nothing read it — "the shape of
+/// replaceability with none of the substance", in the architecture record's own
+/// words. `uf explain fmt` naming whichever provider was selected, and the
+/// exact command it will run, is the exit criterion that record set.
+#[test]
+fn the_non_flow_formatter_is_a_provider_a_project_can_replace() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let selected = |formatter: &str| {
+        fs::write(
+            dir.path().join("uf.config.js"),
+            format!(
+                "export default defineConfig({{ fmt: {{ nonFlow: {{ formatter: \"{formatter}\" }} }} }});\n"
+            ),
+        )
+        .unwrap();
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .args(["explain", "fmt"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+
+    let biome = selected("biome");
+    assert!(biome.contains("biome"), "{biome}");
+    assert!(
+        biome.contains("--indent-width"),
+        "uf's settings must reach it: {biome}"
+    );
+
+    let prettier = selected("prettier");
+    assert!(prettier.contains("prettier"), "{prettier}");
+    assert!(prettier.contains("--tab-width"), "{prettier}");
+    assert!(
+        !prettier.contains("biome"),
+        "selecting a provider must actually select it: {prettier}"
+    );
+
+    let none = selected("none");
+    assert!(none.contains("left alone"), "{none}");
+}
+
+/// A project with no JSON must not need a formatter installed at all.
+#[test]
+fn formatting_a_project_with_no_non_flow_files_needs_no_formatter() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default {};
+",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("app.js"),
+        "// @flow
+export const a: number = 1;
+",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["fmt", "--check"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "a project with nothing for Biome to do must not need Biome: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Turning the provider off is how a project says "leave them alone", and it
+/// must work without the binary being present.
+#[test]
+fn selecting_no_formatter_leaves_non_flow_files_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default defineConfig({ fmt: { nonFlow: { formatter: \"none\" } } });\n",
+    )
+    .unwrap();
+    let ugly = "{\"a\":1,   \"b\":2}";
+    fs::write(dir.path().join("data.json"), ugly).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("fmt")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("data.json")).unwrap(),
+        ugly,
+        "`none` must leave the file exactly as it was"
+    );
+}
+
 #[test]
 fn alias_binaries_print_the_root_version() {
     for name in ["ufr", "ufx"] {

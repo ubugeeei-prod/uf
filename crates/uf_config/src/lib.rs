@@ -263,11 +263,38 @@ impl Default for NonFlowFormatConfig {
     }
 }
 
+/// Who formats the files uf's Flow printer has no business touching.
+///
+/// `uf fmt` prints Flow from the official Flow parser's syntax tree; a project
+/// also holds JSON, CSS and TypeScript, and a Flow printer over any of them
+/// produces a file that no longer parses. uf runs a formatter that understands
+/// them rather than writing one, and which formatter is the project's choice.
+///
+/// A real choice, not a shape: this enumeration had one variant and nothing
+/// read it, which is what red line 3 warns about — "the shape of
+/// replaceability with none of the substance". The default is a convenience.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NonFlowFormatter {
+    /// Biome, which is fast and formats all three.
     #[default]
     Biome,
+    /// Prettier, which more projects already have.
+    Prettier,
+    /// Nobody. Non-Flow files are left exactly as they are.
+    None,
+}
+
+impl NonFlowFormatter {
+    /// The name to print when saying who will format these files.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Biome => "biome",
+            Self::Prettier => "prettier",
+            Self::None => "none",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

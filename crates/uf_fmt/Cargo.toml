@@ -13,10 +13,13 @@ uf_config = { path = "../uf_config" }
 uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
 memchr.workspace = true
+camino.workspace = true
+compact_str.workspace = true
 thiserror.workspace = true
 unicode-width.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 criterion.workspace = true
 serde_json.workspace = true
 similar-asserts.workspace = true
