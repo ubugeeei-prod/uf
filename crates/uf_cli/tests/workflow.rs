@@ -252,7 +252,7 @@ fn use_reports_xdg_runtime_switch_plan() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("uf use  uf@0.1.0"));
+    assert!(stdout.contains("uf use \u{b7} uf@0.1.0"), "{stdout}");
     assert!(stdout.contains("auto switch  enabled"));
     assert!(stdout.contains(".local/bin/uf"));
     assert!(stdout.contains("active-runtime.json"));
