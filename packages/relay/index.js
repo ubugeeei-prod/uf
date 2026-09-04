@@ -1,32 +1,97 @@
 // @flow
 //
-// `@uniflowed/relay`.
+// `@uniflowed/relay`: Relay, re-exported by name.
+//
+// This is the real `react-relay`, not a declaration of it — the same shape
+// `@uniflowed/react` has for `react`. uf owns orchestration, not
+// implementation: Relay is a store, a normaliser, a compiler and a decade of
+// work on cache consistency, and a uf-shaped reimplementation of it would be a
+// worse Relay that uf then had to keep up to date.
+//
+// What uf adds is the rest of the toolchain around it. `uf check` type checks
+// `graphql` tagged templates against the artifacts Relay's compiler generates,
+// `uf transform` rewrites those tags to the artifact they name, and the
+// generated files are part of the build rather than a step somebody has to
+// remember. The library is Meta's; the integration is uf's.
+//
+// Naming every export rather than `export *` keeps the surface explicit — a
+// name not listed here is not part of what uf documents — and lets a bundler
+// drop the ones an application never touches. The Flow types come from Relay's
+// own `.js.flow` files, so `import type { Environment } from
+// "@uniflowed/relay"` is exactly Relay's own type.
 
-import type { NativeHandle } from "@uniflowed/core/native";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+import * as ReactRelay from "react-relay";
 
-const MODULE = "@uniflowed/core/relay";
+export type {
+  EntryPoint,
+  EntryPointComponent,
+  EntryPointProps,
+  GraphQLTaggedNode,
+  PreloadedQuery,
+  RelayProp,
+  RelayPaginationProp,
+  RelayRefetchProp,
+} from "react-relay";
 
-export opaque type GraphQLTaggedNode = NativeHandle<"@uniflowed/core/relay#GraphQLTaggedNode">;
+export {
+  // The environment, and getting at it.
+  RelayEnvironmentProvider,
+  ReactRelayContext,
+  useRelayEnvironment,
 
-export function graphql(source: string): GraphQLTaggedNode {
-  return nativeRuntimeRequired(MODULE, "graphql");
-}
+  // Reading data. These are the hooks a modern Relay application is written
+  // in; the container factories below are the older API and are here because
+  // an application being migrated still has them.
+  useClientQuery,
+  useFragment,
+  useLazyLoadQuery,
+  usePaginationFragment,
+  usePreloadedQuery,
+  usePrefetchableForwardPaginationFragment,
+  useRefetchableFragment,
+  readInlineData,
 
-export function useFragment<T>(fragment: GraphQLTaggedNode, key: mixed): T {
-  return nativeRuntimeRequired(MODULE, "useFragment");
-}
+  // Loading ahead of render, which is how a router avoids a waterfall.
+  loadQuery,
+  loadEntryPoint,
+  useEntryPointLoader,
+  useQueryLoader,
+  EntryPointContainer,
 
-export function useLazyLoadQuery<T>(
-  query: GraphQLTaggedNode,
-  variables: { readonly [string]: mixed },
-): T {
-  return nativeRuntimeRequired(MODULE, "useLazyLoadQuery");
-}
+  // Writing.
+  commitMutation,
+  commitLocalUpdate,
+  applyOptimisticMutation,
+  useMutation,
+  MutationTypes,
+  RangeOperations,
 
-export function commitMutation<T>(config: {
-  readonly mutation: GraphQLTaggedNode,
-  readonly variables: { readonly [string]: mixed },
-}): Promise<T> {
-  return nativeRuntimeRequired(MODULE, "commitMutation");
-}
+  // Subscriptions.
+  requestSubscription,
+  useSubscription,
+  useSubscribeToInvalidationState,
+
+  // Imperative fetching, outside a component.
+  fetchQuery,
+
+  // The tag. `uf transform` rewrites it to the artifact Relay's compiler
+  // generated, so this binding is what a module imports and never what runs.
+  graphql,
+
+  // Connections.
+  ConnectionHandler,
+
+  // Profiling.
+  ProfilerContext,
+
+  // The container API, for applications that have not finished moving to
+  // hooks. Not recommended for new code, and not removed: uf does not get to
+  // decide when somebody else's migration is over.
+  createFragmentContainer,
+  createPaginationContainer,
+  createRefetchContainer,
+  QueryRenderer,
+  LocalQueryRenderer,
+} from "react-relay";
+
+export { ReactRelay };
