@@ -42,6 +42,8 @@ export { fn, spyOn } from "./internal/spy.js";
  */
 export { UnsupportedError, vi } from "./internal/vi.js";
 
+export { RunawayTimersError } from "./internal/timers.js";
+
 export { DEFAULT_TIMEOUT_MS, NAME_SEPARATOR } from "./internal/run.js";
 
 export { equals, render } from "./internal/equality.js";

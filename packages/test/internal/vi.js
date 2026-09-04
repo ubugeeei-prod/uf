@@ -14,6 +14,7 @@
 // a binding that silently did nothing would be worse than not having it.
 
 import { clearAllMocks, fn, resetAllMocks, restoreAllMocks, spyOn } from "./spy.js";
+import * as timers from "./timers.js";
 
 /** Environment variables `stubEnv` replaced, and what they were. */
 const stubbedEnv: Map<string, string | void> = new Map();
@@ -213,6 +214,20 @@ export const vi: $FlowFixMe = Object.freeze({
 
   waitFor,
   waitUntil,
+
+  // The clock a test controls. A test about "after five minutes the session
+  // expires" should not take five minutes.
+  useFakeTimers: timers.useFakeTimers,
+  useRealTimers: timers.useRealTimers,
+  isFakeTimers: timers.isFaked,
+  advanceTimersByTime: timers.advanceTimersByTime,
+  advanceTimersByTimeAsync: timers.advanceTimersByTimeAsync,
+  advanceTimersToNextTimer: timers.advanceTimersToNextTimer,
+  runAllTimers: timers.runAllTimers,
+  runOnlyPendingTimers: timers.runOnlyPendingTimers,
+  getTimerCount: timers.getTimerCount,
+  setSystemTime: timers.setSystemTime,
+  getMockedSystemTime: timers.getMockedSystemTime,
 
   // Module interception. Absent rather than faked; see `NEEDS_LOADER`.
   mock: unsupported("mock", NEEDS_LOADER),
