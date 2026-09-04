@@ -175,7 +175,7 @@ printf 'evil\n' > "${evil}/VERSION"
 if run_installer evil UF_VERSION=evil >"${work}/evil.log" 2>&1; then
   fail "an archive with escaping members was installed"
 fi
-grep -q "paths outside the archive root" "${work}/evil.log" \
+grep -q "writes outside its own directory" "${work}/evil.log" \
   || fail "escaping archive was rejected, but not by the path guard:
 $(cat "${work}/evil.log")"
 [ -e "${work}/escaped" ] && fail "evil: a member escaped the extraction root"

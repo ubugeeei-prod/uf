@@ -32,6 +32,109 @@ uf_paint() {
   fi
 }
 
+# Unicode marks, unless the locale says the terminal cannot render them.
+#
+# Mirrors `detect_glyphs` in `crates/uf_term/src/capability.rs`, down to
+# treating an unset locale as UTF-8: it is the common case on macOS and in CI
+# images that render it correctly, so it is not a downgrade signal. The marks
+# themselves are `Status::glyph`'s — the installer and the binary it installs
+# should not disagree about what a tick looks like.
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  "") uf_tick="✓" uf_cross="✗" ;;
+  *[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) uf_tick="✓" uf_cross="✗" ;;
+  *) uf_tick="+" uf_cross="x" ;;
+esac
+if [ "${TERM:-}" = "dumb" ] || [ -n "${NO_COLOR:-}" ]; then
+  uf_tick="+"
+  uf_cross="x"
+fi
+
+# `$HOME` written as `~`, because a home directory is most of the width of an
+# install path and none of the information in it.
+#
+# For prose only. A `~` inside the double quotes of an `export PATH=…` does not
+# expand — the shell only expands it unquoted, and at the start of a word — so
+# a line printed for the reader to paste uses `uf_home_var` instead.
+uf_tilde() {
+  case "$1" in
+    "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# The same path with a literal `$HOME`, for a line the reader will paste.
+#
+# Written into single quotes here so this script does not expand it: the point
+# is that the *reader's* shell does, in whatever profile they paste it into.
+uf_home_var() {
+  case "$1" in
+    "$HOME"/*) printf '$HOME%s' "${1#"$HOME"}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# `label   value`, with the label dim and the column fixed.
+#
+# The width is 9 because `version` is the longest label here and a fixed column
+# is what lets the eye run down the values rather than hunting for where each
+# one starts.
+uf_field() {
+  if [ -z "$uf_colour" ]; then
+    printf '  %-9s%s\n' "$1" "$2" >&2
+  else
+    printf '  \033[2m%-9s\033[0m%s\n' "$1" "$2" >&2
+  fi
+}
+
+# `✓ verb      what`, one line per thing that happened.
+#
+# Past tense, and the verb first: the reader is skimming for what was done, and
+# every line beginning with the same prefix — `uf installer:`, as these lines
+# used to — puts fourteen identical characters in front of the only part that
+# differs.
+uf_step() {
+  if [ -z "$uf_colour" ]; then
+    printf '  %s %-11s%s\n' "$uf_tick" "$1" "$2" >&2
+  else
+    printf '  \033[38;2;53;214;246m%s\033[0m \033[2m%-11s\033[0m%s\n' \
+      "$uf_tick" "$1" "$2" >&2
+  fi
+}
+
+# A note that is not a step and not a failure.
+uf_note() {
+  if [ -z "$uf_colour" ]; then
+    printf '  %s\n' "$1" >&2
+  else
+    printf '  \033[2m%s\033[0m\n' "$1" >&2
+  fi
+}
+
+# Say what went wrong, say what to do about it, and stop.
+#
+# Everything after the first argument is a hint line, and that is why this is
+# one function rather than a pair of `echo`s: an installer that reports a
+# failure without saying what would fix it has told the reader only that they
+# are stuck.
+uf_fail() {
+  message="$1"
+  shift
+  printf '\n' >&2
+  if [ -z "$uf_colour" ]; then
+    printf '  %s %s\n' "$uf_cross" "$message" >&2
+    for hint in "$@"; do
+      [ -n "$hint" ] && printf '    %s\n' "$hint" >&2
+    done
+  else
+    printf '  \033[38;2;255;93;93m%s\033[0m %s\n' "$uf_cross" "$message" >&2
+    for hint in "$@"; do
+      [ -n "$hint" ] && printf '    \033[2m%s\033[0m\n' "$hint" >&2
+    done
+  fi
+  printf '\n' >&2
+  exit 1
+}
+
 # Which inline-image protocol this terminal speaks, if any.
 #
 # There is no way to ask it. Both protocols have a query form, but the answer
@@ -335,14 +438,9 @@ uf_brand() {
   fi
 }
 
-uf_step() {
-  printf 'uf installer: %s\n' "$1" >&2
-}
-
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "uf installer: missing required command: $1" >&2
-    exit 1
+    uf_fail "$1 is not installed" "the installer needs curl, tar, mktemp and uname"
   fi
 }
 
@@ -356,23 +454,16 @@ uf_brand
 case "$(uname -s)" in
   Darwin) os="apple-darwin" ;;
   Linux) os="unknown-linux-gnu" ;;
-  *)
-    echo "uf installer: unsupported OS: $(uname -s)" >&2
-    exit 1
-    ;;
+  *) uf_fail "no build for $(uname -s)" "uf ships macOS and Linux binaries" ;;
 esac
 
 case "$(uname -m)" in
   arm64 | aarch64) arch="aarch64" ;;
   x86_64 | amd64) arch="x86_64" ;;
-  *)
-    echo "uf installer: unsupported architecture: $(uname -m)" >&2
-    exit 1
-    ;;
+  *) uf_fail "no build for $(uname -m)" "uf ships aarch64 and x86_64 binaries" ;;
 esac
 
 target="${arch}-${os}"
-uf_step "target ${target}"
 
 case "$requested_version" in
   uf@*) requested_version="${requested_version#uf@}" ;;
@@ -403,9 +494,8 @@ if [ -n "$release_base" ]; then
   if [ "$requested_version" = "latest" ]; then
     if ! version="$(curl -fsSL "${channel_url}/VERSION" | tr -d '[:space:]')" \
       || [ -z "$version" ]; then
-      echo "uf installer: could not resolve the latest version from ${channel_url}/VERSION" >&2
-      echo "uf installer: set UF_VERSION to install a specific release" >&2
-      exit 1
+      uf_fail "no version at ${channel_url}/VERSION" \
+        "set UF_VERSION to install a specific release"
     fi
   fi
 elif [ "$requested_version" = "latest" ]; then
@@ -414,20 +504,26 @@ elif [ "$requested_version" = "latest" ]; then
     && [ -n "$version" ]; then
     channel_url="$stable_url"
   else
-    uf_step "no stable release yet, taking the newest prerelease"
+    prerelease="yes"
     tag="$(newest_prerelease_tag)"
     version="${tag#uf@}"
     if [ -z "$version" ]; then
-      echo "uf installer: could not resolve a release for ${repo}" >&2
-      echo "uf installer: set UF_VERSION to install a specific release" >&2
-      exit 1
+      uf_fail "no release found for ${repo}" \
+        "set UF_VERSION to install a specific release"
     fi
     channel_url="https://github.com/${repo}/releases/download/uf@${version}"
   fi
 else
   channel_url="https://github.com/${repo}/releases/download/uf@${requested_version}"
 fi
-uf_step "version ${version}"
+
+uf_field "target" "$target"
+if [ -n "${prerelease:-}" ]; then
+  uf_field "version" "${version}  (prerelease — no stable release yet)"
+else
+  uf_field "version" "$version"
+fi
+printf '\n' >&2
 
 archive="uf-${target}.tar.gz"
 archive_url="${channel_url}/${archive}"
@@ -439,9 +535,21 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-uf_step "downloading ${archive}"
-curl -fsSL "$archive_url" -o "${tmp_dir}/${archive}"
-curl -fsSL "$checksum_url" -o "${tmp_dir}/${archive}.sha256"
+# Fetch, keeping curl's own diagnosis for the hint line rather than letting it
+# print ahead of ours. "404" and "could not resolve host" are different problems
+# with different fixes, and a formatted failure that swallowed the difference
+# would be prettier and less useful.
+uf_fetch() {
+  if ! curl -fsSL "$1" -o "$2" 2>"${tmp_dir}/curl.err"; then
+    uf_fail "$3" "$(tr -d '\r' <"${tmp_dir}/curl.err" | tail -1)" "$1"
+  fi
+}
+
+uf_fetch "$archive_url" "${tmp_dir}/${archive}" \
+  "could not download ${archive}"
+uf_fetch "$checksum_url" "${tmp_dir}/${archive}.sha256" \
+  "could not download the checksum for ${archive}"
+uf_step "downloaded" "$archive"
 
 expected="$(awk '{print $1}' "${tmp_dir}/${archive}.sha256")"
 if command -v sha256sum >/dev/null 2>&1; then
@@ -449,44 +557,64 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
   actual="$(shasum -a 256 "${tmp_dir}/${archive}" | awk '{print $1}')"
 else
-  echo "uf installer: missing sha256sum or shasum" >&2
-  exit 1
+  uf_fail "no sha256sum or shasum" "one of them is needed to verify the download"
 fi
 
 if [ "$actual" != "$expected" ]; then
-  echo "uf installer: checksum mismatch for ${archive}" >&2
-  echo "expected: $expected" >&2
-  echo "actual:   $actual" >&2
-  exit 1
+  uf_fail "checksum mismatch for ${archive}" \
+    "expected ${expected}, got ${actual} — do not run this binary"
 fi
-uf_step "checksum verified"
 
 # Refuse an archive that would write outside the runtime directory. The
 # checksum only proves the archive matches what the same host advertised, so it
 # does not bound where the members land.
 if tar -tzf "${tmp_dir}/${archive}" | grep -Eq '^/|(^|/)\.\.(/|$)'; then
-  echo "uf installer: ${archive} contains paths outside the archive root" >&2
-  exit 1
+  uf_fail "${archive} writes outside its own directory" \
+    "the archive is not one uf published — do not unpack it"
 fi
+# The first twelve characters, the way git shows a commit. The full digest is
+# 64 characters of noise to a reader who cannot check it by eye, and it pushed
+# every other line's value out of the column.
+uf_step "verified" "sha256 $(printf '%.12s' "$expected")"
 
 runtime_dir="${install_root}/runtimes/uf@${version}"
 mkdir -p "$runtime_dir" "$bin_dir"
 tar -xzf "${tmp_dir}/${archive}" -C "$runtime_dir"
-uf_step "installed runtime ${runtime_dir}"
+uf_step "unpacked" "$(uf_tilde "$runtime_dir")"
 
 for name in uf ufr ufx; do
   if [ ! -x "${runtime_dir}/bin/${name}" ]; then
-    echo "uf installer: archive did not contain bin/${name}" >&2
-    exit 1
+    uf_fail "the archive has no bin/${name}" \
+      "this build is incomplete — please report it"
   fi
   ln -sfn "${runtime_dir}/bin/${name}" "${bin_dir}/${name}"
 done
-uf_step "linked uf, ufr, ufx into ${bin_dir}"
+uf_step "linked" "uf, ufr, ufx into $(uf_tilde "$bin_dir")"
 
-echo "uf ${version} installed to ${runtime_dir}" >&2
+printf '\n' >&2
+if [ -z "$uf_colour" ]; then
+  printf '  uf %s is ready.\n' "$version" >&2
+else
+  printf '  \033[1muf %s\033[0m is ready.\n' "$version" >&2
+fi
+
 case ":$PATH:" in
-  *":${bin_dir}:"*) ;;
+  *":${bin_dir}:"*)
+    printf '\n' >&2
+    uf_note "Run \`uf\` to begin."
+    ;;
   *)
-    echo "uf installer: add ${bin_dir} to PATH to use uf from new shells" >&2
+    # Not a failure: uf is installed and works by full path. It is one line of
+    # shell profile away from working by name, and printing the line is more
+    # use than telling the reader that a directory is missing from PATH.
+    printf '\n' >&2
+    uf_note "$(uf_tilde "$bin_dir") is not on your PATH. Add it:"
+    printf '\n' >&2
+    if [ -z "$uf_colour" ]; then
+      printf '    export PATH="%s:$PATH"\n' "$(uf_home_var "$bin_dir")" >&2
+    else
+      printf '    \033[1mexport PATH="%s:$PATH"\033[0m\n' "$(uf_home_var "$bin_dir")" >&2
+    fi
     ;;
 esac
+printf '\n' >&2
