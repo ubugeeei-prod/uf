@@ -85,7 +85,7 @@ export default defineConfig({
     check: { command: "uf check" },
     lint: { command: "uf lint" },
     fmt: { command: "uf fmt" },
-    test: { command: "uf test --list" },
+    test: { command: "uf test" },
   },
 });
 "#
@@ -107,7 +107,7 @@ export default defineConfig({
     check: { command: "uf check" },
     lint: { command: "uf lint" },
     fmt: { command: "uf fmt" },
-    test: { command: "uf test --list" },
+    test: { command: "uf test" },
   },
 });
 "#
