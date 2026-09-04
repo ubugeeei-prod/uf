@@ -94,6 +94,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Dev { host, port } => {
             commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port })
         }
+        Commands::Doc { out_dir, json } => commands::doc::doc(&cwd, ui, &out_dir, json),
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
         Commands::Exec { package, args } => commands::task::exec_package(&cwd, ui, &package, &args),
         Commands::Fmt { check } => commands::fmt::fmt(&cwd, ui, check),

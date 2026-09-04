@@ -4,6 +4,7 @@ members = [
   "crates/uf_check",
   "crates/uf_cli",
   "crates/uf_config",
+  "crates/uf_doc",
   "crates/uf_flow",
   "crates/uf_fmt",
   "crates/uf_infra",

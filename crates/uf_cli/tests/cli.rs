@@ -117,6 +117,56 @@ fn alias_binaries_are_documented_as_the_commands_they_expand_to() {
     }
 }
 
+#[test]
+fn doc_writes_api_markdown_from_exported_flow_jsdoc() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir(dir.path().join("src")).unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"
+            export default defineConfig({
+              app: { router: { enabled: false } },
+            });
+        "#,
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("src/api.js"),
+        r#"
+            // @flow
+
+            /**
+             * Reads a user.
+             * @param id stable id
+             */
+            export function readUser(id: string): ?string {
+              return id;
+            }
+        "#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["doc", "--out", "generated"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let markdown = fs::read_to_string(dir.path().join("generated/api.md")).unwrap();
+    assert!(markdown.contains("### readUser"), "{markdown}");
+    assert!(markdown.contains("@param id stable id"), "{markdown}");
+    assert!(
+        markdown.contains("export function readUser(id: string): ?string { ... }"),
+        "{markdown}"
+    );
+}
+
 /// Completion output is consumed by a shell, so it must be nothing but the
 /// script: no banner, no colour, no status line.
 #[test]
@@ -691,7 +741,7 @@ fn explain_says_which_commands_it_knows() {
     assert!(stderr.contains("does not describe"), "{stderr}");
     // Listing them beats making the reader guess.
     assert!(
-        stderr.contains("dev, build, test, fmt, lint, check"),
+        stderr.contains("dev, build, doc, test, fmt, lint, check"),
         "{stderr}"
     );
 }

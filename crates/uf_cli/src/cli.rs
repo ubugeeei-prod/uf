@@ -79,6 +79,23 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
     },
+    /// Generate API documentation from exported Flow source.
+    ///
+    /// Parses project-owned JavaScript with Meta's Flow parser, extracts
+    /// JSDoc blocks attached to exported declarations, and writes Markdown.
+    Doc {
+        /// Directory to receive `api.md`.
+        #[arg(
+            long = "out",
+            alias = "out-dir",
+            value_name = "DIR",
+            default_value = "docs/api"
+        )]
+        out_dir: Utf8PathBuf,
+        /// Emit the report as JSON instead of writing Markdown.
+        #[arg(long)]
+        json: bool,
+    },
     /// Inspect and switch the Capability JS Host uf runs JavaScript on.
     Env {
         #[command(subcommand)]
@@ -200,6 +217,7 @@ impl Commands {
         matches!(
             self,
             Self::Check { json: true }
+                | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true }
