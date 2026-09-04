@@ -12,17 +12,15 @@ export type DiffAlgorithm = "pixelmatch-compatible";
 export type BaselinePolicy = "fail-on-missing" | "explicit-update-only";
 
 export type VisualRegressionPlan = {
-  +engine: VrtEngine,
-  +baselines: string,
-  +threshold: number,
-  +diff: DiffAlgorithm,
-  +baselinePolicy: BaselinePolicy,
-  +snapshots: $ReadOnlyArray<VisualSnapshot>,
+  readonly engine: VrtEngine,
+  readonly baselines: string,
+  readonly threshold: number,
+  readonly diff: DiffAlgorithm,
+  readonly baselinePolicy: BaselinePolicy,
+  readonly snapshots: $ReadOnlyArray<VisualSnapshot>,
 };
 
-export function plan(
-  snapshots?: $ReadOnlyArray<VisualSnapshot>,
-): VisualRegressionPlan {
+export function plan(snapshots?: $ReadOnlyArray<VisualSnapshot>): VisualRegressionPlan {
   return nativeRuntimeRequired(MODULE, "plan");
 }
 

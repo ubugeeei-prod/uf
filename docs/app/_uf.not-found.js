@@ -11,7 +11,7 @@ import { Link } from "@uniflowed/router";
 import { Eyebrow, Lede } from "./_design/parts.js";
 import { pages } from "./_design/nav.js";
 
-export const metadata: {| +title: string |} = { title: "Not found · uf" };
+export const metadata: {| readonly title: string |} = { title: "Not found · uf" };
 
 export default component NotFound() {
   return (
@@ -19,8 +19,8 @@ export default component NotFound() {
       <Eyebrow>Not found</Eyebrow>
       <h1>There is no page here.</h1>
       <Lede>
-        The link may be from an older version of the site — uf is pre-release
-        and pages still move. Everything that does exist is below.
+        The link may be from an older version of the site — uf is pre-release and pages still move.
+        Everything that does exist is below.
       </Lede>
       <ul>
         {pages.map((page) => (

@@ -19,16 +19,16 @@ export type StdCategory =
   | "cloud";
 
 export type StdModule = {
-  +specifier: string,
-  +category: StdCategory,
-  +wintertcAligned: true,
-  +nativeBinding: true,
-  +exports: $ReadOnlyArray<string>,
+  readonly specifier: string,
+  readonly category: StdCategory,
+  readonly wintertcAligned: true,
+  readonly nativeBinding: true,
+  readonly exports: $ReadOnlyArray<string>,
 };
 
 export type Result<Ok, Err> =
-  | { +ok: true, +value: Ok }
-  | { +ok: false, +error: Err };
+  | { readonly ok: true, readonly value: Ok }
+  | { readonly ok: false, readonly error: Err };
 
 /**
  * Nominal wrapper around `T`.
@@ -37,7 +37,7 @@ export type Result<Ok, Err> =
  * `string` is expected while blocking the reverse, so branding never costs a
  * conversion.
  */
-export opaque type Brand<Name: string, T>: T = T;
+export opaque type Brand<Name extends string, T>: T = T;
 
 export type JsonValue =
   | null
@@ -45,74 +45,78 @@ export type JsonValue =
   | number
   | string
   | $ReadOnlyArray<JsonValue>
-  | { +[string]: JsonValue };
+  | { readonly [string]: JsonValue };
 
-export type VirtualPath = { +path: string };
-export type QueryPair = { +key: string, +value: string };
-export type ByteBuffer = { +bytes: Uint8Array };
+export type VirtualPath = { readonly path: string };
+export type QueryPair = { readonly key: string, readonly value: string };
+export type ByteBuffer = { readonly bytes: Uint8Array };
 export type ImportMeta = {
-  +url: string,
-  +dirname?: string,
-  +filename?: string,
+  readonly url: string,
+  readonly dirname?: string,
+  readonly filename?: string,
 };
 export type DeferPhase = "microtask" | "idle" | "post-response";
-export type DeferredTask = { +id: string, +phase: DeferPhase };
+export type DeferredTask = { readonly id: string, readonly phase: DeferPhase };
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-export type HttpRoute = { +method: HttpMethod, +path: string };
+export type HttpRoute = { readonly method: HttpMethod, readonly path: string };
 export type WebSocketMode = "web-socket" | "web-socket-stream";
 export type SqlDriverKind = "sqlite" | "postgres" | "mysql";
-export type SqlDriver = { +kind: SqlDriverKind, +preparedByDefault: true };
+export type SqlDriver = { readonly kind: SqlDriverKind, readonly preparedByDefault: true };
 export type DigestAlgorithm = "fast-hash" | "sha256";
 export type OsFamily = "mac-os" | "linux" | "windows" | "unknown";
 export type OsInfo = {
-  +family: OsFamily,
-  +arch: string,
-  +availableParallelism: number,
+  readonly family: OsFamily,
+  readonly arch: string,
+  readonly availableParallelism: number,
 };
 export type DnsRecordType = "A" | "AAAA" | "CNAME" | "MX" | "TXT";
-export type DnsQuery = { +name: string, +recordType: DnsRecordType };
+export type DnsQuery = { readonly name: string, readonly recordType: DnsRecordType };
 export type StreamKind = "readable" | "writable" | "transform";
-export type StreamDescriptor = { +kind: StreamKind, +backpressure: true };
-export type UrlParts = { +scheme: string, +host: string, +path: string };
-export type WasmModulePlan = { +name: string, +aheadOfTime: true };
-export type GlobPattern = { +pattern: string, +dotfiles: boolean };
+export type StreamDescriptor = { readonly kind: StreamKind, readonly backpressure: true };
+export type UrlParts = { readonly scheme: string, readonly host: string, readonly path: string };
+export type WasmModulePlan = { readonly name: string, readonly aheadOfTime: true };
+export type GlobPattern = { readonly pattern: string, readonly dotfiles: boolean };
 export type MotionEase = "linear" | "out" | "spring";
 export type MotionTransition = {
-  +durationMs: number,
-  +ease: MotionEase,
-  +respectsReducedMotion: true,
+  readonly durationMs: number,
+  readonly ease: MotionEase,
+  readonly respectsReducedMotion: true,
 };
 export type TerminalColorDepth = "ansi16" | "ansi256" | "true-color";
 export type TerminalCapabilities = {
-  +columns: number,
-  +rows: number,
-  +colorDepth: TerminalColorDepth,
-  +unicode: boolean,
-  +mouse: boolean,
-  +inlineImages: boolean,
-  +sixel: boolean,
+  readonly columns: number,
+  readonly rows: number,
+  readonly colorDepth: TerminalColorDepth,
+  readonly unicode: boolean,
+  readonly mouse: boolean,
+  readonly inlineImages: boolean,
+  readonly sixel: boolean,
 };
 export type CronSchedule = {
-  +minute: string,
-  +hour: string,
-  +dayOfMonth: string,
-  +month: string,
-  +dayOfWeek: string,
+  readonly minute: string,
+  readonly hour: string,
+  readonly dayOfMonth: string,
+  readonly month: string,
+  readonly dayOfWeek: string,
 };
-export type S3ObjectRequest = { +bucket: string, +key: string, +sigv4: true };
-export type SigV4Scope = { +region: string, +service: string };
+export type S3ObjectRequest = {
+  readonly bucket: string,
+  readonly key: string,
+  readonly sigv4: true,
+};
+export type SigV4Scope = { readonly region: string, readonly service: string };
 export type FunctionRuntime = "worker" | "lambda";
 export type FunctionDescriptor = {
-  +name: string,
-  +runtime: FunctionRuntime,
-  +entry: string,
+  readonly name: string,
+  readonly runtime: FunctionRuntime,
+  readonly entry: string,
 };
 export type UuidVersion = "v4" | "v7";
 export type ZipCompression = "store" | "deflate";
 export type ZipEntry = {
-  +path: string,
-  +compression: ZipCompression,
-  +size: number,
+  readonly path: string,
+  readonly compression: ZipCompression,
+  readonly size: number,
 };
 
 export function modules(): $ReadOnlyArray<StdModule> {
@@ -137,7 +141,7 @@ export function defer(id: string, phase?: DeferPhase): DeferredTask {
 
 export function parseDotEnv(
   source: string,
-): $ReadOnlyArray<{ +key: string, +value: string }> {
+): $ReadOnlyArray<{ readonly key: string, readonly value: string }> {
   return nativeRuntimeRequired(MODULE, "parseDotEnv");
 }
 
@@ -185,9 +189,7 @@ export function parseToml(source: string): mixed {
   return nativeRuntimeRequired(MODULE, "parseToml");
 }
 
-export function detectYaml(
-  source: string,
-): "mapping" | "sequence" | "scalar" | "empty" {
+export function detectYaml(source: string): "mapping" | "sequence" | "scalar" | "empty" {
   return nativeRuntimeRequired(MODULE, "detectYaml");
 }
 
@@ -199,11 +201,7 @@ export function lerp(start: number, end: number, amount: number): number {
   return nativeRuntimeRequired(MODULE, "lerp");
 }
 
-export function osInfo(
-  family: OsFamily,
-  arch: string,
-  availableParallelism: number,
-): OsInfo {
+export function osInfo(family: OsFamily, arch: string, availableParallelism: number): OsInfo {
   return nativeRuntimeRequired(MODULE, "osInfo");
 }
 
@@ -239,10 +237,7 @@ export function motion(durationMs: number, ease: MotionEase): MotionTransition {
   return nativeRuntimeRequired(MODULE, "motion");
 }
 
-export function terminalCapabilities(
-  columns: number,
-  rows: number,
-): TerminalCapabilities {
+export function terminalCapabilities(columns: number, rows: number): TerminalCapabilities {
   return nativeRuntimeRequired(MODULE, "terminalCapabilities");
 }
 
@@ -266,16 +261,11 @@ export function defineFunction(
   return nativeRuntimeRequired(MODULE, "defineFunction");
 }
 
-export function digest(
-  algorithm: DigestAlgorithm,
-  bytes: Uint8Array,
-): string {
+export function digest(algorithm: DigestAlgorithm, bytes: Uint8Array): string {
   return nativeRuntimeRequired(MODULE, "digest");
 }
 
-export function parseUuid(
-  value: string,
-): ?{ +value: string, +version?: number } {
+export function parseUuid(value: string): ?{ readonly value: string, readonly version?: number } {
   return nativeRuntimeRequired(MODULE, "parseUuid");
 }
 

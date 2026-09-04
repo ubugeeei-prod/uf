@@ -28,10 +28,10 @@ import {
 } from "@uniflowed/react";
 
 type TabsState = {|
-  +base: string,
-  +selected: string,
-  +select: (value: string) => void,
-  +register: (value: string, element: HTMLElement | null, disabled: boolean) => void,
+  readonly base: string,
+  readonly selected: string,
+  readonly select: (value: string) => void,
+  readonly register: (value: string, element: HTMLElement | null, disabled: boolean) => void,
   /**
    * Focus the tab `pick` chooses, given where we are and how many there are.
    *
@@ -41,10 +41,7 @@ type TabsState = {|
    * *backwards* to the last enabled one — inferring "forwards" from the target
    * being ahead of us wrapped around to the first tab instead.
    */
-  +focusBy: (
-    from: string,
-    pick: (at: number, count: number) => [number, 1 | -1],
-  ) => void,
+  readonly focusBy: (from: string, pick: (at: number, count: number) => [number, 1 | -1]) => void,
 |};
 
 const TabsContext: React.Context<TabsState | null> = createContext(null);
@@ -69,7 +66,7 @@ export component TabsRoot(
   defaultValue: string,
   value?: string,
   onValueChange?: (value: string) => void,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const base = useId();
   const [internal, setInternal] = useState(defaultValue);
@@ -91,22 +88,19 @@ export component TabsRoot(
 
   const disabledTabs = useRef<{ [string]: boolean }>({});
 
-  const register = useCallback(
-    (tab: string, element: HTMLElement | null, disabled: boolean) => {
-      if (element == null) {
-        order.current = order.current.filter((entry) => entry !== tab);
-        delete elements.current[tab];
-        delete disabledTabs.current[tab];
-        return;
-      }
-      if (!order.current.includes(tab)) {
-        order.current.push(tab);
-      }
-      elements.current[tab] = element;
-      disabledTabs.current[tab] = disabled;
-    },
-    [],
-  );
+  const register = useCallback((tab: string, element: HTMLElement | null, disabled: boolean) => {
+    if (element == null) {
+      order.current = order.current.filter((entry) => entry !== tab);
+      delete elements.current[tab];
+      delete disabledTabs.current[tab];
+      return;
+    }
+    if (!order.current.includes(tab)) {
+      order.current.push(tab);
+    }
+    elements.current[tab] = element;
+    disabledTabs.current[tab] = disabled;
+  }, []);
 
   /**
    * Focus and select the first enabled tab at or after `index`.
@@ -148,14 +142,8 @@ export component TabsRoot(
       selected,
       select,
       register,
-      focusBy: (
-        from: string,
-        pick: (at: number, count: number) => [number, 1 | -1],
-      ) => {
-        const [target, direction] = pick(
-          order.current.indexOf(from),
-          order.current.length,
-        );
+      focusBy: (from: string, pick: (at: number, count: number) => [number, 1 | -1]) => {
+        const [target, direction] = pick(order.current.indexOf(from), order.current.length);
         focusAt(target, direction);
       },
     }),
@@ -176,7 +164,7 @@ export component TabsRoot(
  * `<button>` here would be announced as a button inside a tablist, which is
  * how a keyboard user ends up unable to tell where they are.
  */
-export component TabsList(children: renders* TabsTab, ...rest: { +[string]: mixed }) {
+export component TabsList(children: renders* TabsTab, ...rest: { readonly [string]: mixed }) {
   return (
     <div {...rest} role="tablist">
       {children}
@@ -189,7 +177,7 @@ export component TabsTab(
   value: string,
   children: React.Node,
   disabled?: boolean = false,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const tabs = useTabs("Tabs.Tab");
   const active = tabs.selected === value;
@@ -222,13 +210,15 @@ export component TabsTab(
         // `match` is an expression, so it computes the index to move to rather
         // than performing the four movements — which also means adding a key
         // to `arrowKey` stops compiling here until it is handled.
-        tabs.focusBy(value, (at, count) =>
-          match (intent) {
-            "previous" => [at - 1, -1],
-            "next" => [at + 1, 1],
-            "first" => [0, 1],
-            "last" => [count - 1, -1],
-          },
+        tabs.focusBy(
+          value,
+          (at, count) =>
+            match (intent) {
+              "previous" => [at - 1, -1],
+              "next" => [at + 1, 1],
+              "first" => [0, 1],
+              "last" => [count - 1, -1],
+            },
         );
       })}
       ref={composeRefs(rest.ref, (element) => tabs.register(value, element, disabled))}
@@ -247,7 +237,7 @@ export component TabsTab(
 export component TabsPanel(
   value: string,
   children: React.Node,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const tabs = useTabs("Tabs.Panel");
   if (tabs.selected !== value) {

@@ -390,7 +390,7 @@ describe("resources", () => {
 
 describe("services", () => {
   it("reads a service provided directly", async () => {
-    const Clock = tag<{| +now: () => number |}>("Clock");
+    const Clock = tag<{| readonly now: () => number |}>("Clock");
     const program = flatMap(Clock, (clock) => succeed(clock.now()));
 
     await expect(runPromise(provideService(program, Clock, { now: () => 42 }))).resolves.toBe(42);

@@ -7,37 +7,30 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 
 const MODULE = "@uniflowed/core/rm";
 
-export type RuntimeEngine =
-  | "uf"
-  | "node"
-  | "deno"
-  | "bun"
-  | "edge"
-  | "serverless"
-  | "container";
+export type RuntimeEngine = "uf" | "node" | "deno" | "bun" | "edge" | "serverless" | "container";
 
 export type RuntimeHost = RuntimeEngine;
 export type RuntimeAcquisition = "auto";
 export type RuntimeApplication = "config-and-host";
-export type RuntimeReference = { +name: "uf" | string, +version: string };
+export type RuntimeReference = { readonly name: "uf" | string, readonly version: string };
 
 export type XdgLayout = {
-  +configDir: string,
-  +dataDir: string,
-  +cacheDir: string,
-  +stateDir: string,
-  +runtimeDir?: string,
-  +binDir: string,
-  +shimPath: string,
-  +versionsDir: string,
+  readonly configDir: string,
+  readonly dataDir: string,
+  readonly cacheDir: string,
+  readonly stateDir: string,
+  readonly runtimeDir?: string,
+  readonly binDir: string,
+  readonly shimPath: string,
+  readonly versionsDir: string,
 };
 
 export type RuntimeManagerPlan = {
-  +engine: RuntimeEngine,
-  +hosts: $ReadOnlyArray<RuntimeHost>,
-  +acquisition: RuntimeAcquisition,
-  +application: RuntimeApplication,
-  +steps: $ReadOnlyArray<
+  readonly engine: RuntimeEngine,
+  readonly hosts: $ReadOnlyArray<RuntimeHost>,
+  readonly acquisition: RuntimeAcquisition,
+  readonly application: RuntimeApplication,
+  readonly steps: $ReadOnlyArray<
     | "read-config"
     | "infer-runtime"
     | "detect-capability-host"
@@ -48,10 +41,10 @@ export type RuntimeManagerPlan = {
 };
 
 export type RuntimeUsePlan = {
-  +requested: RuntimeReference,
-  +layout: XdgLayout,
-  +autoSwitch: boolean,
-  +steps: $ReadOnlyArray<
+  readonly requested: RuntimeReference,
+  readonly layout: XdgLayout,
+  readonly autoSwitch: boolean,
+  readonly steps: $ReadOnlyArray<
     | "resolve-version"
     | "download-runtime"
     | "verify-checksum"
@@ -61,9 +54,7 @@ export type RuntimeUsePlan = {
   >,
 };
 
-export function inferRuntime(
-  config: UniflowedConfig,
-): RuntimeManagerPlan {
+export function inferRuntime(config: UniflowedConfig): RuntimeManagerPlan {
   return nativeRuntimeRequired(MODULE, "inferRuntime");
 }
 
@@ -71,9 +62,7 @@ export function useRuntime(specifier: string): RuntimeUsePlan {
   return nativeRuntimeRequired(MODULE, "useRuntime");
 }
 
-export function acquireRuntime(
-  plan: RuntimeManagerPlan,
-): Promise<RuntimeManagerPlan> {
+export function acquireRuntime(plan: RuntimeManagerPlan): Promise<RuntimeManagerPlan> {
   return nativeRuntimeRequired(MODULE, "acquireRuntime");
 }
 

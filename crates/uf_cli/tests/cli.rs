@@ -17,6 +17,106 @@ fn uf_prints_help() {
     assert!(stdout.contains("--color"));
 }
 
+/// Every command `uf --help` lists must say what it does.
+///
+/// clap prints the first line of a command's doc comment beside its name, and
+/// prints nothing at all when there is no doc comment. Fifteen of the twenty
+/// commands had none, so the front door of the toolchain was a list of bare
+/// verbs — `build`, `check`, `create`, `dev` — with a description beside
+/// exactly one of them.
+#[test]
+fn every_command_in_the_help_says_what_it_does() {
+    let output = uf().arg("--help").output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    let commands = stdout
+        .split_once("Commands:")
+        .expect("help lists commands")
+        .1
+        .split_once("\nOptions:")
+        .expect("commands come before options")
+        .0;
+
+    let undescribed = commands
+        .lines()
+        .filter(|line| line.starts_with("  ") && !line.starts_with("     "))
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            let name = words.next()?;
+            words.next().is_none().then_some(name)
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        undescribed.is_empty(),
+        "these commands have no description in `uf --help`: {}",
+        undescribed.join(", ")
+    );
+}
+
+/// `uf i` is `uf install`.
+///
+/// The one command a person types before anything else works, and every
+/// package manager they have used has a one-letter form of it.
+#[test]
+fn install_has_a_one_letter_alias() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\
+         export default defineConfig({ app: { router: { enabled: false } } });\n",
+    )
+    .unwrap();
+
+    let long = uf()
+        .current_dir(dir.path())
+        .arg("install")
+        .output()
+        .unwrap();
+    let short = uf().current_dir(dir.path()).arg("i").output().unwrap();
+
+    assert_eq!(
+        short.status.code(),
+        long.status.code(),
+        "`uf i` must be `uf install`, got {}",
+        String::from_utf8_lossy(&short.stderr)
+    );
+
+    // Compared line by line, skipping the one that carries a duration: two
+    // runs of the same command differ by a few milliseconds and that is not a
+    // difference between the alias and the command.
+    let lines = |output: &[u8]| {
+        String::from_utf8_lossy(output)
+            .lines()
+            .filter(|line| !line.contains("ms"))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(lines(&short.stdout), lines(&long.stdout));
+    assert!(
+        String::from_utf8_lossy(&short.stdout).contains("uf install"),
+        "`uf i` should report itself as `uf install`"
+    );
+}
+
+/// The alias binaries are the longhand commands, and the help says so.
+#[test]
+fn alias_binaries_are_documented_as_the_commands_they_expand_to() {
+    let output = uf().arg("--help").output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    for (command, alias) in [("run", "ufr"), ("exec", "ufx")] {
+        let line = stdout
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("{command} ")))
+            .unwrap_or_else(|| panic!("`{command}` is missing from the help"));
+        assert!(
+            line.contains(alias),
+            "`uf {command}` should name its `{alias}` alias in the help, got {line:?}"
+        );
+    }
+}
+
 #[test]
 fn alias_binaries_print_the_root_version() {
     for name in ["ufr", "ufx"] {

@@ -21,14 +21,14 @@ import * as React from "@uniflowed/react";
 import { createContext, useContext, useId, useMemo, useState } from "@uniflowed/react";
 
 type FieldState = {|
-  +controlId: string,
-  +labelId: string,
-  +descriptionId: string,
-  +errorId: string,
-  +invalid: boolean,
-  +describedBy: string | void,
-  +registerDescription: (present: boolean) => void,
-  +registerError: (present: boolean) => void,
+  readonly controlId: string,
+  readonly labelId: string,
+  readonly descriptionId: string,
+  readonly errorId: string,
+  readonly invalid: boolean,
+  readonly describedBy: string | void,
+  readonly registerDescription: (present: boolean) => void,
+  readonly registerError: (present: boolean) => void,
 |};
 
 const FieldContext: React.Context<FieldState | null> = createContext(null);
@@ -58,7 +58,7 @@ function useField(part: string): FieldState {
 export component FieldRoot(
   children: React.Node,
   invalid?: boolean = false,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const base = useId();
   const [hasDescription, setHasDescription] = useState(false);
@@ -94,7 +94,7 @@ export component FieldRoot(
 }
 
 /** The label, pointing at the control by id rather than by nesting. */
-export component FieldLabel(children: React.Node, ...rest: { +[string]: mixed }) {
+export component FieldLabel(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const field = useField("Field.Label");
   // `rest` first: a caller `id` here would break the relationship the control
   // points at, and it would break it silently.
@@ -112,9 +112,7 @@ export component FieldLabel(children: React.Node, ...rest: { +[string]: mixed })
  * field wraps a select, a textarea, a combobox or somebody else's component
  * just as often, and each of those needs the same six attributes.
  */
-export component FieldControl(
-  render: (props: { +[string]: mixed }) => React.Node,
-) {
+export component FieldControl(render: (props: { readonly [string]: mixed }) => React.Node) {
   const field = useField("Field.Control");
   return render({
     id: field.controlId,
@@ -125,7 +123,7 @@ export component FieldControl(
 }
 
 /** Help text, which the control points at while it is rendered. */
-export component FieldDescription(children: React.Node, ...rest: { +[string]: mixed }) {
+export component FieldDescription(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const field = useField("Field.Description");
   React.useEffect(() => {
     field.registerDescription(true);
@@ -145,7 +143,7 @@ export component FieldDescription(children: React.Node, ...rest: { +[string]: mi
  * `role="alert"` so it is announced when it appears, which is the point of an
  * error that arrives after a blur or a submit.
  */
-export component FieldError(children: React.Node, ...rest: { +[string]: mixed }) {
+export component FieldError(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const field = useField("Field.Error");
   React.useEffect(() => {
     field.registerError(true);

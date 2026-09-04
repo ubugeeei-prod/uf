@@ -66,7 +66,7 @@ export function useDebouncedValue<T>(value: T, millis: number): T {
  * the window are dropped, which is what a scroll or resize handler wants —
  * the trailing-edge version would make the first paint late.
  */
-export function useThrottledCallback<TArgs: $ReadOnlyArray<mixed>>(
+export function useThrottledCallback<TArgs extends $ReadOnlyArray<mixed>>(
   body: (...args: TArgs) => mixed,
   millis: number,
 ): (...args: TArgs) => void {
@@ -88,7 +88,7 @@ export function useThrottledCallback<TArgs: $ReadOnlyArray<mixed>>(
  * Trailing edge, and it cancels itself at unmount — the version people write
  * calls `setState` on a component that is gone.
  */
-export function useDebouncedCallback<TArgs: $ReadOnlyArray<mixed>>(
+export function useDebouncedCallback<TArgs extends $ReadOnlyArray<mixed>>(
   body: (...args: TArgs) => mixed,
   millis: number,
 ): (...args: TArgs) => void {

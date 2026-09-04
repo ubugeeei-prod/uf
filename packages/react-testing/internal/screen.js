@@ -24,7 +24,7 @@ import { waitFor } from "./render.js";
 
 /** The queries available on `screen` and on `within(element)`. */
 export type Queries = {
-  +[string]: (matcher: mixed, options?: mixed) => any,
+  readonly [string]: (matcher: mixed, options?: mixed) => any,
 };
 
 /** Every query, as the one function each needs. */

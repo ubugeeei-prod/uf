@@ -16,7 +16,7 @@ const MODULE = "@uniflowed/core/jsx-runtime";
  * Props an element carries, with its children under the reserved name the
  * runtime reads them from.
  */
-export type JsxProps = { +children?: Node, ... };
+export type JsxProps = { readonly children?: Node, ... };
 
 /**
  * Create an element with zero or one child.

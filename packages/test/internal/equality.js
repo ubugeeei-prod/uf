@@ -21,7 +21,7 @@
 /** How strictly two values are compared. */
 export type Strictness = "loose" | "strict";
 
-type Pair = {| +left: mixed, +right: mixed |};
+type Pair = {| readonly left: mixed, readonly right: mixed |};
 
 /** Longest rendering of one value inside a failure message. */
 export const MAX_RENDER_BYTES: number = 4096;
@@ -61,7 +61,12 @@ function ownKeys(value: interface {}, strictness: Strictness): Array<string | sy
   return keys.filter((key) => (value: $FlowFixMe)[key] !== undefined);
 }
 
-function sameSet(left: Set<mixed>, right: Set<mixed>, seen: Array<Pair>, strictness: Strictness): boolean {
+function sameSet(
+  left: Set<mixed>,
+  right: Set<mixed>,
+  seen: Array<Pair>,
+  strictness: Strictness,
+): boolean {
   if (left.size !== right.size) {
     return false;
   }
@@ -262,9 +267,7 @@ function elementTag(value: mixed): string | null {
     .join("");
   const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
   const shown = text.length > 40 ? `${text.slice(0, 40)}…` : text;
-  return shown === ""
-    ? `<${name}${attributes} />`
-    : `<${name}${attributes}>${shown}</${name}>`;
+  return shown === "" ? `<${name}${attributes} />` : `<${name}${attributes}>${shown}</${name}>`;
 }
 
 export function render(value: mixed, depth: number = 0, seen: Array<mixed> = []): string {
@@ -326,19 +329,22 @@ function renderInner(value: mixed, depth: number, seen: Array<mixed>): string {
   }
   if (value instanceof Set) {
     const items = [...value].slice(0, MAX_RENDER_ENTRIES).map(inner);
-    const more = value.size > MAX_RENDER_ENTRIES ? `, …${value.size - MAX_RENDER_ENTRIES} more` : "";
+    const more =
+      value.size > MAX_RENDER_ENTRIES ? `, …${value.size - MAX_RENDER_ENTRIES} more` : "";
     return `Set { ${items.join(", ")}${more} }`;
   }
   if (value instanceof Map) {
     const items = [...value]
       .slice(0, MAX_RENDER_ENTRIES)
       .map(([key, item]) => `${inner(key)} => ${inner(item)}`);
-    const more = value.size > MAX_RENDER_ENTRIES ? `, …${value.size - MAX_RENDER_ENTRIES} more` : "";
+    const more =
+      value.size > MAX_RENDER_ENTRIES ? `, …${value.size - MAX_RENDER_ENTRIES} more` : "";
     return `Map { ${items.join(", ")}${more} }`;
   }
   if (Array.isArray(value)) {
     const items = value.slice(0, MAX_RENDER_ENTRIES).map(inner);
-    const more = value.length > MAX_RENDER_ENTRIES ? `, …${value.length - MAX_RENDER_ENTRIES} more` : "";
+    const more =
+      value.length > MAX_RENDER_ENTRIES ? `, …${value.length - MAX_RENDER_ENTRIES} more` : "";
     return `[${items.join(", ")}${more}]`;
   }
 
@@ -355,5 +361,7 @@ function renderInner(value: mixed, depth: number, seen: Array<mixed>): string {
     prototype != null && prototype.constructor != null && prototype.constructor.name !== "Object"
       ? `${prototype.constructor.name} `
       : "";
-  return entries.length === 0 ? `${constructorName}{}` : `${constructorName}{ ${entries.join(", ")}${more} }`;
+  return entries.length === 0
+    ? `${constructorName}{}`
+    : `${constructorName}{ ${entries.join(", ")}${more} }`;
 }

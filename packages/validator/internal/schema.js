@@ -69,7 +69,7 @@ export type Infer<TSchema> = TSchema extends Schema<infer T> ? T : empty;
  * a field-by-field response without parsing the message back apart.
  */
 export class ValidationError extends Error {
-  +issues: $ReadOnlyArray<Issue>;
+  readonly issues: $ReadOnlyArray<Issue>;
 
   constructor(issues: $ReadOnlyArray<Issue>) {
     super(issues.map(describeIssue).join("; "));
@@ -216,7 +216,9 @@ export function unknown(): Schema<mixed> {
 export function literal<T extends string | number | boolean | null>(expected: T): Schema<T> {
   return makeSchema({
     parse: (value, path) =>
-      value === expected ? ok(expected) : failIssue("literal", `expected ${String(expected)}`, path),
+      value === expected
+        ? ok(expected)
+        : failIssue("literal", `expected ${String(expected)}`, path),
   });
 }
 
@@ -290,9 +292,7 @@ export function tuple<TItems extends $ReadOnlyArray<Schema<mixed>>>(
  * Only own enumerable keys are read, so a payload carrying `__proto__` or
  * `constructor` cannot smuggle an inherited value into the parsed result.
  */
-export function record<Value>(
-  value: Schema<Value>,
-): Schema<{ readonly [string]: Value, ... }> {
+export function record<Value>(value: Schema<Value>): Schema<{ readonly [string]: Value, ... }> {
   return makeSchema({
     parse: (input, path) => {
       if (!isPlainObject(input)) {
@@ -348,7 +348,10 @@ export function union<T>(schemas: $ReadOnlyArray<Schema<T>>): Schema<T> {
  * at radius` rather than every reason it is not a square, a triangle and a
  * line as well. Unmatched discriminants name the ones that exist.
  */
-export function variant<T>(key: string, branches: { readonly [string]: Schema<T>, ... }): Schema<T> {
+export function variant<T>(
+  key: string,
+  branches: { readonly [string]: Schema<T>, ... },
+): Schema<T> {
   const known = Object.keys(branches);
   return makeSchema({
     parse: (value, path) => {
@@ -358,11 +361,7 @@ export function variant<T>(key: string, branches: { readonly [string]: Schema<T>
       const discriminant = plainRecord(value)[key];
       if (typeof discriminant !== "string" || !Object.hasOwn(branches, discriminant)) {
         path.push(key);
-        const failed = failIssue(
-          "variant",
-          `expected one of ${known.join(", ")}`,
-          path,
-        );
+        const failed = failIssue("variant", `expected one of ${known.join(", ")}`, path);
         path.pop();
         return failed;
       }

@@ -151,7 +151,11 @@ export class TransformService {
             resolve(null);
             return;
           }
-          resolve({ code: reply.code, map: reply.map ?? null, diagnostics: reply.diagnostics ?? [] });
+          resolve({
+            code: reply.code,
+            map: reply.map ?? null,
+            diagnostics: reply.diagnostics ?? [],
+          });
         },
       });
       this.#child.stdin.write(`${JSON.stringify({ id, code, options })}\n`);

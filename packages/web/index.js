@@ -9,24 +9,19 @@ const MODULE = "@uniflowed/core/web";
 
 export type LinkPrefetch = "off" | "intent" | "render";
 export type RoutePath = string;
-export type RouteParams = { +[string]: string };
+export type RouteParams = { readonly [string]: string };
 
-export type LinkProps<TRoute: RoutePath> = {
-  +to: TRoute,
-  +prefetch?: LinkPrefetch,
-  +children?: React.Node,
+export type LinkProps<TRoute extends RoutePath> = {
+  readonly to: TRoute,
+  readonly prefetch?: LinkPrefetch,
+  readonly children?: React.Node,
 };
 
 export component Font(src: string, family: string, preload?: boolean) {
   return nativeRuntimeRequired(MODULE, "Font");
 }
 
-export component Image(
-  src: string,
-  alt: string,
-  width?: number,
-  height?: number,
-) {
+export component Image(src: string, alt: string, width?: number, height?: number) {
   return nativeRuntimeRequired(MODULE, "Image");
 }
 
@@ -34,7 +29,7 @@ export component OgImage(title: string, description?: string) {
   return nativeRuntimeRequired(MODULE, "OgImage");
 }
 
-export component Link<TRoute: RoutePath>(
+export component Link<TRoute extends RoutePath>(
   to: TRoute,
   prefetch?: LinkPrefetch,
   children?: React.Node,
@@ -50,10 +45,7 @@ export component Layout(children?: React.Node) renders React.Node {
   return nativeRuntimeRequired(MODULE, "Layout");
 }
 
-export component Time(
-  value: Date | string,
-  format?: string,
-) renders React.Node {
+export component Time(value: Date | string, format?: string) renders React.Node {
   return nativeRuntimeRequired(MODULE, "Time");
 }
 
@@ -71,35 +63,35 @@ export component Picture(
 
 export function useCookie<T>(
   name: string,
-  options?: { +httpOnly?: boolean, +sameSite?: "lax" | "strict" | "none" },
+  options?: { readonly httpOnly?: boolean, readonly sameSite?: "lax" | "strict" | "none" },
 ): [null | T, (next: T) => void] {
   return nativeRuntimeRequired(MODULE, "useCookie");
 }
 
 export function useHead(head: {
-  +title?: string,
-  +meta?: $ReadOnlyArray<{ +name: string, +content: string }>,
-  +links?: $ReadOnlyArray<{ +rel: string, +href: string }>,
+  readonly title?: string,
+  readonly meta?: $ReadOnlyArray<{ readonly name: string, readonly content: string }>,
+  readonly links?: $ReadOnlyArray<{ readonly rel: string, readonly href: string }>,
 }): void {
   return nativeRuntimeRequired(MODULE, "useHead");
 }
 
-export function useRoute<TRoute: RoutePath, TParams: RouteParams>(): {
-  +path: TRoute,
-  +params: TParams,
+export function useRoute<TRoute extends RoutePath, TParams extends RouteParams>(): {
+  readonly path: TRoute,
+  readonly params: TParams,
 } {
   return nativeRuntimeRequired(MODULE, "useRoute");
 }
 
-export function useRouter<TRoute: RoutePath>(): {
-  +push: (to: TRoute) => void,
-  +replace: (to: TRoute) => void,
-  +prefetch: (to: TRoute) => Promise<void>,
+export function useRouter<TRoute extends RoutePath>(): {
+  readonly push: (to: TRoute) => void,
+  readonly replace: (to: TRoute) => void,
+  readonly prefetch: (to: TRoute) => Promise<void>,
 } {
   return nativeRuntimeRequired(MODULE, "useRouter");
 }
 
-export function defineNavigationGuard<TRoute: RoutePath>(
+export function defineNavigationGuard<TRoute extends RoutePath>(
   guard: (to: TRoute, from: TRoute) => boolean | Promise<boolean>,
 ): (to: TRoute, from: TRoute) => Promise<boolean> {
   return nativeRuntimeRequired(MODULE, "defineNavigationGuard");

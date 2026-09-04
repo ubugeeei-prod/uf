@@ -8,197 +8,197 @@ export type RuleLevel = "off" | "warn" | "error" | 0 | 1 | 2 | boolean;
 export type TaskDefinition =
   | string
   | {
-      +command: string,
-      +cwd?: string,
-      +dependsOn?: $ReadOnlyArray<string>,
-      +env?: { +[string]: string },
+      readonly command: string,
+      readonly cwd?: string,
+      readonly dependsOn?: $ReadOnlyArray<string>,
+      readonly env?: { readonly [string]: string },
     };
 
 export type CapabilityJsHost = "node" | "deno" | "bun";
 
 export type UniflowedConfig = {
-  +app?: {
-    +orm?: {
-      +enabled?: boolean,
-      +module?: "@uniflowed/orm",
-      +native?: true,
-      +generatedFlowTypes?: true,
-      +preparedByDefault?: true,
+  readonly app?: {
+    readonly orm?: {
+      readonly enabled?: boolean,
+      readonly module?: "@uniflowed/orm",
+      readonly native?: true,
+      readonly generatedFlowTypes?: true,
+      readonly preparedByDefault?: true,
     },
-    +builtins?: {
-      +fetch?: {
-        +module?: "@uniflowed/fetch",
-        +overrideGlobalFetch?: false,
+    readonly builtins?: {
+      readonly fetch?: {
+        readonly module?: "@uniflowed/fetch",
+        readonly overrideGlobalFetch?: false,
       },
-      +cell?: boolean,
-      +reactCompiler?: {
-        +enabled?: boolean,
-        +implementation?: "official-rust",
-        +mode?: "syntax",
+      readonly cell?: boolean,
+      readonly reactCompiler?: {
+        readonly enabled?: boolean,
+        readonly implementation?: "official-rust",
+        readonly mode?: "syntax",
       },
-      +graphql?: {
-        +module?: "@uniflowed/graphql",
-        +relayBase?: true,
+      readonly graphql?: {
+        readonly module?: "@uniflowed/graphql",
+        readonly relayBase?: true,
       },
-      +loader?: {
-        +module?: "@uniflowed/loader",
-        +stateModule?: "@uniflowed/state",
-        +cache?: "opt-in",
+      readonly loader?: {
+        readonly module?: "@uniflowed/loader",
+        readonly stateModule?: "@uniflowed/state",
+        readonly cache?: "opt-in",
       },
-      +markdown?: {
-        +module?: "@uniflowed/markdown",
-        +engine?: "ox-content-wasm",
-        +mdx?: {
-          +enabled?: boolean,
-          +extensions?: $ReadOnlyArray<".mdx">,
-          +jsxImportSource?: "@uniflowed/jsx-runtime",
-          +pipelinePlugin?: "built-in",
+      readonly markdown?: {
+        readonly module?: "@uniflowed/markdown",
+        readonly engine?: "ox-content-wasm",
+        readonly mdx?: {
+          readonly enabled?: boolean,
+          readonly extensions?: $ReadOnlyArray<".mdx">,
+          readonly jsxImportSource?: "@uniflowed/jsx-runtime",
+          readonly pipelinePlugin?: "built-in",
         },
-        +cache?: "opt-in",
+        readonly cache?: "opt-in",
       },
-      +motion?: {
-        +module?: "@uniflowed/motion",
-        +engine?: "uf-native",
-        +compilerSafe?: true,
-        +serverComponentSafe?: true,
-        +reducedMotionDefault?: true,
+      readonly motion?: {
+        readonly module?: "@uniflowed/motion",
+        readonly engine?: "uf-native",
+        readonly compilerSafe?: true,
+        readonly serverComponentSafe?: true,
+        readonly reducedMotionDefault?: true,
       },
-      +tui?: {
-        +module?: "@uniflowed/tui",
-        +stdModule?: "@uniflowed/std/tui",
-        +standard?: "open-tui",
-        +nativeRenderer?: true,
-        +beatReactInk?: true,
-        +richMedia?: true,
-        +inMemoryTests?: true,
+      readonly tui?: {
+        readonly module?: "@uniflowed/tui",
+        readonly stdModule?: "@uniflowed/std/tui",
+        readonly standard?: "open-tui",
+        readonly nativeRenderer?: true,
+        readonly beatReactInk?: true,
+        readonly richMedia?: true,
+        readonly inMemoryTests?: true,
       },
-      +pwa?: {
-        +module?: "@uniflowed/pwa",
-        +enabledByDefault?: false,
-        +cache?: "opt-in",
+      readonly pwa?: {
+        readonly module?: "@uniflowed/pwa",
+        readonly enabledByDefault?: false,
+        readonly cache?: "opt-in",
       },
-      +temporal?: {
-        +module?: "@uniflowed/temporal",
-        +lite?: true,
+      readonly temporal?: {
+        readonly module?: "@uniflowed/temporal",
+        readonly lite?: true,
       },
-      +web?: {
-        +module?: "@uniflowed/web",
-        +typedRoutes?: true,
-        +linkPrefetch?: "off" | "intent" | "render",
-        +cache?: "opt-in",
+      readonly web?: {
+        readonly module?: "@uniflowed/web",
+        readonly typedRoutes?: true,
+        readonly linkPrefetch?: "off" | "intent" | "render",
+        readonly cache?: "opt-in",
       },
     },
-    +runtime?: {
-      +default?: "node" | "deno" | "bun" | "uf",
-      +compatibility?: $ReadOnlyArray<
+    readonly runtime?: {
+      readonly default?: "node" | "deno" | "bun" | "uf",
+      readonly compatibility?: $ReadOnlyArray<
         "node" | "bun" | "deno" | "edge" | "serverless" | "container",
       >,
-      +capabilityJsHost?: {
-        +default?: CapabilityJsHost,
-        +hosts?: $ReadOnlyArray<CapabilityJsHost>,
-        +autoDetect?: boolean,
+      readonly capabilityJsHost?: {
+        readonly default?: CapabilityJsHost,
+        readonly hosts?: $ReadOnlyArray<CapabilityJsHost>,
+        readonly autoDetect?: boolean,
       },
-      +deploy?: {
-        +enabled?: boolean,
-        +adapters?: $ReadOnlyArray<
+      readonly deploy?: {
+        readonly enabled?: boolean,
+        readonly adapters?: $ReadOnlyArray<
           "node" | "bun" | "deno" | "edge" | "serverless" | "static" | "container",
         >,
       },
     },
-    +router?: {
-      +entry?: string,
-      +root?: string,
-      +manifest?: string,
+    readonly router?: {
+      readonly entry?: string,
+      readonly root?: string,
+      readonly manifest?: string,
     },
-    +rendering?: {
-      +modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr">,
-      +cache?: {
-        +actions?: boolean,
-        +data?: boolean,
-        +fetch?: boolean,
-        +route?: boolean,
+    readonly rendering?: {
+      readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr">,
+      readonly cache?: {
+        readonly actions?: boolean,
+        readonly data?: boolean,
+        readonly fetch?: boolean,
+        readonly route?: boolean,
       },
     },
   },
-  +build?: {
-    +entries?: $ReadOnlyArray<string>,
-    +outDir?: string,
-    +staticBuild?: boolean,
-    +sourcemap?: boolean,
+  readonly build?: {
+    readonly entries?: $ReadOnlyArray<string>,
+    readonly outDir?: string,
+    readonly staticBuild?: boolean,
+    readonly sourcemap?: boolean,
   },
-  +dev?: {
-    +host?: string,
-    +port?: number,
-    +strictPort?: boolean,
+  readonly dev?: {
+    readonly host?: string,
+    readonly port?: number,
+    readonly strictPort?: boolean,
   },
-  +docs?: {
-    +enabled?: boolean,
-    +app?: string,
-    +source?: string,
-    +outDir?: string,
-    +staticBuild?: boolean,
-    +deploy?: "void",
+  readonly docs?: {
+    readonly enabled?: boolean,
+    readonly app?: string,
+    readonly source?: string,
+    readonly outDir?: string,
+    readonly staticBuild?: boolean,
+    readonly deploy?: "void",
   },
-  +lint?: {
-    +engine?: "rust",
-    +flow?: {
-      +builtins?: "mixed",
-      +parser?: "official-flow-rust",
+  readonly lint?: {
+    readonly engine?: "rust",
+    readonly flow?: {
+      readonly builtins?: "mixed",
+      readonly parser?: "official-flow-rust",
     },
-    +rules?: { +[string]: RuleLevel },
+    readonly rules?: { readonly [string]: RuleLevel },
   },
-  +fmt?: {
-    +indentWidth?: number,
-    +lineWidth?: number,
-    +maxBlankLines?: number,
-    +flow?: {
-      +parser?: "official-flow-rust",
-      +printer?: "uf-rust",
+  readonly fmt?: {
+    readonly indentWidth?: number,
+    readonly lineWidth?: number,
+    readonly maxBlankLines?: number,
+    readonly flow?: {
+      readonly parser?: "official-flow-rust",
+      readonly printer?: "uf-rust",
     },
-    +nonFlow?: {
-      +formatter?: "biome",
+    readonly nonFlow?: {
+      readonly formatter?: "biome",
     },
-    +quotes?: "single" | "double",
-    +semicolons?: boolean,
+    readonly quotes?: "single" | "double",
+    readonly semicolons?: boolean,
   },
-  +package?: {
-    +generator?: "napi-rs",
-    +targets?: $ReadOnlyArray<
+  readonly package?: {
+    readonly generator?: "napi-rs",
+    readonly targets?: $ReadOnlyArray<
       "node-napi" | "bun-napi" | "deno-napi" | "edge-wasm" | "serverless-napi",
     >,
-    +typescriptDeclarationsToFlow?: true,
+    readonly typescriptDeclarationsToFlow?: true,
   },
-  +pm?: {
-    +module?: "@uniflowed/pm",
-    +resolver?: "uf-native",
-    +lockfile?: "uf.lock",
-    +storeDir?: string,
-    +allowLifecycleScripts?: false,
+  readonly pm?: {
+    readonly module?: "@uniflowed/pm",
+    readonly resolver?: "uf-native",
+    readonly lockfile?: "uf.lock",
+    readonly storeDir?: string,
+    readonly allowLifecycleScripts?: false,
   },
-  +rm?: {
-    +module?: "@uniflowed/rm",
-    +inferFromConfig?: true,
-    +version?: "node@system" | string,
-    +autoSwitch?: boolean,
-    +acquisition?: "auto",
-    +apply?: "config-and-host",
-    +doctor?: boolean,
+  readonly rm?: {
+    readonly module?: "@uniflowed/rm",
+    readonly inferFromConfig?: true,
+    readonly version?: "node@system" | string,
+    readonly autoSwitch?: boolean,
+    readonly acquisition?: "auto",
+    readonly apply?: "config-and-host",
+    readonly doctor?: boolean,
   },
-  +server?: {
-    +engine?: "native-rust",
-    +native?: {
-      +streaming?: boolean,
-      +zeroCopyHttp?: boolean,
-      +adapters?: $ReadOnlyArray<
+  readonly server?: {
+    readonly engine?: "native-rust",
+    readonly native?: {
+      readonly streaming?: boolean,
+      readonly zeroCopyHttp?: boolean,
+      readonly adapters?: $ReadOnlyArray<
         "uf" | "node" | "bun" | "deno" | "edge" | "serverless" | "container",
       >,
     },
   },
-  +std?: {
-    +module?: "@uniflowed/std",
-    +wintertcAligned?: true,
-    +nativeBindings?: boolean,
-    +modules?: $ReadOnlyArray<
+  readonly std?: {
+    readonly module?: "@uniflowed/std",
+    readonly wintertcAligned?: true,
+    readonly nativeBindings?: boolean,
+    readonly modules?: $ReadOnlyArray<
       | "vfs"
       | "fs"
       | "types"
@@ -245,58 +245,58 @@ export type UniflowedConfig = {
       | "defer",
     >,
   },
-  +publish?: {
-    +registry?: string,
-    +dryRun?: boolean,
-    +firstPublish?: {
-      +mode?: "local",
-      +localBootstrap?: true,
+  readonly publish?: {
+    readonly registry?: string,
+    readonly dryRun?: boolean,
+    readonly firstPublish?: {
+      readonly mode?: "local",
+      readonly localBootstrap?: true,
     },
-    +trustedPublish?: {
-      +enabled?: true,
-      +provider?: "github-actions-oidc",
-      +tokenless?: true,
-      +trigger?: "tag-push",
-    },
-  },
-  +release?: {
-    +tagPrefix?: "uf@",
-    +command?: "uf release alpha" | string,
-    +publish?: true,
-  },
-  +story?: {
-    +enabled?: boolean,
-    +module?: "@uniflowed/story",
-    +mocks?: {
-      +module?: "@uniflowed/mock",
-      +mswCompatible?: boolean,
-    },
-    +browser?: {
-      +module?: "@uniflowed/browser",
-      +playwrightCompatible?: boolean,
+    readonly trustedPublish?: {
+      readonly enabled?: true,
+      readonly provider?: "github-actions-oidc",
+      readonly tokenless?: true,
+      readonly trigger?: "tag-push",
     },
   },
-  +taskRunner?: {
-    +engine?: "vite-task",
-    +allowPackageScripts?: false,
+  readonly release?: {
+    readonly tagPrefix?: "uf@",
+    readonly command?: "uf release alpha" | string,
+    readonly publish?: true,
   },
-  +test?: {
-    +module?: "@uniflowed/test",
-    +runner?: {
-      +runtime?: "capability-js-host" | "uf-self-hosted",
-      +jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
-      +scheduler?: "native-work-stealing",
-      +performanceTarget?: "faster-than-bun",
-      +officialFlowParser?: true,
+  readonly story?: {
+    readonly enabled?: boolean,
+    readonly module?: "@uniflowed/story",
+    readonly mocks?: {
+      readonly module?: "@uniflowed/mock",
+      readonly mswCompatible?: boolean,
     },
-    +reactTestingLibraryNative?: true,
+    readonly browser?: {
+      readonly module?: "@uniflowed/browser",
+      readonly playwrightCompatible?: boolean,
+    },
   },
-  +tasks?: { +[string]: TaskDefinition },
-  +vrt?: {
-    +enabled?: boolean,
-    +module?: "@uniflowed/vrt",
-    +baselines?: string,
-    +threshold?: number,
+  readonly taskRunner?: {
+    readonly engine?: "vite-task",
+    readonly allowPackageScripts?: false,
+  },
+  readonly test?: {
+    readonly module?: "@uniflowed/test",
+    readonly runner?: {
+      readonly runtime?: "capability-js-host" | "uf-self-hosted",
+      readonly jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
+      readonly scheduler?: "native-work-stealing",
+      readonly performanceTarget?: "faster-than-bun",
+      readonly officialFlowParser?: true,
+    },
+    readonly reactTestingLibraryNative?: true,
+  },
+  readonly tasks?: { readonly [string]: TaskDefinition },
+  readonly vrt?: {
+    readonly enabled?: boolean,
+    readonly module?: "@uniflowed/vrt",
+    readonly baselines?: string,
+    readonly threshold?: number,
   },
 };
 

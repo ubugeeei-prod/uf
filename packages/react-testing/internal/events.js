@@ -18,7 +18,7 @@
 import { actively } from "./render.js";
 
 /** Event constructors by DOM event name, with the right interface for each. */
-const EVENT_TYPES: { +[string]: string } = {
+const EVENT_TYPES: { readonly [string]: string } = {
   click: "MouseEvent",
   dblclick: "MouseEvent",
   mousedown: "MouseEvent",
@@ -45,7 +45,7 @@ const EVENT_TYPES: { +[string]: string } = {
 /** Events that do not bubble, whatever else is said about them. */
 const NON_BUBBLING = new Set(["focus", "blur", "mouseenter", "mouseleave"]);
 
-function construct(name: string, init: { +[string]: mixed }): Event {
+function construct(name: string, init: { readonly [string]: mixed }): Event {
   const interfaceName = EVENT_TYPES[name] ?? "Event";
   const Constructor = (globalThis: any)[interfaceName] ?? globalThis.Event;
   const options = {
@@ -71,7 +71,7 @@ function construct(name: string, init: { +[string]: mixed }): Event {
 export function dispatch(
   target: EventTarget,
   name: string,
-  init?: { +[string]: mixed },
+  init?: { readonly [string]: mixed },
 ): boolean {
   const event = construct(name, init ?? {});
   let ran = true;
@@ -89,7 +89,7 @@ export function dispatch(
  * also works, for an event whose name is computed.
  */
 export const fireEvent: any = new Proxy(
-  (target: EventTarget, name: string, init?: { +[string]: mixed }) =>
+  (target: EventTarget, name: string, init?: { readonly [string]: mixed }) =>
     dispatch(target, name, init),
   {
     get(base, property) {
@@ -99,7 +99,7 @@ export const fireEvent: any = new Proxy(
       if (property in base) {
         return (base: any)[property];
       }
-      return (target: EventTarget, init?: { +[string]: mixed }) =>
+      return (target: EventTarget, init?: { readonly [string]: mixed }) =>
         dispatch(target, property.toLowerCase(), init);
     },
   },
@@ -122,7 +122,7 @@ function setValue(element: HTMLElement, value: string): void {
 
 /** A key's `key`, `code` and printable text. */
 function describeKey(key: string): {| key: string, code: string, text: string | null |} {
-  const named: { +[string]: {| code: string, text: string | null |} } = {
+  const named: { readonly [string]: {| code: string, text: string | null |} } = {
     Enter: { code: "Enter", text: "\n" },
     Tab: { code: "Tab", text: null },
     Escape: { code: "Escape", text: null },
@@ -163,7 +163,7 @@ function tabbable(): Array<HTMLElement> {
  */
 export const userEvent = {
   /** Press and release, with the events a real click produces, in order. */
-  async click(element: HTMLElement, init?: { +[string]: mixed }): Promise<void> {
+  async click(element: HTMLElement, init?: { readonly [string]: mixed }): Promise<void> {
     if ((element: any).disabled === true) {
       return;
     }
@@ -230,7 +230,7 @@ export const userEvent = {
   },
 
   /** Move focus the way the Tab key does. */
-  async tab(options?: {| +shift?: boolean |}): Promise<void> {
+  async tab(options?: {| readonly shift?: boolean |}): Promise<void> {
     const order = tabbable();
     if (order.length === 0) {
       return;

@@ -7,11 +7,11 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 
 const MODULE = "@uniflowed/core/react-native";
 
-export component View(...props: $ReadOnly<{ +children?: React.Node }>) {
+export component View(...props: $ReadOnly<{ readonly children?: React.Node }>) {
   return nativeRuntimeRequired(MODULE, "View");
 }
 
-export component Text(...props: $ReadOnly<{ +children?: React.Node }>) {
+export component Text(...props: $ReadOnly<{ readonly children?: React.Node }>) {
   return nativeRuntimeRequired(MODULE, "Text");
 }
 
@@ -21,13 +21,23 @@ export component Text(...props: $ReadOnly<{ +children?: React.Node }>) {
  * `select` raises rather than silently picking a branch.
  */
 export const Platform: {
-  +OS: "ios" | "android" | "web" | "native",
-  +select: <T>(
-    options: $ReadOnly<{ +ios?: T, +android?: T, +web?: T, +native?: T }>,
+  readonly OS: "ios" | "android" | "web" | "native",
+  readonly select: <T>(
+    options: $ReadOnly<{
+      readonly ios?: T,
+      readonly android?: T,
+      readonly web?: T,
+      readonly native?: T,
+    }>,
   ) => T | void,
 } = {
   OS: "native",
   select: <T>(
-    options: $ReadOnly<{ +ios?: T, +android?: T, +web?: T, +native?: T }>,
+    options: $ReadOnly<{
+      readonly ios?: T,
+      readonly android?: T,
+      readonly web?: T,
+      readonly native?: T,
+    }>,
   ): T | void => nativeRuntimeRequired(MODULE, "Platform.select"),
 };

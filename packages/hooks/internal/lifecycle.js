@@ -38,7 +38,7 @@ export const useIsomorphicLayoutEffect: typeof useLayoutEffect =
  * — and it is written before any layout effect runs, so a subscription set up
  * in one already sees the current body.
  */
-export function useStableCallback<TArgs: $ReadOnlyArray<mixed>, TReturn>(
+export function useStableCallback<TArgs extends $ReadOnlyArray<mixed>, TReturn>(
   callback: (...args: TArgs) => TReturn,
 ): (...args: TArgs) => TReturn {
   const latest = useRef(callback);

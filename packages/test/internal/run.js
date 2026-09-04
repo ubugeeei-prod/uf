@@ -15,34 +15,34 @@ import { type Body, type Case, type Suite, collected } from "./registry.js";
 
 /** How one case ended. */
 export type Outcome =
-  | {| +status: "passed" |}
+  | {| readonly status: "passed" |}
   | {|
-      +status: "failed",
-      +message: string,
-      +stack: string | null,
-      +expected: string | null,
-      +received: string | null,
+      readonly status: "failed",
+      readonly message: string,
+      readonly stack: string | null,
+      readonly expected: string | null,
+      readonly received: string | null,
       /** Where the failing assertion was written, when the stack says. */
-      +site: {| +line: number, +column: number |} | null,
+      readonly site: {| readonly line: number, readonly column: number |} | null,
     |}
-  | {| +status: "skipped", +reason: "explicit" | "not-only" | "filtered" |}
-  | {| +status: "todo" |};
+  | {| readonly status: "skipped", readonly reason: "explicit" | "not-only" | "filtered" |}
+  | {| readonly status: "todo" |};
 
 /** One finished case, as the runner reports it. */
 export type Result = {|
-  +name: string,
-  +line: number,
-  +column: number,
-  +durationMicros: number,
-  +outcome: Outcome,
+  readonly name: string,
+  readonly line: number,
+  readonly column: number,
+  readonly durationMicros: number,
+  readonly outcome: Outcome,
 |};
 
 /** How a run is configured. */
 export type RunOptions = {|
   /** Keep only cases whose full name contains this, reporting the rest skipped. */
-  +filter?: string | null,
+  readonly filter?: string | null,
   /** Wall-clock budget for one case, in milliseconds. */
-  +timeoutMs?: number,
+  readonly timeoutMs?: number,
 |};
 
 /** Default budget for one case, matching what most runners use. */
@@ -128,11 +128,11 @@ function failure(thrown: mixed): Outcome {
 
 /** Everything one case needs from the suites above it. */
 type Context = {|
-  +path: $ReadOnlyArray<string>,
-  +beforeEach: $ReadOnlyArray<Body>,
-  +afterEach: $ReadOnlyArray<Body>,
-  +skipped: boolean,
-  +onlyPath: boolean,
+  readonly path: $ReadOnlyArray<string>,
+  readonly beforeEach: $ReadOnlyArray<Body>,
+  readonly afterEach: $ReadOnlyArray<Body>,
+  readonly skipped: boolean,
+  readonly onlyPath: boolean,
 |};
 
 /**

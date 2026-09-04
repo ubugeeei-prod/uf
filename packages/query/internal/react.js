@@ -55,21 +55,21 @@ export function useQueryCache(): QueryCache {
 
 /** What a query looks like to a component. */
 export type QueryResult<T> = {|
-  +value: T | void,
-  +error: Error | null,
+  readonly value: T | void,
+  readonly error: Error | null,
   /** A request is in flight. True on the first load and on a refresh. */
-  +pending: boolean,
+  readonly pending: boolean,
   /** There has never been a value, so there is nothing to show yet. */
-  +loading: boolean,
+  readonly loading: boolean,
   /** The value is older than `staleTime`. */
-  +stale: boolean,
-  +refetch: () => Promise<T>,
+  readonly stale: boolean,
+  readonly refetch: () => Promise<T>,
 |};
 
 /** How a query behaves. */
 export type QueryOptions = {|
   /** How long a value is fresh. Defaults to none, so a mount refetches. */
-  +staleTime?: number,
+  readonly staleTime?: number,
 |};
 
 /**
@@ -127,10 +127,10 @@ export function useQuery<T>(
 
 /** What a mutation looks like to a component. */
 export type MutationResult<TInput, TOutput> = {|
-  +run: (input: TInput) => Promise<TOutput>,
-  +value: TOutput | void,
-  +error: Error | null,
-  +pending: boolean,
+  readonly run: (input: TInput) => Promise<TOutput>,
+  readonly value: TOutput | void,
+  readonly error: Error | null,
+  readonly pending: boolean,
 |};
 
 /**
@@ -148,7 +148,7 @@ export type MutationResult<TInput, TOutput> = {|
  */
 export function useMutation<TInput, TOutput>(
   mutation: (input: TInput) => Promise<TOutput>,
-  options?: {| +invalidates?: $ReadOnlyArray<QueryKey> |},
+  options?: {| readonly invalidates?: $ReadOnlyArray<QueryKey> |},
 ): MutationResult<TInput, TOutput> {
   const cache = useQueryCache();
   const [state, setState] = useState<{|

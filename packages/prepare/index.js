@@ -15,10 +15,10 @@ export type PrepareStep =
   | "run-format-check";
 
 export type PreparePlan = {
-  +lintStagedCompatible: boolean,
-  +codeGenerator: boolean,
-  +cache: "opt-in",
-  +steps: $ReadOnlyArray<PrepareStep>,
+  readonly lintStagedCompatible: boolean,
+  readonly codeGenerator: boolean,
+  readonly cache: "opt-in",
+  readonly steps: $ReadOnlyArray<PrepareStep>,
 };
 
 export function prepare(): PreparePlan {

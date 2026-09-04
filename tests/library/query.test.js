@@ -10,13 +10,7 @@
 import * as React from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
-import {
-  QueryCache,
-  QueryProvider,
-  hash,
-  useMutation,
-  useQuery,
-} from "@uniflowed/query";
+import { QueryCache, QueryProvider, hash, useMutation, useQuery } from "@uniflowed/query";
 
 const deferred = () => {
   let settle = (value: mixed) => {};
@@ -131,9 +125,7 @@ describe("the cache", () => {
 });
 
 describe("useQuery", () => {
-  const withCache = (cache, ui) => (
-    <QueryProvider cache={cache}>{ui}</QueryProvider>
-  );
+  const withCache = (cache, ui) => <QueryProvider cache={cache}>{ui}</QueryProvider>;
 
   component Thing(cache: QueryCache, query: () => Promise<string>) {
     const { value, loading, error } = useQuery(["thing"], query);
@@ -155,9 +147,7 @@ describe("useQuery", () => {
     const cache = new QueryCache();
     await cache.fetch(["thing"], async () => "cached");
 
-    render(
-      withCache(cache, <Thing cache={cache} query={async () => "refreshed"} />),
-    );
+    render(withCache(cache, <Thing cache={cache} query={async () => "refreshed"} />));
     // The point of stale-while-revalidate: navigating back does not flash a
     // spinner over data that is already there.
     expect(screen.getByText("cached")).toBeInTheDocument();

@@ -29,8 +29,7 @@ import {
   useToggle,
 } from "@uniflowed/hooks";
 
-const tick = (millis: number) =>
-  act(() => new Promise((resolve) => setTimeout(resolve, millis)));
+const tick = (millis: number) => act(() => new Promise((resolve) => setTimeout(resolve, millis)));
 
 describe("useStableCallback", () => {
   it("keeps one identity across renders", async () => {
@@ -171,7 +170,7 @@ describe("useAsync", () => {
       const { error, pending } = useAsync(async () => {
         throw new Error("nope");
       }, []);
-      return <output>{pending ? "pending" : (error?.message ?? "none")}</output>;
+      return <output>{pending ? "pending" : error?.message ?? "none"}</output>;
     }
     render(<Probe />);
     await waitFor(() => {

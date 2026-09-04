@@ -950,7 +950,7 @@ fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
             let Some(open) = declaration.find('<') else {
                 continue;
             };
-            if !declaration[open..].starts_with("<+") {
+            if !declaration[open..].starts_with("<out ") {
                 continue;
             }
             assert!(
@@ -960,8 +960,7 @@ fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
                     || declaration.contains("TagCarrier")
                     || declaration.contains("LayerCarrier"),
                 "{module} declares a covariant opaque type without a covariant \
-                 carrier, so the `+` sigil promises more than the definition \
-                 delivers: {}",
+                 carrier, so `out` promises more than the definition delivers: {}",
                 declaration.trim()
             );
             covariant.push(module.clone());
@@ -971,6 +970,45 @@ fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
     assert!(
         !covariant.is_empty(),
         "expected at least one covariant opaque type in the shipped surface"
+    );
+}
+
+/// The shipped surface is written in the Flow of today, not the Flow of 2019.
+///
+/// Three spellings the checker itself now reports as deprecated: `+prop` for a
+/// read-only property, `<+T>` for a covariant type parameter, and `<T: Bound>`
+/// for a bound. Modern Flow spells them `readonly prop`, `<out T>` and
+/// `<T extends Bound>`, and `uf check` reported 1015 errors against this
+/// repository's own packages for using the old ones.
+///
+/// A test rather than a one-time cleanup, because the old spellings still parse
+/// and a contributor who learned Flow five years ago will reach for them.
+#[test]
+fn the_shipped_surface_uses_modern_flow_spellings() {
+    let mut legacy = BTreeSet::new();
+
+    for module in shipped_modules() {
+        let code = code_only(&read(&module));
+        for (number, line) in code.lines().enumerate() {
+            let number = number + 1;
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('+') && trimmed.contains(':') {
+                legacy.insert(format!("{module}:{number}: `+prop` is now `readonly prop`"));
+            }
+            if line.contains("<+") {
+                legacy.insert(format!("{module}:{number}: `<+T>` is now `<out T>`"));
+            }
+            if line.contains("<-") {
+                legacy.insert(format!("{module}:{number}: `<-T>` is now `<in T>`"));
+            }
+        }
+    }
+
+    assert!(
+        legacy.is_empty(),
+        "{} deprecated Flow spellings in the shipped surface:\n{}",
+        legacy.len(),
+        legacy.into_iter().collect::<Vec<_>>().join("\n")
     );
 }
 

@@ -3,14 +3,14 @@
 // `@uniflowed/brand`.
 
 export type BrandColorToken = {
-  +name: string,
-  +token: string,
-  +value: string,
+  readonly name: string,
+  readonly token: string,
+  readonly value: string,
 };
 
 export type BrandScaleToken = {
-  +token: string,
-  +value: string,
+  readonly token: string,
+  readonly value: string,
 };
 
 export const ufBrand = {

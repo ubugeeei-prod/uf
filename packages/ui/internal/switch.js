@@ -18,10 +18,7 @@ import { useCallback, useState } from "@uniflowed/react";
 import { composeHandlers, withoutComposed } from "./props.js";
 
 /** Space toggles, and so does Enter, because both do on a native control. */
-function toggleKeys(
-  event: SyntheticKeyboardEvent<HTMLElement>,
-  toggle: () => void,
-): void {
+function toggleKeys(event: SyntheticKeyboardEvent<HTMLElement>, toggle: () => void): void {
   if (event.key !== " " && event.key !== "Enter") {
     return;
   }
@@ -58,7 +55,7 @@ export component Switch(
   onCheckedChange?: (checked: boolean) => void,
   disabled?: boolean = false,
   children?: React.Node,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const [on, toggle] = useToggle(checked, defaultChecked, onCheckedChange);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
@@ -94,7 +91,7 @@ export component Checkbox(
   onCheckedChange?: (checked: boolean) => void,
   disabled?: boolean = false,
   children?: React.Node,
-  ...rest: { +[string]: mixed }
+  ...rest: { readonly [string]: mixed }
 ) {
   const [on, toggle] = useToggle(checked, defaultChecked, onCheckedChange);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);

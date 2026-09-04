@@ -34,18 +34,18 @@ export class AssertionError extends Error {
 
 /** What a matcher decided, and how to say it either way. */
 type Verdict = {|
-  +pass: boolean,
-  +failure: () => string,
-  +negatedFailure: () => string,
-  +expected?: string,
-  +received?: string,
+  readonly pass: boolean,
+  readonly failure: () => string,
+  readonly negatedFailure: () => string,
+  readonly expected?: string,
+  readonly received?: string,
 |};
 
 /** One recorded call to a spy. */
 export type SpyCall = {|
-  +args: $ReadOnlyArray<mixed>,
-  +returned?: mixed,
-  +threw?: mixed,
+  readonly args: $ReadOnlyArray<mixed>,
+  readonly returned?: mixed,
+  readonly threw?: mixed,
 |};
 
 /**
@@ -96,7 +96,10 @@ function isSpy(value: mixed): boolean {
   return typeof value === "function" && (value: $FlowFixMe).mock != null;
 }
 
-function propertyAt(value: mixed, path: string): {| +found: boolean, +value: mixed |} {
+function propertyAt(
+  value: mixed,
+  path: string,
+): {| readonly found: boolean, readonly value: mixed |} {
   let current = value;
   for (const key of path.split(".")) {
     if (current == null) {
@@ -137,7 +140,9 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  * Every entry returns a [`Verdict`] rather than throwing, which is what lets
  * `.not` reuse all of them.
  */
-function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) => Verdict } {
+function verdicts(received: mixed): {
+  readonly [string]: (...args: $ReadOnlyArray<any>) => Verdict,
+} {
   const shown = () => render(received);
   const simple = (pass: boolean, what: string, expected?: mixed): Verdict => ({
     pass,
@@ -187,13 +192,29 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
     toBeDefined: () => simple(received !== undefined, "to be defined"),
     toBeNaN: () => simple(typeof received === "number" && Number.isNaN(received), "to be NaN"),
     toBeGreaterThan: (expected: mixed) =>
-      simple((received: $FlowFixMe) > (expected: $FlowFixMe), `to be greater than ${render(expected)}`, expected),
+      simple(
+        (received: $FlowFixMe) > (expected: $FlowFixMe),
+        `to be greater than ${render(expected)}`,
+        expected,
+      ),
     toBeGreaterThanOrEqual: (expected: mixed) =>
-      simple((received: $FlowFixMe) >= (expected: $FlowFixMe), `to be at least ${render(expected)}`, expected),
+      simple(
+        (received: $FlowFixMe) >= (expected: $FlowFixMe),
+        `to be at least ${render(expected)}`,
+        expected,
+      ),
     toBeLessThan: (expected: mixed) =>
-      simple((received: $FlowFixMe) < (expected: $FlowFixMe), `to be less than ${render(expected)}`, expected),
+      simple(
+        (received: $FlowFixMe) < (expected: $FlowFixMe),
+        `to be less than ${render(expected)}`,
+        expected,
+      ),
     toBeLessThanOrEqual: (expected: mixed) =>
-      simple((received: $FlowFixMe) <= (expected: $FlowFixMe), `to be at most ${render(expected)}`, expected),
+      simple(
+        (received: $FlowFixMe) <= (expected: $FlowFixMe),
+        `to be at most ${render(expected)}`,
+        expected,
+      ),
     toBeCloseTo: (expected: number, digits?: number) => {
       const places = digits ?? 2;
       const tolerance = 10 ** -places / 2;
@@ -216,7 +237,11 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
       return simple(pass, `to contain ${render(expected)}`, expected);
     },
     toContainEqual: (expected: mixed) => {
-      const items = Array.isArray(received) ? received : received instanceof Set ? [...received] : [];
+      const items = Array.isArray(received)
+        ? received
+        : received instanceof Set
+          ? [...received]
+          : [];
       return simple(
         items.some((item) => equals(item, expected)),
         `to contain something equal to ${render(expected)}`,
@@ -225,7 +250,11 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
     },
     toHaveLength: (expected: number) => {
       const length = received == null ? undefined : (received: $FlowFixMe).length;
-      return simple(length === expected, `to have length ${expected}, not ${render(length)}`, expected);
+      return simple(
+        length === expected,
+        `to have length ${expected}, not ${render(length)}`,
+        expected,
+      );
     },
     toHaveProperty: (path: string, ...rest: $ReadOnlyArray<mixed>) => {
       const found = propertyAt(received, path);
@@ -240,7 +269,8 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
     },
     toMatch: (expected: mixed) => {
       const text = typeof received === "string" ? received : String(received);
-      const pass = typeof expected === "string" ? text.includes(expected) : (expected: $FlowFixMe).test(text);
+      const pass =
+        typeof expected === "string" ? text.includes(expected) : (expected: $FlowFixMe).test(text);
       return simple(pass, `to match ${render(expected)}`, expected);
     },
     toMatchObject: (expected: mixed) =>
@@ -252,7 +282,11 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
         expected,
       ),
     toBeTypeOf: (expected: string) =>
-      simple(typeof received === expected, `to be of type ${expected}, not ${typeof received}`, expected),
+      simple(
+        typeof received === expected,
+        `to be of type ${expected}, not ${typeof received}`,
+        expected,
+      ),
     toSatisfy: (predicate: (value: mixed) => boolean) =>
       simple(predicate(received) === true, "to satisfy the predicate"),
     toThrow: (...rest: $ReadOnlyArray<mixed>) => {
@@ -327,10 +361,7 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
     toBeInTheDocument: () => {
       const node = element("toBeInTheDocument");
       const root = node.ownerDocument;
-      return simple(
-        root != null && root.contains(node),
-        "to be in the document",
-      );
+      return simple(root != null && root.contains(node), "to be in the document");
     },
     toBeVisible: () => {
       const node = element("toBeVisible");
@@ -371,8 +402,7 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
         pass: actual === String(value),
         expected: render(value),
         received: render(actual),
-        failure: () =>
-          `expected ${render(name)} to be ${render(value)}, not ${render(actual)}`,
+        failure: () => `expected ${render(name)} to be ${render(value)}, not ${render(actual)}`,
       };
     },
     toHaveClass: (...names: $ReadOnlyArray<mixed>) => {
@@ -383,8 +413,7 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
         pass: wanted.every((name) => classes.includes(name)),
         expected: render(wanted),
         received: render(classes),
-        failure: () =>
-          `expected the class list ${render(classes)} to include ${render(wanted)}`,
+        failure: () => `expected the class list ${render(classes)} to include ${render(wanted)}`,
       };
     },
     toHaveTextContent: (expected: mixed) => {
@@ -421,9 +450,7 @@ function verdicts(received: mixed): { +[string]: (...args: $ReadOnlyArray<any>) 
   function element(matcher: string): Element {
     const node: $FlowFixMe = received;
     if (node == null || typeof node.getAttribute !== "function") {
-      throw new AssertionError(
-        `${matcher} needs an element, and received ${render(received)}`,
-      );
+      throw new AssertionError(`${matcher} needs an element, and received ${render(received)}`);
     }
     return node;
   }
@@ -442,11 +469,7 @@ function isVisible(node: Element): boolean {
     if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
       return false;
     }
-    if (
-      current.tagName === "DETAILS" &&
-      !current.hasAttribute("open") &&
-      current !== node
-    ) {
+    if (current.tagName === "DETAILS" && !current.hasAttribute("open") && current !== node) {
       return false;
     }
     const style = current.ownerDocument?.defaultView?.getComputedStyle?.(current);
@@ -494,7 +517,12 @@ function bind(received: mixed, negated: boolean): $FlowFixMe {
         return undefined;
       }
       const message = negated ? verdict.negatedFailure() : verdict.failure();
-      throw new AssertionError(message, name, verdict.expected ?? "", verdict.received ?? render(received));
+      throw new AssertionError(
+        message,
+        name,
+        verdict.expected ?? "",
+        verdict.received ?? render(received),
+      );
     };
   }
   Object.defineProperty(bound, "not", { get: () => bind(received, !negated) });
@@ -562,7 +590,9 @@ function settled(promise: mixed, wanted: "resolve" | "reject", negated: boolean)
  */
 export function expect(received: mixed): $FlowFixMe {
   const expectation: $FlowFixMe = bind(received, false);
-  Object.defineProperty(expectation, "resolves", { get: () => settled(received, "resolve", false) });
+  Object.defineProperty(expectation, "resolves", {
+    get: () => settled(received, "resolve", false),
+  });
   Object.defineProperty(expectation, "rejects", { get: () => settled(received, "reject", false) });
   return expectation;
 }

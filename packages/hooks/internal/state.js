@@ -14,9 +14,9 @@ import { useStableCallback } from "./lifecycle.js";
 
 /** A boolean with the three things a caller ever does to one. */
 export function useToggle(initial: boolean = false): {|
-  +on: boolean,
-  +toggle: () => void,
-  +set: (value: boolean) => void,
+  readonly on: boolean,
+  readonly toggle: () => void,
+  readonly set: (value: boolean) => void,
 |} {
   const [on, setOn] = useState(initial);
   const toggle = useCallback(() => setOn((value) => !value), []);
@@ -26,13 +26,13 @@ export function useToggle(initial: boolean = false): {|
 /** A number, optionally clamped. */
 export function useCounter(
   initial: number = 0,
-  bounds?: {| +min?: number, +max?: number |},
+  bounds?: {| readonly min?: number, readonly max?: number |},
 ): {|
-  +count: number,
-  +increment: (by?: number) => void,
-  +decrement: (by?: number) => void,
-  +set: (value: number) => void,
-  +reset: () => void,
+  readonly count: number,
+  readonly increment: (by?: number) => void,
+  readonly decrement: (by?: number) => void,
+  readonly set: (value: number) => void,
+  readonly reset: () => void,
 |} {
   const min = bounds?.min;
   const max = bounds?.max;
@@ -46,10 +46,7 @@ export function useCounter(
   );
 
   const [count, setCount] = useState(() => clamp(initial));
-  const move = useCallback(
-    (delta: number) => setCount((value) => clamp(value + delta)),
-    [clamp],
-  );
+  const move = useCallback((delta: number) => setCount((value) => clamp(value + delta)), [clamp]);
 
   return useMemo(
     () => ({
@@ -99,7 +96,7 @@ function area(session: boolean): mixed {
 export function useStorage<T>(
   key: string,
   initial: T,
-  options?: {| +session?: boolean |},
+  options?: {| readonly session?: boolean |},
 ): [T, (value: T) => void] {
   const session = options?.session ?? false;
 

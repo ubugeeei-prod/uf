@@ -17,11 +17,11 @@ import { useCallback, useEffect, useState } from "@uniflowed/react";
 
 /** What an in-flight, settled or failed call looks like. */
 export type Async<T> = {|
-  +value: T | null,
-  +error: Error | null,
-  +pending: boolean,
+  readonly value: T | null,
+  readonly error: Error | null,
+  readonly pending: boolean,
   /** Run it again, keeping whatever is on screen until the new value lands. */
-  +reload: () => void,
+  readonly reload: () => void,
 |};
 
 /**
@@ -31,10 +31,7 @@ export type Async<T> = {|
  * blanking the page to show a spinner every time a filter changes is worse
  * than showing slightly stale data for a moment. `pending` says which it is.
  */
-export function useAsync<T>(
-  body: () => Promise<T>,
-  deps: $ReadOnlyArray<mixed>,
-): Async<T> {
+export function useAsync<T>(body: () => Promise<T>, deps: $ReadOnlyArray<mixed>): Async<T> {
   const [state, setState] = useState<{|
     value: T | null,
     error: Error | null,

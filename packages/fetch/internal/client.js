@@ -20,11 +20,16 @@
 
 /** What went wrong, as a value rather than a string. */
 export type FetchFailure =
-  | {| +kind: "http", +status: number, +statusText: string, +response: Response |}
-  | {| +kind: "network", +cause: mixed |}
-  | {| +kind: "timeout", +millis: number |}
-  | {| +kind: "parse", +cause: mixed |}
-  | {| +kind: "invalid", +issues: $ReadOnlyArray<mixed> |};
+  | {|
+      readonly kind: "http",
+      readonly status: number,
+      readonly statusText: string,
+      readonly response: Response,
+    |}
+  | {| readonly kind: "network", readonly cause: mixed |}
+  | {| readonly kind: "timeout", readonly millis: number |}
+  | {| readonly kind: "parse", readonly cause: mixed |}
+  | {| readonly kind: "invalid", readonly issues: $ReadOnlyArray<mixed> |};
 
 /**
  * A request that failed, carrying why.
@@ -34,8 +39,8 @@ export type FetchFailure =
  * a message that already says what happened.
  */
 export class FetchError extends Error {
-  +failure: FetchFailure;
-  +url: string;
+  readonly failure: FetchFailure;
+  readonly url: string;
 
   constructor(url: string, failure: FetchFailure) {
     super(describe(url, failure));
@@ -53,9 +58,7 @@ export class FetchError extends Error {
       // the server's problem rather than the request's. Nothing else is worth
       // sending again: a 400 will be a 400 next time too.
       "http" =>
-        this.failure.status === 408 ||
-        this.failure.status === 429 ||
-        this.failure.status >= 500,
+        this.failure.status === 408 || this.failure.status === 429 || this.failure.status >= 500,
       _ => false,
     };
   }
@@ -80,42 +83,44 @@ function describe(url: string, failure: FetchFailure): string {
  */
 export type Parse<T> = (
   value: mixed,
-) => {| +ok: true, +value: T |} | {| +ok: false, +issues: $ReadOnlyArray<mixed> |};
+) =>
+  | {| readonly ok: true, readonly value: T |}
+  | {| readonly ok: false, readonly issues: $ReadOnlyArray<mixed> |};
 
 /** How a client behaves for every request it makes. */
 export type FetchConfig = {|
-  +baseURL?: string,
-  +headers?: { +[string]: string },
+  readonly baseURL?: string,
+  readonly headers?: { readonly [string]: string },
   /** Abort a request that has not answered. Defaults to 30 seconds. */
-  +timeout?: number,
+  readonly timeout?: number,
   /** How many further attempts a retriable failure gets. Defaults to none. */
-  +retries?: number,
+  readonly retries?: number,
   /** Milliseconds before the first retry; doubles each time. Defaults to 200. */
-  +retryDelay?: number,
+  readonly retryDelay?: number,
   /** Swap in a different `fetch`, which is how a test avoids the network. */
-  +fetch?: typeof fetch,
+  readonly fetch?: typeof fetch,
 |};
 
 /** One request. */
 export type RequestOptions<T> = {|
-  +method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE",
+  readonly method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE",
   /** Sent as JSON unless it is already a `BodyInit`. */
-  +body?: mixed,
-  +headers?: { +[string]: string },
-  +searchParams?: { +[string]: string | number | boolean },
-  +signal?: AbortSignal,
-  +timeout?: number,
-  +retries?: number,
+  readonly body?: mixed,
+  readonly headers?: { readonly [string]: string },
+  readonly searchParams?: { readonly [string]: string | number | boolean },
+  readonly signal?: AbortSignal,
+  readonly timeout?: number,
+  readonly retries?: number,
   /** Checked against the parsed body; its failure is the request's failure. */
-  +parse?: Parse<T>,
+  readonly parse?: Parse<T>,
 |};
 
 /** A configured client. */
 export type FetchClient = {|
-  +request: <T>(path: string, options?: RequestOptions<T>) => Promise<T>,
-  +raw: (path: string, options?: RequestOptions<mixed>) => Promise<Response>,
+  readonly request: <T>(path: string, options?: RequestOptions<T>) => Promise<T>,
+  readonly raw: (path: string, options?: RequestOptions<mixed>) => Promise<Response>,
   /** A client with more defaults applied on top of this one's. */
-  +extend: (config: FetchConfig) => FetchClient,
+  readonly extend: (config: FetchConfig) => FetchClient,
 |};
 
 const DEFAULTS = { timeout: 30_000, retries: 0, retryDelay: 200 };
@@ -131,7 +136,7 @@ const IDEMPOTENT = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
  * application talks to more than one.
  */
 export function createFetch(config?: FetchConfig): FetchClient {
-  const settings = { ...DEFAULTS, ...(config ?? {}) };
+  const settings = { ...DEFAULTS, ...config ?? {} };
 
   const raw = async (path: string, options?: RequestOptions<mixed>): Promise<Response> =>
     send(settings, path, options ?? {});
@@ -147,7 +152,7 @@ export function createFetch(config?: FetchConfig): FetchClient {
       createFetch({
         ...settings,
         ...extra,
-        headers: { ...(settings.headers ?? {}), ...(extra.headers ?? {}) },
+        headers: { ...settings.headers ?? {}, ...extra.headers ?? {} },
       }),
   };
 }
@@ -209,8 +214,8 @@ function requestInit(
   signal: AbortSignal,
 ): RequestOptions<mixed> {
   const headers: { [string]: string } = {
-    ...(settings.headers ?? {}),
-    ...(options.headers ?? {}),
+    ...settings.headers ?? {},
+    ...options.headers ?? {},
   };
 
   let body = options.body;
@@ -304,11 +309,7 @@ async function parse<T>(
   return checked.value;
 }
 
-function resolveUrl(
-  settings: $FlowFixMe,
-  path: string,
-  options: RequestOptions<mixed>,
-): string {
+function resolveUrl(settings: $FlowFixMe, path: string, options: RequestOptions<mixed>): string {
   const base = settings.baseURL;
   const joined =
     base == null || /^[a-z][a-z0-9+.-]*:/i.test(path)
