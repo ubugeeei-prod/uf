@@ -96,12 +96,7 @@ fn is_component_name(name: &str) -> bool {
 }
 
 /// The ways of wrapping a component that leave it a component.
-const COMPONENT_WRAPPERS: &[&str] = &[
-    "memo(",
-    "React.memo(",
-    "forwardRef(",
-    "React.forwardRef(",
-];
+const COMPONENT_WRAPPERS: &[&str] = &["memo(", "React.memo(", "forwardRef(", "React.forwardRef("];
 
 /// Whether the right-hand side of a `const` binds a function.
 ///
