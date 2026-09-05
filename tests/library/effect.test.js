@@ -13,6 +13,7 @@ import { describe, expect, it } from "@uniflowed/test";
 import {
   acquireRelease,
   all,
+  andThen,
   as,
   catchAll,
   catchTag,
@@ -24,20 +25,26 @@ import {
   fail,
   filterOrFail,
   flatMap,
+  forEach,
   fork,
   interrupt,
   join,
+  layerEffect,
   layerMerge,
   layerSucceed,
   map,
   mapError,
+  never,
+  orDie,
   orElse,
   promise,
   provide,
   provideService,
   race,
   retry,
+  runFork,
   runPromise,
+  runPromiseExit,
   runSync,
   runSyncExit,
   scoped,
@@ -52,6 +59,7 @@ import {
   tryPromise,
   zip,
 } from "@uniflowed/effect";
+import { scheduleDelay } from "@uniflowed/effect/schedule";
 
 describe("succeed and fail", () => {
   it("runs a pure success synchronously", () => {
@@ -167,14 +175,117 @@ describe("map and flatMap", () => {
 });
 
 describe("the generator form", () => {
-  it("yields effects and resumes with their values", async () => {
+  it("composes with yield* and keeps each step's own type", async () => {
     const program = effect(function* () {
-      const first = yield succeed(2);
-      const second = yield succeed(3);
+      // `yield*` is the typed form: `first` is a number here, where a bare
+      // `yield` would hand back `mixed`.
+      const first = yield* succeed(2);
+      const second = yield* succeed(3);
       return first * second;
     });
 
     await expect(runPromise(program)).resolves.toBe(6);
+  });
+
+  it("still accepts a bare yield", async () => {
+    const program = effect(function* () {
+      const first = yield succeed(2);
+      const second = yield succeed(3);
+      return Number(first) * Number(second);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(6);
+  });
+
+  it("delegates to another generator and carries its failures out", async () => {
+    // The point of the test: `readName` can fail with `MissingName` and the
+    // caller adds `Empty`, so the pipeline's failure type is the union — and
+    // at run time either of them arrives at the same `catchTag`.
+    function* readName(record) {
+      const found = yield* succeed(record);
+      if (found.name == null) {
+        yield* fail({ kind: "MissingName" });
+      }
+      return found.name;
+    }
+
+    const program = (record) =>
+      effect(function* () {
+        const name = yield* readName(record);
+        if (name === "") {
+          yield* fail({ kind: "Empty" });
+        }
+        return name.toUpperCase();
+      });
+
+    await expect(runPromise(program({ name: "ada" }))).resolves.toBe("ADA");
+
+    const missing = await runPromiseExit(program({ name: null }));
+    if (missing.kind === "failure" && missing.cause.kind === "fail") {
+      expect(missing.cause.error.kind).toBe("MissingName");
+    } else {
+      throw new Error("expected the delegated failure to come out");
+    }
+
+    const empty = await runPromiseExit(program({ name: "" }));
+    if (empty.kind === "failure" && empty.cause.kind === "fail") {
+      expect(empty.cause.error.kind).toBe("Empty");
+    } else {
+      throw new Error("expected the caller's own failure");
+    }
+  });
+
+  it("does not run the rest of a delegated generator after it fails", async () => {
+    const reached = [];
+
+    function* step() {
+      yield* fail("stop");
+      reached.push("after the failure");
+      return 1;
+    }
+
+    const program = effect(function* () {
+      const value = yield* step();
+      reached.push("after the delegation");
+      return value;
+    });
+
+    const result = await runPromiseExit(program);
+    expect(result.kind).toBe("failure");
+    expect(reached).toEqual([]);
+  });
+
+  it("runs a wholly synchronous pipeline without a promise", () => {
+    const program = effect(function* () {
+      const base = yield* succeed(4);
+      const doubled = yield* sync(() => base * 2);
+      return doubled + 1;
+    });
+
+    expect(runSync(program)).toBe(9);
+  });
+
+  it("refuses a pipeline with an asynchronous step in runSync", () => {
+    const program = effect(function* () {
+      yield* sleep(1);
+      return 1;
+    });
+
+    const result = runSyncExit(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("reads a service with yield* and gets the service back", async () => {
+    const Clock = tag("Clock");
+    const program = effect(function* () {
+      const clock = yield* Clock;
+      return clock.now() + 1;
+    });
+
+    await expect(runPromise(provideService(program, Clock, { now: () => 41 }))).resolves.toBe(42);
   });
 
   it("stops at a yielded failure without running the rest", async () => {
@@ -587,6 +698,543 @@ describe("what the review found", () => {
       expect(result.cause.error).toBe("no");
     } else {
       throw new Error("expected the original failure");
+    }
+  });
+});
+
+describe("a defect is not a failure", () => {
+  it("is not reified by either", () => {
+    const result = runSyncExit(either(die("bug")));
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("is not caught by catchTag", () => {
+    let caught = false;
+    const result = runSyncExit(
+      catchTag(die("bug"), "Anything", () => {
+        caught = true;
+        return succeed("recovered");
+      }),
+    );
+    expect(caught).toBe(false);
+    expect(result.kind).toBe("failure");
+  });
+
+  it("does not trigger the orElse fallback", () => {
+    let fell = false;
+    const result = runSyncExit(
+      orElse(die("bug"), () => {
+        fell = true;
+        return succeed("fallback");
+      }),
+    );
+    expect(fell).toBe(false);
+    expect(result.kind).toBe("failure");
+  });
+
+  it("is what orDie turns a typed failure into", () => {
+    const result = runSyncExit(orDie(fail("was typed")));
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("does not swallow a failure whose error is null", () => {
+    // `null` is a legitimate typed error, and a recovery path that looked for
+    // "is there an error" rather than "is there a fail node" treated it as a
+    // defect and refused to catch it.
+    const recovered = runSync(
+      catchAll(fail(null), (error) => succeed(error === null ? "caught null" : "caught other")),
+    );
+    expect(recovered).toBe("caught null");
+
+    expect(runSync(either(fail(null)))).toEqual({ ok: false, error: null });
+  });
+});
+
+describe("resource release under interruption", () => {
+  it("releases a scoped resource when the fiber is interrupted", async () => {
+    const events = [];
+    const program = scoped(
+      flatMap(
+        acquireRelease(
+          sync(() => {
+            events.push("acquire");
+            return "handle";
+          }),
+          // The release is itself interruptible. Run under the interrupted
+          // fiber it would stop at its own first checkpoint and never push,
+          // which is why finalizers run detached.
+          () =>
+            andThen(
+              sleep(1),
+              sync(() => events.push("release")),
+            ),
+        ),
+        () => sleep(400),
+      ),
+    );
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(program);
+        yield* sleep(10);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+    expect(events).toEqual(["acquire", "release"]);
+  });
+
+  it("runs an ensuring finaliser when the fiber is interrupted", async () => {
+    const events = [];
+    const program = ensuring(sleep(400), () =>
+      andThen(
+        sleep(1),
+        sync(() => events.push("finalised")),
+      ),
+    );
+
+    await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(program);
+        yield* sleep(10);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(events).toEqual(["finalised"]);
+  });
+
+  it("refuses acquireRelease outside a scope rather than skipping the release", () => {
+    const result = runSyncExit(
+      // Deliberately not wrapped in `scoped`. A silent skip is the failure
+      // this combinator exists to prevent, so it is a defect.
+      exit(
+        acquireRelease(
+          sync(() => "handle"),
+          () => sync(() => {}),
+        ),
+      ),
+    );
+    expect(result.kind).toBe("success");
+    if (result.kind === "success" && result.value.kind === "failure") {
+      expect(result.value.cause.kind).toBe("die");
+    } else {
+      throw new Error("expected a defect from acquireRelease without a scope");
+    }
+  });
+
+  it("turns a failing finaliser into a defect rather than a typed failure", async () => {
+    // The scope's error channel belongs to the body. A release that fails is a
+    // bug in the release, and handing it back as a typed failure would let
+    // `catchAll` treat it as a condition the body's type promised.
+    const program = ensuring(succeed(1), () => die("release blew up"));
+    const result = await runPromiseExit(program);
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("keeps the body's own failure when the finaliser also fails", async () => {
+    const result = await runPromiseExit(ensuring(fail("body"), () => die("release")));
+
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("body");
+    } else {
+      throw new Error("expected the body's failure to survive");
+    }
+  });
+});
+
+describe("what a concurrent failure does to its siblings", () => {
+  it("stops a sibling that would otherwise never finish", async () => {
+    // Deterministic rather than timed: if `all` did not interrupt its
+    // siblings, `never()` would keep the combinator waiting for ever.
+    const result = await runPromiseExit(all([never(), fail("boom")]));
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("boom");
+    } else {
+      throw new Error("expected the typed failure, not an interruption");
+    }
+  });
+
+  it("does not return until the siblings it interrupted have stopped", async () => {
+    const events = [];
+    const slow = ensuring(
+      effect(function* () {
+        yield* sleep(400);
+        events.push("slow finished");
+        return 1;
+      }),
+      () => sync(() => events.push("slow stopped")),
+    );
+    const failing = effect(function* () {
+      yield* sleep(5);
+      return yield* fail("boom");
+    });
+
+    const started = Date.now();
+    const result = await runPromiseExit(all([slow, failing]));
+    const elapsed = Date.now() - started;
+
+    expect(result.kind).toBe("failure");
+    // The sibling was stopped, not awaited to completion, and `all` had
+    // already seen it stop by the time it returned.
+    expect(events).toEqual(["slow stopped"]);
+    expect(elapsed).toBeLessThan(300);
+  });
+
+  it("keeps at most the requested number of effects in flight", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const program = forEach(
+      [1, 2, 3, 4, 5, 6],
+      (item) =>
+        effect(function* () {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          yield* sleep(5);
+          inFlight -= 1;
+          return item * 2;
+        }),
+      { concurrency: 2 },
+    );
+
+    // Results keep the order of the input, whatever order they finished in.
+    await expect(runPromise(program)).resolves.toEqual([2, 4, 6, 8, 10, 12]);
+    expect(peak).toBe(2);
+  });
+
+  it("stops taking new work once its fiber has been interrupted", async () => {
+    const ran = [];
+    const record = (item) => sync(() => ran.push(item));
+    // A raw promise cannot be interrupted, so this element finishes well after
+    // the cancellation was asked for — which is the moment `all` has to notice
+    // on its own behalf, because `sync` has no checkpoint inside it.
+    const stubborn = promise(() => new Promise((resolve) => setTimeout(resolve, 40)));
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(all([stubborn, record(1), record(2)], { concurrency: 1 }));
+        yield* sleep(5);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+    expect(ran).toEqual([]);
+  });
+
+  it("has a synchronous answer when every element has one", () => {
+    expect(runSync(all([succeed(1), sync(() => 2), succeed(3)]))).toEqual([1, 2, 3]);
+    expect(runSync(all([]))).toEqual([]);
+  });
+
+  it("refuses synchronously when one element is asynchronous", () => {
+    const result = runSyncExit(all([succeed(1), sleep(1)]));
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("waits for a success in a race rather than taking the first failure", async () => {
+    const failsFirst = effect(function* () {
+      yield* sleep(5);
+      return yield* fail("early");
+    });
+    const succeedsLater = as(sleep(40), "late");
+
+    await expect(runPromise(race([failsFirst, succeedsLater]))).resolves.toBe("late");
+  });
+
+  it("reports every entrant's failure when none of them succeeds", async () => {
+    const result = await runPromiseExit(race([fail("a"), fail("b")]));
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("parallel");
+    }
+
+    // Composite or not, recovery still finds a typed error inside it.
+    await expect(
+      runPromise(catchAll(race([fail("a"), fail("b")]), (error) => succeed(`caught ${error}`))),
+    ).resolves.toBe("caught a");
+  });
+
+  it("interrupts the entrants that lost", async () => {
+    const events = [];
+    const loser = ensuring(sleep(400), () => sync(() => events.push("loser stopped")));
+
+    await expect(runPromise(race([as(sleep(5), "won"), loser]))).resolves.toBe("won");
+
+    // A loser is interrupted and deliberately not awaited, so give the
+    // interruption a turn — thirty milliseconds, against the four hundred it
+    // would have taken to finish on its own.
+    await runPromise(sleep(30));
+    expect(events).toEqual(["loser stopped"]);
+  });
+
+  it("interrupts a fiber that is doing nothing at all", async () => {
+    // `never` used to ignore the flag, so this hung for the life of the process.
+    const result = await runPromise(interrupt(runFork(never())));
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("interrupt");
+    }
+  });
+
+  it("stops the effect it timed out on, and waits for it", async () => {
+    const events = [];
+    const slow = ensuring(sleep(400), () => sync(() => events.push("stopped")));
+
+    const result = await runPromiseExit(timeout(slow, 10));
+
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toEqual({ kind: "timeout", millis: 10 });
+    } else {
+      throw new Error("expected a typed timeout failure");
+    }
+    expect(events).toEqual(["stopped"]);
+  });
+
+  it("times out an effect that could never settle on its own", async () => {
+    const result = await runPromiseExit(timeout(never(), 10));
+    expect(result.kind).toBe("failure");
+  });
+});
+
+describe("retry counts", () => {
+  const failing = () => {
+    let attempts = 0;
+    return {
+      attempts: () => attempts,
+      effect: suspend(() => {
+        attempts += 1;
+        return fail("no");
+      }),
+    };
+  };
+
+  it("makes one more attempt for upTo", async () => {
+    const flaky = failing();
+    await runPromiseExit(retry(flaky.effect, { kind: "upTo", millis: 1 }));
+    expect(flaky.attempts()).toBe(2);
+  });
+
+  it("stops when either side of an intersection stops", async () => {
+    const flaky = failing();
+    await runPromiseExit(
+      retry(flaky.effect, {
+        kind: "intersect",
+        left: { kind: "recurs", times: 2 },
+        right: { kind: "spaced", millis: 0 },
+      }),
+    );
+    // `spaced` would go on for ever; `recurs` is what ends it, after two
+    // retries on top of the first attempt.
+    expect(flaky.attempts()).toBe(3);
+  });
+
+  it("keeps going while either side of a union would", async () => {
+    const flaky = failing();
+    await runPromiseExit(
+      retry(flaky.effect, {
+        kind: "union",
+        left: { kind: "recurs", times: 1 },
+        right: { kind: "upTo", millis: 0 },
+      }),
+    );
+    // Attempt 0: both sides still want one. Attempt 1: both have stopped, so
+    // there is nothing left to keep the union going. Two attempts in all.
+    expect(flaky.attempts()).toBe(2);
+  });
+
+  it("does not turn a stopped schedule into a capped one", async () => {
+    const flaky = failing();
+    await runPromiseExit(
+      retry(flaky.effect, {
+        kind: "maxDelay",
+        schedule: { kind: "recurs", times: 1 },
+        millis: 100,
+      }),
+    );
+    // Capping a delay must not turn "give up" into "wait and try for ever".
+    expect(flaky.attempts()).toBe(2);
+  });
+
+  it("does not retry after the fiber has been interrupted", async () => {
+    let attempts = 0;
+    const always = effect(function* () {
+      attempts += 1;
+      yield* sleep(20);
+      return yield* fail("no");
+    });
+
+    await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(retry(always, { kind: "spaced", millis: 5 }));
+        yield* sleep(30);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    const seen = attempts;
+    await runPromise(sleep(60));
+    expect(attempts).toBe(seen);
+  });
+});
+
+describe("schedules", () => {
+  it("counts recurrences and then stops", () => {
+    expect(scheduleDelay({ kind: "recurs", times: 2 }, 0)).toBe(0);
+    expect(scheduleDelay({ kind: "recurs", times: 2 }, 1)).toBe(0);
+    expect(scheduleDelay({ kind: "recurs", times: 2 }, 2)).toBe(null);
+  });
+
+  it("spaces attempts for ever", () => {
+    expect(scheduleDelay({ kind: "spaced", millis: 25 }, 0)).toBe(25);
+    expect(scheduleDelay({ kind: "spaced", millis: 25 }, 99)).toBe(25);
+  });
+
+  it("doubles by default and honours a factor given as a percentage", () => {
+    expect(scheduleDelay({ kind: "exponential", baseMillis: 10 }, 0)).toBe(10);
+    expect(scheduleDelay({ kind: "exponential", baseMillis: 10 }, 3)).toBe(80);
+    expect(scheduleDelay({ kind: "exponential", baseMillis: 10, factorPercent: 150 }, 2)).toBe(23);
+  });
+
+  it("grows more gently on a fibonacci schedule", () => {
+    const schedule = { kind: "fibonacci", baseMillis: 10 };
+    expect([0, 1, 2, 3, 4].map((attempt) => scheduleDelay(schedule, attempt))).toEqual([
+      10, 10, 20, 30, 50,
+    ]);
+  });
+
+  it("gives upTo exactly one attempt", () => {
+    expect(scheduleDelay({ kind: "upTo", millis: 30 }, 0)).toBe(30);
+    expect(scheduleDelay({ kind: "upTo", millis: 30 }, 1)).toBe(null);
+  });
+
+  it("takes the longer wait of an intersection and stops with the first side", () => {
+    const schedule = {
+      kind: "intersect",
+      left: { kind: "recurs", times: 2 },
+      right: { kind: "spaced", millis: 40 },
+    };
+    expect(scheduleDelay(schedule, 0)).toBe(40);
+    expect(scheduleDelay(schedule, 2)).toBe(null);
+  });
+
+  it("takes the shorter wait of a union and continues while either side does", () => {
+    const schedule = {
+      kind: "union",
+      left: { kind: "recurs", times: 1 },
+      right: { kind: "spaced", millis: 40 },
+    };
+    expect(scheduleDelay(schedule, 0)).toBe(0);
+    expect(scheduleDelay(schedule, 1)).toBe(40);
+  });
+
+  it("caps a delay without reviving a schedule that has stopped", () => {
+    expect(
+      scheduleDelay(
+        { kind: "maxDelay", schedule: { kind: "exponential", baseMillis: 10 }, millis: 25 },
+        3,
+      ),
+    ).toBe(25);
+    expect(
+      scheduleDelay({ kind: "maxDelay", schedule: { kind: "upTo", millis: 5 }, millis: 100 }, 1),
+    ).toBe(null);
+  });
+});
+
+describe("the runners", () => {
+  it("returns an Exit from runPromiseExit instead of raising", async () => {
+    await expect(runPromiseExit(succeed(1))).resolves.toEqual({ kind: "success", value: 1 });
+
+    const failed = await runPromiseExit(fail("no"));
+    expect(failed).toEqual({ kind: "failure", cause: { kind: "fail", error: "no" } });
+  });
+
+  it("raises the typed error from runPromise", async () => {
+    await expect(runPromise(fail(new Error("typed")))).rejects.toThrow("typed");
+  });
+
+  it("raises a described cause when the failure carries no typed error", () => {
+    expect(() => runSync(die("a defect"))).toThrow("a defect");
+  });
+
+  it("hands back a fiber from runFork that can be joined", async () => {
+    const fiber = runFork(as(sleep(1), "done"));
+    await expect(runPromise(join(fiber))).resolves.toBe("done");
+  });
+});
+
+describe("layers", () => {
+  it("carries a layer's own failure into the effect's error channel", async () => {
+    const Config = tag("Config");
+    const layer = layerEffect(Config, fail({ kind: "NoConfig" }));
+    const program = effect(function* () {
+      const config = yield* Config;
+      return config.value;
+    });
+
+    const result = await runPromiseExit(provide(program, layer));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("NoConfig");
+    } else {
+      throw new Error("expected the layer's failure");
+    }
+  });
+
+  it("reports a service that was never provided as a defect", async () => {
+    const Missing = tag("Missing");
+    const result = await runPromiseExit(
+      effect(function* () {
+        return yield* Missing;
+      }),
+    );
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      // The requirement channel already tracks this; reaching it at run time
+      // means the type was bypassed, which is a bug and not a condition.
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("keeps interruption working underneath a layer", async () => {
+    const Config = tag("Config");
+    const program = provide(sleep(400), layerSucceed(Config, { value: 1 }));
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(program);
+        yield* sleep(10);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
     }
   });
 });
