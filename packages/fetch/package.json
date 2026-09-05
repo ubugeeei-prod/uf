@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/fetch",
-  "version": "0.0.0-alpha.3",
+  "version": "0.0.0-alpha.4",
   "description": "Typed HTTP over the platform fetch, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
