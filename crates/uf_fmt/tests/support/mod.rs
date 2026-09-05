@@ -20,6 +20,9 @@
 //! * **empty statements** — a lone `;` is dropped, as Prettier drops it.
 //! * **quoted property keys** — `{ "a": 1 }` is the same property as
 //!   `{ a: 1 }`, and the printer drops quotes it does not need.
+//! * **a redundant specifier alias** — `export {x as x}` is `export {x}`,
+//!   and the printer drops the `as`. React writes the long form, which is
+//!   how this was found.
 //! * **an absent `new` argument list** — `new Thing` is printed
 //!   `new Thing()`, which parses to an empty list rather than to none.
 //! * **JSX children** — Prettier moves whitespace between text nodes and
@@ -73,11 +76,43 @@ pub fn comments(source: &str) -> Vec<(bool, String)> {
         .map(|comment| {
             (
                 matches!(comment.kind, CommentKind::Line),
-                // A line comment's trailing whitespace is not content.
-                comment.text.trim_end().to_string(),
+                normalize_comment(&comment.text),
             )
         })
         .collect()
+}
+
+/// A comment's content, with the whitespace the printer owns taken out.
+///
+/// Trailing whitespace on any line is not content. Neither is the *leading*
+/// whitespace of a continuation line in a block comment: re-indenting
+///
+/// ```text
+///     /* $FlowFixMe[incompatible-type] Error exposed after fixing this
+///      * typing unsoundness in flow */
+/// ```
+///
+/// when the code around it moves is what a formatter is for, and Prettier
+/// does the same. Relay has eleven of these in one file, which is how the
+/// omission was found; the words are identical and only the column moved.
+///
+/// Only lines that continue a `*` column are touched, so an ASCII diagram
+/// or a code sample indented inside a comment still counts as content and
+/// is still compared exactly.
+fn normalize_comment(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for (index, line) in text.lines().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        let trimmed = line.trim_end();
+        if index > 0 && trimmed.trim_start().starts_with('*') {
+            out.push_str(trimmed.trim_start());
+        } else {
+            out.push_str(trimmed);
+        }
+    }
+    out
 }
 
 /// The comments of `source` as a multiset, for comparing two files whose
@@ -117,6 +152,11 @@ fn normalize(value: Value) -> Value {
             Value::Null
         }
         Value::Object(fields) => {
+            // `export {x as x}` and `export {x}` are the same specifier, and
+            // so are the two spellings of an import. The parser records the
+            // alias as `Some` in one and `None` in the other; the printer
+            // writes the short form, which is not a change to the program.
+            let fields = normalize_specifier(fields);
             let mut out = Map::with_capacity(fields.len());
             for (key, field) in fields {
                 if DROPPED_KEYS.contains(&key.as_str()) {
@@ -239,6 +279,31 @@ fn is_jsx_children(items: &[Value]) -> bool {
 /// Reduce JSX children to what React renders: text cleaned the way Babel
 /// cleans it, `{" "}` read as a space, adjacent text merged, and empty
 /// text dropped.
+/// Drops a specifier's alias when it names the same thing as the local
+/// binding.
+///
+/// Both halves are `Identifier` nodes, so they are compared by `name` —
+/// their locations differ and are about to be replaced anyway.
+fn normalize_specifier(mut fields: Map<String, Value>) -> Map<String, Value> {
+    for alias in ["exported", "imported", "remote"] {
+        let Some(local) = fields.get("local").and_then(identifier_name) else {
+            continue;
+        };
+        let Some(other) = fields.get(alias).and_then(identifier_name) else {
+            continue;
+        };
+        if local == other {
+            fields.insert(alias.to_string(), Value::Null);
+        }
+    }
+    fields
+}
+
+/// The `name` of a node, when it is an identifier.
+fn identifier_name(value: &Value) -> Option<&str> {
+    value.get("name").and_then(Value::as_str)
+}
+
 fn normalize_jsx_children(items: Vec<Value>) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::with_capacity(items.len());
     for item in items {
