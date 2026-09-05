@@ -1,0 +1,26 @@
+{
+  "name": "@uniflowed/immer",
+  "version": "0.0.0-alpha.3",
+  "description": "Draft-based immutable updates for @uniflowed/immer, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/immer"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./draft": "./draft.js",
+    "./freeze": "./freeze.js",
+    "./patches": "./patches.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "draft.js",
+    "freeze.js",
+    "index.js",
+    "patches.js"
+  ]
+}
