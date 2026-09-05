@@ -15,6 +15,19 @@ pub(crate) fn relative_to(root: &Utf8Path, path: &Utf8Path) -> String {
     path.strip_prefix(root).unwrap_or(path).as_str().to_string()
 }
 
+/// The files discovery could not read, as `path: reason` lines.
+///
+/// One stray byte should not stop a project, so discovery skips a file it
+/// cannot read rather than failing the walk. Every command that walks says
+/// so, in the same words, and fails afterwards — silently skipping a file
+/// somebody asked to be formatted or linted is the failure this replaced.
+pub(crate) fn unreadable_lines(unreadable: &[uf_project::UnreadableFile]) -> Vec<String> {
+    unreadable
+        .iter()
+        .map(|file| format!("{}: {}", file.relative_path, file.reason))
+        .collect()
+}
+
 /// Render a count with the right plural, e.g. `1 file` / `3 files`.
 pub(crate) fn plural(count: usize, singular: &str) -> String {
     if count == 1 {

@@ -7,10 +7,10 @@ use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use uf_config::load_config;
 use uf_fmt::format_source;
-use uf_project::collect_source_files;
+use uf_project::scan_source_files;
 use uf_term::Status;
 
-use crate::support::plural;
+use crate::support::{plural, unreadable_lines};
 use crate::ui::Ui;
 
 pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
@@ -18,7 +18,9 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     // Discovery returns `package.json` too, because the linter reads it. The
     // formatter must not touch it: it is a Flow formatter, and running it
     // over JSON inserts a statement terminator and leaves the file unparseable.
-    let discovered = collect_source_files(&resolved.root, &resolved.config)?;
+    let scan = scan_source_files(&resolved.root, &resolved.config)?;
+    let unreadable = unreadable_lines(&scan.unreadable);
+    let discovered = scan.files;
     // Two piles, because they go to two different formatters. uf prints Flow
     // from the official parser's syntax tree; JSON, CSS and TypeScript go to a
     // formatter that understands them, which uf runs rather than writes.
@@ -82,6 +84,7 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
     let skipped_paths = skipped.iter().map(String::as_str).collect::<Vec<_>>();
     let failing = (check && (!changed.is_empty() || non_flow_unformatted))
         || !skipped.is_empty()
+        || !unreadable.is_empty()
         || non_flow_failure.is_some();
     let summary = if check {
         format!(
@@ -99,6 +102,7 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         renderer.blank(out);
         if paths.is_empty()
             && skipped_paths.is_empty()
+            && unreadable.is_empty()
             && non_flow_failure.is_none()
             && !non_flow_unformatted
         {
@@ -118,6 +122,19 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
                     ),
                 );
                 renderer.bullet_list(out, 2, &skipped_paths);
+                renderer.blank(out);
+            }
+            if !unreadable.is_empty() {
+                renderer.status(
+                    out,
+                    Status::Warn,
+                    &format!("{} could not be read", plural(unreadable.len(), "file")),
+                );
+                renderer.bullet_list(
+                    out,
+                    2,
+                    &unreadable.iter().map(String::as_str).collect::<Vec<_>>(),
+                );
                 renderer.blank(out);
             }
             if let Some(failure) = non_flow_failure.as_deref() {
@@ -147,6 +164,9 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         }
     });
 
+    if !unreadable.is_empty() {
+        bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
     if !skipped.is_empty() {
         bail!("{} could not be parsed", plural(skipped.len(), "file"));
     }

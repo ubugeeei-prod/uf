@@ -24,8 +24,8 @@ use uf_term::Status;
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
-    LintCommand, group_by_path, lint_payload, render_file_summary, render_group, render_verdict,
-    run_lint, severity_count,
+    LintCommand, group_by_path, lint_payload, render_file_summary, render_group, render_unreadable,
+    render_verdict, run_lint, severity_count,
 };
 use crate::support::plural;
 #[cfg(feature = "upstream-typecheck")]
@@ -117,7 +117,7 @@ fn type_backend_name() -> String {
 pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("scanning sources");
-    let (lint, sources) = run_lint(cwd)?;
+    let (lint, sources, unreadable) = run_lint(cwd)?;
     progress.draw("type checking");
     let types = type_check(&sources);
     progress.finish();
@@ -127,8 +127,14 @@ pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool) -> Result<()> {
         ui.json(&payload(&lint, &types))?;
     } else {
         render(ui, &lint, &sources, &types);
+        render_unreadable(ui, &unreadable);
     }
 
+    // Before the counts: a file nobody could read has no diagnostics, and
+    // "0 errors" over it would be a lie.
+    if !unreadable.is_empty() {
+        bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
     let errors = severity_count(&lint, Severity::Error) + types.count(TypeSeverity::Error);
     if errors > 0 {
         bail!(
