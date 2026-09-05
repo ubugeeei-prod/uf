@@ -124,7 +124,7 @@ async function viteConfig(config, mode) {
   // read this and does not need to: an option added to Vite tomorrow works in
   // a uf project tomorrow, rather than after a uf release that names it.
   return withProjectConfig(generated, {
-    ...config.vite ?? {},
+    ...(config.vite ?? {}),
     plugins: [...(config.vite?.plugins ?? []), ...userPlugins],
   });
 }

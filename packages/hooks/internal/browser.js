@@ -87,7 +87,7 @@ export function useOnline(serverValue: boolean = true): boolean {
 
   return useSyncExternalStore(
     subscribe,
-    () => (inBrowser() ? windowOf().navigator?.onLine ?? true : serverValue),
+    () => (inBrowser() ? (windowOf().navigator?.onLine ?? true) : serverValue),
     () => serverValue,
   );
 }
