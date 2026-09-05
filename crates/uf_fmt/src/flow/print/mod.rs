@@ -36,6 +36,7 @@ mod types;
 
 use uf_config::{FmtConfig, QuoteStyle};
 use uf_flow::ast::CommentKind;
+use uf_infra::FxHashMap;
 
 use super::comments::{Comment, Comments, Marker, Placement};
 use super::node::{NodeKey, NodeRef, Program};
@@ -84,7 +85,24 @@ pub struct Printer<'a> {
     /// Set when a hugged call argument turned out to need its own line
     /// breaks: Prettier's `ArgExpansionBailout`, without the exception.
     pub expansion_bailout: bool,
+    /// Arguments already printed, by node, print arguments and parent.
+    ///
+    /// `print_arguments` prints the argument it is considering hugging a
+    /// second time, and so does every level below it, which makes the
+    /// document exponential in the nesting: nineteen levels of
+    /// `expect.objectContaining` is a file React Native writes and `uf fmt`
+    /// did not finish on. See ubugeeei-prod/uf#125.
+    ///
+    /// The same node, printed with the same arguments in the same place, is
+    /// the same document. Keying on the parent as well is not needed for
+    /// that — a node has one parent — but it is free and it says what the
+    /// entry means.
+    pub argument_docs: FxHashMap<ArgumentKey, (Doc<'a>, bool)>,
 }
+
+/// What identifies a printed argument: the node, how it was asked to print,
+/// and where it sat.
+pub type ArgumentKey = (NodeKey, PrintArgs, Option<NodeKey>);
 
 pub use assignment::PrintArgs;
 
@@ -105,6 +123,7 @@ impl<'a> Printer<'a> {
             ancestors: Vec::with_capacity(64),
             program,
             expansion_bailout: false,
+            argument_docs: FxHashMap::default(),
         }
     }
 

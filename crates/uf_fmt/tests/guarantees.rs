@@ -9,6 +9,7 @@ mod support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use uf_config::{FmtConfig, QuoteStyle};
 use uf_fmt::{FormatError, format_source};
@@ -355,6 +356,43 @@ fn nesting_at_the_ceiling_is_formatted() {
     assert_eq!(formatted.output.matches('[').count(), depth);
     let again = format_source(&formatted.output, &config).expect("reformats");
     similar_asserts::assert_eq!(formatted.output, again.output);
+}
+
+/// Nesting does not cost exponentially.
+///
+/// ubugeeei-prod/uf#125. `print_arguments` prints the argument it is
+/// considering hugging a second time, and so does every level below it, so
+/// the document was 2^depth: about 4x per level, sixteen seconds at twelve,
+/// and React Native's `react-native-compatibility-check` — nineteen deep —
+/// did not finish at all.
+///
+/// Forty rather than twelve, because twelve is now too fast to distinguish
+/// from nothing and forty is decisive: at 4x per level it would be longer
+/// than the age of the universe.
+#[test]
+fn deep_call_arguments_are_not_exponential() {
+    let mut source = "x".to_owned();
+    for _ in 0..40 {
+        source = format!("expect.objectContaining({{ fault: {source} }})");
+    }
+    let source = format!("// @flow\nconst result = {source};\n");
+
+    let config = FmtConfig::default();
+    let started = Instant::now();
+    let once = format_source(&source, &config).expect("formats").output;
+    let took = started.elapsed();
+
+    assert!(took < Duration::from_secs(2), "forty levels took {took:?}");
+
+    // And the answer is a real one: it settles, and it is still the same
+    // program. A cache that returned the wrong document would be fast.
+    let twice = format_source(&once, &config).expect("reformats").output;
+    similar_asserts::assert_eq!(once, twice);
+    assert_eq!(
+        support::structure(&source),
+        support::structure(&once),
+        "the program changed"
+    );
 }
 
 /// No input panics or hangs. The mutations are deterministic — a fixed

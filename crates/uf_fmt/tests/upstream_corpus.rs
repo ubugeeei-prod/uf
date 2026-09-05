@@ -53,16 +53,15 @@ fn fixtures() -> Vec<String> {
 
 /// Modules the printer cannot format in reasonable time.
 ///
-/// One file, and it is a performance bug rather than a wrong answer:
-/// `expect.objectContaining({...})` nested nineteen deep, and
-/// `print_arguments` prints its interesting child twice, so the document is
-/// exponential in the nesting. See ubugeeei-prod/uf#125 for the numbers.
+/// Empty, and the goal is that it stays that way. It held
+/// `react-native-compatibility-check`'s `VersionDiffing-test.js` until
+/// ubugeeei-prod/uf#125 was fixed: `expect.objectContaining` nested
+/// nineteen deep, printed twice per level, so the document was 2^depth.
 ///
-/// Named rather than skipped by a heuristic, so that the day the bug is
-/// fixed this list is what fails and gets deleted. `no_stale_exclusions`
-/// keeps it from rotting the other way.
-const KNOWN_SLOW: [&str; 1] =
-    ["react-native/packages/react-native-compatibility-check/src/__tests__/VersionDiffing-test.js"];
+/// Named rather than skipped by a heuristic, so that the day a bug is fixed
+/// this list is what fails and gets deleted. `no_stale_exclusions` keeps it
+/// from rotting the other way.
+const KNOWN_SLOW: [&str; 0] = [];
 
 /// Modules the printer gets wrong, each with the issue that says how.
 ///
