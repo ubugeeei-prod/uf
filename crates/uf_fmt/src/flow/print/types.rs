@@ -273,7 +273,11 @@ impl<'a> Printer<'a> {
             T::Component { inner, .. } => self.print_component_type(inner, key),
             T::Object { inner, .. } => self.print_object_type(inner, NodeRef::Type(ty), false),
             T::Interface { inner, .. } => {
-                let extends = self.print_interface_extends_list(&inner.extends, key);
+                // An `interface { … }` type has no name, so the only thing
+                // that can make its heritage start a line is having more
+                // than one target.
+                let group_mode = inner.extends.len() > 1;
+                let extends = self.print_interface_extends_list(&inner.extends, key, group_mode);
                 let body = self.print_object_type(
                     &inner.body.1,
                     NodeRef::ObjectType(&inner.body.0, &inner.body.1),
@@ -1227,7 +1231,7 @@ impl<'a> Printer<'a> {
                 matches!(generic.id, types::generic::Identifier::Qualified(_))
                     && generic.targs.is_none()
             });
-        let extends = self.print_interface_extends_list(&interface.extends, key);
+        let extends = self.print_interface_extends_list(&interface.extends, key, group_mode);
         if group_mode && !interface.extends.is_empty() {
             let id = self.docs.group_id();
             let head = self.docs.concat_vec(std::mem::take(&mut parts));
@@ -1249,10 +1253,17 @@ impl<'a> Printer<'a> {
     }
 
     /// ` extends A, B`, or nothing.
+    ///
+    /// `group_mode` is Prettier's `shouldPrintHeritageClauses`, and it is
+    /// what decides whether the clause can start a new line. With it, a
+    /// single target is `line` then a group; without it, a literal space —
+    /// a line outside a group always breaks, so the two cases are not the
+    /// same doc with a different verdict.
     fn print_interface_extends_list(
         &mut self,
         extends: &'a [(Loc, types::Generic<Loc, Loc>)],
         key: NodeKey,
+        group_mode: bool,
     ) -> Doc<'a> {
         if extends.is_empty() {
             return self.s("");
@@ -1276,7 +1287,15 @@ impl<'a> Printer<'a> {
             ]);
         }
         let list = self.join(separator, printed);
-        self.concat([self.s(" extends "), dangling.unwrap_or(self.s("")), list])
+        let clause = self.concat([self.s("extends "), dangling.unwrap_or(self.s("")), list]);
+        if group_mode {
+            // A line, so a trailing line comment on the interface name has
+            // one to end. Without this the comment was a line suffix with no
+            // line before the body, and it came out after the `{` — five
+            // levels from where it was written. See ubugeeei-prod/uf#135.
+            return self.concat([&LINE, self.group(clause)]);
+        }
+        self.concat([self.s(" "), clause])
     }
 
     /// One `extends` target of an interface or declared class.

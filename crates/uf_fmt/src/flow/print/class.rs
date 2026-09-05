@@ -612,15 +612,26 @@ impl<'a> Printer<'a> {
                 self.join(separator, printed),
             ]));
         }
-        let group_mode = heritage.len() > 1;
+        // More than one clause needs the group to lay them out. So does a
+        // trailing comment on the class name, for a different reason: a line
+        // comment ends the line it is on, and without a group there is no
+        // line before `extends` for it to end. See ubugeeei-prod/uf#135.
+        let group_mode = heritage.len() > 1
+            || self.has_comment_placed(NodeRef::Identifier(&class.id).key(), Placement::Trailing);
         if group_mode {
             let clauses: Vec<Doc<'a>> = heritage
                 .into_iter()
                 .map(|clause| self.concat([&LINE, self.group(clause)]))
                 .collect();
             let id = self.docs.group_id();
+            // The head goes inside the group, as Prettier has it. A trailing
+            // line comment on the class name breaks the group it is *in*, and
+            // the line it has to end is the one before `extends` — which is
+            // in this group. Left outside, the break propagated past it to
+            // the statement and the heritage stayed on one line.
+            let head = self.docs.concat_vec(std::mem::take(&mut parts));
             parts.push(self.docs.group_with(
-                self.indent(self.docs.concat_vec(clauses)),
+                self.concat([head, self.indent(self.docs.concat_vec(clauses))]),
                 false,
                 Some(id),
             ));
