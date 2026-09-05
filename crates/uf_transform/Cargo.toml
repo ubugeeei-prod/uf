@@ -24,6 +24,7 @@ rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
 
 [dev-dependencies]

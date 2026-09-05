@@ -102,9 +102,24 @@ pub const PARSE_STACK_BYTES: usize = 128 * 1024 * 1024;
 /// Every syntax `uf` ships in templates or lints is on — component and hook
 /// syntax, enums, pattern matching, records, Flow types, and types in
 /// comments. Decorators stay off because generated projects never emit them.
-/// This mirrors the options [`validate_source`](crate::validate_source) uses,
-/// so the formatter and the linter always agree on what parses.
-const UF_PARSE_OPTIONS: ParseOptions = ParseOptions {
+///
+/// # The only copy
+///
+/// Everything in uf that hands source to the Flow parser hands it *this*:
+/// [`parse`], [`validate_source`](crate::validate_source), and the transform
+/// in `uf_transform`, which re-exports it rather than declaring its own. There
+/// were three literals, equal member for member by coincidence, each with a
+/// comment claiming it mirrored one of the others. Nothing checked that, and a
+/// file that parses for the linter and not for the formatter is worse than one
+/// that parses for neither: the linter says the file is fine, the formatter
+/// refuses it, and the reader has no way to tell which is right.
+///
+/// `uf_transform`'s `tests/parse_options.rs` is what keeps it one copy. It
+/// runs the same syntax through all three entry points and requires the same
+/// answer, and it requires every member of [`ParseOptions`] to decide at least
+/// one of those samples — so a member added upstream fails the test until a
+/// sample covers it, rather than drifting unwatched.
+pub const PARSE_OPTIONS: ParseOptions = ParseOptions {
     components: true,
     enums: true,
     pattern_matching: true,
@@ -240,7 +255,7 @@ pub fn parse(source: &str) -> Result<Parsed, ParseFailure> {
     }
 
     let (program, errors) = catch_unwind(AssertUnwindSafe(|| {
-        flow_parser::parse_program_without_file(false, None, Some(UF_PARSE_OPTIONS), Ok(source))
+        flow_parser::parse_program_without_file(false, None, Some(PARSE_OPTIONS), Ok(source))
     }))
     .map_err(|_| ParseFailure::ParserPanicked)?;
 
