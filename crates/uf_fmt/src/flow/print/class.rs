@@ -7,6 +7,7 @@ use uf_flow::ast::{class, expression, function, statement, types};
 use super::Printer;
 use super::assignment::Rhs;
 use super::parens::is_member;
+use super::statement::EmptyBlock;
 use crate::doc::{Doc, HARDLINE, LINE, SOFTLINE};
 use crate::flow::comments::{Marker, Placement};
 use crate::flow::node::{Class, NodeKey, NodeRef};
@@ -360,7 +361,7 @@ impl<'a> Printer<'a> {
             class::BodyElement::PrivateField(field) => p.print_private_field(field),
             class::BodyElement::StaticBlock(block) => {
                 let key = NodeRef::ClassMember(member).key();
-                let body = p.print_block_body(&block.body, key);
+                let body = p.print_block_body(&block.body, key, EmptyBlock::Collapsed);
                 p.concat([p.s("static "), body])
             }
             class::BodyElement::DeclareMethod(method) => {

@@ -14,6 +14,7 @@ use super::Printer;
 use super::assignment::{Layout, PrintArgs};
 use super::call::{is_test_call, parameter_count};
 use super::parens::{is_binaryish, is_call_like, is_jsx, starts_with_no_lookahead_token};
+use super::statement::EmptyBlock;
 use crate::doc::{Doc, HARDLINE, LINE, SOFTLINE, will_break};
 use crate::flow::comments::Marker;
 use crate::flow::node::{Expression, Function, NodeKey, NodeRef};
@@ -82,7 +83,7 @@ impl<'a> Printer<'a> {
         ])));
         match &function.body {
             function::Body::BodyBlock((loc, block)) => {
-                let body = self.print_block(loc, block);
+                let body = self.print_block(loc, block, EmptyBlock::Collapsed);
                 parts.push(self.s(" "));
                 parts.push(body);
             }
@@ -116,7 +117,7 @@ impl<'a> Printer<'a> {
         ];
         match &function.body {
             function::Body::BodyBlock((loc, block)) => {
-                let body = self.print_block(loc, block);
+                let body = self.print_block(loc, block, EmptyBlock::Collapsed);
                 parts.push(self.s(" "));
                 parts.push(body);
             }
@@ -562,7 +563,7 @@ impl<'a> Printer<'a> {
                     break (printed, ArrowBody::Expression(body));
                 }
                 function::Body::BodyBlock((loc, block)) => {
-                    let printed = self.print_block(loc, block);
+                    let printed = self.print_block(loc, block, EmptyBlock::Collapsed);
                     break (printed, ArrowBody::Block);
                 }
             }
@@ -805,7 +806,7 @@ impl<'a> Printer<'a> {
         let renders = self.print_renders_annotation(&component.renders);
         parts.push(self.group(self.concat([parameters, renders])));
         if let Some((loc, body)) = &component.body {
-            let body = self.print_block(loc, body);
+            let body = self.print_block(loc, body, EmptyBlock::Collapsed);
             parts.push(self.s(" "));
             parts.push(body);
         }

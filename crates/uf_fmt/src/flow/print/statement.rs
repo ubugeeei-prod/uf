@@ -4,6 +4,34 @@ use uf_flow::Loc;
 use uf_flow::ast::{expression, statement};
 
 use super::Printer;
+
+/// What an empty block prints as.
+///
+/// Prettier decides this from the parent, and the split is between a body
+/// that is *expected* to be empty sometimes and a block whose emptiness is
+/// worth seeing on its own line:
+///
+/// ```js
+/// function noop() {}          // a body that does nothing, said in one line
+/// while (poll()) {}           // a loop whose work is the condition
+/// try {
+/// } catch (error) {}          // the `try` is empty by accident
+/// ```
+///
+/// Which is not a matter of taste: `if (a) {}` reads as a mistake and
+/// `if (a) {\n}` reads as a hole somebody left, and the second is what the
+/// author wrote.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EmptyBlock {
+    /// `{}` — function, method, arrow, component and static bodies, and the
+    /// bodies of `for (;;)`, `while` and `do … while`. A `catch` too, unless
+    /// the statement also has a `finally`.
+    Collapsed,
+    /// `{` and `}` on two lines — `if`, `else`, `try`, `finally`, `with`,
+    /// `for … in`, `for … of`, a labelled block, a `case` block, a block on
+    /// its own, and a `declare module` or `declare namespace` body.
+    Open,
+}
 use crate::doc::{BREAK_PARENT, Doc, HARDLINE, LINE, SOFTLINE};
 use crate::flow::comments::{Marker, Placement};
 use crate::flow::node::{Expression, NodeRef, Statement};
@@ -39,7 +67,10 @@ impl<'a> Printer<'a> {
         use statement::StatementInner as S;
         let key = NodeRef::Statement(statement).key();
         match &**statement {
-            S::Block { inner, .. } => self.print_block_body(&inner.body, key),
+            S::Block { inner, .. } => {
+                let empty = self.empty_block_of_statement();
+                self.print_block_body(&inner.body, key, empty)
+            }
             S::Break { inner, .. } => {
                 let label = match &inner.label {
                     Some(label) => {
@@ -241,13 +272,13 @@ impl<'a> Printer<'a> {
             }
             S::Switch { inner, .. } => self.print_switch(inner),
             S::Try { inner, .. } => {
-                let block = self.print_block(&inner.block.0, &inner.block.1);
+                let block = self.print_block(&inner.block.0, &inner.block.1, EmptyBlock::Open);
                 let handler = inner.handler.as_ref().map(|handler| {
-                    let printed = self.print_catch_clause(handler);
+                    let printed = self.print_catch_clause(handler, inner.finalizer.is_some());
                     self.concat([self.s(" "), printed])
                 });
                 let finalizer = inner.finalizer.as_ref().map(|(loc, block)| {
-                    let printed = self.print_block(loc, block);
+                    let printed = self.print_block(loc, block, EmptyBlock::Open);
                     self.concat([self.s(" finally "), printed])
                 });
                 self.concat([
@@ -529,12 +560,23 @@ impl<'a> Printer<'a> {
         self.docs.concat_vec(parts)
     }
 
+    /// `catch (error) { … }`.
+    ///
+    /// `has_finally` because an empty handler collapses to `catch {}` only
+    /// when it is the end of the statement. With a `finally` after it the
+    /// three braces line up, and Prettier keeps the handler open so they do.
     fn print_catch_clause(
         &mut self,
         clause: &'a statement::try_::CatchClause<Loc, Loc>,
+        has_finally: bool,
     ) -> Doc<'a> {
+        let empty = if has_finally {
+            EmptyBlock::Open
+        } else {
+            EmptyBlock::Collapsed
+        };
         self.print_node(NodeRef::CatchClause(clause), |p| {
-            let body = p.print_block(&clause.body.0, &clause.body.1);
+            let body = p.print_block(&clause.body.0, &clause.body.1, empty);
             let Some(param) = &clause.param else {
                 return p.concat([p.s("catch "), body]);
             };
@@ -650,22 +692,57 @@ impl<'a> Printer<'a> {
         false
     }
 
-    /// A `{ … }` block that is not itself a statement.
-    pub fn print_block(&mut self, loc: &'a Loc, block: &'a statement::Block<Loc, Loc>) -> Doc<'a> {
-        let node = NodeRef::Block(loc, block);
-        self.print_node(node, |p| p.print_block_body(&block.body, node.key()))
+    /// How an empty block *statement* prints, from what encloses it.
+    ///
+    /// A block statement is the same node whether it is a loop body, an `if`
+    /// branch, a `case` body or a block somebody wrote on its own, so this is
+    /// the one place the parent has to be asked. Everywhere else the caller
+    /// knows what it is printing and says so.
+    ///
+    /// The block is on top of the stack while its statement is being printed,
+    /// so the parent is what is under it.
+    fn empty_block_of_statement(&self) -> EmptyBlock {
+        use statement::StatementInner as S;
+        match self.parent() {
+            // `for … in` and `for … of` are deliberately not here: Prettier
+            // keeps those open and collapses only the three-part `for`.
+            Some(NodeRef::Statement(parent)) => match &**parent {
+                S::For { .. } | S::While { .. } | S::DoWhile { .. } => EmptyBlock::Collapsed,
+                _ => EmptyBlock::Open,
+            },
+            // A `match` arm is a body like a function's, not a branch like an
+            // `if`: `_ => {}` is how an arm says it does nothing.
+            Some(NodeRef::MatchStatementCase(_)) => EmptyBlock::Collapsed,
+            _ => EmptyBlock::Open,
+        }
     }
 
-    /// `{`, the statements, `}`; `{}` when there is nothing to print.
+    /// A `{ … }` block that is not itself a statement.
+    pub fn print_block(
+        &mut self,
+        loc: &'a Loc,
+        block: &'a statement::Block<Loc, Loc>,
+        empty: EmptyBlock,
+    ) -> Doc<'a> {
+        let node = NodeRef::Block(loc, block);
+        self.print_node(node, |p| p.print_block_body(&block.body, node.key(), empty))
+    }
+
+    /// `{`, the statements, `}`; `{}` or `{`/`}` on two lines when there is
+    /// nothing to print, as [`EmptyBlock`] says.
     pub fn print_block_body(
         &mut self,
         body: &'a [Statement],
         key: crate::flow::node::NodeKey,
+        empty: EmptyBlock,
     ) -> Doc<'a> {
         let has_body = body.iter().any(|statement| !is_empty_statement(statement));
         let dangling = self.print_dangling_comments(key, Marker::None, false);
         if !has_body && dangling.is_none() {
-            return self.s("{}");
+            return match empty {
+                EmptyBlock::Collapsed => self.s("{}"),
+                EmptyBlock::Open => self.concat([self.s("{"), &HARDLINE, self.s("}")]),
+            };
         }
         let mut parts = Vec::new();
         if has_body {
