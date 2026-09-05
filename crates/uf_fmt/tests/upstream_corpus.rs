@@ -66,7 +66,7 @@ const KNOWN_SLOW: [&str; 0] = [];
 /// Modules the printer gets wrong, each with the issue that says how.
 ///
 /// Separate from {@link KNOWN_SLOW} because they are different problems and
-/// a single list of excuses hides that. Four bugs, eleven modules:
+/// a single list of excuses hides that. Two bugs, nine modules:
 ///
 /// * **#133** — parentheses around a same-precedence right operand are
 ///   dropped, so `a && (b && c)` becomes `a && b && c` and the tree
@@ -75,11 +75,7 @@ const KNOWN_SLOW: [&str; 0] = [];
 ///   pass.
 /// * **#134** — `function f(): %checks` loses its colon and the output does
 ///   not parse.
-/// * **#126** — Flow's comment types are rewritten into real syntax, so a
-///   script written to run under bare `node` stops doing so.
-const KNOWN_BROKEN: [&str; 10] = [
-    // #126
-    "react-native/packages/react-native/scripts/spm/generate-spm-xcodeproj.js",
+const KNOWN_BROKEN: [&str; 9] = [
     // #133
     "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType19.js",
     "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType31.js",
