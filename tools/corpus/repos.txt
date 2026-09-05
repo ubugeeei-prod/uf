@@ -1,0 +1,28 @@
+# The Flow corpus: third-party repositories the formatter is checked against.
+#
+# name              url                                                    commit
+#
+# Pinned by commit rather than tracked as submodules. Two reasons, and the
+# second is the one that matters: a pinned fetch is one commit deep and
+# nothing else, where `git submodule update --depth 1` still brings a whole
+# tree per entry; and this is 700 MB of somebody else's code that no CI job
+# and no ordinary checkout needs, so it does not belong in `.gitmodules`
+# where every clone has to reckon with it.
+#
+# React, Metro, Relay and React Native predate this file and remain
+# submodules. See ubugeeei-prod/uf#137.
+#
+# Bump a pin by replacing the commit. `tools/corpus/sync.sh` fetches the new
+# one; nothing is left behind to clean up.
+
+recoil            https://github.com/facebookexperimental/Recoil.git       c1b97f3a0117cad76cbc6ab3cb06d89a9ce717af
+flux              https://github.com/facebook/flux.git                     4ee8c50865c357e005cb40ea03cdd403533aad26
+parcel            https://github.com/parcel-bundler/parcel.git             59484858a1a0bcbb71f74088956bb437a2db6505
+yarn              https://github.com/yarnpkg/yarn.git                      c2dda503f3759b5be5f0e24ecd9cf5c97a540147
+react-motion      https://github.com/chenglou/react-motion.git             9e3ce95bacaa9a1b259f969870a21c727232cc68
+prepack           https://github.com/facebookarchive/prepack.git           5beedbe85bd5b9d2de1264abafbb3b76f8584297
+react-native-web  https://github.com/necolas/react-native-web.git          a9de220ba9e65bdea540fb5322ffb1da2b0bf442
+dataloader        https://github.com/graphql/dataloader.git                b70dea3cc72a7e8f941133b0f486aa1840e3f927
+redux-form        https://github.com/redux-form/redux-form.git             88866f08120c1297daf54a5b887b90708e7f35e9
+stylex            https://github.com/facebook/stylex.git                   a58e3fc7ee31365edb6e052864b30daf460efa42
+fbt               https://github.com/facebook/fbt.git                      81614682caa6107c9dedb44c0fc4ac8ecaac4a5f

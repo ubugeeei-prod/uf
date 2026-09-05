@@ -105,14 +105,15 @@ export default defineConfig({
     // The formatter, over Flow nobody here wrote.
     //
     // `fmt:check` and the guarantee tests both run against sources written
-    // by people who knew what the printer does. React, Metro, Relay and
-    // React Native are about 5,800 Flow modules that were not, and they
-    // reach the corners of the grammar that a hand-written corpus reaches
-    // for last.
+    // by people who knew what the printer does. The fifteen repositories in
+    // `tools/corpus/repos.txt` are about 8,100 Flow modules that were not,
+    // and they reach the corners of the grammar that a hand-written corpus
+    // reaches for last.
     //
-    // Not in `ci`: the fixtures are ~240 MB of submodule, and a check that
-    // fails on a fresh clone teaches people to ignore failures. The test
-    // skips when they are absent, so `rust:test` stays honest either way.
+    // Not in `ci`: the fixtures are ~1 GB of other people's code, and a
+    // check that fails on a fresh clone teaches people to ignore failures.
+    // The test skips when they are absent, so `rust:test` stays honest
+    // either way.
     "corpus:sync": "tools/corpus/sync.sh",
     "fmt:corpus": {
       command: "cargo test -p uf_fmt --test upstream_corpus -- --nocapture",
