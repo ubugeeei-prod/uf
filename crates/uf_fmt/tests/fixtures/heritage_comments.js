@@ -70,6 +70,18 @@ declare class DeclaredQuiet extends Base {
   m(): boolean;
 }
 
+// The comment is one token later here, on the type parameters rather than on
+// the name, and it has the same line to end.
+declare class DeclaredGeneric<T> // why
+  extends Base<T> {
+  m(): boolean;
+}
+
+interface Generic<T> // why
+  extends Base<T> {
+  m(): boolean;
+}
+
 declare class DeclaredMixed // why
   extends Base mixins Mixin {
   m(): boolean;
