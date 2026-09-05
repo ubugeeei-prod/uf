@@ -782,7 +782,7 @@ fn ufx_alias_runs_uniflowed_create_package() {
     assert!(stdout.contains("ufx \u{b7} @uniflowed/create"), "{stdout}");
     assert!(stdout.contains("UfNative"));
     assert!(stdout.contains("exec-cache"));
-    assert!(stdout.contains("created 8 files"));
+    assert!(stdout.contains("created 9 files"));
     assert!(dir.path().join("app.js").exists());
     assert!(
         dir.path()
@@ -815,7 +815,9 @@ fn creates_react_app_from_cli() {
     assert!(stdout.contains("1. cd app"));
     assert!(stdout.contains("2. uf install"));
     assert!(stdout.contains("3. uf dev"));
-    assert!(stdout.contains("✓ created 8 files"));
+    // Eight source files and the `.gitignore` that keeps uf's output
+    // out of the first commit.
+    assert!(stdout.contains("✓ created 9 files"));
 }
 
 /// `uf explain` says which provider runs each stage.
