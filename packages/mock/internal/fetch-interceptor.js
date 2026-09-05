@@ -122,7 +122,13 @@ export function installFetch(dispatch: Dispatch, origin: string): () => void {
 
   const intercepted: typeof fetch = async (input, init) => {
     const request = toRequest(input, init, origin);
-    const answer = await dispatch(request);
+    // The registry gets a clone. Reading the body is the ordinary thing for a
+    // resolver to do — `await request.json()` is how a handler asserts on what
+    // was sent — and a body is a stream that can be read once, so a resolver
+    // that read it and then returned `passthrough()` handed the network a
+    // request whose body was gone. The original goes unread until the
+    // passthrough below.
+    const answer = await dispatch(request.clone());
     if (answer != null) {
       // `fetch` never *resolves* with a network error, it rejects — so a
       // handler that returned `HttpResponse.error()` has to reject here, or the
@@ -133,9 +139,9 @@ export function installFetch(dispatch: Dispatch, origin: string): () => void {
       return answer;
     }
     // Passthrough hands on the normalised `Request` rather than the original
-    // arguments: building it did not consume anything (the log clones), and
-    // passing the `Request` keeps the resolved absolute URL a relative call
-    // was given.
+    // arguments: nothing has read it — the log clones, and so does the call
+    // above — and passing the `Request` keeps the resolved absolute URL a
+    // relative call was given.
     return original(request);
   };
 

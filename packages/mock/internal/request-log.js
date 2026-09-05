@@ -35,17 +35,19 @@ export type RecordedRequest = {|
 /**
  * The same entry before its verdict is in.
  *
- * `handled` is the one field written after the object is built, so it is the
- * one field that is not read-only here. `RecordedRequest` is the read-only view
- * of the same shape, which is what leaves the log immutable to a test while
- * still being writable by the dispatcher that owns it.
+ * `handled` and `body` are written after the object is built, so they are the
+ * two fields that are not read-only here. `RecordedRequest` is the read-only
+ * view of the same shape, which is what leaves the log immutable to a test
+ * while still being writable by the dispatcher that owns it.
+ *
+ * `body` is written late on purpose: see `begin`.
  */
 type Entry = {|
   readonly method: string,
   readonly url: string,
   readonly pathname: string,
   readonly headers: { readonly [string]: string },
-  readonly body: string,
+  body: string,
   handled: boolean,
   readonly json: () => mixed,
 |};
@@ -72,21 +74,22 @@ async function bodyOf(request: Request): Promise<string> {
   return request.clone().text();
 }
 
-async function capture(request: Request): Promise<Entry> {
+/** Everything about a request that can be read without awaiting anything. */
+function describe(request: Request): Entry {
   const headers: { [string]: string } = {};
   for (const [name, value] of request.headers) {
     headers[name] = value;
   }
-  const body = await bodyOf(request);
-  return {
+  const entry: Entry = {
     method: request.method,
     url: request.url,
     pathname: new URL(request.url).pathname,
     headers,
-    body,
+    body: "",
     handled: false,
-    json: () => JSON.parse(body),
+    json: () => JSON.parse(entry.body),
   };
+  return entry;
 }
 
 /**
@@ -102,8 +105,14 @@ export function createRequestLog(): RequestLog {
   return {
     entries,
     async begin(request: Request) {
-      const entry = await capture(request);
+      // The entry takes its place in the log before the body is read, and the
+      // body is written into it afterwards. Reading first and appending after
+      // put a request with a fast body in front of one that arrived earlier
+      // with a slow one — which is exactly the order this log promises not to
+      // report.
+      const entry = describe(request);
       entries.push(entry);
+      entry.body = await bodyOf(request);
       return (handled: boolean) => {
         entry.handled = handled;
       };

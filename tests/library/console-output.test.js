@@ -91,6 +91,22 @@ describe("writing to the streams directly", () => {
     expect(called).toBe(true);
   });
 
+  it("calls that callback after write returns, the way a real stream does", async () => {
+    // `Writable.write` never calls back before it returns. A capture that
+    // called it inline would run a caller's callback before the line after the
+    // write, which is the one ordering the caller cannot have written for.
+    const order: Array<string> = [];
+    await new Promise<void>((resolve) => {
+      process.stdout.write("ordered\n", () => {
+        order.push("callback");
+        resolve();
+      });
+      order.push("after write");
+    });
+
+    expect(order).toEqual(["after write", "callback"]);
+  });
+
   it("accepts bytes as well as a string", () => {
     // `process.stdout.write` takes a `Uint8Array`, and a library that writes
     // one is not doing anything unusual.

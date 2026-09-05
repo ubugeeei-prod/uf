@@ -619,6 +619,42 @@ describe("passthrough", () => {
       network.restore();
     }
   });
+
+  it("forwards a body the resolver already read", async () => {
+    // A resolver reads the body to decide, then hands the request on. The
+    // body is a stream that can be read once, so the network gets a copy that
+    // nothing has touched — otherwise `fetch` rejects on a consumed body.
+    let sawBody = "";
+    let forwarded = "";
+    const network = withNetwork(() => new Response("from the network"));
+    globalThis.fetch = async (input: $FlowFixMe) => {
+      forwarded = await input.text();
+      return new Response("from the network");
+    };
+    try {
+      await withMock(
+        [
+          http.post("https://api.test/echo", async ({ request }) => {
+            sawBody = await request.text();
+            return passthrough();
+          }),
+        ],
+        undefined,
+        async () => {
+          const answer = await fetch("https://api.test/echo", {
+            method: "POST",
+            body: "the payload",
+          });
+          expect(await answer.text()).toBe("from the network");
+        },
+      );
+    } finally {
+      network.restore();
+    }
+
+    expect(sawBody).toBe("the payload");
+    expect(forwarded).toBe("the payload");
+  });
 });
 
 describe("network errors", () => {

@@ -1204,6 +1204,60 @@ describe("useInfiniteQuery", () => {
     expect(client.cache.findAll().length).toBe(1);
   });
 
+  it("loads a page even while a refetch is in flight", async () => {
+    // A page control asks for something the entry does not have. Joining the
+    // request already in flight would answer with the refetch and add no page,
+    // so "load more" pressed during a background refetch did nothing at all.
+    const client = new QueryClient();
+    const gate = deferred();
+    let calls = 0;
+
+    component Feed() {
+      const { data, fetchNextPage, refetch } = useInfiniteQuery({
+        queryKey: ["feed"],
+        queryFn: async ({ pageParam }: $FlowFixMe) => {
+          calls += 1;
+          // The refetch of page 0 is held open; every other call answers.
+          if (calls === 2 && pageParam === 0) {
+            await gate.promise;
+          }
+          return {
+            items: feed[pageParam],
+            next: pageParam + 1 < feed.length ? pageParam + 1 : null,
+          };
+        },
+        initialPageParam: 0,
+        getNextPageParam: (last: $FlowFixMe) => last.next,
+        staleTime: 60_000,
+      });
+      const items = (data?.pages ?? []).flatMap((page) => page.items);
+      return (
+        <div>
+          <p data-testid="items">{items.join("")}</p>
+          <button type="button" onClick={() => void refetch()}>
+            refetch
+          </button>
+          <button type="button" onClick={() => void fetchNextPage()}>
+            more
+          </button>
+        </div>
+      );
+    }
+
+    render(withClient(client, <Feed />));
+    await waitFor(() => {
+      expect(screen.getByTestId("items").textContent).toBe("ab");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "refetch" }));
+    await userEvent.click(screen.getByRole("button", { name: "more" }));
+    gate.settle(null);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("items").textContent).toBe("abcd");
+    });
+  });
+
   it("keeps the identity of the pages it already had", async () => {
     const client = new QueryClient();
     component Feed() {

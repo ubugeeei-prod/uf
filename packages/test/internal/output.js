@@ -27,6 +27,20 @@
 // in `snapshot.js`, and for the same reason it lives beside the thing it
 // describes rather than inside either caller.
 //
+// # What "the test that printed it" means
+//
+// The name a chunk carries is the case the *worker* is running when the chunk
+// arrives, which is not the same as the case whose code produced it. A
+// `setTimeout` a test leaves behind prints while the next case is running and
+// is filed under that one; a chunk from no case at all is filed under the
+// file.
+//
+// Getting this exactly right needs the printing to be tied to the asynchronous
+// context the case ran in — `AsyncLocalStorage` and everything under it — and
+// that is a bigger change than this module, because it has to reach the
+// scheduler that runs the cases. It is written down here rather than left to
+// be discovered from a confusing report. See ubugeeei-prod/uf#207.
+
 // # Bounds
 //
 // A test that prints in a loop must not be able to fill the pipe, the worker's
@@ -156,9 +170,15 @@ function writer(
     capture(stream, textOf(chunk));
     // `write(chunk, callback)` and `write(chunk, encoding, callback)` are both
     // real calls, and a caller that passed a callback is waiting for it.
+    //
+    // Deferred, because the real `Writable.write` never calls back before it
+    // returns: a caller that writes and then does something on the next line
+    // has that line run first, and one whose callback ran inline would see the
+    // two in the other order. `queueMicrotask` rather than `process.nextTick`
+    // so this holds on every host uf supports.
     const done = typeof encoding === "function" ? encoding : callback;
     if (done != null) {
-      done();
+      queueMicrotask(done);
     }
     // The real method returns whether the stream has room for more. Nothing is
     // buffered here, so it always has — and a caller told otherwise would wait

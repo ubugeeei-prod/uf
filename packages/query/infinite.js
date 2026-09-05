@@ -223,8 +223,13 @@ export class InfiniteQueryObserver<TPage, TParam, TSelected> extends QueryObserv
     // Stable for the observer's life: a snapshot that carried a new function
     // every render would never compare equal to the one before it, and every
     // notification would become a re-render.
-    this.fetchNextPage = () => this.fetch({ cancelRefetch: false, direction: "forward" });
-    this.fetchPreviousPage = () => this.fetch({ cancelRefetch: false, direction: "backward" });
+    // `cancelRefetch: true`, because a page control is a request for something
+    // the entry does not have yet. Joining whatever is in flight would return
+    // the refetch's answer and add no page at all — the directional fetcher
+    // would never run — so pressing "load more" while a background refetch was
+    // going did nothing, silently.
+    this.fetchNextPage = () => this.fetch({ cancelRefetch: true, direction: "forward" });
+    this.fetchPreviousPage = () => this.fetch({ cancelRefetch: true, direction: "backward" });
   }
 
   pageOptions(): InfiniteQueryOptions<TPage, TParam, mixed> {
