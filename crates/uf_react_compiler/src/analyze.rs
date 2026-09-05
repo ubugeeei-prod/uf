@@ -191,14 +191,36 @@ impl<'a> Walk<'a> {
         self.stack.close();
     }
 
+    /// Whether the contextual keyword at `index` is followed by a declaration.
+    ///
+    /// `component` and `hook` are contextual keywords: both are ordinary
+    /// identifiers everywhere they are not immediately followed by a name and
+    /// a parameter list. React's own Fast Refresh runtime holds the DevTools
+    /// global in a variable called `hook` and writes to it at the start of a
+    /// line — where there is no preceding identifier to say otherwise — and
+    /// the walk read `hook.inject = …` as a hook declaration. The body it then
+    /// opened swallowed the rest of the enclosing function, so every write to
+    /// module state inside it was reported as a write during render.
+    ///
+    /// A name and then `(`, or `<` for a generic. Nothing else is either
+    /// keyword.
+    fn names_a_declaration(&self, index: usize) -> bool {
+        self.ident(index + 1).is_some()
+            && (self.punct(index + 2, b'(') || self.punct(index + 2, b'<'))
+    }
+
     /// Handle one identifier token.
     fn identifier(&mut self, index: usize, word: &'a str) {
         let declaration = self.previous.is_none()
             || matches!(self.previous, Some("export" | "declare" | "default"));
 
         match word {
-            "component" if declaration => return self.declare_component(index),
-            "hook" if declaration => return self.declare_hook(index),
+            "component" if declaration && self.names_a_declaration(index) => {
+                return self.declare_component(index);
+            }
+            "hook" if declaration && self.names_a_declaration(index) => {
+                return self.declare_hook(index);
+            }
             "function" => return self.declare_function(index),
             "class" => return self.stack.expect(ScopeKind::Function),
             "return" => return self.stack.start_return(),

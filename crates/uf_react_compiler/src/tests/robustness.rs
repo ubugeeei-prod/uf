@@ -2,6 +2,7 @@
 
 use super::{accepts, check, findings};
 use crate::error::{MAX_SCOPE_DEPTH, MAX_SOURCE_BYTES};
+use crate::rule::Finding;
 use crate::{ReactCompilerError, validate};
 
 /// A module exercising every check at once.
@@ -183,4 +184,39 @@ fn a_module_with_thousands_of_bindings_stays_bounded() {
     }
     source.push_str("  return null;\n}\n");
     assert!(findings(&source).is_empty());
+}
+
+#[test]
+fn a_variable_named_hook_is_not_a_hook_declaration() {
+    // `hook` is a contextual keyword. React's own Fast Refresh runtime holds
+    // the DevTools global in a variable of that name and writes to it at the
+    // start of a line — where the walk sees no preceding identifier and used
+    // to read the member access as `hook <name>(…) {`, opening a hook body
+    // that swallowed the rest of the function. Every module-state write after
+    // it was then reported as a write during render.
+    accepts(
+        "const registry = new Map();\nexport function inject(hook) {\nhook.isDisabled = true;\nhook.inject = function (injected) {\n  registry.set(1, injected);\n};\n}\n",
+    );
+}
+
+#[test]
+fn a_variable_named_component_is_not_a_component_declaration() {
+    accepts(
+        "const seen = new Map();\nexport function record(component) {\ncomponent.id = 1;\nseen.set(component.id, component);\n}\n",
+    );
+}
+
+#[test]
+fn a_real_hook_declaration_still_declares_one() {
+    // The guard must not cost the keyword its meaning.
+    let diagnostics = check(
+        "hook useThing(flag: boolean): number {\n  if (flag) {\n    const [a] = useState(0);\n  }\n  return 1;\n}\n",
+    );
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].finding, Finding::HookNotAtTopLevel);
+}
+
+#[test]
+fn a_generic_declaration_is_still_a_declaration() {
+    accepts("component Box<T>(value: T) renders React.Node {\n  return null;\n}\n");
 }
