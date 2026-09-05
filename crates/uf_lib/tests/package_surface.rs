@@ -9,7 +9,8 @@
 //! - every module opens with the `// @flow` pragma,
 //! - every `exports` subpath resolves and every shipped module is reachable,
 //! - every shipped `package.json` declares `"sideEffects": false`,
-//! - the Rust registry in `uf_lib` and the shipped subpaths agree.
+//! - the Rust registry in `uf_lib` and the shipped subpaths agree,
+//! - every `@uniflowed/*` a package imports is declared in its manifest.
 //!
 //! One package is exempt from the Flow rules: `@uniflowed/vite` is executed
 //! by the JavaScript host *before* any transform exists — it is how the
@@ -1242,4 +1243,78 @@ fn every_advertised_module_resolves_to_a_package() {
         unresolvable.len(),
         unresolvable.join("\n")
     );
+}
+
+/// Every `@uniflowed/*` a package imports is declared in its manifest.
+///
+/// An undeclared dependency resolves inside this workspace, where every
+/// sibling is a directory away, and not for anyone who installs the package
+/// from npm. `@uniflowed/ui` imported `@uniflowed/validator` for a type and
+/// declared nothing, so a consumer running `uf check` could not resolve
+/// `Schema`. See ubugeeei-prod/uf#146.
+///
+/// Type-only imports count: a published package whose types do not resolve
+/// is a package whose types do not resolve.
+///
+/// {@link module_specifiers} is what makes this checkable rather than a
+/// search of the text, and the difference matters here. `packages/vite`
+/// builds application code in a template literal:
+///
+/// ```text
+/// return `import { hydrate } from "@uniflowed/router/client";
+/// ```
+///
+/// `@uniflowed/vite` does not import `@uniflowed/router` — the app it
+/// generates does, and that app declares it. `packages/react` names
+/// `@uniflowed/react` in a comment. A search reports both and is wrong about
+/// both.
+#[test]
+fn every_uniflowed_import_is_declared() {
+    let mut undeclared: Vec<String> = Vec::new();
+
+    for module in shipped_modules() {
+        let Some(package) = module.iter().next() else {
+            continue;
+        };
+        let manifest = manifest(&Utf8PathBuf::from(package).join("package.json"));
+        let name = manifest["name"].as_str().unwrap_or_default();
+        let declared = declared_uniflowed_dependencies(&manifest);
+
+        for specifier in module_specifiers(&read(&module)) {
+            if !specifier.starts_with("@uniflowed/") {
+                continue;
+            }
+            // A package may name itself: `exports` makes that resolve, and
+            // it is how one of its own subpaths is spelled from inside.
+            let target = specifier.split('/').take(2).collect::<Vec<_>>().join("/");
+            if target == name || declared.contains(&target) {
+                continue;
+            }
+            undeclared.push(format!("{name} imports {specifier} in {module}"));
+        }
+    }
+
+    undeclared.sort();
+    undeclared.dedup();
+    assert!(
+        undeclared.is_empty(),
+        "packages import @uniflowed/* they do not declare:\n  {}",
+        undeclared.join("\n  ")
+    );
+}
+
+/// The `@uniflowed/*` names a manifest declares, of any kind.
+fn declared_uniflowed_dependencies(manifest: &Value) -> BTreeSet<String> {
+    let mut declared = BTreeSet::new();
+    for key in ["dependencies", "peerDependencies", "optionalDependencies"] {
+        let Some(Value::Object(map)) = manifest.get(key) else {
+            continue;
+        };
+        declared.extend(
+            map.keys()
+                .filter(|name| name.starts_with("@uniflowed/"))
+                .cloned(),
+        );
+    }
+    declared
 }
