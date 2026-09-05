@@ -270,6 +270,12 @@ jobs:
       # Every package manifest, not just one: there are 44 of them now, and a
       # manifest that does not parse is a package that cannot be installed.
       - run: ./target/release/uf run manifests
+      # And that the set that goes to npm is closed under its own
+      # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
+      # release that sends one without the other publishes a package that
+      # resolves to nothing. No network, so it belongs here rather than in the
+      # pre-tag check alone.
+      - run: ./target/release/uf run release:closure
 
   upstream-integrations:
     name: Upstream Integrations
