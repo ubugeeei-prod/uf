@@ -169,6 +169,23 @@ impl<'a> Comments<'a> {
     }
 
     /// Record that comment `index` was printed.
+    /// Mark every comment inside `span` as printed.
+    ///
+    /// For a region the printer emits verbatim rather than from the tree: a
+    /// `/*:: … */` declaration block is code to Flow, so a `//` inside it is
+    /// a real comment attached to a real node, and the node is never
+    /// visited. Without this the run would fail as
+    /// [`CommentsLost`](crate::flow::FlowFormatError::CommentsLost), which is
+    /// the right failure for a comment that vanished and the wrong one for a
+    /// comment that was printed with the bytes around it.
+    pub fn mark_printed_within(&mut self, span: Span) {
+        for (index, comment) in self.comments.iter().enumerate() {
+            if comment.span.start >= span.start && comment.span.end <= span.end {
+                self.printed[index] = true;
+            }
+        }
+    }
+
     pub fn mark_printed(&mut self, index: u32) {
         if let Some(slot) = self.printed.get_mut(index as usize) {
             *slot = true;

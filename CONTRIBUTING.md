@@ -54,6 +54,26 @@ Fuzzing, formal verification, benchmarks, scripts, and Nix support live under
 `tools/` so the root stays focused on the Rust workspace and project metadata.
 Use `nix develop ./tools/nix` for the pinned development environment.
 
+## Reviews On Formatter Fixtures
+
+`crates/uf_fmt/tests/fixtures` holds input to a printer, not programs. Nothing
+declared in a fixture is meant to be used, half the constructs are deliberately
+awkward, and the `.expected.js` beside each one is Prettier's output for it
+byte for byte.
+
+GitHub's code-quality review reads them as code anyway, and reports every
+binding in them as an unused variable. A pull request that adds a fixture
+arrives with a dozen of those, and because `main` requires conversations to be
+resolved, they block the merge.
+
+They are false positives and they are resolved as such — with a reply saying
+so, not silently. Do not "fix" one by using a variable in a fixture: the
+fixture is what Prettier was run on, and changing it changes what the
+expectation means.
+
+The exclusion belongs in the analysis rather than in the fixtures, and it is
+not configurable from this repository. See ubugeeei-prod/uf#157.
+
 ## Verification
 
 One command, and it is the one CI runs:
