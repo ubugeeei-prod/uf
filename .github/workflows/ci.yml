@@ -276,6 +276,11 @@ jobs:
       # resolves to nothing. No network, so it belongs here rather than in the
       # pre-tag check alone.
       - run: ./target/release/uf run release:closure
+      # And that the one command the release bootstrap depends on still runs.
+      # It is invoked by hand, once, by one person, so a mistake in it costs a
+      # round trip and blocks a release — it has cost three. Stubs, so this
+      # needs no npm session and no network.
+      - run: ./target/release/uf run release:trust:test
 
   upstream-integrations:
     name: Upstream Integrations
