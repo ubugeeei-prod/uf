@@ -345,6 +345,48 @@ fn nesting_past_the_ceiling_is_refused() {
     assert!(format_source(&braces, &FmtConfig::default()).is_err());
 }
 
+/// A chain that nests without brackets is refused too.
+///
+/// ubugeeei-prod/uf#136. `1 + 1 + 1 + …` is one node per operand and opens
+/// no bracket that stays open, so the bracket ceiling above did not see it:
+/// a 7.3 MB file of it measured *zero* and aborted the process. An abort is
+/// not a refusal — there is no error for a caller to catch, and whatever
+/// else the process had in flight goes with it.
+#[test]
+fn chains_past_the_ceiling_are_refused() {
+    let depth = uf_flow::MAX_CHAIN_DEPTH + 2;
+    let config = FmtConfig::default();
+    for chain in [
+        vec!["1"; depth].join(" + "),
+        vec!["a"; depth].join(" && "),
+        format!("a{}", ".f()".repeat(depth)),
+        format!("a{}", ".f".repeat(depth)),
+        format!("{}0", "a ? 1 : ".repeat(depth)),
+    ] {
+        let source = format!("x = {chain};\n");
+        let error = format_source(&source, &config).expect_err("refused");
+        assert!(matches!(error, FormatError::Flow(_)), "{error:?}");
+        assert!(
+            error.to_string().contains("operators chain"),
+            "the message should say what nested: {error}"
+        );
+    }
+}
+
+/// A chain *at* the ceiling still formats, and settles.
+///
+/// The other half of the same bar as the bracket ceiling: a limit that real
+/// code reaches is a limit that rejects real code. The corpus's deepest
+/// chain is 664, in a minified bundle.
+#[test]
+fn chains_at_the_ceiling_are_formatted() {
+    let source = format!("x = {};\n", vec!["1"; uf_flow::MAX_CHAIN_DEPTH].join(" + "));
+    let config = FmtConfig::default();
+    let formatted = format_source(&source, &config).expect("formats");
+    let again = format_source(&formatted.output, &config).expect("reformats");
+    similar_asserts::assert_eq!(formatted.output, again.output);
+}
+
 /// Nesting *at* the ceiling still formats, so the limit is a real one
 /// rather than a number no input ever reaches.
 #[test]
