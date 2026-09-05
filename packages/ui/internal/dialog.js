@@ -119,7 +119,7 @@ export component DialogContent(children: React.Node, ...rest: { readonly [string
     // The first thing worth acting on, not the first thing in the document —
     // and the dialog itself if it contains nothing focusable, so focus is
     // inside it either way.
-    const target = content == null ? null : focusable(content)[0] ?? content;
+    const target = content == null ? null : (focusable(content)[0] ?? content);
     target?.focus();
 
     return () => {

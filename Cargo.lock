@@ -3354,6 +3354,7 @@ dependencies = [
  "uf_doc",
  "uf_flow",
  "uf_fmt",
+ "uf_infra",
  "uf_lib",
  "uf_lint",
  "uf_plugin",
