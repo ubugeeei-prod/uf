@@ -613,11 +613,19 @@ impl<'a> Printer<'a> {
             ]));
         }
         // More than one clause needs the group to lay them out. So does a
-        // trailing comment on the class name, for a different reason: a line
-        // comment ends the line it is on, and without a group there is no
-        // line before `extends` for it to end. See ubugeeei-prod/uf#135.
+        // trailing comment on the class name — or on its type parameters,
+        // which is the same comment one token later — for a different
+        // reason: a line comment ends the line it is on, and without a group
+        // there is no line before `extends` for it to end. See
+        // ubugeeei-prod/uf#135.
+        let trailing_comment_on =
+            |node: NodeRef<'a>| self.has_comment_placed(node.key(), Placement::Trailing);
         let group_mode = heritage.len() > 1
-            || self.has_comment_placed(NodeRef::Identifier(&class.id).key(), Placement::Trailing);
+            || trailing_comment_on(NodeRef::Identifier(&class.id))
+            || class
+                .tparams
+                .as_ref()
+                .is_some_and(|tparams| trailing_comment_on(NodeRef::TypeParams(tparams)));
         if group_mode {
             let clauses: Vec<Doc<'a>> = heritage
                 .into_iter()
