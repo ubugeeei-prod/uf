@@ -110,6 +110,7 @@ let installed: mixed = null;
  * root already mounted in the old one.
  */
 export function installDom(): mixed {
+  installActEnvironment();
   if (installed != null) {
     return installed;
   }
@@ -159,6 +160,46 @@ export function installDom(): mixed {
   installed = win;
   return installed;
 }
+
+/**
+ * Tell React that this process is running tests.
+ *
+ * React cannot tell a test from a production render, so `act` warns "The
+ * current testing environment is not configured to support act(...)" unless
+ * the harness says so. Every render in this package goes through `act`, so
+ * without this every component test printed the warning — 73 times in one
+ * file of this repository — and a warning worth reading was lost among them.
+ *
+ * Separate from the document because the two are independent: a project
+ * already running in a browser has a DOM and still has to say it is testing.
+ */
+export function installActEnvironment(): void {
+  if (declared) {
+    return;
+  }
+  declared = true;
+  define("IS_REACT_ACT_ENVIRONMENT", true);
+}
+
+/**
+ * Turn the act environment on or off.
+ *
+ * `waitFor` stands it down for the length of a wait; see the reason there.
+ */
+export function setActEnvironment(active: boolean): void {
+  declared = true;
+  define("IS_REACT_ACT_ENVIRONMENT", active);
+}
+
+/**
+ * Whether the flag has been installed, tracked separately from its value.
+ *
+ * Every query calls `installDom`, which installs the act environment, and
+ * every query inside a `waitFor` therefore ran while `waitFor` had stood the
+ * environment down. Reading the flag to decide whether to set it turned it
+ * back on at the first assertion, so only the first poll of a wait was quiet.
+ */
+let declared = false;
 
 /**
  * Assign a global, even where the host declared it as a getter.

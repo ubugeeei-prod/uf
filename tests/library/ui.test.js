@@ -14,7 +14,7 @@
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
-import { fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
+import { act, fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
 import { Checkbox, Combobox, Dialog, Field, Menu, Switch, Tabs } from "@uniflowed/ui";
 
 /**
@@ -900,10 +900,13 @@ describe("Menu: submenus", () => {
     expect(screen.getAllByRole("menu").length).toBe(1);
   });
 
+  // Focusing a `menuitem` runs the roving tab stop's `onFocus`, which is a
+  // React state update; `act` is what tells React it happened. The trigger of
+  // the outer menu is a plain button and needs none.
   it("opens on ArrowRight and lands on the first item", async () => {
     render(<Example />);
     const trigger = screen.getByRole("menuitem", { name: "Export" });
-    trigger.focus();
+    act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowRight" });
     expect(screen.getAllByRole("menu").length).toBe(2);
     expect(screen.getByRole("menuitem", { name: "PNG" })).toHaveFocus();
@@ -917,7 +920,7 @@ describe("Menu: submenus", () => {
   it("closes on ArrowLeft and comes back to the item that opened it", async () => {
     render(<Example />);
     const trigger = screen.getByRole("menuitem", { name: "Export" });
-    trigger.focus();
+    act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowRight" });
     await userEvent.keyboard("{ArrowLeft}");
     expect(screen.getAllByRole("menu").length).toBe(1);
@@ -927,7 +930,7 @@ describe("Menu: submenus", () => {
   it("leaves the parent menu open when Escape closes the submenu", async () => {
     render(<Example />);
     const trigger = screen.getByRole("menuitem", { name: "Export" });
-    trigger.focus();
+    act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowRight" });
     await userEvent.keyboard("{Escape}");
     // A submenu is a DOM descendant of its parent, so without stopping the
@@ -939,7 +942,7 @@ describe("Menu: submenus", () => {
   it("keeps the arrow keys of the two menus apart", async () => {
     render(<Example />);
     const trigger = screen.getByRole("menuitem", { name: "Export" });
-    trigger.focus();
+    act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowRight" });
     await userEvent.keyboard("{ArrowDown}");
     // The parent menu must not also move: a submenu's items are inside its

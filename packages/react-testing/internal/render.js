@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import type * as React from "@uniflowed/react";
 import { act } from "@uniflowed/react";
 
-import { installDom } from "./dom.js";
+import { installActEnvironment, installDom, setActEnvironment } from "./dom.js";
 
 /** What `render` hands back. */
 export type RenderResult = {|
@@ -131,11 +131,36 @@ function requireClient(): { createRoot: (Element) => any } {
  * and this is how.
  */
 export function actively<T>(body: () => T): T {
-  let result: T;
-  act(() => {
+  // A test that acts without having rendered — a timer firing in a hook test
+  // — reaches `act` without going through `render`, and `act` still has to
+  // know it is being called by a test.
+  installActEnvironment();
+  let result: mixed;
+  const scope: mixed = act(() => {
     result = body();
+    // Handed back so React keeps the scope open until an async body settles.
+    // Without this the scope closed on the first tick and every update the
+    // body was still waiting for landed outside it, which React reports as
+    // "an update was not wrapped in act(...)".
+    return result;
   });
+  if (isThenable(result) && isThenable(scope)) {
+    // `Promise.resolve`, not `scope.then(…)`: `act` hands back a bare thenable
+    // — an object with a `then` and nothing else — whose `then` returns
+    // `undefined` rather than a promise. Chaining off it directly produced an
+    // `undefined` that `await` resolved immediately, so the caller carried on
+    // while the scope was still open: the body's timers had not fired, and
+    // every later `act` nested inside the scope that was never closed and
+    // flushed nothing. `render` after one of those returned an empty
+    // container.
+    return Promise.resolve(scope).then(() => result) as any;
+  }
   return result as any;
+}
+
+/** Whether `value` is something to await. */
+function isThenable(value: mixed): boolean {
+  return value != null && typeof value === "object" && typeof (value as any).then === "function";
 }
 
 /**
@@ -149,8 +174,44 @@ export async function waitFor<T>(
   body: () => T | Promise<T>,
   options?: {| readonly timeout?: number, readonly interval?: number |},
 ): Promise<T> {
+  installActEnvironment();
   const timeout = options?.timeout ?? 1000;
   const interval = options?.interval ?? 20;
+
+  // React is told this is not an act environment for as long as the wait
+  // lasts, and told again afterwards.
+  //
+  // The update a test waits for arrives between two polls, and React reports
+  // it as "an update to X inside a test was not wrapped in act(...)" —
+  // correctly, since nothing was there to flush it. The fix cannot be to put
+  // the polling loop inside an `act` scope: `act` holds updates back until
+  // the scope closes, so the loop would poll a tree that cannot change and
+  // every `waitFor` would run to its timeout.
+  //
+  // So the scope is stood down instead. The warning exists to catch an update
+  // a test did not know it was causing; a test that wrote `waitFor` knows.
+  // Counted rather than saved and restored, because waits nest: every
+  // `findBy…` is a `waitFor`, and a test may put one inside another. The
+  // outermost wait stands the environment down and the outermost restores it.
+  waits += 1;
+  if (waits === 1) {
+    setActEnvironment(false);
+  }
+  try {
+    return await poll(body, timeout, interval);
+  } finally {
+    waits -= 1;
+    if (waits === 0) {
+      setActEnvironment(true);
+    }
+  }
+}
+
+/** How many waits are in progress. */
+let waits = 0;
+
+/** Call `body` until it stops throwing, or give up after `timeout`. */
+async function poll<T>(body: () => T | Promise<T>, timeout: number, interval: number): Promise<T> {
   const deadline = Date.now() + timeout;
   let lastError: mixed = null;
 

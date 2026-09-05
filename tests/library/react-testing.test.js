@@ -8,6 +8,7 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/test";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -492,5 +493,109 @@ describe("element matchers", () => {
       message = String(error);
     }
     expect(message).toContain("needs an element");
+  });
+});
+
+describe("the act environment", () => {
+  it("renders without React warning that the environment is not configured", () => {
+    // React prints "The current testing environment is not configured to
+    // support act(...)" through `console.error` unless the harness sets
+    // `IS_REACT_ACT_ENVIRONMENT`. Every render here goes through `act`, so
+    // the warning arrived once per assertion and drowned the ones worth
+    // reading.
+    const original = console.error;
+    const said: Array<string> = [];
+    console.error = (...args: $ReadOnlyArray<mixed>) => {
+      said.push(args.map((value) => String(value)).join(" "));
+    };
+    try {
+      render(<Greeting name="world" />);
+      fireEvent.click(screen.getByText(/Hello/));
+    } finally {
+      console.error = original;
+    }
+
+    expect(said.filter((line) => line.includes("act("))).toEqual([]);
+  });
+
+  it("says the process is a test when act is reached without a render", () => {
+    // Nothing installs the flag when the package is imported — a test file
+    // that renders nothing should not be made to build a document — so `act`
+    // has to install it itself. A hook test whose first act is a timer firing
+    // reaches `act` without going through `render`, and it must not be the
+    // one call in the file that warns.
+    //
+    // Asserted through `act` rather than by reading the flag directly,
+    // because reading it says only that some earlier test in this file
+    // rendered.
+    const original = console.error;
+    const said: Array<string> = [];
+    console.error = (...args: $ReadOnlyArray<mixed>) => {
+      said.push(args.map((value) => String(value)).join(" "));
+    };
+    try {
+      act(() => {});
+    } finally {
+      console.error = original;
+    }
+
+    expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
+    expect(said.filter((line) => line.includes("act("))).toEqual([]);
+  });
+
+  it("keeps its scope open until an async body settles", async () => {
+    component Late() {
+      const [text, setText] = useState("waiting");
+      React.useEffect(() => {
+        const id = setTimeout(() => setText("arrived"), 20);
+        return () => clearTimeout(id);
+      }, []);
+      return <output>{text}</output>;
+    }
+
+    render(<Late />);
+    expect(screen.getByText("waiting")).toBeInTheDocument();
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 40)));
+
+    // No `waitFor` here on purpose. The scope covered the timer, so the update
+    // it caused is flushed by the time `act` returns.
+    //
+    // `act` hands back a bare thenable rather than a promise, and chaining off
+    // its `then` produced an `undefined` that `await` resolved at once: this
+    // line ran before the timer had fired, and — worse — every later `act` in
+    // the process nested inside a scope that had been left open and flushed
+    // nothing at all.
+    expect(screen.getByText("arrived")).toBeInTheDocument();
+  });
+
+  it("stands the environment down for the length of a wait, and puts it back", async () => {
+    // `act` holds updates until its scope closes, so a wait cannot happen
+    // inside one — the loop would poll a tree that cannot change. The
+    // environment is stood down instead, and the update the test is waiting
+    // for is allowed to arrive unacted.
+    render(<Greeting name="world" />);
+    expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
+
+    let insideWait = null;
+    let insideOuterWait = null;
+    await waitFor(async () => {
+      // A query, because every query installs the DOM and with it the act
+      // environment. Deciding whether to install by reading the current value
+      // turned the environment back on here, and only the first poll of a
+      // wait was quiet.
+      screen.getByText(/Hello/);
+      await waitFor(() => {
+        insideWait = globalThis.IS_REACT_ACT_ENVIRONMENT;
+      });
+      // The inner wait has returned; the outer one has not, so the
+      // environment is still down. Every `findBy…` is a `waitFor`, so this
+      // nesting is what a test does by accident rather than on purpose.
+      insideOuterWait = globalThis.IS_REACT_ACT_ENVIRONMENT;
+    });
+
+    expect(insideWait).toBe(false);
+    expect(insideOuterWait).toBe(false);
+    expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
   });
 });
