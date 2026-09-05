@@ -1137,6 +1137,116 @@ fn framed(body: &str) -> String {
     format!("Content-Length: {}\r\n\r\n{body}", body.len())
 }
 
+/// Run `uf lsp` over one stream of framed messages and parse what came back.
+///
+/// Reading the answers as JSON rather than as substrings is what lets a test
+/// take an edit out of a code action and *apply* it, which is the only way to
+/// find out whether the edit was any good.
+fn lsp_session(messages: &[String]) -> Vec<serde_json::Value> {
+    let output = uf()
+        .arg("lsp")
+        .write_stdin(messages.concat())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    let mut parsed = Vec::new();
+    let mut rest = stdout.as_str();
+    while let Some(at) = rest.find("Content-Length: ") {
+        let after = &rest[at + "Content-Length: ".len()..];
+        let (length, body) = after
+            .split_once("\r\n\r\n")
+            .unwrap_or_else(|| panic!("an unterminated frame in:\n{stdout}"));
+        let length: usize = length.trim().parse().expect("a Content-Length");
+        parsed.push(
+            serde_json::from_str(&body[..length])
+                .unwrap_or_else(|error| panic!("{error} in:\n{}", &body[..length])),
+        );
+        rest = &body[length..];
+    }
+    parsed
+}
+
+/// The answer to one request id.
+fn answer(messages: &[serde_json::Value], id: u64) -> &serde_json::Value {
+    messages
+        .iter()
+        .find(|message| message["id"] == serde_json::json!(id))
+        .unwrap_or_else(|| panic!("no answer for id {id} in:\n{messages:#?}"))
+}
+
+/// Every `publishDiagnostics` the server sent, in order.
+fn published(messages: &[serde_json::Value]) -> Vec<&serde_json::Value> {
+    messages
+        .iter()
+        .filter(|message| message["method"] == "textDocument/publishDiagnostics")
+        .map(|message| &message["params"]["diagnostics"])
+        .collect()
+}
+
+/// Apply LSP `TextEdit`s to `source`, the way an editor applies them.
+///
+/// Edits name positions in the document they were computed against, so they
+/// are applied back to front and the offsets of the earlier ones stay true.
+/// Characters are UTF-16 code units, which is the half of this an editor gets
+/// right and a test helper written in a hurry does not.
+fn apply(source: &str, edits: &[serde_json::Value]) -> String {
+    let mut lines: Vec<String> = source.split('\n').map(str::to_owned).collect();
+    let mut edits: Vec<&serde_json::Value> = edits.iter().collect();
+    edits.sort_by_key(|edit| {
+        std::cmp::Reverse((
+            edit["range"]["start"]["line"].as_u64().unwrap(),
+            edit["range"]["start"]["character"].as_u64().unwrap(),
+        ))
+    });
+
+    for edit in edits {
+        let start_line = edit["range"]["start"]["line"].as_u64().unwrap() as usize;
+        let end_line = (edit["range"]["end"]["line"].as_u64().unwrap() as usize).min(lines.len());
+        let start = utf16_to_byte(
+            &lines[start_line],
+            edit["range"]["start"]["character"].as_u64().unwrap() as usize,
+        );
+        let text = edit["newText"].as_str().unwrap();
+
+        if end_line >= lines.len() {
+            // A whole-document edit, whose end is past the last line.
+            let mut head = lines[start_line][..start].to_owned();
+            head.push_str(text);
+            lines.truncate(start_line);
+            lines.push(head);
+            continue;
+        }
+        let end = utf16_to_byte(
+            &lines[end_line],
+            edit["range"]["end"]["character"].as_u64().unwrap() as usize,
+        );
+        let replacement = format!(
+            "{}{text}{}",
+            &lines[start_line][..start],
+            &lines[end_line][end..]
+        );
+        lines.splice(start_line..=end_line, [replacement]);
+    }
+    lines.join("\n")
+}
+
+fn utf16_to_byte(line: &str, character: usize) -> usize {
+    let mut units = 0usize;
+    for (offset, letter) in line.char_indices() {
+        if units >= character {
+            return offset;
+        }
+        units += letter.len_utf16();
+    }
+    line.len()
+}
+
 #[test]
 fn lsp_initialize_returns_native_capabilities() {
     let output = uf()
@@ -1156,11 +1266,21 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.starts_with("Content-Length: "));
     assert!(stdout.contains(r#""name":"uf-lsp""#));
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
+    assert!(stdout.contains(r#""hoverProvider":true"#));
+    assert!(
+        stdout.contains(r#""codeActionKinds":["quickfix","source.fixAll.uf"]"#),
+        "{stdout}"
+    );
     // `diagnosticProvider` is the *pull* model, where the editor asks. uf
     // pushes `textDocument/publishDiagnostics` instead, which is a
     // notification and has no capability to advertise. Advertising a pull
     // provider that nothing serves is what ubugeeei-prod/uf#162 was.
     assert!(!stdout.contains("diagnosticProvider"), "{stdout}");
+    // Nor `source.organizeImports`, for the same reason: uf has no opinion
+    // about import order anywhere in the workspace, so there is nothing to
+    // organise them into. A capability is a promise, and this one would be
+    // a promise to sort imports into an order uf has never decided on.
+    assert!(!stdout.contains("organizeImports"), "{stdout}");
     assert_plain(&stdout);
 }
 
@@ -1306,19 +1426,330 @@ fn lsp_republishes_on_change_and_clears_on_close() {
 /// A request uf does not serve is answered, not ignored.
 ///
 /// An editor waiting on an id that never comes back is a hang, which is the
-/// failure this whole command had.
+/// failure this whole command had. The answer is the one the specification
+/// names — `MethodNotFound` — rather than a `null` result, because a null
+/// result says "there are no document symbols here" and the truth is "uf does
+/// not do document symbols".
 #[test]
 fn lsp_answers_a_request_it_does_not_serve() {
-    let input = [
-        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/hover","params":{}}"#),
+    let messages = lsp_session(&[
+        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/documentSymbol","params":{}}"#),
         framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
-    ]
-    .concat();
+    ]);
 
-    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+    assert_eq!(answer(&messages, 7)["error"]["code"], -32601);
+    assert!(
+        answer(&messages, 7)["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("textDocument/documentSymbol"),
+        "{messages:#?}"
+    );
+}
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains(r#""id":7"#), "{stdout}");
+/// A notification uf does not serve gets nothing back at all.
+///
+/// The rule cuts both ways: a request without an answer hangs the editor, and
+/// an answer to a notification is a response with no request, which some
+/// clients treat as a protocol violation and close the connection over.
+#[test]
+fn lsp_says_nothing_to_a_notification_it_does_not_serve() {
+    let messages = lsp_session(&[
+        framed(r#"{"jsonrpc":"2.0","method":"$/setTrace","params":{"value":"verbose"}}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    assert!(messages.is_empty(), "{messages:#?}");
+}
+
+/// A body that is not JSON is answered and the session carries on.
+///
+/// This is the difference between a server an editor can wedge and one it
+/// cannot: the frame header said how many bytes the broken message was, so
+/// the stream is still in sync and the next request is served normally.
+#[test]
+fn lsp_answers_a_malformed_message_and_keeps_serving() {
+    let messages = lsp_session(&[
+        framed("{ this is not json"),
+        framed(r#"{"jsonrpc":"2.0","id":2}"#),
+        framed(r#"{"jsonrpc":"2.0","id":3,"method":"initialize","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    // Parse error, with a null id because the message was too broken to have one.
+    assert_eq!(messages[0]["error"]["code"], -32700);
+    assert_eq!(messages[0]["id"], serde_json::Value::Null);
+    // JSON, but not a request: no method.
+    assert_eq!(answer(&messages, 2)["error"]["code"], -32600);
+    // And the connection still works.
+    assert_eq!(
+        answer(&messages, 3)["result"]["serverInfo"]["name"],
+        "uf-lsp"
+    );
+}
+
+/// A request whose params name no document is a request that cannot be served.
+#[test]
+fn lsp_refuses_a_request_with_unusable_params() {
+    let messages = lsp_session(&[
+        framed(
+            r#"{"jsonrpc":"2.0","id":1,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///a.js"}}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"file:///a.js"}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    assert_eq!(answer(&messages, 1)["error"]["code"], -32602);
+    assert_eq!(answer(&messages, 2)["error"]["code"], -32602);
+}
+
+/// The document an editor opens, for the code action and hover tests.
+fn did_open(uri: &str, text: &str) -> String {
+    framed(&format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"javascript","version":1,"text":{text}}}}}}}"#,
+        text = serde_json::Value::String(text.to_owned())
+    ))
+}
+
+fn code_action(id: u64, uri: &str, line: u64, character: u64, only: Option<&str>) -> String {
+    let only = only.map_or_else(String::new, |kind| format!(r#","only":["{kind}"]"#));
+    framed(&format!(
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/codeAction","params":{{"textDocument":{{"uri":"{uri}"}},"range":{{"start":{{"line":{line},"character":{character}}},"end":{{"line":{line},"character":{character}}}}},"context":{{"diagnostics":[]{only}}}}}}}"#
+    ))
+}
+
+fn hover_at(id: u64, uri: &str, line: u64, character: u64) -> String {
+    framed(&format!(
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":{line},"character":{character}}}}}}}"#
+    ))
+}
+
+/// The whole point of a code action: an edit that, applied, fixes the thing.
+///
+/// Two sessions, because that is what an editor does — it asks, it applies
+/// what it was given, and the server sees the result as the next change. The
+/// second session opens the *edited* text, so the "the diagnostic is gone"
+/// half is the linter's own answer about the document the edit produced,
+/// rather than a test asserting that a string was replaced.
+#[test]
+fn lsp_offers_a_quick_fix_whose_edit_lints_clean() {
+    let source = "// @flow\ntype B = bool;\n";
+    let messages = lsp_session(&[
+        did_open("file:///a.js", source),
+        code_action(2, "file:///a.js", 1, 9, None),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    // The document opened with exactly one problem.
+    assert_eq!(published(&messages)[0].as_array().unwrap().len(), 1);
+
+    let actions = answer(&messages, 2)["result"].as_array().unwrap();
+    let quick_fix = actions
+        .iter()
+        .find(|action| action["kind"] == "quickfix")
+        .unwrap_or_else(|| panic!("no quick fix in {actions:#?}"));
+    assert_eq!(quick_fix["title"], "Replace `bool` with `boolean`");
+    // The action carries the diagnostic it answers, so the editor can attach
+    // it to the right squiggle.
+    assert_eq!(quick_fix["diagnostics"][0]["code"], "flow/deprecated-type");
+
+    let edits = quick_fix["edit"]["changes"]["file:///a.js"]
+        .as_array()
+        .unwrap();
+    let fixed = apply(source, edits);
+    assert_eq!(fixed, "// @flow\ntype B = boolean;\n");
+
+    // And the linter agrees, because it is the one asked.
+    let after = lsp_session(&[
+        did_open("file:///a.js", &fixed),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+    assert_eq!(
+        published(&after)[0].as_array().unwrap().len(),
+        0,
+        "the edit should leave nothing to report: {:#?}",
+        published(&after)[0]
+    );
+}
+
+/// `source.fixAll` fixes every occurrence, not just the one under the cursor.
+#[test]
+fn lsp_fixes_every_occurrence_in_the_file_at_once() {
+    let source = "// @flow\ntype A = bool;\ntype B = ?bool;\n";
+    let messages = lsp_session(&[
+        did_open("file:///a.js", source),
+        code_action(2, "file:///a.js", 1, 9, Some("source.fixAll")),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let actions = answer(&messages, 2)["result"].as_array().unwrap();
+    // Filtered to `source.fixAll`, so the quick fix for the cursor is not here.
+    assert_eq!(actions.len(), 1, "{actions:#?}");
+    assert_eq!(actions[0]["kind"], "source.fixAll.uf");
+
+    let edits = actions[0]["edit"]["changes"]["file:///a.js"]
+        .as_array()
+        .unwrap();
+    assert_eq!(edits.len(), 2);
+    assert_eq!(
+        apply(source, edits),
+        "// @flow\ntype A = boolean;\ntype B = ?boolean;\n"
+    );
+}
+
+/// A rule whose right answer depends on what the author meant gets no action.
+///
+/// `flow/unclear-type` could "fix" `any` to `mixed`, to an opaque type, or to
+/// a generated router type. A code action that picked one would be a guess an
+/// editor applies without asking.
+#[test]
+fn lsp_offers_nothing_for_a_rule_it_cannot_answer() {
+    let messages = lsp_session(&[
+        did_open("file:///a.js", "// @flow\ntype A = any;\n"),
+        code_action(2, "file:///a.js", 1, 9, None),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    // The diagnostic is reported...
+    assert_eq!(published(&messages)[0][0]["code"], "flow/unclear-type");
+    // ...and no action is offered for it.
+    assert_eq!(
+        answer(&messages, 2)["result"].as_array().unwrap().len(),
+        0,
+        "{:#?}",
+        answer(&messages, 2)
+    );
+}
+
+/// Whitespace hygiene is the formatter's answer, and it is offered only where
+/// the formatter really gives it.
+///
+/// The second half is the interesting one. `uf fmt` reprints from the syntax
+/// tree and so preserves the inside of a template literal, while
+/// `uniflowed/no-trailing-whitespace` measures the raw line and reports
+/// trailing spaces inside one — so there the formatter is *not* the fix, and
+/// offering it would be offering something that does not work.
+#[test]
+fn lsp_offers_the_formatter_only_where_it_clears_the_diagnostic() {
+    let source = "// @flow\nconst a = 1;   \n";
+    let messages = lsp_session(&[
+        did_open("file:///a.js", source),
+        code_action(2, "file:///a.js", 1, 12, None),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let actions = answer(&messages, 2)["result"].as_array().unwrap();
+    let format = actions
+        .iter()
+        .find(|action| action["title"] == "Format this document with uf fmt")
+        .unwrap_or_else(|| panic!("no formatting action in {actions:#?}"));
+    let edits = format["edit"]["changes"]["file:///a.js"]
+        .as_array()
+        .unwrap();
+    assert_eq!(apply(source, edits), "// @flow\nconst a = 1;\n");
+
+    // A tab in a *comment* is the live case for the guard: the formatter keeps
+    // a comment's text, so offering it here would offer a fix that does not
+    // fix. (A tab inside a string is no longer reported at all — the linter
+    // was taught that those belong to the string, so `uf fmt` and `uf lint`
+    // can converge.)
+    let commented = "// @flow\n// a\tcomment\nexport const a = 1;\n";
+    let messages = lsp_session(&[
+        did_open("file:///a.js", commented),
+        code_action(2, "file:///a.js", 1, 4, None),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    assert_eq!(
+        published(&messages)[0][0]["code"],
+        "uniflowed/no-tabs",
+        "{:#?}",
+        published(&messages)[0]
+    );
+    let offered = answer(&messages, 2)["result"].as_array().unwrap().clone();
+    assert!(
+        !offered
+            .iter()
+            .any(|action| action["title"] == "Format this document with uf fmt"),
+        "{offered:#?}"
+    );
+}
+
+/// A hover over a squiggle says which rule it is and what the rule is for.
+#[test]
+fn lsp_hovers_a_diagnostic_with_the_rule_behind_it() {
+    let messages = lsp_session(&[
+        did_open("file:///a.js", "// @flow\ntype B = bool;\n"),
+        hover_at(2, "file:///a.js", 1, 10),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let contents = answer(&messages, 2)["result"]["contents"].clone();
+    assert_eq!(contents["kind"], "markdown");
+    let value = contents["value"].as_str().unwrap();
+    assert!(value.contains("flow/deprecated-type"), "{value}");
+    assert!(value.contains("write `boolean`"), "{value}");
+    // The catalogue entry `uf inspect` prints, not just the message.
+    assert!(value.contains("Flow's own lint set"), "{value}");
+    assert!(value.contains("default `error`"), "{value}");
+    // And the range of the thing hovered, so the editor underlines it.
+    assert_eq!(
+        answer(&messages, 2)["result"]["range"]["start"]["character"],
+        9
+    );
+}
+
+/// A hover over an import specifier says what the specifier names.
+#[test]
+fn lsp_hovers_an_import_specifier() {
+    let messages = lsp_session(&[
+        did_open(
+            "file:///a.js",
+            "// @flow\nimport { Node } from \"@uniflowed/react\";\nimport { db } from \"@uniflowed/server\";\n",
+        ),
+        hover_at(2, "file:///a.js", 1, 30),
+        hover_at(3, "file:///a.js", 2, 25),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let module = answer(&messages, 2)["result"]["contents"]["value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(module.contains("@uniflowed/react"), "{module}");
+    assert!(module.contains("framework"), "{module}");
+    assert!(module.contains("`Node`"), "{module}");
+
+    let server = answer(&messages, 3)["result"]["contents"]["value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(server.contains("Server-only"), "{server}");
+}
+
+/// A hover with no answer is `null`, and that is deliberate.
+///
+/// The type at a position is the answer a reader wants over an expression, and
+/// uf cannot give it: `uf_check` runs Flow's inference but exposes only whole
+/// file diagnostics, so there is no positional query to ask. An empty popup
+/// would read as "uf looked and this has no type", which is a different and
+/// false claim; `null` is the protocol's word for "nothing to say".
+#[test]
+fn lsp_has_no_hover_for_an_expression() {
+    let messages = lsp_session(&[
+        did_open("file:///a.js", "// @flow\nconst total = 1 + 2;\n"),
+        hover_at(2, "file:///a.js", 1, 8),
+        hover_at(3, "file:///a.js", 40, 0),
+        hover_at(4, "file:///nope.js", 0, 0),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    assert_eq!(answer(&messages, 2)["result"], serde_json::Value::Null);
+    assert_eq!(answer(&messages, 3)["result"], serde_json::Value::Null);
+    // A document the server was never told about is not an error either.
+    assert_eq!(answer(&messages, 4)["result"], serde_json::Value::Null);
 }
 
 #[test]

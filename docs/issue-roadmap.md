@@ -44,7 +44,18 @@
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.
 - [ ] Ban `String`, `format!`, and allocation-heavy std helpers in parser/lint/router/test hot paths.
 - [ ] Audit hot paths for unnecessary `.clone()` calls and replace them with borrowed or arena-backed flows.
-- [ ] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
+- [x] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
+      `uf lsp` serves `publishDiagnostics`, `textDocument/formatting`,
+      `textDocument/codeAction` (`quickfix` plus `source.fixAll.uf`) and
+      `textDocument/hover`, all from the same crates `uf lint`, `uf fmt` and
+      `uf inspect` call. Quick fixes are offered only where a rule's answer is
+      mechanical; `flow/deprecated-type` has one and the rules that would need
+      to guess at intent deliberately do not. Hover answers the rule behind a
+      diagnostic, what an import specifier names, and what a rule id in a
+      suppression comment means. It does **not** answer the type at a position:
+      that needs a positional entry point on `uf_check`, which today exposes
+      only whole-file diagnostics. `source.organizeImports` is not advertised
+      because uf has no import-order opinion to organise them by.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
 - [ ] Implement editor extension packages on top of `uf lsp`.
 - [x] Use uf task definitions in `uf.config.js`.
