@@ -57,17 +57,18 @@ impl<'a> Printer<'a> {
             E::ArrowFunction { inner, .. } => self.print_arrow_function(inner, expression, args),
             E::AsConstExpression { inner, .. } => {
                 let value = self.print_expression(&inner.expression);
-                self.concat([value, self.s(" as const")])
+                let cast = self.concat([value, self.s(" as const")]);
+                self.cast_between_parens(expression, cast)
             }
             E::AsExpression { inner, .. } => {
-                let value = self.print_expression(&inner.expression);
-                let annotation = self.print_type(&inner.annot.annotation);
-                self.concat([value, self.s(" as "), annotation])
+                let cast = self.print_as_expression(inner);
+                self.cast_between_parens(expression, cast)
             }
             E::TSSatisfies { inner, .. } => {
                 let value = self.print_expression(&inner.expression);
                 let annotation = self.print_type(&inner.annot.annotation);
-                self.concat([value, self.s(" satisfies "), annotation])
+                let cast = self.concat([value, self.s(" satisfies "), annotation]);
+                self.cast_between_parens(expression, cast)
             }
             E::Assignment { inner, .. } => self.print_assignment_expression(inner, expression),
             E::Binary { .. } | E::Logical { .. } => self.print_binaryish(expression),
@@ -214,6 +215,32 @@ impl<'a> Printer<'a> {
         self.docs.concat_vec(parts)
     }
 
+    /// `x as T`, or `x /*:: as T */` when that is how it was written.
+    ///
+    /// The comment form is the fourth of Flow's comment types and the one the
+    /// corpus is full of: Relay writes every generated artifact with
+    /// `v0 /*:: as any*/`, because those files ship in npm packages and are
+    /// read by tools that do not strip Flow. `node --check` accepts the
+    /// comment and rejects `v0 as any`, so printing it as real syntax turns a
+    /// file that runs into one that does not.
+    ///
+    /// Like the type arguments in `print_call_type_args`, and unlike an
+    /// annotation, the location is no help: it starts at the type rather than
+    /// at the `/*`. What identifies the form is the block the type sits *in*,
+    /// found once for the file. The operand has to be outside that block —
+    /// otherwise the whole cast is inside a `/*:: … */` declaration, which
+    /// belongs to whoever is printing the block.
+    fn print_as_expression(&mut self, inner: &'a expression::AsExpression<Loc, Loc>) -> Doc<'a> {
+        let value = self.print_expression(&inner.expression);
+        if let Some(block) = self.comment_cast_block(inner) {
+            let raw = self.text.slice(block);
+            let printed = self.replace_end_of_line(raw);
+            return self.concat([value, self.s(" "), printed]);
+        }
+        let annotation = self.print_type(&inner.annot.annotation);
+        self.concat([value, self.s(" as "), annotation])
+    }
+
     /// `await x`, which breaks before itself when it is the object of a
     /// member chain so `(await\n x).y` never happens.
     fn print_await(
@@ -302,12 +329,8 @@ impl<'a> Printer<'a> {
         let object = self.print_expression(&member.object);
         let lookup = self.print_member_lookup(member, optional);
         let first_non_member_parent = self
-            .ancestors
-            .iter()
-            .rev()
-            .skip(1)
-            .find(|ancestor| !matches!(ancestor, NodeRef::Expression(e) if is_member(e)))
-            .copied();
+            .enclosing_nodes()
+            .find(|ancestor| !matches!(ancestor, NodeRef::Expression(e) if is_member(e)));
         let should_inline = match first_non_member_parent {
             Some(NodeRef::Expression(parent)) => match &**parent {
                 expression::ExpressionInner::New { .. } => true,
@@ -327,7 +350,8 @@ impl<'a> Printer<'a> {
         ) && matches!(
             member.property,
             expression::member::Property::PropertyIdentifier(_)
-        ) && !matches!(self.parent(), Some(NodeRef::Expression(parent)) if is_member(parent)));
+        ) && !matches!(self.parent(), Some(NodeRef::Expression(parent)) if is_member(parent)))
+            || self.member_object_owns_the_break(member, object);
         let doc = if should_inline {
             self.concat([object, lookup])
         } else {
@@ -340,6 +364,134 @@ impl<'a> Printer<'a> {
             Some(label) => self.docs.label(label, doc),
             None => doc,
         }
+    }
+
+    /// A cast that is the object of a member access or the callee of a call
+    /// gets a line of its own between the parentheses it is already wearing.
+    ///
+    /// The parentheses are added by {@link Printer::needs_parens}, outside
+    /// this doc, so the softlines land inside them. It is the last thing to
+    /// give: a member lookup or an argument list breaks first, because both
+    /// are measured after this group and this group's `fits` counts them.
+    /// Only when neither is enough does the cast open up —
+    /// react-devtools' `renderer.js` is the case, at four levels of
+    /// indentation:
+    ///
+    /// ```text
+    /// prettier:  const commitProfilingMetadata = (
+    ///              rootToCommitProfilingMetadataMap as any as CommitProfilingMetadataMap
+    ///            ).get(currentRoot.id);
+    /// uf:        const commitProfilingMetadata =
+    ///              (rootToCommitProfilingMetadataMap as any as CommitProfilingMetadataMap).get(
+    ///                currentRoot.id,
+    ///              );
+    /// ```
+    ///
+    /// `new (x as T)()` is deliberately not here: Prettier asks
+    /// `isCallExpression`, and a `new` is not one. The same distinction
+    /// decides a ternary test's indentation — see `print_binaryish`.
+    fn cast_between_parens(&self, expression: &'a Expression, cast: Doc<'a>) -> Doc<'a> {
+        let Some(NodeRef::Expression(parent)) = self.parent() else {
+            return cast;
+        };
+        let hugs = match &**parent {
+            expression::ExpressionInner::Call { inner, .. } => same(&inner.callee, expression),
+            expression::ExpressionInner::OptionalCall { inner, .. } => {
+                same(&inner.call.callee, expression)
+            }
+            expression::ExpressionInner::Member { inner, .. } => same(&inner.object, expression),
+            expression::ExpressionInner::OptionalMember { inner, .. } => {
+                same(&inner.member.object, expression)
+            }
+            _ => false,
+        };
+        if !hugs {
+            return cast;
+        }
+        self.group(self.concat([self.indent(self.concat([&SOFTLINE, cast])), &SOFTLINE]))
+    }
+
+    /// The nodes above the one being printed, with the `Pattern` the parser
+    /// wraps an assignment target in skipped.
+    ///
+    /// `a.b = c` comes back as an `Assignment` whose `left` is a
+    /// `Pattern::Expression` holding the member; Prettier's ESTree has the
+    /// member sitting directly under the assignment. A question of the form
+    /// "is what encloses me an assignment" is asked of the expression on the
+    /// left of an `=` more often than anywhere else, so the wrapper is
+    /// exactly where it does the most damage: without this, the answer on an
+    /// assignment target is always "a pattern", which is no.
+    fn enclosing_nodes(&self) -> impl Iterator<Item = NodeRef<'a>> + '_ {
+        self.ancestors
+            .iter()
+            .rev()
+            .skip(1)
+            .filter(|ancestor| {
+                !matches!(
+                    ancestor,
+                    NodeRef::Pattern(pattern::Pattern::Expression { .. })
+                )
+            })
+            .copied()
+    }
+
+    /// The last clause of Prettier's `shouldInline` in
+    /// `printMemberExpression`: on the right of an `=`, a lookup whose
+    /// object is a call with arguments, or is already a member chain, does
+    /// not get a line of its own.
+    ///
+    /// The object has somewhere better to break — its argument list, or the
+    /// chain's own one-per-line form — and it is measured first, so leaving
+    /// the lookup breakable hands it an escape that costs a line and saves
+    /// nothing. prepack's `arraybuffer.js` is the case:
+    ///
+    /// ```text
+    /// uf:        Properties.ThrowIfInternalSlotNotWritable(realm, arrayBuffer, "$ArrayBufferData")
+    ///              .$ArrayBufferData = null;
+    /// prettier:  Properties.ThrowIfInternalSlotNotWritable(
+    ///              realm,
+    ///              arrayBuffer,
+    ///              "$ArrayBufferData",
+    ///            ).$ArrayBufferData = null;
+    /// ```
+    ///
+    /// Both clauses need the *immediate* parent to be the assignment or the
+    /// declarator, not the first non-member ancestor the clause above it
+    /// looks for: `x.f(a).b.c` keeps `.c` breakable, because `.b` is what
+    /// stands between the call and the assignment.
+    ///
+    /// `label == MemberChain` is the second half, and it is why a long chain
+    /// prints as `object\n  .methodOne(a)\n  .methodTwo(a).tail` rather than
+    /// putting `.tail` on a fourth line. A chain short enough to come back
+    /// as a plain group is deliberately not labelled — see
+    /// `print_member_chain` — so `obj.f(a).b.longTail` still breaks at
+    /// `.longTail`, which is what Prettier prints.
+    fn member_object_owns_the_break(
+        &self,
+        member: &'a expression::Member<Loc, Loc>,
+        object: Doc<'a>,
+    ) -> bool {
+        let parent_assigns = match self.enclosing_nodes().next() {
+            Some(NodeRef::Declarator(_)) => true,
+            Some(NodeRef::Expression(parent)) => {
+                matches!(**parent, expression::ExpressionInner::Assignment { .. })
+            }
+            _ => false,
+        };
+        if !parent_assigns {
+            return false;
+        }
+        let object_is_call_with_arguments = match &*member.object {
+            expression::ExpressionInner::Call { inner, .. } => {
+                !inner.arguments.arguments.is_empty()
+            }
+            expression::ExpressionInner::OptionalCall { inner, .. } => {
+                !inner.call.arguments.arguments.is_empty()
+            }
+            _ => false,
+        };
+        object_is_call_with_arguments
+            || crate::doc::label_of(object) == Some(crate::doc::Label::MemberChain)
     }
 
     /// The `.b`, `?.b`, `[b]` part of a member access.

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/cell",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "Flow implementation for @uniflowed/cell, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",

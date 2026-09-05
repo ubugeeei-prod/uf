@@ -175,6 +175,19 @@ pub struct DevFsConfig {
 pub struct EnvConfig {
     pub active: CompactString,
     pub files: Vec<CompactString>,
+    /// The JavaScript runtimes and package managers this project uses, by
+    /// name and exact version — `{ node: "24.14.0", pnpm: "9.15.0" }`.
+    ///
+    /// Exact, because a range is not an environment: a lockfile that can
+    /// resolve differently tomorrow does not answer "what is this built
+    /// with". `uf env install` puts each into a store shared by every
+    /// repository on the machine and links it into this one, and nothing is
+    /// installed globally.
+    ///
+    /// Empty by default: a project that does not say gets whatever is on
+    /// `PATH`, which is what every project does today and is not a thing to
+    /// change without being asked.
+    pub toolchain: BTreeMap<CompactString, CompactString>,
 }
 
 impl Default for EnvConfig {
@@ -186,6 +199,7 @@ impl Default for EnvConfig {
                 CompactString::const_new(".env.local"),
                 CompactString::const_new(".env.development"),
             ],
+            toolchain: BTreeMap::new(),
         }
     }
 }

@@ -35,8 +35,10 @@
       `prettier --parser hermes` by 27 fixtures; idempotent,
       tree-preserving, comment-preserving and total.
 - [x] Route non-Flow formatter configuration to Biome.
-- [ ] Actually run Biome for `.json`, `.jsonc`, `.css` and `.ts`: the config
-      key exists, the routing does not.
+- [x] Actually run Biome for `.json`, `.jsonc`, `.css` and `.ts`. `uf fmt`
+      collects the non-Flow files and hands them to the command named by
+      `fmt.nonFlow.formatter`, resolved from `node_modules/.bin` before
+      `PATH`.
 - [x] Default formatter settings to double quotes and semicolons.
 - [ ] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.

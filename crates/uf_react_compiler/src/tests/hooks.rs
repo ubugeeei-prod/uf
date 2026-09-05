@@ -433,3 +433,60 @@ fn a_condition_inside_a_call_is_not_a_function() {
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].finding, Finding::HookNotAtTopLevel);
 }
+
+#[test]
+fn a_hook_in_a_container_after_jsx_text_is_accepted() {
+    // `<p>hello {useValue(atom)}</p>`: the container's brace follows a word
+    // instead of the `>` of the opening tag, and it conditions nothing either
+    // way.
+    accepts("component Greeting() {\n  return <p>hello {useValue(nameAtom)}</p>;\n}\n");
+}
+
+#[test]
+fn a_hook_in_a_container_after_jsx_text_with_punctuation_is_accepted() {
+    accepts(
+        "component Greeting() {\n  return <p>Hello, {useValue(nameAtom)}! 42 {useValue(ageAtom)}</p>;\n}\n",
+    );
+}
+
+#[test]
+fn a_hook_inside_a_condition_is_still_rejected() {
+    // The brace that stops raising hook depth must be only the expression
+    // one. This is the case the rule exists for.
+    assert_eq!(
+        findings(
+            "component Page(flag: boolean) {\n  if (flag) {\n    useValue(nameAtom);\n  }\n  return null;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}
+
+#[test]
+fn a_hook_inside_an_else_branch_is_still_rejected() {
+    assert_eq!(
+        findings(
+            "component Page(flag: boolean) {\n  if (flag) {\n    return null;\n  } else {\n    useValue(nameAtom);\n  }\n  return null;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}
+
+#[test]
+fn a_hook_inside_a_do_while_is_still_rejected() {
+    assert_eq!(
+        findings(
+            "component Page() {\n  do {\n    useValue(nameAtom);\n  } while (false);\n  return null;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}
+
+#[test]
+fn a_hook_inside_a_try_block_is_still_rejected() {
+    assert_eq!(
+        findings(
+            "component Page() {\n  try {\n    useValue(nameAtom);\n  } finally {\n    useValue(ageAtom);\n  }\n  return null;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel, Finding::HookNotAtTopLevel]
+    );
+}

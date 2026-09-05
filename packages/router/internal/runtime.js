@@ -412,7 +412,7 @@ async function resolveMetadata(
     merged = { ...merged, ...page.metadata };
   }
   if (typeof page.generateMetadata === "function") {
-    merged = { ...merged, ...await page.generateMetadata(args) };
+    merged = { ...merged, ...(await page.generateMetadata(args)) };
   }
   return merged;
 }

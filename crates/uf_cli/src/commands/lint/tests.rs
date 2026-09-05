@@ -107,3 +107,43 @@ fn lint_command_titles_name_the_command() {
     assert_eq!(LintCommand::Lint.title(), "uf lint");
     assert_eq!(LintCommand::Check.title(), "uf check");
 }
+
+#[test]
+fn no_pattern_selects_everything() {
+    assert!(selects(&[], "packages/ui/dialog.js"));
+}
+
+#[test]
+fn a_pattern_selects_by_substring_of_the_relative_path() {
+    let patterns = vec!["packages/ui".to_string()];
+
+    assert!(selects(&patterns, "packages/ui/dialog.js"));
+    assert!(!selects(&patterns, "packages/form/use-form.js"));
+}
+
+#[test]
+fn any_of_several_patterns_selects() {
+    let patterns = vec!["packages/ui".to_string(), "tests/".to_string()];
+
+    assert!(selects(&patterns, "tests/library/ui.test.js"));
+    assert!(selects(&patterns, "packages/ui/menu.js"));
+    assert!(!selects(&patterns, "packages/form/rules.js"));
+}
+
+#[test]
+fn a_bare_file_name_selects_the_file_wherever_it_is() {
+    // The whole point of substring matching: `uf lint dialog.js` is how a
+    // reader asks about the file in front of them, without its directory.
+    let patterns = vec!["dialog.js".to_string()];
+
+    assert!(selects(&patterns, "packages/ui/dialog.js"));
+}
+
+#[test]
+fn patterns_that_matched_nothing_are_named_in_order() {
+    let patterns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+
+    assert_eq!(quoted_list(&patterns), "`a`, `b` and `c`");
+    assert_eq!(quoted_list(&patterns[..1]), "`a`");
+    assert_eq!(quoted_list(&patterns[..2]), "`a` and `b`");
+}

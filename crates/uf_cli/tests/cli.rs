@@ -782,7 +782,7 @@ fn ufx_alias_runs_uniflowed_create_package() {
     assert!(stdout.contains("ufx \u{b7} @uniflowed/create"), "{stdout}");
     assert!(stdout.contains("UfNative"));
     assert!(stdout.contains("exec-cache"));
-    assert!(stdout.contains("created 8 files"));
+    assert!(stdout.contains("created 9 files"));
     assert!(dir.path().join("app.js").exists());
     assert!(
         dir.path()
@@ -815,7 +815,9 @@ fn creates_react_app_from_cli() {
     assert!(stdout.contains("1. cd app"));
     assert!(stdout.contains("2. uf install"));
     assert!(stdout.contains("3. uf dev"));
-    assert!(stdout.contains("✓ created 8 files"));
+    // Eight source files and the `.gitignore` that keeps uf's output
+    // out of the first commit.
+    assert!(stdout.contains("✓ created 9 files"));
 }
 
 /// `uf explain` says which provider runs each stage.
@@ -1013,6 +1015,37 @@ fn creating_a_library_suggests_running_its_tests() {
     assert!(stdout.contains("3. uf test"));
 }
 
+/// A scaffolded project passes uf's own linter.
+///
+/// It did not. `uf create app react` wrote `export default component Page()`
+/// and `export default component Counter()`, and uf's own
+/// `react/no-default-export-component` warned about both — "framework routes
+/// are wired by name; export components with a named export" — on the very
+/// first command a new project runs. The layout in the same template already
+/// used a named export, and `@uniflowed/router` documents the named `Page` as
+/// what `uf create` scaffolds, so the two files were the odd ones out.
+///
+/// A starter that trips the toolchain's own rules teaches the rules are
+/// noise.
+#[test]
+fn a_scaffolded_project_lints_clean() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf().arg("--cwd").arg(&app).arg("lint").output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        output.status.success(),
+        "uf lint on a new project:\n{stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("no problems"), "{stdout}");
+    assert!(stdout.contains("warnings       0"), "{stdout}");
+    assert!(stdout.contains("errors         0"), "{stdout}");
+}
+
 #[test]
 fn creating_over_an_existing_project_reports_the_conflict_on_stderr() {
     let dir = tempfile::tempdir().unwrap();
@@ -1123,9 +1156,10 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.starts_with("Content-Length: "));
     assert!(stdout.contains(r#""name":"uf-lsp""#));
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
-    // Diagnostics are not advertised: nothing serves them, and an editor that
-    // asks for what it is offered and gets nothing is worse off than one that
-    // was never offered it. See ubugeeei-prod/uf#162.
+    // `diagnosticProvider` is the *pull* model, where the editor asks. uf
+    // pushes `textDocument/publishDiagnostics` instead, which is a
+    // notification and has no capability to advertise. Advertising a pull
+    // provider that nothing serves is what ubugeeei-prod/uf#162 was.
     assert!(!stdout.contains("diagnosticProvider"), "{stdout}");
     assert_plain(&stdout);
 }
@@ -1191,6 +1225,82 @@ fn lsp_formats_an_open_document() {
         "the edit should carry the formatted document:\n{stdout}"
     );
     assert!(stdout.contains(r#""newText""#), "{stdout}");
+}
+
+/// Opening a document publishes what is wrong with it.
+///
+/// The same `uf_lint::lint_source` `uf lint` calls, so a marker in the editor
+/// and a line in the terminal are the same diagnostic — including
+/// `flow/syntax`, the parser's own errors, which is what an editor most wants
+/// while a file is still being typed.
+#[test]
+fn lsp_publishes_diagnostics_when_a_document_opens() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.js","languageId":"javascript","version":1,"text":"// @flow\nconst x = ;\n"}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(r#""method":"textDocument/publishDiagnostics""#),
+        "{stdout}"
+    );
+    assert!(stdout.contains(r#""code":"flow/syntax""#), "{stdout}");
+    // A syntax error is an error, not a warning.
+    assert!(stdout.contains(r#""severity":1"#), "{stdout}");
+    assert!(stdout.contains(r#""source":"uf""#), "{stdout}");
+    // Zero-based: the second line of the file.
+    assert!(stdout.contains(r#""line":1"#), "{stdout}");
+    // A notification carries no id to answer.
+    assert!(!stdout.contains(r#""id":null"#), "{stdout}");
+}
+
+/// A change republishes, and closing clears.
+///
+/// An editor keeps whatever it was last told, so a file that is fixed and one
+/// that is closed both have to be said out loud.
+#[test]
+fn lsp_republishes_on_change_and_clears_on_close() {
+    let input = [
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.js","text":"// @flow\nconst x = ;\n"}}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///a.js","version":2},"contentChanges":[{"text":"// @flow\nconst x = 1;\n"}]}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"file:///a.js"}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let published = stdout
+        .matches(r#""method":"textDocument/publishDiagnostics""#)
+        .count();
+    assert_eq!(
+        published, 3,
+        "open, change and close each publish:\n{stdout}"
+    );
+    assert_eq!(
+        stdout.matches(r#""diagnostics":[]"#).count(),
+        2,
+        "the fixed document and the closed one are both empty:\n{stdout}"
+    );
 }
 
 /// A request uf does not serve is answered, not ignored.

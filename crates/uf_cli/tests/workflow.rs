@@ -291,3 +291,127 @@ fn an_undefined_task_reports_an_error_on_stderr() {
     assert!(stderr.contains("error: task \"nope\" is not defined"));
     assert_plain(&stderr);
 }
+
+/// `uf release` writes the changelog for the version it is cutting.
+///
+/// The tag alone is a version number; the changelog is what is in it. Before
+/// this, the only answer to "what changed" was `gh release --generate-notes`,
+/// which is pull request titles in merge order, on the release page, not in
+/// the repository.
+///
+/// A real repository with real tags, because the interesting parts are the
+/// range (`<last tag>..HEAD`) and the grouping, and neither exists without
+/// history to read.
+#[test]
+fn release_writes_the_changelog_for_the_version_it_cuts() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "uf")
+            .env("GIT_AUTHOR_EMAIL", "uf@example.com")
+            .env("GIT_COMMITTER_NAME", "uf")
+            .env("GIT_COMMITTER_EMAIL", "uf@example.com")
+            .output()
+            .expect("git runs");
+        assert!(
+            status.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+    };
+
+    git(&["init", "--quiet", "--initial-branch", "main"]);
+    fs::write(root.join("a.txt"), "one\n").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "--quiet", "-m", "feat(cli): the first thing"]);
+    git(&["tag", "uf@0.0.0-alpha.2"]);
+
+    for (file, subject) in [
+        ("b.txt", "fix(fmt): a spread keeps its parentheses"),
+        ("c.txt", "docs: say what it does"),
+        ("d.txt", "rename"),
+    ] {
+        fs::write(root.join(file), "x\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", subject]);
+    }
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["release", "alpha"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("changelog"), "{stdout}");
+    assert!(
+        stdout.contains("3 changes written to the changelog"),
+        "{stdout}"
+    );
+    assert_plain(&stdout);
+
+    let changelog = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
+    assert!(changelog.starts_with("# Changelog\n"), "{changelog}");
+    // Since the tag, and not before it: the `feat` is in `uf@0.0.0-alpha.2`.
+    assert!(!changelog.contains("the first thing"), "{changelog}");
+    assert!(changelog.contains("### Fixed"), "{changelog}");
+    assert!(
+        changelog.contains("- **fmt**: a spread keeps its parentheses"),
+        "{changelog}"
+    );
+    assert!(changelog.contains("### Documentation"), "{changelog}");
+    assert!(changelog.contains("- say what it does"), "{changelog}");
+    // A subject that is not conventional is kept rather than dropped.
+    assert!(changelog.contains("### Other"), "{changelog}");
+    assert!(changelog.contains("- rename"), "{changelog}");
+    assert!(!changelog.contains("### Added"), "{changelog}");
+
+    // Cutting the same release again replaces the section rather than
+    // stacking a second one.
+    let again = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["release", "alpha"])
+        .output()
+        .unwrap();
+    assert!(again.status.success());
+    let twice = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
+    similar_asserts::assert_eq!(twice, changelog);
+}
+
+/// A directory with no git history still gets a release plan.
+///
+/// `uf release` is not only run inside this repository, and a missing
+/// changelog is not a reason to refuse to cut a release.
+#[test]
+fn release_without_a_repository_still_writes_its_plan() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["release", "alpha"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("planned"), "{stdout}");
+    assert!(!stdout.contains("changelog"), "{stdout}");
+    assert!(!dir.path().join("CHANGELOG.md").exists());
+    assert!(dir.path().join(".uf/release.json").exists());
+}

@@ -51,7 +51,8 @@ target="$(rustc -vV | awk -F': ' '/^host:/ { print $2 }')"
 archive="uf-${target}.tar.gz"
 [ -f "${release_dir}/${archive}" ] || fail "missing ${release_dir}/${archive}"
 
-work="$(mktemp -d)"
+# See `install.sh`: without a template, BSD `mktemp -d` ignores `TMPDIR`.
+work="$(mktemp -d "${TMPDIR:-/tmp}/uf-test-install.XXXXXX")"
 server_pid=""
 cleanup() {
   [ -n "$server_pid" ] && kill "$server_pid" 2>/dev/null || true
@@ -136,7 +137,32 @@ $(cat "${work}/reinstall.log")"
 "${work}/pinned/bin/uf" --version >/dev/null || fail "reinstall: uf stopped working"
 pass "reinstalling over an existing runtime is idempotent"
 
-# 4. A tampered archive must be rejected, not installed.
+# 4. A `TMPDIR` the caller set is where the download goes.
+#
+#    Pointed at a directory that does not exist, an installer that honours it
+#    stops and one that ignores it carries on using the system temp — so this
+#    is the case that tells the two apart. Honouring it is the point: BSD
+#    `mktemp -d` given no template uses the system directory whatever
+#    `TMPDIR` says, and on a machine whose system temp is not writable — a
+#    sandbox, a container, a locked-down CI image — that is an install that
+#    fails with `mkdtemp failed` and names neither cause nor fix.
+if run_installer tmpdir TMPDIR="${work}/not-a-directory" >"${work}/tmpdir.log" 2>&1; then
+  fail "TMPDIR was ignored: the installer used the system temp instead
+$(cat "${work}/tmpdir.log")"
+fi
+if [ -e "${work}/tmpdir/bin/uf" ]; then
+  fail "TMPDIR: a failed install left a binary behind"
+fi
+
+#    And with one that does exist, it installs.
+mkdir -p "${work}/scratch"
+run_installer tmpdir2 TMPDIR="${work}/scratch" >"${work}/tmpdir2.log" 2>&1 \
+  || fail "installing with TMPDIR set failed:
+$(cat "${work}/tmpdir2.log")"
+[ -x "${work}/tmpdir2/bin/uf" ] || fail "TMPDIR: uf was not linked"
+pass "a caller's TMPDIR is used, and a bad one stops the install"
+
+# 5. A tampered archive must be rejected, not installed.
 tampered="${site}/tampered"
 mkdir -p "$tampered"
 cp "${site}/${version}/${archive}.sha256" "${site}/${version}/VERSION" "$tampered/"
@@ -150,7 +176,7 @@ $(cat "${work}/tampered.log")"
 [ -e "${work}/tampered/bin/uf" ] && fail "tampered: uf was linked anyway"
 pass "a tampered archive fails the checksum and installs nothing"
 
-# 5. An archive whose members escape the extraction root must be rejected even
+# 6. An archive whose members escape the extraction root must be rejected even
 #    though its checksum is honest — the same host serves both.
 evil="${site}/evil"
 mkdir -p "$evil"
@@ -181,7 +207,7 @@ $(cat "${work}/evil.log")"
 [ -e "${work}/escaped" ] && fail "evil: a member escaped the extraction root"
 pass "an archive with members outside the root is rejected"
 
-# 6. A version that does not exist must fail loudly rather than leave a broken
+# 7. A version that does not exist must fail loudly rather than leave a broken
 #    install behind.
 if run_installer missing UF_VERSION=99.99.99 >"${work}/missing.log" 2>&1; then
   fail "a nonexistent version reported success"

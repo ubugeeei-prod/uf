@@ -198,12 +198,20 @@ impl<'a> Printer<'a> {
                     .is_none_or(|index| !printed_nodes[*index].has_trailing_empty_line)
             })
         {
-            let result = if self.is_long_curried_call_chain_here(expression) {
+            // Deliberately unlabelled. Prettier's `member-chain` label marks
+            // a chain that has an expanded form to fall back on; a chain
+            // this short has only the one line, and two readers of the label
+            // — `shouldInline` in `printMemberExpression` and
+            // `isPoorlyBreakableMemberOrCallChain` — mean "this will break
+            // somewhere better than here" by it. Labelling the short form
+            // made `obj.f(a, b).prop.tail` glue `.tail` to `.prop` and break
+            // in front of both, where Prettier keeps `obj.f(a, b).prop` and
+            // breaks before `.tail`.
+            return if self.is_long_curried_call_chain_here(expression) {
                 one_line
             } else {
                 self.group(one_line)
             };
-            return self.docs.label(Label::MemberChain, result);
         }
 
         // If any group breaks (e.g. because of a comment or a trailing

@@ -191,15 +191,15 @@ impl<'a> Printer<'a> {
             };
         }
 
+        // Only a *pattern's* rest: `const [a, ...rest,] = xs` is a syntax
+        // error, so nothing may follow it. A spread anywhere else is an
+        // ordinary last element and takes the comma like one — `[...a, ...b,]`
+        // in an array literal, and `[...[number, number],]` in a tuple type,
+        // which is how StyleX writes `Matrix3d`'s sixteen arguments.
         let last_is_rest = matches!(
             elements.last(),
             Some(Element::Node(NodeRef::PatternRest(_)))
-        ) || matches!(
-            elements.last(),
-            Some(Element::Node(NodeRef::TupleElement(
-                types::tuple::Element::SpreadElement { .. }
-            )))
-        ) || matches!(elements.last(), Some(Element::Node(NodeRef::Spread(_))) if false);
+        );
         let can_have_trailing_comma = !last_is_rest && !inexact;
         let last_is_hole = matches!(elements.last(), Some(Element::Hole));
         let group_id = self.docs.group_id();

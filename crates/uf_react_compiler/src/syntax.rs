@@ -20,7 +20,8 @@ pub type ArgumentList = InlineVec<CompactString, 4>;
 ///
 /// `==`, `===`, `!=`, `<=` and `>=` are comparisons; `=`, `+=`, `|=` and the
 /// rest are writes. `=>` never reaches here because the lexer makes it one
-/// token, which is the whole reason the check can be this short.
+/// token. The one long answer is [`inside_a_tag`], for the `=` that belongs to
+/// a JSX attribute.
 pub fn is_assignment(tokens: &[Token], index: usize) -> bool {
     if tokens
         .get(index + 1)
@@ -28,10 +29,68 @@ pub fn is_assignment(tokens: &[Token], index: usize) -> bool {
     {
         return false;
     }
-    !index
+    if index
         .checked_sub(1)
         .and_then(|at| tokens.get(at))
         .is_some_and(|token| matches!(token.kind, TokenKind::Punct(b'=' | b'!' | b'<' | b'>')))
+    {
+        return false;
+    }
+    !inside_a_tag(tokens, index)
+}
+
+/// Whether the token at `index` stands inside an unclosed `<…>`.
+///
+/// Two things are written that way and neither is a write: a JSX attribute —
+/// `render={…}`, where `render` is as likely as not an imported name, which
+/// made every such prop a write to module state during render — and the
+/// default of a type parameter, `<T = string>`.
+///
+/// The scan steps over balanced groups, because the attributes in front of
+/// this one hold braces of their own, and stops at the first thing that
+/// cannot be inside a tag. The `<` has to be followed immediately by a name,
+/// with nothing between: `<Controller` and `<T` are written that way and a
+/// comparison is not, which is what keeps `f(a < b, x = 1)` a write.
+fn inside_a_tag(tokens: &[Token], index: usize) -> bool {
+    /// Longest attribute list uf will scan back over, in tokens.
+    const BUDGET: usize = 512;
+
+    let floor = index.saturating_sub(BUDGET);
+    let mut at = index;
+    while at > floor {
+        at -= 1;
+        match tokens[at].kind {
+            // A group that closed here: step over it in one move rather than
+            // reading its contents, which belong to something else.
+            TokenKind::Punct(close @ (b'}' | b')' | b']')) => {
+                let open = match close {
+                    b'}' => b'{',
+                    b')' => b'(',
+                    _ => b'[',
+                };
+                let Some(start) = matching_open(tokens, at, open, close) else {
+                    return false;
+                };
+                at = start;
+            }
+            // An opening bracket that never closed, or a statement boundary:
+            // whatever this `=` is in, it is not a tag.
+            TokenKind::Punct(b'{' | b'(' | b'[' | b';') => return false,
+            // A tag or a type argument list that already closed.
+            TokenKind::Punct(b'>') => return false,
+            TokenKind::Punct(b'<') => return tag_name_follows(tokens, at),
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether the `<` at `index` is immediately followed by a name.
+fn tag_name_follows(tokens: &[Token], index: usize) -> bool {
+    match (tokens.get(index), tokens.get(index + 1)) {
+        (Some(angle), Some(name)) => angle.end == name.start && name.kind == TokenKind::Ident,
+        _ => false,
+    }
 }
 
 /// The root identifier of the member chain ending at `end`.

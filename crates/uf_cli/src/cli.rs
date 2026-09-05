@@ -47,6 +47,9 @@ pub(crate) enum Commands {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// Only check files whose path contains one of these patterns.
+        #[arg(value_name = "PATH")]
+        paths: Vec<String>,
     },
     /// Print a shell completion script.
     ///
@@ -150,6 +153,9 @@ pub(crate) enum Commands {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// Only lint files whose path contains one of these patterns.
+        #[arg(value_name = "PATH")]
+        paths: Vec<String>,
     },
     /// Serve the language server over stdin/stdout, for an editor.
     Lsp,
@@ -223,11 +229,11 @@ impl Commands {
     pub(crate) fn wants_json(&self) -> bool {
         matches!(
             self,
-            Self::Check { json: true }
+            Self::Check { json: true, .. }
                 | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
                 | Self::Inspect { json: true }
-                | Self::Lint { json: true }
+                | Self::Lint { json: true, .. }
                 | Self::Test { json: true, .. }
         )
     }
@@ -298,8 +304,32 @@ pub(crate) enum ReleaseBump {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum EnvCommand {
+    /// Report which tools are installed on this machine.
     Doctor,
-    Use { name: String },
+    /// Set the active `.env` profile.
+    Use {
+        /// The profile name, e.g. `production`.
+        name: String,
+    },
+    /// Install the runtimes and package managers `uf.config.js` declares.
+    ///
+    /// Into a store shared by every repository on this machine, linked into
+    /// this one. Nothing is installed globally and `PATH` is not changed.
+    Install,
+    /// List what this project declares and what the store holds.
+    List,
+    /// Run a command with this project's toolchain in front of `PATH`.
+    Exec {
+        /// The command and its arguments.
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Delete store entries no repository is using.
+    Gc {
+        /// Say what would go, and remove nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[cfg(test)]
@@ -310,8 +340,20 @@ mod tests {
     fn json_commands_are_the_only_ones_that_suppress_rendering() {
         assert!(Commands::Inspect { json: true }.wants_json());
         assert!(!Commands::Inspect { json: false }.wants_json());
-        assert!(Commands::Lint { json: true }.wants_json());
-        assert!(Commands::Check { json: true }.wants_json());
+        assert!(
+            Commands::Lint {
+                json: true,
+                paths: Vec::new()
+            }
+            .wants_json()
+        );
+        assert!(
+            Commands::Check {
+                json: true,
+                paths: Vec::new()
+            }
+            .wants_json()
+        );
         assert!(!Commands::Build { size_report: false }.wants_json());
     }
 

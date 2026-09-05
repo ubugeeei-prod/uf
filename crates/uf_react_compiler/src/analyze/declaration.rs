@@ -190,10 +190,22 @@ impl<'a> Walk<'a> {
         None
     }
 
-    /// `import { a, b as c } from "..."`: every local name is module state.
+    /// `import { a, b as c } from "..."`: what each local name is.
+    ///
+    /// A value import is module state — writing to it during render is the
+    /// thing this rule exists to catch. A type import is not: `import type {
+    /// Mode }` binds a name with no value behind it, so it is declared as a
+    /// type, which shadows any global of the same name without becoming
+    /// something that can be written.
     pub(super) fn declare_imports(&mut self, index: usize) {
         /// Longest import clause uf will read, in tokens.
         const BUDGET: usize = 512;
+
+        // `import type { … }` and `import typeof { … }` make the whole clause
+        // types; `import { type A, B }` makes one specifier a type, until the
+        // comma that ends it.
+        let clause_is_type = matches!(self.ident(index + 1), Some("type" | "typeof"));
+        let mut specifier_is_type = false;
 
         let limit = (index + BUDGET).min(self.tokens.len());
         let mut at = index + 1;
@@ -202,15 +214,25 @@ impl<'a> Walk<'a> {
             if token.kind == TokenKind::String || token.is_punct(b';') {
                 return;
             }
+            if token.is_punct(b',') {
+                specifier_is_type = false;
+            }
             if token.kind == TokenKind::Ident {
-                let name = token.text(self.source);
-                if !matches!(name, "from" | "as" | "type" | "typeof") {
-                    // `x as y` binds `y`; a bare `x` binds itself.
-                    let local = match (self.ident(at + 1), self.ident(at + 2)) {
-                        (Some("as"), Some(alias)) => alias,
-                        _ => name,
-                    };
-                    self.bindings.declare(local, true);
+                match token.text(self.source) {
+                    "from" | "as" => {}
+                    "type" | "typeof" => specifier_is_type = true,
+                    name => {
+                        // `x as y` binds `y`; a bare `x` binds itself.
+                        let local = match (self.ident(at + 1), self.ident(at + 2)) {
+                            (Some("as"), Some(alias)) => alias,
+                            _ => name,
+                        };
+                        if clause_is_type || specifier_is_type {
+                            self.bindings.declare_type(local);
+                        } else {
+                            self.bindings.declare(local, true);
+                        }
+                    }
                 }
             }
             at += 1;

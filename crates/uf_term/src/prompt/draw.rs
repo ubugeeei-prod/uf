@@ -12,6 +12,15 @@ use crate::theme::Theme;
 
 use super::menu::Menu;
 
+/// The end of every line in a frame.
+///
+/// A carriage return as well as a line feed, because the frame is drawn with
+/// the terminal in raw mode and raw mode turns off `onlcr` — the mapping that
+/// makes a bare line feed also return the cursor to column zero. Without the
+/// return, each row starts in the column the row above ended in, and a menu of
+/// twenty commands walks off the right edge one row at a time.
+const NEWLINE: &str = "\r\n";
+
 /// The mark in front of the highlighted row.
 const POINTER: &str = "❯";
 /// Its ASCII stand-in, one cell wide like the original.
@@ -57,7 +66,7 @@ pub fn frame(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
     let theme = frame.theme;
     let (pointer, caret) = frame.marks();
 
-    out.push('\n');
+    out.push_str(NEWLINE);
     push_line(out, |out| {
         theme.title.paint(level, frame.title, out);
     });
@@ -73,7 +82,7 @@ pub fn frame(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
             theme.value.paint(level, menu.filter(), out);
         }
     });
-    out.push('\n');
+    out.push_str(NEWLINE);
 
     if menu.is_empty() {
         push_line(out, |out| {
@@ -142,7 +151,7 @@ fn footer(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
     let theme = frame.theme;
     let unicode = frame.marks().0 == POINTER;
 
-    out.push('\n');
+    out.push_str(NEWLINE);
     push_line(out, |out| {
         let hidden = menu.hidden_below() + menu.hidden_above();
         if hidden > 0 {
@@ -165,7 +174,8 @@ fn footer(menu: &Menu<'_>, frame: &Frame<'_>, out: &mut String) {
 fn push_line(out: &mut String, body: impl FnOnce(&mut String)) {
     out.push_str("  ");
     body(out);
-    out.push_str("\x1b[K\n");
+    out.push_str("\x1b[K");
+    out.push_str(NEWLINE);
 }
 
 /// `count` spaces.

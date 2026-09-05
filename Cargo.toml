@@ -5,6 +5,7 @@ members = [
   "crates/uf_cli",
   "crates/uf_config",
   "crates/uf_doc",
+  "crates/uf_env",
   "crates/uf_flow",
   "crates/uf_fmt",
   "crates/uf_infra",
@@ -35,7 +36,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ubugeeei-prod/uf"
 rust-version = "1.98"
-version = "0.0.0-alpha.2"
+version = "0.0.0-alpha.3"
 
 [workspace.dependencies]
 anyhow = "1.0.104"

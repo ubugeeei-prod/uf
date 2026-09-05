@@ -316,6 +316,11 @@ impl<'a> Walk<'a> {
     /// target's member chain ends one token further back than it does for a
     /// plain `=`.
     fn assignment(&mut self, index: usize) {
+        // `const mode: Mode = "onSubmit"` also ends in a name and an `=`, and
+        // the name is a type rather than the thing being written.
+        if self.initializes_an_annotated_declarator(index) {
+            return;
+        }
         let skip = usize::from(compound_assignment(self.tokens, index)) + 1;
         let Some(root) = index
             .checked_sub(skip)
@@ -335,6 +340,73 @@ impl<'a> Walk<'a> {
             return;
         }
         self.written(index, root, name);
+    }
+
+    /// Whether the `=` at `index` initializes a declarator with a type
+    /// annotation.
+    ///
+    /// `const mode: Mode = …` reads, backwards from the `=`, as `Mode =`,
+    /// which is the shape of a write to `Mode`. The annotation is not code:
+    /// it names a type, and a type is never written to. So the declaration
+    /// this `=` belongs to has to be looked for in front of the annotation
+    /// rather than immediately in front of the `=`.
+    ///
+    /// The scan gives up on anything it cannot read — an unbalanced bracket,
+    /// an annotation longer than the budget — and giving up means falling
+    /// through to the ordinary write handling, which is what happened before
+    /// this existed.
+    fn initializes_an_annotated_declarator(&self, index: usize) -> bool {
+        /// Longest annotation uf will scan back over, in tokens.
+        const BUDGET: usize = 256;
+
+        let mut depth = 0i32;
+        let floor = index.saturating_sub(BUDGET);
+        let mut at = index;
+        while at > floor {
+            at -= 1;
+            match self.tokens[at].kind {
+                TokenKind::Punct(b')' | b']' | b'}') => depth += 1,
+                TokenKind::Punct(b'(' | b'[' | b'{') => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+                // The `=` of an arrow in a function type — `const f: (a: A) =>
+                // B = g` — is part of the annotation rather than the end of
+                // one, and it is the only `=` that can be.
+                TokenKind::Punct(b'=') if depth == 0 && !self.arrow_at(at) => return false,
+                TokenKind::Punct(b';') if depth == 0 => return false,
+                TokenKind::Punct(b':') if depth == 0 => {
+                    // In front of the annotation stands the declarator, and in
+                    // front of that the keyword — or the comma of a second
+                    // declarator, as in `let a = 1, b: B = 2`.
+                    if at
+                        .checked_sub(1)
+                        .and_then(|name| self.ident(name))
+                        .is_none()
+                    {
+                        return false;
+                    }
+                    return at.checked_sub(2).is_some_and(|before| {
+                        self.punct(before, b',')
+                            || self
+                                .ident(before)
+                                .is_some_and(|word| matches!(word, "const" | "let" | "var"))
+                    });
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Whether the `=` at `index` is the first half of an `=>`.
+    fn arrow_at(&self, index: usize) -> bool {
+        match (self.tokens.get(index), self.tokens.get(index + 1)) {
+            (Some(equals), Some(greater)) => equals.end == greater.start && greater.is_punct(b'>'),
+            _ => false,
+        }
     }
 
     /// Report a write to `name`, whichever rule owns it.

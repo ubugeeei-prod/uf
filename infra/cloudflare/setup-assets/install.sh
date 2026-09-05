@@ -529,7 +529,14 @@ archive="uf-${target}.tar.gz"
 archive_url="${channel_url}/${archive}"
 checksum_url="${archive_url}.sha256"
 
-tmp_dir="$(mktemp -d)"
+# With a template, so `TMPDIR` is honoured. BSD `mktemp -d` given no template
+# ignores it and uses the system directory, which is not where a reader who
+# set `TMPDIR` asked for their downloads to land — a restricted CI image, a
+# sandbox, a container whose default temp is read-only. The same trap is
+# written down in `tools/release/verify-npm.sh`, which is where this was
+# noticed: an installer that fails here fails with `mkdtemp failed`, which
+# names neither the cause nor the fix.
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/uf-install.XXXXXX")"
 cleanup() {
   rm -rf "$tmp_dir"
 }

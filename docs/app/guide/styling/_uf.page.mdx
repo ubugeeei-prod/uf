@@ -60,17 +60,23 @@ elsewhere.
 Fenced code is highlighted during the build, so the colours are in the HTML and
 no highlighter is shipped to the browser:
 
-```mdx
 ```js
-component Counter(initial: number) { … }
-```
+component Counter(initial: number = 0) renders React.Node {
+  const [count, setCount] = useState(initial);
+  return <output onClick={() => setCount(count + 1)}>{count}</output>;
+}
 ```
 
 Both a light and a dark theme are emitted together as CSS variables, because a
-build cannot know which the reader prefers; the stylesheet picks one. Flow's own
-keywords — `component`, `hook`, `renders`, `match` — are marked as keywords even
-though no highlighter has a Flow grammar and a JavaScript one reads them as
-plain names.
+build cannot know which the reader prefers; the stylesheet picks one.
+
+No highlighter has a Flow grammar, so a JavaScript one runs and uf makes up the
+difference at both ends. Words it reads as plain names — `component`, `hook`,
+`renders`, `match`, `opaque`, and the `mixed` and `empty` types — are marked
+afterwards. Syntax it cannot parse at all, a `component` or `hook` declaration
+head and the `{| … |}` of an exact object, is shown to it as ordinary
+JavaScript and put back before the HTML is written, so the parameter list of a
+component is highlighted like the function it becomes.
 
 To change the themes, or to add a language:
 

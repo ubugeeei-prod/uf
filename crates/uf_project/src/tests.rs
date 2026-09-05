@@ -15,7 +15,7 @@ fn creates_zero_config_react_flow_app() {
     )
     .unwrap();
 
-    assert_eq!(report.files.len(), 8);
+    assert_eq!(report.files.len(), 9);
     assert!(root.join("app.js").exists());
     assert!(root.join("uf.config.js").exists());
     assert!(root.join("app/_uf.page.js").exists());
@@ -85,6 +85,68 @@ fn creates_flow_library_template() {
     // package a scaffolded library never imports into its manifest.
     assert!(package.contains(r#""@uniflowed/test""#));
     assert!(!package.contains("@uniflowed/host"));
+}
+
+/// A scaffolded project does not commit what uf generates.
+///
+/// It had no `.gitignore` at all, so the first `uf build` put `dist/`,
+/// `router.js` and `.uf/` into `git status` and the first commit of a new
+/// project carried them.
+///
+/// The list is not written twice: anything uf refuses to *lint* because it
+/// generated it has to be something uf refuses to *commit*, so the template
+/// is checked against `ALWAYS_IGNORED` and the default `lint.ignore`. `target`
+/// is the exception and is named as one — it is Cargo's, and a scaffolded
+/// Flow project has none.
+#[test]
+fn both_templates_ignore_what_uf_generates() {
+    for kind in [CreateKind::AppReact, CreateKind::Lib] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        create_project(
+            &root,
+            &CreateOptions {
+                name: "ignored".to_string(),
+                kind,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let ignored = fs::read_to_string(root.join(".gitignore")).unwrap();
+        let named = |entry: &str| {
+            ignored
+                .lines()
+                .any(|line| line.trim_end_matches('/') == entry.trim_end_matches('/'))
+        };
+
+        // `.git` is git's own and `target` is Cargo's: uf skips both when it
+        // walks a project, and neither is something a Flow project commits.
+        for entry in ALWAYS_IGNORED {
+            if *entry == ".git" {
+                continue;
+            }
+            assert!(
+                named(entry),
+                "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
+            );
+        }
+        for entry in &UniflowedConfig::default().lint.ignore {
+            if entry == "target" {
+                continue;
+            }
+            assert!(
+                named(entry),
+                "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
+            );
+        }
+        // Two more that no ignore list knows about. `router.js` is generated
+        // Flow that looks hand-written — this repository ignores its own
+        // `docs/router.js` for the same reason — and `.uniflowed/` is where
+        // `uf env use` records the active environment.
+        assert!(named("router.js"), "{kind:?}:\n{ignored}");
+        assert!(named(".uniflowed"), "{kind:?}:\n{ignored}");
+    }
 }
 
 #[test]

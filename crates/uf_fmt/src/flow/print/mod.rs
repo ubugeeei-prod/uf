@@ -503,10 +503,56 @@ impl<'a> Printer<'a> {
 
     /// Whether `key` has a leading comment on its own line: Prettier's
     /// `hasLeadingOwnLineComment`.
+    ///
+    /// A JSX element is asked a different question, and `is_jsx` selects it:
+    /// `hasLeadingOwnLineComment` short-circuits to `hasNodeIgnoreComment`
+    /// there, so only a leading `prettier-ignore` counts and an ordinary
+    /// comment does not.
+    ///
+    /// The callers use the answer to decide whether to break *before* the
+    /// expression — after `=`, after `=>`, after `return`. A JSX element
+    /// already carries a parenthesis group of its own that opens on the line
+    /// it starts on, so answering "yes" for a plain comment breaks that line
+    /// as well and the two layers stack. react-devtools' `Button.js`:
+    ///
+    /// ```text
+    /// prettier:  let button = (
+    ///              // $FlowFixMe[cannot-spread-inexact] unsafe spread
+    ///              <button …>…</button>
+    ///            );
+    /// uf:        let button =
+    ///              (
+    ///                // $FlowFixMe[cannot-spread-inexact] unsafe spread
+    ///                <button …>…</button>
+    ///              );
+    /// ```
+    ///
+    /// and rn-tester's `SnapshotViewIOS.ios.js`, where the `return` supplies
+    /// the outer parentheses and the element supplies a second pair inside
+    /// them:
+    ///
+    /// ```text
+    /// prettier:  return (
+    ///              // $FlowFixMe[incompatible-type]
+    ///              <RCTSnapshot … />
+    ///            );
+    /// uf:        return (
+    ///              (
+    ///                // $FlowFixMe[incompatible-type]
+    ///                <RCTSnapshot … />
+    ///              )
+    ///            );
+    /// ```
+    ///
+    /// The `prettier-ignore` half is answered rather than hard-coded to
+    /// false, even though the printer does not honour the pragma itself: an
+    /// ignored element is the one JSX that really does want the break, and
+    /// writing the predicate out stops this reading as "JSX never has a
+    /// leading comment".
     pub fn has_leading_own_line_comment(&self, key: NodeKey, is_jsx: bool) -> bool {
         if is_jsx {
-            return self.has_comment_where(key, None, |comment| {
-                self.text.has_newline(comment.span.end, false)
+            return self.has_comment_where(key, Some(Placement::Leading), |comment| {
+                comment.text.trim() == "prettier-ignore"
             });
         }
         self.has_comment_where(key, Some(Placement::Leading), |comment| {
@@ -534,6 +580,21 @@ impl<'a> Printer<'a> {
             .partition_point(|block| block.start <= span.start);
         let block = *self.comment_types.get(at.checked_sub(1)?)?;
         (span.end <= block.end).then_some(block)
+    }
+
+    /// The `/*:: as T */` a cast was written as, if it was.
+    ///
+    /// The fourth of Flow's comment types, and unlike an annotation the
+    /// location is no help: it starts at the type rather than at the `/*`.
+    /// What identifies the form is the block the type sits *in*, with the
+    /// operand outside it — a cast entirely inside a `/*:: … */` declaration
+    /// belongs to whoever is printing that block, not here.
+    pub fn comment_cast_block(
+        &self,
+        inner: &uf_flow::ast::expression::AsExpression<uf_flow::Loc, uf_flow::Loc>,
+    ) -> Option<crate::flow::text::Span> {
+        self.comment_type_around(self.text.span(&inner.annot.loc))
+            .filter(|block| self.text.span(inner.expression.loc()).start < block.start)
     }
 
     /// The comment-type block to print verbatim in place of `span`, if any.

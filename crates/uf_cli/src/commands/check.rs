@@ -114,10 +114,10 @@ fn type_backend_name() -> String {
     }
 }
 
-pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool) -> Result<()> {
+pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool, paths: &[String]) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("scanning sources");
-    let (lint, sources, unreadable) = run_lint(cwd)?;
+    let (lint, sources, unreadable) = run_lint(cwd, paths)?;
     progress.draw("type checking");
     let types = type_check(&sources);
     progress.finish();

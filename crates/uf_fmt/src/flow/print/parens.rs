@@ -696,7 +696,12 @@ impl<'a> Printer<'a> {
                     }
                     Some(E::Conditional { .. }) => role == Role::Test,
                     Some(E::Binary { .. }) => true,
-                    _ => matches!(parent, NodeRef::Spread(_) | NodeRef::JsxSpreadAttribute(_)),
+                    // The third place this had been spelled out rather than
+                    // asked. `{ ...(await x) }` is an `ObjectProperty` and
+                    // `[...(await x)]` is a `Spread`, so naming only the
+                    // second dropped the parentheses from the first while the
+                    // array beside it kept them. See ubugeeei-prod/uf#159.
+                    _ => is_spread_argument(parent),
                 }
             }
             E::StringLiteral { .. } => {
@@ -889,6 +894,16 @@ impl<'a> Printer<'a> {
         }
     }
 
+    /// Whether `expression` is a cast written as `x /*:: as T */`.
+    fn is_comment_cast(&self, expression: &'a Expression) -> bool {
+        match &**expression {
+            expression::ExpressionInner::AsExpression { inner, .. } => {
+                self.comment_cast_block(inner).is_some()
+            }
+            _ => false,
+        }
+    }
+
     fn binaryish_needs_parens(
         &self,
         expression: &'a Expression,
@@ -897,6 +912,19 @@ impl<'a> Printer<'a> {
     ) -> bool {
         use expression::ExpressionInner as E;
         let Some(parent_expression) = parent_expression else {
+            // A cast written as `x /*:: as T */` is a comment to every
+            // grammar but Flow's, so a spread of one needs no parentheses:
+            // `{ ...base /*:: as any*/, extra: 1 }` is a spread of `base` to
+            // anything that is not Flow, and the comment's closing delimiter
+            // ends the type before the `,` can be drawn into it.
+            //
+            // Not the same question as `(node /*:: as any*/).hash`, where the
+            // parentheses are load-bearing and Prettier drops them wrongly —
+            // see `a_comment_cast_keeps_what_the_source_needed`. There, what
+            // follows is a `.` that the type *can* absorb.
+            if self.is_comment_cast(expression) {
+                return false;
+            }
             return self
                 .parent()
                 .is_some_and(|parent| is_spread_argument(parent));

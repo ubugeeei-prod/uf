@@ -1074,14 +1074,20 @@ tbody tr:last-child :is(td, th) {
 }
 
 /*
- * Flow's own keywords.
+ * Flow's own vocabulary.
  *
  * A JavaScript grammar reads `component`, `hook`, `renders` and `match` as
  * identifiers, so the build marks them and the colour is decided here. Two
- * values, because a build cannot know which theme the reader will get; they
- * are the keyword colours of the two default themes, so Flow's keywords look
- * like the keywords beside them. A project that configures different
- * `highlight.themes` sets these to match.
+ * values each, because a build cannot know which theme the reader will get;
+ * they are the two default themes' own colours, so Flow's words look like the
+ * words beside them rather than like an annotation on top of them. A project
+ * that configures different `highlight.themes` sets these to match.
+ *
+ * Two marks, not one. `component` is a keyword and belongs with `export` and
+ * `return`; `mixed` and `empty` are *types* and belong with `string` and
+ * `number`. Painting them the same said they were the same kind of word, and
+ * left `mixed` as the only red thing in an annotation whose other half was
+ * blue.
  */
 .uf-flow-keyword {
   --doc-keyword-light: #d73a49;
@@ -1089,16 +1095,30 @@ tbody tr:last-child :is(td, th) {
   color: var(--doc-keyword-light) !important;
 }
 
+.uf-flow-type {
+  --doc-flow-type-light: #005cc5;
+  --doc-flow-type-dark: #6cb6ff;
+  color: var(--doc-flow-type-light) !important;
+}
+
 :root:not([data-theme="light"]) {
   @media (prefers-color-scheme: dark) {
     .uf-flow-keyword {
       color: var(--doc-keyword-dark) !important;
+    }
+
+    .uf-flow-type {
+      color: var(--doc-flow-type-dark) !important;
     }
   }
 }
 
 :root[data-theme="dark"] .uf-flow-keyword {
   color: var(--doc-keyword-dark) !important;
+}
+
+:root[data-theme="dark"] .uf-flow-type {
+  color: var(--doc-flow-type-dark) !important;
 }
 
 /* Shiki wraps each line in a span, so a long line has to be allowed to scroll

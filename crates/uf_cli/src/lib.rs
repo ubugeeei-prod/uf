@@ -5,6 +5,7 @@
 //! primitives it draws with live in `uf_term`.
 
 mod brand;
+mod changelog;
 mod cli;
 mod commands;
 mod menu;
@@ -156,7 +157,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
 
     match cli.command {
         Commands::Build { size_report } => commands::build::build(&cwd, ui, size_report),
-        Commands::Check { json } => commands::check::check(&cwd, ui, json),
+        Commands::Check { json, paths } => commands::check::check(&cwd, ui, json, &paths),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
             Ok(())
@@ -175,8 +176,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
         Commands::Install => commands::pm::install(&cwd, ui),
-        Commands::Lint { json } => {
-            commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json)
+        Commands::Lint { json, paths } => {
+            commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json, &paths)
         }
         Commands::Lsp => commands::dev::lsp(),
         Commands::Prepare => commands::release::prepare(&cwd, ui),

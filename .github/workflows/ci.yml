@@ -276,6 +276,11 @@ jobs:
       # resolves to nothing. No network, so it belongs here rather than in the
       # pre-tag check alone.
       - run: ./target/release/uf run release:closure
+      # And that the one command the release bootstrap depends on still runs.
+      # It is invoked by hand, once, by one person, so a mistake in it costs a
+      # round trip and blocks a release — it has cost three. Stubs, so this
+      # needs no npm session and no network.
+      - run: ./target/release/uf run release:trust:test
 
   upstream-integrations:
     name: Upstream Integrations
@@ -298,6 +303,46 @@ jobs:
           test -d upstream/react-native/packages/react-native-codegen
           test -d upstream/react-native/packages/react-native/Libraries
           echo "upstream integrations: every promised subtree is present"
+
+  # Deleted in #49 and still required by the repository ruleset, so every pull
+  # request was blocked on a context nothing reported. See #197.
+  #
+  # It is restored rather than dropped because `--all-features` is coverage
+  # nothing else has: `uf_check`'s `upstream-typecheck` is on by default, but
+  # any other optional feature in the workspace is compiled only here.
+  upstream-typecheck:
+    name: Upstream Flow Typecheck
+    needs: toolchain
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    env:
+      # Flow's typing crates declare `#![feature(box_patterns)]`, which the
+      # compiler removed around 2026-09-01. This date is the newest nightly
+      # that still accepts it, so the pin is not a preference — a floating
+      # `nightly` cannot build the type checker at all. `RUSTUP_TOOLCHAIN`
+      # because `rust-toolchain.toml` overrides `rustup default`.
+      RUSTUP_TOOLCHAIN: nightly-2026-08-01
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-08-01
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # The suite builds the docs site through the real `@uniflowed/vite`, and
+      # those tests fail rather than skip when the workspace is not installed.
+      # Same reason the `Test` job installs, and the reason this job failed the
+      # first time it came back.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: cargo install wild-linker --version 0.10.0 --locked
+      - run: wild --version
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
 
   upstream-flow:
     name: Upstream Flow

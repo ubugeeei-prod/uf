@@ -56,6 +56,14 @@ Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
 alongside uf's rules rather than in a separate `.flowconfig` section, because a
 project should have one place where "this is an error here" is written down.
 
+Both commands take paths, the way `uf test` does:
+
+<div className="command"><code>uf lint packages/ui</code></div>
+
+Anything whose path contains one of the arguments is read and nothing else, so
+`uf lint dialog.js` is a way to ask about the file in front of you. A pattern
+that matches nothing is an error rather than a clean run.
+
 ## uf check
 
 <div className="command"><code>uf check</code></div>
@@ -64,6 +72,10 @@ Runs Flow's type checker over the project and reports what it says. uf does not
 type-check anything itself: Flow is the type system, and reimplementing it
 would only create a second opinion about your code, which is the thing this
 whole toolchain exists to avoid.
+
+uf reads one module at a time today: an import is typed as `any`, and the
+command says which ones at the end of its report rather than leaving you to
+work it out. Checking across modules is [issue #199](https://github.com/ubugeeei-prod/uf/issues/199).
 
 ## In CI
 

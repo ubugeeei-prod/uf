@@ -11,6 +11,19 @@ const objectAnd = { ...(a && b) };
 const objectNullish = { ...(a ?? b) };
 const objectSequence = { ...(a, b) };
 
+// `await` and `yield` are the same shape once more, and were the third place
+// the question was answered by naming node kinds rather than asking.
+async function awaited() {
+  const objectAwait = { ...(await resolveConfig(name)), filepath: name };
+  const arrayAwait = [...(await load()), 1];
+  const callAwait = merge(...(await load()));
+  const memberAwait = { ...(await load()).entries, filepath: name };
+}
+function* yielded() {
+  const objectYield = { ...(yield next()), done: false };
+  const arrayYield = [...(yield next()), 1];
+}
+
 // Nothing is added where nothing was needed.
 const objectMember = { ...a.b };
 const objectCall = { ...f() };

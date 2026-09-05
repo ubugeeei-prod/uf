@@ -9,64 +9,42 @@
 //
 // # Flow
 //
-// No highlighter has a Flow grammar, and Flow's declaration keywords —
-// `component`, `hook`, `renders`, `match`, `enum` — are ordinary identifiers to
-// a JavaScript one. They would be the only uncoloured words in a uf code
-// sample, which is the wrong way round: they are the reason the sample is
-// there.
+// No highlighter has a Flow grammar. A JavaScript one runs instead, and it
+// fails at Flow's syntax in two different ways that need two different
+// answers:
 //
-// Rather than write and maintain a TextMate grammar, `flowKeywords` re-tags
-// those tokens after the JavaScript grammar has run. It only recolours a token
-// whose whole text is one of the words, so `components` and `matcher` are left
-// alone, and it does not touch tokens inside a string or a comment because the
-// grammar has already given those their own colour.
+// * It **mis-labels** the words it does tokenise. `component`, `hook`,
+//   `renders`, `match`, `opaque` and `mixed` are ordinary identifiers to it,
+//   so they would be the only uncoloured words in a uf sample — which is the
+//   wrong way round, since they are the reason the sample is there.
+//   `internal/flow-keywords.js` decides which occurrences are really Flow's,
+//   after the grammar has run.
+//
+// * It **stops** at a `component` or `hook` declaration and mis-scopes
+//   everything after an exact object type, so the rest of the construct — or
+//   the rest of the block — arrives as one unstyled run, or in the colours of
+//   whatever the grammar fell into. There is nothing to re-label; the tokens
+//   do not exist. `internal/flow-grammar-shim.js` shows the grammar JavaScript
+//   it can parse instead and rebuilds the tokens over the real text, before
+//   this module ever sees them.
+//
+// The order is fixed and is the reason they are separate modules: the shim
+// runs before tokenising, the marking runs after, and each is testable without
+// the other. Writing and maintaining a Flow TextMate grammar would replace
+// both; until one exists, this is the honest approximation, and its limits are
+// recorded in each module's header.
+//
+// Marking rather than recolouring, because the colour is not knowable here.
+// Copying the colour from another keyword in the same block was the first
+// attempt and it fails exactly where it matters: a snippet that is nothing but
+// `component Tab(label: string) renders React.Node` contains no keyword the
+// grammar recognises, so there was nothing to copy from. A class moves the
+// decision to CSS, which is where the theme's colours already live.
 
 import rehypeShiki from "@shikijs/rehype";
 
-/**
- * Flow's declaration keywords, which a JavaScript grammar reads as names.
- *
- * Whole words only, so `components`, `matcher` and `hooks` stay identifiers.
- *
- * # Why the context is not in this pattern
- *
- * It used to be: a `(?<![.\w$])` look-behind was supposed to leave
- * `text.match(…)` alone. It does not, and cannot, because the grammar splits
- * a line into tokens wherever it likes and the look-behind only ever sees
- * the token it is matching inside. Given `text.` and `match` as two tokens —
- * which is exactly what happens — the look-behind is at the start of a
- * string and matches happily, and `text.match(re)` came out with `match`
- * coloured as a keyword. `{ hook: 1 }` had the same problem from the other
- * side.
- *
- * So the pattern finds candidates and {@link isKeywordAt} decides, against
- * the whole line. `tokens` is given the line, so the context is there; it
- * was only ever the per-token matching that threw it away.
- *
- * `enum` is not here: every JavaScript grammar already treats it as a keyword.
- */
-const FLOW_KEYWORD_PATTERN =
-  /(?<![\w$])(?:component|hook|renders|match|opaque|mixed|empty)(?![\w$])/g;
-
-/**
- * Whether the candidate at `[start, end)` in `line` is really a keyword.
- *
- * Two rejections, both from real code in this repository's own
- * documentation:
- *
- * * **After a dot.** `text.match(re)`, `list.hook`. A member name is never a
- *   declaration keyword.
- * * **Before a colon.** `{ hook: 1 }`, `{ +renders: Node }`. A property name
- *   is not either, in a value or in a type.
- */
-function isKeywordAt(line, start, end) {
-  const before = line.slice(0, start).trimEnd();
-  if (before.endsWith(".") || before.endsWith("?.")) {
-    return false;
-  }
-  const after = line.slice(end).trimStart();
-  return !after.startsWith(":");
-}
+import { shimFlowGrammar } from "./flow-grammar-shim.js";
+import { FLOW_MARK, KEYWORD, TYPE, markLines } from "./flow-keywords.js";
 
 /**
  * The languages a documentation page actually uses.
@@ -102,122 +80,71 @@ const ALIASES = {
 };
 
 /**
- * Give Flow's keywords a class the stylesheet can colour.
+ * The fences both Flow passes apply to.
  *
- * A JavaScript grammar reads `component` as a name, and does not even put it in
- * a token of its own: `export component Avatar(…) {` arrives as the keyword
- * `export` followed by one long token holding all the rest. So `tokens` splits
- * that token around each Flow keyword, on whole-word boundaries, and `span`
- * marks the resulting pieces.
+ * Flow is JavaScript, and both passes read the source as JavaScript: the shim
+ * rewrites JavaScript declarations, and the marking pass lexes strings and
+ * comments to keep out of them. Neither means anything in another language. A
+ * `match` in a Rust sample is Rust's and Rust's grammar has already coloured
+ * it; the backticks that fence a code block inside an `mdx` sample are not an
+ * unterminated template literal, though a JavaScript lexer pointed at them
+ * says they are.
  *
- * Marking rather than recolouring, because the colour is not knowable here.
- * Copying the colour from another keyword in the same block was the first
- * attempt and it fails exactly where it matters: a snippet that is nothing but
- * `component Tab(label: string) renders React.Node` contains no keyword the
- * grammar recognises, so there was nothing to copy from. A class moves the
- * decision to CSS, which is where the theme's colours already live.
+ * `js` is here because Shiki's own alias table resolves it and this runs
+ * before that.
  */
-function flowKeywords() {
+const FLOW_FENCES = new Set(["javascript", "js", "jsx"]);
+
+/** The class each kind of mark carries, for the stylesheet to colour. */
+const MARK_CLASSES = {
+  [KEYWORD]: "uf-flow-keyword",
+  [TYPE]: "uf-flow-type",
+};
+
+/**
+ * Where the shim's undo is parked between the two hooks that need it.
+ *
+ * Shiki builds a fresh context object for each block it highlights and calls
+ * every hook with it, so `this.meta` is the one place a `preprocess` can leave
+ * something for the `tokens` of the same block — and only that block. A field
+ * on the transformer would be shared by every block in the document.
+ *
+ * Its absence is also how `tokens` knows the fence was not a Flow one: the
+ * language is `preprocess`'s to see, and asking twice is how the two halves
+ * would come to disagree about a block.
+ */
+const RESTORE = Symbol.for("uf.flowRestore");
+
+/**
+ * Give Flow's syntax the colours the grammar could not.
+ *
+ * Three hooks, one per phase: rewrite the declarations the grammar cannot
+ * parse, undo that and mark Flow's words on the token stream, and put the
+ * mark's class on the span.
+ */
+function flowSyntax() {
   return {
-    name: "uf:flow-keywords",
+    name: "uf:flow-syntax",
+    preprocess(code, options) {
+      if (!FLOW_FENCES.has(ALIASES[options.lang] ?? options.lang)) {
+        return code;
+      }
+      const shim = shimFlowGrammar(code);
+      this.meta[RESTORE] = shim.restore;
+      return shim.code;
+    },
     tokens(lines) {
-      return lines.map(markLine);
+      const restore = this.meta[RESTORE];
+      return restore == null ? lines : markLines(restore(lines));
     },
     span(node, _line, _col, _lineElement, token) {
-      if (token[KEYWORD_FLAG] !== true) {
+      const added = MARK_CLASSES[token[FLOW_MARK]];
+      if (added == null) {
         return;
       }
       const existing = node.properties.class;
-      node.properties.class = existing == null ? KEYWORD_CLASS : `${existing} ${KEYWORD_CLASS}`;
+      node.properties.class = existing == null ? added : `${existing} ${added}`;
     },
-  };
-}
-
-/** The class a Flow keyword's span carries. */
-const KEYWORD_CLASS = "uf-flow-keyword";
-
-/**
- * The mark `tokens` leaves for `span` to read.
- *
- * A flag rather than re-deciding in `span`, because `span` is given one token
- * and the decision needs the line. Deciding once, where the context is, is
- * also the only way the two can never disagree.
- */
-const KEYWORD_FLAG = Symbol.for("uf.flowKeyword");
-
-/**
- * One line of tokens, split around the Flow keywords in it.
- *
- * Exported because it is where the whole decision lives and it is testable
- * without starting Shiki: give it the token split a grammar would produce
- * and it says which words it marked. `tests/library/highlight.test.js` uses
- * exactly that, and the splits in it are the ones that had bugs.
- *
- * The line is reassembled from its tokens so that {@link isKeywordAt} can see
- * across the boundaries the grammar happened to draw, and the resulting
- * offsets are line-relative for exactly as long as it takes to slice the
- * tokens up again.
- */
-export function markLine(line) {
-  const text = line.map((token) => token.content).join("");
-  const keywords = [];
-  for (const match of text.matchAll(FLOW_KEYWORD_PATTERN)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
-    if (isKeywordAt(text, start, end)) {
-      keywords.push([start, end]);
-    }
-  }
-  if (keywords.length === 0) {
-    return line;
-  }
-
-  const out = [];
-  let at = 0;
-  for (const token of line) {
-    const start = at;
-    const end = at + token.content.length;
-    at = end;
-
-    // The cut points inside this token, in order.
-    const cuts = [];
-    for (const [from, to] of keywords) {
-      if (from < end && to > start) {
-        cuts.push([Math.max(from, start), Math.min(to, end)]);
-      }
-    }
-    if (cuts.length === 0) {
-      out.push(token);
-      continue;
-    }
-
-    let index = start;
-    for (const [from, to] of cuts) {
-      if (from > index) {
-        out.push(piece(token, text.slice(index, from), index - start));
-      }
-      out.push({ ...piece(token, text.slice(from, to), from - start), [KEYWORD_FLAG]: true });
-      index = to;
-    }
-    if (index < end) {
-      out.push(piece(token, text.slice(index, end), index - start));
-    }
-  }
-  return out;
-}
-
-/**
- * A slice of one token.
- *
- * `offset` is carried through for every piece, because Shiki and any other
- * transformer use it to map a token back to the source; a piece with the wrong
- * offset breaks anything that reads positions, such as line highlighting.
- */
-function piece(token, content, at) {
-  return {
-    ...token,
-    content,
-    offset: (token.offset ?? 0) + at,
   };
 }
 
@@ -248,7 +175,7 @@ export function highlightPlugin(options) {
       // A fence naming a language Shiki does not have should render as plain
       // code, not fail the build.
       fallbackLanguage: "text",
-      transformers: [flowKeywords()],
+      transformers: [flowSyntax()],
     },
   ];
 }

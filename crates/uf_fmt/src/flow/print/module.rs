@@ -4,6 +4,7 @@ use uf_flow::Loc;
 use uf_flow::ast::statement;
 
 use super::Printer;
+use super::statement::EmptyBlock;
 use crate::doc::{Doc, HARDLINE, LINE, SOFTLINE};
 use crate::flow::comments::{Marker, Placement};
 use crate::flow::node::{NodeKey, NodeRef};
@@ -503,7 +504,7 @@ impl<'a> Printer<'a> {
                 self.print_string_node(loc, literal)
             }
         };
-        let body = self.print_block(&module.body.0, &module.body.1);
+        let body = self.print_block(&module.body.0, &module.body.1, EmptyBlock::Open);
         self.concat([self.s("declare module "), id, self.s(" "), body])
     }
 
@@ -520,7 +521,7 @@ impl<'a> Printer<'a> {
             statement::declare_namespace::Id::Global(id)
             | statement::declare_namespace::Id::Local(id) => self.print_identifier(id),
         };
-        let body = self.print_block(&namespace.body.0, &namespace.body.1);
+        let body = self.print_block(&namespace.body.0, &namespace.body.1, EmptyBlock::Open);
         let declare = if namespace.implicit_declare {
             self.s("")
         } else {
