@@ -290,6 +290,38 @@ fn a_frame_marks_exactly_one_row() {
     assert!(marked[0].contains("check"), "{out:?}");
 }
 
+/// Every line feed in `out` has a carriage return in front of it.
+fn assert_returns(out: &str) {
+    for (index, _) in out.match_indices('\n') {
+        let returned = index > 0 && out.as_bytes()[index - 1] == b'\r';
+        assert!(returned, "bare line feed at {index} in {out:?}");
+    }
+}
+
+#[test]
+fn every_line_of_a_frame_returns_the_cursor_to_the_left_edge() {
+    // The frame is drawn with the terminal in raw mode, and raw mode turns off
+    // the mapping that makes a line feed also carriage-return. A frame written
+    // with bare line feeds is not slightly wrong: every row starts in the
+    // column the row above it ended in, so the menu walks diagonally off the
+    // right edge and wraps.
+    let theme = Theme::default();
+    let mut out = String::new();
+
+    // Both shapes of frame, because the empty one returns early and would
+    // otherwise be drawn by no test here.
+    draw::frame(&Menu::new(CHOICES), &plain_frame(&theme), &mut out);
+    assert_returns(&out);
+
+    let mut empty = Menu::new(CHOICES);
+    for character in "zzz".chars() {
+        empty.push(character);
+    }
+    out.clear();
+    draw::frame(&empty, &plain_frame(&theme), &mut out);
+    assert_returns(&out);
+}
+
 #[test]
 fn a_frame_at_colour_never_contains_no_escape_byte_but_the_line_clears() {
     // The clear is a control sequence rather than a colour, and it is what
