@@ -225,10 +225,7 @@ impl<'a> Printer<'a> {
     /// found once for the file. The operand has to be outside that block —
     /// otherwise the whole cast is inside a `/*:: … */` declaration, which
     /// belongs to whoever is printing the block.
-    fn print_as_expression(
-        &mut self,
-        inner: &'a expression::AsExpression<Loc, Loc>,
-    ) -> Doc<'a> {
+    fn print_as_expression(&mut self, inner: &'a expression::AsExpression<Loc, Loc>) -> Doc<'a> {
         let value = self.print_expression(&inner.expression);
         if let Some(block) = self.comment_cast_block(inner) {
             let raw = self.text.slice(block);

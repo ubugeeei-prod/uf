@@ -611,7 +611,9 @@ fn a_comment_cast_keeps_what_the_source_needed() {
     let config = FmtConfig::default();
 
     let parenthesised = "// @flow\n(node/*:: as any*/).hash = \"a\";\n";
-    let output = format_source(parenthesised, &config).expect("formats").output;
+    let output = format_source(parenthesised, &config)
+        .expect("formats")
+        .output;
     similar_asserts::assert_eq!(output, "// @flow\n(node /*:: as any*/).hash = \"a\";\n");
     // Which is the point of the parentheses: Prettier's `node /*:: as any*/.hash`
     // is not something the parser will read back.
