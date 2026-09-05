@@ -101,6 +101,10 @@ if [ "$flavour" = strict ] && [ -z "$permission" ]; then
 fi
 [ -n "$dry" ] && exit 0
 case "$flavour" in
+  unpublished)
+    echo "npm error code E404" >&2
+    echo "npm error 404 Not Found - POST https://registry.npmjs.org/-/package/${package}/trust" >&2
+    exit 1 ;;
   existing | conflicting)
     echo "npm error code E409" >&2
     echo "npm error 409 Conflict - a trusted publisher configuration that a token could also match already exists for this package" >&2
@@ -154,7 +158,27 @@ grep -q "npm trust revoke" "${work}/conflicting.log" \
 $(cat "${work}/conflicting.log")"
 pass "a configuration pointing somewhere else fails and names the fix"
 
-# 5. An npm without the subcommand stops, binds nothing, and says what to do.
+# 5. A name the registry does not have answers E404. `npm trust` binds a name
+#    the registry already has; it cannot create one. That is a different job,
+#    named, rather than the end of this one.
+if run unpublished; then
+  fail "unpublished: E404 should end in a non-zero exit:
+$(cat "${work}/unpublished.log")"
+fi
+grep -q "is not on the registry yet" "${work}/unpublished.log" \
+  || fail "unpublished: it did not say which names:
+$(cat "${work}/unpublished.log")"
+grep -q "bootstrap-publish.sh" "${work}/unpublished.log" \
+  || fail "unpublished: it did not name the way out:
+$(cat "${work}/unpublished.log")"
+# All of them, not the first one: `set -eu` used to stop on the first.
+missing="$(grep -c 'is not on the registry yet' "${work}/unpublished.log")"
+[ "$missing" = "$names" ] \
+  || fail "unpublished: reported ${missing} of ${names}, so it stopped early:
+$(cat "${work}/unpublished.log")"
+pass "every unpublished name is reported, and the bootstrap is named"
+
+# 6. An npm without the subcommand stops, binds nothing, and says what to do.
 if run ancient; then
   fail "ancient: the script should have stopped:
 $(cat "${work}/ancient.log")"

@@ -162,6 +162,10 @@ export default defineConfig({
     // in it costs a round trip and blocks a release. It has cost three, each
     // a shape of `npm trust github` that no test was strict enough to see.
     "release:trust:test": "tools/release/test-trust-npm.sh",
+    // `npm trust` binds a name the registry already has and cannot create
+    // one, so a name that has never been published is published once by a
+    // person and is the workflow's from then on.
+    "release:bootstrap": "tools/release/bootstrap-publish.sh",
     "release:manifest": "tools/release/build-manifest.sh",
     "release:package": "tools/release/package-binaries.sh",
     "release:bump": "tools/release/bump-version.sh",

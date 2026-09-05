@@ -12,12 +12,14 @@
 # Have the second factor to hand: this is interactive, once per run, and it is
 # why no workflow and no agent can do it.
 #
-# `npm trust` configures a name that has never been published, which is what
-# makes this the whole bootstrap — the first release goes out over OIDC like
-# every one after it, and nobody has to publish by hand to create the package
-# first. (The npm documentation still describes the older flow, where the
-# package had to exist and the binding was a web form; `npm trust` landed in
-# npm 11 and supersedes it.)
+# `npm trust` binds a name the registry already has. It cannot create one:
+#
+#   npm error code E404
+#   npm error 404 Not Found - POST .../@uniflowed%2fcore/trust
+#
+# so a name that has never been published has to be published once before it
+# can be bound. That is what `tools/release/bootstrap-publish.sh` is for, and
+# this script says which names need it rather than stopping on the first.
 #
 # Safe to re-run. A name that is already bound is skipped when `npm trust list`
 # can read it, and re-bound harmlessly when it cannot — which is the usual
@@ -135,6 +137,7 @@ fi
 bound=0
 existing=0
 mismatched=""
+unpublished=""
 
 # `npm trust list` needs the same session *and* a one-time password, so on a
 # session that has not been through 2FA it returns nothing and every name is
@@ -155,9 +158,16 @@ for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.
     bound=$((bound + 1))
     continue
   fi
+  # A name the registry does not have cannot be bound, and that is a
+  # different job rather than a failure of this one.
+  if grep -q 'E404' "$errors"; then
+    echo "trust-npm: ${name} is not on the registry yet"
+    unpublished="${unpublished} ${package}"
+    continue
+  fi
   if ! grep -q 'E409' "$errors"; then
     echo "trust-npm: ${name} could not be bound:" >&2
-    cat "$errors" >&2
+    grep -v '^npm warn Unknown user config' <"$errors" >&2 || cat "$errors" >&2
     exit 1
   fi
   existing=$((existing + 1))
@@ -171,7 +181,21 @@ for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.
 done
 
 echo
-echo "trust-npm: ${bound} bound, ${existing} already configured"
+echo "trust-npm: ${bound} bound, ${existing} already configured, \
+$(printf '%s' "$unpublished" | wc -w | tr -d ' ') not on the registry"
+if [ -n "$unpublished" ]; then
+  cat >&2 <<MESSAGE
+
+These have never been published, so there is nothing to bind yet:
+${unpublished}
+
+\`npm trust\` binds a name the registry has; it does not create one. Publish
+them once, then run this again:
+
+  tools/release/bootstrap-publish.sh
+
+MESSAGE
+fi
 if [ -n "$mismatched" ]; then
   cat >&2 <<MESSAGE
 
@@ -183,6 +207,9 @@ Revoke the old configuration and run this again:
 
   npm trust revoke <package>
 MESSAGE
+  exit 1
+fi
+if [ -n "$unpublished" ]; then
   exit 1
 fi
 
