@@ -170,7 +170,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Doc { out_dir, json } => commands::doc::doc(&cwd, ui, &out_dir, json),
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
         Commands::Exec { package, args } => commands::task::exec_package(&cwd, ui, &package, &args),
-        Commands::Fmt { check } => commands::fmt::fmt(&cwd, ui, check),
+        Commands::Fmt { check, paths } => commands::fmt::fmt(&cwd, ui, check, &paths),
         Commands::Info => commands::info::info(&cwd, ui),
         Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),

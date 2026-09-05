@@ -85,6 +85,19 @@ pub struct Printer<'a> {
     /// Set when a hugged call argument turned out to need its own line
     /// breaks: Prettier's `ArgExpansionBailout`, without the exception.
     pub expansion_bailout: bool,
+    /// Set while printing the statement above one that needs a leading `;`.
+    ///
+    /// Without semicolons, a statement guarded by `;(…)` swallows any comment
+    /// standing between it and the statement above: read back in, that `;`
+    /// terminates the statement above, and the comment lands inside it — which
+    /// re-indents the statement above and makes the formatter's output depend
+    /// on how many times it has run. Terminating the statement above instead
+    /// puts the `;` exactly where `semi: true` would have put it, and the
+    /// comment stays a comment of the statement it was written above.
+    ///
+    /// Only the statement above sets it, and only when it is one that would
+    /// carry a semicolon anyway. See {@link print_statement_sequence}.
+    pub force_semi: bool,
     /// Byte spans of Flow's comment types, in source order.
     ///
     /// A statement inside one is not printed from the tree — the block goes
@@ -130,6 +143,7 @@ impl<'a> Printer<'a> {
             program,
             comment_types: text.comment_types(),
             expansion_bailout: false,
+            force_semi: false,
             argument_docs: FxHashMap::default(),
         }
     }
@@ -192,7 +206,7 @@ impl<'a> Printer<'a> {
 
     /// The statement terminator: `;` or nothing.
     pub fn semi(&self) -> Doc<'a> {
-        if self.options.semi {
+        if self.options.semi || self.force_semi {
             self.s(";")
         } else {
             self.s("")
@@ -632,6 +646,8 @@ impl<'a> Printer<'a> {
         // The end of the last comment-type block emitted, so the statements
         // after the first in one are skipped rather than printed twice.
         let mut inside_block_until = 0usize;
+        // Set when the statement above took this one's ASI guard.
+        let mut guarded_above = false;
         for (index, statement) in statements.iter().enumerate() {
             if statement::is_empty_statement(statement) {
                 continue;
@@ -664,12 +680,33 @@ impl<'a> Printer<'a> {
                 }
                 continue;
             }
+            // A guard the statement above can carry instead. `;(…)` written
+            // after a comment terminates the statement above when it is read
+            // back, and the comment goes with it; a `;` on the statement above
+            // is where `semi: true` would have put it and changes nothing.
+            let guard_above = !self.options.semi
+                && !guarded_above
+                && statement::takes_a_semicolon(statement)
+                && self.next_statement_wants_a_guard_after_comments(statements, index);
+            // Saved and put back rather than cleared: printing this statement
+            // descends into the statement sequences inside it — an arrow's
+            // block body, a nested function — and each of those sets the flag
+            // for its own statements. Clearing it on the way out would clear
+            // the one this statement is still waiting to read.
+            let outer = std::mem::replace(&mut self.force_semi, guard_above);
             let printed = self.print_statement(statement);
-            if !self.options.semi && self.statement_needs_asi_protection(statement) {
+            self.force_semi = outer;
+
+            if !self.options.semi
+                && !guarded_above
+                && self.statement_needs_asi_protection(statement)
+            {
                 if self.has_comment_placed(NodeRef::Statement(statement).key(), Placement::Leading)
                 {
-                    // The `;` has to come after the comments, so print again
-                    // with the guard inside.
+                    // Nothing above took the guard — the statement above is a
+                    // block, or this is the first statement here — so it goes
+                    // after the comments, which is the shape that is not
+                    // idempotent and the reason for `guard_above`.
                     let guarded = self.print_statement_with_leading_semi(statement);
                     parts.push(guarded);
                 } else {
@@ -679,6 +716,7 @@ impl<'a> Printer<'a> {
             } else {
                 parts.push(printed);
             }
+            guarded_above = guard_above;
             if Some(index) != last {
                 parts.push(&HARDLINE);
                 let end = self.text.span(statement.loc()).end;
@@ -688,6 +726,27 @@ impl<'a> Printer<'a> {
             }
         }
         self.docs.concat_vec(parts)
+    }
+
+    /// Whether the statement after `index` needs an ASI guard *and* has
+    /// comments in front of it.
+    ///
+    /// Both halves matter. A guard with no comment in front of it prints as
+    /// `;(…)` on its own line, which reads back as it was written. A guard
+    /// after a comment is the shape that swallows it.
+    fn next_statement_wants_a_guard_after_comments(
+        &mut self,
+        statements: &'a [super::node::Statement],
+        index: usize,
+    ) -> bool {
+        let Some(next) = statements[index + 1..]
+            .iter()
+            .find(|statement| !statement::is_empty_statement(statement))
+        else {
+            return false;
+        };
+        self.statement_needs_asi_protection(next)
+            && self.has_comment_placed(NodeRef::Statement(next).key(), Placement::Leading)
     }
 
     /// `text` as a doc, or an `if_break` between two spellings.

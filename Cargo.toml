@@ -51,7 +51,9 @@ dupe = "0.9.1"
 flow_aloc = { path = "upstream/flow/rust_port/crates/flow_aloc" }
 flow_common = { path = "upstream/flow/rust_port/crates/flow_common" }
 flow_common_errors = { path = "upstream/flow/rust_port/crates/flow_common_errors" }
+flow_data_structure_wrapper = { path = "upstream/flow/rust_port/crates/flow_data_structure_wrapper" }
 flow_flowlib = { path = "upstream/flow/rust_port/crates/flow_flowlib" }
+flow_lazy = { path = "upstream/flow/rust_port/crates/flow_lazy" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
 oxc_allocator = "0.147.0"
@@ -65,6 +67,7 @@ flow_parser_utils = { path = "upstream/flow/rust_port/crates/flow_parser_utils" 
 flow_parsing = { path = "upstream/flow/rust_port/crates/flow_parsing" }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }
 flow_typing = { path = "upstream/flow/rust_port/crates/flow_typing" }
+flow_typing_builtins = { path = "upstream/flow/rust_port/crates/flow_typing_builtins" }
 flow_typing_context = { path = "upstream/flow/rust_port/crates/flow_typing_context" }
 flow_typing_errors = { path = "upstream/flow/rust_port/crates/flow_typing_errors" }
 flow_typing_type = { path = "upstream/flow/rust_port/crates/flow_typing_type" }

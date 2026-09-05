@@ -41,6 +41,24 @@ pub fn is_empty_statement(statement: &Statement) -> bool {
     matches!(**statement, statement::StatementInner::Empty { .. })
 }
 
+/// Whether `statement` ends with a semicolon when semicolons are on.
+///
+/// The set that can carry the ASI guard for the statement below it. A block,
+/// a function or a class ends in `}` and takes no terminator, so an added `;`
+/// there would be an empty statement rather than a terminator — a different
+/// tree, which is the one thing the printer may not produce.
+///
+/// Deliberately the two shapes a guard actually follows in practice rather
+/// than every statement Flow can spell. Anything else keeps the leading-`;`
+/// spelling, which is right whenever no comment stands in between.
+pub fn takes_a_semicolon(statement: &Statement) -> bool {
+    matches!(
+        **statement,
+        statement::StatementInner::Expression { .. }
+            | statement::StatementInner::VariableDeclaration { .. }
+    )
+}
+
 /// Whether `statement` is a `{ … }` block.
 pub fn is_block_statement(statement: &Statement) -> bool {
     matches!(**statement, statement::StatementInner::Block { .. })

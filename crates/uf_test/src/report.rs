@@ -24,6 +24,47 @@ use crate::plan::{SkipReason, TestPlan};
 /// place to reproduce it.
 pub const MAX_EXPRESSION_BYTES: usize = 200;
 
+/// Most printed output kept from one file, in bytes.
+///
+/// The worker bounds what it sends, but everything this crate reads is
+/// untrusted — the bound is re-applied here so a worker that ignores its own
+/// budget cannot grow a report without limit.
+pub const MAX_OUTPUT_BYTES_PER_FILE: usize = 128 * 1024;
+
+/// Which of a process's two streams a chunk of output was written to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OutputStream {
+    /// `console.log`, `console.info`, `console.debug`, `process.stdout.write`.
+    Stdout,
+    /// `console.warn`, `console.error`, `console.trace`, `process.stderr.write`.
+    Stderr,
+}
+
+impl OutputStream {
+    /// The stream's name, as the worker writes it and `--json` repeats it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+}
+
+/// One thing a test — or the file around it — printed.
+///
+/// Kept as written rather than split into lines: a `process.stdout.write` with
+/// no newline in it is a legitimate thing for a test to do, and re-joining what
+/// was split is not something a reader should have to do to see what happened.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputChunk {
+    /// Which stream it was written to.
+    pub stream: OutputStream,
+    /// The text, exactly as it would have reached a terminal.
+    pub text: String,
+}
+
 /// One assertion that did not hold, or one thrown `Error`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,6 +149,12 @@ pub struct TestRecord {
     /// How long the case took, in microseconds. Zero for one that never ran.
     #[serde(default)]
     pub duration_micros: u64,
+    /// What the case printed while it ran, in the order it printed it.
+    ///
+    /// A retried case carries the last attempt's output, because that is the
+    /// attempt whose status it reports.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output: Vec<OutputChunk>,
 }
 
 /// Why a file did not finish, when it did not.
@@ -176,6 +223,10 @@ pub struct FileReport {
     pub duration_micros: u64,
     /// Every declaration in the file, in source order.
     pub records: Vec<TestRecord>,
+    /// What the file printed outside any case: while it was being imported,
+    /// from a `beforeAll`, or after the last case finished.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output: Vec<OutputChunk>,
 }
 
 impl FileReport {

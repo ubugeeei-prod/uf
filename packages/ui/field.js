@@ -16,9 +16,20 @@
 // actually rendered — pointing `aria-describedby` at an id that is not in the
 // document makes a screen reader announce nothing at all, which is worse than
 // omitting the attribute.
+//
+// # Why it takes a render function
+//
+// `Field.Control` hands the attributes to a callback rather than rendering an
+// `<input>`, because a field wraps a select, a textarea, a `Combobox.Input` or
+// somebody else's component just as often, and each of those needs the same
+// four attributes on whatever element it eventually renders. A component that
+// rendered the input itself would have to grow a prop for every element anyone
+// might want, and would still be wrong for the next one.
+
+"use client";
 
 import * as React from "@uniflowed/react";
-import { createContext, useContext, useId, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useEffect, useId, useMemo, useState } from "@uniflowed/react";
 
 type FieldState = {|
   readonly controlId: string,
@@ -39,7 +50,7 @@ const FieldContext: React.Context<FieldState | null> = createContext(null);
  * Raising rather than returning null: a `Field.Label` outside a `Field.Root`
  * would render a label pointing at nothing, and would look correct.
  */
-function useField(part: string): FieldState {
+hook useField(part: string): FieldState {
   const state = useContext(FieldContext);
   if (state == null) {
     throw new Error(`${part} must be rendered inside a Field.Root`);
@@ -108,9 +119,7 @@ export component FieldLabel(children: React.Node, ...rest: { readonly [string]: 
 /**
  * The control, given every attribute the rest of the field implies.
  *
- * `render` takes the element rather than this rendering an `<input>`, because a
- * field wraps a select, a textarea, a combobox or somebody else's component
- * just as often, and each of those needs the same six attributes.
+ * See the module header for why this takes a render function.
  */
 export component FieldControl(render: (props: { readonly [string]: mixed }) => React.Node) {
   const field = useField("Field.Control");
@@ -125,10 +134,11 @@ export component FieldControl(render: (props: { readonly [string]: mixed }) => R
 /** Help text, which the control points at while it is rendered. */
 export component FieldDescription(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const field = useField("Field.Description");
-  React.useEffect(() => {
-    field.registerDescription(true);
-    return () => field.registerDescription(false);
-  }, [field]);
+  const register = field.registerDescription;
+  useEffect(() => {
+    register(true);
+    return () => register(false);
+  }, [register]);
 
   return (
     <p {...rest} id={field.descriptionId}>
@@ -145,10 +155,11 @@ export component FieldDescription(children: React.Node, ...rest: { readonly [str
  */
 export component FieldError(children: React.Node, ...rest: { readonly [string]: mixed }) {
   const field = useField("Field.Error");
-  React.useEffect(() => {
-    field.registerError(true);
-    return () => field.registerError(false);
-  }, [field]);
+  const register = field.registerError;
+  useEffect(() => {
+    register(true);
+    return () => register(false);
+  }, [register]);
 
   if (!field.invalid) {
     return null;

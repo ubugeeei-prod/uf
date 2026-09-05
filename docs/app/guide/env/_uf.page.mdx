@@ -1,0 +1,114 @@
+---
+title: "Environments · uf"
+---
+
+<p className="eyebrow">The tools</p>
+
+# Environments
+
+<div className="lede">
+A repository says which Node, which Bun, which pnpm it is built with, and `uf
+env` puts exactly those in front of it — out of a store shared by every
+repository on the machine, with nothing installed globally and `PATH` left
+alone.
+</div>
+
+## Declaring one
+
+<div className="command"><code>uf.config.js</code></div>
+
+```js
+// @flow
+export default {
+  env: {
+    toolchain: {
+      node: "24.14.0",
+      pnpm: "9.15.0",
+    },
+  },
+};
+```
+
+Exact versions, not ranges. A range is not an environment: it answers "what
+could this build with", and the question a repository has to answer is what it
+*is* built with. `uf env list` shows what the project declares beside what the
+store already holds.
+
+Node, Bun and Deno are runtimes; npm, pnpm and Yarn are package managers. All
+six are the same kind of thing here — a pinned tool, fetched from its own
+publisher, verified against the digest that publisher ships.
+
+## Installing it
+
+<div className="command"><code>uf env install</code></div>
+
+```
+uf env install · my-app
+───────────────────────
+
+  - node@24.14.0  installed
+  - pnpm@9.15.0  installed
+
+✓ 5 executables linked into .uniflowed/env/bin
+```
+
+Each tool is unpacked once, into a store keyed by tool, version and platform —
+`node-24.14.0-darwin-arm64` — and every repository that wants that exact tool
+links to the same copy. Two projects on the same Node share it; a third on a
+different one gets its own, and neither disturbs the other.
+
+Nothing is written outside the store and the repository. There is no `sudo`
+step, no shell profile to edit, and no version manager to initialise in your
+`.zshrc`. The download's checksum is verified before anything is unpacked,
+against the digest the publisher ships beside the archive.
+
+The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides it.
+
+## Using it
+
+<div className="command"><code>uf env exec node --version</code></div>
+
+```
+v24.14.0
+```
+
+`uf env exec` puts `.uniflowed/env/bin` in front of `PATH` for one command and
+runs it, exiting with whatever the command exited with. The shell you are in is
+unchanged, and so is every other repository on the machine.
+
+That is the whole model, and it is `nix develop`'s: an environment is something
+a directory *has*, not something a shell is switched into. Nothing has to be
+activated, nothing has to be deactivated, and a script that runs `uf env exec`
+gets the same tools whether it was started from your shell, from an editor, or
+from CI.
+
+## Collecting what nothing uses
+
+<div className="command"><code>uf env gc</code></div>
+
+```
+  repositories that are gone
+    - /Users/you/src/old-project (gone)
+
+  removed
+    - node-24.14.0-darwin-arm64
+    - pnpm-9.15.0-darwin-arm64
+
+✓ removed 2 entries, forgot 1 root; 0 entries in use
+```
+
+A store that only grows is a store nobody trusts. Every `uf env install`
+registers the repository as a *root*, and the collector keeps exactly what some
+live root reaches: a repository that was deleted stops holding its tools, in
+the same pass that notices it is gone.
+
+<div className="command"><code>uf env gc --dry-run</code></div>
+
+says what would go and removes nothing, which is the version to run first.
+
+## What it does not do
+
+It does not manage the uf binary itself — that is `uf use` and `uf upgrade`. It
+does not read `.nvmrc`, `.tool-versions` or `package.json`'s `engines` field:
+`uf.config.js` is the one place a uf project writes down what it needs, and a
+second source of truth for the same question is the problem, not the feature.

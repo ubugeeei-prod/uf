@@ -87,11 +87,22 @@
 
 ## P2: Native Libraries Exposed To Flow
 
-- [ ] Implement `@uniflowed/query` as a native TanStack Query-style data layer.
-- [ ] Implement `@uniflowed/effect` as a typed generator/yield EffectSystem.
+- [x] Implement `@uniflowed/query` as a TanStack Query-style data layer, in Flow.
+      Deduplication, supersession, retry policies, collection, optimistic
+      mutations and infinite pages, in twelve modules with no `internal/`.
+- [x] Implement `@uniflowed/effect` as a typed generator/yield EffectSystem.
+      `yield*` over an effect carries its success type; typed errors are
+      distinct from defects; resources release on success, failure and
+      interruption alike. Measured against Effect-TS 3.22.1: 6.5x on a
+      `map`/`flatMap` chain, 1.8x on a generator pipeline, 6.8x on
+      failure recovery, 0.92x on `all` of twenty.
 - [x] Start `@uniflowed/state` and `@uniflowed/cell` from this repository.
-- [ ] Complete `@uniflowed/state` and `@uniflowed/cell` as Flow JS implementations.
+- [x] Complete `@uniflowed/state` and `@uniflowed/cell` as Flow JS implementations.
 - [x] Start `@uniflowed/validator` with `v.pipe`-style validation.
+- [x] Implement `@uniflowed/immer`: immutable updates through a draft, in Flow.
+- [x] Implement `@uniflowed/form`: uncontrolled fields, narrow subscriptions and
+      schema validation. Eleven characters typed cost two renders against a
+      controlled `useState`'s twelve.
 - [ ] Add validator-driven Flow type inference and schema exports.
 - [x] Start `@uniflowed/cli` as a Gunshi-style stdlib CLI framework.
 - [x] Start `@uniflowed/fetch` as an explicit fetch client.
@@ -124,16 +135,21 @@
       Hosts while keeping scheduling and reporting in Rust.
 - [x] Benchmark `@uniflowed/test` against Bun Test and Vitest and keep the faster-than-Bun target visible.
       Measured: 9x faster than Vitest, 3x slower than Bun. See docs/architecture.md.
-- [ ] Implement native React Testing Library-compatible DOM queries.
+- [x] Implement React Testing Library-compatible DOM queries. `@uniflowed/
+      react-testing` mounts into a real document, queries by role, label,
+      text, placeholder and test id, and tells React it is a test — so
+      `act` warnings mean something rather than arriving on every render.
 - [ ] Implement native React Native testing utilities.
 - [x] Add watch mode with dependency-aware reruns.
 - [ ] Add strict CLI integration tests for every command.
+- [x] Report what a test printed. `console.log` in a test used to kill the file
+      it was in, because the worker's stdout was the protocol.
 - [ ] Add snapshot tests for generated templates and router types.
 - [ ] Add e2e type-safety fixtures for app, server actions, router, query, effect, and UI.
 - [x] Start story, mock, browser, and VRT contracts.
 - [ ] Implement `@uniflowed/story` component story runner.
 - [x] Start `@uniflowed/vrt` native visual regression contracts.
-- [ ] Implement `@uniflowed/mock` MSW-compatible native request mocking.
+- [x] Implement `@uniflowed/mock` MSW-compatible request mocking, over `fetch`.
 - [ ] Implement `@uniflowed/browser` Playwright-compatible browser automation.
 - [ ] Add visual regression baselines, diffing, and update flows.
 - [x] Add `uf prepare` command surface for lint-staged-compatible checks and code generation.

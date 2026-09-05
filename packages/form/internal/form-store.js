@@ -96,7 +96,7 @@
 
 import type { FieldError, ValidationRules } from "../rules.js";
 import { dependenciesOf, runRules, transformOf, whenSettled } from "../rules.js";
-import type { Resolver, ResolverErrors } from "../resolver.js";
+import type { Resolver, ResolverErrors, ResolverResult } from "../resolver.js";
 import { errorsOf, runResolver } from "../resolver.js";
 import type { FieldPath, FieldValues } from "./field-path.js";
 import {
@@ -1123,7 +1123,10 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     if (waiting) {
       beginValidating();
     }
-    return whenSettled(collected, (found: Map<FieldPath, FieldError>) => {
+    // Written out for the same reason as in `collectFromResolver`: what
+    // `collected` holds is already `TValue | Promise<TValue>`, so inference
+    // takes the whole union for `TValue`.
+    return whenSettled<Map<FieldPath, FieldError>, boolean>(collected, (found) => {
       if (waiting) {
         endValidating();
       }
@@ -1144,18 +1147,27 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     if (resolver == null) {
       return new Map();
     }
-    return whenSettled(runResolver(resolver, values, settings.context), (result) => {
-      const found: Map<FieldPath, FieldError> = new Map();
-      const reported: ResolverErrors = errorsOf(result);
-      for (const name of Object.keys(reported)) {
-        found.set(name, reported[name]);
-      }
-      resolvedOutput = found.size === 0 ? (result.values as $FlowFixMe) : null;
-      // A resolver answers for the whole form at once, so its verdict is the
-      // whole answer to `isValid` — no per-field bookkeeping needed.
-      isValid = found.size === 0;
-      return found;
-    }) as $FlowFixMe;
+    // The type arguments are written out because Flow cannot infer them here:
+    // `whenSettled` takes `TValue | Promise<TValue>`, and `runResolver`
+    // returns exactly that shape, so inference picks the whole union as
+    // `TValue` and hands the callback a value that might still be a promise.
+    // Saying which is which costs one line and removes four errors that were
+    // never about this code.
+    return whenSettled<ResolverResult<TOutput>, Map<FieldPath, FieldError>>(
+      runResolver(resolver, values, settings.context),
+      (result) => {
+        const found: Map<FieldPath, FieldError> = new Map();
+        const reported: ResolverErrors = errorsOf(result);
+        for (const name of Object.keys(reported)) {
+          found.set(name, reported[name]);
+        }
+        resolvedOutput = found.size === 0 ? (result.values as $FlowFixMe) : null;
+        // A resolver answers for the whole form at once, so its verdict is the
+        // whole answer to `isValid` — no per-field bookkeeping needed.
+        isValid = found.size === 0;
+        return found;
+      },
+    ) as $FlowFixMe;
   }
 
   /**

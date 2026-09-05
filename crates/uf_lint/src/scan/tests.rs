@@ -1,6 +1,7 @@
 //! Scanner tests: what counts as code on a line, what carries into the next one,
 //! and the byte offsets every diagnostic position is derived from.
 
+use super::search::in_string_from;
 use super::*;
 use crate::SourceFile;
 
@@ -155,4 +156,82 @@ fn very_large_input_scans_without_quadratic_blowup() {
     let scan = FileScan::new(&file);
     assert_eq!(scan.lines.len(), 20_001);
     assert_eq!(scan.lines[0].code(), "let a = 1; ");
+}
+
+#[test]
+fn a_needle_inside_a_string_is_known_to_be_inside_one() {
+    let code = r#"const message = "no globalThis.fetch here";"#;
+    let at = code.find("globalThis.fetch").expect("the needle is there");
+
+    assert!(in_string_from(code, at, false));
+}
+
+#[test]
+fn a_needle_outside_every_string_is_not() {
+    assert!(!in_string_from("globalThis.fetch = mine;", 0, false));
+}
+
+#[test]
+fn a_closed_string_does_not_swallow_what_follows_it() {
+    let code = r#"log("done"); globalThis.fetch = mine;"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(!in_string_from(code, at, false));
+}
+
+#[test]
+fn an_escaped_quote_does_not_close_the_string() {
+    let code = r#"const s = "a \" globalThis.fetch";"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(in_string_from(code, at, false));
+}
+
+#[test]
+fn each_quote_style_opens_a_string() {
+    for code in [
+        "const s = 'globalThis.fetch';",
+        "const s = \"globalThis.fetch\";",
+        "const s = `globalThis.fetch`;",
+    ] {
+        let at = code.find("globalThis").expect("the needle is there");
+        assert!(in_string_from(code, at, false), "{code}");
+    }
+}
+
+#[test]
+fn a_line_that_began_inside_a_template_is_inside_one_from_its_first_byte() {
+    // The middle of a template literal spanning lines. Nothing on this line
+    // opens a string, and everything on it is one.
+    let code = "globalThis.fetch = mine;";
+
+    assert!(in_string_from(code, 0, true));
+    assert!(!in_string_from(code, 0, false));
+}
+
+#[test]
+fn a_quote_inside_a_regex_literal_does_not_open_a_string() {
+    // The direction that matters: reading this quote as a string would swallow
+    // the rest of the line and hide a real override.
+    let code = r#"const pattern = /"/; globalThis.fetch = mine;"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(!in_string_from(code, at, false));
+}
+
+#[test]
+fn a_slash_inside_a_character_class_does_not_close_the_regex() {
+    let code = r#"const pattern = /["/]/; globalThis.fetch = mine;"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(!in_string_from(code, at, false));
+}
+
+#[test]
+fn a_division_is_not_read_as_a_regex() {
+    // `total / 2` divides; the string after it still opens a string.
+    let code = r#"const half = total / 2; const s = "globalThis.fetch";"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(in_string_from(code, at, false));
 }

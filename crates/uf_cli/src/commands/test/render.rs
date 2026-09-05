@@ -1,10 +1,11 @@
 //! What `uf test` puts on the screen, and what it puts on a pipe.
 //!
 //! Two audiences, two rules. A person gets a status line per test, a code frame
-//! under each failure pointing at the assertion that broke, the slowest files,
-//! and a summary. A program gets JSON with no styling, no progress, and no
-//! field whose value depends on anything but the suite — every duration is
-//! grouped into its own key so a caller can diff two runs by ignoring them.
+//! under each failure pointing at the assertion that broke, whatever the tests
+//! printed, the slowest files, and a summary. A program gets JSON with no
+//! styling, no progress, and no field whose value depends on anything but the
+//! suite — every duration is grouped into its own key so a caller can diff two
+//! runs by ignoring them.
 
 use anyhow::Result;
 use camino::Utf8Path;
@@ -14,8 +15,8 @@ use uf_term::{
     format_duration, push_padded, push_spaces,
 };
 use uf_test::{
-    FileStatus, SkipReason, TestFilter, TestRecord, TestRunReport, TestStatus, discover_tests,
-    merge_plans,
+    FileStatus, OutputChunk, OutputStream, SkipReason, TestFilter, TestRecord, TestRunReport,
+    TestStatus, discover_tests, merge_plans,
 };
 
 use super::{SLOWEST_SHOWN, TestArgs, runner_plan, timings_label};
@@ -141,6 +142,13 @@ pub(super) fn render_report(
     let phases = phases.to_vec();
 
     let file_width = widest(report.records().map(|record| record.file.as_str()));
+    let (output_groups, output_hidden) = other_output(report);
+    let output_note = (output_hidden > 0).then(|| {
+        format!(
+            "{} not shown; `uf test --json` has every one",
+            plural(output_hidden, "more line")
+        )
+    });
     let slowest = slowest_rows(report);
     let file_problems = file_problems(report);
     let unsupported_declarations: Vec<String> = report
@@ -168,6 +176,23 @@ pub(super) fn render_report(
                 push_spaces(out, 2);
                 renderer.status(out, status_of(&record.status), &line);
                 render_details(renderer, out, files, record);
+            }
+        }
+
+        if !output_groups.is_empty() {
+            renderer.blank(out);
+            renderer.heading(out, 2, "output");
+            for group in &output_groups {
+                push_spaces(out, 2);
+                renderer.line(out, renderer.theme().path, &group.label);
+                for (stream, text) in &group.lines {
+                    push_spaces(out, 4);
+                    renderer.line(out, output_style(renderer, *stream), text);
+                }
+            }
+            if let Some(note) = &output_note {
+                push_spaces(out, 2);
+                renderer.status(out, Status::Info, note);
             }
         }
 
@@ -239,6 +264,136 @@ pub(super) fn render_report(
     });
 }
 
+/// How many lines of output the run's `output` section shows.
+///
+/// The rule, in two halves. Output from a *failing* test is evidence for the
+/// failure and is drawn under it in full — a person reading a red run wants
+/// every line of it, and the capture is already bounded per file by
+/// [`uf_test::MAX_OUTPUT_BYTES_PER_FILE`], so "in full" is a bounded promise.
+/// Everything else — a `console.log` left in a passing test, a line printed
+/// while the module loaded — is gathered into one section after the tests and
+/// cut off here, because six hundred passing tests that each print a line
+/// would push the summary and the failures off the screen, which is the one
+/// thing the report exists to show. What the cut leaves out is counted rather
+/// than hidden, and `--json` carries every line either way.
+const OUTPUT_LINES_SHOWN: usize = 20;
+
+/// One block in the `output` section: what printed it, and what it printed.
+struct OutputGroup {
+    /// The file, and the test within it when a test was running.
+    label: String,
+    lines: Vec<(OutputStream, String)>,
+}
+
+/// Chunks flattened into lines, ready to draw.
+///
+/// Consecutive chunks on one stream are joined before the split, so a
+/// `process.stdout.write` with no newline in it continues the line it started
+/// rather than becoming one of its own. Control characters are escaped: this
+/// text was written by the code under test, and a test that prints an ANSI
+/// sequence must not be able to redraw the summary above it.
+fn output_lines(chunks: &[OutputChunk]) -> Vec<(OutputStream, String)> {
+    let mut runs: Vec<(OutputStream, String)> = Vec::new();
+    for chunk in chunks {
+        match runs.last_mut() {
+            Some((stream, text)) if *stream == chunk.stream => text.push_str(&chunk.text),
+            _ => runs.push((chunk.stream, chunk.text.clone())),
+        }
+    }
+
+    let mut lines = Vec::new();
+    for (stream, text) in runs {
+        // A trailing newline ends the last line rather than starting an empty
+        // one; a newline anywhere else does start one, blank included.
+        let body = text.strip_suffix('\n').unwrap_or(&text);
+        if body.is_empty() && text.is_empty() {
+            continue;
+        }
+        for line in body.split('\n') {
+            lines.push((stream, printable(line)));
+        }
+    }
+    lines
+}
+
+/// `line` with everything that could move the cursor written out instead.
+fn printable(line: &str) -> String {
+    if !line.chars().any(|ch| ch.is_control() && ch != '\t') {
+        return line.to_string();
+    }
+    line.chars()
+        .flat_map(|ch| {
+            if ch.is_control() && ch != '\t' {
+                ch.escape_debug().collect::<Vec<_>>()
+            } else {
+                vec![ch]
+            }
+        })
+        .collect()
+}
+
+/// The style one stream's output is drawn in.
+fn output_style(renderer: &uf_term::Renderer, stream: OutputStream) -> uf_term::Style {
+    match stream {
+        // Muted, so a chatty test recedes behind the results it sits among;
+        // stderr in the warning colour, because a test that wrote to stderr
+        // was usually saying something went wrong.
+        OutputStream::Stdout => renderer.theme().muted,
+        OutputStream::Stderr => renderer.theme().warning,
+    }
+}
+
+/// Draw captured output as a labelled block.
+fn render_output(
+    renderer: &uf_term::Renderer,
+    out: &mut String,
+    lines: &[(OutputStream, String)],
+    indent: usize,
+) {
+    if lines.is_empty() {
+        return;
+    }
+    push_spaces(out, indent);
+    renderer.line(out, renderer.theme().key, "output");
+    for (stream, text) in lines {
+        push_spaces(out, indent + 2);
+        renderer.line(out, output_style(renderer, *stream), text);
+    }
+}
+
+/// Everything printed that no failure will show, in the order it was printed.
+///
+/// Returns the groups to draw and how many lines the cap left out.
+fn other_output(report: &TestRunReport) -> (Vec<OutputGroup>, usize) {
+    let mut groups = Vec::new();
+    let mut budget = OUTPUT_LINES_SHOWN;
+    let mut hidden = 0;
+    let mut take = |label: String, chunks: &[OutputChunk]| {
+        let mut lines = output_lines(chunks);
+        if lines.len() > budget {
+            hidden += lines.len() - budget;
+            lines.truncate(budget);
+        }
+        budget -= lines.len();
+        if !lines.is_empty() {
+            groups.push(OutputGroup { label, lines });
+        }
+    };
+
+    for file in &report.files {
+        // The file's own output comes first because it was printed first:
+        // while the module was being imported, before any case ran.
+        take(file.file.clone(), &file.output);
+        for record in &file.records {
+            if record.status.is_failed() {
+                continue;
+            }
+            take(format!("{}  {}", record.file, record.name), &record.output);
+        }
+    }
+    (groups, hidden)
+}
+
 fn status_of(status: &TestStatus) -> Status {
     match status {
         TestStatus::Passed => Status::Success,
@@ -288,6 +443,12 @@ fn render_details(
                 ],
             );
         }
+    }
+    // Under the failure, not in the section below it: what a failing test
+    // printed is usually half of why it failed, and making a reader look for
+    // it somewhere else is making them do the joining.
+    if record.status.is_failed() {
+        render_output(renderer, out, &output_lines(&record.output), 8);
     }
 }
 

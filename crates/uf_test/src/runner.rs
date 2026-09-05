@@ -282,6 +282,7 @@ impl TestRunner {
                                 },
                                 duration_micros: 0,
                                 records: Vec::new(),
+                                output: Vec::new(),
                             },
                             observer,
                         );
@@ -299,6 +300,7 @@ impl TestRunner {
                         message: String::from("no worker"),
                     },
                     records: Vec::new(),
+                    output: Vec::new(),
                 });
 
             // A file that timed out or lost its host killed the worker; the
@@ -317,6 +319,7 @@ impl TestRunner {
                 status: outcome.status,
                 duration_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
                 records: outcome.records,
+                output: outcome.output,
             };
             let failed = report
                 .records
@@ -396,6 +399,10 @@ impl TestRunner {
                     .find(|record| record.name == name)
                 {
                     slot.status = fresh.status;
+                    // The output goes with the status: what a reader is shown
+                    // must have come from the attempt they are being shown the
+                    // result of.
+                    slot.output = fresh.output;
                     slot.attempts = attempt;
                 }
                 if passed {
@@ -466,6 +473,7 @@ fn assemble(
             status: FileStatus::NotRun,
             duration_micros: 0,
             records: Vec::new(),
+            output: Vec::new(),
         }));
     }
     files.sort_by(|a, b| a.file.cmp(&b.file));

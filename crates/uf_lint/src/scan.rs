@@ -34,6 +34,13 @@ pub(crate) struct Line<'a> {
     code_end: usize,
     /// Brace nesting depth at the first byte of this line.
     pub depth_at_start: u32,
+    /// Whether this line begins inside a backtick template literal.
+    ///
+    /// A template does not respect line boundaries, so a rule asking whether a
+    /// match sits inside a string has to be told where the line started. The
+    /// scanner already carries this from line to line for its own sake; this
+    /// is the same fact, kept for the rules.
+    opens_in_template: bool,
 }
 
 impl<'a> Line<'a> {
@@ -50,6 +57,22 @@ impl<'a> Line<'a> {
     #[inline]
     pub fn code_offset(&self) -> usize {
         self.code_start
+    }
+
+    /// Whether the byte at `at` in [`Line::code`] stands inside a string.
+    ///
+    /// [`Line::code`] keeps string literals on purpose —
+    /// `uniflowed/no-npm-script-invocation` exists to read them — so a rule
+    /// about what the code *does* has to ask before it fires. `const message =
+    /// "no globalThis.fetch here"` overrides nothing, and `it("treats Object
+    /// as any non-null object", …)` annotates nothing.
+    ///
+    /// A line that began inside a template literal is inside one from its
+    /// first byte, which is why this is a method rather than a free function
+    /// over the text: the answer depends on where the line started.
+    #[inline]
+    pub fn in_string(&self, at: usize) -> bool {
+        search::in_string_from(self.code(), at, self.opens_in_template)
     }
 
     /// The trailing comment on this line, including its `//` or `/*` opener.
@@ -108,6 +131,7 @@ impl<'a> FileScan<'a> {
 
         for raw in split_lines(source) {
             let text = raw.strip_suffix('\r').unwrap_or(raw);
+            let opened_in_template = carry == Carry::Template;
             let scanned = scan_line(text, carry);
             carry = scanned.carry;
 
@@ -117,6 +141,7 @@ impl<'a> FileScan<'a> {
                 code_start: scanned.code_start,
                 code_end: scanned.code_end,
                 depth_at_start: depth,
+                opens_in_template: opened_in_template,
             };
             depth = depth.saturating_add_signed(scanned.brace_delta);
 

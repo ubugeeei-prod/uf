@@ -17,10 +17,12 @@ pub(crate) fn run_fetch_no_global_override(
 
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
-        let at = code
-            .find("globalThis.fetch")
-            .or_else(|| code.find("window.fetch"))
-            .or_else(|| code.find("global.fetch"));
+        // Not in a string: a sentence that names `globalThis.fetch` overrides
+        // nothing, and this package's own tests are full of such sentences.
+        let at = ["globalThis.fetch", "window.fetch", "global.fetch"]
+            .into_iter()
+            .filter_map(|needle| code.find(needle))
+            .find(|&at| !line.in_string(at));
         if let Some(at) = at {
             push_in_code(
                 diagnostics,

@@ -541,6 +541,39 @@ The default Rust toolbox is centralized in `uf_infra`:
 - `SmallVec` for short diagnostic/export vectors
 - `CompactString` for small identifiers and module specifiers
 
+## Libraries, Measured
+
+The `@uniflowed/*` packages are Flow, not Rust, and each one names a library it
+is meant to replace. A replacement that is slower than what it replaces is a
+worse version of it, so the ones that have been measured are recorded here with
+the command that produced the number. The ones that have not are not listed —
+an unmeasured claim is the thing this section exists to avoid.
+
+### @uniflowed/effect against Effect-TS
+
+Effect-TS 3.22.1, node 25.8.1 on an M-series Mac, each library in its own
+process so Effect-TS runs untransformed, build-and-run per iteration, best of
+five rounds, 200k iterations (20k for `all`), median of three runs:
+
+| Workload | Effect-TS | `@uniflowed/effect` | |
+| --- | --- | --- | --- |
+| `map` → `flatMap` chain, `runSync` | 1,303,165/s | **8,496,929/s** | 6.5x |
+| four-step generator, `runSync` | 745,988/s | **1,316,405/s** | 1.8x |
+| `fail` + `catchAll`, `runSync` | 1,337,061/s | **9,139,358/s** | 6.8x |
+| `all` of twenty, `runPromise` | **432,608/s** | 396,232/s | 0.92x |
+
+The benchmark found a bug rather than confirming a design. The first `yield*`
+implementation gave every effect its own `[Symbol.iterator]` closure, which
+makes each one escape at construction and stops V8 proving the intermediate
+effects in a chain are dead: 1.07M/s on the first row, *losing* to Effect-TS.
+One shared function with an annotated `this` took the same workload to 8.4M/s
+with nothing else changed. Both numbers are in the source beside
+`iterateEffect`, because the fast version looks arbitrary without the slow one.
+
+`all` is the row that is slower, and it is slower for a reason worth keeping:
+it opens a child fiber per entrant so a failure can interrupt its siblings, and
+Effect-TS's unbounded `all` does less bookkeeping per element.
+
 ## Testing Strategy
 
 Every crate should keep focused unit tests close to the behavior it owns. CLI

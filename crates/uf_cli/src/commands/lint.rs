@@ -10,7 +10,7 @@ use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
 };
 
-use crate::support::{plural, problem_summary, unreadable_lines};
+use crate::support::{plural, problem_summary, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
 
 /// How many skipped rules are named before the list is summarised.
@@ -110,32 +110,6 @@ pub(crate) fn run_lint(
     }
     let report = lint_sources(&sources, &resolved.config)?;
     Ok((report, sources, unreadable))
-}
-
-/// Whether `path` is one of the files the patterns asked for.
-///
-/// Substring rather than glob, and the same rule `uf test` uses for its own
-/// path arguments: `uf lint packages/ui` is the ordinary way to ask, and a
-/// reader who writes it should not have to learn a second matching language
-/// to find out why it read nothing.
-fn selects(patterns: &[String], path: &str) -> bool {
-    patterns.is_empty()
-        || patterns
-            .iter()
-            .any(|pattern| path.contains(pattern.as_str()))
-}
-
-/// `a`, `b` and `c`, quoted, for a message about patterns that matched nothing.
-fn quoted_list(patterns: &[String]) -> String {
-    let quoted: Vec<String> = patterns
-        .iter()
-        .map(|pattern| format!("`{pattern}`"))
-        .collect();
-    match quoted.split_last() {
-        None => String::new(),
-        Some((last, [])) => last.clone(),
-        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-    }
 }
 
 pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {

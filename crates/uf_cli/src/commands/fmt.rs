@@ -10,17 +10,28 @@ use uf_fmt::format_source;
 use uf_project::scan_source_files;
 use uf_term::Status;
 
-use crate::support::{plural, unreadable_lines};
+use crate::support::{plural, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
 
-pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
+pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) -> Result<()> {
     let resolved = load_config(cwd)?;
     // Discovery returns `package.json` too, because the linter reads it. The
     // formatter must not touch it: it is a Flow formatter, and running it
     // over JSON inserts a statement terminator and leaves the file unparseable.
-    let scan = scan_source_files(&resolved.root, &resolved.config)?;
+    let mut scan = scan_source_files(&resolved.root, &resolved.config)?;
+    // Narrowed before anything is reported: a file outside what was asked
+    // about must not fail the run for being unreadable either.
+    scan.unreadable
+        .retain(|failure| selects(paths, &failure.relative_path));
     let unreadable = unreadable_lines(&scan.unreadable);
-    let discovered = scan.files;
+    let discovered = scan
+        .files
+        .into_iter()
+        .filter(|file| selects(paths, &file.relative_path))
+        .collect::<Vec<_>>();
+    if discovered.is_empty() && !paths.is_empty() && unreadable.is_empty() {
+        bail!("no file matched {}", quoted_list(paths));
+    }
     // Two piles, because they go to two different formatters. uf prints Flow
     // from the official parser's syntax tree; JSON, CSS and TypeScript go to a
     // formatter that understands them, which uf runs rather than writes.
@@ -174,7 +185,14 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         bail!("{failure}");
     }
     if failing {
-        bail!("{} need formatting", plural(changed.len(), "file"));
+        // The verb agrees with the count, the way the line above it does:
+        // "1 file need formatting" sits directly under "1 file of 26 needs
+        // formatting" and reads as a typo in the tool.
+        bail!(
+            "{} {} formatting",
+            plural(changed.len(), "file"),
+            if changed.len() == 1 { "needs" } else { "need" }
+        );
     }
     Ok(())
 }

@@ -11,9 +11,11 @@
     "directory": "packages/effect"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./schedule": "./schedule.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "schedule.js"
   ]
 }

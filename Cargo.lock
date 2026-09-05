@@ -3311,18 +3311,22 @@ dependencies = [
 name = "uf_check"
 version = "0.0.0-alpha.3"
 dependencies = [
+ "bumpalo",
  "compact_str",
  "dupe",
  "flow_aloc",
  "flow_common",
  "flow_common_errors",
+ "flow_data_structure_wrapper",
  "flow_flowlib",
+ "flow_lazy",
  "flow_lint_settings",
  "flow_parser",
  "flow_parser_utils",
  "flow_parsing",
  "flow_type_sig",
  "flow_typing",
+ "flow_typing_builtins",
  "flow_typing_context",
  "flow_typing_errors",
  "flow_typing_type",

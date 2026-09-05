@@ -141,10 +141,35 @@ Installs dependencies with the host's package manager.
 
 Pins the project to `node`, `bun` or `deno`, writing the choice into the config.
 
-### uf env
+### uf env doctor
 
-Inspects the resolved environment: which hosts were found, which was chosen and
-why.
+Reports which JavaScript hosts are installed on this machine, which one uf would
+use, and why.
+
+### uf env use PROFILE
+
+Sets the active `.env` profile.
+
+### uf env install
+
+Installs the runtimes and package managers `uf.config.js` declares, into a store
+shared by every repository on the machine, and links them into this one. Nothing
+is installed globally and `PATH` is not changed. See
+[Environments](/guide/env).
+
+### uf env list
+
+Lists what the project declares beside what the store holds.
+
+### uf env exec COMMAND
+
+Runs a command with this project's toolchain in front of `PATH`, and exits with
+whatever the command exited with.
+
+### uf env gc
+
+Deletes store entries no repository is using. `--dry-run` says what would go and
+removes nothing.
 
 ### uf upgrade
 

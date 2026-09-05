@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/query",
   "version": "0.0.0-alpha.3",
-  "description": "A query cache with de-duplication and stale-while-revalidate, part of the Unified Toolchain for Flow.",
+  "description": "A query cache with de-duplication, structural sharing and stale-while-revalidate, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,11 +11,21 @@
     "directory": "packages/query"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./cache": "./cache.js",
+    "./client": "./client.js",
+    "./infinite": "./infinite.js",
+    "./key": "./key.js",
+    "./mutation": "./mutation.js",
+    "./observer": "./observer.js",
+    "./presence": "./presence.js",
+    "./query": "./query.js",
+    "./react": "./react.js",
+    "./retry": "./retry.js",
+    "./structural": "./structural.js"
   },
   "files": [
-    "index.js",
-    "internal"
+    "*.js"
   ],
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.3",

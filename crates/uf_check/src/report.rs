@@ -57,12 +57,17 @@ pub struct CheckReport {
     pub files_skipped: usize,
     /// Module specifiers that resolved to nothing typed, sorted and de-duped.
     ///
-    /// Every file is checked against Flow's standard library, but not yet
-    /// against the other files in the project: `uf` does not run Flow's merge
-    /// service, so an import of a project module has no signature to check
-    /// against. Flow's answer to a dependency it cannot type is to type the
-    /// import as `any` and carry on, which is what happens here — and this list
-    /// is how a caller says so out loud instead of letting the hole be silent.
+    /// A relative import of another file in the batch is checked against that
+    /// file's signature, and a package Flow's library definitions declare is
+    /// checked against the declaration. What is left over is everything else:
+    /// a package name that resolves through `node_modules` or a workspace,
+    /// which the checker is not handed; a relative path to a file this run did
+    /// not collect; and a file that cannot contribute a signature because it
+    /// did not parse or said `@noflow`.
+    ///
+    /// Flow's answer to a dependency it cannot type is to type the import as
+    /// `any` and carry on, which is what happens here — and this list is how a
+    /// caller says so out loud instead of letting the hole be silent.
     pub untyped_modules: Vec<CompactString>,
     /// What the shared builtin environment cost.
     pub builtins: BuiltinsTiming,

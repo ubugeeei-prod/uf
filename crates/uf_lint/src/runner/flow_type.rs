@@ -34,6 +34,11 @@ pub(crate) fn run_flow_unclear_type(
         let code = line.code();
         for (needle, message) in UNCLEAR_TYPES {
             for at in find_words(code, needle) {
+                // A sentence is not an annotation: `it("treats Object as any
+                // non-null object", …)` names no type.
+                if line.in_string(at) {
+                    continue;
+                }
                 // `Object.keys(x)`, `x.any`, and `new Function(src)` are value
                 // positions, not type annotations.
                 if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
@@ -63,6 +68,9 @@ pub(crate) fn run_flow_deprecated_type(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         for at in find_words(code, "bool") {
+            if line.in_string(at) {
+                continue;
+            }
             if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
                 continue;
             }

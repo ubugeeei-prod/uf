@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/mock",
   "version": "0.0.0-alpha.3",
-  "description": "Flow declarations for @uniflowed/mock, part of the Unified Toolchain for Flow.",
+  "description": "MSW-compatible request mocking over the platform's own fetch, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,10 +11,14 @@
     "directory": "packages/mock"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./handler": "./handler.js",
+    "./registry": "./registry.js",
+    "./response": "./response.js"
   },
   "files": [
-    "index.js"
+    "*.js",
+    "internal"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.3"

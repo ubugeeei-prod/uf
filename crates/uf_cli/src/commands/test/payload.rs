@@ -6,7 +6,9 @@
 //! integration tests assert.
 
 use serde_json::{Value, json};
-use uf_test::{FileReport, FileStatus, SkipReason, TestRecord, TestRunReport, TestStatus};
+use uf_test::{
+    FileReport, FileStatus, OutputChunk, SkipReason, TestRecord, TestRunReport, TestStatus,
+};
 
 /// Build the document.
 pub(super) fn test_payload(report: &TestRunReport) -> Value {
@@ -43,7 +45,27 @@ fn file_payload(file: &FileReport) -> Value {
         "reason": file.status.describe(),
         "durationMicros": file.duration_micros,
         "tests": file.records.len(),
+        "output": output_payload(&file.output),
     })
+}
+
+/// What was printed, exactly as it was printed.
+///
+/// Unabridged, unlike the terminal report: the terminal has a screen to fit
+/// and a reader to keep, and a program reading this has neither. The text is
+/// whatever the test wrote, control characters included — JSON escaping is
+/// what makes that safe to carry, so a consumer that renders it to a terminal
+/// is the one that has to decide what to do with an escape sequence.
+fn output_payload(chunks: &[OutputChunk]) -> Vec<Value> {
+    chunks
+        .iter()
+        .map(|chunk| {
+            json!({
+                "stream": chunk.stream.as_str(),
+                "text": chunk.text,
+            })
+        })
+        .collect()
 }
 
 fn status_name(status: &FileStatus) -> &'static str {
@@ -65,6 +87,7 @@ fn record_payload(record: &TestRecord) -> Value {
         "attempts": record.attempts,
         "durationMicros": record.duration_micros,
         "status": test_status_name(&record.status),
+        "output": output_payload(&record.output),
         "failures": record.status.failures().iter().map(|failure| json!({
             "message": failure.message,
             "line": failure.line,
