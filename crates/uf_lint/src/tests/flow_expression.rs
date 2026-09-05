@@ -65,3 +65,15 @@ fn unnecessary_optional_chain_accepts_chains_on_nullable_bases() {
 
     assert!(diagnostics.is_empty());
 }
+
+#[test]
+fn unnecessary_optional_chain_ignores_a_string_that_contains_one() {
+    // `"this?.foo"` is text. A quick fix that rewrote it would change what the
+    // program prints, which is why the fix was not offered until this was.
+    let diagnostics = lint_js(
+        "flow/unnecessary-optional-chain",
+        "// @flow\nconst s = \"this?.foo\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}

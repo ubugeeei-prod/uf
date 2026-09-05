@@ -95,7 +95,11 @@ pub(crate) fn run_flow_unnecessary_optional_chain(
     // literally `this` can never be nullish.
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
-        for at in find_all(code, "this?.").filter(|&at| starts_word(code, at)) {
+        // Not inside a string: `"this?.foo"` is text, and a quick fix that
+        // rewrote it would change what the program prints.
+        for at in
+            find_all(code, "this?.").filter(|&at| starts_word(code, at) && !line.in_string(at))
+        {
             push_in_code(
                 diagnostics,
                 scan,
