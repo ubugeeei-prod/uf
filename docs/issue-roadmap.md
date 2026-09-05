@@ -141,7 +141,7 @@
 - [x] Start story, mock, browser, and VRT contracts.
 - [ ] Implement `@uniflowed/story` component story runner.
 - [x] Start `@uniflowed/vrt` native visual regression contracts.
-- [ ] Implement `@uniflowed/mock` MSW-compatible request mocking.
+- [x] Implement `@uniflowed/mock` MSW-compatible request mocking, over `fetch`.
 - [ ] Implement `@uniflowed/browser` Playwright-compatible browser automation.
 - [ ] Add visual regression baselines, diffing, and update flows.
 - [x] Add `uf prepare` command surface for lint-staged-compatible checks and code generation.
