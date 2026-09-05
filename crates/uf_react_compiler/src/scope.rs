@@ -278,7 +278,48 @@ fn classify(source: &str, tokens: &[Token], index: usize) -> ScopeKind {
     {
         return ScopeKind::Function;
     }
+    // A container the JSX text runs into: `<p>hello {name}</p>`. The brace
+    // follows a word rather than the `>` that ended the opening tag, and it
+    // still nests nothing — so a hook called there was reported as being
+    // called somewhere conditional, which a JSX container never is.
+    if !starts_statement(tokens, index) && !opens_a_block_after(source, tokens, index - 1) {
+        return ScopeKind::Jsx;
+    }
     ScopeKind::Block
+}
+
+/// Whether a `{` following the token at `at` can open a block.
+///
+/// Deliberately answered from what a block may follow rather than from what
+/// JSX looks like, because the first list is short and closed: `else`, `do`,
+/// `try` and `finally`, the `)` of an `if`, `for`, `while`, `switch` or
+/// `catch`, and a statement boundary. A brace anywhere else is an expression
+/// — a JSX container or an object literal — and neither conditions what is
+/// inside it.
+///
+/// Conservative where it cannot tell: an unrecognised token answers yes, so a
+/// brace uf cannot read keeps raising hook depth instead of quietly lowering
+/// it. That direction matters, because the wrong answer here would hide a
+/// hook that really is called conditionally.
+fn opens_a_block_after(source: &str, tokens: &[Token], at: usize) -> bool {
+    match tokens[at].kind {
+        TokenKind::Ident => {
+            let word = tokens[at].text(source);
+            matches!(word, "else" | "do" | "try" | "finally")
+                // `class Name {` is a body, and it is named by the word in
+                // front of the name rather than by the brace.
+                || at
+                    .checked_sub(1)
+                    .and_then(|before| ident_at(source, tokens, before))
+                    .is_some_and(|before| matches!(before, "class" | "function"))
+        }
+        // Text and punctuation a block can never follow. `{` after a comma is
+        // an object literal in an argument list or an array, which is an
+        // expression as much as a container is.
+        TokenKind::String | TokenKind::Template | TokenKind::Number => false,
+        TokenKind::Punct(b',' | b'!' | b'?' | b'.') => false,
+        _ => true,
+    }
 }
 
 /// Whether the parameter list opening at `open` belongs to a function

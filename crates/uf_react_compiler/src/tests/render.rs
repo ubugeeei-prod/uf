@@ -101,6 +101,27 @@ fn a_label_before_a_write_to_module_state_is_still_a_write() {
 }
 
 #[test]
+fn a_jsx_attribute_named_after_an_import_is_not_a_write() {
+    // `render={…}` in a tag reads backwards exactly like `render = …`, and
+    // `render` is an imported name here. It is an attribute.
+    accepts(
+        "import { Controller, render } from \"./ui.js\";\ncomponent Page() {\n  return <Controller name=\"a\" control={null} render={({ field }) => <input {...field} />} />;\n}\n",
+    );
+}
+
+#[test]
+fn a_write_after_a_comparison_is_still_a_write() {
+    // The scan that steps over a tag must not step over this: `<` here is a
+    // comparison, written with a space after it, and `total` is module state.
+    assert_eq!(
+        findings(
+            "let total = 0;\ncomponent Page(limit: number) {\n  if (total < limit) total = limit;\n  return total;\n}\n"
+        ),
+        [Finding::ModuleBindingAssigned]
+    );
+}
+
+#[test]
 fn writing_to_a_module_binding_from_an_event_handler_is_accepted() {
     accepts(
         "let renders = 0;\ncomponent Page() {\n  const onClick = () => { renders = renders + 1; };\n  return onClick;\n}\n",
