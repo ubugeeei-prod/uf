@@ -39,4 +39,5 @@ server
 stylex
 test
 ui
+validator
 vite
