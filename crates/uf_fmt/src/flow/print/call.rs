@@ -334,6 +334,11 @@ impl<'a> Printer<'a> {
 
         // A template literal on its own line, `require("x")`, AMD `define`,
         // and test calls keep their arguments as they are.
+        //
+        // `require` and no more: Prettier lets `require.resolve("…")`,
+        // `require.resolve.paths("…")` and `import.meta.resolve("…")` break
+        // their argument like any other call, and only the bare `require`
+        // stays on one line past the print width.
         let is_template_on_own_line = arguments.len() == 1
             && self.is_template_on_its_own_line(argument_expression(&arguments[0]));
         let parent_expression = match self.parent() {
@@ -341,7 +346,6 @@ impl<'a> Printer<'a> {
             _ => None,
         };
         if is_template_on_own_line
-            || self.is_require_like_call(call)
             || self.is_commonjs_or_amd_call(call)
             || (!optional && is_test_call(expression, parent_expression))
         {
@@ -532,26 +536,6 @@ impl<'a> Printer<'a> {
             && !self
                 .text
                 .has_newline(self.text.span(expression.loc()).start, true)
-    }
-
-    /// `require("x")`, `require.resolve("x")`, `import.meta.resolve("x")`
-    /// with a single string argument.
-    fn is_require_like_call(&self, call: &'a expression::Call<Loc, Loc>) -> bool {
-        let mut name = String::new();
-        if !callee_name(&call.callee, &mut name) {
-            return false;
-        }
-        if !matches!(
-            name.as_str(),
-            "require" | "require.resolve" | "require.resolve.paths" | "import.meta.resolve"
-        ) {
-            return false;
-        }
-        let arguments = &call.arguments.arguments;
-        arguments.len() == 1
-            && !is_spread(&arguments[0])
-            && is_string_literal(argument_expression(&arguments[0]))
-            && !self.has_comment(argument_node(&arguments[0]).key())
     }
 
     fn is_commonjs_or_amd_call(&self, call: &'a expression::Call<Loc, Loc>) -> bool {
