@@ -5,9 +5,9 @@ use uf_flow::Loc;
 use uf_flow::ast::{class, expression, function, statement, types};
 
 use super::Printer;
-use super::statement::EmptyBlock;
 use super::assignment::Rhs;
 use super::parens::is_member;
+use super::statement::EmptyBlock;
 use crate::doc::{Doc, HARDLINE, LINE, SOFTLINE};
 use crate::flow::comments::{Marker, Placement};
 use crate::flow::node::{Class, NodeKey, NodeRef};

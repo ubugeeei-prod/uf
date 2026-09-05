@@ -11,10 +11,10 @@ use uf_flow::Loc;
 use uf_flow::ast::{expression, function, pattern, statement, types};
 
 use super::Printer;
-use super::statement::EmptyBlock;
 use super::assignment::{Layout, PrintArgs};
 use super::call::{is_test_call, parameter_count};
 use super::parens::{is_binaryish, is_call_like, is_jsx, starts_with_no_lookahead_token};
+use super::statement::EmptyBlock;
 use crate::doc::{Doc, HARDLINE, LINE, SOFTLINE, will_break};
 use crate::flow::comments::Marker;
 use crate::flow::node::{Expression, Function, NodeKey, NodeRef};
