@@ -59,7 +59,45 @@ const FUNCTIONS = ["getComputedStyle", "requestAnimationFrame", "cancelAnimation
  * with no setter, and assigning to it throws. A test does not need it
  * replaced — it needs it to exist.
  */
-const OBJECTS = ["location", "history", "localStorage", "sessionStorage", "navigator"];
+const OBJECTS = ["location", "history", "navigator"];
+
+/**
+ * Storage, which is installed where the host has none *or has one that does
+ * not work*.
+ *
+ * Node defines `globalThis.localStorage` and leaves it empty unless the
+ * process was started with `--localstorage-file`:
+ *
+ * ```text
+ * typeof globalThis.localStorage        // "object"
+ * globalThis.localStorage.setItem       // undefined
+ * ```
+ *
+ * So "the host already has one" is the wrong question, and asking it left
+ * every `useStorage` test writing into an object with no `setItem` —
+ * `globalThis.localStorage.setItem is not a function`, from a line that had
+ * nothing to do with the hook under test. The question is whether it works.
+ */
+const STORAGE = ["localStorage", "sessionStorage"];
+
+/**
+ * Whether a value is a Storage a test can actually use.
+ *
+ * The four methods, not one: a half-implemented shim that has `getItem` and
+ * no `removeItem` fails later and further away than one that is absent.
+ */
+function isUsableStorage(value: mixed): boolean {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+  const storage: { [string]: mixed } = value as any;
+  return (
+    typeof storage.getItem === "function" &&
+    typeof storage.setItem === "function" &&
+    typeof storage.removeItem === "function" &&
+    typeof storage.clear === "function"
+  );
+}
 
 let installed: mixed = null;
 
@@ -100,6 +138,15 @@ export function installDom(): mixed {
   for (const name of OBJECTS) {
     const value = (win as any)[name];
     if (value !== undefined && globalThis[name] === undefined) {
+      define(name, value);
+    }
+  }
+  for (const name of STORAGE) {
+    if (isUsableStorage(globalThis[name])) {
+      continue;
+    }
+    const value = (win as any)[name];
+    if (isUsableStorage(value)) {
       define(name, value);
     }
   }
