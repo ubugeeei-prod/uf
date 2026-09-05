@@ -160,6 +160,16 @@ pub enum DocError {
         #[source]
         source: std::io::Error,
     },
+    /// The thread the work runs on could not be started, or did not finish.
+    ///
+    /// Separate from [`DocError::Write`] because nothing was being written:
+    /// reporting "failed to write /some/project" for a thread that would not
+    /// spawn sends whoever reads it to look at a disk that is fine.
+    #[error("the documentation worker {reason}")]
+    Worker {
+        /// What happened to it, as a phrase that finishes the sentence.
+        reason: &'static str,
+    },
 }
 
 /// Generate a documentation report from the project source files.
@@ -180,17 +190,11 @@ pub fn generate(root: &Utf8Path, config: &UniflowedConfig) -> Result<DocReport, 
             .name("uf-doc".into())
             .stack_size(uf_flow::PARSE_STACK_BYTES)
             .spawn_scoped(scope, || document(scan))
-            .map_err(|source| DocError::Write {
-                path: root.to_path_buf(),
-                source,
+            .map_err(|_| DocError::Worker {
+                reason: "could not be started",
             })?
             .join()
-            .unwrap_or_else(|_| {
-                Err(DocError::Write {
-                    path: root.to_path_buf(),
-                    source: std::io::Error::other("the documentation worker panicked"),
-                })
-            })
+            .unwrap_or(Err(DocError::Worker { reason: "panicked" }))
     })
 }
 
@@ -940,14 +944,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(dir.path()).unwrap();
         fs::create_dir(root.join("src")).unwrap();
-        // Two chain levels per link — a member and a call — and one more for
-        // the `=`, so this is the deepest source the parser accepts.
-        let chain = ".f()".repeat(uf_flow::MAX_CHAIN_DEPTH / 2 - 1);
-        fs::write(
-            root.join("src/deep.js"),
-            format!("// @flow\n\n/** Deep. */\nexport const deep = a{chain};\n"),
-        )
-        .unwrap();
+        // Two chain levels per link — a member and a call — so `.f()` alone
+        // can only land on an even count. The trailing `.g` is the odd level
+        // that puts this exactly on the ceiling rather than one under it.
+        let chain = format!(
+            "{}{}",
+            ".f()".repeat(uf_flow::MAX_CHAIN_DEPTH / 2 - 1),
+            ".g"
+        );
+        let source = format!("// @flow\n\n/** Deep. */\nexport const deep = a{chain};\n");
+        assert_eq!(
+            uf_flow::depths(&source).chain,
+            uf_flow::MAX_CHAIN_DEPTH,
+            "the fixture has to sit on the ceiling, not near it"
+        );
+        fs::write(root.join("src/deep.js"), source).unwrap();
 
         let report = generate(root, &UniflowedConfig::default()).unwrap();
 
