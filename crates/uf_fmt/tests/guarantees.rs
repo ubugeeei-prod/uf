@@ -110,6 +110,62 @@ fn shipped_sources_are_formatted_idempotently() {
 }
 
 #[test]
+fn a_guard_after_a_comment_terminates_the_statement_above_instead() {
+    // Without semicolons, `;(…)` written after a comment is read back as the
+    // terminator of the statement *above* the comment, and the comment lands
+    // inside that statement — which re-indents it, so the output depends on
+    // how many times the formatter has run. The `;` goes on the statement
+    // above instead, which is where `semi: true` would have put it.
+    let mut config = FmtConfig::default();
+    config.semicolons = false;
+    let source = concat!(
+        "// @flow\n",
+        "function f(items, body) {\n",
+        "  const landing = moveTo(items, false);\n",
+        "  // A comment between them.\n",
+        "  (landing ?? body).focus();\n",
+        "}\n",
+    );
+
+    let once = format_source(source, &config).expect("formats").output;
+    let twice = format_source(&once, &config).expect("reformats").output;
+
+    similar_asserts::assert_eq!(once, twice);
+    assert!(
+        once.contains("const landing = moveTo(items, false);"),
+        "the statement above carries the guard:\n{once}"
+    );
+    assert!(
+        once.contains("\n  (landing ?? body).focus()"),
+        "and the statement below needs none:\n{once}"
+    );
+}
+
+#[test]
+fn a_guard_with_no_comment_in_front_of_it_stays_where_it_was() {
+    // Nothing is swallowed when the guard has no comment to swallow, and the
+    // leading `;` is the spelling Prettier produces.
+    let mut config = FmtConfig::default();
+    config.semicolons = false;
+    let source = concat!(
+        "// @flow\n",
+        "function f(items, body) {\n",
+        "  const landing = moveTo(items, false);\n",
+        "  (landing ?? body).focus();\n",
+        "}\n",
+    );
+
+    let once = format_source(source, &config).expect("formats").output;
+    let twice = format_source(&once, &config).expect("reformats").output;
+
+    similar_asserts::assert_eq!(once, twice);
+    assert!(
+        once.contains("\n  ;(landing ?? body).focus()"),
+        "the guard leads the statement that needs it:\n{once}"
+    );
+}
+
+#[test]
 fn shipped_sources_keep_their_tree_and_comments() {
     for (label, source) in shipped_sources().into_iter().chain(template_sources()) {
         let output = format_source(&source, &FmtConfig::default())
