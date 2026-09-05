@@ -1318,3 +1318,45 @@ fn declared_uniflowed_dependencies(manifest: &Value) -> BTreeSet<String> {
     }
     declared
 }
+
+/// A package uf loads into the host on another's behalf is a dependency of
+/// the package that needs it.
+///
+/// [`every_uniflowed_import_is_declared`] reads `import` statements, and this
+/// dependency is not written as one. `uf test` starts the Capability JS Host
+/// with `--import @uniflowed/host/register` (`--preload` on Bun): the loader
+/// reaches the process as a command-line argument that
+/// `crates/uf_cli/src/commands/test.rs` builds, resolved out of the project's
+/// own `node_modules`, and no module under `packages/test` mentions it.
+///
+/// So nothing tied the runner to the loader, and a project that installed
+/// `@uniflowed/test` got a runner that could not run:
+///
+/// ```text
+/// $ uf create app react demo && cd demo && uf install
+/// $ uf test
+/// error: `@uniflowed/host` is not installed for …/demo; add it to the
+/// project's dependencies and run the package manager (`uf install`)
+/// ```
+///
+/// The template is not the place to fix that. A project depends on the test
+/// runner; which loader that runner needs is the runner's business, and
+/// every project that ever declares `@uniflowed/test` would otherwise have to
+/// know to name it too.
+#[test]
+fn a_loader_uf_injects_is_declared_by_the_package_that_needs_it() {
+    // Package -> what `uf` loads into the host for it. One entry today, from
+    // the single `installed_package` call in `commands/test.rs` that is not
+    // the package the user asked for. Add a line when a command grows another.
+    const INJECTED: &[(&str, &str)] = &[("test", "@uniflowed/host")];
+
+    for (package, loader) in INJECTED {
+        let relative = Utf8PathBuf::from(package).join("package.json");
+        let declared = declared_uniflowed_dependencies(&manifest(&relative));
+        assert!(
+            declared.contains(*loader),
+            "uf loads {loader} into the host for @uniflowed/{package}, which does not \
+             declare it — a project that installs the package does not get the loader"
+        );
+    }
+}

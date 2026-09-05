@@ -79,6 +79,12 @@ fn creates_flow_library_template() {
 
     assert!(index.contains("opaque type UniflowedId"));
     assert!(!package.contains(r#""scripts""#));
+
+    // The runner, not the loader it is started with. `@uniflowed/test`
+    // depends on `@uniflowed/host`, so naming the loader here too would put a
+    // package a scaffolded library never imports into its manifest.
+    assert!(package.contains(r#""@uniflowed/test""#));
+    assert!(!package.contains("@uniflowed/host"));
 }
 
 #[test]
