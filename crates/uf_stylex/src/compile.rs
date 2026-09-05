@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::condition::StyleCondition;
 use crate::error::StyleXError;
-use crate::parse::{Namespace, ParsedModule, parse_module};
+use crate::parse::{Declaration, Namespace, ParsedModule, ThemeCall, parse_module};
 use crate::sheet::{RulePriority, StyleRule, StyleSheet};
 
 /// Key the compiled object carries so a runtime can tell it apart from a plain
@@ -67,6 +67,13 @@ pub struct CompiledModule {
     pub sheet: StyleSheet,
     /// The namespaces, for `props` and for tests.
     pub styles: Vec<CompiledStyle>,
+    /// The `stylex.createTheme` results, one per call.
+    ///
+    /// Separate from [`CompiledModule::styles`] because merging a theme with a
+    /// style is meaningless: a theme's properties are custom properties, and it
+    /// is applied to an ancestor so that the rules *below* it resolve
+    /// differently. Merging the two lists would type-check and mean nothing.
+    pub themes: Vec<CompiledStyle>,
 }
 
 /// Compile one module: extract, name, order, and rewrite.
@@ -83,6 +90,7 @@ pub fn compile_module(source: &str) -> Result<CompiledModule, StyleXError> {
 fn assemble(source: &str, parsed: &ParsedModule) -> CompiledModule {
     let mut sheet = StyleSheet::new();
     let mut styles = Vec::new();
+    let mut themes = Vec::new();
     // `(start, end, replacement)`, collected in source order.
     let mut splices: Vec<(usize, usize, String)> = Vec::new();
 
@@ -115,6 +123,14 @@ fn assemble(source: &str, parsed: &ParsedModule) -> CompiledModule {
         styles.extend(compiled);
     }
 
+    for call in &parsed.themes {
+        let compiled = compile_theme(call, &mut sheet);
+        let mut literal = String::new();
+        push_namespace_object(&mut literal, &compiled);
+        splices.push((call.start, call.end, literal));
+        themes.push(compiled);
+    }
+
     splices.sort_by_key(|(start, _, _)| *start);
     let changed = !splices.is_empty();
     let mut code = String::with_capacity(source.len());
@@ -134,20 +150,47 @@ fn assemble(source: &str, parsed: &ParsedModule) -> CompiledModule {
         changed,
         sheet,
         styles,
+        themes,
     }
 }
 
 /// Compile one namespace, adding its rules to the sheet.
+fn compile_namespace(namespace: &Namespace, sheet: &mut StyleSheet) -> CompiledStyle {
+    CompiledStyle {
+        name: namespace.name.clone(),
+        properties: compile_declarations(&namespace.name, &namespace.declarations, sheet),
+    }
+}
+
+/// Compile one `stylex.createTheme` call, adding its rules to the sheet.
+///
+/// The hash namespace is the *variables* namespace being themed rather than the
+/// binding the theme was assigned to. Two modules that override the same token
+/// with the same value therefore produce the same class and one rule — which is
+/// the same atomic-CSS promise every other rule makes, applied to the one place
+/// a project is most likely to repeat itself.
+fn compile_theme(call: &ThemeCall, sheet: &mut StyleSheet) -> CompiledStyle {
+    CompiledStyle {
+        name: call.namespace.clone(),
+        properties: compile_declarations(&call.namespace, &call.overrides, sheet),
+    }
+}
+
+/// Name, order and emit one list of declarations.
 ///
 /// A key written twice keeps the last value, which is what the JavaScript
 /// object literal it was read from would have done. The rule for the dead
 /// declaration is never emitted, so a shadowed value costs no bytes.
-fn compile_namespace(namespace: &Namespace, sheet: &mut StyleSheet) -> CompiledStyle {
+fn compile_declarations(
+    hashed_as: &str,
+    declarations: &[Declaration],
+    sheet: &mut StyleSheet,
+) -> Vec<CompiledProperty> {
     let mut building: Vec<Building> = Vec::new();
-    for declaration in &namespace.declarations {
+    for declaration in declarations {
         let value = declaration.value.to_css(&declaration.property);
         let class = crate::class::class_name(
-            &namespace.name,
+            hashed_as,
             &declaration.property,
             &declaration.condition,
             &value,
@@ -194,10 +237,7 @@ fn compile_namespace(namespace: &Namespace, sheet: &mut StyleSheet) -> CompiledS
         properties.push(held.property);
     }
 
-    CompiledStyle {
-        name: namespace.name.clone(),
-        properties,
-    }
+    properties
 }
 
 /// A property under construction, with the rule for each of its states held
@@ -234,22 +274,39 @@ fn literal_for(styles: &[CompiledStyle]) -> String {
             out.push(',');
         }
         push_string(&mut out, &style.name);
-        out.push_str(":{");
-        push_string(&mut out, COMPILED_MARKER);
-        out.push_str(":true");
-        for property in &style.properties {
-            out.push(',');
-            push_string(&mut out, &property.key);
-            out.push(':');
-            push_classes(&mut out, property);
-        }
-        out.push('}');
+        out.push(':');
+        push_namespace_object(&mut out, style);
     }
     out.push('}');
     out
 }
 
+/// One compiled namespace, as the marked object the runtime merges.
+///
+/// A `stylex.create` call becomes a map of these, one per namespace; a
+/// `stylex.createTheme` call becomes exactly one, because a theme has no
+/// namespaces to name.
+fn push_namespace_object(out: &mut String, style: &CompiledStyle) {
+    out.push('{');
+    push_string(out, COMPILED_MARKER);
+    out.push_str(":true");
+    for property in &style.properties {
+        out.push(',');
+        push_string(out, &property.key);
+        out.push(':');
+        push_classes(out, property);
+    }
+    out.push('}');
+}
+
 /// One property's value: a bare class when it has one state, a map otherwise.
+///
+/// The map's entries are written in sheet order, and that order is part of the
+/// contract with `@uniflowed/stylex`: the runtime keeps *every* class of the
+/// property that wins the merge, in the order it reads them, so a `:hover`
+/// value survives beside its base value and lands in the class attribute after
+/// it. A runtime that kept only one of them would silently drop every
+/// conditional style in an application.
 fn push_classes(out: &mut String, property: &CompiledProperty) {
     match property.classes.as_slice() {
         [only] if only.condition == StyleCondition::Base => push_string(out, &only.class),

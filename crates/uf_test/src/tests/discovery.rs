@@ -128,6 +128,21 @@ fn an_unexpandable_form_is_recorded_by_name_rather_than_dropped() {
 }
 
 #[test]
+fn a_name_that_is_not_a_literal_is_recorded_rather_than_dropped() {
+    // `it(name, …)` inside a loop. Discovery cannot read the name, and
+    // dropping it left the file looking empty: `uf test` filtered it out
+    // entirely and reported "0 passed" for a file with tests in it, with an
+    // exit code of zero.
+    let source = "for (const name of ['a', 'b']) {\n  it(name, () => {});\n}\n";
+    let plan = discover_tests("a.test.js", source);
+
+    assert!(plan.cases.is_empty());
+    assert_eq!(plan.unsupported.len(), 1, "{:?}", plan.unsupported);
+    assert_eq!(plan.unsupported[0].call, "it");
+    assert_eq!(plan.unsupported[0].line, 2);
+}
+
+#[test]
 fn several_unexpandable_forms_are_all_recorded() {
     let source = "describe.concurrent('a', () => {});\ntest.failing('b', () => {});\n";
     let plan = discover_tests("a.test.js", source);

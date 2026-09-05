@@ -84,6 +84,22 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
             };
 
             let Some(name) = extract_first_string_arg(&source[args_from..]) else {
+                // A registration whose name is not a literal — `it(name, …)`
+                // inside a loop, a template with a substitution. Discovery
+                // cannot read it, and dropping it silently made the file look
+                // like it held no tests at all: the run reported "0 passed" and
+                // exited 0 for a file with tests in it. Recorded instead, so
+                // the file is still handed to a worker and the report says what
+                // could not be read.
+                if unsupported.len() < MAX_CASES_PER_FILE {
+                    let position = line_index.line_col(offset);
+                    unsupported.push(UnsupportedDeclaration {
+                        file: file.to_string(),
+                        call: call.to_compact_string(),
+                        line: position.line,
+                        column: position.column,
+                    });
+                }
                 continue;
             };
             if cases.len() >= MAX_CASES_PER_FILE {

@@ -129,6 +129,15 @@ fn ask_what_to_run() -> Asked {
     }
 }
 
+/// The exit code for "uf could not run the command at all".
+///
+/// Distinct from [`ExitCode::FAILURE`], which means the command ran and found
+/// a problem — a failing test, a lint error, a file that needs formatting. A
+/// script that wants to tell "uf is unhappy with your code" from "uf never
+/// started" has nothing else to look at, and both answering `1` made the two
+/// indistinguishable. See `docs/app/reference/cli/_uf.page.mdx`.
+const COULD_NOT_RUN: u8 = 2;
+
 /// Report an error raised before the output surface exists, i.e. while parsing
 /// arguments. clap renders its own help and version output.
 fn report_startup_error(error: &anyhow::Error) -> ExitCode {
@@ -140,7 +149,9 @@ fn report_startup_error(error: &anyhow::Error) -> ExitCode {
         ) {
             ExitCode::SUCCESS
         } else {
-            ExitCode::FAILURE
+            // An argument uf could not parse is the documented `2`: nothing
+            // ran, so there is no result to report a problem about.
+            ExitCode::from(COULD_NOT_RUN)
         };
     }
     let mut ui = Ui::new(ColorChoice::Auto, OutputMode::Human);

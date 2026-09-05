@@ -74,8 +74,17 @@ impl PropertyRank {
 /// The list is the unitless set every CSS engine agrees on; anything absent
 /// gets `px` appended, which is what StyleX does and what makes `padding: 8`
 /// mean what an author expects.
+///
+/// A custom property is the exception, and it is not in the list because it is
+/// not a fixed name: `--x` is substituted into whichever property uses it
+/// later, so uf cannot know whether `8` meant pixels and refuses to guess. That
+/// is the same answer [`StyleValue::to_css_raw`](crate::value::StyleValue::to_css_raw)
+/// gives a `stylex.defineVars` entry, and it has to be the same answer for a
+/// `stylex.createTheme` override — a theme that turned `8` into `8px` while the
+/// token it replaces stayed `8` would change the meaning of every rule that
+/// used it.
 pub fn is_unitless(property: &str) -> bool {
-    UNITLESS.binary_search(&property).is_ok()
+    property.starts_with("--") || UNITLESS.binary_search(&property).is_ok()
 }
 
 /// Turn an authored object key into the CSS property name it denotes.
@@ -275,6 +284,13 @@ mod tests {
             PropertyRank::of("margin-inline").weight() > PropertyRank::of("margin").weight(),
             "margin-inline writes two longhands, margin writes four"
         );
+    }
+
+    #[test]
+    fn a_custom_property_never_gets_a_unit_guessed_for_it() {
+        assert!(is_unitless("--x1abc"));
+        assert!(is_unitless("--brand-space"));
+        assert!(!is_unitless("padding-top"));
     }
 
     #[test]

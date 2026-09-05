@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/story",
   "version": "0.0.0-alpha.4",
-  "description": "Flow declarations for @uniflowed/story, part of the Unified Toolchain for Flow.",
+  "description": "Named, rendered states of a component that a person and a test can both reach, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,15 +11,23 @@
     "directory": "packages/story"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./collect": "./collect.js",
+    "./play": "./play.js",
+    "./render": "./render.js",
+    "./runner": "./runner.js",
+    "./story": "./story.js"
   },
   "files": [
-    "index.js"
+    "*.js"
   ],
   "dependencies": {
-    "@uniflowed/browser": "0.0.0-alpha.4",
-    "@uniflowed/core": "0.0.0-alpha.4",
     "@uniflowed/mock": "0.0.0-alpha.4",
-    "@uniflowed/react": "0.0.0-alpha.4"
+    "@uniflowed/react": "0.0.0-alpha.4",
+    "@uniflowed/react-testing": "0.0.0-alpha.4",
+    "@uniflowed/test": "0.0.0-alpha.4"
+  },
+  "peerDependencies": {
+    "react": ">=19"
   }
 }

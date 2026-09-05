@@ -11,10 +11,14 @@
     "directory": "packages/stylex"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./props": "./props.js",
+    "./preset": "./preset.js",
+    "./theme": "./theme.js",
+    "./tokens.stylex.js": "./tokens.stylex.js"
   },
   "files": [
-    "index.js"
+    "*.js"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.4"

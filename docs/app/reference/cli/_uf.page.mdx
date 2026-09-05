@@ -137,9 +137,11 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 
 Installs dependencies with the host's package manager.
 
-### uf use RUNTIME
+### uf use TOOLCHAIN
 
-Pins the project to `node`, `bun` or `deno`, writing the choice into the config.
+Switches the active uf toolchain: `uf use uf@0.1.0`. It takes a `uf@<version>`
+and nothing else — the host a project runs on is `host.runtime` in
+`uf.config.js`, not this command.
 
 ### uf env doctor
 
@@ -196,4 +198,12 @@ Publishes the package to the registry.
 | --- | --- |
 | `0` | Success; for `fmt --check`, nothing would change |
 | `1` | The command ran and reported a problem: a failing test, a lint error, a type error, a file that needs formatting |
-| `2` | uf could not run the command: a bad flag, a missing config, no usable host |
+| `2` | uf could not run the command at all: an argument it cannot parse |
+
+A missing `uf.config.js` is not one of these — a project without one gets the
+defaults, and every read-only command works. Two cases that *should* be `2` are
+`1` today, and the reason is written down rather than rounded off: a
+`uf.config.js` uf cannot parse, and a missing `@uniflowed/vite` or
+`@uniflowed/host`. Every command returns the same error type, so telling "could
+not run" from "ran and found a problem" needs a distinction the command layer
+does not make yet.

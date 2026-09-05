@@ -31,6 +31,6 @@ pub(crate) fn run_router_reserved_files(
         severity,
         1,
         1,
-        "reserved router file names are _uf.<layout|page|middleware>[.<native|ios|android|web|test>].js",
+        "reserved file names are _uf.<layout|page|middleware|route|story>[.<native|ios|android|web|test>].js",
     );
 }

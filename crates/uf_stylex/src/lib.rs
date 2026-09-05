@@ -2,7 +2,7 @@
 //! Compile-time StyleX for uniflowed.
 //!
 //! A `*.stylex.js` module declares styles, and a component calls
-//! `stylex.create({...})` to name them. This crate turns both into three
+//! `stylex.create({...})` to name them. This crate turns both into four
 //! things, at build time, so that nothing about styling is computed in a
 //! browser:
 //!
@@ -11,7 +11,28 @@
 //! * a **rewritten module**, where the `stylex.create` call has become a plain
 //!   object literal of class names;
 //! * CSS **custom properties** for every `stylex.defineVars` entry, with
-//!   `tokens.canvas` resolved to the `var(--…)` that names it.
+//!   `tokens.canvas` resolved to the `var(--…)` that names it;
+//! * a **theme** for every `stylex.createTheme(tokens, {...})` call — one class
+//!   per overridden token, so applying a theme to an ancestor changes what the
+//!   `var(--…)` below it resolve to.
+//!
+//! # What "preset" means, and why the crate is where it is decided
+//!
+//! `@uniflowed/stylex` ships a preset: a token set, a base layer of recipes
+//! over it, and shipped themes. None of that is Rust — it is ordinary StyleX,
+//! written in Flow, in `packages/stylex/`, and its header is where the choice
+//! of what belongs in uf is argued.
+//!
+//! What is Rust is the half a preset cannot exist without. A default token set
+//! whose values were resolved in a browser would be a runtime cost every
+//! application paid for a look it did not choose; a token a project cannot
+//! replace is not a default but a decoration. So this crate owns both ends:
+//! [`parse::DefineVarsCall`] turns the preset's tokens into custom properties
+//! at build time, and [`parse::ThemeCall`] turns a project's override of them
+//! into classes at build time. `createTheme` is the reason the preset is a
+//! default rather than a lock-in, and it is compiled for the same reason
+//! everything else here is — a token the build cannot inline is a token that
+//! costs bytes and a frame.
 //!
 //! # The two properties everything else rests on
 //!
@@ -79,7 +100,8 @@ pub use crate::error::{
 };
 pub use crate::parse::bindings::{STYLEX_PACKAGE, VARIABLES_SUFFIX};
 pub use crate::parse::{
-    CreateCall, Declaration, DefineVarsCall, Namespace, ParsedModule, Variable, parse_module,
+    CreateCall, Declaration, DefineVarsCall, Namespace, ParsedModule, ThemeCall, Variable,
+    parse_module,
 };
 pub use crate::plugin::{FORBIDDEN_KEY_RULE, SheetSink, UNSAFE_VALUE_RULE, plugin};
 pub use crate::property::PropertyRank;

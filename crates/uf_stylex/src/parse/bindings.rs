@@ -30,6 +30,8 @@ pub enum BindingKind {
     Create,
     /// The `defineVars` function, imported by name.
     DefineVars,
+    /// The `createTheme` function, imported by name.
+    CreateTheme,
 }
 
 /// Every StyleX-relevant local name in one module.
@@ -178,6 +180,7 @@ fn apply(
                         "stylex" => bindings.bind(local, BindingKind::Namespace),
                         "create" => bindings.bind(local, BindingKind::Create),
                         "defineVars" => bindings.bind(local, BindingKind::DefineVars),
+                        "createTheme" => bindings.bind(local, BindingKind::CreateTheme),
                         _ => {}
                     }
                 } else {
@@ -233,6 +236,12 @@ mod tests {
     fn a_named_define_vars_import_binds_the_function() {
         let found = bindings("import { defineVars } from \"@uniflowed/stylex\";\n");
         assert_eq!(found.kind_of("defineVars"), Some(BindingKind::DefineVars));
+    }
+
+    #[test]
+    fn a_named_create_theme_import_binds_the_function() {
+        let found = bindings("import { createTheme } from \"@uniflowed/stylex\";\n");
+        assert_eq!(found.kind_of("createTheme"), Some(BindingKind::CreateTheme));
     }
 
     #[test]
