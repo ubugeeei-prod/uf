@@ -42,6 +42,65 @@ fn writing_to_an_imported_binding_during_render_is_rejected() {
 }
 
 #[test]
+fn annotating_a_declaration_with_an_imported_type_is_accepted() {
+    // `const mode: Mode = …` ends in a name and an `=`, which is the shape of
+    // a write to `Mode`. It is an annotation, and `Mode` is a type: there is
+    // no value behind it to write to.
+    accepts(
+        "import type { Mode } from \"./mode.js\";\nhook useMode(given: ?Mode): Mode {\n  const mode: Mode = given ?? \"onSubmit\";\n  return mode;\n}\n",
+    );
+}
+
+#[test]
+fn annotating_a_declaration_with_an_imported_class_is_accepted() {
+    // A class is a value and a type at once, so this one is module state and
+    // still not written to.
+    accepts(
+        "import { Model } from \"./model.js\";\ncomponent Page() {\n  const model: Model = new Model();\n  return model.id;\n}\n",
+    );
+}
+
+#[test]
+fn a_type_named_after_a_dom_global_is_not_a_dom_read() {
+    // The other half of not recording a type import as module state: it is
+    // still a name the module declares, and `Selection` is a browser global.
+    accepts(
+        "import type { Selection } from \"./selection.js\";\ncomponent Page(chosen: Selection) {\n  const current: Selection = chosen;\n  return current.id;\n}\n",
+    );
+}
+
+#[test]
+fn an_inline_type_specifier_does_not_make_the_rest_of_the_clause_types() {
+    // `import { type Mode, registry }` binds one type and one value, and the
+    // value is still module state.
+    assert_eq!(
+        findings(
+            "import { type Mode, registry } from \"./registry.js\";\ncomponent Page() {\n  const mode: Mode = \"onSubmit\";\n  registry.count = 1;\n  return mode;\n}\n"
+        ),
+        [Finding::ModuleBindingAssigned]
+    );
+}
+
+#[test]
+fn a_second_declarator_with_an_annotation_is_accepted() {
+    accepts(
+        "import type { Mode } from \"./mode.js\";\ncomponent Page() {\n  let count = 0, mode: Mode = \"onSubmit\";\n  return count + mode.length;\n}\n",
+    );
+}
+
+#[test]
+fn a_label_before_a_write_to_module_state_is_still_a_write() {
+    // A `:` in front of the target is not always an annotation, and the scan
+    // that steps over annotations must not step over this.
+    assert_eq!(
+        findings(
+            "let renders = 0;\ncomponent Page() {\n  bump: renders = renders + 1;\n  return renders;\n}\n"
+        ),
+        [Finding::ModuleBindingAssigned]
+    );
+}
+
+#[test]
 fn writing_to_a_module_binding_from_an_event_handler_is_accepted() {
     accepts(
         "let renders = 0;\ncomponent Page() {\n  const onClick = () => { renders = renders + 1; };\n  return onClick;\n}\n",

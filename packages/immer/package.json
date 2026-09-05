@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/immer",
   "version": "0.0.0-alpha.3",
-  "description": "Draft-based immutable updates for @uniflowed/immer, part of the Unified Toolchain for Flow.",
+  "description": "Draft-based immutable updates for Flow React apps, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,

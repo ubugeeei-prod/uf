@@ -61,6 +61,24 @@ impl Bindings {
         );
     }
 
+    /// Declare `name` as a type rather than a value.
+    ///
+    /// `import type { Mode }` binds a name that exists only while the module
+    /// is being read: there is no value behind it to write to, and no global
+    /// it can be confused with. Both halves matter. Recording it as module
+    /// state made `const mode: Mode = …` — an annotation, not an assignment —
+    /// a write to module state during render; not recording it at all would
+    /// make `import type { Selection }` a DOM read.
+    pub fn declare_type(&mut self, name: &str) {
+        self.set(
+            name,
+            BindingFacts {
+                declared: true,
+                ..BindingFacts::default()
+            },
+        );
+    }
+
     /// Record that `name` is a prop, or an alias of one.
     pub fn mark_props(&mut self, name: &str) {
         self.update(name, |facts| {
