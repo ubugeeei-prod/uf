@@ -47,6 +47,12 @@ export default defineConfig({
     // until the submodule is checked out, and `uf run` needs a built `uf`.
     // One command breaks that circle, and it is in CONTRIBUTING.md.
     "upstream:sync": "tools/upstream/sync.sh",
+    // React's compiler crates, Relay's compiler crates, and React Native's
+    // codegen and Libraries — pinned in `tools/upstream/repos.txt`, fetched on
+    // request rather than in every job because nothing in the cargo graph
+    // depends on them yet. docs/architecture.md says what each is for and what
+    // uf does instead today.
+    "upstream:sync:integrations": "tools/upstream/sync.sh --integrations",
     setup: {
       command: "echo 'ready: run `uf run ci` to check everything'",
       dependsOn: ["upstream:sync", "build"],

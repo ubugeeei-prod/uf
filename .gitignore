@@ -19,3 +19,8 @@ node_modules/
 # `tools/corpus/sync.sh` from `tools/corpus/repos.txt`. The four entries that
 # are still submodules are tracked and unaffected by this. See #137.
 /tests/fixtures/git/*
+
+# Upstream integration sources, fetched on request by
+# `tools/upstream/sync.sh --integrations` from `tools/upstream/repos.txt`.
+# `upstream/flow` is a submodule and is tracked; ignore rules do not apply to it.
+/upstream/*
