@@ -162,6 +162,22 @@ pub fn left_side(expression: &Expression) -> Option<&Expression> {
     }
 }
 
+/// Identifiers that begin a declaration when they begin a statement.
+///
+/// Every one of them is an ordinary identifier anywhere else, which is why
+/// the check has to be about position rather than spelling.
+const STATEMENT_KEYWORDS: [&str; 9] = [
+    "await",
+    "component",
+    "declare",
+    "hook",
+    "interface",
+    "let",
+    "module",
+    "type",
+    "using",
+];
+
 /// Whether the first token of `expression` is one `forbidden` rejects:
 /// Prettier's `startsWithNoLookaheadToken`.
 pub fn starts_with_no_lookahead_token(
@@ -420,27 +436,48 @@ impl<'a> Printer<'a> {
             return false;
         };
 
-        // A bare identifier never needs parentheses, except a few reserved
-        // spellings at the start of a statement.
+        // A bare identifier never needs parentheses, except when it is one
+        // of Flow's contextual keywords, it is the first token of an
+        // expression statement, and the token after it is another
+        // identifier.
+        //
+        // `type` is an ordinary name — `obj.type`, `{type: 'x'}` — right up
+        // until it opens a statement *and is followed by a name*, where the
+        // parser commits to a type alias and wants a `=`. So this, from
+        // React's devtools:
+        //
+        //     (type) as empty;
+        //
+        // stops parsing the moment the parentheses are dropped.
+        //
+        // The `as` is the whole reason it can happen. Every other way an
+        // expression continues — `hook.renderers`, `type(x)`, `let = 1` —
+        // puts punctuation after the identifier, and the parser gives up on
+        // the declaration and reads an expression. `as`, `as const` and
+        // `satisfies` are the only operators spelled as identifiers, so
+        // they are the only ones that can be mistaken for the name in
+        // `type Name = …`.
+        //
+        // Asking only "is it leftmost" was too broad and CI caught it:
+        // `hook.renderers.forEach(…)` in this repository's own
+        // `refresh-runtime.js` became `(hook).renderers.forEach(…)`.
+        //
+        // `role == Role::Statement` is excluded for the opposite reason:
+        // the identifier is the whole statement, `type;` is unambiguous,
+        // and parenthesizing it would be noise.
         if let E::Identifier { inner, .. } = &**expression {
-            let name: &str = &inner.name;
-            if role == Role::Statement
+            return STATEMENT_KEYWORDS.contains(&&*inner.name)
                 && matches!(
-                    name,
-                    "await"
-                        | "interface"
-                        | "module"
-                        | "using"
-                        | "yield"
-                        | "let"
-                        | "component"
-                        | "hook"
-                        | "type"
+                    parent,
+                    NodeRef::Expression(parent)
+                        if matches!(
+                            &**parent,
+                            E::AsExpression { .. }
+                                | E::AsConstExpression { .. }
+                                | E::TSSatisfies { .. }
+                        )
                 )
-            {
-                return false;
-            }
-            return false;
+                && self.is_leftmost_of_expression_statement();
         }
 
         // Rules keyed on the parent.
