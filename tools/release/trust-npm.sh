@@ -74,30 +74,51 @@ echo "trust-npm: configuring as ${who}, for ${repository} (${workflow})"
 
 first="$(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt | head -1)"
 
+# What this npm calls "may publish".
+#
+# The flag set moves between npm releases and it has moved in both directions:
+# the npm this script was written against required `--allow-publish`, npm
+# 11.11.0 rejects it as an unknown flag, and a newer one requires it again —
+#
+#   npm error At least one permission flag is required
+#             (--allow-publish, --allow-stage-publish)
+#
+# so it is asked for rather than assumed. A version number would not answer
+# this; the help does.
+permission=""
+if npm trust github --help 2>&1 | grep -q -- '--allow-publish'; then
+  permission="--allow-publish"
+fi
+
+# One argument list, used by the dry run and by every real bind, so the check
+# and the thing it checks cannot drift.
+#
+# shellcheck disable=SC2086 # deliberate: $permission is one flag or nothing
+trust() {
+  npm trust github "$1" \
+    --file "$workflow" \
+    --repository "$repository" \
+    $permission \
+    --yes \
+    "${2:-}"
+}
+
 # One dry run before the first real one.
 #
 # `--dry-run` needs no session and writes nothing; it parses the arguments and
-# prints what it would do. It is the only thing that would have caught
-# `--allow-publish` — a flag `npm trust github` does not have — which sat in
-# this script from the day it was written and would have stopped it on the
-# first package, `set -eu`, with the release still blocked and the reason
-# reading like an npm outage:
+# prints what it would do. It is what catches a flag this npm does not take,
+# before `set -eu` stops the script on the first package with the release
+# still blocked and the reason reading like an npm outage.
 #
-#   npm error code EUSAGE
-#   npm error Unknown flag: --allow-publish
-# Both streams: npm puts some failures on stdout, and a guard that reports
-# half of them is a guard that reports warnings and hides the error.
+# Both streams, because npm puts some failures on stdout and a guard that
+# reports half of them reports the warnings and hides the error.
 errors="$(mktemp "${TMPDIR:-/tmp}/trust-npm.XXXXXX")"
 trap 'rm -f "$errors"' EXIT INT TERM
-if ! npm trust github "@uniflowed/${first}" \
-  --file "$workflow" \
-  --repository "$repository" \
-  --yes \
-  --dry-run >"$errors" 2>&1; then
+if ! trust "@uniflowed/${first}" --dry-run >"$errors" 2>&1; then
   echo "trust-npm: npm rejected the arguments this script passes:" >&2
   grep -v '^npm warn Unknown user config' <"$errors" >&2 || cat "$errors" >&2
   echo >&2
-  echo "trust-npm: npm --version ${npm_version}" >&2
+  echo "trust-npm: npm --version ${npm_version}, permission flag '${permission:-none}'" >&2
   exit 1
 fi
 
@@ -112,10 +133,7 @@ for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.
     continue
   fi
   echo "trust-npm: binding ${name}"
-  npm trust github "$name" \
-    --file "$workflow" \
-    --repository "$repository" \
-    --yes
+  trust "$name"
 done
 
 echo
