@@ -567,7 +567,7 @@ fn selecting_no_formatter_leaves_non_flow_files_alone() {
 
 #[test]
 fn alias_binaries_print_the_root_version() {
-    for name in ["ufr", "ufx"] {
+    for name in ["uf", "ufr", "ufx"] {
         let output = binary(name).arg("--version").output().unwrap();
 
         assert!(
@@ -580,7 +580,20 @@ fn alias_binaries_print_the_root_version() {
             stdout.contains(env!("CARGO_PKG_VERSION")),
             "{name} should expose the installed uf version, got {stdout:?}"
         );
+        // The product, not the crate. clap names the command after the crate
+        // unless it is told otherwise, and `uf --version` — the first thing
+        // anyone runs after installing — answered `uf_cli 0.0.0-alpha.2`.
+        assert!(
+            stdout.starts_with("uf "),
+            "{name} --version should name the command, got {stdout:?}"
+        );
+        assert!(!stdout.contains("uf_cli"), "{name}: {stdout:?}");
     }
+
+    // And the aliases still say what they are in their usage line, which
+    // comes from `argv[0]` rather than from the name.
+    let usage = String::from_utf8(binary("ufr").arg("--help").output().unwrap().stdout).unwrap();
+    assert!(usage.contains("Usage: ufr run"), "{usage}");
 }
 
 #[test]
