@@ -14,6 +14,8 @@
 // all produce the same module from the same source.
 
 import { spawn } from "node:child_process";
+import { accessSync, constants, statSync } from "node:fs";
+import path from "node:path";
 import { createInterface } from "node:readline";
 
 /** File extensions uf treats as Flow source. */
@@ -58,6 +60,77 @@ function stripQuery(id) {
  */
 export function ufBinary() {
   return process.env.UF_BINARY ?? "uf";
+}
+
+/**
+ * Which *build* of `uf` a host will transform through, or `null` when that
+ * cannot be established.
+ *
+ * `ufBinary()` names the compiler; this identifies it. Anything kept across
+ * runs needs the second, because the first does not change when the compiler
+ * does: `crates/uf_transform` is edited, `cargo build` writes a new binary
+ * over the old one, and every answer already on disk is now wrong while the
+ * name that produced them is unchanged. A version string is the same promise
+ * one step removed — every build between two releases shares one.
+ *
+ * So: the size and modification time of the file that will be executed. They
+ * move together on every rebuild, they are one `stat` away, and — this is the
+ * part that decided it — reading them does not require starting `uf`. A run
+ * that finds everything already compiled must not have to spawn the compiler
+ * to learn that it does not need it, which is what asking the running
+ * `uf transform` to introduce itself would have cost.
+ *
+ * `null` means the question could not be answered. It is not an invitation to
+ * hash the rest anyway: a key that leaves the compiler out is one key for
+ * every build of it, which is the whole defect.
+ *
+ * @param {string} [command] the binary; `ufBinary()` by default
+ * @returns {string | null} an opaque identity, stable while that build is
+ */
+export function ufBinaryIdentity(command = ufBinary()) {
+  const binary = resolveExecutable(command);
+  if (binary == null) return null;
+  try {
+    const stats = statSync(binary);
+    return `${binary}\0${stats.size}\0${stats.mtimeMs}`;
+  } catch {
+    // Named a binary that is not there. The caller gets `null` and stops
+    // trusting the cache, which is right: nothing can be compiled either.
+    return null;
+  }
+}
+
+/**
+ * The file `spawn` will execute for `command`, or `null` when there is none.
+ *
+ * A bare name is searched along PATH the way `execvp` searches for it — the
+ * first regular, executable file wins — so that the identity above describes
+ * the binary that actually runs rather than some other `uf` further down the
+ * list. Getting this wrong is not a slow cache but a silently stale one, which
+ * is why a directory named `uf` is skipped here as `execvp` skips it, rather
+ * than being accepted because `access` says a directory is executable.
+ *
+ * Windows resolves a bare name by rules of its own — `PATHEXT`, the current
+ * directory — which this does not implement. There a bare name is `null` and
+ * the caller falls back to not caching, rather than to caching under the
+ * identity of a file that may not be the one that ran. `UF_BINARY`, which is
+ * how every uf-started host arrives here, is an absolute path on every
+ * platform and never takes this path at all.
+ */
+function resolveExecutable(command) {
+  if (path.basename(command) !== command) return command;
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (directory === "") continue;
+    const candidate = path.join(directory, command);
+    try {
+      if (!statSync(candidate).isFile()) continue;
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Not in this directory. Keep looking, exactly as the shell would.
+    }
+  }
+  return null;
 }
 
 /**

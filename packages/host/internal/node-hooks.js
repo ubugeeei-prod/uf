@@ -11,16 +11,25 @@
 // left to Node.
 //
 // Transforms are cached on disk under `.uf/cache/transform/` keyed by a hash
-// of the source, so a second run of the same file is a read rather than a
-// round trip. The cache is content-addressed: an edited file hashes
-// differently, so there is no invalidation to get wrong.
+// of the source *and* of the `uf` that compiled it, so a second run of the
+// same file is a read rather than a round trip.
+//
+// Both halves are load-bearing. The key was the source alone at first, on the
+// reasoning that a content-addressed cache has no invalidation to get wrong —
+// which quietly assumed the compiler was a constant. It is not: edit
+// `crates/uf_transform` or `crates/uf_stylex`, rebuild, run `uf test`, and
+// every module whose *source* had not changed came back as the previous
+// binary had compiled it. The suite then passed, or failed, for the previous
+// build's reasons, and the only symptom was an answer that made no sense.
+// `rm -rf .uf/cache/transform` was the cure, and finding that out cost a
+// debugging session while `@uniflowed/stylex`'s preset was being written.
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isFlowModule, transformFlow } from "../transform.js";
+import { isFlowModule, transformFlow, ufBinaryIdentity } from "../transform.js";
 
 /**
  * Write `contents` to `target` so a concurrent reader never sees half of it.
@@ -50,11 +59,32 @@ function writeAtomically(target, contents) {
   }
 }
 
-/** Bumped whenever the transform's output shape changes, to retire old entries. */
+/**
+ * Bumped whenever *this file's* framing of the output changes, to retire old
+ * entries.
+ *
+ * Not the compiler's version, which is `binaryIdentity` below and which nobody
+ * has to remember. What is left for this to cover is what the loader adds
+ * around a transform — the appended source map, the module format it forces —
+ * and that is all it should ever be bumped for.
+ */
 const CACHE_VERSION = "2";
 
 let cacheDirectory = null;
 let root = null;
+
+/**
+ * Which build of `uf` this process transforms through, or `null` when that
+ * could not be established.
+ *
+ * Read once, when the hooks are installed, rather than per module. The
+ * `uf transform` process this loader talks to is spawned once and goes on
+ * executing the binary it was started from, so a rebuild part way through a
+ * run does not change who is answering; re-reading this per module would name
+ * the new binary while the old one compiled the module, which is the same lie
+ * pointing the other way.
+ */
+let binaryIdentity = null;
 
 /**
  * Called once by `register()` with `{ root }`; the cache lives under it and
@@ -63,6 +93,7 @@ let root = null;
 export async function initialize(data) {
   root = data?.root ?? process.cwd();
   cacheDirectory = path.join(root, ".uf", "cache", "transform");
+  binaryIdentity = ufBinaryIdentity();
 }
 
 /**
@@ -82,15 +113,34 @@ export async function load(url, context, nextLoad) {
   return { format: "module", source: code, shortCircuit: true };
 }
 
-async function cachedTransform(source, filename) {
+/**
+ * The file this module's compiled form belongs in, or `null` when it must not
+ * be cached at all.
+ *
+ * `null` when there is no cache directory, and — the case worth spelling out —
+ * when `ufBinaryIdentity()` could not say which build of `uf` is about to
+ * compile this. That has to be a miss in both directions: nothing is read and
+ * nothing is written. Hashing the rest anyway would give every build of `uf`
+ * one key again, and writing under it would leave an entry for the next run to
+ * trust. A host that cannot name its compiler compiles everything, every time,
+ * which is slower and is never wrong.
+ */
+function cacheEntryFor(source, filename) {
+  if (cacheDirectory == null || binaryIdentity == null) return null;
   const key = createHash("sha256")
     .update(CACHE_VERSION)
+    .update("\0")
+    .update(binaryIdentity)
     .update("\0")
     .update(filename)
     .update("\0")
     .update(source)
     .digest("hex");
-  const entry = cacheDirectory ? path.join(cacheDirectory, `${key}.mjs`) : null;
+  return path.join(cacheDirectory, `${key}.mjs`);
+}
+
+async function cachedTransform(source, filename) {
+  const entry = cacheEntryFor(source, filename);
 
   if (entry) {
     try {
