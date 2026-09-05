@@ -95,6 +95,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Formatting and linting",
         blurb: "The official Flow parser, a Rust printer, and Flow's own lints.",
       },
+      {
+        href: "/guide/env",
+        title: "Environments",
+        blurb: "A pinned toolchain per repository, in a shared store, with a collector.",
+      },
     ],
   },
   {
