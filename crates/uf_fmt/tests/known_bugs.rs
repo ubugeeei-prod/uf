@@ -9,11 +9,15 @@
 //! cargo test -p uf_fmt --test known_bugs -- --ignored
 //! ```
 //!
-//! When one is fixed, delete the `#[ignore]`. When all three are, delete the
-//! file — its job is to be empty.
+//! When one is fixed, its reproduction moves to the test file that owns
+//! the guarantee it broke and the entry here goes. When the last one does,
+//! this file goes with it — its job is to be empty.
 //!
-//! Each was found by `upstream_corpus.rs`, running the formatter over React,
-//! Metro, Relay and React Native.
+//! Each was found by `upstream_corpus.rs`, running the formatter over the
+//! third-party Flow in `tests/fixtures/git`.
+//!
+//! Gone from here: #128, unterminated JSX at end of input, now
+//! `jsx_truncated_at_end_of_input_is_refused` in `guarantees.rs`.
 
 use std::time::{Duration, Instant};
 
@@ -87,34 +91,4 @@ fn comment_types_stay_comments() {
         output.contains("/*: string */"),
         "the annotations stopped being comments:\n{output}"
     );
-}
-
-/// ubugeeei-prod/uf#128 — unterminated JSX at EOF is formatted, not refused.
-///
-/// Fifty-eight bytes, no trailing newline. `flow::format` refuses anything
-/// the parser reports a diagnostic for and the parser reports none, so the
-/// printer runs and drops the `</div>`; the output does not parse. The same
-/// source *with* a trailing newline is refused correctly, so the difference
-/// is where EOF falls rather than the JSX.
-///
-/// Breaks two of the guarantees `guarantees.rs` states outright: invalid
-/// syntax is refused rather than rewritten, and the output parses.
-#[test]
-#[ignore = "ubugeeei-prod/uf#128"]
-fn unterminated_jsx_at_eof_is_refused() {
-    let source = "const el = <div className=\"a\" data-testid='b'>text {value}";
-
-    let Ok(result) = format_source(source, &FmtConfig::default()) else {
-        // Refused, which is the correct outcome.
-        return;
-    };
-
-    // Accepted. Then the least it can do is produce something that parses.
-    format_source(&result.output, &FmtConfig::default()).unwrap_or_else(|error| {
-        panic!(
-            "formatted invalid syntax into output that does not parse: {error}\n\
-             --- out\n{}",
-            result.output
-        )
-    });
 }
