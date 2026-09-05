@@ -369,13 +369,33 @@ impl<'a> Printer<'a> {
 
         // `(a?.b)()` ends its optional chain at the parentheses, so it is
         // printed as a plain call whose callee carries them, never as a
-        // member chain that would spell it `a?.b()`.
-        let callee_ends_optional_chain = !optional
-            && matches!(
-                *call.callee,
-                expression::ExpressionInner::OptionalMember { .. }
-                    | expression::ExpressionInner::OptionalCall { .. }
-            );
+        // member chain that would spell it `a?.b()`. Prettier reaches the
+        // same place by asking whether the callee needs parentheses.
+        //
+        // What decides it is the *node*, not the `?.` token: `a?.b()` is an
+        // `OptionalCall` whose own `optional` is false, because the `?.`
+        // belongs to the `OptionalMember` callee, so `!optional` is true of
+        // both spellings. Reading it that way took every chain whose last
+        // link is `?.name(…)` out of the chain printer and left it to be
+        // hugged as an ordinary call — relay's `MutationHandlers.js` came
+        // back as
+        //
+        // ```text
+        // const x = connection.getLinkedRecords(EDGES)?.some(
+        //   (edge) => …,
+        // );
+        // ```
+        //
+        // where Prettier breaks the chain: `connection`, `.getLinkedRecords(EDGES)`,
+        // `?.some((edge) => …)`. Only a plain `Call` can end an optional
+        // chain at its parentheses.
+        let callee_ends_optional_chain =
+            matches!(**expression, expression::ExpressionInner::Call { .. })
+                && matches!(
+                    *call.callee,
+                    expression::ExpressionInner::OptionalMember { .. }
+                        | expression::ExpressionInner::OptionalCall { .. }
+                );
         if is_member(&call.callee) && !callee_ends_optional_chain {
             return self.print_member_chain(expression);
         }
@@ -649,7 +669,7 @@ impl<'a> Printer<'a> {
         };
 
         let in_decorator = matches!(self.parent(), Some(NodeRef::Decorator(_)));
-        if any_arg_empty_line || (!in_decorator && is_function_composition_args(&expressions)) {
+        if any_arg_empty_line || (!in_decorator && is_function_composition_args(arguments)) {
             return all_args_broken_out(self, &printed_arguments);
         }
 
@@ -990,44 +1010,60 @@ fn call_argument_count(expression: &Expression) -> usize {
 }
 
 /// Prettier's `isFunctionCompositionArgs`: more than one function
-/// argument, or a call argument that itself takes a function.
-fn is_function_composition_args(arguments: &[&Expression]) -> bool {
+/// argument, or a call argument that itself takes a function. Such a call
+/// is `compose(a, b)` rather than an ordinary one, and Prettier gives up on
+/// fitting it and breaks every argument onto its own line.
+///
+/// A spread argument is none of those things. Prettier walks the raw
+/// argument nodes, so `...xs` is a `SpreadElement`: it is not a function,
+/// and `isCallExpression` is false for it, so it never contributes. Looking
+/// through the spread to the expression inside it — which is what a printer
+/// that shares one "argument expression" helper everywhere naturally does —
+/// makes `assemble(...P.map((p) => `-P${p}`), ...options.args)` read as a
+/// composition, and react-native's `helloworld/cli.flow.js` came back as
+///
+/// ```text
+/// await run(
+///   assemble(
+///     ...P.map((prop) => `-P${prop}`),
+///     ...options.args,
+///   ),
+/// );
+/// ```
+///
+/// where Prettier keeps `await run(assemble(...P.map((prop) => `-P${prop}`),
+/// ...options.args));` on its one line. The same argument list without the
+/// spreads — `j(P.map((p) => …), ...options.args)` — does break, which is
+/// the check earning its keep rather than being switched off.
+fn is_function_composition_args(arguments: &[expression::ExpressionOrSpread<Loc, Loc>]) -> bool {
     if arguments.len() <= 1 {
         return false;
     }
     let mut count = 0;
     for argument in arguments {
+        let expression::ExpressionOrSpread::Expression(argument) = argument else {
+            continue;
+        };
         if is_function_or_arrow(argument) {
             count += 1;
             if count > 1 {
                 return true;
             }
         } else if is_call_like(argument) {
-            let inner_arguments: Vec<&Expression> = match &***argument {
-                expression::ExpressionInner::Call { inner, .. } => inner
-                    .arguments
-                    .arguments
-                    .iter()
-                    .map(argument_expression)
-                    .collect(),
-                expression::ExpressionInner::OptionalCall { inner, .. } => inner
-                    .call
-                    .arguments
-                    .arguments
-                    .iter()
-                    .map(argument_expression)
-                    .collect(),
-                expression::ExpressionInner::New { inner, .. } => inner
-                    .arguments
-                    .as_ref()
-                    .map(|a| a.arguments.iter().map(argument_expression).collect())
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+            let inner_arguments: &[expression::ExpressionOrSpread<Loc, Loc>] = match &**argument {
+                expression::ExpressionInner::Call { inner, .. } => &inner.arguments.arguments,
+                expression::ExpressionInner::OptionalCall { inner, .. } => {
+                    &inner.call.arguments.arguments
+                }
+                expression::ExpressionInner::New { inner, .. } => {
+                    inner.arguments.as_ref().map_or(&[][..], |a| &a.arguments)
+                }
+                _ => &[],
             };
-            if inner_arguments
-                .iter()
-                .any(|child| is_function_or_arrow(child))
-            {
+            if inner_arguments.iter().any(|child| {
+                matches!(child, expression::ExpressionOrSpread::Expression(child)
+                    if is_function_or_arrow(child))
+            }) {
                 return true;
             }
         }

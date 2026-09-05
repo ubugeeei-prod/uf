@@ -677,14 +677,20 @@ impl<'a> Printer<'a> {
     /// Whether a returned expression, or the left-most expression it
     /// starts with, has a comment on its own line before it.
     fn return_argument_has_leading_comment(&self, argument: &'a Expression) -> bool {
-        if self.has_leading_own_line_comment(NodeRef::Expression(argument).key(), false) {
+        if self.has_leading_own_line_comment(
+            NodeRef::Expression(argument).key(),
+            super::parens::is_jsx(argument),
+        ) {
             return true;
         }
         if super::parens::has_naked_left_side(argument) {
             let mut left_most = argument;
             while let Some(next) = super::parens::left_side(left_most) {
                 left_most = next;
-                if self.has_leading_own_line_comment(NodeRef::Expression(left_most).key(), false) {
+                if self.has_leading_own_line_comment(
+                    NodeRef::Expression(left_most).key(),
+                    super::parens::is_jsx(left_most),
+                ) {
                     return true;
                 }
             }

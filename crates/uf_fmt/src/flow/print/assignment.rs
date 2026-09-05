@@ -214,7 +214,9 @@ impl<'a> Printer<'a> {
             !is_tail
                 && matches!(&**right, expression::ExpressionInner::Assignment { inner, .. } if is_assignment(&inner.right))
         });
-        if right_is_nested_assignment || self.has_leading_own_line_comment(right_key, false) {
+        let right_is_jsx = right_expression.is_some_and(super::parens::is_jsx);
+        if right_is_nested_assignment || self.has_leading_own_line_comment(right_key, right_is_jsx)
+        {
             return Layout::BreakAfterOperator;
         }
 

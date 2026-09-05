@@ -9,8 +9,8 @@ use uf_flow::ast::{expression, statement};
 
 use super::Printer;
 use super::parens::{
-    binaryish_operator, is_binaryish, is_call_like, is_jsx, is_member,
-    logical_in_logical_needs_parens, same, should_flatten,
+    binaryish_operator, is_binaryish, is_call, is_jsx, is_member, logical_in_logical_needs_parens,
+    same, should_flatten,
 };
 use crate::doc::{Doc, DocKind, LINE};
 use crate::flow::comments::Placement;
@@ -159,6 +159,16 @@ impl<'a> Printer<'a> {
                     &inner.body,
                     uf_flow::ast::function::Body::BodyExpression(body) if same(body, expression)
                 ),
+                // A ternary's test, when what encloses the ternary is not
+                // an argument list. `new Error(…)` and `import(…)` are not
+                // argument lists for this purpose — only `f(…)` and
+                // `f?.(…)` are, which `is_call` is and `is_call_like` is
+                // not. react-native's `Touchable.js` is where the
+                // difference shows: the `===` in
+                // `new Error("…" + signal + … === "number" ? a : b)` keeps
+                // its right operand at the ternary's own indentation, and
+                // reading `new` as a call put `"number"` two columns in,
+                // under the `+` chain it is not part of.
                 expression::ExpressionInner::Conditional { .. } => match grandparent {
                     Some(NodeRef::Statement(statement)) => !matches!(
                         &**statement,
@@ -166,7 +176,7 @@ impl<'a> Printer<'a> {
                             | statement::StatementInner::Throw { .. }
                     ),
                     Some(NodeRef::Expression(grand)) => {
-                        !is_call_like(grand)
+                        !is_call(grand)
                             && !matches!(**grand, expression::ExpressionInner::MetaProperty { .. })
                     }
                     _ => true,
@@ -331,10 +341,38 @@ impl<'a> Printer<'a> {
         // The root comments are already printed, but we need to manually
         // print the other ones since we don't call the normal print on
         // nested binary expressions.
-        if is_nested && self.has_comment(NodeRef::Expression(expression).key()) {
-            let inner = self.docs.concat_vec(parts);
-            let with_comments = self.print_comments(NodeRef::Expression(expression).key(), inner);
-            return vec![with_comments];
+        //
+        // Spliced into the parts rather than wrapped around them, because
+        // the caller separates the leftmost operand from the rest and
+        // indents the rest, and it finds the leftmost operand by looking for
+        // the first part that is a group. Wrapping puts a concat in front of
+        // it, so the search runs on to the *next* group — the last operand's
+        // — and every part up to that lands in the head, unindented:
+        //
+        // ```text
+        // uf:        2 + // [rendererID, rootFiberID]
+        //            1 + // [stringTableLength]
+        //            pendingStringTableLength +
+        //              (numUnmountSuspenseIDs > 0 ? … : 0) +
+        // prettier:  2 + // [rendererID, rootFiberID]
+        //              1 + // [stringTableLength]
+        //              pendingStringTableLength +
+        //              (numUnmountSuspenseIDs > 0 ? … : 0) +
+        // ```
+        //
+        // from react-devtools' `renderer.js`. A leading comment goes in
+        // front of the operand it leads, which is where the head wants it;
+        // a trailing one is a line suffix and prints at the end of the line
+        // it is already on, so neither moves.
+        let key = NodeRef::Expression(expression).key();
+        if is_nested && self.has_comment(key) {
+            let leading = self.print_leading_comments(key);
+            let trailing = self.print_trailing_comments(key);
+            let mut spliced = Vec::with_capacity(parts.len() + 2);
+            spliced.extend(leading);
+            spliced.append(&mut parts);
+            spliced.extend(trailing);
+            return spliced;
         }
         parts
     }

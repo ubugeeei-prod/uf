@@ -503,10 +503,56 @@ impl<'a> Printer<'a> {
 
     /// Whether `key` has a leading comment on its own line: Prettier's
     /// `hasLeadingOwnLineComment`.
+    ///
+    /// A JSX element is asked a different question, and `is_jsx` selects it:
+    /// `hasLeadingOwnLineComment` short-circuits to `hasNodeIgnoreComment`
+    /// there, so only a leading `prettier-ignore` counts and an ordinary
+    /// comment does not.
+    ///
+    /// The callers use the answer to decide whether to break *before* the
+    /// expression — after `=`, after `=>`, after `return`. A JSX element
+    /// already carries a parenthesis group of its own that opens on the line
+    /// it starts on, so answering "yes" for a plain comment breaks that line
+    /// as well and the two layers stack. react-devtools' `Button.js`:
+    ///
+    /// ```text
+    /// prettier:  let button = (
+    ///              // $FlowFixMe[cannot-spread-inexact] unsafe spread
+    ///              <button …>…</button>
+    ///            );
+    /// uf:        let button =
+    ///              (
+    ///                // $FlowFixMe[cannot-spread-inexact] unsafe spread
+    ///                <button …>…</button>
+    ///              );
+    /// ```
+    ///
+    /// and rn-tester's `SnapshotViewIOS.ios.js`, where the `return` supplies
+    /// the outer parentheses and the element supplies a second pair inside
+    /// them:
+    ///
+    /// ```text
+    /// prettier:  return (
+    ///              // $FlowFixMe[incompatible-type]
+    ///              <RCTSnapshot … />
+    ///            );
+    /// uf:        return (
+    ///              (
+    ///                // $FlowFixMe[incompatible-type]
+    ///                <RCTSnapshot … />
+    ///              )
+    ///            );
+    /// ```
+    ///
+    /// The `prettier-ignore` half is answered rather than hard-coded to
+    /// false, even though the printer does not honour the pragma itself: an
+    /// ignored element is the one JSX that really does want the break, and
+    /// writing the predicate out stops this reading as "JSX never has a
+    /// leading comment".
     pub fn has_leading_own_line_comment(&self, key: NodeKey, is_jsx: bool) -> bool {
         if is_jsx {
-            return self.has_comment_where(key, None, |comment| {
-                self.text.has_newline(comment.span.end, false)
+            return self.has_comment_where(key, Some(Placement::Leading), |comment| {
+                comment.text.trim() == "prettier-ignore"
             });
         }
         self.has_comment_where(key, Some(Placement::Leading), |comment| {
