@@ -190,7 +190,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
 /// allocated. A request with no `method` gets `-32600`, a method uf does not
 /// serve gets `-32601`, and a request whose params are unusable gets `-32602`.
 /// Notifications get none of those, because a notification has no id to answer.
-pub(crate) fn lsp() -> Result<()> {
+pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
 
@@ -206,8 +206,12 @@ pub(crate) fn lsp() -> Result<()> {
     // Once, not once per keystroke. A server lints on every change and formats
     // as often as the editor asks, and reading `uf.config.js` from disk each
     // time would put a file read on the path a keystroke can trigger.
-    let config = load_config(Utf8Path::new("."))
-        .map_or_else(|_| UniflowedConfig::default(), |resolved| resolved.config);
+    // `--cwd` rather than the process's directory: an editor starts one server
+    // per workspace folder and has every reason to say which one, and a server
+    // that read `.` instead answered with uf's defaults while looking like it
+    // had read the project's `uf.config.js`.
+    let config =
+        load_config(cwd).map_or_else(|_| UniflowedConfig::default(), |resolved| resolved.config);
     let fmt = config.fmt.clone();
     // Same reasoning: `uf_lib::builtin_modules` rebuilds the whole registry on
     // every call, and a hover happens on mouse-move.

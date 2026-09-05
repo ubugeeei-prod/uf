@@ -1153,10 +1153,13 @@ fn lsp_session(messages: &[String]) -> Vec<serde_json::Value> {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    frames(&String::from_utf8(output.stdout).unwrap())
+}
 
+/// Every framed message in a server's output.
+fn frames(stdout: &str) -> Vec<serde_json::Value> {
     let mut parsed = Vec::new();
-    let mut rest = stdout.as_str();
+    let mut rest = stdout;
     while let Some(at) = rest.find("Content-Length: ") {
         let after = &rest[at + "Content-Length: ".len()..];
         let (length, body) = after
@@ -1170,6 +1173,24 @@ fn lsp_session(messages: &[String]) -> Vec<serde_json::Value> {
         rest = &body[length..];
     }
     parsed
+}
+
+/// A session run from a directory other than the project, with `--cwd`.
+fn lsp_session_in(root: &std::path::Path, messages: &[String]) -> Vec<serde_json::Value> {
+    let output = uf()
+        .arg("lsp")
+        .arg("--cwd")
+        .arg(root)
+        .current_dir(std::env::temp_dir())
+        .write_stdin(messages.concat())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    frames(&String::from_utf8(output.stdout).unwrap())
 }
 
 /// The answer to one request id.
@@ -1315,6 +1336,41 @@ fn lsp_answers_more_than_one_message_on_one_connection() {
     );
     assert!(stdout.contains(r#""id":1"#), "{stdout}");
     assert!(stdout.contains(r#""id":2"#), "{stdout}");
+}
+
+/// `--cwd` names the project, and the server reads that project's config.
+///
+/// An editor starts one server per workspace folder and says which folder it
+/// is. `--cwd` was accepted, resolved and then dropped, so the server read `.`
+/// — whatever directory the editor happened to be launched from — and answered
+/// with uf's defaults while looking like it had read the project.
+#[test]
+fn lsp_reads_the_config_of_the_directory_cwd_names() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default { fmt: { indentWidth: 8 } };\n",
+    )
+    .unwrap();
+
+    let messages = lsp_session_in(
+        dir.path(),
+        &[
+            framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+            did_open("file:///a.js", "// @flow\nfunction f() {\nreturn 1;\n}\n"),
+            framed(
+                r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/formatting","params":{"textDocument":{"uri":"file:///a.js"},"options":{}}}"#,
+            ),
+            framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+        ],
+    );
+
+    let edits = answer(&messages, 2)["result"].as_array().unwrap();
+    let formatted = edits[0]["newText"].as_str().unwrap();
+    assert!(
+        formatted.contains("\n        return 1;"),
+        "eight spaces, as the project asked for: {formatted:?}"
+    );
 }
 
 /// A document opened and then formatted comes back as `uf fmt` would write it.
