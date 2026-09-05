@@ -31,10 +31,33 @@ interface Quiet extends Base {
 }
 
 // More than one target is the other thing that makes the heritage start a
-// line. A long one is not here: uf and the hermes plugin disagree about
-// whether the first target joins `extends`, which is ubugeeei-prod/uf#143
-// and nothing to do with comments.
+// line. `extends ` keeps its first target and the rest indent under it.
 interface Several extends Base, Other {
+  m(): boolean;
+}
+
+interface SeveralLong
+  extends AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB,
+    CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC {
+  m(): boolean;
+}
+
+interface OneLong
+  extends AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {
+  m(): boolean;
+}
+
+// An `interface { … }` *type* groups on its heritage too, having no name to
+// hang a comment on. Its body is an object type: `,` between members, and one
+// line when it fits. The `;` and the line per member belong to the
+// declaration forms below it.
+type Anonymous = interface extends Base { m(): boolean };
+type Members = interface { a: string, b: number };
+type Empty = interface {};
+type Wide = interface extends Base { aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: string, bbbbbbbbbbbbbbbbbbbbbb: number };
+
+declare interface Declared {
   m(): boolean;
 }
 
@@ -44,6 +67,18 @@ declare class Declared // why
 }
 
 declare class DeclaredQuiet extends Base {
+  m(): boolean;
+}
+
+// The comment is one token later here, on the type parameters rather than on
+// the name, and it has the same line to end.
+declare class DeclaredGeneric<T> // why
+  extends Base<T> {
+  m(): boolean;
+}
+
+interface Generic<T> // why
+  extends Base<T> {
   m(): boolean;
 }
 
