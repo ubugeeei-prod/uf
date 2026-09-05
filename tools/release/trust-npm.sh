@@ -132,19 +132,59 @@ if ! trust "@uniflowed/${first}" --dry-run >"$errors" 2>&1; then
   exit 1
 fi
 
+bound=0
+existing=0
+mismatched=""
+
+# `npm trust list` needs the same session *and* a one-time password, so on a
+# session that has not been through 2FA it returns nothing and every name is
+# attempted. That is fine: a name that already has a configuration answers
+#
+#   npm error code E409
+#   npm error 409 Conflict - a trusted publisher configuration that a token
+#   could also match already exists for this package
+#
+# which is "already done", not a failure — but it is *not* proof that the
+# configuration is this repository's workflow, so the one that says so is
+# asked for and checked. `set -eu` would stop the run on the first of these,
+# which is what it did.
 for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt); do
   name="@uniflowed/${package}"
-  # `npm trust list` needs the same session *and* a one-time password, so on a
-  # session that has not been through 2FA it returns nothing and every name is
-  # attempted. Attempting one that is already bound is not an error — npm says
-  # so and moves on — so this is a shortcut, not a guard.
-  if npm trust list "$name" 2>/dev/null | grep -q "file: ${workflow}"; then
-    echo "trust-npm: ${name} is already bound to ${workflow}"
+  if trust "$name" >"$errors" 2>&1; then
+    echo "trust-npm: bound ${name}"
+    bound=$((bound + 1))
     continue
   fi
-  echo "trust-npm: binding ${name}"
-  trust "$name"
+  if ! grep -q 'E409' "$errors"; then
+    echo "trust-npm: ${name} could not be bound:" >&2
+    cat "$errors" >&2
+    exit 1
+  fi
+  existing=$((existing + 1))
+  if npm trust list "$name" 2>/dev/null | grep -q "$workflow"; then
+    echo "trust-npm: ${name} already points at ${workflow}"
+  else
+    echo "trust-npm: ${name} already has a configuration, and it is not ${workflow}:"
+    npm trust list "$name" 2>&1 | sed 's/^/    /'
+    mismatched="${mismatched} ${name}"
+  fi
 done
+
+echo
+echo "trust-npm: ${bound} bound, ${existing} already configured"
+if [ -n "$mismatched" ]; then
+  cat >&2 <<MESSAGE
+
+These already had a trusted publisher and it does not name ${workflow}:
+${mismatched}
+
+A publish from this repository's workflow will be refused for each of them.
+Revoke the old configuration and run this again:
+
+  npm trust revoke <package>
+MESSAGE
+  exit 1
+fi
 
 echo
 echo "Done. A 'uf@*' tag now publishes these over OIDC, with no token anywhere."

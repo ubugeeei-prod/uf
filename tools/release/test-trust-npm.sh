@@ -56,18 +56,24 @@ case "$1" in
   *) exit 0 ;;
 esac
 shift
+if [ "${1:-}" = "list" ]; then
+  case "$flavour" in
+    conflicting) echo "  file: some-other.yml"; echo "  repository: someone/else"; exit 0 ;;
+    existing) echo "  file: publish.yml"; echo "  repository: ubugeeei-prod/uf"; exit 0 ;;
+    *) exit 1 ;;
+  esac
+fi
 [ "${1:-}" = "github" ] || { echo "npm error Unknown subcommand: ${1:-}" >&2; exit 1; }
 shift
 if [ "${1:-}" = "--help" ]; then
   case "$flavour" in
     ancient) echo "npm trust github [package]" ;;
-    strict)  echo "  --file (required)"; echo "  --repository|--repo"
+    permissive) echo "  --file (required)"; echo "  --repository|--repo" ;;
+    *)       echo "  --file (required)"; echo "  --repository|--repo"
              echo "  --allow-publish"; echo "  --allow-stage-publish" ;;
-    *)       echo "  --file (required)"; echo "  --repository|--repo" ;;
   esac
   exit 0
 fi
-[ "${1:-}" = "list" ] && exit 1
 package=""; file=""; repository=""; permission=""; dry=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -94,6 +100,12 @@ if [ "$flavour" = strict ] && [ -z "$permission" ]; then
   exit 1
 fi
 [ -n "$dry" ] && exit 0
+case "$flavour" in
+  existing | conflicting)
+    echo "npm error code E409" >&2
+    echo "npm error 409 Conflict - a trusted publisher configuration that a token could also match already exists for this package" >&2
+    exit 1 ;;
+esac
 echo "bound $package"
 EOF
   chmod +x "${work}/${flavour}/npm"
@@ -109,19 +121,45 @@ run() {
 for flavour in strict permissive; do
   run "$flavour" || fail "${flavour}: the script failed:
 $(cat "${work}/${flavour}.log")"
-  bound="$(grep -c '^bound ' "${work}/${flavour}.log" || true)"
+  # The script's own line, not the stub's: the stub's output goes into the
+  # file the script captures so it can tell E409 from a real failure.
+  bound="$(grep -c '^trust-npm: bound ' "${work}/${flavour}.log" || true)"
   [ "$bound" = "$names" ] \
     || fail "${flavour}: bound ${bound} of ${names}:
 $(cat "${work}/${flavour}.log")"
   pass "${flavour} npm binds all ${names} names"
 done
 
-# 3. An npm without the subcommand stops, binds nothing, and says what to do.
+# 3. A name that already has this repository's configuration answers E409,
+#    which is "already done" and not a failure. `set -eu` used to stop the
+#    whole run on the first one.
+run existing || fail "existing: E409 should not stop the run:
+$(cat "${work}/existing.log")"
+grep -q "already points at publish.yml" "${work}/existing.log" \
+  || fail "existing: it did not say the configuration is the right one:
+$(cat "${work}/existing.log")"
+grep -q "0 bound, ${names} already configured" "${work}/existing.log" \
+  || fail "existing: wrong summary:
+$(cat "${work}/existing.log")"
+pass "a name that is already configured for this workflow is reported, not fatal"
+
+# 4. And one whose configuration names something else is a problem, because a
+#    publish from this repository will be refused for it.
+if run conflicting; then
+  fail "conflicting: a configuration for another workflow should fail:
+$(cat "${work}/conflicting.log")"
+fi
+grep -q "npm trust revoke" "${work}/conflicting.log" \
+  || fail "conflicting: no way out was named:
+$(cat "${work}/conflicting.log")"
+pass "a configuration pointing somewhere else fails and names the fix"
+
+# 5. An npm without the subcommand stops, binds nothing, and says what to do.
 if run ancient; then
   fail "ancient: the script should have stopped:
 $(cat "${work}/ancient.log")"
 fi
-grep -q '^bound ' "${work}/ancient.log" && fail "ancient: it bound something"
+grep -q '^trust-npm: bound ' "${work}/ancient.log" && fail "ancient: it bound something"
 grep -q 'npm install -g npm@' "${work}/ancient.log" \
   || fail "ancient: no upgrade instruction:
 $(cat "${work}/ancient.log")"
