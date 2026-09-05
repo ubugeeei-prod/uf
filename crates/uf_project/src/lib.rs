@@ -45,6 +45,33 @@ pub struct ProjectFile {
     pub kind: SourceKind,
 }
 
+/// A file discovery found and could not read.
+///
+/// One stray byte should not stop a project. A `.js` that is not UTF-8 — a
+/// build artifact, a vendored blob, a fixture somebody committed by accident
+/// — used to abort `uf fmt`, `uf lint`, `uf check` and `uf doc` at the first
+/// one, leaving every other file in the project untouched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadableFile {
+    /// Where it is, relative to the project root.
+    pub relative_path: String,
+    /// Why it could not be read, in one line.
+    pub reason: String,
+}
+
+/// What discovery found: the files it read, and the ones it could not.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SourceScan {
+    /// Every readable source file, sorted by path.
+    pub files: Vec<ProjectFile>,
+    /// The ones that were skipped, sorted by path.
+    ///
+    /// Reported rather than returned as an error: a caller that stops on the
+    /// first one does nothing for the rest of the project, and a caller that
+    /// ignores them silently is worse. Every command prints them and fails.
+    pub unreadable: Vec<UnreadableFile>,
+}
+
 /// What a discovered project file is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SourceKind {
@@ -161,11 +188,19 @@ pub fn create_project(
     })
 }
 
-pub fn collect_source_files(
+/// Every source file under `root`, and every one that could not be read.
+///
+/// # Errors
+///
+/// Returns [`ProjectError::Walk`] when the directory tree cannot be read, and
+/// [`ProjectError::Read`] when a path is not valid UTF-8 — a path uf cannot
+/// name is one it cannot report either.
+pub fn scan_source_files(
     root: &Utf8Path,
     config: &UniflowedConfig,
-) -> Result<Vec<ProjectFile>, ProjectError> {
+) -> Result<SourceScan, ProjectError> {
     let mut files = Vec::new();
+    let mut unreadable = Vec::new();
     // A directory holding a `.git` is another repository — a submodule, or a
     // checkout that happens to live inside this one. Its contents are not this
     // project's to read, and formatting them writes into somebody else's
@@ -195,14 +230,25 @@ pub fn collect_source_files(
             continue;
         };
 
-        let source = fs::read_to_string(&path).map_err(|source| ProjectError::Read {
-            path: path.clone(),
-            source,
-        })?;
         let relative_path = path
             .strip_prefix(root)
             .map(|path| path.as_str().to_string())
             .unwrap_or_else(|_| path.as_str().to_string());
+
+        // Recorded rather than returned. One file that is not UTF-8 — a build
+        // artifact, a vendored blob, a fixture committed by accident — used to
+        // stop the walk, so nothing else in the project was formatted, linted
+        // or checked either.
+        let source = match fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(error) => {
+                unreadable.push(UnreadableFile {
+                    relative_path,
+                    reason: error.to_string(),
+                });
+                continue;
+            }
+        };
 
         files.push(ProjectFile {
             absolute_path: path,
@@ -212,7 +258,8 @@ pub fn collect_source_files(
         });
     }
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-    Ok(files)
+    unreadable.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(SourceScan { files, unreadable })
 }
 
 fn write_generated_file(path: &Utf8Path, contents: &str, force: bool) -> Result<(), ProjectError> {
