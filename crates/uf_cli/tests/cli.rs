@@ -862,14 +862,36 @@ fn explain_says_which_commands_it_knows() {
     assert!(stderr.contains("install, upgrade"), "{stderr}");
 }
 
-/// Every command that delegates can say who it delegates to.
+/// Commands that do their whole job in this binary, so there is no provider
+/// to name.
+///
+/// The other half of {@link explain_describes_every_command_that_delegates}:
+/// the test asks `uf` itself for its commands, so a new one has to land in
+/// one list or the other. `help` and `completion` are clap's; `create`,
+/// `explain`, `info`, `inspect` and `exec` are uf's own work start to finish.
+const SELF_CONTAINED: &[&str] = &[
+    "completion",
+    "create",
+    "exec",
+    "explain",
+    "help",
+    "info",
+    "inspect",
+];
+
+/// Every command `uf` has is either explained or classified.
 ///
 /// `uf explain` described seven of twenty-two, and the fifteen it did not
 /// were the ones where the question has an answer worth printing — which
 /// package manager resolves a tree, which registry a publish reaches, which
-/// runner schedules a task. A command that does its whole job in this binary
-/// has no provider to name and is deliberately absent. See
-/// ubugeeei-prod/uf#166.
+/// runner schedules a task. See ubugeeei-prod/uf#166.
+///
+/// The command list comes from `uf __complete`, which is what the shell
+/// completions ask, rather than from a literal here: a list written twice is
+/// a list that disagrees with itself, and the failure mode is silent — a new
+/// delegating command would be missing from `uf explain` and this test would
+/// go on passing. Now it fails until the command is explained or named in
+/// {@link SELF_CONTAINED}.
 #[test]
 fn explain_describes_every_command_that_delegates() {
     let dir = tempfile::tempdir().unwrap();
@@ -879,10 +901,27 @@ fn explain_describes_every_command_that_delegates() {
     )
     .unwrap();
 
-    for command in [
-        "dev", "build", "doc", "test", "fmt", "lint", "check", "run", "install", "upgrade", "use",
-        "env", "prepare", "publish", "release", "lsp",
-    ] {
+    let listed = uf().args(["__complete", ""]).output().unwrap();
+    assert!(listed.status.success());
+    let listed = String::from_utf8(listed.stdout).unwrap();
+    let commands: Vec<&str> = listed
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        // `i` is `install` under another name, and explaining it twice would
+        // say the same thing twice.
+        .filter(|name| *name != "i")
+        .collect();
+    assert!(
+        commands.len() > 15,
+        "`uf __complete` listed {} commands, which is not the command set:\n{listed}",
+        commands.len()
+    );
+
+    for command in commands {
+        if SELF_CONTAINED.contains(&command) {
+            continue;
+        }
         let output = uf()
             .arg("--cwd")
             .arg(dir.path())
