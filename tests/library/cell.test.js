@@ -7,7 +7,10 @@ import {
   batch,
   cell,
   computed,
+  effect,
+  peek,
   read,
+  refresh,
   resource,
   snapshot,
   status,
@@ -309,7 +312,7 @@ describe("unsubscribing inside a batch", () => {
     const stop = subscribe(value, () => calls.push("listener"));
 
     batch(() => {
-      value.set(1);
+      write(value, 1);
       // React unmounts a `useSyncExternalStore` subscriber by calling exactly
       // this, and an unmount can happen inside a batch.
       stop();
@@ -325,10 +328,492 @@ describe("unsubscribing inside a batch", () => {
     subscribe(value, () => calls.push("second"));
 
     batch(() => {
-      value.set(1);
+      write(value, 1);
       stopFirst();
     });
 
     expect(calls).toEqual(["second"]);
+  });
+});
+
+// The properties below are what separates a reactive graph that is correct
+// from one that merely produces the right value if you read it at the right
+// moment. Every one of them is a count: a value assertion cannot tell a graph
+// that computed once from a graph that computed three times and settled on the
+// same answer, and the difference is the whole cost model.
+
+describe("glitch freedom", () => {
+  it("recomputes a diamond join once per write, and wakes its subscriber once", () => {
+    const source = cell(1);
+    const left = computed(() => read(source) + 1);
+    const right = computed(() => read(source) * 10);
+    const join = fn(() => `${read(left)}/${read(right)}`);
+    const joined = computed(() => String(join()));
+    const listener = fn();
+    subscribe(joined, listener);
+    expect(read(joined)).toBe("2/10");
+
+    join.mockClear();
+    listener.mockClear();
+    write(source, 2);
+
+    expect(read(joined)).toBe("3/20");
+    // The eager implementation this replaced ran the join twice and woke the
+    // listener twice: once against the new left and the *old* right, once
+    // against both. The first of those values never existed.
+    expect(join).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("recomputes each side of the diamond once per write", () => {
+    const source = cell(1);
+    const deriveLeft = fn(() => read(source) + 1);
+    const deriveRight = fn(() => read(source) * 10);
+    const left = computed(() => Number(deriveLeft()));
+    const right = computed(() => Number(deriveRight()));
+    const joined = computed(() => `${read(left)}/${read(right)}`);
+    subscribe(joined, () => {});
+
+    deriveLeft.mockClear();
+    deriveRight.mockClear();
+    write(source, 2);
+
+    expect(deriveLeft).toHaveBeenCalledTimes(1);
+    expect(deriveRight).toHaveBeenCalledTimes(1);
+  });
+
+  it("never shows the join a half-updated pair", () => {
+    const source = cell(1);
+    const left = computed(() => read(source) + 1);
+    const right = computed(() => read(source) * 10);
+    const seen = [];
+    const joined = computed(() => {
+      const pair = [read(left), read(right)];
+      seen.push(pair);
+      return pair.join("/");
+    });
+    subscribe(joined, () => {});
+    write(source, 2);
+    write(source, 3);
+
+    // Every pair the join was ever given is a function of one state of the
+    // source: right is always ten times what left minus one is.
+    expect(seen.every(([one, ten]) => (one - 1) * 10 === ten)).toBe(true);
+    expect(seen).toHaveLength(3);
+  });
+
+  it("stops at a layer whose value did not change", () => {
+    const count = cell(2);
+    const isEven = computed(() => read(count) % 2 === 0);
+    const label = fn(() => (read(isEven) ? "even" : "odd"));
+    const shown = computed(() => String(label()));
+    const listener = fn();
+    subscribe(shown, listener);
+
+    label.mockClear();
+    write(count, 4);
+
+    // `isEven` recomputed and produced the value it already had, so nothing
+    // below it ran. The cutoff propagates; it is not only about the cell that
+    // was written.
+    expect(label).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+
+    write(count, 5);
+    expect(label).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(read(shown)).toBe("odd");
+  });
+
+  it("wakes a subscriber once for a write that reaches it by two paths", () => {
+    const source = cell(0);
+    const left = computed(() => read(source) + 1);
+    const right = computed(() => read(source) + 2);
+    const listener = fn();
+    subscribe(
+      computed(() => read(left) + read(right)),
+      listener,
+    );
+    write(source, 1);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dynamic dependencies", () => {
+  it("stops recomputing for the branch it stopped reading", () => {
+    const useLeft = cell(true);
+    const left = cell("L");
+    const right = cell("R");
+    const derive = fn(() => (read(useLeft) ? read(left) : read(right)));
+    const chosen = computed(() => String(derive()));
+    subscribe(chosen, () => {});
+
+    derive.mockClear();
+    write(right, "R2");
+    // It never read `right`, so writing it is not a change to anything.
+    expect(derive).not.toHaveBeenCalled();
+
+    write(useLeft, false);
+    expect(derive).toHaveBeenCalledTimes(1);
+    expect(read(chosen)).toBe("R2");
+
+    derive.mockClear();
+    write(left, "L2");
+    // The dependency on `left` is gone, proven by writing it.
+    expect(derive).not.toHaveBeenCalled();
+    write(right, "R3");
+    expect(derive).toHaveBeenCalledTimes(1);
+    expect(read(chosen)).toBe("R3");
+  });
+
+  it("unmounts the dependency it dropped", () => {
+    const events = [];
+    const useLeft = cell(true);
+    const left = cell("L", {
+      onMount: () => {
+        events.push("left on");
+        return () => events.push("left off");
+      },
+    });
+    const right = cell("R", {
+      onMount: () => {
+        events.push("right on");
+        return () => events.push("right off");
+      },
+    });
+    const chosen = computed(() => (read(useLeft) ? read(left) : read(right)));
+    subscribe(chosen, () => {});
+    expect(events).toEqual(["left on"]);
+
+    write(useLeft, false);
+    // The order matters: the new dependency is linked before the old one is
+    // dropped, so a cell both branches shared would not be torn down and
+    // restarted for nothing.
+    expect(events).toEqual(["left on", "right on", "left off"]);
+  });
+});
+
+describe("liveness", () => {
+  it("stops recomputing once the last subscriber leaves", () => {
+    const source = cell(0);
+    const derive = fn(() => read(source));
+    const mirror = computed(() => Number(derive()));
+    const stop = subscribe(mirror, () => {});
+
+    write(source, 1);
+    expect(derive).toHaveBeenCalledTimes(2);
+
+    stop();
+    derive.mockClear();
+    write(source, 2);
+    write(source, 3);
+    expect(derive).not.toHaveBeenCalled();
+
+    // Still correct on demand, and still memoised: one recompute for two
+    // writes it slept through.
+    expect(read(mirror)).toBe(3);
+    expect(derive).toHaveBeenCalledTimes(1);
+    expect(read(mirror)).toBe(3);
+    expect(derive).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs onMount for the first subscriber and its teardown for the last", () => {
+    const events = [];
+    const source = cell(0, {
+      onMount: () => {
+        events.push("start");
+        return () => {
+          events.push("stop");
+        };
+      },
+    });
+
+    const first = subscribe(source, () => {});
+    const second = subscribe(source, () => {});
+    expect(events).toEqual(["start"]);
+
+    first();
+    expect(events).toEqual(["start"]);
+    second();
+    expect(events).toEqual(["start", "stop"]);
+
+    subscribe(source, () => {});
+    expect(events).toEqual(["start", "stop", "start"]);
+  });
+
+  it("does not mount a cell that is only read", () => {
+    const events = [];
+    const source = cell(0, {
+      onMount: () => {
+        events.push("start");
+      },
+    });
+    expect(read(source)).toBe(0);
+    write(source, 1);
+    expect(events).toEqual([]);
+  });
+
+  it("mounts what a subscribed derive reads, and unmounts it again", () => {
+    const events = [];
+    const source = cell(0, {
+      onMount: () => {
+        events.push("start");
+        return () => events.push("stop");
+      },
+    });
+    const doubled = computed(() => read(source) * 2);
+    const stop = subscribe(doubled, () => {});
+    expect(events).toEqual(["start"]);
+    stop();
+    expect(events).toEqual(["start", "stop"]);
+  });
+
+  it("delivers a value the mount wrote, even to a read already in flight", () => {
+    // The mount runs while the derive that caused it is being linked up, which
+    // means it writes after that derive read the old value. The write has to
+    // survive as a mark rather than be stamped over by the evaluation that is
+    // finishing.
+    const feed = cell(0, {
+      onMount: (self) => {
+        write(self, 21);
+      },
+    });
+    const doubled = computed(() => read(feed) * 2);
+    const seen = [];
+    subscribe(doubled, () => seen.push(read(doubled)));
+    expect(read(doubled)).toBe(42);
+    expect(seen).toEqual([42]);
+  });
+});
+
+describe("effect", () => {
+  it("runs now, and again when what it read changes", () => {
+    const source = cell(1);
+    const seen = [];
+    const stop = effect(() => {
+      seen.push(read(source));
+    });
+    expect(seen).toEqual([1]);
+    write(source, 2);
+    expect(seen).toEqual([1, 2]);
+    stop();
+    write(source, 3);
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it("runs its teardown before each re-run and once on stop", () => {
+    const source = cell(1);
+    const events = [];
+    const stop = effect(() => {
+      const value = read(source);
+      events.push(`run ${value}`);
+      return () => events.push(`clean ${value}`);
+    });
+    write(source, 2);
+    stop();
+    expect(events).toEqual(["run 1", "clean 1", "run 2", "clean 2"]);
+  });
+
+  it("runs once for a batch of writes", () => {
+    const first = cell(0);
+    const second = cell(0);
+    const body = fn(() => {
+      read(first);
+      read(second);
+    });
+    effect(() => body());
+    body.mockClear();
+    batch(() => {
+      write(first, 1);
+      write(second, 2);
+      write(first, 3);
+    });
+    expect(body).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run for a write that changes nothing", () => {
+    const source = cell(1);
+    const body = fn(() => read(source));
+    effect(() => {
+      body();
+    });
+    body.mockClear();
+    write(source, 1);
+    expect(body).not.toHaveBeenCalled();
+  });
+});
+
+describe("peek", () => {
+  it("reads without creating a dependency", () => {
+    const tracked = cell(1);
+    const ignored = cell(100);
+    const derive = fn(() => read(tracked) + peek(ignored));
+    const total = computed(() => Number(derive()));
+    subscribe(total, () => {});
+
+    derive.mockClear();
+    write(ignored, 200);
+    expect(derive).not.toHaveBeenCalled();
+
+    write(tracked, 2);
+    expect(read(total)).toBe(202);
+  });
+});
+
+describe("equals", () => {
+  it("uses the cell's own comparison to decide what changed", () => {
+    const sameLength = (previous, next) => previous.length === next.length;
+    const rows = cell(["a", "b"], { equals: sameLength });
+    const listener = fn();
+    subscribe(rows, listener);
+    write(rows, ["c", "d"]);
+    expect(listener).not.toHaveBeenCalled();
+    expect(read(rows)).toEqual(["a", "b"]);
+    write(rows, ["c"]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a derive that rebuilds an array from waking anyone", () => {
+    const numbers = cell([1, 2, 3, 4]);
+    const evens = computed(() => read(numbers).filter((value) => value % 2 === 0), {
+      equals: (previous, next) =>
+        previous.length === next.length && previous.every((value, index) => value === next[index]),
+    });
+    const listener = fn();
+    subscribe(evens, listener);
+    write(numbers, [1, 2, 3, 4, 5]);
+    expect(listener).not.toHaveBeenCalled();
+    write(numbers, [1, 2, 3, 4, 6]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an asynchronous cell that reloads", () => {
+  /** A load whose promises are settled by the test, one per key. */
+  function controlled() {
+    const settle = new Map();
+    return {
+      settle,
+      load: (key) =>
+        new Promise((resolve) => {
+          settle.set(key, resolve);
+        }),
+    };
+  }
+
+  it("reloads when what the load read changes", async () => {
+    const id = cell("a");
+    const { settle, load } = controlled();
+    const loaded = resource(() => load(read(id)));
+    subscribe(loaded, () => {});
+
+    settle.get("a")("value a");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("value a");
+
+    write(id, "b");
+    expect(status(loaded)).toBe("pending");
+    settle.get("b")("value b");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("value b");
+  });
+
+  it("does not let a slow load overtaken by a fast one deliver its value", async () => {
+    const id = cell("slow");
+    const { settle, load } = controlled();
+    const loaded = resource(() => load(read(id)));
+    const listener = fn();
+    subscribe(loaded, listener);
+
+    // The second load starts while the first is still in flight.
+    write(id, "fast");
+    settle.get("fast")("fast value");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("fast value");
+
+    // The one it superseded settles last, which is exactly the race this
+    // exists to lose safely.
+    settle.get("slow")("slow value");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("fast value");
+    expect(status(loaded)).toBe("success");
+  });
+
+  it("does not reload for a write to something the load never read", async () => {
+    const id = cell("a");
+    const unrelated = cell(0);
+    const load = fn((key) => Promise.resolve(`value ${key}`));
+    const loaded = resource(() => load(read(id)));
+    subscribe(loaded, () => {});
+    await Promise.resolve();
+    await Promise.resolve();
+
+    load.mockClear();
+    write(unrelated, 1);
+    expect(load).not.toHaveBeenCalled();
+    write(id, "b");
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a write supersede the load in flight", async () => {
+    const { settle, load } = controlled();
+    const loaded = resource(() => load("only"));
+    subscribe(loaded, () => {});
+    expect(status(loaded)).toBe("pending");
+
+    // An optimistic update, or a value that arrived by another route.
+    write(loaded, "written");
+    expect(read(loaded)).toBe("written");
+    expect(status(loaded)).toBe("success");
+
+    settle.get("only")("loaded");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("written");
+  });
+
+  it("loads again on refresh, without anything it reads changing", async () => {
+    let served = 0;
+    const load = fn(() => {
+      served += 1;
+      return Promise.resolve(served);
+    });
+    const loaded = resource(() => load());
+    subscribe(loaded, () => {});
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe(1);
+
+    refresh(loaded);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe(2);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a dependency a nested derive also read", () => {
+  it("keeps its edge to the outer derive", () => {
+    // The inner evaluation stamps the shared cell as *its* dependency. If the
+    // outer relink decides what to unlink from that stamp, it drops an edge it
+    // is still using — and the second write after that reaches nobody.
+    const source = cell(1);
+    const other = computed(() => read(source) * 10);
+    const derive = fn(() => read(source) + untracked(() => read(other)));
+    const total = computed(() => Number(derive()));
+    const listener = fn();
+    subscribe(total, listener);
+
+    write(source, 2);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(read(total)).toBe(22);
+
+    write(source, 3);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(read(total)).toBe(33);
   });
 });
