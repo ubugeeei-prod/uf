@@ -315,6 +315,26 @@ pub fn binaryish_operator(expression: &Expression) -> Option<&'static str> {
     }
 }
 
+/// Whether a logical expression inside another one keeps its parentheses.
+///
+/// `a && b || c` is printed `(a && b) || c`: a logical operator inside a
+/// different one is always parenthesized, however the precedences fall. The
+/// same operator on either side needs nothing — `&&`, `||` and `??` each
+/// give the same value and short-circuit at the same operand however they
+/// associate, and Prettier drops the parentheses too.
+///
+/// Dropping them has a consequence for layout, and
+/// [`binaryish_parts`](super::Printer::print_binaryish) is the other caller
+/// of this function for that reason: an operand printed without parentheses
+/// has to lay out as part of its parent's chain, or the second pass reads
+/// the flat text back as a left-nested tree and disagrees with the first.
+pub fn logical_in_logical_needs_parens(
+    parent: &expression::LogicalOperator,
+    child: &expression::LogicalOperator,
+) -> bool {
+    std::mem::discriminant(parent) != std::mem::discriminant(child)
+}
+
 /// The spelling of a logical operator.
 pub fn logical_operator(operator: &expression::LogicalOperator) -> &'static str {
     match operator {
@@ -882,12 +902,11 @@ impl<'a> Printer<'a> {
                 inner: parent_logical,
                 ..
             } => {
-                // `a && b || c` is printed `(a && b) || c`: a logical
-                // operator inside a different one is always parenthesized,
-                // however the precedences fall.
                 if let E::Logical { inner, .. } = &**expression {
-                    return std::mem::discriminant(&parent_logical.operator)
-                        != std::mem::discriminant(&inner.operator);
+                    return logical_in_logical_needs_parens(
+                        &parent_logical.operator,
+                        &inner.operator,
+                    );
                 }
                 self.binaryish_in_binaryish(
                     expression,
