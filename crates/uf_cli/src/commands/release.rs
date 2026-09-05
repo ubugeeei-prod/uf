@@ -3,7 +3,7 @@
 use std::fs;
 
 use anyhow::{Context, Result, anyhow, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
 use uf_prepare::default_plan;
@@ -135,6 +135,7 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
     let tag = format!("{}{}", resolved.config.release.tag_prefix, next_version);
     let state_dir = resolved.root.join(".uf");
     fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let changelog = write_changelog(&resolved.root, &tag, &resolved.config.release.tag_prefix)?;
     let manifest = state_dir.join("release.json");
     write_json_file(
         &manifest,
@@ -147,6 +148,8 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
             "command": resolved.config.release.command.as_str(),
             "publish": resolved.config.release.publish,
             "trustedTrigger": resolved.config.publish.trusted_publish.trigger,
+            "changelog": changelog.as_ref().map(Changelog::path),
+            "changes": changelog.as_ref().map_or(0, |written| written.changes),
         }),
     )?;
 
@@ -154,7 +157,18 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
     let command = resolved.config.release.command.to_string();
     let trigger = format!("{:?}", resolved.config.publish.trusted_publish.trigger);
     let manifest_path = manifest.to_string();
-    let summary = format!("release {tag} planned");
+    let changelog_path = changelog.as_ref().map(Changelog::path);
+    let changelog_row = changelog_path
+        .as_deref()
+        .map(|path| KeyValue::toned("changelog", path, Tone::Path));
+    let summary = match &changelog {
+        Some(written) => format!(
+            "release {tag} planned, {} change{} written to the changelog",
+            written.changes,
+            if written.changes == 1 { "" } else { "s" }
+        ),
+        None => format!("release {tag} planned"),
+    };
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf release", Some(&tag));
@@ -173,10 +187,106 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
                 KeyValue::toned("manifest", &manifest_path, Tone::Path),
             ],
         );
+        if let Some(entry) = &changelog_row {
+            renderer.key_values(out, 2, &[entry.clone()]);
+        }
         renderer.blank(out);
         renderer.status(out, Status::Success, &summary);
     });
     Ok(())
+}
+
+/// A changelog section written to disk.
+struct Changelog {
+    /// Where it was written.
+    file: Utf8PathBuf,
+    /// How many commits it describes.
+    changes: usize,
+}
+
+impl Changelog {
+    fn path(&self) -> String {
+        self.file.to_string()
+    }
+}
+
+/// Write the section for `tag` to `CHANGELOG.md`, from the commits since the
+/// last release tag.
+///
+/// [`None`] when there is no git history to read — an exported source tree, a
+/// directory that is not a repository. A release plan is still worth writing
+/// there; a missing changelog is not a reason to refuse to cut a release, and
+/// saying so is better than an error that stops the command.
+fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Option<Changelog>> {
+    let Some(subjects) = commit_subjects(root, tag_prefix)? else {
+        return Ok(None);
+    };
+    if subjects.is_empty() {
+        return Ok(None);
+    }
+    // The date of the commit being released rather than the wall clock: a
+    // changelog regenerated next week should say the same thing, and there is
+    // no date crate in this binary to read a clock with anyway.
+    let date = git(root, &["log", "-1", "--format=%cs"])
+        .map(|date| date.trim().to_owned())
+        .filter(|date| !date.is_empty())
+        .unwrap_or_else(|| String::from("unreleased"));
+    let section = crate::changelog::section(tag, &date, &subjects);
+    let file = root.join("CHANGELOG.md");
+    let existing = fs::read_to_string(&file).ok();
+    let contents = crate::changelog::prepend(existing.as_deref(), &section);
+    fs::write(&file, contents).with_context(|| format!("failed to write {file}"))?;
+    Ok(Some(Changelog {
+        file,
+        changes: subjects.len(),
+    }))
+}
+
+/// The subjects of every commit since the last `<prefix>*` tag, newest first.
+///
+/// Merges are left out: a merge commit's subject says which branch was
+/// merged, which is a fact about this repository's history rather than about
+/// what changed.
+fn commit_subjects(root: &Utf8Path, tag_prefix: &str) -> Result<Option<Vec<String>>> {
+    let previous = git(
+        root,
+        &[
+            "describe",
+            "--tags",
+            "--abbrev=0",
+            "--match",
+            &format!("{tag_prefix}*"),
+        ],
+    );
+    let range = match previous {
+        Some(previous) if !previous.trim().is_empty() => format!("{}..HEAD", previous.trim()),
+        // No release yet: everything that has ever been committed.
+        _ => String::from("HEAD"),
+    };
+    let Some(log) = git(root, &["log", "--no-merges", "--format=%s", &range]) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        log.lines()
+            .map(str::trim)
+            .filter(|subject| !subject.is_empty())
+            .map(str::to_owned)
+            .collect(),
+    ))
+}
+
+/// Run `git` in `root`, or [`None`] when it is not there or says no.
+fn git(root: &Utf8Path, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root.as_str())
+        .args(args)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn bump_semver(version: &str, bump: ReleaseBump) -> Result<String> {
