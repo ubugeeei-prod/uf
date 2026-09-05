@@ -25,27 +25,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - run: tools/upstream/sync.sh
+      - id: exclude
+        env:
+          BASELINE: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+        run: |
+          echo "crates=$(tools/ci/semver-exclude.sh "$BASELINE")" >> "$GITHUB_OUTPUT"
       - uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2
         with:
           baseline-rev: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
           rust-toolchain: "nightly-2026-08-01"
-          # cargo-semver-checks builds its baseline from a copy of each crate,
-          # outside the workspace, where the relative path to the `upstream/flow`
-          # submodule no longer resolves. A path dependency is relative by
-          # definition, so this is not something a crate can fix.
-          #
-          # `uf_flow`, `uf_check` and `uf_transform` name the submodule; the
-          # other three reach it transitively, and cargo resolves a path
-          # dependency whether or not the feature using it is enabled.
-          # Excluding them keeps most crates gated, which is worth more than
-          # switching the gate off. `uf_fmt` joined the list when the
-          # formatter started printing from the parser's syntax tree.
-          #
-          # Only a version change rebuilds the baseline outside the workspace,
-          # so a crate missing from this list passes every PR until a release
-          # bumps the version. `uf_jsx` was missed that way. The list is the
-          # closure of the crates reaching `uf_flow` or `uf_check`.
-          #
-          # The list grows as more crates use the parser. See
-          # docs/architecture.md for what to do when it covers too little.
-          exclude: uf_check,uf_cli,uf_doc,uf_flow,uf_fmt,uf_lint,uf_transform
+          # Two kinds of crate cannot be compared, and tools/ci/semver-exclude.sh
+          # explains both: the ones whose baseline copy loses the relative path
+          # to the `upstream/flow` submodule, and the ones that did not exist at
+          # the baseline yet. The second half is computed there rather than
+          # written down here, because a crate excluded by hand stays excluded
+          # long after it has a baseline — `uf_jsx` was missed that way.
+          exclude: ${{ steps.exclude.outputs.crates }}
