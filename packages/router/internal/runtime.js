@@ -404,8 +404,8 @@ async function resolveMetadata(
     const { title, description } = page.frontmatter;
     merged = {
       ...merged,
-      ...title != null ? { title } : {},
-      ...description != null ? { description } : {},
+      ...(title != null ? { title } : {}),
+      ...(description != null ? { description } : {}),
     };
   }
   if (page.metadata != null) {
