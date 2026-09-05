@@ -22,7 +22,7 @@
 use anyhow::Result;
 use camino::Utf8Path;
 use uf_config::UniflowedConfig;
-use uf_project::{ProjectFile, collect_source_files};
+use uf_project::{ProjectFile, scan_source_files};
 use uf_term::{PhaseTimer, Status};
 use uf_test::{ImportGraph, TestFilter, Watcher};
 
@@ -47,7 +47,11 @@ pub(super) fn watch(
     config: UniflowedConfig,
     args: TestArgs,
 ) -> Result<()> {
-    let mut files = collect_source_files(root, &config)?;
+    // The one-shot `uf test` has already refused to start on a file it could
+    // not read, so a watch session either began without any or is about to be
+    // told about one it did not have before. Either way it keeps watching:
+    // exiting a watch loop because somebody saved a binary is hostile.
+    let mut files = scan_source_files(root, &config)?.files;
     // Resolved once: a watch session that lost its host between runs would be
     // reporting a different failure than the one the user is editing towards.
     let host = super::test_host(root, &config)?;
@@ -71,7 +75,7 @@ pub(super) fn watch(
             continue;
         }
 
-        let refreshed = collect_source_files(root, &config)?;
+        let refreshed = scan_source_files(root, &config)?.files;
         let moved = changed_paths(&files, &refreshed);
         files = refreshed;
         prime(&mut watcher, &files);

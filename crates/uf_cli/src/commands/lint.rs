@@ -5,12 +5,12 @@ use camino::Utf8Path;
 use serde_json::json;
 use uf_config::load_config;
 use uf_lint::{Diagnostic, LintReport, Severity, SourceFile, lint_sources};
-use uf_project::{SourceKind, collect_source_files};
+use uf_project::{SourceKind, scan_source_files};
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
 };
 
-use crate::support::{plural, problem_summary};
+use crate::support::{plural, problem_summary, unreadable_lines};
 use crate::ui::Ui;
 
 /// How many skipped rules are named before the list is summarised.
@@ -45,7 +45,7 @@ pub(crate) fn lint_command(
 ) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("scanning sources");
-    let (report, sources) = run_lint(cwd)?;
+    let (report, sources, unreadable) = run_lint(cwd)?;
     progress.finish();
     drop(progress);
 
@@ -53,8 +53,14 @@ pub(crate) fn lint_command(
         ui.json(&lint_payload(command, &report))?;
     } else {
         render_lint_report(ui, command, &report, &sources);
+        render_unreadable(ui, &unreadable);
     }
 
+    // Before the diagnostics count: a file nobody could read has no
+    // diagnostics, and reporting "0 errors" over it would be a lie.
+    if !unreadable.is_empty() {
+        bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
     let errors = severity_count(&report, Severity::Error);
     if errors > 0 {
         bail!(
@@ -66,7 +72,8 @@ pub(crate) fn lint_command(
     Ok(())
 }
 
-pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>)> {
+/// The lint report, the sources it read, and the files it could not read.
+pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>, Vec<String>)> {
     let resolved = load_config(cwd)?;
     // Flow only. Discovery also returns the JSON, CSS and TypeScript that
     // `uf fmt` hands to the non-Flow formatter, and uf's linter is a Flow
@@ -74,8 +81,10 @@ pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>)> 
     // file nobody asked it to read. `package.json` is the exception it already
     // made: the linter reads it, which is why `is_flow` is the wrong question
     // for the formatter and the right one here.
-    let files = collect_source_files(&resolved.root, &resolved.config)?;
-    let sources = files
+    let scan = scan_source_files(&resolved.root, &resolved.config)?;
+    let unreadable = unreadable_lines(&scan.unreadable);
+    let sources = scan
+        .files
         .into_iter()
         .filter(|file| file.kind.is_flow() || file.kind == SourceKind::PackageManifest)
         .map(|file| SourceFile {
@@ -84,7 +93,7 @@ pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>)> 
         })
         .collect::<Vec<_>>();
     let report = lint_sources(&sources, &resolved.config)?;
-    Ok((report, sources))
+    Ok((report, sources, unreadable))
 }
 
 pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {
@@ -154,6 +163,27 @@ pub(crate) fn identifier_span(line: &str, column: usize) -> usize {
         .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$'))
         .count();
     length.max(1)
+}
+
+/// The files discovery skipped, after the diagnostics.
+///
+/// Shared by `uf lint` and `uf check`: both walk the project, and both used
+/// to stop at the first file that was not UTF-8 without linting any of the
+/// rest.
+pub(crate) fn render_unreadable(ui: &mut Ui, unreadable: &[String]) {
+    if unreadable.is_empty() {
+        return;
+    }
+    let lines = unreadable.iter().map(String::as_str).collect::<Vec<_>>();
+    ui.render(|renderer, out| {
+        renderer.status(
+            out,
+            Status::Warn,
+            &format!("{} could not be read", plural(lines.len(), "file")),
+        );
+        renderer.bullet_list(out, 2, &lines);
+        renderer.blank(out);
+    });
 }
 
 fn render_lint_report(

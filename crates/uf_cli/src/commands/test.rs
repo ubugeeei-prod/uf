@@ -20,7 +20,7 @@ use std::time::Duration;
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::load_config;
-use uf_project::{ProjectFile, collect_source_files};
+use uf_project::{ProjectFile, scan_source_files};
 use uf_term::PhaseTimer;
 use uf_test::{
     Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
@@ -30,7 +30,7 @@ use uf_test::{
 
 use crate::commands::vite::{installed_package, resolve_host};
 
-use crate::support::plural;
+use crate::support::{plural, unreadable_lines};
 use crate::ui::Ui;
 
 mod payload;
@@ -113,7 +113,15 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
 
     let resolved = load_config(cwd)?;
     let root = resolved.root.clone();
-    let files = collect_source_files(&root, &resolved.config)?;
+    let scan = scan_source_files(&root, &resolved.config)?;
+    let unreadable = unreadable_lines(&scan.unreadable);
+    let files = scan.files;
+    // Before anything is run. A file uf could not read might have been a test,
+    // and a test that silently did not run is the worst thing a runner can do.
+    if !unreadable.is_empty() {
+        crate::commands::lint::render_unreadable(ui, &unreadable);
+        bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
 
     if args.list {
         return render_list(ui, &root, &files, &args.filter());
