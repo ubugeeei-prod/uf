@@ -621,6 +621,25 @@ impl<'a> Printer<'a> {
     /// `+[K in keyof O]?: T`.
     fn print_mapped_type(&mut self, mapped: &'a types::object::MappedType<Loc, Loc>) -> Doc<'a> {
         let mut parts = Vec::new();
+        // `-readonly` removes it and `+readonly` adds it, and the operator is
+        // a separate field from the variance itself. Printing only the
+        // variance turned `{ -readonly [K in keyof T]: T[K] }` — a type that
+        // strips `readonly` — into `{ readonly … }`, which adds it. The same
+        // spelling, the opposite type.
+        //
+        // Not covered by a fixture, because Prettier's parser refuses the
+        // syntax outright:
+        //
+        //     SyntaxError: ':' or '?' expected in property type annotation
+        //
+        // Meta's Rust port accepts it and models the operator, so uf can read
+        // a file Prettier cannot, and has to print back what it read.
+        if let Some(operator) = &mapped.variance_op {
+            parts.push(self.s(match operator {
+                types::object::MappedTypeVarianceOp::Add => "+",
+                types::object::MappedTypeVarianceOp::Remove => "-",
+            }));
+        }
         if let Some(variance) = &mapped.variance {
             parts.push(self.print_variance(variance));
         }

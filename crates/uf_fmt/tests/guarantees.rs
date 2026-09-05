@@ -623,3 +623,39 @@ fn a_comment_cast_keeps_what_the_source_needed() {
     let output = format_source(trailing, &config).expect("formats").output;
     similar_asserts::assert_eq!(output, "// @flow\nconst widened = value /*:: as any*/;\n");
 }
+
+/// A mapped type's variance operator survives, and it changes the type.
+///
+/// `-readonly` removes `readonly` and `+readonly` adds it. The operator is a
+/// separate field from the variance, and printing only the variance turned
+/// the first into the second — the same spelling, the opposite type, and a
+/// formatter quietly rewriting what a program means.
+///
+/// It is here rather than in a fixture because Prettier cannot read the
+/// syntax at all:
+///
+/// ```text
+/// SyntaxError: ':' or '?' expected in property type annotation
+/// ```
+///
+/// Meta's Rust port accepts it and models the operator, so uf can read a file
+/// Prettier cannot — which is a reason to print back what was read, not a
+/// reason to have no test.
+#[test]
+fn a_mapped_types_variance_operator_is_not_dropped() {
+    let config = FmtConfig::default();
+    let source = concat!(
+        "// @flow\n",
+        "type Mutable<T> = { -readonly [K in keyof T]: T[K] };\n",
+        "type Frozen<T> = { +readonly [K in keyof T]: T[K] };\n",
+        "type Plain<T> = { readonly [K in keyof T]: T[K] };\n",
+        "type Optional<T> = { [K in keyof T]?: T[K] };\n",
+        "type Required<T> = { [K in keyof T]-?: T[K] };\n",
+    );
+
+    let output = format_source(source, &config).expect("formats").output;
+
+    similar_asserts::assert_eq!(output, source, "the operators are the type");
+    // And the tree says so too, not just the text.
+    similar_asserts::assert_eq!(support::structure(source), support::structure(&output));
+}
