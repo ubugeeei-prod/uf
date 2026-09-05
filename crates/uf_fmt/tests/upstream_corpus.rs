@@ -75,11 +75,9 @@ const KNOWN_SLOW: [&str; 0] = [];
 ///   pass.
 /// * **#134** — `function f(): %checks` loses its colon and the output does
 ///   not parse.
-/// * **#135** — a comment before an interface's `extends` is relocated into
-///   the type it precedes.
 /// * **#126** — Flow's comment types are rewritten into real syntax, so a
 ///   script written to run under bare `node` stops doing so.
-const KNOWN_BROKEN: [&str; 11] = [
+const KNOWN_BROKEN: [&str; 10] = [
     // #126
     "react-native/packages/react-native/scripts/spm/generate-spm-xcodeproj.js",
     // #133
@@ -93,8 +91,6 @@ const KNOWN_BROKEN: [&str; 11] = [
     "yarn/src/package-request.js",
     // #134
     "fbt/packages/babel-plugin-fbt/src/FbtUtil.js",
-    // #135
-    "parcel/packages/core/types-internal/src/index.js",
 ];
 
 /// The fixtures this run should look at.

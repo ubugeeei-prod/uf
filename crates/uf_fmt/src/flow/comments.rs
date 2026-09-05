@@ -870,7 +870,15 @@ impl<'a> Attacher<'a, '_> {
                     &inner.id,
                     inner.tparams.as_ref(),
                     NodeRef::ObjectType(&inner.body.0, &inner.body.1),
-                    None,
+                    // `declare class C extends B` has no node for the
+                    // `extends` clause — its children are spliced into the
+                    // declaration's, so `B` arrives as a bare identifier and
+                    // there is no `InterfaceExtends` key to compare against
+                    // the way an interface gives one. The first child that is
+                    // neither the name nor its type parameters is the head of
+                    // the heritage; the body is handled before this is used,
+                    // so a declaration with no heritage cannot reach it.
+                    self.first_child_after_name(enclosing, &inner.id, inner.tparams.as_ref()),
                     inner.mixins.first().map(NodeRef::InterfaceExtends),
                 ),
                 statement::StatementInner::DeclareInterface { inner, .. }
@@ -888,14 +896,15 @@ impl<'a> Attacher<'a, '_> {
         let Some(following) = context.following else {
             return false;
         };
-        if following.key() == body.key() {
-            self.add_block_first(body, context);
-            return true;
-        }
         let id_or_tparams = |node: NodeRef<'a>| {
             NodeRef::Identifier(id).key() == node.key()
                 || tparams.is_some_and(|tparams| NodeRef::TypeParams(tparams).key() == node.key())
         };
+
+        if following.key() == body.key() {
+            self.add_block_first(body, context);
+            return true;
+        }
         for (first, marker) in [
             (extends_first, Marker::Extends),
             (mixins_first, Marker::Mixins),
@@ -913,6 +922,27 @@ impl<'a> Attacher<'a, '_> {
             }
         }
         false
+    }
+
+    /// The first child of `node` that is neither `id` nor `tparams`.
+    ///
+    /// For a declaration whose heritage clause is not a node of its own, and
+    /// so gives nothing to compare a key against. See the `DeclareClass` arm
+    /// of [`handle_class`](Self::handle_class).
+    fn first_child_after_name(
+        &self,
+        node: NodeRef<'a>,
+        id: &'a ast::Identifier<uf_flow::Loc, uf_flow::Loc>,
+        tparams: Option<&'a types::TypeParams<uf_flow::Loc, uf_flow::Loc>>,
+    ) -> Option<NodeRef<'a>> {
+        self.sorted_children(node)
+            .into_iter()
+            .map(|(_, child)| child)
+            .find(|child| {
+                NodeRef::Identifier(id).key() != child.key()
+                    && !tparams
+                        .is_some_and(|tparams| NodeRef::TypeParams(tparams).key() == child.key())
+            })
     }
 
     fn handle_method_name(&mut self, context: Context<'a>) -> bool {
