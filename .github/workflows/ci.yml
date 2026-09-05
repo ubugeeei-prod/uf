@@ -304,6 +304,38 @@ jobs:
           test -d upstream/react-native/packages/react-native/Libraries
           echo "upstream integrations: every promised subtree is present"
 
+  # Deleted in #49 and still required by the repository ruleset, so every pull
+  # request was blocked on a context nothing reported. See #197.
+  #
+  # It is restored rather than dropped because `--all-features` is coverage
+  # nothing else has: `uf_check`'s `upstream-typecheck` is on by default, but
+  # any other optional feature in the workspace is compiled only here.
+  upstream-typecheck:
+    name: Upstream Flow Typecheck
+    needs: toolchain
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    env:
+      # Flow's typing crates declare `#![feature(box_patterns)]`, which the
+      # compiler removed around 2026-09-01. This date is the newest nightly
+      # that still accepts it, so the pin is not a preference — a floating
+      # `nightly` cannot build the type checker at all. `RUSTUP_TOOLCHAIN`
+      # because `rust-toolchain.toml` overrides `rustup default`.
+      RUSTUP_TOOLCHAIN: nightly-2026-08-01
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tools/upstream/sync.sh
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-08-01
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - run: cargo install wild-linker --version 0.10.0 --locked
+      - run: wild --version
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
+
   upstream-flow:
     name: Upstream Flow
     needs: toolchain
