@@ -20,9 +20,11 @@ Unified Toolchain for Flow (React)
 > - **The build is being moved onto Vite.** The dev server and bundler in this
 >   repository are being deleted as Vite takes over, so `uf dev` and `uf build`
 >   are mid-migration.
-> - **The formatter prints Flow only.** `uf fmt` now formats `.js` from the
->   official parser's syntax tree, matching Prettier; JSON, CSS and
->   TypeScript are not routed to Biome yet.
+> - **The formatter prints Flow itself and delegates the rest.** `uf fmt`
+>   formats `.js` from the official parser's syntax tree, matching Prettier,
+>   and hands JSON, CSS and TypeScript to Biome. Code inside a tagged
+>   template — GraphQL, CSS — is left as written, where Prettier reformats
+>   it.
 > - Commands, config keys and package names may change without notice.
 >
 > Everything below describes where `uf` is going. Treat it as the plan, not as
@@ -181,8 +183,9 @@ enables:
 - editor integration targets for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor
 - formatter defaults to double quotes and semicolons; Flow files are parsed by
   the official Flow Rust parser and printed by uf's own Prettier-compatible
-  printer, checked against Prettier's output by a fixture corpus. Non-Flow files
-  are configured to route to Biome, which is not wired up yet
+  printer, checked against Prettier's output by a fixture corpus and against
+  its own guarantees over ~8,100 modules of third-party Flow. Non-Flow files
+  go to the formatter named by `fmt.nonFlow.formatter`, Biome by default
 
 No Babel, Jest, Yarn, npm scripts, or `.flowconfig` is required for generated
 projects. Flow becomes JavaScript through `uf transform`: the official Flow
