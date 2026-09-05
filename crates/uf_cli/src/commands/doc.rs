@@ -26,6 +26,12 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
             "root": resolved.root.as_str(),
             "report": report,
         }))?;
+        if !report.unreadable.is_empty() {
+            bail!(
+                "{} could not be read",
+                plural(report.unreadable.len(), "file")
+            );
+        }
         if report.has_diagnostics() {
             bail!(
                 "uf doc failed with {}",
@@ -35,8 +41,22 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
         return Ok(());
     }
 
+    // Reported before the parse errors, and separately: a file that is not
+    // UTF-8 has no syntax to be wrong about, and one of them used to stop the
+    // walk before any other file was read.
+    if !report.unreadable.is_empty() {
+        render_unreadable(ui, &report);
+    }
     if report.has_diagnostics() {
         render_diagnostics(ui, &report);
+    }
+    if !report.unreadable.is_empty() {
+        bail!(
+            "{} could not be read",
+            plural(report.unreadable.len(), "file")
+        );
+    }
+    if report.has_diagnostics() {
         bail!(
             "uf doc failed with {}",
             plural(report.diagnostics.len(), "parse error")
@@ -47,6 +67,26 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
     let output = write_markdown(&report, &output_dir)?;
     render_success(ui, &resolved.root, out_dir, &output, &report);
     Ok(())
+}
+
+/// The files discovery skipped.
+fn render_unreadable(ui: &mut Ui, report: &DocReport) {
+    let lines = report
+        .unreadable
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf doc", None);
+        renderer.blank(out);
+        renderer.status(
+            out,
+            Status::Warn,
+            &format!("{} could not be read", plural(lines.len(), "file")),
+        );
+        renderer.bullet_list(out, 2, &lines);
+        renderer.blank(out);
+    });
 }
 
 fn render_success(

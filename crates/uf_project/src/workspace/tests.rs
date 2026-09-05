@@ -76,7 +76,7 @@ fn ignored_directories_hold_no_members() {
 }
 
 /// A checkout inside a checkout is another repository, and its projects are
-/// not this one's — the same rule `collect_source_files` applies.
+/// not this one's — the same rule `scan_source_files` applies.
 #[test]
 fn another_repository_holds_no_members() {
     let (_dir, root) = tree(&["vendor"]);
