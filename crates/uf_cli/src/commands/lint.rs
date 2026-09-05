@@ -42,10 +42,11 @@ pub(crate) fn lint_command(
     ui: &mut Ui,
     command: LintCommand,
     json: bool,
+    paths: &[String],
 ) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("scanning sources");
-    let (report, sources, unreadable) = run_lint(cwd)?;
+    let (report, sources, unreadable) = run_lint(cwd, paths)?;
     progress.finish();
     drop(progress);
 
@@ -73,7 +74,14 @@ pub(crate) fn lint_command(
 }
 
 /// The lint report, the sources it read, and the files it could not read.
-pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>, Vec<String>)> {
+///
+/// `paths` narrows the run to the files whose relative path contains one of
+/// the patterns, which is what `uf test` already means by a path argument.
+/// Empty means the whole project.
+pub(crate) fn run_lint(
+    cwd: &Utf8Path,
+    paths: &[String],
+) -> Result<(LintReport, Vec<SourceFile>, Vec<String>)> {
     let resolved = load_config(cwd)?;
     // Flow only. Discovery also returns the JSON, CSS and TypeScript that
     // `uf fmt` hands to the non-Flow formatter, and uf's linter is a Flow
@@ -81,19 +89,53 @@ pub(crate) fn run_lint(cwd: &Utf8Path) -> Result<(LintReport, Vec<SourceFile>, V
     // file nobody asked it to read. `package.json` is the exception it already
     // made: the linter reads it, which is why `is_flow` is the wrong question
     // for the formatter and the right one here.
-    let scan = scan_source_files(&resolved.root, &resolved.config)?;
+    let mut scan = scan_source_files(&resolved.root, &resolved.config)?;
+    // Narrowed before the read failures are rendered as well as before the
+    // sources: a file outside what was asked about must not fail the run.
+    scan.unreadable
+        .retain(|failure| selects(paths, &failure.relative_path));
     let unreadable = unreadable_lines(&scan.unreadable);
     let sources = scan
         .files
         .into_iter()
         .filter(|file| file.kind.is_flow() || file.kind == SourceKind::PackageManifest)
+        .filter(|file| selects(paths, &file.relative_path))
         .map(|file| SourceFile {
             path: file.relative_path,
             source: file.source,
         })
         .collect::<Vec<_>>();
+    if sources.is_empty() && !paths.is_empty() && unreadable.is_empty() {
+        bail!("no file matched {}", quoted_list(paths));
+    }
     let report = lint_sources(&sources, &resolved.config)?;
     Ok((report, sources, unreadable))
+}
+
+/// Whether `path` is one of the files the patterns asked for.
+///
+/// Substring rather than glob, and the same rule `uf test` uses for its own
+/// path arguments: `uf lint packages/ui` is the ordinary way to ask, and a
+/// reader who writes it should not have to learn a second matching language
+/// to find out why it read nothing.
+fn selects(patterns: &[String], path: &str) -> bool {
+    patterns.is_empty()
+        || patterns
+            .iter()
+            .any(|pattern| path.contains(pattern.as_str()))
+}
+
+/// `a`, `b` and `c`, quoted, for a message about patterns that matched nothing.
+fn quoted_list(patterns: &[String]) -> String {
+    let quoted: Vec<String> = patterns
+        .iter()
+        .map(|pattern| format!("`{pattern}`"))
+        .collect();
+    match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {
