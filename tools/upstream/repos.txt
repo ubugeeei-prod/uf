@@ -1,0 +1,18 @@
+# Upstream sources uf integrates with, pinned by commit.
+#
+#   name | url | commit | sparse subtrees
+#
+# `upstream/flow` is not here. It is a submodule and it has to stay one: it is
+# a *path dependency* in `Cargo.toml`, so cargo will not resolve the workspace
+# without it, and `tools/upstream/sync.sh` materializes it before anything else
+# on every checkout and in every CI job.
+#
+# Nothing in the cargo graph depends on the repositories below yet, so they are
+# fetched on request — `tools/upstream/sync.sh --integrations` — rather than in
+# every job. What each is for, and what uf does today instead, is in
+# docs/architecture.md; keeping that honest is the point of listing them here
+# rather than quietly vendoring them.
+
+react | https://github.com/facebook/react.git | f1f7ed2ac267a21dd2e3e67c4a606b9cf56e360b | compiler/crates compiler/Cargo.toml compiler/Cargo.lock
+relay | https://github.com/facebook/relay.git | 52c26aed65a496182f2fa978f9911db5be4f652d | compiler/crates compiler/Cargo.toml compiler/Cargo.lock
+react-native | https://github.com/facebook/react-native.git | 8cfde6d0834baf27cc14efff45bf853434acb3aa | packages/react-native-codegen packages/react-native/Libraries
