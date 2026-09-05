@@ -273,9 +273,11 @@ a *tie*, broken by the whitespace between it and what follows.
 
 **Four guarantees**, each a test rather than an intention:
 
-- **Prettier-compatible.** 27 fixtures under `crates/uf_fmt/tests/fixtures`
+- **Prettier-compatible.** The fixtures under `crates/uf_fmt/tests/fixtures`
   pair an input with the output of `prettier --parser hermes
   --plugin prettier-plugin-hermes-parser`, and are compared byte for byte.
+  With one exception, named below: uf does not format code embedded in a
+  tagged template, so the target is `--embedded-language-formatting=off`.
 - **Idempotent.** `format(format(x)) == format(x)`.
 - **Tree-preserving.** The output re-parses to the same tree as the input,
   compared as JSON with locations, comments, `raw` spellings and the other
@@ -285,8 +287,23 @@ a *tie*, broken by the whitespace between it and what follows.
   unmarked fails the whole run rather than shortening the file.
 - **Total.** Invalid syntax is a typed error and the file is left alone;
   no input panics. The parser recurses, so `uf_flow` refuses sources past
-  8 MiB or 300 levels of bracket nesting *before* parsing, and the work
-  runs on a thread with the stack that ceiling was measured against.
+  8 MiB, 300 levels of bracket nesting, or 10,000 links of an operator
+  chain that nests without brackets *before* parsing, and the work runs on
+  a thread with the stack those ceilings were measured against.
+
+Every one of these but the first is also checked over third-party Flow —
+React, Metro, Relay, React Native, Recoil, Flux, Parcel, Yarn, Prepack,
+StyleX, fbt, react-native-web, react-motion, DataLoader and redux-form,
+about 8,100 modules — by `crates/uf_fmt/tests/upstream_corpus.rs`. That
+corpus is where most of the printer bugs this repository has fixed came
+from: a hand-written fixture is written by somebody who already knows what
+the printer does.
+
+The exception named above is embedded languages. Prettier formats GraphQL,
+CSS and SQL inside a tagged template and re-indents it to the surrounding
+code; uf leaves every template exactly as written. It is Prettier's
+`embeddedLanguageFormatting`, its default is `"auto"`, and uf is compatible
+with `"off"`. See ubugeeei-prod/uf#177.
 
 Parentheses are not in the port's tree, so every pair in the output is
 recomputed from precedence and position. That is what makes the
@@ -295,10 +312,17 @@ printed, one it does not is dropped, and `(a?.b)()` keeps the parentheses
 that end its optional chain because dropping them would change what the
 program does.
 
-Non-Flow files (JSON, CSS, TypeScript) are configured to route to Biome's
-formatters through `fmt.nonFlow.formatter`, but that routing is not
-implemented yet: `uf fmt` still formats `.js` only, and `package.json` is
-read by the linter and never rewritten.
+Non-Flow files (JSON, JSONC, CSS, TypeScript) go to the formatter named by
+`fmt.nonFlow.formatter`, as a subprocess: `uf fmt` collects them, hands them
+to that command, and reports what it did. The default is Biome, resolved
+from the project's `node_modules/.bin` before `PATH` so a project gets the
+version it installed. `"none"` turns it off, and a formatter that is not
+installed is an error that names it rather than a silent skip.
+
+Not linked in, because linking Biome would make uf's release depend on
+Biome's — red line 5. Running the binary a project already has means the
+project upgrades its formatter without waiting for uf, and can name one uf
+has never heard of.
 
 ## Flow And React
 
