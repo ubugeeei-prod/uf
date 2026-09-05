@@ -18,13 +18,6 @@
 //! * **trailing commas** — the printer decides those from the layout.
 //! * **regex flags** — reordered, so they are compared as a sorted set.
 //! * **empty statements** — a lone `;` is dropped, as Prettier drops it.
-//! * **the shape of a logical chain** — `a && (b && c)` prints as
-//!   `a && b && c`, because the parentheses are redundant and Prettier drops
-//!   them too. `&&`, `||` and `??` each evaluate the same operands in the
-//!   same order and short-circuit at the same one however they associate, so
-//!   a chain of one operator is compared as the flat sequence of its
-//!   operands. Only those three: `(a + b) + c` and `a + (b + c)` differ for
-//!   strings and for floats, and Prettier keeps those parentheses.
 //! * **quoted property keys** — `{ "a": 1 }` is the same property as
 //!   `{ a: 1 }`, and the printer drops quotes it does not need.
 //! * **a redundant specifier alias** — `export {x as x}` is `export {x}`,
@@ -157,20 +150,6 @@ fn normalize(value: Value) -> Value {
             // literal is one — carries the container inline rather than
             // under a `comments` key.
             Value::Null
-        }
-        Value::Object(fields) if is_logical(&fields) => {
-            // A chain of one logical operator, as the flat list of its
-            // operands. `a && (b && c)` and `(a && b) && c` are the same
-            // program and print the same, so they compare equal here.
-            let mut operator = String::new();
-            let mut operands = Vec::new();
-            flatten_logical(Value::Object(fields), &mut operator, &mut operands);
-            let mut chain = Map::new();
-            chain.insert("operator".to_owned(), Value::String(operator));
-            chain.insert("operands".to_owned(), Value::Array(operands));
-            let mut out = Map::new();
-            out.insert("LogicalChain".to_owned(), Value::Object(chain));
-            Value::Object(out)
         }
         Value::Object(fields) => {
             // `export {x as x}` and `export {x}` are the same specifier, and
@@ -387,54 +366,4 @@ fn clean_jsx_text(text: &str) -> String {
         }
     }
     kept.join(" ")
-}
-
-/// Whether a serialized node is a `Logical`.
-fn is_logical(fields: &Map<String, Value>) -> bool {
-    fields.len() == 1 && fields.contains_key("Logical")
-}
-
-/// The operator and operands of a logical chain, normalised.
-///
-/// Recurses through both sides for as long as the operator is the same, so
-/// `a && (b && c)`, `(a && b) && c` and `a && b && c` all reduce to
-/// `And [a, b, c]`. A different operator ends the chain and is normalised as
-/// an operand in its own right, which keeps `a && (b || c)` distinct from
-/// `(a && b) || c`.
-fn flatten_logical(value: Value, operator: &mut String, operands: &mut Vec<Value>) {
-    let Value::Object(fields) = value else {
-        operands.push(normalize(value));
-        return;
-    };
-    if !is_logical(&fields) {
-        operands.push(normalize(Value::Object(fields)));
-        return;
-    }
-    let Some(Value::Object(node)) = fields.get("Logical") else {
-        operands.push(normalize(Value::Object(fields)));
-        return;
-    };
-    let here = match node.get("inner").and_then(|inner| inner.get("operator")) {
-        Some(Value::String(name)) => name.clone(),
-        _ => {
-            operands.push(normalize(Value::Object(fields)));
-            return;
-        }
-    };
-    if operator.is_empty() {
-        *operator = here;
-    } else if *operator != here {
-        operands.push(normalize(Value::Object(fields)));
-        return;
-    }
-    let Some(Value::Object(inner)) = node.get("inner") else {
-        operands.push(normalize(Value::Object(fields)));
-        return;
-    };
-    for side in ["left", "right"] {
-        match inner.get(side) {
-            Some(value) => flatten_logical(value.clone(), operator, operands),
-            None => operands.push(Value::Null),
-        }
-    }
 }

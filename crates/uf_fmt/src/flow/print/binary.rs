@@ -9,8 +9,7 @@ use uf_flow::ast::{expression, statement};
 
 use super::Printer;
 use super::parens::{
-    binaryish_operator, is_binaryish, is_call_like, is_jsx, is_member,
-    logical_in_logical_needs_parens, same, should_flatten,
+    binaryish_operator, is_binaryish, is_call_like, is_jsx, is_member, same, should_flatten,
 };
 use crate::doc::{Doc, DocKind, LINE};
 use crate::flow::comments::Placement;
@@ -18,26 +17,14 @@ use crate::flow::node::{Expression, NodeRef};
 
 /// Whether a logical expression's right side is an object, array or JSX
 /// that should hug the operator rather than break after it.
-///
-/// The right side here is the *last operand of the chain*, which is not
-/// `inner.right` when the source parenthesized to the right: `a && (b && {})`
-/// prints as `a && b && {}`, and what hugs the operator is the object. See
-/// {@link flattens_into_parent}.
 pub fn should_inline_logical_expression(expression: &Expression) -> bool {
     let expression::ExpressionInner::Logical { inner, .. } = &**expression else {
         return false;
     };
-    let mut right = &inner.right;
-    while flattens_into_parent(expression, right) {
-        let expression::ExpressionInner::Logical { inner, .. } = &**right else {
-            break;
-        };
-        right = &inner.right;
-    }
-    match &**right {
+    match &*inner.right {
         expression::ExpressionInner::Object { inner: object, .. } => !object.properties.is_empty(),
         expression::ExpressionInner::Array { inner: array, .. } => !array.elements.is_empty(),
-        _ => is_jsx(right),
+        _ => is_jsx(&inner.right),
     }
 }
 
@@ -48,42 +35,6 @@ fn operands(expression: &Expression) -> Option<(&Expression, &Expression)> {
         expression::ExpressionInner::Logical { inner, .. } => Some((&inner.left, &inner.right)),
         _ => None,
     }
-}
-
-/// Whether `right` joins its parent's chain instead of printing as a group
-/// of its own.
-///
-/// Prettier flattens the left spine only, and says why: `1 + 2 - 3` parses
-/// as `((1 + 2) - 3)`, so the left is where the rest of the expression is,
-/// and anything on the right had a different precedence and deserves its own
-/// group.
-///
-/// That reasoning holds for every tree built from source without
-/// parentheses, and `a && (b && c)` is the case it does not cover. The
-/// parentheses are redundant — see
-/// [`logical_in_logical_needs_parens`](super::parens::logical_in_logical_needs_parens)
-/// — so they are not printed, and what comes out is `a && b && c`. Reading
-/// that back gives a *left*-nested tree, which lays out as one chain. Unless
-/// the right-nested one lays out the same way, `uf fmt` twice is not
-/// `uf fmt` once:
-///
-/// ```text
-/// - descriptor.get === undefined && descriptor.set === undefined;
-/// + descriptor.get === undefined &&
-/// +   descriptor.set === undefined;
-/// ```
-///
-/// The condition is the paren rule, not a second copy of it: an operand
-/// that keeps its parentheses — `a + (b + c)`, `a && (b || c)` — is a group,
-/// exactly as before. See ubugeeei-prod/uf#133.
-fn flattens_into_parent(expression: &Expression, right: &Expression) -> bool {
-    let expression::ExpressionInner::Logical { inner: parent, .. } = &**expression else {
-        return false;
-    };
-    let expression::ExpressionInner::Logical { inner: child, .. } = &**right else {
-        return false;
-    };
-    !logical_in_logical_needs_parens(&parent.operator, &child.operator)
 }
 
 /// Whether two expressions are both binary or both logical.
@@ -195,13 +146,8 @@ impl<'a> Printer<'a> {
 
         let (left, right) = operands(expression).expect("binaryish");
         let operator = binaryish_operator(expression).unwrap_or("");
-        // "Is there another link of the same precedence in this chain?" —
-        // Prettier asks it of the left because a chain written without
-        // parentheses is left-nested. A flattened right is the same chain
-        // read from the other end, and answers the same question.
-        let same_precedence_sub_expression = (is_binaryish(left)
-            && should_flatten(operator, binaryish_operator(left).unwrap_or("")))
-            || flattens_into_parent(expression, right);
+        let same_precedence_sub_expression =
+            is_binaryish(left) && should_flatten(operator, binaryish_operator(left).unwrap_or(""));
 
         if should_not_indent
             || (should_inline_logical_expression(expression) && !same_precedence_sub_expression)
@@ -275,31 +221,11 @@ impl<'a> Printer<'a> {
         }
 
         let should_inline = should_inline_logical_expression(expression);
-        // A right operand that prints without parentheses continues this
-        // chain rather than starting a group. Its parts are spliced in, so
-        // the operands break together or not at all — and the hug of a
-        // trailing object is decided by the innermost link, which is where
-        // that object actually sits.
-        let flattened_right = flattens_into_parent(expression, right).then(|| {
-            let node = NodeRef::Expression(right);
-            self.ancestors.push(node);
-            let parts = self.binaryish_parts(right, true, is_inside_parenthesis);
-            self.ancestors.pop();
-            parts
-        });
-        let right_doc = match &flattened_right {
-            Some(parts) => {
-                let tail = self.docs.concat(parts.iter().copied());
-                self.concat([self.s(operator), &LINE, tail])
-            }
-            None => {
-                let printed_right = self.print_expression(right);
-                if should_inline {
-                    self.concat([self.s(operator), self.s(" "), printed_right])
-                } else {
-                    self.concat([self.s(operator), &LINE, printed_right])
-                }
-            }
+        let printed_right = self.print_expression(right);
+        let right_doc = if should_inline {
+            self.concat([self.s(operator), self.s(" "), printed_right])
+        } else {
+            self.concat([self.s(operator), &LINE, printed_right])
         };
 
         // If there's only a single binary expression, we want to create a
