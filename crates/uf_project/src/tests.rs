@@ -389,3 +389,442 @@ fn every_scaffolded_dependency_is_a_published_package() {
         unpublished.join("\n")
     );
 }
+
+// ---------------------------------------------------------------------------
+// Discovery at its edges: a large tree, ignored directories, bytes that are
+// not UTF-8, symlinks, names an OS allows and a person would not write, and
+// paths that stop existing while they are being read.
+// ---------------------------------------------------------------------------
+
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::time::{Duration, Instant};
+
+/// A temporary project root.
+fn project_root() -> (tempfile::TempDir, Utf8PathBuf) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("a UTF-8 temp path");
+    (dir, root)
+}
+
+/// Write `contents` at `relative`, creating the directories above it.
+fn write(root: &Utf8Path, relative: &str, contents: impl AsRef<[u8]>) {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().expect("a parent")).expect("the directories");
+    fs::write(&path, contents).unwrap_or_else(|error| panic!("writing {path}: {error}"));
+}
+
+/// The discovered paths, in the order discovery returned them.
+fn paths(scan: &SourceScan) -> Vec<&str> {
+    scan.files
+        .iter()
+        .map(|file| file.relative_path.as_str())
+        .collect()
+}
+
+/// A project the size of a real monorepo is walked once, and quickly.
+///
+/// The numbers, so that a regression is a number and not a feeling: twenty
+/// packages of two hundred and fifty sources each is 5,000 files uf owns, and
+/// beside them 20,000 files it must not open — a `node_modules` per package,
+/// a build directory per package, and a vendored checkout with its own `.git`.
+/// Discovery must return exactly the 5,000 and read none of the rest.
+///
+/// The bound is 5 seconds against a measured 0.14s for the walk (0.137s,
+/// 0.139s, 0.143s over three runs of an unoptimised `cargo test`, arm64
+/// macOS 26.5, 12 cores, APFS, warm page cache). Thirty-five times the
+/// measurement is deliberately not a benchmark: it is the distance between
+/// this walk and one that reads an ignored tree, stats a path twice per
+/// entry, or has gone quadratic — all of which cost more than that. A tighter
+/// bound would fail on a loaded CI box and teach everyone to ignore it.
+#[test]
+fn a_large_project_is_walked_once_and_within_a_bound() {
+    const PACKAGES: usize = 20;
+    const DIRECTORIES: usize = 10;
+    const SOURCES: usize = 25;
+    const IGNORED_PER_PACKAGE: usize = 1_000;
+
+    let (_dir, root) = project_root();
+    for package in 0..PACKAGES {
+        for directory in 0..DIRECTORIES {
+            for source in 0..SOURCES {
+                write(
+                    &root,
+                    &format!("packages/p{package}/src/d{directory}/f{source}.js"),
+                    "// @flow\nexport const a: number = 1;\n",
+                );
+            }
+        }
+        for file in 0..IGNORED_PER_PACKAGE / 2 {
+            write(
+                &root,
+                &format!("packages/p{package}/node_modules/dep/lib/v{file}.js"),
+                "// vendored\n",
+            );
+            write(
+                &root,
+                &format!("packages/p{package}/dist/assets/b{file}.js"),
+                "// built\n",
+            );
+        }
+    }
+    write(&root, "vendor/upstream/.git/config", "[core]\n");
+    write(&root, "vendor/upstream/lib.js", "// somebody else's\n");
+
+    let started = Instant::now();
+    let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
+    let took = started.elapsed();
+
+    assert_eq!(scan.files.len(), PACKAGES * DIRECTORIES * SOURCES);
+    assert!(scan.unreadable.is_empty(), "{:?}", scan.unreadable);
+    assert!(
+        took < Duration::from_secs(5),
+        "walking {} files past {} ignored ones took {took:?}",
+        scan.files.len(),
+        PACKAGES * IGNORED_PER_PACKAGE + 1
+    );
+
+    // Sorted, and sorted once: every caller renders these in order, and a
+    // caller that has to sort them again is a caller that will forget to.
+    let mut sorted = paths(&scan);
+    sorted.sort_unstable();
+    assert_eq!(paths(&scan), sorted);
+}
+
+/// An ignored directory is ignored at every depth, including inside a package
+/// inside a workspace.
+///
+/// A bare name in `lint.ignore` names a kind of directory rather than a place;
+/// this is the case that makes the difference visible, because a root-anchored
+/// list would have walked into all four of these.
+#[test]
+fn an_ignored_directory_is_ignored_at_every_depth() {
+    let (_dir, root) = project_root();
+    write(&root, "packages/ui/src/button.js", "// @flow\n");
+    write(
+        &root,
+        "packages/ui/node_modules/dep/index.js",
+        "// vendored\n",
+    );
+    write(
+        &root,
+        "packages/ui/node_modules/dep/node_modules/deeper/index.js",
+        "// vendored twice\n",
+    );
+    write(&root, "packages/ui/dist/button.js", "// built\n");
+    write(&root, "packages/ui/target/debug/build.js", "// cargo's\n");
+    write(
+        &root,
+        "packages/ui/.uf/cache/transform/a.js",
+        "// uf's own\n",
+    );
+    write(&root, ".git/hooks/pre-commit.js", "// git's own\n");
+
+    let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
+
+    assert_eq!(paths(&scan), ["packages/ui/src/button.js"]);
+}
+
+/// `.uf` is uf's own working directory, and a project cannot opt back into it.
+///
+/// The other names are ordinary `lint.ignore` entries a project may remove;
+/// this one is not, because the transform cache and the compiled config are
+/// uf's own output and linting them says nothing about the project.
+#[test]
+fn a_project_cannot_opt_back_into_ufs_own_working_directory() {
+    let (_dir, root) = project_root();
+    write(&root, "src/app.js", "// @flow\n");
+    write(&root, ".uf/cache/transform/a.js", "// uf's own\n");
+    write(&root, "node_modules/dep/index.js", "// vendored\n");
+
+    // Everything the default list holds, removed. `.uf` is not on that list.
+    let mut config = UniflowedConfig::default();
+    config.lint.ignore.clear();
+
+    let scan = scan_source_files(&root, &config).expect("a walk");
+
+    assert!(
+        paths(&scan).contains(&"node_modules/dep/index.js"),
+        "clearing lint.ignore must un-ignore node_modules: {:?}",
+        paths(&scan)
+    );
+    assert!(
+        !paths(&scan).iter().any(|path| path.starts_with(".uf/")),
+        "`.uf` is uf's own and is not a project's to un-ignore: {:?}",
+        paths(&scan)
+    );
+}
+
+/// Which bytes make a source unreadable, and which do not.
+///
+/// The line is UTF-8 validity and nothing else, so all four of these have to
+/// be checked together or the boundary is guesswork:
+///
+/// * a byte-order mark is valid UTF-8 and stays in the source — the formatter
+///   prints it back, and a discovery that ate it would silently rewrite every
+///   BOM-prefixed file in a project the first time `uf fmt` ran;
+/// * a source that stops in the middle of a multi-byte character is not, and
+///   is the shape a truncated download or a bad merge actually takes;
+/// * UTF-16 is not, however well-formed it is as UTF-16;
+/// * an empty file is trivially valid, and is a file rather than a failure.
+#[test]
+fn a_source_is_unreadable_when_its_bytes_are_not_utf8_and_not_otherwise() {
+    let (_dir, root) = project_root();
+    write(&root, "src/bom.js", b"\xef\xbb\xbf// @flow\n");
+    write(&root, "src/empty.js", b"");
+    write(&root, "src/truncated.js", b"// caf\xc3");
+    let mut utf16 = vec![0xff, 0xfe];
+    for unit in "// @flow\n".encode_utf16() {
+        utf16.extend_from_slice(&unit.to_le_bytes());
+    }
+    write(&root, "src/utf16.js", &utf16);
+
+    let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
+
+    assert_eq!(paths(&scan), ["src/bom.js", "src/empty.js"]);
+    assert_eq!(scan.files[0].source, "\u{feff}// @flow\n");
+    assert_eq!(scan.files[1].source, "");
+    assert_eq!(
+        scan.unreadable
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        ["src/truncated.js", "src/utf16.js"]
+    );
+    for failure in &scan.unreadable {
+        assert!(
+            failure.reason.contains("UTF-8"),
+            "{}: {}",
+            failure.relative_path,
+            failure.reason
+        );
+    }
+}
+
+/// Symlinks are not followed, so a cycle is a walk that ends.
+///
+/// A link to the root from inside the root is the shape that hangs a walker
+/// that follows links: there is no depth at which it stops, and the failure
+/// is a command that never returns rather than one that reports an error.
+///
+/// The rest of the assertion is what not following costs, said out loud: a
+/// symlinked *file* is not discovered either, so a project that links a source
+/// into place is not linting it. That is the right trade — the alternative is
+/// formatting one file twice under two names, or writing through a link into
+/// a directory outside the project — but it is a trade, not an oversight.
+#[test]
+fn a_symlink_cycle_ends_the_walk_rather_than_hanging_it() {
+    let (_dir, root) = project_root();
+    write(&root, "src/real.js", "// @flow\n");
+    write(&root, "shared/lib.js", "// @flow\n");
+    symlink(root.join("src/real.js"), root.join("src/link.js")).expect("a file link");
+    symlink(root.join("shared"), root.join("src/shared")).expect("a directory link");
+    symlink(root.as_std_path(), root.join("src/up")).expect("a cycle");
+    symlink(root.join("src/missing.js"), root.join("src/dangling.js")).expect("a dangling link");
+
+    let started = Instant::now();
+    let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
+    let took = started.elapsed();
+
+    assert!(took < Duration::from_secs(5), "the cycle took {took:?}");
+    assert_eq!(paths(&scan), ["shared/lib.js", "src/real.js"]);
+    assert!(scan.unreadable.is_empty(), "{:?}", scan.unreadable);
+}
+
+/// Names an operating system allows and nobody would type.
+///
+/// A newline in a filename is the one that matters, because every report uf
+/// prints is line-oriented: discovery has to carry it through rather than
+/// truncate it, or the path in the message is not the path on disk. The other
+/// two are the ordinary international case and the length limit — a path one
+/// byte under `PATH_MAX`, which `open(2)` accepts and a naive fixed buffer
+/// does not.
+#[test]
+fn a_name_nobody_would_type_is_still_discovered_whole() {
+    let (_dir, root) = project_root();
+    write(&root, "src/two\nlines.js", "// @flow\n");
+    write(&root, "src/café.js", "// @flow\n");
+    write(&root, "src/コンポーネント.js", "// @flow\n");
+
+    // As deep as the filesystem will take it, then a file in the deepest
+    // directory that took. `PATH_MAX` is 1024 on macOS and 4096 on Linux, so
+    // the loop finds the limit rather than assuming one.
+    let mut deepest = root.join("src");
+    loop {
+        let next = deepest.join("d".repeat(60));
+        if next.as_str().len() > 4_000 || fs::create_dir(&next).is_err() {
+            break;
+        }
+        deepest = next;
+    }
+    let long = (1..=60)
+        .rev()
+        .map(|length| deepest.join(format!("{}.js", "n".repeat(length))))
+        .find(|path| fs::write(path, "// @flow\n").is_ok())
+        .expect("a file at the length limit");
+    let long = long
+        .strip_prefix(&root)
+        .expect("under the root")
+        .as_str()
+        .to_owned();
+    assert!(
+        long.len() > 200,
+        "the deep path is only {} bytes",
+        long.len()
+    );
+
+    let scan = scan_source_files(&root, &UniflowedConfig::default()).expect("a walk");
+
+    assert!(scan.unreadable.is_empty(), "{:?}", scan.unreadable);
+    let mut found = paths(&scan);
+    found.sort_unstable();
+    let mut expected = vec![
+        "src/two\nlines.js",
+        "src/café.js",
+        "src/コンポーネント.js",
+        long.as_str(),
+    ];
+    expected.sort_unstable();
+    assert_eq!(found, expected);
+}
+
+/// A file uf can see and cannot open is reported, and the walk goes on.
+///
+/// The permission case is the one that can be built on purpose; a file deleted
+/// between the walk and the read reaches the same arm with a different errno,
+/// which is what the test below covers.
+#[test]
+fn a_file_that_cannot_be_opened_is_reported_and_the_walk_goes_on() {
+    let (_dir, root) = project_root();
+    write(&root, "src/aaa.js", "// @flow\n");
+    write(&root, "src/locked.js", "// @flow\n");
+    write(&root, "src/zzz.js", "// @flow\n");
+    fs::set_permissions(
+        root.join("src/locked.js").as_std_path(),
+        fs::Permissions::from_mode(0o000),
+    )
+    .expect("to lock the file");
+
+    let scan = scan_source_files(&root, &UniflowedConfig::default());
+    let _ = fs::set_permissions(
+        root.join("src/locked.js").as_std_path(),
+        fs::Permissions::from_mode(0o644),
+    );
+    let scan = scan.expect("a walk");
+
+    assert_eq!(paths(&scan), ["src/aaa.js", "src/zzz.js"]);
+    assert_eq!(scan.unreadable.len(), 1, "{:?}", scan.unreadable);
+    assert_eq!(scan.unreadable[0].relative_path, "src/locked.js");
+    assert!(
+        scan.unreadable[0].reason.contains("Permission denied"),
+        "{}",
+        scan.unreadable[0].reason
+    );
+}
+
+/// A directory uf can see and cannot open is reported, not fatal.
+///
+/// It used to end the walk: `walkdir` hands an unopenable directory back as an
+/// error item, discovery returned it, and `uf fmt`, `uf lint`, `uf check` and
+/// `uf test` then did nothing at all for the rest of the project. That is the
+/// same failure a single non-UTF-8 file used to cause — ubugeeei-prod/uf#164 —
+/// one level up, and it has the same answer: name the path that could not be
+/// read, do the rest of the work, and fail at the end.
+#[test]
+fn a_directory_that_cannot_be_opened_is_reported_rather_than_ending_the_walk() {
+    let (_dir, root) = project_root();
+    write(&root, "src/app.js", "// @flow\n");
+    write(&root, "secret/hidden.js", "// @flow\n");
+    // Sorted after `secret`, so a walk that stopped at the error would still
+    // have found `src/app.js` and the assertion below would pass by accident.
+    write(&root, "zzz/last.js", "// @flow\n");
+    fs::set_permissions(
+        root.join("secret").as_std_path(),
+        fs::Permissions::from_mode(0o000),
+    )
+    .expect("to lock the directory");
+
+    let scan = scan_source_files(&root, &UniflowedConfig::default());
+    let _ = fs::set_permissions(
+        root.join("secret").as_std_path(),
+        fs::Permissions::from_mode(0o755),
+    );
+    let scan = scan.expect("an unopenable directory is not fatal");
+
+    assert_eq!(paths(&scan), ["src/app.js", "zzz/last.js"]);
+    assert_eq!(scan.unreadable.len(), 1, "{:?}", scan.unreadable);
+    assert_eq!(scan.unreadable[0].relative_path, "secret");
+    assert!(
+        scan.unreadable[0].reason.contains("Permission denied"),
+        "{}",
+        scan.unreadable[0].reason
+    );
+}
+
+/// A root that cannot be read is still an error.
+///
+/// The line the test above draws has to stop somewhere: reporting a missing
+/// root as "0 files, one of which was unreadable" would let `uf lint --cwd
+/// typo` succeed at doing nothing.
+#[test]
+fn a_root_that_does_not_exist_is_an_error_rather_than_an_empty_project() {
+    let (_dir, root) = project_root();
+    let missing = root.join("no-such-directory");
+
+    let error = scan_source_files(&missing, &UniflowedConfig::default())
+        .expect_err("a missing root is fatal");
+
+    assert!(matches!(error, ProjectError::Walk { .. }), "{error:?}");
+}
+
+/// A file that disappears between the walk and the read never fails the scan.
+///
+/// `walkdir` reads a directory's entries in blocks, so a file removed after
+/// its block was read is still handed back as a regular file and the read then
+/// fails with `ENOENT`. It happens for real whenever a watch rebuild, a
+/// package manager or an editor is writing while uf is walking, and the only
+/// acceptable answer is the one an unreadable file already gets: report it,
+/// keep the rest.
+///
+/// Deleting half of a five-thousand-file tree while it is being walked is what
+/// makes the window certain to be hit. The assertion holds whether or not any
+/// individual file lost the race, so the test cannot fail for being unlucky —
+/// only for the scan giving up.
+#[test]
+fn a_file_that_vanishes_between_the_walk_and_the_read_never_fails_the_scan() {
+    const FILES: usize = 5_000;
+
+    let (_dir, root) = project_root();
+    for file in 0..FILES {
+        write(
+            &root,
+            &format!("src/d{}/f{file}.js", file % 50),
+            "// @flow\nexport const a: number = 1;\n",
+        );
+    }
+    write(&root, "keep.js", "// @flow\n");
+
+    let deleting = root.clone();
+    let deleter = std::thread::spawn(move || {
+        for file in 0..FILES {
+            if file % 2 == 0 {
+                let _ = fs::remove_file(deleting.join(format!("src/d{}/f{file}.js", file % 50)));
+            }
+        }
+    });
+    let scan = scan_source_files(&root, &UniflowedConfig::default())
+        .expect("a file that vanished mid-walk is not fatal");
+    deleter.join().expect("the deleter finished");
+
+    // `keep.js` is never deleted, so a scan that gave up early is visible even
+    // in the run where nothing lost the race.
+    assert!(paths(&scan).contains(&"keep.js"), "{:?}", paths(&scan));
+    assert!(scan.files.len() + scan.unreadable.len() <= FILES + 1);
+    for failure in &scan.unreadable {
+        assert!(
+            failure.reason.contains("No such file"),
+            "{}: {}",
+            failure.relative_path,
+            failure.reason
+        );
+    }
+}

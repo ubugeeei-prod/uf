@@ -40,7 +40,14 @@
       `fmt.nonFlow.formatter`, resolved from `node_modules/.bin` before
       `PATH`.
 - [x] Default formatter settings to double quotes and semicolons.
-- [ ] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
+- [x] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
+      `uf_project`'s tests now walk 5,000 sources past 20,000 ignored ones
+      under a stated bound, and cover nested ignored directories, a byte-order
+      mark, UTF-16, a truncated character, an empty file, symlink cycles,
+      a newline in a filename, a path at `PATH_MAX`, and a file that vanishes
+      mid-walk. Found and fixed: a directory the walk could not open ended the
+      whole scan, so one `chmod 000` directory made `uf fmt`, `uf lint`,
+      `uf check` and `uf test` do nothing for the rest of the project.
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.
 - [ ] Ban `String`, `format!`, and allocation-heavy std helpers in parser/lint/router/test hot paths.
 - [ ] Audit hot paths for unnecessary `.clone()` calls and replace them with borrowed or arena-backed flows.
@@ -179,13 +186,41 @@
       `act` warnings mean something rather than arriving on every render.
 - [ ] Implement native React Native testing utilities.
 - [x] Add watch mode with dependency-aware reruns.
-- [ ] Add strict CLI integration tests for every command.
+- [x] Add strict CLI integration tests for every command.
+      `crates/uf_cli/tests/every_command.rs` takes `uf --help` as its checklist
+      and fails when a command is added to the parser and not to it. Every
+      command is asked the same four questions: a project that is fine, one
+      with no `uf.config.js`, an argument that names nothing, and the exit
+      code. Found and fixed: an argument uf could not parse exited `1` rather
+      than the documented `2`, and `uf test PATH` where PATH matched nothing
+      was a green run over no tests while `uf lint`, `uf fmt` and `uf check`
+      all refused it. Still open: uf does not classify its *runtime* failures,
+      so a broken `uf.config.js` and a missing `@uniflowed/vite` exit `1` where
+      `docs/app/reference/cli/_uf.page.mdx` documents `2`.
 - [x] Report what a test printed. `console.log` in a test used to kill the file
       it was in, because the worker's stdout was the protocol.
 - [ ] Add snapshot tests for generated templates and router types.
 - [ ] Add e2e type-safety fixtures for app, server actions, router, query, effect, and UI.
 - [x] Start story, mock, browser, and VRT contracts.
-- [ ] Implement `@uniflowed/story` component story runner.
+- [x] Implement `@uniflowed/story` component story runner. A story is a named,
+      rendered state of a component that both a person and a test can reach.
+      `defineStories` declares the props a state needs — complete on the set, a
+      delta per story — plus its decorators, its mocked requests and its play
+      function; `_uf.story.js` is where they live, following the repository's
+      own `_uf.<role>[.<variant>].js` grammar rather than a second convention;
+      and one renderer serves `@uniflowed/test` and a serialised page alike, so
+      a story is not a picture only a bespoke UI can draw. Six Flow modules,
+      no native binding: the `NativeHandle` contract is replaced, not kept.
+      `withBrowser` is gone rather than carried over, because
+      `@uniflowed/browser` is still a declaration whose every function throws.
+      Two gaps are named in the package's Readiness section rather than left to
+      be discovered. `story` is not yet a role in
+      `crates/uf_router/src/reserved.rs`, so `uf lint` reports
+      `router/reserved-files` on every `_uf.story.js` — the name is right and
+      the linter has not been told. And `uf test` discovers `it(` only with a
+      string-literal name, so a file whose only content is
+      `describeStories(set)` is not run at all, and the run reports zero files
+      and exits 0.
 - [x] Start `@uniflowed/vrt` native visual regression contracts.
 - [x] Implement `@uniflowed/mock` MSW-compatible request mocking, over `fetch`.
 - [ ] Implement `@uniflowed/browser` Playwright-compatible browser automation.

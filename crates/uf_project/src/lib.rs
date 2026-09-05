@@ -45,12 +45,16 @@ pub struct ProjectFile {
     pub kind: SourceKind,
 }
 
-/// A file discovery found and could not read.
+/// A path discovery found and could not open.
 ///
 /// One stray byte should not stop a project. A `.js` that is not UTF-8 — a
 /// build artifact, a vendored blob, a fixture somebody committed by accident
 /// — used to abort `uf fmt`, `uf lint`, `uf check` and `uf doc` at the first
 /// one, leaving every other file in the project untouched.
+///
+/// A directory the walk cannot open is recorded the same way, and for the same
+/// reason: one unreadable directory is not a reason to do nothing for the rest
+/// of the project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnreadableFile {
     /// Where it is, relative to the project root.
@@ -192,9 +196,11 @@ pub fn create_project(
 ///
 /// # Errors
 ///
-/// Returns [`ProjectError::Walk`] when the directory tree cannot be read, and
-/// [`ProjectError::Read`] when a path is not valid UTF-8 — a path uf cannot
-/// name is one it cannot report either.
+/// Returns [`ProjectError::Walk`] when `root` itself cannot be read — a
+/// directory *below* it that cannot be read is reported in
+/// [`SourceScan::unreadable`] instead — and [`ProjectError::Read`] when a path
+/// is not valid UTF-8, because a path uf cannot name is one it cannot report
+/// either.
 pub fn scan_source_files(
     root: &Utf8Path,
     config: &UniflowedConfig,
@@ -212,10 +218,41 @@ pub fn scan_source_files(
             || !entry.path().join(".git").exists()
     });
     for entry in walk {
-        let entry = entry.map_err(|source| ProjectError::Walk {
-            path: root.to_path_buf(),
-            source,
-        })?;
+        let entry = match entry {
+            Ok(entry) => entry,
+            // A directory uf cannot open is reported the way a file it cannot
+            // read is. One `chmod 000` directory anywhere under the root — a
+            // colleague's scratch checkout, a cache another tool wrote — used
+            // to abort the whole walk, so `uf fmt`, `uf lint`, `uf check` and
+            // `uf test` did nothing for the rest of the project. That is the
+            // same failure as the non-UTF-8 file above, one level up.
+            //
+            // The root itself stays fatal, as does an error with no path to
+            // name: a root that cannot be read is not a project with one bad
+            // directory in it, and answering "0 files" for a path that does
+            // not exist is worse than saying so.
+            Err(error) => {
+                let named = error
+                    .path()
+                    .filter(|path| *path != root.as_std_path())
+                    .map(std::path::Path::to_path_buf);
+                let Some(path) = named else {
+                    return Err(ProjectError::Walk {
+                        path: root.to_path_buf(),
+                        source: error,
+                    });
+                };
+                let relative = path.strip_prefix(root.as_std_path()).unwrap_or(&path);
+                unreadable.push(UnreadableFile {
+                    relative_path: relative.display().to_string(),
+                    reason: match error.io_error() {
+                        Some(io) => io.to_string(),
+                        None => error.to_string(),
+                    },
+                });
+                continue;
+            }
+        };
         let path = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()).map_err(|path| {
             ProjectError::Read {
                 path: Utf8PathBuf::from(path.display().to_string()),
