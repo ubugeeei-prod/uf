@@ -30,7 +30,7 @@ use uf_test::{
 
 use crate::commands::vite::{installed_package, resolve_host};
 
-use crate::support::{plural, unreadable_lines};
+use crate::support::{plural, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
 
 mod payload;
@@ -121,6 +121,25 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     if !unreadable.is_empty() {
         crate::commands::lint::render_unreadable(ui, &unreadable);
         bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
+
+    // A path argument that names nothing in the project is a typo, and a typo
+    // that answers "0 failures" is the one mistake a test runner must never
+    // make: `uf test pacakges/ui` was a green run over nothing at all. `uf
+    // lint`, `uf fmt` and `uf check` already refuse the same argument, in the
+    // same words.
+    //
+    // Naming a real directory that happens to hold no tests is not a typo, so
+    // it stays a green run of zero tests — that is what `uf test` on a project
+    // with no tests yet has always answered. Watch mode is excluded for the
+    // same reason: it is a loop over files that do not exist yet.
+    if !args.watch
+        && !args.paths.is_empty()
+        && !files
+            .iter()
+            .any(|file| selects(&args.paths, &file.relative_path))
+    {
+        bail!("no file matched {}", quoted_list(&args.paths));
     }
 
     if args.list {
@@ -259,7 +278,12 @@ pub(crate) fn test_bearing(files: Vec<ProjectFile>) -> Vec<ProjectFile> {
     files
         .into_iter()
         .filter(|file| {
-            uf_test::discover_tests(&file.relative_path, &file.source).runnable_count() > 0
+            // A file with a declaration discovery could not read is still a
+            // test file: the worker imports it and finds whatever registers.
+            // Requiring a *readable* case meant `it(name, …)` in a loop made a
+            // file vanish, and the run said "0 passed" and exited 0.
+            let plan = uf_test::discover_tests(&file.relative_path, &file.source);
+            plan.runnable_count() > 0 || !plan.unsupported.is_empty()
         })
         .collect()
 }
@@ -365,4 +389,41 @@ fn finish(report: &TestRunReport) -> Result<()> {
         );
     }
     bail!("uf test stopped early because --bail was reached");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uf_project::SourceKind;
+
+    fn file(path: &str, source: &str) -> ProjectFile {
+        ProjectFile {
+            relative_path: path.to_owned(),
+            absolute_path: Utf8PathBuf::from(path),
+            source: source.to_owned(),
+            kind: SourceKind::JavaScript,
+        }
+    }
+
+    #[test]
+    fn a_file_whose_names_are_not_literals_is_still_a_test_file() {
+        // Discovery reads names; a name built in a loop cannot be read. The
+        // file still holds tests, and the worker is what finds them — so
+        // filtering on a *readable* case reported "0 passed" and exited 0 for
+        // a file with two failing tests in it.
+        let files = test_bearing(vec![
+            file(
+                "loop.test.js",
+                "for (const name of ['a']) {\n  it(name, () => {});\n}\n",
+            ),
+            file("plain.test.js", "it('runs', () => {});\n"),
+            file("component.js", "export const Button = () => null;\n"),
+        ]);
+
+        let kept: Vec<&str> = files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect();
+        assert_eq!(kept, vec!["loop.test.js", "plain.test.js"]);
+    }
 }
