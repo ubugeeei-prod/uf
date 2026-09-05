@@ -49,12 +49,18 @@ if ! npm trust github --help 2>&1 | grep -q -- '--repository'; then
 trust-npm: this npm does not have \`npm trust github --file --repository\`.
 
   npm --version   ${npm_version}
+  node --version  $(node --version 2>/dev/null || echo unknown)
 
 That subcommand is how a package name is bound to this repository's publish
 workflow, and it is the whole of the release bootstrap. Upgrade npm and run
 this again:
 
   npm install -g npm@latest
+
+If that answers EBADENGINE, npm's latest wants a newer node than this one.
+The last npm 11 has the subcommand and asks only for node >= 22.9.0:
+
+  npm install -g npm@11.11.0
 MESSAGE
   exit 1
 fi
