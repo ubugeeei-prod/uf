@@ -221,7 +221,7 @@ function formatRow(name: string, row: mixed): string {
   return name.replace(ROW_TOKEN, (token) => {
     const value = values[index];
     index += 1;
-    return token === "%j" ? JSON.stringify(value) ?? "undefined" : String(value);
+    return token === "%j" ? (JSON.stringify(value) ?? "undefined") : String(value);
   });
 }
 

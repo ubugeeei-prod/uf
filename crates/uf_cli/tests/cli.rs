@@ -567,7 +567,7 @@ fn selecting_no_formatter_leaves_non_flow_files_alone() {
 
 #[test]
 fn alias_binaries_print_the_root_version() {
-    for name in ["ufr", "ufx"] {
+    for name in ["uf", "ufr", "ufx"] {
         let output = binary(name).arg("--version").output().unwrap();
 
         assert!(
@@ -580,7 +580,20 @@ fn alias_binaries_print_the_root_version() {
             stdout.contains(env!("CARGO_PKG_VERSION")),
             "{name} should expose the installed uf version, got {stdout:?}"
         );
+        // The product, not the crate. clap names the command after the crate
+        // unless it is told otherwise, and `uf --version` — the first thing
+        // anyone runs after installing — answered `uf_cli 0.0.0-alpha.2`.
+        assert!(
+            stdout.starts_with("uf "),
+            "{name} --version should name the command, got {stdout:?}"
+        );
+        assert!(!stdout.contains("uf_cli"), "{name}: {stdout:?}");
     }
+
+    // And the aliases still say what they are in their usage line, which
+    // comes from `argv[0]` rather than from the name.
+    let usage = String::from_utf8(binary("ufr").arg("--help").output().unwrap().stdout).unwrap();
+    assert!(usage.contains("Usage: ufr run"), "{usage}");
 }
 
 #[test]
@@ -859,6 +872,99 @@ fn explain_says_which_commands_it_knows() {
         stderr.contains("dev, build, doc, test, fmt, lint, check"),
         "{stderr}"
     );
+    assert!(stderr.contains("install, upgrade"), "{stderr}");
+}
+
+/// Commands that do their whole job in this binary, so there is no provider
+/// to name.
+///
+/// The other half of {@link explain_describes_every_command_that_delegates}:
+/// the test asks `uf` itself for its commands, so a new one has to land in
+/// one list or the other. `help` and `completion` are clap's; `create`,
+/// `explain`, `info`, `inspect` and `exec` are uf's own work start to finish.
+const SELF_CONTAINED: &[&str] = &[
+    "completion",
+    "create",
+    "exec",
+    "explain",
+    "help",
+    "info",
+    "inspect",
+];
+
+/// Every command `uf` has is either explained or classified.
+///
+/// `uf explain` described seven of twenty-two, and the fifteen it did not
+/// were the ones where the question has an answer worth printing — which
+/// package manager resolves a tree, which registry a publish reaches, which
+/// runner schedules a task. See ubugeeei-prod/uf#166.
+///
+/// The command list comes from `uf __complete`, which is what the shell
+/// completions ask, rather than from a literal here: a list written twice is
+/// a list that disagrees with itself, and the failure mode is silent — a new
+/// delegating command would be missing from `uf explain` and this test would
+/// go on passing. Now it fails until the command is explained or named in
+/// {@link SELF_CONTAINED}.
+#[test]
+fn explain_describes_every_command_that_delegates() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({});\n",
+    )
+    .unwrap();
+
+    let listed = uf().args(["__complete", ""]).output().unwrap();
+    assert!(listed.status.success());
+    let listed = String::from_utf8(listed.stdout).unwrap();
+    let commands: Vec<&str> = listed
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        // `i` is `install` under another name, and explaining it twice would
+        // say the same thing twice.
+        .filter(|name| *name != "i")
+        .collect();
+    assert!(
+        commands.len() > 15,
+        "`uf __complete` listed {} commands, which is not the command set:\n{listed}",
+        commands.len()
+    );
+
+    for command in commands {
+        if SELF_CONTAINED.contains(&command) {
+            continue;
+        }
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .args(["explain", command])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "uf explain {command}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.contains("provider"),
+            "uf explain {command}:\n{stdout}"
+        );
+        // A provider name is something a reader can recognise. `{:?}` on a
+        // config enum gives `UfNative`, and lowercasing it gives `ufnative`,
+        // which is a word nobody wrote and nobody can search for.
+        assert!(
+            !stdout.contains("ufnative") && !stdout.contains("vitetask"),
+            "uf explain {command} printed a debug name:\n{stdout}"
+        );
+        // And a detail is a sentence, not a struct.
+        assert!(
+            !stdout.contains("Config {"),
+            "uf explain {command} printed a struct:\n{stdout}"
+        );
+    }
 }
 
 #[test]
@@ -993,12 +1099,20 @@ fn dev_without_the_vite_package_names_the_fix() {
     assert!(stderr.contains("@uniflowed/vite"), "{stderr}");
 }
 
+/// One framed message, the way an editor sends it.
+fn framed(body: &str) -> String {
+    format!("Content-Length: {}\r\n\r\n{body}", body.len())
+}
+
 #[test]
 fn lsp_initialize_returns_native_capabilities() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
-    let input = format!("Content-Length: {}\r\n\r\n{body}", body.len());
-
-    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+    let output = uf()
+        .arg("lsp")
+        .write_stdin(framed(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+        ))
+        .output()
+        .unwrap();
 
     assert!(
         output.status.success(),
@@ -1009,8 +1123,92 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.starts_with("Content-Length: "));
     assert!(stdout.contains(r#""name":"uf-lsp""#));
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
-    assert!(stdout.contains(r#""workspaceDiagnostics":true"#));
+    // Diagnostics are not advertised: nothing serves them, and an editor that
+    // asks for what it is offered and gets nothing is worse off than one that
+    // was never offered it. See ubugeeei-prod/uf#162.
+    assert!(!stdout.contains("diagnosticProvider"), "{stdout}");
     assert_plain(&stdout);
+}
+
+/// Several messages on one open pipe, which is what an editor does.
+///
+/// The previous test was the whole of the coverage and it passed against a
+/// server that read stdin to end of input, answered once and returned — so it
+/// answered nothing at all to a client that keeps the pipe open, which is
+/// every client. Two answers on one connection is the difference.
+#[test]
+fn lsp_answers_more_than_one_message_on_one_connection() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        stdout.matches("Content-Length: ").count(),
+        2,
+        "one answer per request, and no answer to a notification:\n{stdout}"
+    );
+    assert!(stdout.contains(r#""id":1"#), "{stdout}");
+    assert!(stdout.contains(r#""id":2"#), "{stdout}");
+}
+
+/// A document opened and then formatted comes back as `uf fmt` would write it.
+#[test]
+fn lsp_formats_an_open_document() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.js","languageId":"javascript","version":1,"text":"// @flow\nconst   x=1\n"}}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/formatting","params":{"textDocument":{"uri":"file:///a.js"},"options":{}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(r#"const x = 1;"#),
+        "the edit should carry the formatted document:\n{stdout}"
+    );
+    assert!(stdout.contains(r#""newText""#), "{stdout}");
+}
+
+/// A request uf does not serve is answered, not ignored.
+///
+/// An editor waiting on an id that never comes back is a hang, which is the
+/// failure this whole command had.
+#[test]
+fn lsp_answers_a_request_it_does_not_serve() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/hover","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains(r#""id":7"#), "{stdout}");
 }
 
 #[test]
