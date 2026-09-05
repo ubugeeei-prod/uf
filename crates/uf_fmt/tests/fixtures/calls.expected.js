@@ -93,6 +93,17 @@ new Promise((resolve, reject) => {
 });
 require("module");
 const lazy = require("./some/very/long/path/to/a/module/that/does/not/fit/on/one/line/at/all/really.js");
+// Only the bare `require` stays on one line. Everything spelled like it is an
+// ordinary call and breaks its argument.
+const resolved = require.resolve(
+  "./some/very/long/path/to/a/module/that/does/not/fit/on/one/line.js",
+);
+const paths = require.resolve.paths(
+  "./some/very/long/path/to/a/module/that/does/not/fit/on/one.js",
+);
+const url = import.meta.resolve(
+  "./some/very/long/path/to/a/module/that/does/not/fit/on/one/line.js",
+);
 define(["dep"], function (dep) {
   return dep;
 });
