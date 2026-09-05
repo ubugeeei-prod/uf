@@ -64,6 +64,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Trigger", "Content"],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/combobox.js`: the ARIA 1.2 combobox with
+        // `aria-activedescendant` over a caller-filtered listbox.
+        UiComponent::new(
+            "Combobox",
+            &[
+                "Root", "Label", "Input", "List", "Option", "Empty", "Status",
+            ],
+            UiRuntime::Client,
+        ),
         UiComponent::new(
             "Command",
             &["Root", "Input", "List", "Item", "Group", "Empty"],
@@ -133,6 +142,23 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Client,
         ),
         UiComponent::new("Label", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/menu.js`, and the base the menu-shaped
+        // components above and below it are built from.
+        UiComponent::new(
+            "Menu",
+            &[
+                "Root",
+                "Trigger",
+                "Body",
+                "Item",
+                "Separator",
+                "Group",
+                "Label",
+                "Sub",
+                "SubTrigger",
+            ],
+            UiRuntime::Client,
+        ),
         UiComponent::new(
             "Menubar",
             &["Root", "Menu", "Trigger", "Body", "Item"],
@@ -196,11 +222,10 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Header", "Body", "Row", "Head", "Cell", "Caption"],
             UiRuntime::Server,
         ),
-        UiComponent::new(
-            "Tabs",
-            &["Root", "List", "Trigger", "Body"],
-            UiRuntime::Split,
-        ),
+        // `Tab` and `Panel` rather than `Trigger` and `Body`: the shipped parts
+        // are named after the ARIA roles they render, so `Tabs.Tab` is a `tab`
+        // and `Tabs.Panel` is a `tabpanel`. See `packages/ui/tabs.js`.
+        UiComponent::new("Tabs", &["Root", "List", "Tab", "Panel"], UiRuntime::Split),
         UiComponent::new("Textarea", &["Root"], UiRuntime::Client),
         UiComponent::new(
             "Toast",

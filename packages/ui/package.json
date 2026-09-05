@@ -11,18 +11,22 @@
     "directory": "packages/ui"
   },
   "exports": {
-    "./dialog/types": "./dialog/types.js",
-    "./form/types": "./form/types.js",
     ".": "./index.js",
-    "./types/renders": "./types/renders.js"
+    "./checkbox": "./checkbox.js",
+    "./combobox": "./combobox.js",
+    "./dialog": "./dialog.js",
+    "./field": "./field.js",
+    "./menu": "./menu.js",
+    "./switch": "./switch.js",
+    "./tabs": "./tabs.js"
   },
   "files": [
-    "index.js",
+    "*.js",
     "internal"
   ],
   "dependencies": {
-    "@uniflowed/react": "0.0.0-alpha.3",
-    "@uniflowed/validator": "0.0.0-alpha.3"
+    "@uniflowed/hooks": "0.0.0-alpha.3",
+    "@uniflowed/react": "0.0.0-alpha.3"
   },
   "peerDependencies": {
     "react": ">=19"
