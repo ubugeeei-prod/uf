@@ -58,6 +58,14 @@ fn app_package_json(name: &str) -> String {
     )
 }
 
+/// The manifest `uf create lib` writes.
+///
+/// It names the test runner and not the loader the runner is started with.
+/// `@uniflowed/test` depends on `@uniflowed/host`, so a project that says it
+/// wants to run tests gets what running them takes; naming the loader here
+/// as well made every scaffolded library carry a dependency it never imports,
+/// and — until the first release that sends `@uniflowed/host` — one that
+/// `uf install` could not resolve at all.
 fn lib_package_json(name: &str) -> String {
     format!(
         r#"{{
@@ -68,7 +76,6 @@ fn lib_package_json(name: &str) -> String {
   }},
   "devDependencies": {{
     "@uniflowed/config": "latest",
-    "@uniflowed/host": "latest",
     "@uniflowed/test": "latest"
   }}
 }}
