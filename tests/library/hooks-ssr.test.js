@@ -9,10 +9,14 @@
 // living beside a `render` would be testing a process that has a `window`, and
 // would pass for a package that read `document` at module scope.
 //
-// Nothing here imports `@uniflowed/react-testing`. The first assertion is that
-// the process really has no document, so if `uf test` ever ran these two files
-// in one worker this file would fail loudly rather than quietly stop meaning
-// anything.
+// Nothing here imports `@uniflowed/react-testing`. But a worker runs one file
+// after another, so a file that did may well have run first in this process —
+// and then the document is already there. This file takes it away for its own
+// length and puts back exactly what it found, so what it asserts is true
+// however the runner scheduled it. Putting it back matters as much as taking
+// it away: `installDom` installs once per process and returns early ever
+// after, so a file that ran later would find no document and no way to get
+// one.
 //
 // What is being checked is the claim `index.js` makes: uf prerenders every
 // static route, so every hook in this package runs once where there is no
@@ -22,7 +26,7 @@
 import { createRequire } from "node:module";
 
 import * as React from "@uniflowed/react";
-import { describe, expect, it } from "@uniflowed/test";
+import { afterAll, beforeAll, describe, expect, it } from "@uniflowed/test";
 import {
   browserWindow,
   useAnimationFrame,
@@ -78,6 +82,37 @@ import {
 const server = createRequire(import.meta.url)("react-dom/server");
 
 const markupOf = (element: React.Node): string => String(server.renderToStaticMarkup(element));
+
+/**
+ * The globals a document installs, taken away and put back.
+ *
+ * `delete` rather than assigning `undefined`, because `typeof` is what the
+ * hooks ask and `undefined` assigned to a defined property still answers
+ * `"object"` for `document` on some hosts. What was there is restored exactly,
+ * so a file that runs after this one in the same worker finds what it left.
+ */
+const DOM_GLOBALS = ["document", "window", "navigator", "localStorage", "sessionStorage"];
+const removed: { [string]: mixed } = {};
+
+beforeAll(() => {
+  for (const name of DOM_GLOBALS) {
+    if (name in globalThis) {
+      removed[name] = globalThis[name];
+      delete globalThis[name];
+    }
+  }
+});
+
+afterAll(() => {
+  for (const name of Object.keys(removed)) {
+    Object.defineProperty(globalThis, name, {
+      value: removed[name],
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+  }
+});
 
 describe("the process these tests run in", () => {
   it("has no document, so a hook that needed one would throw here", () => {
