@@ -1,5 +1,21 @@
 # Changelog
 
+## uf@0.0.0-alpha.4
+
+_2026-09-05_
+
+### Added
+
+- uf check reads across files, and four libraries stop being contracts (#201)
+
+### Fixed
+
+- **test**: the test runner brings the loader it is started with (#168)
+
+### Internal
+
+- one cycle for the night's work (#198)
+
 ## uf@0.0.0-alpha.3
 
 _2026-09-05_

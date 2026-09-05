@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/server",
-  "version": "0.0.0-alpha.3",
+  "version": "0.0.0-alpha.4",
   "description": "Request-scoped server functions for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
