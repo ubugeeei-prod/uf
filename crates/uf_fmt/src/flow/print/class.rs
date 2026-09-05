@@ -228,7 +228,29 @@ impl<'a> Printer<'a> {
         self.print_node(node, |p| {
             let mut parts: Vec<Doc<'a>> = Vec::new();
             let count = body.body.len();
+            // The end of the last comment-type block emitted. Parcel writes a
+            // `/*:: … */` holding a class member, and it goes out as written
+            // for the same reason a declaration block does. See
+            // ubugeeei-prod/uf#126.
+            let mut inside_block_until = 0usize;
             for (index, member) in body.body.iter().enumerate() {
+                let span = p.text.span(&NodeRef::ClassMember(member).loc());
+                if span.start < inside_block_until {
+                    continue;
+                }
+                if let Some(block) = p.comment_type_to_print(span) {
+                    inside_block_until = block.end;
+                    p.comments.mark_printed_within(block);
+                    let raw = p.text.slice(block);
+                    parts.push(p.replace_end_of_line(raw));
+                    if index + 1 < count {
+                        parts.push(&HARDLINE);
+                        if p.text.is_next_line_empty(block.end) {
+                            parts.push(&HARDLINE);
+                        }
+                    }
+                    continue;
+                }
                 let printed = p.print_class_member(member);
                 parts.push(printed);
                 let next = body.body.get(index + 1);

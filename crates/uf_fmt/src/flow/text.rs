@@ -72,6 +72,63 @@ impl<'a> SourceText<'a> {
         at
     }
 
+    /// Byte spans of Flow's comment types, `/*` to `*/`, in source order.
+    ///
+    /// Flow's parser reads what is inside `/*: … */` and `/*:: … */` as
+    /// syntax and reports nothing to say it was in a comment. The location
+    /// says it for an annotation — it starts at the `/*` — but not for a
+    /// declaration block, whose statements start *after* the delimiter and
+    /// may be several to a block. So the spans are found once, here.
+    ///
+    /// [`tokenize`](uf_flow::scan::tokenize) is what makes this exact rather
+    /// than a search for `/*:`. It lexes strings, templates and regular
+    /// expressions, and skips comments — so everything between one token and
+    /// the next is whitespace and comments and nothing else, and a `/*:` in
+    /// a string or in `// see /*::` is never in a gap.
+    ///
+    /// The whole scan is skipped when the source has no `/*:` in it at all,
+    /// which is almost every file.
+    pub fn comment_types(&self) -> Vec<Span> {
+        if !self.text.contains("/*:") {
+            return Vec::new();
+        }
+        let bytes = self.text.as_bytes();
+        let mut found = Vec::new();
+        let mut gap = |from: usize, to: usize| {
+            let mut at = from;
+            while at < to {
+                match (bytes.get(at), bytes.get(at + 1)) {
+                    (Some(b'/'), Some(b'/')) => {
+                        while at < to && bytes[at] != b'\n' {
+                            at += 1;
+                        }
+                    }
+                    (Some(b'/'), Some(b'*')) => {
+                        let start = at;
+                        at += 2;
+                        while at + 1 < to && !(bytes[at] == b'*' && bytes[at + 1] == b'/') {
+                            at += 1;
+                        }
+                        let end = (at + 2).min(to);
+                        if bytes.get(start + 2) == Some(&b':') {
+                            found.push(Span { start, end });
+                        }
+                        at = end;
+                    }
+                    _ => at += 1,
+                }
+            }
+        };
+
+        let mut previous = 0usize;
+        for token in uf_flow::scan::tokenize(self.text) {
+            gap(previous, token.start);
+            previous = token.end;
+        }
+        gap(previous, self.text.len());
+        found
+    }
+
     /// Byte span of a location.
     pub fn span(&self, loc: &Loc) -> Span {
         let start = self.offset(loc.start);
