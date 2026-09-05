@@ -31,12 +31,28 @@ interface Quiet extends Base {
 }
 
 // More than one target is the other thing that makes the heritage start a
-// line. A long one is not here: uf and the hermes plugin disagree about
-// whether the first target joins `extends`, which is ubugeeei-prod/uf#143
-// and nothing to do with comments.
+// line. `extends ` keeps its first target and the rest indent under it.
 interface Several extends Base, Other {
   m(): boolean;
 }
+
+interface SeveralLong
+  extends AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB,
+    CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC {
+  m(): boolean;
+}
+
+interface OneLong
+  extends AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA {
+  m(): boolean;
+}
+
+// An `interface { … }` *type* groups on its heritage too, having no name to
+// hang a comment on. Its members are not in this fixture: uf separates them
+// with `;` where the hermes plugin uses `,`, which is ubugeeei-prod/uf#151
+// and nothing to do with heritage.
+type Anonymous = interface extends Base {};
 
 declare class Declared // why
   extends Base
