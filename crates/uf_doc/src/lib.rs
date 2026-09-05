@@ -160,6 +160,16 @@ pub enum DocError {
         #[source]
         source: std::io::Error,
     },
+    /// The thread the work runs on could not be started, or did not finish.
+    ///
+    /// Separate from [`DocError::Write`] because nothing was being written:
+    /// reporting "failed to write /some/project" for a thread that would not
+    /// spawn sends whoever reads it to look at a disk that is fine.
+    #[error("the documentation worker {reason}")]
+    Worker {
+        /// What happened to it, as a phrase that finishes the sentence.
+        reason: &'static str,
+    },
 }
 
 /// Generate a documentation report from the project source files.
@@ -169,6 +179,28 @@ pub enum DocError {
 /// so callers can render them before failing the command.
 pub fn generate(root: &Utf8Path, config: &UniflowedConfig) -> Result<DocReport, DocError> {
     let scan = scan_source_files(root, config)?;
+
+    // On a thread with the stack the parser documents for its ceilings, the
+    // way `uf_fmt` does. Reading a tree recurses once per level and so does
+    // *freeing* it, and the free happens wherever the `Parsed` is held — a
+    // main thread's 8 MiB is not enough for a source at `MAX_CHAIN_DEPTH`,
+    // which `uf fmt` formats without complaint. See ubugeeei-prod/uf#155.
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("uf-doc".into())
+            .stack_size(uf_flow::PARSE_STACK_BYTES)
+            .spawn_scoped(scope, || document(scan))
+            .map_err(|_| DocError::Worker {
+                reason: "could not be started",
+            })?
+            .join()
+            .unwrap_or(Err(DocError::Worker { reason: "panicked" }))
+    })
+}
+
+/// Every documented export in `scan`, with the syntax diagnostics found on
+/// the way and the files that could not be read.
+fn document(scan: uf_project::SourceScan) -> Result<DocReport, DocError> {
     let mut report = DocReport {
         unreadable: scan
             .unreadable
@@ -896,6 +928,43 @@ mod tests {
 
     use super::*;
     use similar_asserts::assert_eq;
+
+    /// A source at the parser's ceiling does not abort the process.
+    ///
+    /// ubugeeei-prod/uf#155. Reading a tree recurses once per level and so
+    /// does freeing it, and the free happens wherever the `Parsed` is held.
+    /// `generate` ran on its caller's thread, so a member-call chain at
+    /// `MAX_CHAIN_DEPTH` — a source `uf fmt` formats without complaint —
+    /// overflowed a main thread's 8 MiB and took the process with it.
+    ///
+    /// This test runs on a *test* thread, 2 MiB, which is smaller still: if
+    /// the work ever moves back onto the caller's stack it fails here first.
+    #[test]
+    fn a_source_at_the_parsers_ceiling_is_documented() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        fs::create_dir(root.join("src")).unwrap();
+        // Two chain levels per link — a member and a call — so `.f()` alone
+        // can only land on an even count. The trailing `.g` is the odd level
+        // that puts this exactly on the ceiling rather than one under it.
+        let chain = format!(
+            "{}{}",
+            ".f()".repeat(uf_flow::MAX_CHAIN_DEPTH / 2 - 1),
+            ".g"
+        );
+        let source = format!("// @flow\n\n/** Deep. */\nexport const deep = a{chain};\n");
+        assert_eq!(
+            uf_flow::depths(&source).chain,
+            uf_flow::MAX_CHAIN_DEPTH,
+            "the fixture has to sit on the ceiling, not near it"
+        );
+        fs::write(root.join("src/deep.js"), source).unwrap();
+
+        let report = generate(root, &UniflowedConfig::default()).unwrap();
+
+        assert_eq!(report.diagnostics, Vec::new());
+        assert_eq!(report.files_scanned, 1);
+    }
 
     #[test]
     fn documents_exported_flow_declarations() {

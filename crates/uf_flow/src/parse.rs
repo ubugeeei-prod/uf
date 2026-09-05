@@ -199,9 +199,16 @@ pub enum ParseFailure {
 
 /// Parse `source` with the official Flow port and return its syntax tree.
 ///
-/// Run it on a thread with [`PARSE_STACK_BYTES`] of stack: the port recurses
-/// once per level of nesting, and [`MAX_NESTING_DEPTH`] levels do not fit in
-/// a default thread.
+/// # Call this from a thread with [`PARSE_STACK_BYTES`] of stack
+///
+/// Not because parsing needs it — this spawns its own thread for that — but
+/// because *everything the caller then does with the tree* needs it. Reading
+/// it recurses once per level, and so does freeing it, and the free happens
+/// wherever the [`Parsed`] is held. A main thread's 8 MiB is not enough for a
+/// source at [`MAX_CHAIN_DEPTH`], which is inside every limit here.
+///
+/// `uf_fmt` and `uf_doc` both do this. See ubugeeei-prod/uf#155 for the
+/// structural fix that would make it unnecessary.
 ///
 /// # Errors
 ///

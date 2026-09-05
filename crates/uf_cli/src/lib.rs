@@ -23,8 +23,15 @@ use uf_term::ColorChoice;
 use crate::cli::{ColorOption, Commands};
 use crate::ui::{OutputMode, Ui};
 
+// The root parser. A `///` comment here would become clap's `long_about` and
+// print in `uf --help`, so this one is deliberately not one.
+//
+// `name = "uf"` because clap otherwise takes the *crate* name, and
+// `uf --version` — the first thing anyone runs after installing — answered
+// `uf_cli 0.0.0-alpha.2`, naming something no user has heard of. The usage
+// line still comes from `argv[0]`, so `ufr --help` keeps saying `ufr`.
 #[derive(Debug, Parser)]
-#[command(version, about = "Unified Toolchain for Flow (React)")]
+#[command(name = "uf", version, about = "Unified Toolchain for Flow (React)")]
 struct Cli {
     /// Run as if uf had been started in DIR instead of the current directory.
     #[arg(long, global = true, value_name = "DIR")]

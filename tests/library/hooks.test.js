@@ -170,7 +170,7 @@ describe("useAsync", () => {
       const { error, pending } = useAsync(async () => {
         throw new Error("nope");
       }, []);
-      return <output>{pending ? "pending" : error?.message ?? "none"}</output>;
+      return <output>{pending ? "pending" : (error?.message ?? "none")}</output>;
     }
     render(<Probe />);
     await waitFor(() => {
