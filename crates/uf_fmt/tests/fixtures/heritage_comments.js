@@ -49,10 +49,17 @@ interface OneLong
 }
 
 // An `interface { … }` *type* groups on its heritage too, having no name to
-// hang a comment on. Its members are not in this fixture: uf separates them
-// with `;` where the hermes plugin uses `,`, which is ubugeeei-prod/uf#151
-// and nothing to do with heritage.
-type Anonymous = interface extends Base {};
+// hang a comment on. Its body is an object type: `,` between members, and one
+// line when it fits. The `;` and the line per member belong to the
+// declaration forms below it.
+type Anonymous = interface extends Base { m(): boolean };
+type Members = interface { a: string, b: number };
+type Empty = interface {};
+type Wide = interface extends Base { aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: string, bbbbbbbbbbbbbbbbbbbbbb: number };
+
+declare interface Declared {
+  m(): boolean;
+}
 
 declare class Declared // why
   extends Base {

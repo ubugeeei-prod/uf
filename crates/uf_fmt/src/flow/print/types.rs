@@ -277,10 +277,14 @@ impl<'a> Printer<'a> {
                 // that can make its heritage start a line is having more
                 // than one target.
                 let extends = self.print_interface_extends_list(&inner.extends, key);
+                // An object type, not an interface body. `interface { … }` in
+                // a type position separates its members with `,` and stays on
+                // one line when it fits; the `;` and the line per member
+                // belong to the *declaration*. See ubugeeei-prod/uf#151.
                 let body = self.print_object_type(
                     &inner.body.1,
                     NodeRef::ObjectType(&inner.body.0, &inner.body.1),
-                    true,
+                    false,
                 );
                 // An `interface { … }` type has no name to hang a comment
                 // on, so heritage is the only thing that can make it group.
