@@ -57,6 +57,7 @@ mod diagnostic;
 mod glyph;
 mod image;
 mod progress;
+pub mod prompt;
 mod render;
 mod style;
 mod table;
