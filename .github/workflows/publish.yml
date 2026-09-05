@@ -82,3 +82,26 @@ jobs:
           for package in $(grep -vE '^\s*(#|$)' tools/release/published-packages.txt); do
             publish "$package"
           done
+
+  verify:
+    name: Verify the npm release
+    needs: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      # The job above can succeed and leave the registry without the version
+      # it was asked to publish — `uf@0.0.0-alpha.2` had a tag, a GitHub
+      # release and nothing on npm, and nothing between that and a user
+      # noticed. This reads the registry back and installs from it.
+      - name: What actually reached npm
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: tools/release/verify-npm.sh "${REF_NAME#uf@}"
