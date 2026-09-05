@@ -271,6 +271,28 @@ jobs:
       # manifest that does not parse is a package that cannot be installed.
       - run: ./target/release/uf run manifests
 
+  upstream-integrations:
+    name: Upstream Integrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # React's compiler crates, Relay's compiler crates, React Native's codegen
+      # and Libraries. Nothing compiles against them yet, so this job is the
+      # only thing that would notice a pin that has been force-pushed away or a
+      # directory upstream moved. `sync.sh` fails on a missing subtree.
+      - run: tools/upstream/sync.sh --integrations
+      - name: The crates the manifest promises
+        run: |
+          set -eu
+          test -d upstream/react/compiler/crates/react_compiler_validation
+          test -d upstream/relay/compiler/crates/graphql-ir
+          test -d upstream/react-native/packages/react-native-codegen
+          test -d upstream/react-native/packages/react-native/Libraries
+          echo "upstream integrations: every promised subtree is present"
+
   upstream-flow:
     name: Upstream Flow
     needs: toolchain
