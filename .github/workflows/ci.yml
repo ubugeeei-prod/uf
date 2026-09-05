@@ -331,6 +331,14 @@ jobs:
           toolchain: nightly-2026-08-01
           components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # The suite builds the docs site through the real `@uniflowed/vite`, and
+      # those tests fail rather than skip when the workspace is not installed.
+      # Same reason the `Test` job installs, and the reason this job failed the
+      # first time it came back.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
