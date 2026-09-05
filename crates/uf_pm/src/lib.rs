@@ -316,14 +316,45 @@ struct PackageStoreEntry<'a> {
 
 fn discover_package_manifests(root: &Utf8Path) -> Result<Vec<Utf8PathBuf>, PackageManagerError> {
     let mut manifests = Vec::new();
-    visit_package_dirs(root, root, &mut manifests)?;
+    let submodules = submodule_paths(root);
+    visit_package_dirs(root, root, &submodules, &mut manifests)?;
     manifests.sort();
     Ok(manifests)
+}
+
+/// The paths `.gitmodules` lists, relative to `root`.
+///
+/// A submodule is somebody else's repository that happens to be checked out
+/// inside this one, and its `package.json` is not one of this project's
+/// packages: it must not be locked, and its `scripts` are not this project
+/// breaking the no-scripts rule.
+///
+/// This was already wrong before anything made it visible. `upstream/flow`
+/// is Meta's repository and its manifest was being locked as a workspace
+/// package; it went unnoticed only because that manifest happens to declare
+/// no scripts. Checking out a fixture that does declare some — React Native,
+/// Metro — turned it into `uf install` refusing to run at all.
+///
+/// Parsed by hand rather than with a git library, because it is four lines
+/// of `key = value` and a dependency on libgit2 to read them would be the
+/// larger cost. An unreadable or absent file means no submodules, which is
+/// the right answer for a checkout that has none.
+fn submodule_paths(root: &Utf8Path) -> Vec<Utf8PathBuf> {
+    let Ok(source) = fs::read_to_string(root.join(".gitmodules")) else {
+        return Vec::new();
+    };
+    source
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("path"))
+        .filter_map(|rest| rest.trim_start().strip_prefix('='))
+        .map(|value| Utf8PathBuf::from(value.trim()))
+        .collect()
 }
 
 fn visit_package_dirs(
     root: &Utf8Path,
     dir: &Utf8Path,
+    submodules: &[Utf8PathBuf],
     manifests: &mut Vec<Utf8PathBuf>,
 ) -> Result<(), PackageManagerError> {
     let entries = fs::read_dir(dir).map_err(|source| PackageManagerError::Read {
@@ -349,10 +380,10 @@ fn visit_package_dirs(
             })?;
 
         if file_type.is_dir() {
-            if should_skip_dir(root, &path) {
+            if should_skip_dir(root, &path, submodules) {
                 continue;
             }
-            visit_package_dirs(root, &path, manifests)?;
+            visit_package_dirs(root, &path, submodules, manifests)?;
         } else if file_type.is_file() && path.file_name() == Some("package.json") {
             manifests.push(path);
         }
@@ -361,15 +392,19 @@ fn visit_package_dirs(
     Ok(())
 }
 
-fn should_skip_dir(root: &Utf8Path, path: &Utf8Path) -> bool {
+fn should_skip_dir(root: &Utf8Path, path: &Utf8Path, submodules: &[Utf8PathBuf]) -> bool {
     let name = path.file_name().unwrap_or_default();
-    matches!(
+    if matches!(
         name,
         ".git" | ".uf" | "dist" | "node_modules" | "target" | "__uf_vrt__"
-    ) || path
-        .strip_prefix(root)
-        .map(|relative| relative.as_str().starts_with("tools/fuzz/target"))
-        .unwrap_or(false)
+    ) {
+        return true;
+    }
+    let Ok(relative) = path.strip_prefix(root) else {
+        return false;
+    };
+    relative.as_str().starts_with("tools/fuzz/target")
+        || submodules.iter().any(|submodule| relative == submodule)
 }
 
 fn lock_manifest(
