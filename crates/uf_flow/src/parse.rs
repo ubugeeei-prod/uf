@@ -64,21 +64,25 @@ pub const MAX_NESTING_DEPTH: usize = 300;
 ///
 /// **What real code reaches.** The 15,971 files in `tests/fixtures/git` —
 /// React, React Native, Metro, Relay, Parcel, Yarn, Prepack and eight more,
-/// with minified third-party bundles among them — reach **664**, in
-/// Lighthouse's bundle. So this is three times the deepest chain anyone in
-/// the corpus wrote.
+/// with minified third-party bundles among them — reach **1,958**, in
+/// CodeMirror's bundle. So this is five times the deepest chain anyone in the
+/// corpus wrote.
 ///
-/// **Where it gives out.** Not in the printer, which survives about 25,000
-/// links of `a.f()` on its own 128 MB thread — but in `Drop`. Freeing the
-/// tree recurses once per level, and it happens on whatever thread holds the
-/// [`Parsed`], which is the caller's. An unoptimized build on a 2 MiB test
-/// thread frees 4,000 links and not 8,000, so this is half of the smallest
-/// stack a caller is likely to have.
+/// **What the formatter survives.** `uf fmt` runs the parser, the printer and
+/// the tree's `Drop` on a thread of [`PARSE_STACK_BYTES`], and formats a
+/// chain of 40,000 there; it gives out somewhere before 100,000. So this is
+/// four times under the measured floor of the path that ships.
 ///
-/// Three times what anyone writes and half of what the tightest caller
-/// survives is where the two measurements meet. Raise it with a measurement,
-/// not with a guess.
-pub const MAX_CHAIN_DEPTH: usize = 2_000;
+/// # A caller that holds the tree on a small stack
+///
+/// Freeing the tree recurses once per level, and it happens on whatever
+/// thread holds the [`Parsed`]. A 2 MiB thread — an unoptimized test thread
+/// is one — overflows on a chain of about 4,000, which is *below* this
+/// ceiling. That is a hazard of the AST's `Drop` rather than of the ceiling,
+/// it applies equally to bracket nesting, and it is filed separately; a
+/// caller that parses deep sources should do it on a thread sized like the
+/// one [`parse`] uses. The tests below do.
+pub const MAX_CHAIN_DEPTH: usize = 10_000;
 
 /// Stack a thread needs to run [`parse`] on any source under
 /// [`MAX_NESTING_DEPTH`].
@@ -413,6 +417,17 @@ pub fn depths(source: &str) -> Depths {
                 previous = Previous::Value;
             }
             b'(' | b'[' => {
+                // After a value these open a call or an index, and each of
+                // those is a node: `f()()()…` and `a[0][0][0]…` nest as
+                // deeply as they are long while the bracket depth stays at
+                // one. After an operator they are a grouping paren or an
+                // array literal, which the bracket count already has.
+                if previous == Previous::Value
+                    && let Some((base, run)) = levels.last_mut()
+                {
+                    *run += 1;
+                    deepest_chain = deepest_chain.max(*base + *run);
+                }
                 depth += 1;
                 levels.push((level_base(&levels) + 1, 0));
                 deepest = deepest.max(depth);
@@ -470,7 +485,18 @@ pub fn depths(source: &str) -> Depths {
                 while at < bytes.len() && is_ident_part(bytes[at]) {
                     at += 1;
                 }
-                previous = if precedes_expression(&bytes[start..at]) {
+                let word = &bytes[start..at];
+                // A prefix operator spelled as a word nests exactly like one
+                // spelled in punctuation: `typeof typeof … x` and
+                // `new new … Foo` are one node per word, and neither opens a
+                // bracket.
+                if is_prefix_keyword(word)
+                    && let Some((base, run)) = levels.last_mut()
+                {
+                    *run += 1;
+                    deepest_chain = deepest_chain.max(*base + *run);
+                }
+                previous = if precedes_expression(word) {
                     Previous::Operator
                 } else {
                     Previous::Value
@@ -512,6 +538,18 @@ pub fn depths(source: &str) -> Depths {
 /// its enclosing level has already nested.
 fn level_base(levels: &[(usize, usize)]) -> usize {
     levels.last().map_or(0, |(base, run)| base + run)
+}
+
+/// Whether `word` is a prefix operator: one that takes an expression and is
+/// itself an expression, so a run of them nests.
+///
+/// `typeof`, `void`, `delete`, `await`, `yield` and `new`. Not `return` or
+/// `case`, which take an expression and are not one — they cannot repeat.
+fn is_prefix_keyword(word: &[u8]) -> bool {
+    matches!(
+        word,
+        b"typeof" | b"void" | b"delete" | b"await" | b"yield" | b"new"
+    )
 }
 
 /// Whether `byte` is punctuation that can nest one expression inside
@@ -788,9 +826,25 @@ const y = (x: any) as const;
         assert_eq!(chain_depth("x = a === b;"), 2);
         assert_eq!(chain_depth("x = a && b && c;"), 3);
 
-        // Member chains, with and without the calls.
+        // Member chains. With the calls it is six, not three: `.f()` is a
+        // member *and* a call, and both are nodes.
         assert_eq!(chain_depth("a.b.c.d"), 3);
-        assert_eq!(chain_depth("a.b().c().d()"), 3);
+        assert_eq!(chain_depth("a.b().c().d()"), 6);
+
+        // A call and an index nest even though their brackets close again.
+        // `f()()()…` and `a[0][0]…` keep the bracket depth at one.
+        assert_eq!(chain_depth("f()()()"), 3);
+        assert_eq!(chain_depth("a[0][0][0]"), 3);
+        // After an operator the same brackets are a group or an array
+        // literal, which the bracket count already has.
+        assert_eq!(chain_depth("x = (((a)))"), 1);
+        assert_eq!(chain_depth("x = [[[a]]]"), 1);
+
+        // A prefix operator spelled as a word nests like one spelled in
+        // punctuation.
+        assert_eq!(chain_depth("typeof typeof typeof x"), 3);
+        assert_eq!(chain_depth("new new new Foo"), 3);
+        assert_eq!(chain_depth("await await x"), 2);
 
         // Division is decided in the branch that also reads regular
         // expressions, so it is counted there or not at all.
@@ -808,29 +862,54 @@ const y = (x: any) as const;
         let statements = "x = a + b;\n".repeat(500);
         assert_eq!(chain_depth(&statements), 2);
 
-        // An inner expression is not charged for the one it sits in, and
-        // the brackets it sits inside do count.
-        assert_eq!(chain_depth("f(a + b)"), 2);
-        assert_eq!(chain_depth("a + f(b + c)"), 3);
+        // An inner expression is charged for what it sits in, and no more:
+        // `f(a + b)` is a call, its parentheses, and a `+`.
+        assert_eq!(chain_depth("f(a + b)"), 3);
+        assert_eq!(chain_depth("a + f(b + c)"), 4);
     }
 
     #[test]
     fn a_chain_past_the_ceiling_is_refused_rather_than_overflowing() {
-        let source = format!("x = {};", vec!["1"; MAX_CHAIN_DEPTH + 2].join(" + "));
-        let error = parse(&source).expect_err("refused");
-        assert!(
-            matches!(error, ParseFailure::TooDeeplyChained { .. }),
-            "{error:?}"
-        );
-        // And it says which kind of nesting, because "brackets" about
-        // `1 + 1 + …` sends whoever reads it looking for brackets.
-        assert!(error.to_string().starts_with("operators chain"), "{error}");
+        let deep = MAX_CHAIN_DEPTH + 2;
+        for source in [
+            format!("x = {};", vec!["1"; deep].join(" + ")),
+            format!("x = a{};", ".f()".repeat(deep)),
+            // Each of these keeps the bracket depth at one, or opens no
+            // bracket at all, and each was reaching the parser.
+            format!("x = f{};", "()".repeat(deep)),
+            format!("x = a{};", "[0]".repeat(deep)),
+            format!("x = {}y;", "typeof ".repeat(deep)),
+            format!("x = {}Foo;", "new ".repeat(deep)),
+        ] {
+            // Refused before the tree exists, so nothing deep is built and
+            // nothing deep is freed: this one needs no stack of its own.
+            let error = parse(&source).expect_err("refused");
+            assert!(
+                matches!(error, ParseFailure::TooDeeplyChained { .. }),
+                "{error:?}"
+            );
+            // And it says which kind of nesting, because "brackets" about
+            // `1 + 1 + …` sends whoever reads it looking for brackets.
+            assert!(error.to_string().starts_with("operators chain"), "{error}");
+        }
     }
 
     #[test]
     fn a_chain_at_the_ceiling_still_parses() {
-        let source = format!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + "));
-        let parsed = parse(&source).expect("parses");
-        assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
+        // On a thread the size `parse` uses. The tree is freed where it is
+        // held, and freeing recurses once per level, so a default test
+        // thread's 2 MiB is not enough for a chain this deep — which is a
+        // property of the AST's `Drop` and not of the ceiling. See the note
+        // on `MAX_CHAIN_DEPTH`.
+        std::thread::Builder::new()
+            .stack_size(PARSE_STACK_BYTES)
+            .spawn(|| {
+                let source = format!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + "));
+                let parsed = parse(&source).expect("parses");
+                assert!(parsed.is_ok(), "{:?}", parsed.diagnostics);
+            })
+            .expect("spawns")
+            .join()
+            .expect("no overflow at the ceiling");
     }
 }
