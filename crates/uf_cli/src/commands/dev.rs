@@ -11,11 +11,12 @@ use std::io::{BufRead, IsTerminal, Write};
 use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use serde_json::{Value, json};
-use uf_config::{FmtConfig, load_config};
+use uf_config::{FmtConfig, UniflowedConfig, load_config};
 use uf_infra::FxHashMap;
 use uf_router::write_router_manifest;
 use uf_term::{KeyValue, Status, Tone};
 
+use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
@@ -145,9 +146,11 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
 /// `TextEdit` over the whole file, which is what a printer that reprints from
 /// the syntax tree produces.
 ///
-/// Diagnostics are *not* advertised. They were before, and nothing served
-/// them; an editor that asks for what it is offered and receives nothing is
-/// worse off than one that was never offered it.
+/// Diagnostics, from the same `uf_lint::lint_source` that `uf lint` calls,
+/// pushed on open and on every change. `publishDiagnostics` is a
+/// notification the server sends rather than a request the editor makes, so
+/// there is no capability to advertise — the pull-model `diagnosticProvider`
+/// that used to be advertised, and served nothing, stays gone.
 pub(crate) fn lsp() -> Result<()> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
@@ -161,11 +164,12 @@ pub(crate) fn lsp() -> Result<()> {
     let mut reader = std::io::BufReader::new(stdin.lock());
     let mut documents: FxHashMap<String, String> = FxHashMap::default();
     let mut shutting_down = false;
-    // Once, not once per format. A server answers `textDocument/formatting`
+    // Once, not once per keystroke. A server lints on every change and formats
     // as often as the editor asks, and reading `uf.config.js` from disk each
     // time would put a file read on the path a keystroke can trigger.
-    let fmt = load_config(Utf8Path::new("."))
-        .map_or_else(|_| FmtConfig::default(), |resolved| resolved.config.fmt);
+    let config = load_config(Utf8Path::new("."))
+        .map_or_else(|_| UniflowedConfig::default(), |resolved| resolved.config);
+    let fmt = config.fmt.clone();
 
     while let Some(message) = read_message(&mut reader)? {
         let method = message.get("method").and_then(Value::as_str).unwrap_or("");
@@ -190,16 +194,26 @@ pub(crate) fn lsp() -> Result<()> {
             "exit" => return Ok(()),
             "textDocument/didOpen" => {
                 if let Some((uri, text)) = opened_document(&message) {
+                    publish_diagnostics(&mut stdout, &uri, &text, &config)?;
                     documents.insert(uri, text);
                 }
             }
             "textDocument/didChange" => {
                 if let Some((uri, text)) = changed_document(&message) {
+                    publish_diagnostics(&mut stdout, &uri, &text, &config)?;
                     documents.insert(uri, text);
                 }
             }
             "textDocument/didClose" => {
                 if let Some(uri) = document_uri(&message) {
+                    // An empty list, not silence: the editor keeps whatever it
+                    // was last told until it is told otherwise, so a closed
+                    // file would keep its markers.
+                    notify(
+                        &mut stdout,
+                        "textDocument/publishDiagnostics",
+                        json!({ "uri": uri, "diagnostics": [] }),
+                    )?;
                     documents.remove(&uri);
                 }
             }
@@ -225,6 +239,135 @@ pub(crate) fn lsp() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Lint `source` and send the result to the editor.
+///
+/// The same `uf_lint::lint_source` `uf lint` calls, so a marker in the editor
+/// and a line in the terminal are the same diagnostic — including
+/// `flow/syntax`, which is the parser's own errors and the one an editor most
+/// wants while the file is still being typed.
+///
+/// A file the linter cannot read at all is reported as nothing rather than as
+/// an error: half a keystroke into a rename, the document is often not
+/// anything yet, and a server that fails there is a server that stops.
+fn publish_diagnostics(
+    out: &mut impl Write,
+    uri: &str,
+    source: &str,
+    config: &UniflowedConfig,
+) -> Result<()> {
+    let file = uf_lint::SourceFile {
+        path: document_path(uri),
+        source: source.to_owned(),
+    };
+    let Ok(report) = uf_lint::lint_source(&file, config) else {
+        return Ok(());
+    };
+
+    let lines: Vec<&str> = source.lines().collect();
+    let diagnostics: Vec<Value> = report
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let text = lines.get(diagnostic.line.saturating_sub(1)).copied();
+            let start = character(text, diagnostic.column);
+            let span = text.map_or(1, |text| identifier_span(text, diagnostic.column));
+            let end = character(text, diagnostic.column + span);
+            json!({
+                "range": {
+                    "start": { "line": diagnostic.line.saturating_sub(1), "character": start },
+                    "end": { "line": diagnostic.line.saturating_sub(1), "character": end },
+                },
+                "severity": match diagnostic.severity {
+                    uf_lint::Severity::Error => 1,
+                    uf_lint::Severity::Warn => 2,
+                },
+                "source": "uf",
+                "code": diagnostic.rule,
+                "message": diagnostic.message,
+            })
+        })
+        .collect();
+
+    notify(
+        out,
+        "textDocument/publishDiagnostics",
+        json!({ "uri": uri, "diagnostics": diagnostics }),
+    )
+}
+
+/// A one-based *byte* column, as an LSP zero-based UTF-16 character offset.
+///
+/// The linter counts bytes and the protocol counts UTF-16 code units, and the
+/// two agree only while the line is ASCII. A file with `const π = 1;` in it
+/// would put every marker on that line two columns to the right.
+fn character(line: Option<&str>, column: usize) -> usize {
+    let Some(line) = line else {
+        return column.saturating_sub(1);
+    };
+    let byte = column.saturating_sub(1).min(line.len());
+    let head = match line.is_char_boundary(byte) {
+        true => &line[..byte],
+        // A column that lands inside a character counts that character.
+        false => {
+            let mut at = byte;
+            while at > 0 && !line.is_char_boundary(at) {
+                at -= 1;
+            }
+            &line[..at]
+        }
+    };
+    head.chars().map(char::len_utf16).sum()
+}
+
+/// The path an editor's `file://` URI names.
+///
+/// The linter is path-sensitive — `flow/syntax` claims `.js`, `.jsx`, `.mjs`
+/// and `.cjs` and nothing else — so a URI that arrives without its extension
+/// intact is a file that is silently not parsed. Percent escapes are decoded
+/// for the same reason: a project under `My Project` arrives as `My%20Project`.
+fn document_path(uri: &str) -> String {
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        match (bytes[at], bytes.get(at + 1), bytes.get(at + 2)) {
+            (b'%', Some(high), Some(low)) => {
+                match (
+                    char::from(*high).to_digit(16),
+                    char::from(*low).to_digit(16),
+                ) {
+                    #[allow(clippy::cast_possible_truncation)]
+                    (Some(high), Some(low)) => {
+                        out.push((high * 16 + low) as u8);
+                        at += 3;
+                    }
+                    _ => {
+                        out.push(bytes[at]);
+                        at += 1;
+                    }
+                }
+            }
+            _ => {
+                out.push(bytes[at]);
+                at += 1;
+            }
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| path.to_owned())
+}
+
+/// A notification: a method and params, and no id to answer.
+fn notify(out: &mut impl Write, method: &str, params: Value) -> Result<()> {
+    let message = json!({ "jsonrpc": "2.0", "method": method, "params": params });
+    let body =
+        serde_json::to_string(&message).with_context(|| "failed to encode a notification")?;
+    write!(out, "Content-Length: {}\r\n\r\n{body}", body.len())
+        .with_context(|| "failed to write a notification")?;
+    out.flush()
+        .with_context(|| "failed to flush a notification")
 }
 
 /// One `Content-Length`-framed message, or [`None`] at end of input.
@@ -375,6 +518,44 @@ mod tests {
     }
 
     /// A frame with no length is an error, not a guess.
+    /// The linter counts bytes and the protocol counts UTF-16 code units.
+    #[test]
+    fn a_byte_column_becomes_a_utf16_character() {
+        // ASCII: the two agree.
+        assert_eq!(character(Some("const x = 1;"), 1), 0);
+        assert_eq!(character(Some("const x = 1;"), 7), 6);
+
+        // `π` is two bytes and one UTF-16 unit, so everything after it moves.
+        let line = "const π = 1;";
+        assert_eq!(character(Some(line), 7), 6);
+        assert_eq!(character(Some(line), 9), 7);
+
+        // An emoji is four bytes and *two* UTF-16 units.
+        let line = "const 🦀 = 1;";
+        assert_eq!(character(Some(line), 7), 6);
+        assert_eq!(character(Some(line), 11), 8);
+
+        // A column past the end, and one that lands inside a character, both
+        // land somewhere rather than panicking.
+        assert_eq!(character(Some("ab"), 99), 2);
+        assert_eq!(character(Some("π"), 2), 0);
+        assert_eq!(character(None, 5), 4);
+    }
+
+    /// A `file://` URI is a path, and the linter is path-sensitive.
+    #[test]
+    fn a_file_uri_becomes_the_path_it_names() {
+        assert_eq!(document_path("file:///a/b.js"), "/a/b.js");
+        assert_eq!(
+            document_path("file:///My%20Project/app.js"),
+            "/My Project/app.js"
+        );
+        assert_eq!(document_path("/already/a/path.js"), "/already/a/path.js");
+        // A stray `%` is not an escape and is left alone.
+        assert_eq!(document_path("file:///100%.js"), "/100%.js");
+        assert_eq!(document_path("file:///a%zz.js"), "/a%zz.js");
+    }
+
     #[test]
     fn a_message_without_a_length_is_refused() {
         let mut reader = std::io::BufReader::new(&b"Content-Type: x\r\n\r\n{}"[..]);

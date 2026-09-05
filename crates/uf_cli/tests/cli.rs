@@ -1110,9 +1110,10 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.starts_with("Content-Length: "));
     assert!(stdout.contains(r#""name":"uf-lsp""#));
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
-    // Diagnostics are not advertised: nothing serves them, and an editor that
-    // asks for what it is offered and gets nothing is worse off than one that
-    // was never offered it. See ubugeeei-prod/uf#162.
+    // `diagnosticProvider` is the *pull* model, where the editor asks. uf
+    // pushes `textDocument/publishDiagnostics` instead, which is a
+    // notification and has no capability to advertise. Advertising a pull
+    // provider that nothing serves is what ubugeeei-prod/uf#162 was.
     assert!(!stdout.contains("diagnosticProvider"), "{stdout}");
     assert_plain(&stdout);
 }
@@ -1178,6 +1179,82 @@ fn lsp_formats_an_open_document() {
         "the edit should carry the formatted document:\n{stdout}"
     );
     assert!(stdout.contains(r#""newText""#), "{stdout}");
+}
+
+/// Opening a document publishes what is wrong with it.
+///
+/// The same `uf_lint::lint_source` `uf lint` calls, so a marker in the editor
+/// and a line in the terminal are the same diagnostic — including
+/// `flow/syntax`, the parser's own errors, which is what an editor most wants
+/// while a file is still being typed.
+#[test]
+fn lsp_publishes_diagnostics_when_a_document_opens() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.js","languageId":"javascript","version":1,"text":"// @flow\nconst x = ;\n"}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(r#""method":"textDocument/publishDiagnostics""#),
+        "{stdout}"
+    );
+    assert!(stdout.contains(r#""code":"flow/syntax""#), "{stdout}");
+    // A syntax error is an error, not a warning.
+    assert!(stdout.contains(r#""severity":1"#), "{stdout}");
+    assert!(stdout.contains(r#""source":"uf""#), "{stdout}");
+    // Zero-based: the second line of the file.
+    assert!(stdout.contains(r#""line":1"#), "{stdout}");
+    // A notification carries no id to answer.
+    assert!(!stdout.contains(r#""id":null"#), "{stdout}");
+}
+
+/// A change republishes, and closing clears.
+///
+/// An editor keeps whatever it was last told, so a file that is fixed and one
+/// that is closed both have to be said out loud.
+#[test]
+fn lsp_republishes_on_change_and_clears_on_close() {
+    let input = [
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.js","text":"// @flow\nconst x = ;\n"}}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///a.js","version":2},"contentChanges":[{"text":"// @flow\nconst x = 1;\n"}]}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"file:///a.js"}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let published = stdout
+        .matches(r#""method":"textDocument/publishDiagnostics""#)
+        .count();
+    assert_eq!(
+        published, 3,
+        "open, change and close each publish:\n{stdout}"
+    );
+    assert_eq!(
+        stdout.matches(r#""diagnostics":[]"#).count(),
+        2,
+        "the fixed document and the closed one are both empty:\n{stdout}"
+    );
 }
 
 /// A request uf does not serve is answered, not ignored.
