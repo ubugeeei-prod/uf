@@ -150,6 +150,13 @@ export default defineConfig({
     // has not bound fails the publish job *after* the names before it have
     // gone out, which half-sends a release.
     "release:preflight": "tools/release/preflight.sh",
+    // What actually reached npm, read from the registry. `publish.yml` runs
+    // it after publishing, because `uf@0.0.0-alpha.2` had a tag, a GitHub
+    // release and nothing on npm, and nothing noticed. See #142.
+    "release:verify": "tools/release/verify-npm.sh",
+    // The offline half of it: a published package whose dependency is not
+    // published resolves to nothing. No network, so `ci` runs it.
+    "release:closure": "tools/release/verify-npm.sh --closure-only",
     "install:test": "tools/release/test-install.sh",
     "release:manifest": "tools/release/build-manifest.sh",
     "release:package": "tools/release/package-binaries.sh",

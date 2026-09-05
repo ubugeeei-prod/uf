@@ -17,6 +17,12 @@ set -eu
 repo_root="$(CDPATH= cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
+# The closure first, because it needs no network and it is the failure that
+# cannot be fixed by binding a name: a published package whose dependency is
+# not published resolves to nothing.
+tools/release/verify-npm.sh --closure-only
+echo
+
 list="tools/release/published-packages.txt"
 missing=""
 count=0
