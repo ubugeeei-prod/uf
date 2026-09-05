@@ -165,6 +165,51 @@ const CORPUS: &[&str] = &[
     "const chain = (a?.b)();\n",
 ];
 
+/// Flow's contextual keywords, at the start of a statement and everywhere
+/// else.
+///
+/// Not in {@link CORPUS}: that list is fuzzed by
+/// `no_mutated_input_panics`, and adding an entry reshuffles which mutation
+/// every other entry gets. A regression test should not decide what an
+/// unrelated fuzzer does.
+#[test]
+fn a_contextual_keyword_is_parenthesized_only_where_it_has_to_be() {
+    // Needs them: the parser commits to a type alias and wants a `=`.
+    // React's devtools writes the first.
+    for source in [
+        "(type) as empty;\n",
+        "(component) as empty;\n",
+        "(interface) as empty;\n",
+        "(hook) as const;\n",
+    ] {
+        let output = format_source(source, &FmtConfig::default())
+            .unwrap_or_else(|error| panic!("{source:?} formats: {error}"))
+            .output;
+        assert_eq!(output, source, "lost the parentheses it needs");
+    }
+
+    // Does not: every one of these puts punctuation after the identifier,
+    // so the parser gives up on the declaration and reads an expression.
+    // An earlier version of the rule asked only whether the identifier was
+    // the first token, and turned the first of these into
+    // `(hook).renderers.forEach(…)` — in this repository's own
+    // `refresh-runtime.js`.
+    for source in [
+        "hook.renderers.forEach((injected, id) => injected.id === id);\n",
+        "type(argument);\n",
+        "component[0] = 1;\n",
+        "type;\n",
+    ] {
+        let output = format_source(source, &FmtConfig::default())
+            .unwrap_or_else(|error| panic!("{source:?} formats: {error}"))
+            .output;
+        assert!(
+            !output.starts_with('('),
+            "grew parentheses it does not need:\n{output}"
+        );
+    }
+}
+
 #[test]
 fn the_corpus_is_idempotent_under_every_configuration() {
     for config in configurations() {
@@ -301,8 +346,13 @@ fn no_mutated_input_panics() {
         // The result may be an error; what matters is that it returns.
         let outcome = format_source(&mutated, &config);
         if let Ok(result) = outcome {
-            let again = format_source(&result.output, &config)
-                .unwrap_or_else(|error| panic!("seed {seed}: reformat failed: {error}"));
+            let again = format_source(&result.output, &config).unwrap_or_else(|error| {
+                panic!(
+                    "seed {seed}: reformat failed: {error}\n\
+                     --- in\n{mutated:?}\n--- out\n{:?}",
+                    result.output
+                )
+            });
             similar_asserts::assert_eq!(
                 result.output,
                 again.output,
