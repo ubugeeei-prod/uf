@@ -1,0 +1,34 @@
+{
+  "name": "@uniflowed/form",
+  "version": "0.0.0-alpha.3",
+  "description": "Forms that do not re-render: uncontrolled fields, narrow subscriptions and schema validation, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/form"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./controller": "./controller.js",
+    "./field-array": "./field-array.js",
+    "./resolver": "./resolver.js",
+    "./rules": "./rules.js",
+    "./use-form": "./use-form.js",
+    "./validator": "./validator.js",
+    "./watch": "./watch.js"
+  },
+  "files": [
+    "*.js",
+    "internal"
+  ],
+  "dependencies": {
+    "@uniflowed/react": "0.0.0-alpha.3",
+    "@uniflowed/validator": "0.0.0-alpha.3"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}
