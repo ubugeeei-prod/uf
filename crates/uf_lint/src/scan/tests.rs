@@ -156,3 +156,46 @@ fn very_large_input_scans_without_quadratic_blowup() {
     assert_eq!(scan.lines.len(), 20_001);
     assert_eq!(scan.lines[0].code(), "let a = 1; ");
 }
+
+#[test]
+fn a_needle_inside_a_string_is_known_to_be_inside_one() {
+    let code = r#"const message = "no globalThis.fetch here";"#;
+    let at = code.find("globalThis.fetch").expect("the needle is there");
+
+    assert!(in_string(code, at));
+}
+
+#[test]
+fn a_needle_outside_every_string_is_not() {
+    let code = r#"globalThis.fetch = mine;"#;
+
+    assert!(!in_string(code, 0));
+}
+
+#[test]
+fn a_closed_string_does_not_swallow_what_follows_it() {
+    let code = r#"log("done"); globalThis.fetch = mine;"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(!in_string(code, at));
+}
+
+#[test]
+fn an_escaped_quote_does_not_close_the_string() {
+    let code = r#"const s = "a \" globalThis.fetch";"#;
+    let at = code.find("globalThis").expect("the needle is there");
+
+    assert!(in_string(code, at));
+}
+
+#[test]
+fn each_quote_style_opens_a_string() {
+    for code in [
+        "const s = 'globalThis.fetch';",
+        "const s = \"globalThis.fetch\";",
+        "const s = `globalThis.fetch`;",
+    ] {
+        let at = code.find("globalThis").expect("the needle is there");
+        assert!(in_string(code, at), "{code}");
+    }
+}

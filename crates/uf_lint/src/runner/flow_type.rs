@@ -6,7 +6,7 @@ use uf_config::UniflowedConfig;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
-    FileScan, find_words, identifier_len, next_non_space, prev_non_space, starts_word,
+    FileScan, find_words, identifier_len, in_string, next_non_space, prev_non_space, starts_word,
 };
 use crate::{Diagnostic, Severity, push_at, push_in_code, severity};
 
@@ -34,6 +34,11 @@ pub(crate) fn run_flow_unclear_type(
         let code = line.code();
         for (needle, message) in UNCLEAR_TYPES {
             for at in find_words(code, needle) {
+                // A sentence is not an annotation: `it("treats Object as any
+                // non-null object", …)` names no type.
+                if in_string(code, at) {
+                    continue;
+                }
                 // `Object.keys(x)`, `x.any`, and `new Function(src)` are value
                 // positions, not type annotations.
                 if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
@@ -63,6 +68,9 @@ pub(crate) fn run_flow_deprecated_type(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         for at in find_words(code, "bool") {
+            if in_string(code, at) {
+                continue;
+            }
             if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
                 continue;
             }

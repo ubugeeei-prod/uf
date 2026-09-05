@@ -174,7 +174,14 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
         bail!("{failure}");
     }
     if failing {
-        bail!("{} need formatting", plural(changed.len(), "file"));
+        // The verb agrees with the count, the way the line above it does:
+        // "1 file need formatting" sits directly under "1 file of 26 needs
+        // formatting" and reads as a typo in the tool.
+        bail!(
+            "{} {} formatting",
+            plural(changed.len(), "file"),
+            if changed.len() == 1 { "needs" } else { "need" }
+        );
     }
     Ok(())
 }

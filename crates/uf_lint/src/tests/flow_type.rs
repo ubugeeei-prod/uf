@@ -27,6 +27,34 @@ fn unclear_type_accepts_precise_annotations() {
 }
 
 #[test]
+fn unclear_type_ignores_a_word_inside_a_string() {
+    // A test name that says what a matcher does is prose, not an annotation:
+    // `it("treats Object as any non-null object", …)` names no type.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow
+it(\"treats Object as any non-null object\", () => {});
+",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_still_reads_an_annotation_after_a_string() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow
+const label = \"any\";
+type A = any;
+",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 3);
+}
+
+#[test]
 fn unclear_type_ignores_value_positions() {
     let diagnostics = lint_js(
         "flow/unclear-type",

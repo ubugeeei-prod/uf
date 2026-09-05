@@ -46,6 +46,43 @@ pub(crate) fn find_words<'a>(
         .filter(move |&at| starts_word(haystack, at) && ends_word(haystack, at + needle.len()))
 }
 
+/// Whether the byte at `at` stands inside a string literal.
+///
+/// [`crate::scan::Line::code`] keeps string literals on purpose —
+/// `uniflowed/no-npm-script-invocation` exists to read them — so a rule about
+/// what the code *does* has to ask before it fires. `const message = "no
+/// globalThis.fetch here"` overrides nothing, and `it("treats Object as any
+/// non-null object", …)` annotates nothing.
+///
+/// One line at a time, like every rule that reads a `Line`: a template literal
+/// that spans lines is understood as far as this line goes. A `${…}`
+/// substitution counts as string rather than as code, which errs towards
+/// silence — the direction a rule should err when it cannot tell.
+pub(crate) fn in_string(haystack: &str, at: usize) -> bool {
+    let bytes = haystack.as_bytes();
+    let end = at.min(bytes.len());
+    let mut quote: Option<u8> = None;
+    let mut index = 0;
+    while index < end {
+        let byte = bytes[index];
+        match quote {
+            Some(open) => {
+                if byte == b'\\' {
+                    index += 2;
+                    continue;
+                }
+                if byte == open {
+                    quote = None;
+                }
+            }
+            None if matches!(byte, b'"' | b'\'' | b'`') => quote = Some(byte),
+            None => {}
+        }
+        index += 1;
+    }
+    quote.is_some()
+}
+
 /// The next non-whitespace byte at or after `from`.
 #[inline]
 pub(crate) fn next_non_space(haystack: &str, from: usize) -> Option<(usize, u8)> {
