@@ -171,6 +171,14 @@ export default defineConfig({
     "release:bump": "tools/release/bump-version.sh",
 
     // --- Manifests -----------------------------------------------------
+    //
+    // `npm ci` refuses a lock that disagrees with the manifests, and it
+    // refuses it in every job that installs: six went red at once when a
+    // package was added and the lock was not regenerated, each reporting a
+    // package none of those jobs is about. This says it once, where the
+    // manifests are the subject.
+    lockfile: "tools/ci/lockfile-in-sync.sh",
+
     manifests:
       "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
 
@@ -189,6 +197,7 @@ export default defineConfig({
         "docs:build",
         "rust:metadata",
         "manifests",
+        "lockfile",
       ],
     },
   },

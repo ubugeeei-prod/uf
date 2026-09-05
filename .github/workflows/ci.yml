@@ -270,6 +270,10 @@ jobs:
       # Every package manifest, not just one: there are 44 of them now, and a
       # manifest that does not parse is a package that cannot be installed.
       - run: ./target/release/uf run manifests
+      # And that `package-lock.json` still describes them. `npm ci` catches
+      # this too, but in every job that installs and with a message about a
+      # package that job has nothing to do with. See ubugeeei-prod/uf#169.
+      - run: ./target/release/uf run lockfile
       # And that the set that goes to npm is closed under its own
       # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
       # release that sends one without the other publishes a package that

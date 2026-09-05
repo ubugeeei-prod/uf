@@ -3522,9 +3522,13 @@ dependencies = [
 name = "uf_prepare"
 version = "0.0.0-alpha.4"
 dependencies = [
+ "camino",
  "compact_str",
  "serde",
+ "serde_json",
  "smallvec",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]
