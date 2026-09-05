@@ -150,3 +150,74 @@ fn install_still_detects_the_native_resolver_afterwards() {
         }
     );
 }
+
+/// A submodule is somebody else's repository, not one of this project's
+/// packages.
+///
+/// This repository has had `upstream/flow` — Meta's Flow — since the
+/// beginning, and its manifest was being locked as a workspace package. It
+/// went unnoticed because that one happens to declare no scripts; a fixture
+/// that does, such as Metro, turned it into `uf install` refusing to run at
+/// all.
+#[test]
+fn a_submodule_is_not_one_of_the_project_s_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{ "name": "demo", "version": "1.0.0" }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join(".gitmodules"),
+        "[submodule \"vendored\"]\n\tpath = vendor/thing\n\turl = https://example.test/thing\n",
+    )
+    .unwrap();
+
+    let vendored = root.join("vendor/thing");
+    fs::create_dir_all(&vendored).unwrap();
+    // A manifest that would be refused if it were ours.
+    fs::write(
+        vendored.join("package.json"),
+        r#"{ "name": "thing", "version": "2.0.0", "scripts": { "build": "make" } }"#,
+    )
+    .unwrap();
+
+    let report = install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+    let names: Vec<&str> = report
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    assert_eq!(names, ["demo"], "the submodule was locked as a package");
+}
+
+#[test]
+fn a_directory_that_merely_looks_like_a_submodule_is_still_ours() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{ "name": "demo", "version": "1.0.0" }"#,
+    )
+    .unwrap();
+    // No `.gitmodules`, so nothing is skipped.
+    let nested = root.join("packages/core");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(
+        nested.join("package.json"),
+        r#"{ "name": "@demo/core", "version": "1.0.0" }"#,
+    )
+    .unwrap();
+
+    let report = install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+    let mut names: Vec<&str> = report
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, ["@demo/core", "demo"]);
+}
