@@ -46,7 +46,7 @@
 // matching on the message.
 
 import type { Issue, Schema } from "@uniflowed/validator";
-import { safeParse } from "@uniflowed/validator";
+import { isAsync, safeParse, safeParseAsync } from "@uniflowed/validator";
 
 import type { Resolver, ResolverErrors, ResolverResult } from "./resolver.js";
 import { collectErrors } from "./resolver.js";
@@ -73,13 +73,31 @@ export function errorsFromIssues(issues: $ReadOnlyArray<Issue>): ResolverErrors 
 /**
  * A resolver that validates the form against `schema`.
  *
- * Synchronous, because `safeParse` is: a form in `onChange` mode runs this on
- * every keystroke, and a promise there would cost a microtask and a pair of
- * `isValidating` renders for an answer that was already available.
+ * Synchronous when the schema is, which is the case a form in `onChange` mode
+ * runs on every keystroke: a promise there would cost a microtask and a pair of
+ * `isValidating` renders for an answer that was already available. The
+ * `Resolver` contract allows either, and `runResolver` returns a synchronous
+ * answer synchronously, so nothing downstream pays for the choice.
+ *
+ * A schema with a `checkAsync` in it — "is this handle taken" — is
+ * asynchronous from that step up, and `@uniflowed/validator` says so through
+ * `isAsync` when the schema is built rather than when it is run. So the branch
+ * is taken once, here, and not per keystroke; and `safeParse` never gets a
+ * schema it would refuse. The form already handles an asynchronous resolver,
+ * including discarding a slower answer that a newer one has overtaken.
  */
 export function validatorResolver<TValues extends FieldValues, TOutput>(
   schema: Schema<TOutput>,
 ): Resolver<TValues, TOutput> {
+  if (isAsync(schema)) {
+    return async (values: TValues): Promise<ResolverResult<TOutput>> => {
+      const result = await safeParseAsync(schema, values);
+      if (result.ok) {
+        return { values: result.value };
+      }
+      return { errors: errorsFromIssues(result.issues) };
+    };
+  }
   return (values: TValues): ResolverResult<TOutput> => {
     const result = safeParse(schema, values);
     if (result.ok) {

@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/validator",
   "version": "0.0.0-alpha.4",
-  "description": "Flow implementation for @uniflowed/validator, part of the Unified Toolchain for Flow.",
+  "description": "Schemas that parse rather than assert: typed inference, issue paths and JSON Schema export, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,9 +11,24 @@
     "directory": "packages/validator"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./action": "./action.js",
+    "./collection": "./collection.js",
+    "./infer": "./infer.js",
+    "./issue": "./issue.js",
+    "./json-schema": "./json-schema.js",
+    "./lazy": "./lazy.js",
+    "./namespace": "./namespace.js",
+    "./object": "./object.js",
+    "./optional": "./optional.js",
+    "./parse": "./parse.js",
+    "./pipe": "./pipe.js",
+    "./plain-object": "./plain-object.js",
+    "./primitive": "./primitive.js",
+    "./schema": "./schema.js",
+    "./union": "./union.js"
   },
   "files": [
-    "index.js"
+    "*.js"
   ]
 }
