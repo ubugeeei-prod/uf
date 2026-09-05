@@ -859,6 +859,60 @@ fn explain_says_which_commands_it_knows() {
         stderr.contains("dev, build, doc, test, fmt, lint, check"),
         "{stderr}"
     );
+    assert!(stderr.contains("install, upgrade"), "{stderr}");
+}
+
+/// Every command that delegates can say who it delegates to.
+///
+/// `uf explain` described seven of twenty-two, and the fifteen it did not
+/// were the ones where the question has an answer worth printing — which
+/// package manager resolves a tree, which registry a publish reaches, which
+/// runner schedules a task. A command that does its whole job in this binary
+/// has no provider to name and is deliberately absent. See
+/// ubugeeei-prod/uf#166.
+#[test]
+fn explain_describes_every_command_that_delegates() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({});\n",
+    )
+    .unwrap();
+
+    for command in [
+        "dev", "build", "doc", "test", "fmt", "lint", "check", "run", "install", "upgrade", "use",
+        "env", "prepare", "publish", "release", "lsp",
+    ] {
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .args(["explain", command])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "uf explain {command}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.contains("provider"),
+            "uf explain {command}:\n{stdout}"
+        );
+        // A provider name is something a reader can recognise. `{:?}` on a
+        // config enum gives `UfNative`, and lowercasing it gives `ufnative`,
+        // which is a word nobody wrote and nobody can search for.
+        assert!(
+            !stdout.contains("ufnative") && !stdout.contains("vitetask"),
+            "uf explain {command} printed a debug name:\n{stdout}"
+        );
+        // And a detail is a sentence, not a struct.
+        assert!(
+            !stdout.contains("Config {"),
+            "uf explain {command} printed a struct:\n{stdout}"
+        );
+    }
 }
 
 #[test]
