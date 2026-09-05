@@ -85,6 +85,12 @@ pub struct Printer<'a> {
     /// Set when a hugged call argument turned out to need its own line
     /// breaks: Prettier's `ArgExpansionBailout`, without the exception.
     pub expansion_bailout: bool,
+    /// Byte spans of Flow's comment types, in source order.
+    ///
+    /// A statement inside one is not printed from the tree — the block goes
+    /// out verbatim, which is what keeps a file that runs under bare `node`
+    /// running. See {@link print_statement_sequence}.
+    pub comment_types: Vec<crate::flow::text::Span>,
     /// Arguments already printed, by node, print arguments and parent.
     ///
     /// `print_arguments` prints the argument it is considering hugging a
@@ -122,6 +128,7 @@ impl<'a> Printer<'a> {
             options,
             ancestors: Vec::with_capacity(64),
             program,
+            comment_types: text.comment_types(),
             expansion_bailout: false,
             argument_docs: FxHashMap::default(),
         }
@@ -324,7 +331,27 @@ impl<'a> Printer<'a> {
     /// The leading comments of `key`, each followed by the break Prettier
     /// puts after it.
     pub fn print_leading_comments(&mut self, key: NodeKey) -> Option<Doc<'a>> {
-        let indices: Vec<u32> = self.comments.slots(key)?.leading.iter().copied().collect();
+        self.print_leading_comments_before(key, usize::MAX)
+    }
+
+    /// The leading comments of `key` that end before `offset`.
+    ///
+    /// For a statement inside a `/*:: … */` block: `// @flow` above the block
+    /// leads that statement and has to be printed, and a comment *inside* the
+    /// block is already in the bytes the block emits.
+    pub fn print_leading_comments_before(
+        &mut self,
+        key: NodeKey,
+        offset: usize,
+    ) -> Option<Doc<'a>> {
+        let indices: Vec<u32> = self
+            .comments
+            .slots(key)?
+            .leading
+            .iter()
+            .copied()
+            .filter(|index| self.comments.get(*index).span.end <= offset)
+            .collect();
         if indices.is_empty() {
             return None;
         }
@@ -494,6 +521,40 @@ impl<'a> Printer<'a> {
         })
     }
 
+    /// The comment-type block containing `span`, if any.
+    ///
+    /// Blocks do not nest and are in source order, so this is a binary
+    /// search. Almost every file has none at all and the vector is empty.
+    pub fn comment_type_around(
+        &self,
+        span: crate::flow::text::Span,
+    ) -> Option<crate::flow::text::Span> {
+        let at = self
+            .comment_types
+            .partition_point(|block| block.start <= span.start);
+        let block = *self.comment_types.get(at.checked_sub(1)?)?;
+        (span.end <= block.end).then_some(block)
+    }
+
+    /// The comment-type block to print verbatim in place of `span`, if any.
+    ///
+    /// [`None`] when something already inside the same block is being
+    /// printed. Parcel writes a `/*:: … */` holding a *class member*, whose
+    /// body holds statements; without this the class body printed the member
+    /// and then the member's statements printed the block again, inside it.
+    /// Only the outermost node in a block stands for it.
+    pub fn comment_type_to_print(
+        &self,
+        span: crate::flow::text::Span,
+    ) -> Option<crate::flow::text::Span> {
+        let block = self.comment_type_around(span)?;
+        let enclosed = self.ancestors.iter().any(|ancestor| {
+            let ancestor = self.text.span(&ancestor.loc());
+            ancestor.start >= block.start && ancestor.end <= block.end
+        });
+        (!enclosed).then_some(block)
+    }
+
     // ---- statements in sequence ----
 
     /// Statements one per line, with one blank line kept where the source
@@ -507,8 +568,39 @@ impl<'a> Printer<'a> {
             .iter()
             .rposition(|statement| !statement::is_empty_statement(statement));
         let mut parts = Vec::with_capacity(statements.len() * 2);
+        // The end of the last comment-type block emitted, so the statements
+        // after the first in one are skipped rather than printed twice.
+        let mut inside_block_until = 0usize;
         for (index, statement) in statements.iter().enumerate() {
             if statement::is_empty_statement(statement) {
+                continue;
+            }
+            let span = self.text.span(statement.loc());
+            if span.start < inside_block_until {
+                continue;
+            }
+            // `/*:: type X = …; */` is a declaration to Flow and a comment to
+            // everything else, which is the whole point of the syntax: the
+            // file carries the type *and* runs under bare `node`. So the
+            // block goes out as it was written, delimiters and spacing and
+            // all, exactly as Prettier leaves it. See ubugeeei-prod/uf#126.
+            if let Some(block) = self.comment_type_to_print(span) {
+                inside_block_until = block.end;
+                // The comments *before* the block still lead this statement
+                // and are still this printer's to emit; the ones inside it go
+                // out with the bytes.
+                let key = NodeRef::Statement(statement).key();
+                if let Some(leading) = self.print_leading_comments_before(key, block.start) {
+                    parts.push(leading);
+                }
+                self.comments.mark_printed_within(block);
+                parts.push(self.replace_end_of_line(self.text.slice(block)));
+                if Some(index) != last {
+                    parts.push(&HARDLINE);
+                    if self.text.is_next_line_empty(block.end) {
+                        parts.push(&HARDLINE);
+                    }
+                }
                 continue;
             }
             let printed = self.print_statement(statement);
