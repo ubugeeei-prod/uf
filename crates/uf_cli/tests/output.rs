@@ -266,7 +266,9 @@ fn no_color_also_falls_back_to_ascii_glyphs() {
     assert!(stdout.is_ascii(), "NO_COLOR must not print box drawing");
     assert!(stdout.contains("|- app"));
     assert!(stdout.contains("`- uf.config.js"));
-    assert!(stdout.contains("+ created 8 files"));
+    // Nine: the eight source files and the `.gitignore` that keeps uf's
+    // own output out of a new project's first commit.
+    assert!(stdout.contains("+ created 9 files"));
 }
 
 #[test]

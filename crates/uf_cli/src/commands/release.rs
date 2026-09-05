@@ -188,7 +188,7 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
             ],
         );
         if let Some(entry) = &changelog_row {
-            renderer.key_values(out, 2, &[entry.clone()]);
+            renderer.key_values(out, 2, std::slice::from_ref(entry));
         }
         renderer.blank(out);
         renderer.status(out, Status::Success, &summary);
