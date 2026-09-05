@@ -9,17 +9,22 @@
 //
 //   → {"file": "src/math.test.js", "filter": "adds", "timeoutMs": 5000}
 //   ← {"event": "test", "name": "math > adds", "status": "passed", …}
+//   ← {"event": "output", "stream": "stdout", "test": "math > adds", "text": "hi\n"}
 //   ← {"event": "file", "status": "completed", "durationMicros": 1234}
 //
-// Two decisions worth stating. Results are streamed as they happen rather than
-// batched at the end, so `uf test` can draw progress and `--bail` can stop a
-// long run early. And a file that throws while being *imported* is a file
-// result, not a test result: there were no tests to fail, and saying "0 tests"
-// for a module that could not load would be a lie.
+// Three decisions worth stating. Results are streamed as they happen rather
+// than batched at the end, so `uf test` can draw progress and `--bail` can stop
+// a long run early. A file that throws while being *imported* is a file result,
+// not a test result: there were no tests to fail, and saying "0 tests" for a
+// module that could not load would be a lie. And the protocol does not share
+// its stream with the tests: a test's own printing becomes an `output` event
+// (`internal/output.js`), so a `console.log` cannot land in the middle of a
+// line `uf` is parsing.
 //
 // This module runs on import by design — it is a process entry point, the way
 // `@uniflowed/vite`'s loaders are.
 
+import * as output from "./internal/output.js";
 import { writeChangedSnapshots } from "./internal/snapshot.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,8 +39,29 @@ type Request = {|
   readonly timeoutMs?: number,
 |};
 
+/**
+ * The protocol's own stdout, and the capture that gave it up.
+ *
+ * A test can reach `console.log` and `process.stdout.write`, and both used to
+ * land in the middle of a line `uf` was parsing. `internal/output.js` takes
+ * those over and hands back the real write it replaced, so the protocol has a
+ * stream nothing else can reach and a test's printing is still reported —
+ * as an `output` event, escaped, whatever it says.
+ *
+ * At module scope, before a single test file can be imported, so output
+ * written while a file is still loading is reported rather than lost.
+ */
+const emit: (chunk: string) => void = output.install((chunk) => {
+  write({
+    event: "output",
+    stream: chunk.stream,
+    test: chunk.test,
+    text: chunk.text,
+  });
+});
+
 function write(event: { readonly [string]: mixed }): void {
-  process.stdout.write(`${JSON.stringify(event)}\n`);
+  emit(`${JSON.stringify(event)}\n`);
 }
 
 /**
@@ -48,6 +74,7 @@ function write(event: { readonly [string]: mixed }): void {
 async function runFile(request: Request, generation: number): Promise<void> {
   const started = performance.now();
   reset();
+  output.startFile();
 
   try {
     await import(`${pathToFileURL(request.file).href}?uf-run=${generation}`);

@@ -9,6 +9,7 @@
 // driven by the worker, by a unit test, or by a future host that is not
 // Node.js, without any of them re-deciding what `.only` means.
 
+import * as output from "./output.js";
 import * as snapshot from "./snapshot.js";
 import { AssertionError } from "./expect.js";
 import { firstUserSite, userFrames } from "./frames.js";
@@ -192,6 +193,11 @@ async function runCase(
 
   const timeoutMs = test.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let outcome: Outcome = { status: "passed" };
+  // From here to the end of teardown is exactly the window in which this
+  // case's own code runs, so it is exactly the window whose printing is this
+  // case's. The cases above never reach it: nothing runs for a `todo`, a
+  // `skip` or a filtered-out case, so nothing of theirs can print.
+  output.enterTest(name);
   try {
     for (const hook of context.beforeEach) {
       await withTimeout(hook, timeoutMs);
@@ -213,7 +219,8 @@ async function runCase(
   }
   // No test is running once this one is reported, so a snapshot taken outside
   // one fails with something better than a key belonging to whichever test
-  // happened to run last.
+  // happened to run last, and a line printed outside one is the file's.
+  output.exitTest();
   snapshot.exitTest();
   report(outcome);
   return outcome.status !== "failed";

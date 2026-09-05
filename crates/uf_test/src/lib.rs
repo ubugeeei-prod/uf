@@ -93,8 +93,8 @@ pub use crate::plan::{
     TestModifier, TestPlan, UnsupportedDeclaration,
 };
 pub use crate::report::{
-    AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, TestRecord, TestRunReport,
-    TestStatus, TestSummary,
+    AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, MAX_OUTPUT_BYTES_PER_FILE,
+    OutputChunk, OutputStream, TestRecord, TestRunReport, TestStatus, TestSummary,
 };
 pub use crate::retry_schedule::{Attempt, Decision, MAX_DELAY, Schedule};
 pub use crate::runner::{

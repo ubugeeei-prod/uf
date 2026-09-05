@@ -33,7 +33,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::plan::SkipReason;
-use crate::report::{AssertionFailure, FileStatus, TestRecord, TestStatus};
+use crate::report::{
+    AssertionFailure, FileStatus, MAX_OUTPUT_BYTES_PER_FILE, OutputChunk, OutputStream, TestRecord,
+    TestStatus,
+};
 
 /// A JavaScript host that can run the worker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,6 +179,9 @@ enum Event {
     Test(TestEvent),
     /// The file finished, one way or another.
     File(FileEvent),
+    /// Something printed. A test's `console.log` arrives here rather than as a
+    /// raw line, which is what stops it from being read as a malformed event.
+    Output(OutputEvent),
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +225,20 @@ struct FileEvent {
     stack: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputEvent {
+    /// `"stdout"` or `"stderr"`. Anything else is treated as stdout: which of
+    /// two streams a line came from is not worth failing a file over.
+    #[serde(default)]
+    stream: String,
+    /// Full name of the case that was running, absent when none was.
+    #[serde(default)]
+    test: Option<String>,
+    #[serde(default)]
+    text: String,
+}
+
 /// What one file produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileOutcome {
@@ -226,6 +246,74 @@ pub struct FileOutcome {
     pub status: FileStatus,
     /// Every case it reported, in the order they ran.
     pub records: Vec<TestRecord>,
+    /// What the file printed outside any case.
+    pub output: Vec<OutputChunk>,
+}
+
+/// Output the runner has read but cannot place yet.
+///
+/// A case's output is written before the event that reports the case, so a
+/// chunk is held with the name it claims until that name arrives. Whatever is
+/// still here when the file ends was printed outside any case — at import
+/// time, from a `beforeAll`, or after the last case — and belongs to the file.
+#[derive(Debug, Default)]
+struct PendingOutput {
+    chunks: Vec<(Option<String>, OutputChunk)>,
+    bytes: usize,
+}
+
+impl PendingOutput {
+    /// Keep one chunk, within the file's budget.
+    fn push(&mut self, event: OutputEvent) {
+        if event.text.is_empty() || self.bytes >= MAX_OUTPUT_BYTES_PER_FILE {
+            return;
+        }
+        let mut text = event.text;
+        if text.len() > MAX_OUTPUT_BYTES_PER_FILE - self.bytes {
+            // On a character boundary, because half a code point is not one.
+            let mut end = MAX_OUTPUT_BYTES_PER_FILE - self.bytes;
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+        }
+        self.bytes += text.len();
+        let stream = if event.stream == "stderr" {
+            OutputStream::Stderr
+        } else {
+            OutputStream::Stdout
+        };
+        self.chunks.push((event.test, OutputChunk { stream, text }));
+    }
+
+    /// Everything printed by the case called `name`, in order, removed.
+    fn take(&mut self, name: &str) -> Vec<OutputChunk> {
+        let mut taken = Vec::new();
+        self.chunks.retain_mut(|(test, chunk)| {
+            if test.as_deref() == Some(name) {
+                taken.push(std::mem::replace(
+                    chunk,
+                    OutputChunk {
+                        stream: OutputStream::Stdout,
+                        text: String::new(),
+                    },
+                ));
+                false
+            } else {
+                true
+            }
+        });
+        taken
+    }
+
+    /// Everything left, which is the file's own.
+    fn drain(&mut self) -> Vec<OutputChunk> {
+        self.bytes = 0;
+        std::mem::take(&mut self.chunks)
+            .into_iter()
+            .map(|(_, chunk)| chunk)
+            .collect()
+    }
 }
 
 /// A worker process, and the thread reading its output.
@@ -354,6 +442,10 @@ impl Worker {
 
         let started = Instant::now();
         let mut records = Vec::new();
+        // Whatever the file printed travels with it whatever happens to it: a
+        // file that hung after printing is the case where the printing is most
+        // of the evidence there is.
+        let mut pending = PendingOutput::default();
         loop {
             let remaining = deadline.checked_sub(started.elapsed());
             let Some(remaining) = remaining else {
@@ -363,15 +455,22 @@ impl Worker {
                         budget_micros: u64::try_from(deadline.as_micros()).unwrap_or(u64::MAX),
                     },
                     records,
+                    output: pending.drain(),
                 };
             };
             match self.events.recv_timeout(remaining) {
                 Ok(line) => match serde_json::from_str::<Event>(&line) {
-                    Ok(Event::Test(event)) => records.push(record_of(relative, event)),
+                    Ok(Event::Test(event)) => {
+                        let mut record = record_of(relative, event);
+                        record.output = pending.take(&record.name);
+                        records.push(record);
+                    }
+                    Ok(Event::Output(event)) => pending.push(event),
                     Ok(Event::File(event)) => {
                         return FileOutcome {
                             status: file_status(event),
                             records,
+                            output: pending.drain(),
                         };
                     }
                     Err(error) => {
@@ -381,6 +480,7 @@ impl Worker {
                                 message: format!("unreadable worker output: {error}: {line}"),
                             },
                             records,
+                            output: pending.drain(),
                         };
                     }
                 },
@@ -391,6 +491,7 @@ impl Worker {
                             budget_micros: u64::try_from(deadline.as_micros()).unwrap_or(u64::MAX),
                         },
                         records,
+                        output: pending.drain(),
                     };
                 }
                 // The reader ended, which means the process did: it exited or
@@ -403,6 +504,7 @@ impl Worker {
                     return FileOutcome {
                         status: FileStatus::HostFailed { message: how },
                         records,
+                        output: pending.drain(),
                     };
                 }
             }
@@ -414,6 +516,7 @@ impl Worker {
         FileOutcome {
             status: FileStatus::HostFailed { message },
             records: Vec::new(),
+            output: Vec::new(),
         }
     }
 
@@ -486,6 +589,7 @@ fn record_of(file: &str, event: TestEvent) -> TestRecord {
         status,
         attempts: 1,
         duration_micros: event.duration_micros,
+        output: Vec::new(),
     }
 }
 
@@ -577,6 +681,139 @@ mod tests {
         assert_eq!(failures[0].line, 4);
         assert_eq!(failures[0].column, 12);
         assert_eq!(failures[0].expected.as_deref(), Some("2"));
+    }
+
+    /// The line the worker writes for `console.log(text)`.
+    fn output_line(test: Option<&str>, text: &str) -> String {
+        serde_json::json!({
+            "event": "output",
+            "stream": "stdout",
+            "test": test,
+            "text": format!("{text}\n"),
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn an_output_event_carries_the_stream_the_test_wrote_to() {
+        let line = r#"{"event":"output","stream":"stderr","test":"a > b","text":"oh no\n"}"#;
+
+        let Ok(Event::Output(event)) = serde_json::from_str::<Event>(line) else {
+            panic!("an output line must parse as an output event");
+        };
+        assert_eq!(event.stream, "stderr");
+        assert_eq!(event.test.as_deref(), Some("a > b"));
+        assert_eq!(event.text, "oh no\n");
+    }
+
+    #[test]
+    fn output_is_attributed_to_the_case_that_printed_it() {
+        let mut pending = PendingOutput::default();
+        for line in [
+            output_line(None, "loading"),
+            output_line(Some("a > b"), "from b"),
+            output_line(Some("a > c"), "from c"),
+        ] {
+            let Ok(Event::Output(event)) = serde_json::from_str::<Event>(&line) else {
+                panic!("an output line must parse as an output event");
+            };
+            pending.push(event);
+        }
+
+        let taken = pending.take("a > b");
+        assert_eq!(taken.len(), 1);
+        assert_eq!(taken[0].text, "from b\n");
+        assert_eq!(taken[0].stream, OutputStream::Stdout);
+        // Taking one case's output leaves the other case's alone, and what no
+        // case claims is the file's.
+        assert_eq!(pending.take("a > c")[0].text, "from c\n");
+        let file = pending.drain();
+        assert_eq!(file.len(), 1);
+        assert_eq!(file[0].text, "loading\n");
+    }
+
+    #[test]
+    fn output_the_worker_never_named_a_case_for_belongs_to_the_file() {
+        let mut pending = PendingOutput::default();
+        let Ok(Event::Output(event)) = serde_json::from_str::<Event>(&output_line(
+            Some("a case that never reported"),
+            "orphan",
+        )) else {
+            panic!("an output line must parse as an output event");
+        };
+        pending.push(event);
+
+        assert!(pending.take("a > b").is_empty());
+        assert_eq!(pending.drain()[0].text, "orphan\n");
+    }
+
+    #[test]
+    fn a_test_printing_a_protocol_line_does_not_become_one() {
+        // The whole point of carrying output as a field: this is what
+        // `console.log('{"event":"file","status":"completed"}')` puts on the
+        // wire, and reading it must not end the file.
+        let printed = r#"{"event":"file","status":"completed"}"#;
+        let line = output_line(Some("a > b"), printed);
+
+        let Ok(Event::Output(event)) = serde_json::from_str::<Event>(&line) else {
+            panic!("a printed protocol line must stay an output event");
+        };
+        assert_eq!(event.text, format!("{printed}\n"));
+
+        let mut pending = PendingOutput::default();
+        pending.push(event);
+        let taken = pending.take("a > b");
+        assert_eq!(taken[0].text, format!("{printed}\n"));
+    }
+
+    #[test]
+    fn a_stream_the_runner_does_not_know_is_treated_as_stdout() {
+        // Which of two streams a line came from is not worth failing a file
+        // over, so an unrecognised name takes the ordinary one.
+        let line = r#"{"event":"output","stream":"tty","text":"hi\n"}"#;
+        let Ok(Event::Output(event)) = serde_json::from_str::<Event>(line) else {
+            panic!("an output line must parse as an output event");
+        };
+
+        let mut pending = PendingOutput::default();
+        pending.push(event);
+        assert_eq!(pending.drain()[0].stream, OutputStream::Stdout);
+    }
+
+    #[test]
+    fn one_file_cannot_print_more_than_the_budget() {
+        let mut pending = PendingOutput::default();
+        for _ in 0..64 {
+            pending.push(OutputEvent {
+                stream: String::from("stdout"),
+                test: None,
+                text: "x".repeat(4096),
+            });
+        }
+
+        let kept: usize = pending.drain().iter().map(|chunk| chunk.text.len()).sum();
+        assert_eq!(kept, MAX_OUTPUT_BYTES_PER_FILE);
+    }
+
+    #[test]
+    fn the_budget_cuts_on_a_character_boundary() {
+        let mut pending = PendingOutput::default();
+        pending.push(OutputEvent {
+            stream: String::from("stdout"),
+            test: None,
+            text: "x".repeat(MAX_OUTPUT_BYTES_PER_FILE - 1),
+        });
+        // Two bytes of one character, with one byte of room: neither byte is
+        // kept, because half of a character is not a character.
+        pending.push(OutputEvent {
+            stream: String::from("stdout"),
+            test: None,
+            text: String::from("é"),
+        });
+
+        let chunks = pending.drain();
+        assert_eq!(chunks[1].text, "");
+        assert!(chunks.iter().all(|chunk| chunk.text.is_char_boundary(0)));
     }
 
     #[test]
