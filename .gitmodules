@@ -2,3 +2,19 @@
 	path = upstream/flow
 	url = https://github.com/facebook/flow.git
 	shallow = true
+[submodule "tests/fixtures/git/react"]
+	path = tests/fixtures/git/react
+	url = https://github.com/facebook/react.git
+	shallow = true
+[submodule "tests/fixtures/git/metro"]
+	path = tests/fixtures/git/metro
+	url = https://github.com/facebook/metro.git
+	shallow = true
+[submodule "tests/fixtures/git/relay"]
+	path = tests/fixtures/git/relay
+	url = https://github.com/facebook/relay.git
+	shallow = true
+[submodule "tests/fixtures/git/react-native"]
+	path = tests/fixtures/git/react-native
+	url = https://github.com/facebook/react-native.git
+	shallow = true
