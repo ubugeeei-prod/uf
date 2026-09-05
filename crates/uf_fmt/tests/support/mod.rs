@@ -51,6 +51,24 @@ const LOC: &str = "<loc>";
 /// Panics when `source` does not parse; callers pass sources they have
 /// already formatted, so a parse failure is a bug in the printer.
 pub fn structure(source: &str) -> String {
+    // On a thread of its own, with the stack the parser gets. `to_value`
+    // and `normalize` both recurse once per AST level, and AST depth is not
+    // bracket depth: a `yargs.usage().default().describe()…` chain is one
+    // node per link and no brackets at all. fbt's `collectFbt.js` is 10 KB
+    // of exactly that, and it overflows a default test thread in a debug
+    // build. The formatter has the same shape of problem for real, which is
+    // ubugeeei-prod/uf#136; this is only the helper getting out of its way.
+    let source = source.to_owned();
+    std::thread::Builder::new()
+        .name("uf-fmt-structure".to_owned())
+        .stack_size(uf_flow::PARSE_STACK_BYTES)
+        .spawn(move || structure_here(&source))
+        .expect("spawns")
+        .join()
+        .expect("the tree renders")
+}
+
+fn structure_here(source: &str) -> String {
     let parsed = uf_flow::parse(source).unwrap_or_else(|error| panic!("parses: {error}"));
     assert!(
         parsed.is_ok(),
@@ -99,9 +117,27 @@ pub fn comments(source: &str) -> Vec<(bool, String)> {
 /// Only lines that continue a `*` column are touched, so an ASCII diagram
 /// or a code sample indented inside a comment still counts as content and
 /// is still compared exactly.
+///
+/// The whitespace before a closing `*/` is the printer's too. A comment
+/// whose last line is written flush left
+///
+/// ```text
+///     /* The entry point to start up the debugger CLI
+///      * Reads in command line arguments and starts up a UISession
+///     */
+/// ```
+///
+/// is re-indented to ` */`, which turns the empty run before the delimiter
+/// into a space — content that was not there. Prepack has three of these
+/// and each looked like a rewritten comment. A trailing line with nothing
+/// on it is dropped rather than compared.
 fn normalize_comment(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    for (index, line) in text.lines().enumerate() {
+    let mut lines: Vec<&str> = text.lines().collect();
+    if lines.len() > 1 && lines.last().is_some_and(|last| last.trim().is_empty()) {
+        lines.pop();
+    }
+    for (index, line) in lines.into_iter().enumerate() {
         if index > 0 {
             out.push('\n');
         }

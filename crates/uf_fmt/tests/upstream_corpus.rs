@@ -6,19 +6,24 @@
 //! all three share a blind spot: they were written by people who knew what
 //! the printer does.
 //!
-//! The submodules under `tests/fixtures/git` were not. React, Metro, Relay
-//! and React Native are around 5,800 Flow modules of production code, and
-//! they use the parts of the grammar that a hand-written corpus reaches for
-//! last — `(x as any).path` in a test helper, `{a, ...rest} = parse(url)`
-//! spread over four lines, an object literal on the left of `as` in an
-//! arrow body, `type` used as an ordinary identifier.
+//! The repositories under `tests/fixtures/git` were not. Fifteen of them —
+//! React, Metro, Relay, React Native, Recoil, Flux, Parcel, Yarn, Prepack,
+//! StyleX, fbt, react-native-web, react-motion, DataLoader and redux-form —
+//! come to about 8,100 Flow modules of production code, and they use the
+//! parts of the grammar that a hand-written corpus reaches for last —
+//! `(x as any).path` in a test helper, `{a, ...rest} = parse(url)` spread
+//! over four lines, an object literal on the left of `as` in an arrow body,
+//! `type` used as an ordinary identifier, `function f(): %checks`.
+//!
+//! `tools/corpus/repos.txt` is the list. Adding a line to it is the whole
+//! edit: the fixtures here are read from the directory.
 //!
 //! # Why this skips rather than fails
 //!
-//! The fixtures are ~240 MB of submodule and most work in this repository
-//! does not need them. A test that fails on a fresh clone teaches people to
-//! ignore failures. `uf run fmt:corpus` checks them out and runs this; on a
-//! checkout without them it says so and passes.
+//! The fixtures are ~1 GB of other people's code and most work in this
+//! repository does not need them. A test that fails on a fresh clone
+//! teaches people to ignore failures. `uf run fmt:corpus` checks them out
+//! and runs this; on a checkout without them it says so and passes.
 
 mod support;
 
@@ -28,8 +33,23 @@ use std::path::{Path, PathBuf};
 use uf_config::FmtConfig;
 use uf_fmt::format_source;
 
-/// The four upstream repositories, in the order they are cheapest to fix.
-const FIXTURES: [&str; 4] = ["metro", "react", "relay", "react-native"];
+/// Every corpus repository that is checked out, in directory order.
+///
+/// Read from the filesystem rather than listed here, so that adding a line
+/// to `tools/corpus/repos.txt` is the whole edit. A list in two places is a
+/// list that disagrees with itself.
+fn fixtures() -> Vec<String> {
+    let Ok(entries) = fs::read_dir(corpus_root()) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    found.sort();
+    found
+}
 
 /// Modules the printer cannot format in reasonable time.
 ///
@@ -44,28 +64,52 @@ const FIXTURES: [&str; 4] = ["metro", "react", "relay", "react-native"];
 const KNOWN_SLOW: [&str; 1] =
     ["react-native/packages/react-native-compatibility-check/src/__tests__/VersionDiffing-test.js"];
 
-/// Modules the printer gets wrong, with the issue that says how.
+/// Modules the printer gets wrong, each with the issue that says how.
 ///
 /// Separate from {@link KNOWN_SLOW} because they are different problems and
-/// a single list of excuses hides that. One entry: Flow's comment types are
-/// rewritten into real syntax, so a script written to run under bare `node`
-/// stops doing so, and the layout disagrees with itself on the second pass
-/// as a result. See ubugeeei-prod/uf#126.
-const KNOWN_BROKEN: [&str; 1] =
-    ["react-native/packages/react-native/scripts/spm/generate-spm-xcodeproj.js"];
+/// a single list of excuses hides that. Four bugs, eleven modules:
+///
+/// * **#133** — parentheses around a same-precedence right operand are
+///   dropped, so `a && (b && c)` becomes `a && b && c` and the tree
+///   re-associates. Eight of these; three fail as a changed program and
+///   five as non-idempotence, which is the same bug seen on the second
+///   pass.
+/// * **#134** — `function f(): %checks` loses its colon and the output does
+///   not parse.
+/// * **#135** — a comment before an interface's `extends` is relocated into
+///   the type it precedes.
+/// * **#126** — Flow's comment types are rewritten into real syntax, so a
+///   script written to run under bare `node` stops doing so.
+const KNOWN_BROKEN: [&str; 11] = [
+    // #126
+    "react-native/packages/react-native/scripts/spm/generate-spm-xcodeproj.js",
+    // #133
+    "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType19.js",
+    "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType31.js",
+    "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType46.js",
+    "prepack/src/react/elements.js",
+    "prepack/src/serializer/ResidualFunctions.js",
+    "prepack/src/serializer/ResidualHeapSerializer.js",
+    "prepack/src/serializer/ResidualHeapVisitor.js",
+    "yarn/src/package-request.js",
+    // #134
+    "fbt/packages/babel-plugin-fbt/src/FbtUtil.js",
+    // #135
+    "parcel/packages/core/types-internal/src/index.js",
+];
 
 /// The fixtures this run should look at.
 ///
 /// `UF_CORPUS=metro,react` narrows it. Whole repositories rather than a file
 /// count, because a failure is reported as a path and the first thing anyone
 /// does with one is re-run that repository on its own.
-fn wanted() -> Vec<&'static str> {
+fn wanted() -> Vec<String> {
     match std::env::var("UF_CORPUS") {
-        Ok(list) => FIXTURES
+        Ok(list) => fixtures()
             .into_iter()
-            .filter(|fixture| list.split(',').any(|want| want.trim() == *fixture))
+            .filter(|fixture| list.split(',').any(|want| want.trim() == fixture))
             .collect(),
-        Err(_) => FIXTURES.to_vec(),
+        Err(_) => fixtures(),
     }
 }
 
@@ -82,7 +126,7 @@ fn corpus_root() -> PathBuf {
 fn flow_modules() -> Vec<PathBuf> {
     let mut found = Vec::new();
     for fixture in wanted() {
-        let root = corpus_root().join(fixture);
+        let root = corpus_root().join(&fixture);
         if root.is_dir() {
             collect(&root, &mut found);
         }
@@ -274,7 +318,7 @@ fn no_stale_exclusions() {
         // Only when its own fixture is checked out: `UF_CORPUS=metro` must
         // not fail because a React Native path is not there.
         let fixture = slow.split('/').next().unwrap_or_default();
-        if !corpus_root().join(fixture).is_dir() || !wanted().contains(&fixture) {
+        if !corpus_root().join(fixture).is_dir() || !wanted().iter().any(|want| want == fixture) {
             continue;
         }
         assert!(
