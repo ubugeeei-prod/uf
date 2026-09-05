@@ -31,10 +31,33 @@ repository="${UF_TRUST_REPOSITORY:-ubugeeei-prod/uf}"
 workflow="${UF_TRUST_WORKFLOW:-publish.yml}"
 
 command -v npm >/dev/null 2>&1 || { echo "trust-npm: missing npm" >&2; exit 1; }
-case "$(npm --version)" in
-  1[1-9].* | [2-9][0-9].*) ;;
-  *) echo "trust-npm: npm 11 or newer is required for \`npm trust\`" >&2; exit 1 ;;
-esac
+npm_version="$(npm --version 2>/dev/null || echo unknown)"
+
+# Ask npm what it can do rather than what number it is.
+#
+# `npm trust github` and its `--file`/`--repository` arrived partway through
+# npm 11, so a major-version gate lets through an npm that has `trust` and not
+# the arguments this script passes — and npm does not fail on an argument it
+# does not know, it *warns* and carries on with the value as a positional:
+#
+#   npm warn "publish.yml" is being parsed as a normal command line argument.
+#   npm warn Unknown cli config "--file".
+#
+# which is a run that looks like it worked and bound nothing.
+if ! npm trust github --help 2>&1 | grep -q -- '--repository'; then
+  cat >&2 <<MESSAGE
+trust-npm: this npm does not have \`npm trust github --file --repository\`.
+
+  npm --version   ${npm_version}
+
+That subcommand is how a package name is bound to this repository's publish
+workflow, and it is the whole of the release bootstrap. Upgrade npm and run
+this again:
+
+  npm install -g npm@latest
+MESSAGE
+  exit 1
+fi
 
 who="$(npm whoami 2>/dev/null || true)"
 if [ -z "$who" ]; then
@@ -56,15 +79,19 @@ first="$(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt | he
 #
 #   npm error code EUSAGE
 #   npm error Unknown flag: --allow-publish
+# Both streams: npm puts some failures on stdout, and a guard that reports
+# half of them is a guard that reports warnings and hides the error.
 errors="$(mktemp "${TMPDIR:-/tmp}/trust-npm.XXXXXX")"
 trap 'rm -f "$errors"' EXIT INT TERM
 if ! npm trust github "@uniflowed/${first}" \
   --file "$workflow" \
   --repository "$repository" \
   --yes \
-  --dry-run >/dev/null 2>"$errors"; then
+  --dry-run >"$errors" 2>&1; then
   echo "trust-npm: npm rejected the arguments this script passes:" >&2
-  cat "$errors" >&2
+  grep -v '^npm warn Unknown user config' <"$errors" >&2 || cat "$errors" >&2
+  echo >&2
+  echo "trust-npm: npm --version ${npm_version}" >&2
   exit 1
 fi
 
