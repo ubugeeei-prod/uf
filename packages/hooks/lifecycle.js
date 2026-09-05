@@ -52,7 +52,7 @@ export const useIsomorphicLayoutEffect: typeof useLayoutEffect =
  * — and it is written before any layout effect runs, so a subscription set up
  * in one already sees the current body.
  */
-export function useStableCallback<TArgs extends $ReadOnlyArray<mixed>, TReturn>(
+export hook useStableCallback<TArgs extends $ReadOnlyArray<mixed>, TReturn>(
   callback: (...args: TArgs) => TReturn,
 ): (...args: TArgs) => TReturn {
   const latest = useRef(callback);
@@ -65,7 +65,7 @@ export function useStableCallback<TArgs extends $ReadOnlyArray<mixed>, TReturn>(
 }
 
 /** The value from the previous render, or `undefined` on the first. */
-export function usePrevious<T>(value: T): T | void {
+export hook usePrevious<T>(value: T): T | void {
   const previous = useRef<T | void>(undefined);
   useEffect(() => {
     previous.current = value;
@@ -80,7 +80,7 @@ export function usePrevious<T>(value: T): T | void {
  * the client's on the first pass would be a hydration mismatch: render the
  * server's, then switch.
  */
-export function useMounted(): boolean {
+export hook useMounted(): boolean {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -89,7 +89,7 @@ export function useMounted(): boolean {
 }
 
 /** Run `body` once, after mount. */
-export function useMount(body: () => mixed): void {
+export hook useMount(body: () => mixed): void {
   const stable = useStableCallback(body);
   useEffect(() => {
     stable();
@@ -97,7 +97,7 @@ export function useMount(body: () => mixed): void {
 }
 
 /** Run `body` once, at unmount. */
-export function useUnmount(body: () => mixed): void {
+export hook useUnmount(body: () => mixed): void {
   const stable = useStableCallback(body);
   useEffect(() => () => void stable(), [stable]);
 }
@@ -108,7 +108,7 @@ export function useUnmount(body: () => mixed): void {
  * A counter rather than a boolean, because two renders in a row must both
  * change the state or React drops the second.
  */
-export function useRerender(): () => void {
+export hook useRerender(): () => void {
   const [, setTick] = useState(0);
   return useCallback(() => setTick((tick) => tick + 1), []);
 }

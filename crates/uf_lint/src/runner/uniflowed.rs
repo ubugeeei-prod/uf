@@ -18,6 +18,17 @@ pub(crate) fn run_no_tabs(
 
     for offset in memchr_iter(b'\t', scan.file.source.as_bytes()) {
         let position = scan.index.line_col(offset);
+        // A tab inside a string is part of the string. The formatter reprints
+        // from the syntax tree and keeps it, so reporting it left `uf fmt`
+        // unable to make `uf lint` clean. A tab in a comment is still
+        // reported: the formatter keeps that too, and it is the author's to
+        // remove.
+        if let Some(line) = scan.lines.get(position.line.saturating_sub(1))
+            && let Some(at) = (offset + 1).checked_sub(line.offset + line.code_offset() + 1)
+            && line.in_string(at)
+        {
+            continue;
+        }
         push(
             diagnostics,
             scan.file,
@@ -43,6 +54,13 @@ pub(crate) fn run_no_trailing_whitespace(
         // The final `split` element is the text after the last `\n`; an empty one
         // is not a real line and must not be reported.
         if position + 1 == scan.lines.len() && line.text.is_empty() {
+            continue;
+        }
+        // Inside a template literal the spaces at the end of a line are part
+        // of the string. The formatter reprints from the syntax tree and keeps
+        // them, correctly — so reporting them here made `uf fmt` unable to
+        // make `uf lint` clean, and the two disagreed for ever.
+        if line.in_string(line.code().len()) {
             continue;
         }
         let trimmed = line.text.trim_end_matches([' ', '\t']);

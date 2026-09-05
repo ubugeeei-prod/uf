@@ -1,0 +1,31 @@
+# uf for Zed.
+#
+# This is the manifest half of a Zed extension. Zed has no way to add an
+# arbitrary language server from settings, so the language server has to arrive
+# as an extension, and an extension that provides one is a Rust crate compiled
+# to WebAssembly: the manifest declares that `uf` exists, and a
+# `zed::Extension::language_server_command` implementation says what to run.
+#
+# The Rust half is deliberately not in this repository. It cannot be built or
+# tested here — it needs `zed_extension_api` from crates.io pinned to the Zed
+# version being targeted, a `wasm32-wasip1` toolchain, and neither is in this
+# project's lockfile or CI — and a Rust file written against a guessed API
+# version is worse than a documented gap. See README.md for exactly what it has
+# to return, which is four lines.
+#
+# Install with Zed's "Install Dev Extension" against a directory holding this
+# file, the Rust half, and its Cargo.toml.
+
+id = "uf"
+name = "uf"
+version = "0.0.0"
+schema_version = 1
+authors = ["uniflowed contributors"]
+description = "Flow diagnostics, formatting, quick fixes and hover from the uf toolchain."
+repository = "https://github.com/ubugeeei-prod/uf"
+
+[language_servers.uf]
+name = "uf"
+# Zed's own language names. `.mjs` and `.cjs` are JavaScript to Zed, and `.jsx`
+# is JSX — the four extensions `uf_lint`'s `flow/syntax` parses.
+languages = ["JavaScript", "JSX"]

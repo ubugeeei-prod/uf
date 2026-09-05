@@ -12,21 +12,47 @@ import { useRef, useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import {
+  useAnimationFrame,
   useAsync,
+  useBroadcast,
   useClickOutside,
+  useClipboard,
   useCounter,
+  useCycle,
+  useDebouncedCallback,
   useDebouncedValue,
   useElementRef,
+  useElementState,
   useEventListener,
   useFocusWithin,
+  useGeolocation,
   useHover,
+  useIdle,
+  useIntersecting,
   useInterval,
+  useKeyCombo,
+  useKeyHeld,
+  useList,
+  useLongPress,
+  useMediaQuery,
   useMounted,
+  useMutationObserver,
+  useNetwork,
+  useNow,
   useOnline,
+  usePermission,
+  usePreferredColorScheme,
   usePrevious,
+  useScroll,
+  useScrollLock,
+  useSet,
   useStableCallback,
   useStorage,
+  useSupported,
+  useThrottledCallback,
+  useTimeAgo,
   useToggle,
+  useUndoable,
 } from "@uniflowed/hooks";
 
 const tick = (millis: number) => act(() => new Promise((resolve) => setTimeout(resolve, millis)));
@@ -442,5 +468,1046 @@ describe("usePrevious", () => {
     render(<Probe />);
     await userEvent.click(screen.getByRole("button"));
     expect(screen.getByText("0→1")).toBeInTheDocument();
+  });
+});
+
+describe("the state shapes", () => {
+  it("edits a list without touching the array it was given", async () => {
+    const initial = ["a", "b", "c"];
+    let identities = 0;
+    let previous = null;
+    component Probe() {
+      const list = useList(initial);
+      if (list.items !== previous) {
+        previous = list.items;
+        identities += 1;
+      }
+      return (
+        <div>
+          <output>{list.items.join("")}</output>
+          <button type="button" onClick={() => list.push("d")}>
+            push
+          </button>
+          <button type="button" onClick={() => list.removeAt(0)}>
+            remove
+          </button>
+          <button type="button" onClick={() => list.move(0, 1)}>
+            move
+          </button>
+          <button type="button" onClick={() => list.insertAt(1, "x")}>
+            insert
+          </button>
+          <button type="button" onClick={() => list.replaceAt(0, "z")}>
+            replace
+          </button>
+          <button type="button" onClick={() => list.removeAt(99)}>
+            miss
+          </button>
+        </div>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    const output: any = container.querySelector("output");
+    const press = (name: string) => userEvent.click(screen.getByRole("button", { name }));
+
+    await press("push");
+    expect(output.textContent).toBe("abcd");
+    await press("remove");
+    expect(output.textContent).toBe("bcd");
+    await press("move");
+    expect(output.textContent).toBe("cbd");
+    await press("insert");
+    expect(output.textContent).toBe("cxbd");
+    await press("replace");
+    expect(output.textContent).toBe("zxbd");
+    // The array handed in is still what it was: every edit produced a new one.
+    expect(initial).toEqual(["a", "b", "c"]);
+
+    const before = identities;
+    await press("miss");
+    // An index that is not there returns the same array, so React bails out of
+    // the render entirely — the identity does not change.
+    expect(identities).toBe(before);
+    expect(output.textContent).toBe("zxbd");
+  });
+
+  it("replaces the Set on every change rather than mutating it", async () => {
+    const seen = new Set();
+    component Probe() {
+      const set = useSet(["x"]);
+      seen.add(set.items);
+      return (
+        <div>
+          <output>{`${[...set.items].join("")} ${String(set.has("y"))}`}</output>
+          <button type="button" onClick={() => set.toggle("y")}>
+            toggle
+          </button>
+          <button type="button" onClick={() => set.add("x")}>
+            re-add
+          </button>
+          <button type="button" onClick={() => set.clear()}>
+            clear
+          </button>
+        </div>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    const output: any = container.querySelector("output");
+    expect(output.textContent).toBe("x false");
+
+    await userEvent.click(screen.getByRole("button", { name: "toggle" }));
+    expect(output.textContent).toBe("xy true");
+    await userEvent.click(screen.getByRole("button", { name: "toggle" }));
+    expect(output.textContent).toBe("x false");
+
+    const before = seen.size;
+    await userEvent.click(screen.getByRole("button", { name: "re-add" }));
+    // Adding a member that is already there is not a change, so it is not a
+    // new Set and not a render. A `Set` mutated in place would have been the
+    // same object here for a real change too, and nothing would have updated.
+    expect(seen.size).toBe(before);
+
+    await userEvent.click(screen.getByRole("button", { name: "clear" }));
+    expect(output.textContent).toBe(" false");
+  });
+
+  it("cycles in both directions and wraps at both ends", async () => {
+    component Probe() {
+      const cycle = useCycle(["red", "green", "blue"]);
+      const empty = useCycle<string>([]);
+      return (
+        <div>
+          <output>{`${String(cycle.value)} ${cycle.index} ${String(empty.value)} ${empty.index}`}</output>
+          <button type="button" onClick={cycle.next}>
+            next
+          </button>
+          <button type="button" onClick={cycle.previous}>
+            back
+          </button>
+          <button type="button" onClick={empty.next}>
+            nudge
+          </button>
+        </div>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    const output: any = container.querySelector("output");
+    expect(output.textContent).toBe("red 0 null -1");
+
+    await userEvent.click(screen.getByRole("button", { name: "back" }));
+    // Going back from the first wraps to the last. A single `%` would have
+    // given -1 here, because JavaScript's remainder keeps the sign of its left
+    // operand — and `values[-1]` is `undefined`.
+    expect(output.textContent).toBe("blue 2 null -1");
+
+    await userEvent.click(screen.getByRole("button", { name: "next" }));
+    await userEvent.click(screen.getByRole("button", { name: "next" }));
+    await userEvent.click(screen.getByRole("button", { name: "next" }));
+    // Three steps through three values is back where it started, not off the
+    // end.
+    expect(output.textContent).toBe("blue 2 null -1");
+
+    await userEvent.click(screen.getByRole("button", { name: "next" }));
+    expect(output.textContent).toBe("red 0 null -1");
+
+    await userEvent.click(screen.getByRole("button", { name: "nudge" }));
+    // An empty list has no current value, whichever way it is stepped.
+    expect(output.textContent).toBe("red 0 null -1");
+  });
+
+  it("undoes and redoes, and a new edit abandons the redo", async () => {
+    component Probe() {
+      const history = useUndoable("one", { limit: 2 });
+      return (
+        <div>
+          <output>{`${history.value} ${String(history.canUndo)} ${String(history.canRedo)}`}</output>
+          <button type="button" onClick={() => history.set("two")}>
+            two
+          </button>
+          <button type="button" onClick={() => history.set("three")}>
+            three
+          </button>
+          <button type="button" onClick={() => history.set("four")}>
+            four
+          </button>
+          <button type="button" onClick={history.undo}>
+            undo
+          </button>
+          <button type="button" onClick={history.redo}>
+            redo
+          </button>
+        </div>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    const output: any = container.querySelector("output");
+    const press = (name: string) => userEvent.click(screen.getByRole("button", { name }));
+    expect(output.textContent).toBe("one false false");
+
+    await press("two");
+    expect(output.textContent).toBe("two true false");
+    await press("undo");
+    expect(output.textContent).toBe("one false true");
+    await press("redo");
+    expect(output.textContent).toBe("two true false");
+
+    await press("undo");
+    await press("three");
+    // Editing after an undo abandons what was undone, which is what every
+    // editor does.
+    expect(output.textContent).toBe("three true false");
+
+    await press("four");
+    await press("undo");
+    await press("undo");
+    // `limit: 2` keeps two steps of history, so the third undo has nothing to
+    // go back to and `canUndo` says so rather than throwing.
+    expect(output.textContent).toBe("one false true");
+    await press("undo");
+    expect(output.textContent).toBe("one false true");
+  });
+});
+
+describe("useScrollLock", () => {
+  const body: any = () => globalThis.document.body;
+
+  it("locks while it is mounted and puts the page back afterwards", () => {
+    component Probe() {
+      useScrollLock(true);
+      return <p>dialog</p>;
+    }
+    expect(body().style.overflow).toBe("");
+    const { unmount } = render(<Probe />);
+    expect(body().style.overflow).toBe("hidden");
+    unmount();
+    expect(body().style.overflow).toBe("");
+  });
+
+  it("stays locked while a second dialog is still open", async () => {
+    component Lock() {
+      useScrollLock(true);
+      return null;
+    }
+    component Probe() {
+      const [second, setSecond] = useState(true);
+      return (
+        <div>
+          <Lock />
+          {second ? <Lock /> : null}
+          <button type="button" onClick={() => setSecond(false)}>
+            close
+          </button>
+        </div>
+      );
+    }
+
+    const { unmount } = render(<Probe />);
+    expect(body().style.overflow).toBe("hidden");
+    await userEvent.click(screen.getByRole("button"));
+    // The first dialog is still open. A lock without a count would have put
+    // the page back here, and the page behind the remaining dialog would
+    // scroll.
+    expect(body().style.overflow).toBe("hidden");
+    unmount();
+    expect(body().style.overflow).toBe("");
+  });
+
+  it("does nothing while `locked` is false", () => {
+    component Probe() {
+      const [locked, setLocked] = useState(false);
+      useScrollLock(locked);
+      return (
+        <button type="button" onClick={() => setLocked(true)}>
+          open
+        </button>
+      );
+    }
+    const { unmount } = render(<Probe />);
+    expect(body().style.overflow).toBe("");
+    unmount();
+  });
+});
+
+describe("useKeyCombo", () => {
+  // This document reports a non-Apple user agent, so `mod` is Ctrl here. The
+  // point of the hook is that the caller never writes that test themselves.
+  const type = (init: { ... }) => fireEvent.keyDown(globalThis.document.body, init);
+
+  it("needs the modifier, and refuses the ones that were not asked for", () => {
+    const opened = fn();
+    component Probe() {
+      useKeyCombo("mod+k", opened);
+      return null;
+    }
+    render(<Probe />);
+
+    type({ key: "k" });
+    // A bare `k` is somebody typing, not a shortcut. This is the bug a
+    // hand-written `event.key === "k"` has.
+    expect(opened).not.toHaveBeenCalled();
+
+    type({ key: "k", ctrlKey: true, shiftKey: true });
+    // Ctrl+Shift+K is a different shortcut, and binding one must not claim the
+    // other.
+    expect(opened).not.toHaveBeenCalled();
+
+    type({ key: "k", ctrlKey: true });
+    expect(opened.mock.calls.length).toBe(1);
+  });
+
+  it("ignores the auto-repeat of a held key", () => {
+    const opened = fn();
+    component Probe() {
+      useKeyCombo("escape", opened);
+      return null;
+    }
+    render(<Probe />);
+    type({ key: "Escape" });
+    type({ key: "Escape", repeat: true });
+    type({ key: "Escape", repeat: true });
+    // Holding the key sends twenty of these a second; a dialog closes once.
+    expect(opened.mock.calls.length).toBe(1);
+  });
+
+  it("stays out of the way while the reader is typing", async () => {
+    const helped = fn();
+    component Probe() {
+      useKeyCombo("?", helped);
+      return <input aria-label="comment" />;
+    }
+    render(<Probe />);
+    const field = screen.getByLabelText("comment");
+
+    fireEvent.keyDown(field, { key: "?", shiftKey: true });
+    // A question mark typed into a comment is a question mark.
+    expect(helped).not.toHaveBeenCalled();
+
+    type({ key: "?", shiftKey: true });
+    expect(helped.mock.calls.length).toBe(1);
+  });
+
+  it("fires inside a field when the caller says so, and can be turned off", () => {
+    const closed = fn();
+    component Probe(enabled: boolean) {
+      useKeyCombo("escape", closed, { whileTyping: true, enabled });
+      return <input aria-label="comment" />;
+    }
+    const { rerender } = render(<Probe enabled={true} />);
+    fireEvent.keyDown(screen.getByLabelText("comment"), { key: "Escape" });
+    expect(closed.mock.calls.length).toBe(1);
+
+    rerender(<Probe enabled={false} />);
+    fireEvent.keyDown(screen.getByLabelText("comment"), { key: "Escape" });
+    expect(closed.mock.calls.length).toBe(1);
+  });
+
+  it("calls preventDefault, so the browser's own shortcut does not also run", () => {
+    component Probe() {
+      useKeyCombo("mod+s", () => {});
+      useKeyCombo("mod+p", () => {}, { preventDefault: false });
+      return null;
+    }
+    render(<Probe />);
+    expect(type({ key: "s", ctrlKey: true })).toBe(false);
+    expect(type({ key: "p", ctrlKey: true })).toBe(true);
+  });
+
+  it("stops listening at unmount", () => {
+    const opened = fn();
+    component Probe() {
+      useKeyCombo("mod+k", opened);
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    unmount();
+    type({ key: "k", ctrlKey: true });
+    expect(opened).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyHeld", () => {
+  it("follows the key down and up", () => {
+    component Probe() {
+      const shift = useKeyHeld("shift");
+      return <output>{shift ? "held" : "up"}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("up")).toBeInTheDocument();
+    fireEvent.keyDown(globalThis.document.body, { key: "Shift" });
+    expect(screen.getByText("held")).toBeInTheDocument();
+    fireEvent.keyUp(globalThis.document.body, { key: "Shift" });
+    expect(screen.getByText("up")).toBeInTheDocument();
+  });
+
+  it("releases everything when the window loses focus", () => {
+    component Probe() {
+      const space = useKeyHeld(" ");
+      return <output>{space ? "held" : "up"}</output>;
+    }
+    render(<Probe />);
+    fireEvent.keyDown(globalThis.document.body, { key: " " });
+    expect(screen.getByText("held")).toBeInTheDocument();
+    // The `keyup` goes to whatever the reader switched to, so without this the
+    // canvas would still be panning when they come back.
+    fireEvent.blur(globalThis.window);
+    expect(screen.getByText("up")).toBeInTheDocument();
+  });
+});
+
+describe("more element hooks", () => {
+  it("reports a press that lasts, and not one that turns into a drag", async () => {
+    let pressed = 0;
+    component Probe() {
+      const ref = useElementRef<HTMLButtonElement>();
+      useLongPress(
+        ref,
+        () => {
+          pressed += 1;
+        },
+        { delay: 20, moveThreshold: 10 },
+      );
+      return (
+        <button ref={ref} type="button">
+          hold
+        </button>
+      );
+    }
+
+    render(<Probe />);
+    const target = screen.getByRole("button");
+
+    fireEvent.pointerDown(target, { clientX: 0, clientY: 0 });
+    await tick(40);
+    expect(pressed).toBe(1);
+
+    fireEvent.pointerDown(target, { clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(target, { clientX: 40, clientY: 0 });
+    await tick(40);
+    // A press that became a fling is a scroll, not a long press.
+    expect(pressed).toBe(1);
+
+    fireEvent.pointerDown(target, { clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(target);
+    await tick(40);
+    expect(pressed).toBe(1);
+  });
+
+  it("sees the DOM change under it, and stops seeing it at unmount", async () => {
+    let records = 0;
+    component Probe() {
+      const ref = useElementRef<HTMLDivElement>();
+      useMutationObserver(ref, (changes) => {
+        records += changes.length;
+      });
+      return <div ref={ref} data-testid="watched" />;
+    }
+
+    const { unmount } = render(<Probe />);
+    const watched: any = screen.getByTestId("watched");
+    watched.appendChild(globalThis.document.createElement("span"));
+    await waitFor(() => {
+      expect(records > 0).toBe(true);
+    });
+
+    const before = records;
+    unmount();
+    watched.appendChild(globalThis.document.createElement("span"));
+    await tick(20);
+    expect(records).toBe(before);
+  });
+
+  it("reports an element's own scroll offset", () => {
+    component Probe() {
+      const ref = useElementRef<HTMLDivElement>();
+      const { x, y } = useScroll(ref);
+      return (
+        <div ref={ref} data-testid="pane">
+          <output>{`${x},${y}`}</output>
+        </div>
+      );
+    }
+    const { container } = render(<Probe />);
+    const pane: any = screen.getByTestId("pane");
+    const output: any = container.querySelector("output");
+    expect(output.textContent).toBe("0,0");
+
+    pane.scrollTop = 40;
+    pane.scrollLeft = 12;
+    fireEvent.scroll(pane);
+    expect(output.textContent).toBe("12,40");
+  });
+
+  it("gives a render the element itself, through state rather than a ref", () => {
+    component Probe() {
+      const [node, attach] = useElementState<HTMLDivElement>();
+      return (
+        <div ref={attach}>
+          <output>{node == null ? "none" : node.tagName}</output>
+        </div>
+      );
+    }
+    render(<Probe />);
+    // A ref would still say "none" here: writing `current` does not re-render.
+    expect(screen.getByText("DIV")).toBeInTheDocument();
+  });
+
+  it("does not report an element as intersecting until an observer says so", () => {
+    component Probe() {
+      const ref = useElementRef<HTMLDivElement>();
+      const seen = useIntersecting(ref, { rootMargin: "10px", threshold: 0.5 });
+      return <div ref={ref}>{seen ? "seen" : "away"}</div>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("away")).toBeInTheDocument();
+  });
+});
+
+describe("more timing hooks", () => {
+  it("runs a frame loop and cancels it at unmount", async () => {
+    let frames = 0;
+    let sawDelta = false;
+    component Probe() {
+      useAnimationFrame((frame) => {
+        frames += 1;
+        if (frames > 1 && frame.delta > 0) {
+          sawDelta = true;
+        }
+      });
+      return null;
+    }
+
+    const { unmount } = render(<Probe />);
+    await tick(40);
+    expect(frames > 1).toBe(true);
+    expect(sawDelta).toBe(true);
+
+    unmount();
+    const before = frames;
+    await tick(40);
+    expect(frames).toBe(before);
+  });
+
+  it("does not run a frame loop that is not active", async () => {
+    let frames = 0;
+    component Probe() {
+      useAnimationFrame(() => {
+        frames += 1;
+      }, false);
+      return null;
+    }
+    render(<Probe />);
+    await tick(30);
+    expect(frames).toBe(0);
+  });
+
+  it("notices the reader stopping, and starts the wait again when they move", async () => {
+    component Probe() {
+      const idle = useIdle(40);
+      return <output>{idle ? "idle" : "here"}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("here")).toBeInTheDocument();
+
+    await tick(20);
+    fireEvent.pointerMove(globalThis.document.body);
+    await tick(35);
+    // Past the moment the *first* wait would have expired. A version that
+    // started a new timer without clearing the old one would say "idle" here,
+    // forty milliseconds after the reader last moved the pointer.
+    expect(screen.getByText("here")).toBeInTheDocument();
+
+    await tick(40);
+    expect(screen.getByText("idle")).toBeInTheDocument();
+
+    fireEvent.pointerMove(globalThis.document.body);
+    expect(screen.getByText("here")).toBeInTheDocument();
+  });
+
+  it("moves the clock forward", async () => {
+    const seen = new Set();
+    component Probe() {
+      const now = useNow(5);
+      seen.add(now.getTime());
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    await tick(40);
+    unmount();
+    expect(seen.size > 1).toBe(true);
+  });
+
+  it("turns a stable instant into relative text once it has hydrated", async () => {
+    const threeMinutesAgo = new Date(Date.now() - 3 * 60_000);
+    component Probe() {
+      const text = useTimeAgo(threeMinutesAgo, { locale: "en" });
+      return <output>{text}</output>;
+    }
+    const { unmount } = render(<Probe />);
+    // The first render is the ISO string — that is what the server put in the
+    // markup — and the effect replaces it. `render` flushes effects, so by the
+    // time this line runs the swap has happened.
+    await waitFor(() => {
+      expect(screen.getByText("3 minutes ago")).toBeInTheDocument();
+    });
+    unmount();
+  });
+
+  it("re-reads a recent label often and an old one hardly at all", async () => {
+    let recentRenders = 0;
+    let oldRenders = 0;
+    const recent = new Date(Date.now() - 5_000);
+    const week = new Date(Date.now() - 7 * 86_400_000);
+
+    component Recent() {
+      useTimeAgo(recent, { locale: "en" });
+      recentRenders += 1;
+      return null;
+    }
+    component Old() {
+      useTimeAgo(week, { locale: "en" });
+      oldRenders += 1;
+      return null;
+    }
+    component Probe() {
+      return (
+        <div>
+          <Recent />
+          <Old />
+        </div>
+      );
+    }
+
+    const { unmount } = render(<Probe />);
+    const recentBefore = recentRenders;
+    const oldBefore = oldRenders;
+    await tick(1_200);
+    unmount();
+
+    // "5 seconds ago" is wrong a second later, so it is worked out again.
+    expect(recentRenders > recentBefore).toBe(true);
+    // "7 days ago" is not, and a fixed one-second clock would have re-rendered
+    // this component every second for as long as the page was open.
+    expect(oldRenders).toBe(oldBefore);
+  });
+
+  it("throttles on the leading edge and debounces on the trailing one", async () => {
+    const throttled = fn();
+    const debounced = fn();
+    component Probe() {
+      const runThrottled = useThrottledCallback(throttled, 50);
+      const runDebounced = useDebouncedCallback(debounced, 20);
+      return (
+        <div>
+          <button type="button" onClick={() => runThrottled()}>
+            throttle
+          </button>
+          <button type="button" onClick={() => runDebounced()}>
+            debounce
+          </button>
+        </div>
+      );
+    }
+
+    render(<Probe />);
+    const throttle = screen.getByRole("button", { name: "throttle" });
+    await userEvent.click(throttle);
+    await userEvent.click(throttle);
+    await userEvent.click(throttle);
+    // The first goes through immediately; the rest are inside the window.
+    expect(throttled.mock.calls.length).toBe(1);
+
+    const debounce = screen.getByRole("button", { name: "debounce" });
+    await userEvent.click(debounce);
+    await userEvent.click(debounce);
+    expect(debounced).not.toHaveBeenCalled();
+    await tick(40);
+    expect(debounced.mock.calls.length).toBe(1);
+  });
+
+  it("cancels a pending debounce at unmount", async () => {
+    const body = fn();
+    component Probe() {
+      const run = useDebouncedCallback(body, 20);
+      return (
+        <button type="button" onClick={() => run()}>
+          go
+        </button>
+      );
+    }
+    const { unmount } = render(<Probe />);
+    await userEvent.click(screen.getByRole("button"));
+    unmount();
+    await tick(40);
+    // The version people write calls `setState` on a component that is gone.
+    expect(body).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAsync, aborting and retrying", () => {
+  it("aborts the signal it handed out when the component goes", async () => {
+    let signal = null;
+    component Probe() {
+      useAsync((given) => {
+        signal = given;
+        return new Promise(() => {});
+      }, []);
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    // Ignoring the answer is not the same as stopping the request; the
+    // connection is the cost.
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("aborts the previous call when the dependencies change", async () => {
+    const signals = [];
+    component Probe() {
+      const [key, setKey] = useState("first");
+      useAsync(
+        (signal) => {
+          signals.push(signal);
+          return new Promise(() => {});
+        },
+        [key],
+      );
+      return (
+        <button type="button" onClick={() => setKey("second")}>
+          change
+        </button>
+      );
+    }
+    render(<Probe />);
+    await userEvent.click(screen.getByRole("button"));
+    expect(signals.length).toBe(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it("tries again, and reports the failure once it runs out of tries", async () => {
+    let calls = 0;
+    component Flaky() {
+      const { value, error } = useAsync(
+        async () => {
+          calls += 1;
+          if (calls < 3) {
+            throw new Error("flaky");
+          }
+          return "third time";
+        },
+        [],
+        { retry: 2, retryDelay: () => 1 },
+      );
+      return <output>{value ?? error?.message ?? "pending"}</output>;
+    }
+    render(<Flaky />);
+    await waitFor(() => {
+      expect(screen.getByText("third time")).toBeInTheDocument();
+    });
+    expect(calls).toBe(3);
+
+    let attempts = 0;
+    component Broken() {
+      const { error } = useAsync(
+        async () => {
+          attempts += 1;
+          throw new Error("still broken");
+        },
+        [],
+        { retry: 1, retryDelay: () => 1 },
+      );
+      return <output>{error?.message ?? "pending"}</output>;
+    }
+    render(<Broken />);
+    await waitFor(() => {
+      expect(screen.getByText("still broken")).toBeInTheDocument();
+    });
+    // One try and one retry, and then the error is real rather than swallowed.
+    expect(attempts).toBe(2);
+  });
+
+  it("does not retry a call that was abandoned", async () => {
+    let calls = 0;
+    component Probe() {
+      useAsync(
+        async () => {
+          calls += 1;
+          throw new Error("nope");
+        },
+        [],
+        { retry: 5, retryDelay: () => 5 },
+      );
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    unmount();
+    await tick(40);
+    expect(calls).toBe(1);
+  });
+});
+
+describe("the browser hooks that need a real browser", () => {
+  it("reads a media query from the document rather than from the server value", () => {
+    component Probe() {
+      // This document is 1024 wide, so the first matches and the second does
+      // not — and both were given the *opposite* server value, which is what
+      // shows the browser is being asked rather than the argument echoed.
+      const wide = useMediaQuery("(min-width: 100px)", false);
+      const enormous = useMediaQuery("(min-width: 5000px)", true);
+      const scheme = usePreferredColorScheme("dark");
+      return <output>{`${String(wide)} ${String(enormous)} ${scheme}`}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("true false light")).toBeInTheDocument();
+  });
+
+  it("answers a capability question through a store, not during a render", () => {
+    component Probe() {
+      const yes = useSupported(() => true);
+      const no = useSupported(() => false);
+      return <output>{`${String(yes)} ${String(no)}`}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("true false")).toBeInTheDocument();
+  });
+
+  it("copies to the clipboard and forgets that it did", async () => {
+    component Probe() {
+      const { copy, copied, supported } = useClipboard({ resetAfter: 20 });
+      return (
+        <div>
+          <button type="button" onClick={() => void copy("copied text")}>
+            copy
+          </button>
+          <output>{`${String(supported)} ${copied ? "yes" : "no"}`}</output>
+        </div>
+      );
+    }
+    render(<Probe />);
+    expect(screen.getByText("true no")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button"));
+    await waitFor(() => {
+      expect(screen.getByText("true yes")).toBeInTheDocument();
+    });
+    const clipboard: any = globalThis.window.navigator.clipboard;
+    expect(await clipboard.readText()).toBe("copied text");
+
+    // The tick resets itself, which is the only reason `copied` is state.
+    await waitFor(() => {
+      expect(screen.getByText("true no")).toBeInTheDocument();
+    });
+  });
+
+  it("hears a message another copy of the page sent", async () => {
+    const heard = [];
+    component Probe() {
+      const { supported, post } = useBroadcast<string>("uf-hooks-broadcast", (message) => {
+        heard.push(message);
+      });
+      return (
+        <div>
+          <output>{String(supported)}</output>
+          <button type="button" onClick={() => post("from the page")}>
+            post
+          </button>
+        </div>
+      );
+    }
+
+    const { unmount } = render(<Probe />);
+    expect(screen.getByText("true")).toBeInTheDocument();
+
+    const other: any = new globalThis.BroadcastChannel("uf-hooks-broadcast");
+    const alsoHeard = [];
+    other.onmessage = (event: any) => alsoHeard.push(event.data);
+    other.postMessage("from another tab");
+
+    await waitFor(() => {
+      expect(heard).toEqual(["from another tab"]);
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "post" }));
+    await waitFor(() => {
+      expect(alsoHeard).toEqual(["from the page"]);
+    });
+    // A channel does not deliver to the page that posted, which is the
+    // specification's behaviour and the reason this is not shared state.
+    expect(heard).toEqual(["from another tab"]);
+
+    unmount();
+    other.postMessage("after unmount");
+    await tick(20);
+    expect(heard).toEqual(["from another tab"]);
+    other.close();
+  });
+
+  it("reads a permission without asking for it", async () => {
+    component Probe() {
+      const answer = usePermission("geolocation");
+      return <output>{answer}</output>;
+    }
+    const { unmount } = render(<Probe />);
+    // "unknown" until the promise answers, which is why this is not a store.
+    expect(screen.getByText("unknown")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("granted")).toBeInTheDocument();
+    });
+    unmount();
+  });
+
+  it("reports the connection it can see and admits what it cannot", () => {
+    component Probe() {
+      const network = useNetwork();
+      return (
+        <output>{`${String(network.online)} ${String(network.supported)} ${String(network.effectiveType)}`}</output>
+      );
+    }
+    render(<Probe />);
+    // `online` is everywhere; Network Information is Chromium's alone, and
+    // this document has none — which is exactly the case `supported` exists
+    // for.
+    expect(screen.getByText("true false null")).toBeInTheDocument();
+  });
+
+  it("says geolocation is unsupported rather than throwing on a document without it", () => {
+    component Probe() {
+      const where = useGeolocation();
+      return (
+        <output>{`${String(where.supported)} ${String(where.position)} ${String(where.error)}`}</output>
+      );
+    }
+    render(<Probe />);
+    expect(screen.getByText("false null null")).toBeInTheDocument();
+  });
+});
+
+describe("Strict Mode, which renders and mounts everything twice", () => {
+  it("leaves one listener behind, not two", async () => {
+    const handler = fn();
+    component Probe() {
+      const ref = useElementRef<HTMLButtonElement>();
+      useEventListener(ref, "click", handler);
+      return (
+        <button ref={ref} type="button">
+          press
+        </button>
+      );
+    }
+
+    const { unmount } = render(
+      <React.StrictMode>
+        <Probe />
+      </React.StrictMode>,
+    );
+    const button = screen.getByRole("button");
+    await userEvent.click(button);
+    // React mounts, unmounts and mounts again in Strict Mode. A cleanup that
+    // did not remove exactly what its effect added would count two here.
+    expect(handler.mock.calls.length).toBe(1);
+
+    unmount();
+    fireEvent.click(button);
+    expect(handler.mock.calls.length).toBe(1);
+  });
+
+  it("keeps the scroll lock's count balanced", () => {
+    component Probe() {
+      useScrollLock(true);
+      return <p>dialog</p>;
+    }
+    const { unmount } = render(
+      <React.StrictMode>
+        <Probe />
+      </React.StrictMode>,
+    );
+    expect(globalThis.document.body.style.overflow).toBe("hidden");
+    unmount();
+    // A lock that counted the double mount and released once would leave the
+    // page frozen for the rest of the session.
+    expect(globalThis.document.body.style.overflow).toBe("");
+  });
+
+  it("does not start two intervals or two requests", async () => {
+    const ticked = fn();
+    let started = 0;
+    component Probe() {
+      useInterval(ticked, 10);
+      useAsync(async () => {
+        started += 1;
+        return "once";
+      }, []);
+      return null;
+    }
+    const { unmount } = render(
+      <React.StrictMode>
+        <Probe />
+      </React.StrictMode>,
+    );
+    await tick(35);
+    unmount();
+    // Two intervals would tick about twice as often; the bound is loose on
+    // purpose, and a doubled timer breaks it.
+    expect(ticked.mock.calls.length <= 5).toBe(true);
+    expect(ticked.mock.calls.length > 0).toBe(true);
+    // Strict Mode runs the effect twice on mount, so the request is started
+    // twice by design — what matters is that only the live one can write, and
+    // the first one's signal is aborted.
+    expect(started).toBe(2);
+  });
+
+  it("leaves a broadcast channel open and usable", async () => {
+    const heard = [];
+    component Probe() {
+      const { post } = useBroadcast<string>("uf-hooks-strict", () => {});
+      return (
+        <button type="button" onClick={() => post("still connected")}>
+          post
+        </button>
+      );
+    }
+    const { unmount } = render(
+      <React.StrictMode>
+        <Probe />
+      </React.StrictMode>,
+    );
+    const other: any = new globalThis.BroadcastChannel("uf-hooks-strict");
+    other.onmessage = (event: any) => heard.push(event.data);
+
+    await userEvent.click(screen.getByRole("button"));
+    // The first mount's cleanup closes the first channel; posting has to reach
+    // the second mount's, not a closed one or none at all.
+    await waitFor(() => {
+      expect(heard).toEqual(["still connected"]);
+    });
+    unmount();
+    other.close();
+  });
+
+  it("keeps a storage key readable through the double mount", async () => {
+    component Probe() {
+      const [value, write] = useStorage("uf-test-strict", "start");
+      return (
+        <div>
+          <button type="button" onClick={() => write("written")}>
+            write
+          </button>
+          <output>{value}</output>
+        </div>
+      );
+    }
+    const { unmount } = render(
+      <React.StrictMode>
+        <Probe />
+      </React.StrictMode>,
+    );
+    await userEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("written")).toBeInTheDocument();
+    unmount();
   });
 });

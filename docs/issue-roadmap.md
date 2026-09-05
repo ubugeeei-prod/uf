@@ -44,9 +44,47 @@
 - [ ] Add benchmark gates for config loading, route discovery, lint scanning, and test discovery.
 - [ ] Ban `String`, `format!`, and allocation-heavy std helpers in parser/lint/router/test hot paths.
 - [ ] Audit hot paths for unnecessary `.clone()` calls and replace them with borrowed or arena-backed flows.
-- [ ] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
+- [x] Add LSP JSON-RPC loop for diagnostics, format, code actions, and inspect data.
+      `uf lsp` serves `publishDiagnostics`, `textDocument/formatting`,
+      `textDocument/codeAction` (`quickfix` plus `source.fixAll.uf`) and
+      `textDocument/hover`, all from the same crates `uf lint`, `uf fmt` and
+      `uf inspect` call. Quick fixes are offered only where a rule's answer is
+      mechanical; `flow/deprecated-type` has one and the rules that would need
+      to guess at intent deliberately do not. Hover answers the rule behind a
+      diagnostic, what an import specifier names, and what a rule id in a
+      suppression comment means. It does **not** answer the type at a position:
+      that needs a positional entry point on `uf_check`, which today exposes
+      only whole-file diagnostics. `source.organizeImports` is not advertised
+      because uf has no import-order opinion to organise them by.
 - [x] Add editor integration directories for VS Code, Neovim, Emacs, Vim, Helix, Zed, and Cursor.
-- [ ] Implement editor extension packages on top of `uf lsp`.
+- [x] Implement editor extension packages on top of `uf lsp`.
+      `editors/vscode` is a working VS Code extension: JavaScript with Flow
+      comment types, so the extension host loads the same bytes `uf fmt` and
+      `uf lint` check with no build step in between. It finds the binary in the
+      `uf.server.path` setting, then `node_modules/.bin`, then `PATH`, and says
+      so in a notification with the list of places it looked when none of them
+      has it. It starts one server per workspace folder with a `uf.config.js`,
+      with that folder as the working directory, and wires diagnostics,
+      formatting, quick fixes, `source.fixAll.uf` and hover — the four things
+      the server serves and nothing more. Settings for the path, format on save
+      and trace; a restart command that re-resolves the binary; and a watcher
+      that restarts the server when `uf.config.js` changes, because the server
+      reads it once. Cursor installs the same extension rather than a copy.
+      Neovim, Vim, Helix and Emacs each get one configuration file:
+      `vim.lsp.start`, vim-lsp, `languages.toml` and Eglot. **Zed is not
+      working**: it can only take a language server from a Rust/WASM extension,
+      which cannot be built or tested in this repository, so `editors/zed` has
+      the manifest and a README saying exactly what the missing half must do.
+      `tests/library/vscode-extension.test.js` covers the extension's own
+      decisions without an editor host, and `tests/library/lsp.test.js` drives
+      the real `uf lsp` over framed messages and asserts every capability the
+      READMEs claim — and that the ones they disclaim are absent. Both run under
+      `uf test#library`, so both are in `uf run ci`.
+      One server bug found and not fixed here: `uf lsp --cwd <dir>` is accepted
+      by the command line and ignored by the command, which reads `.` instead,
+      so the flag silently gives a project uf's default `fmt` options and lint
+      levels. Every client works around it by setting the child process's own
+      working directory.
 - [x] Use uf task definitions in `uf.config.js`.
 - [x] Ban npm scripts from generated project templates and lint defaults.
 

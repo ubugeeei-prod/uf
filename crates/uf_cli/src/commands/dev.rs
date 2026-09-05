@@ -5,6 +5,20 @@
 //! module graph, hot module replacement and the transform pipeline; uf owns
 //! the terminal, the generated route types, and the transform itself, which
 //! the driver reaches back into through `uf transform`.
+//!
+//! `uf lsp` is the other half, and this file is its protocol: framing, the
+//! dispatch loop, the open-document store, and the conversion between uf's
+//! byte positions and the protocol's UTF-16 ones. Two questions are large
+//! enough to answer somewhere else, because each is a judgement about what uf
+//! is willing to claim rather than a detail of the wire format:
+//!
+//! - [`fix`] — which lint diagnostics have an edit that is the *only* right
+//!   answer, and which deliberately have none.
+//! - [`hover`] — what uf can honestly say about the thing under the cursor,
+//!   and what it cannot say yet.
+
+mod fix;
+mod hover;
 
 use std::io::{BufRead, IsTerminal, Write};
 
@@ -13,6 +27,7 @@ use camino::Utf8Path;
 use serde_json::{Value, json};
 use uf_config::{FmtConfig, UniflowedConfig, load_config};
 use uf_infra::FxHashMap;
+use uf_lib::NativeModule;
 use uf_router::write_router_manifest;
 use uf_term::{KeyValue, Status, Tone};
 
@@ -20,6 +35,8 @@ use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
+
+use fix::{FORMATTED_AWAY, Fix};
 
 /// What `uf dev` was asked to do.
 #[derive(Debug, Clone, Default)]
@@ -151,7 +168,29 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
 /// notification the server sends rather than a request the editor makes, so
 /// there is no capability to advertise — the pull-model `diagnosticProvider`
 /// that used to be advertised, and served nothing, stays gone.
-pub(crate) fn lsp() -> Result<()> {
+///
+/// Code actions, from [`fix`]: the quick fixes uf can apply to its own
+/// diagnostics without guessing at intent, plus `source.fixAll.uf` for all of
+/// them at once. `source.organizeImports` is **not** advertised, because uf
+/// has no opinion about import order to organise them by — no sorter exists in
+/// any crate, and a server that advertised one would be promising an editor
+/// something uf cannot do.
+///
+/// Hover, from [`hover`]: the rule behind a diagnostic, what an import
+/// specifier names, and what a rule id in a suppression comment means. Not the
+/// type at a position; that module's header says exactly what is missing.
+///
+/// # Being hard to wedge
+///
+/// The loop must survive whatever arrives on the pipe, because the thing on
+/// the other end is a program. A body that is not JSON is answered with
+/// `-32700` and the loop continues, since the frame header already said how
+/// many bytes to consume and the stream is therefore still in sync. A
+/// `Content-Length` larger than [`MAX_MESSAGE_BYTES`] is refused rather than
+/// allocated. A request with no `method` gets `-32600`, a method uf does not
+/// serve gets `-32601`, and a request whose params are unusable gets `-32602`.
+/// Notifications get none of those, because a notification has no id to answer.
+pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
 
@@ -162,18 +201,64 @@ pub(crate) fn lsp() -> Result<()> {
     }
 
     let mut reader = std::io::BufReader::new(stdin.lock());
-    let mut documents: FxHashMap<String, String> = FxHashMap::default();
+    let mut documents: FxHashMap<String, Document> = FxHashMap::default();
     let mut shutting_down = false;
     // Once, not once per keystroke. A server lints on every change and formats
     // as often as the editor asks, and reading `uf.config.js` from disk each
     // time would put a file read on the path a keystroke can trigger.
-    let config = load_config(Utf8Path::new("."))
-        .map_or_else(|_| UniflowedConfig::default(), |resolved| resolved.config);
+    // `--cwd` rather than the process's directory: an editor starts one server
+    // per workspace folder and has every reason to say which one, and a server
+    // that read `.` instead answered with uf's defaults while looking like it
+    // had read the project's `uf.config.js`.
+    let config =
+        load_config(cwd).map_or_else(|_| UniflowedConfig::default(), |resolved| resolved.config);
     let fmt = config.fmt.clone();
+    // Same reasoning: `uf_lib::builtin_modules` rebuilds the whole registry on
+    // every call, and a hover happens on mouse-move.
+    let modules = uf_lib::builtin_modules();
 
-    while let Some(message) = read_message(&mut reader)? {
-        let method = message.get("method").and_then(Value::as_str).unwrap_or("");
+    while let Some(frame) = read_message(&mut reader)? {
+        let message = match frame {
+            Frame::Message(message) => message,
+            Frame::Malformed => {
+                respond_error(
+                    &mut stdout,
+                    Value::Null,
+                    PARSE_ERROR,
+                    "the message body was not valid JSON",
+                )?;
+                continue;
+            }
+        };
+
         let id = message.get("id").cloned();
+        let Some(method) = message.get("method").and_then(Value::as_str) else {
+            // A request without a method is not a request. A notification
+            // without one is nothing at all, and gets nothing back.
+            if let Some(id) = id {
+                respond_error(
+                    &mut stdout,
+                    id,
+                    INVALID_REQUEST,
+                    "the message carried no `method`",
+                )?;
+            }
+            continue;
+        };
+
+        // After `shutdown` only `exit` is valid; the specification says to
+        // refuse the rest rather than serve them.
+        if shutting_down && method != "exit" {
+            if let Some(id) = id {
+                respond_error(
+                    &mut stdout,
+                    id,
+                    INVALID_REQUEST,
+                    "the server has been asked to shut down",
+                )?;
+            }
+            continue;
+        }
 
         match method {
             "initialize" => respond(
@@ -184,6 +269,10 @@ pub(crate) fn lsp() -> Result<()> {
                     "capabilities": {
                         "textDocumentSync": 1,
                         "documentFormattingProvider": true,
+                        "hoverProvider": true,
+                        "codeActionProvider": {
+                            "codeActionKinds": [QUICK_FIX, FIX_ALL],
+                        },
                     },
                 }),
             )?,
@@ -194,14 +283,16 @@ pub(crate) fn lsp() -> Result<()> {
             "exit" => return Ok(()),
             "textDocument/didOpen" => {
                 if let Some((uri, text)) = opened_document(&message) {
-                    publish_diagnostics(&mut stdout, &uri, &text, &config)?;
-                    documents.insert(uri, text);
+                    let document = Document::lint(&uri, text, &config);
+                    publish_diagnostics(&mut stdout, &uri, &document)?;
+                    documents.insert(uri, document);
                 }
             }
             "textDocument/didChange" => {
                 if let Some((uri, text)) = changed_document(&message) {
-                    publish_diagnostics(&mut stdout, &uri, &text, &config)?;
-                    documents.insert(uri, text);
+                    let document = Document::lint(&uri, text, &config);
+                    publish_diagnostics(&mut stdout, &uri, &document)?;
+                    documents.insert(uri, document);
                 }
             }
             "textDocument/didClose" => {
@@ -218,27 +309,77 @@ pub(crate) fn lsp() -> Result<()> {
                 }
             }
             "textDocument/formatting" => {
-                let source = document_uri(&message).and_then(|uri| documents.get(&uri).cloned());
-                let edits = match source {
-                    Some(source) => format_edits(&source, &fmt)?,
+                let document = document_uri(&message).and_then(|uri| documents.get(&uri));
+                let edits = match document {
+                    Some(document) => format_edits(&document.text, &fmt),
                     None => Value::Null,
                 };
                 respond(&mut stdout, id, edits)?;
             }
-            // A request uf does not serve is answered as one, not ignored:
-            // an editor waiting on an id it never gets back is a hang.
-            _ if id.is_some() => respond(&mut stdout, id, Value::Null)?,
-            _ => {}
-        }
-
-        // Some clients close the pipe after `shutdown` rather than sending
-        // `exit`. Reading on would block until they give up.
-        if shutting_down && method == "shutdown" {
-            continue;
+            "textDocument/codeAction" => {
+                let answer = code_actions(&message, &documents, &config, &fmt);
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/hover" => {
+                let answer = hover_answer(&message, &documents, &modules);
+                answer_request(&mut stdout, id, answer)?;
+            }
+            // A request uf does not serve is answered as one, not ignored: an
+            // editor waiting on an id it never gets back is a hang. A
+            // *notification* uf does not serve is dropped, because answering
+            // one is itself a protocol violation.
+            _ => {
+                if let Some(id) = id {
+                    respond_error(
+                        &mut stdout,
+                        id,
+                        METHOD_NOT_FOUND,
+                        &format!("uf lsp does not serve `{method}`"),
+                    )?;
+                }
+            }
         }
     }
 
     Ok(())
+}
+
+/// JSON-RPC parse error: the body was not JSON.
+const PARSE_ERROR: i64 = -32700;
+/// JSON-RPC invalid request: the body was JSON but not a request.
+const INVALID_REQUEST: i64 = -32600;
+/// JSON-RPC method not found: a request for something uf does not serve.
+const METHOD_NOT_FOUND: i64 = -32601;
+/// JSON-RPC invalid params: the request named a method but not a usable subject.
+const INVALID_PARAMS: i64 = -32602;
+
+/// Code action kind for a fix to one diagnostic.
+const QUICK_FIX: &str = "quickfix";
+/// Code action kind for "fix everything in this file that uf can fix".
+///
+/// Namespaced under `source.fixAll` so an editor configured with
+/// `codeActionsOnSave: { "source.fixAll": true }` matches it: the
+/// specification's kinds are hierarchical, and a request for a parent kind
+/// selects its children.
+const FIX_ALL: &str = "source.fixAll.uf";
+
+/// Send a request's answer, or the error that stopped it being one.
+///
+/// The error half only applies to requests. A notification named
+/// `textDocument/hover` is malformed, but answering it would be worse than
+/// ignoring it.
+fn answer_request(
+    out: &mut impl Write,
+    id: Option<Value>,
+    answer: Result<Value, String>,
+) -> Result<()> {
+    match answer {
+        Ok(result) => respond(out, id, result),
+        Err(detail) => match id {
+            Some(id) => respond_error(out, id, INVALID_PARAMS, &detail),
+            None => Ok(()),
+        },
+    }
 }
 
 /// Lint `source` and send the result to the editor.
@@ -251,43 +392,15 @@ pub(crate) fn lsp() -> Result<()> {
 /// A file the linter cannot read at all is reported as nothing rather than as
 /// an error: half a keystroke into a rename, the document is often not
 /// anything yet, and a server that fails there is a server that stops.
-fn publish_diagnostics(
-    out: &mut impl Write,
-    uri: &str,
-    source: &str,
-    config: &UniflowedConfig,
-) -> Result<()> {
-    let file = uf_lint::SourceFile {
-        path: document_path(uri),
-        source: source.to_owned(),
-    };
-    let Ok(report) = uf_lint::lint_source(&file, config) else {
+fn publish_diagnostics(out: &mut impl Write, uri: &str, document: &Document) -> Result<()> {
+    let Some(report) = document.diagnostics.as_deref() else {
         return Ok(());
     };
 
-    let lines: Vec<&str> = source.lines().collect();
+    let lines: Vec<&str> = document.text.lines().collect();
     let diagnostics: Vec<Value> = report
-        .diagnostics
         .iter()
-        .map(|diagnostic| {
-            let text = lines.get(diagnostic.line.saturating_sub(1)).copied();
-            let start = character(text, diagnostic.column);
-            let span = text.map_or(1, |text| identifier_span(text, diagnostic.column));
-            let end = character(text, diagnostic.column + span);
-            json!({
-                "range": {
-                    "start": { "line": diagnostic.line.saturating_sub(1), "character": start },
-                    "end": { "line": diagnostic.line.saturating_sub(1), "character": end },
-                },
-                "severity": match diagnostic.severity {
-                    uf_lint::Severity::Error => 1,
-                    uf_lint::Severity::Warn => 2,
-                },
-                "source": "uf",
-                "code": diagnostic.rule,
-                "message": diagnostic.message,
-            })
-        })
+        .map(|diagnostic| encode_diagnostic(&lines, diagnostic))
         .collect();
 
     notify(
@@ -295,6 +408,355 @@ fn publish_diagnostics(
         "textDocument/publishDiagnostics",
         json!({ "uri": uri, "diagnostics": diagnostics }),
     )
+}
+
+/// One open document: the text the editor holds, and what linting it said.
+///
+/// The diagnostics are kept rather than recomputed because they cannot change
+/// without the text changing, and the text only changes through `didOpen` and
+/// `didChange` — both of which already lint, to publish. Hover and code
+/// actions then read the answer instead of asking for it again, which matters
+/// because a hover is asked on mouse-move and a parse is not free.
+struct Document {
+    /// The document as the editor last sent it, in full (`textDocumentSync: 1`).
+    text: String,
+    /// What linting [`Document::text`] said, or [`None`] when the linter could
+    /// not read it at all.
+    ///
+    /// The two are different answers and the editor treats them differently:
+    /// `Some(vec![])` clears the file's markers, `None` leaves whatever the
+    /// editor was last told. Half a keystroke into a rename a document is
+    /// often not anything yet, and a server that fails there is a server that
+    /// stops.
+    diagnostics: Option<Vec<uf_lint::Diagnostic>>,
+}
+
+impl Document {
+    /// Take the editor's text and lint it.
+    ///
+    /// The single place the LSP calls the linter for an open document.
+    /// Diagnostics, quick fixes and hover all need the same answer for the
+    /// same text, and asking three different ways is how an editor ends up
+    /// offering a fix for a diagnostic it is not showing.
+    fn lint(uri: &str, text: String, config: &UniflowedConfig) -> Self {
+        let diagnostics = lint_text(uri, &text, config);
+        Self { text, diagnostics }
+    }
+}
+
+/// Lint some text as the file `uri` names, or [`None`] if the linter refused.
+fn lint_text(
+    uri: &str,
+    source: &str,
+    config: &UniflowedConfig,
+) -> Option<Vec<uf_lint::Diagnostic>> {
+    let file = uf_lint::SourceFile {
+        path: document_path(uri),
+        source: source.to_owned(),
+    };
+    uf_lint::lint_source(&file, config)
+        .ok()
+        .map(|report| report.diagnostics)
+}
+
+/// One lint diagnostic as the protocol spells it.
+fn encode_diagnostic(lines: &[&str], diagnostic: &uf_lint::Diagnostic) -> Value {
+    json!({
+        "range": diagnostic_range(lines, diagnostic),
+        "severity": match diagnostic.severity {
+            uf_lint::Severity::Error => 1,
+            uf_lint::Severity::Warn => 2,
+        },
+        "source": "uf",
+        "code": diagnostic.rule,
+        "message": diagnostic.message,
+    })
+}
+
+/// The range a diagnostic covers, in the protocol's zero-based UTF-16 units.
+fn diagnostic_range(lines: &[&str], diagnostic: &uf_lint::Diagnostic) -> Value {
+    let line = diagnostic.line.saturating_sub(1);
+    let text = lines.get(line).copied();
+    let span = text.map_or(1, |text| identifier_span(text, diagnostic.column));
+    json!({
+        "start": { "line": line, "character": character(text, diagnostic.column) },
+        "end": { "line": line, "character": character(text, diagnostic.column + span) },
+    })
+}
+
+/// Every action the editor may take over `range`, as `CodeAction`s.
+///
+/// The diagnostics come from re-linting the document the server currently
+/// holds rather than from `context.diagnostics`, which is whatever the editor
+/// was last told and can be a keystroke behind. An action built from a stale
+/// diagnostic is an edit landing in the wrong place, and the whole point of
+/// this request is that the editor applies the edit without asking again.
+///
+/// `Err` carries the reason the request could not be served at all, which the
+/// caller turns into `-32602`. A document the server has never been told about
+/// is not that: it is simply a document with no actions.
+fn code_actions(
+    message: &Value,
+    documents: &FxHashMap<String, Document>,
+    config: &UniflowedConfig,
+    fmt: &FmtConfig,
+) -> Result<Value, String> {
+    let params = message
+        .get("params")
+        .ok_or_else(|| String::from("`textDocument/codeAction` needs `params`"))?;
+    let uri = document_uri(message)
+        .ok_or_else(|| String::from("`params.textDocument.uri` is required"))?;
+    let range = params
+        .get("range")
+        .and_then(position_range)
+        .ok_or_else(|| String::from("`params.range` is required"))?;
+    let only = params
+        .get("context")
+        .and_then(|context| context.get("only"))
+        .map(|only| {
+            only.as_array()
+                .map(|kinds| {
+                    kinds
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        });
+
+    let Some(document) = documents.get(&uri) else {
+        return Ok(json!([]));
+    };
+    let Some(diagnostics) = document.diagnostics.as_deref() else {
+        return Ok(json!([]));
+    };
+    let source = document.text.as_str();
+    let lines: Vec<&str> = source.lines().collect();
+
+    let mut actions = Vec::new();
+
+    // Quick fixes: one per in-range diagnostic that has a mechanical answer.
+    let in_range: Vec<&uf_lint::Diagnostic> = diagnostics
+        .iter()
+        .filter(|diagnostic| overlaps(&range, &lines, diagnostic))
+        .collect();
+
+    if wanted(only.as_deref(), QUICK_FIX) {
+        for diagnostic in &in_range {
+            let text = lines.get(diagnostic.line.saturating_sub(1)).copied();
+            if let Some(fix) = text.and_then(|text| fix::fix_for(diagnostic, text)) {
+                actions.push(json!({
+                    "title": fix.title,
+                    "kind": QUICK_FIX,
+                    "diagnostics": [encode_diagnostic(&lines, diagnostic)],
+                    "isPreferred": true,
+                    "edit": { "changes": { &uri: [fix_edit(&lines, &fix)] } },
+                }));
+            }
+        }
+
+        // The whitespace rules, whose answer is `uf fmt` rather than an edit of
+        // uf's own devising — but only where the formatter really does remove
+        // them.
+        let whitespace: Vec<&uf_lint::Diagnostic> = in_range
+            .iter()
+            .copied()
+            .filter(|diagnostic| FORMATTED_AWAY.contains(&diagnostic.rule))
+            .collect();
+        if !whitespace.is_empty()
+            && let Some((output, cleared)) =
+                formatter_answer(&uri, source, diagnostics, fmt, config)
+        {
+            let answered: Vec<Value> = whitespace
+                .iter()
+                .filter(|diagnostic| cleared.contains(&diagnostic.rule))
+                .map(|diagnostic| encode_diagnostic(&lines, diagnostic))
+                .collect();
+            if !answered.is_empty() {
+                actions.push(json!({
+                    "title": "Format this document with uf fmt",
+                    "kind": QUICK_FIX,
+                    "diagnostics": answered,
+                    "edit": {
+                        "changes": { &uri: [whole_document_edit(source, &output)] },
+                    },
+                }));
+            }
+        }
+    }
+
+    // `source.fixAll`: every mechanical fix in the document, not just the ones
+    // under the cursor. Edits are computed against the document as it is now
+    // and never overlap, which is what lets them be applied as one batch.
+    if wanted(only.as_deref(), FIX_ALL) {
+        let edits: Vec<Value> = diagnostics
+            .iter()
+            .filter_map(|diagnostic| {
+                let text = lines.get(diagnostic.line.saturating_sub(1)).copied()?;
+                fix::fix_for(diagnostic, text)
+            })
+            .map(|fix| fix_edit(&lines, &fix))
+            .collect();
+        if !edits.is_empty() {
+            actions.push(json!({
+                "title": "Fix all uf lint problems in this file",
+                "kind": FIX_ALL,
+                "edit": { "changes": { &uri: edits } },
+            }));
+        }
+    }
+
+    Ok(Value::Array(actions))
+}
+
+/// One [`Fix`] as a `TextEdit`.
+fn fix_edit(lines: &[&str], fix: &Fix) -> Value {
+    let text = lines.get(fix.line).copied();
+    json!({
+        "range": {
+            "start": { "line": fix.line, "character": character(text, fix.start + 1) },
+            "end": { "line": fix.line, "character": character(text, fix.end + 1) },
+        },
+        "newText": fix.replacement,
+    })
+}
+
+/// What `uf fmt` makes of this document, when formatting is the answer to a
+/// whitespace diagnostic: the formatted text, and which of [`FORMATTED_AWAY`]'s
+/// rules it actually clears.
+///
+/// Asked once per request rather than once per diagnostic: one format and one
+/// re-lint answer it for every whitespace diagnostic in the document, and the
+/// formatted text comes back so the action's edit does not format it again.
+///
+/// It has to be asked at all because the two tools genuinely disagree in one
+/// case. `uf fmt` reprints from the syntax tree and therefore preserves the
+/// inside of a template literal, while `uniflowed/no-trailing-whitespace`
+/// measures the raw line and so reports trailing spaces inside one. Offering
+/// "format this document" there would be offering a fix that does not fix.
+/// A rule is offered only when *every* diagnostic of it disappears, so a file
+/// with one fixable and one unfixable instance offers nothing rather than
+/// something that half works.
+fn formatter_answer(
+    uri: &str,
+    source: &str,
+    before: &[uf_lint::Diagnostic],
+    fmt: &FmtConfig,
+    config: &UniflowedConfig,
+) -> Option<(String, Vec<&'static str>)> {
+    let formatted = uf_fmt::format_source(source, fmt).ok()?;
+    if !formatted.changed {
+        return None;
+    }
+    let after = lint_text(uri, &formatted.output, config)?;
+
+    let cleared: Vec<&'static str> = FORMATTED_AWAY
+        .into_iter()
+        .filter(|rule| before.iter().any(|diagnostic| diagnostic.rule == *rule))
+        .filter(|rule| !after.iter().any(|diagnostic| diagnostic.rule == *rule))
+        .collect();
+    (!cleared.is_empty()).then_some((formatted.output, cleared))
+}
+
+/// Whether a code action of `kind` was asked for.
+///
+/// Kinds are hierarchical, so `source.fixAll` selects `source.fixAll.uf`. A
+/// missing `only` means "everything"; an empty one means "nothing", which is
+/// what an editor sends when it has filtered every kind out.
+fn wanted(only: Option<&[String]>, kind: &str) -> bool {
+    let Some(only) = only else {
+        return true;
+    };
+    only.iter().any(|wanted| {
+        kind == wanted
+            || kind
+                .strip_prefix(wanted.as_str())
+                .is_some_and(|rest| rest.starts_with('.'))
+    })
+}
+
+/// A `Range` as `(start line, start character, end line, end character)`.
+fn position_range(range: &Value) -> Option<(usize, usize, usize, usize)> {
+    let point = |name: &str| -> Option<(usize, usize)> {
+        let point = range.get(name)?;
+        Some((
+            usize::try_from(point.get("line")?.as_u64()?).ok()?,
+            usize::try_from(point.get("character")?.as_u64()?).ok()?,
+        ))
+    };
+    let (start_line, start_character) = point("start")?;
+    let (end_line, end_character) = point("end")?;
+    Some((start_line, start_character, end_line, end_character))
+}
+
+/// Whether a diagnostic's range touches the range the editor asked about.
+///
+/// Touching, not containing: an editor asks about the cursor, which is an
+/// empty range, and the answer a reader wants is the diagnostic the cursor is
+/// sitting in.
+fn overlaps(
+    range: &(usize, usize, usize, usize),
+    lines: &[&str],
+    diagnostic: &uf_lint::Diagnostic,
+) -> bool {
+    let &(start_line, start_character, end_line, end_character) = range;
+    let line = diagnostic.line.saturating_sub(1);
+    let text = lines.get(line).copied();
+    let span = text.map_or(1, |text| identifier_span(text, diagnostic.column));
+    let start = (line, character(text, diagnostic.column));
+    let end = (line, character(text, diagnostic.column + span));
+
+    start <= (end_line, end_character) && end >= (start_line, start_character)
+}
+
+/// What uf can say about the position the cursor is on.
+fn hover_answer(
+    message: &Value,
+    documents: &FxHashMap<String, Document>,
+    modules: &[NativeModule],
+) -> Result<Value, String> {
+    let params = message
+        .get("params")
+        .ok_or_else(|| String::from("`textDocument/hover` needs `params`"))?;
+    let uri = document_uri(message)
+        .ok_or_else(|| String::from("`params.textDocument.uri` is required"))?;
+    let position = params
+        .get("position")
+        .and_then(|position| {
+            Some((
+                usize::try_from(position.get("line")?.as_u64()?).ok()?,
+                usize::try_from(position.get("character")?.as_u64()?).ok()?,
+            ))
+        })
+        .ok_or_else(|| String::from("`params.position` needs a `line` and a `character`"))?;
+
+    let Some(document) = documents.get(&uri) else {
+        return Ok(Value::Null);
+    };
+    let (line, requested) = position;
+    let lines: Vec<&str> = document.text.lines().collect();
+    let text = lines.get(line).copied();
+    let path = document_path(&uri);
+
+    let Some(answer) = hover::hover(&hover::Request {
+        path: &path,
+        source: &document.text,
+        line,
+        column: byte_column(text, requested),
+        diagnostics: document.diagnostics.as_deref().unwrap_or_default(),
+        modules,
+    }) else {
+        return Ok(Value::Null);
+    };
+
+    Ok(json!({
+        "contents": { "kind": "markdown", "value": answer.markdown },
+        "range": {
+            "start": { "line": line, "character": character(text, answer.start + 1) },
+            "end": { "line": line, "character": character(text, answer.end + 1) },
+        },
+    }))
 }
 
 /// A one-based *byte* column, as an LSP zero-based UTF-16 character offset.
@@ -319,6 +781,34 @@ fn character(line: Option<&str>, column: usize) -> usize {
         }
     };
     head.chars().map(char::len_utf16).sum()
+}
+
+/// An LSP zero-based UTF-16 character offset, as a zero-based *byte* offset.
+///
+/// The inverse of [`character`], and the direction a request travels: the
+/// protocol counts UTF-16 code units and everything uf holds — the linter's
+/// columns, the fixer's spans, `str` itself — counts bytes. The two are tested
+/// against each other rather than merely written next to each other; see
+/// `a_utf16_position_and_a_byte_column_are_inverses`.
+///
+/// A character past the end of the line clamps to the end, which is what an
+/// editor sends when the cursor sits in the virtual space past a short line,
+/// and one landing inside a surrogate pair names the character it is inside.
+fn byte_column(line: Option<&str>, character: usize) -> usize {
+    let Some(line) = line else {
+        return 0;
+    };
+    let mut units = 0usize;
+    for (offset, letter) in line.char_indices() {
+        if units >= character {
+            return offset;
+        }
+        units += letter.len_utf16();
+        if units > character {
+            return offset;
+        }
+    }
+    line.len()
 }
 
 /// The path an editor's `file://` URI names.
@@ -370,12 +860,40 @@ fn notify(out: &mut impl Write, method: &str, params: Value) -> Result<()> {
         .with_context(|| "failed to flush a notification")
 }
 
+/// Largest framed message the server will read, in bytes.
+///
+/// A `Content-Length` is a promise about an allocation, made by the peer
+/// before the server has parsed anything at all, so it is the one number a
+/// hostile or broken client fully controls. 32 MiB is four times the largest
+/// source `uf_rsc` will scan, so no document uf would work on can reach it,
+/// and it turns `Content-Length: 99999999999` into a refusal instead of an
+/// out-of-memory abort.
+const MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+
+/// One frame off the stream.
+#[derive(Debug)]
+enum Frame {
+    /// A body that parsed as JSON.
+    Message(Value),
+    /// A body that did not. The header already said how many bytes it was and
+    /// they have been consumed, so the stream is still in sync and this is a
+    /// message to answer rather than a reason to stop.
+    Malformed,
+}
+
 /// One `Content-Length`-framed message, or [`None`] at end of input.
 ///
 /// Headers are read line by line and everything but `Content-Length` is
 /// skipped, which is what the specification asks for — `Content-Type` is the
 /// other one clients send, and it carries nothing uf needs.
-fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
+///
+/// The distinction this function draws is between a broken *frame* and a
+/// broken *message*. A missing or oversized `Content-Length` means the next
+/// byte of the stream is unknown, which nothing downstream can recover from,
+/// so it is an error that ends the server. A body that is not JSON is only a
+/// bad message: its length was known and consumed, so it comes back as
+/// [`Frame::Malformed`] and the loop answers it.
+fn read_message(reader: &mut impl BufRead) -> Result<Option<Frame>> {
     let mut length: Option<usize> = None;
     let mut line = String::new();
 
@@ -402,13 +920,16 @@ fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
     let Some(length) = length else {
         bail!("an LSP message arrived without a Content-Length header");
     };
+    if length > MAX_MESSAGE_BYTES {
+        bail!("an LSP message claimed {length} bytes, over the {MAX_MESSAGE_BYTES} byte limit");
+    }
     let mut body = vec![0u8; length];
     reader
         .read_exact(&mut body)
         .with_context(|| "failed to read an LSP message body")?;
-    let message =
-        serde_json::from_slice(&body).with_context(|| "failed to parse an LSP message as JSON")?;
-    Ok(Some(message))
+    Ok(Some(
+        serde_json::from_slice(&body).map_or(Frame::Malformed, Frame::Message),
+    ))
 }
 
 /// Write one framed response, unless the message was a notification.
@@ -416,7 +937,30 @@ fn respond(out: &mut impl Write, id: Option<Value>, result: Value) -> Result<()>
     let Some(id) = id else {
         return Ok(());
     };
-    let body = serde_json::to_string(&json!({ "jsonrpc": "2.0", "id": id, "result": result }))?;
+    write_message(
+        out,
+        &json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+    )
+}
+
+/// Write one framed error response.
+///
+/// The id is [`Value::Null`] when the request was too broken to have one,
+/// which is what the specification says to send rather than omitting the
+/// field: a response with no id is not a response.
+fn respond_error(out: &mut impl Write, id: Value, code: i64, message: &str) -> Result<()> {
+    write_message(
+        out,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": { "code": code, "message": message },
+        }),
+    )
+}
+
+fn write_message(out: &mut impl Write, message: &Value) -> Result<()> {
+    let body = serde_json::to_string(message)?;
     write!(out, "Content-Length: {}\r\n\r\n{body}", body.len())
         .with_context(|| "failed to write an LSP response")?;
     out.flush()
@@ -430,23 +974,28 @@ fn respond(out: &mut impl Write, id: Option<Value>, result: Value) -> Result<()>
 /// smallest honest description of what it did is "this is the file now".
 /// Ranges are in UTF-16 units and the end is past any line the document has,
 /// which is how the specification says to name the whole of it.
-fn format_edits(source: &str, config: &FmtConfig) -> Result<Value> {
+fn format_edits(source: &str, config: &FmtConfig) -> Value {
     let Ok(result) = uf_fmt::format_source(source, config) else {
         // A file that does not parse is left alone, the way `uf fmt` leaves
         // it alone. An error here would be an editor popup on every keystroke
         // in a file being typed.
-        return Ok(Value::Null);
+        return Value::Null;
     };
     if !result.changed {
-        return Ok(json!([]));
+        return json!([]);
     }
-    Ok(json!([{
+    json!([whole_document_edit(source, &result.output)])
+}
+
+/// One `TextEdit` replacing the whole of `source` with `output`.
+fn whole_document_edit(source: &str, output: &str) -> Value {
+    json!({
         "range": {
             "start": { "line": 0, "character": 0 },
             "end": { "line": source.lines().count() + 1, "character": 0 },
         },
-        "newText": result.output,
-    }]))
+        "newText": output,
+    })
 }
 
 fn document_uri(message: &Value) -> Option<String> {
@@ -486,6 +1035,14 @@ fn changed_document(message: &Value) -> Option<(String, String)> {
 mod tests {
     use super::*;
 
+    /// The parsed body of a frame, for the tests that only care about that.
+    fn body_of(frame: Option<Frame>) -> Value {
+        match frame.expect("a frame") {
+            Frame::Message(message) => message,
+            Frame::Malformed => panic!("expected a parsed message"),
+        }
+    }
+
     /// Framing, which is the half of the protocol a stream gets wrong.
     #[test]
     fn messages_are_read_one_frame_at_a_time() {
@@ -498,8 +1055,8 @@ mod tests {
 
         // Two messages on one stream, and then end of input rather than a
         // third: reading past the last frame is how a loop hangs.
-        assert_eq!(read_message(&mut reader).unwrap().unwrap()["id"], json!(7));
-        assert_eq!(read_message(&mut reader).unwrap().unwrap()["id"], json!(7));
+        assert_eq!(body_of(read_message(&mut reader).unwrap())["id"], json!(7));
+        assert_eq!(body_of(read_message(&mut reader).unwrap())["id"], json!(7));
         assert!(read_message(&mut reader).unwrap().is_none());
     }
 
@@ -514,7 +1071,38 @@ mod tests {
         );
         let mut reader = std::io::BufReader::new(stream.as_bytes());
 
-        assert_eq!(read_message(&mut reader).unwrap().unwrap()["id"], json!(1));
+        assert_eq!(body_of(read_message(&mut reader).unwrap())["id"], json!(1));
+    }
+
+    /// A body that is not JSON is a bad *message*, not a bad frame: its length
+    /// was known, so the stream is still in sync and the next frame is read.
+    #[test]
+    fn a_body_that_is_not_json_leaves_the_stream_in_sync() {
+        let broken = "{not json";
+        let good = r#"{"id":2}"#;
+        let stream = format!(
+            "Content-Length: {}\r\n\r\n{broken}Content-Length: {}\r\n\r\n{good}",
+            broken.len(),
+            good.len()
+        );
+        let mut reader = std::io::BufReader::new(stream.as_bytes());
+
+        assert!(matches!(
+            read_message(&mut reader).unwrap(),
+            Some(Frame::Malformed)
+        ));
+        assert_eq!(body_of(read_message(&mut reader).unwrap())["id"], json!(2));
+    }
+
+    /// A length is an allocation the peer chose. One that could not be a real
+    /// document is refused before it is allocated.
+    #[test]
+    fn an_absurd_content_length_is_refused_rather_than_allocated() {
+        let stream = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
+        let mut reader = std::io::BufReader::new(stream.as_bytes());
+
+        let error = read_message(&mut reader).expect_err("a refusal");
+        assert!(error.to_string().contains("limit"), "{error}");
     }
 
     /// A frame with no length is an error, not a guess.
@@ -561,5 +1149,48 @@ mod tests {
         let mut reader = std::io::BufReader::new(&b"Content-Type: x\r\n\r\n{}"[..]);
 
         assert!(read_message(&mut reader).is_err());
+    }
+
+    /// The two converters have to be inverses, not merely neighbours: a
+    /// position arrives in UTF-16 and every span uf owns is in bytes, so a
+    /// disagreement is an edit landing in the wrong place.
+    #[test]
+    fn a_utf16_position_and_a_byte_column_are_inverses() {
+        for line in ["const x = 1;", "const π = 1;", "const 🦀 = 1;", ""] {
+            for (byte, _) in line.char_indices() {
+                let unit = character(Some(line), byte + 1);
+                assert_eq!(
+                    byte_column(Some(line), unit),
+                    byte,
+                    "byte {byte} of {line:?} round-tripped through UTF-16 unit {unit}"
+                );
+            }
+        }
+
+        // Past the end of the line, which is where an editor puts a cursor
+        // sitting in the virtual space after a short line.
+        assert_eq!(byte_column(Some("ab"), 99), 2);
+        assert_eq!(byte_column(None, 3), 0);
+        // Inside a surrogate pair: the character it is inside, not the next one.
+        assert_eq!(byte_column(Some("🦀x"), 1), 0);
+        assert_eq!(byte_column(Some("🦀x"), 2), 4);
+    }
+
+    /// Code action kinds are hierarchical, which is what makes an editor's
+    /// `codeActionsOnSave: { "source.fixAll": true }` find uf's own fix-all.
+    #[test]
+    fn a_requested_kind_selects_its_children() {
+        assert!(wanted(None, FIX_ALL));
+        assert!(wanted(Some(&[String::from("source.fixAll")]), FIX_ALL));
+        assert!(wanted(Some(&[String::from("source.fixAll.uf")]), FIX_ALL));
+        assert!(wanted(Some(&[String::from("source")]), FIX_ALL));
+        assert!(wanted(Some(&[String::from("quickfix")]), QUICK_FIX));
+
+        assert!(!wanted(Some(&[String::from("quickfix")]), FIX_ALL));
+        assert!(!wanted(Some(&[String::from("refactor")]), QUICK_FIX));
+        // A prefix that is not a whole kind segment is not a parent kind.
+        assert!(!wanted(Some(&[String::from("source.fixAl")]), FIX_ALL));
+        // Filtered down to nothing is a real answer, and it is "nothing".
+        assert!(!wanted(Some(&[]), QUICK_FIX));
     }
 }

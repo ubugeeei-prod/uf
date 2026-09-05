@@ -58,3 +58,47 @@ fn reports_tabs_and_trailing_whitespace() {
         "uniflowed/no-trailing-whitespace"
     );
 }
+
+#[test]
+fn trailing_whitespace_inside_a_template_literal_is_accepted() {
+    // Those spaces are part of the string. `uf fmt` reprints from the syntax
+    // tree and keeps them, so reporting them here left the formatter unable to
+    // make the linter clean — the two disagreed with no way to converge.
+    let diagnostics = lint_js(
+        "uniflowed/no-trailing-whitespace",
+        "// @flow\nconst t = `a   \n  b`;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn trailing_whitespace_on_a_line_of_code_is_still_reported() {
+    let diagnostics = lint_js(
+        "uniflowed/no-trailing-whitespace",
+        "// @flow\nconst a = 1;   \n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
+fn a_tab_inside_a_string_is_accepted() {
+    // Part of the string, kept by the formatter, and so not something the
+    // formatter can be asked to remove.
+    let diagnostics = lint_js("uniflowed/no-tabs", "// @flow\nconst t = `a\tb`;\n");
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn a_tab_in_code_and_a_tab_in_a_comment_are_both_reported() {
+    // The comment one is deliberate: the formatter keeps a comment's text, so
+    // it is the author's tab to remove — which is exactly the case the LSP's
+    // "offer the formatter only where it clears the diagnostic" guard is for.
+    let code = lint_js("uniflowed/no-tabs", "// @flow\nconst a\t= 1;\n");
+    let comment = lint_js("uniflowed/no-tabs", "// @flow\n// a\tcomment\n");
+
+    assert_eq!(code.len(), 1, "{code:?}");
+    assert_eq!(comment.len(), 1, "{comment:?}");
+}

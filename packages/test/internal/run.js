@@ -238,6 +238,7 @@ async function runSuite(
   onlyMode: boolean,
   emit: (result: Result) => void,
   state: {| bail: boolean |},
+  setUpAncestors: () => Promise<void>,
 ): Promise<boolean> {
   const skipped = context.skipped || node.modifier === "skip" || node.modifier === "todo";
   const onlyPath = !onlyMode || context.onlyPath || node.modifier === "only";
@@ -252,11 +253,18 @@ async function runSuite(
 
   // `beforeAll` is deferred until a case in this suite actually runs, so a
   // fully skipped suite never sets anything up. `afterAll` mirrors it.
+  //
+  // "In this suite" means anywhere under it. A suite whose children are all
+  // suites has no case of its own, and setting up only for a direct child left
+  // every `beforeAll` in an ordinary file — one where the tests live inside a
+  // `describe` — never running at all, silently. The chain is walked outermost
+  // first, so an inner suite's setup sees what the outer one did.
   let setUp = false;
   const setUpOnce = async () => {
     if (setUp) {
       return;
     }
+    await setUpAncestors();
     setUp = true;
     for (const hook of node.beforeAll) {
       await withTimeout(hook, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
@@ -299,7 +307,7 @@ async function runSuite(
       const ok = await runCase(child, childContext, options, emit);
       passed = passed && ok;
     } else {
-      const ok = await runSuite(child, inner, options, onlyMode, emit, state);
+      const ok = await runSuite(child, inner, options, onlyMode, emit, state, setUpOnce);
       passed = passed && ok;
     }
   }
@@ -333,5 +341,5 @@ export async function run(options: RunOptions, emit: (result: Result) => void): 
     skipped: false,
     onlyPath: !onlyMode,
   };
-  await runSuite(root, context, options, onlyMode, emit, { bail: false });
+  await runSuite(root, context, options, onlyMode, emit, { bail: false }, async () => {});
 }

@@ -14,7 +14,9 @@
     ".": "./index.js",
     "./async": "./async.js",
     "./browser": "./browser.js",
+    "./channels": "./channels.js",
     "./dom": "./dom.js",
+    "./keyboard": "./keyboard.js",
     "./lifecycle": "./lifecycle.js",
     "./state": "./state.js",
     "./timing": "./timing.js"

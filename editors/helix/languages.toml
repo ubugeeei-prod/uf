@@ -1,0 +1,36 @@
+# uf for Helix.
+#
+# Merge into `~/.config/helix/languages.toml` (or a project's
+# `.helix/languages.toml`, which is the better place — uf is a per-project
+# toolchain and this replaces the JavaScript language servers Helix ships
+# with).
+#
+# `roots` is what makes this a uf integration rather than "run uf everywhere":
+# Helix treats the nearest directory containing one of these files as the
+# workspace, and `uf.config.js` is uf's single configuration surface. It is
+# also what `uf lsp` needs, because the server reads that file from its own
+# working directory at start-up and has no other way to be told about it. Start
+# Helix from the project root; a `uf fmt` inside the editor that disagrees with
+# `uf fmt` in the terminal means the server was started somewhere else.
+
+[language-server.uf]
+command = "uf"
+args = ["lsp"]
+
+[[language]]
+name = "javascript"
+roots = ["uf.config.js"]
+# Replaces Helix's default list for JavaScript. Add the others back by name if
+# you want them alongside — they will disagree with uf about formatting.
+language-servers = ["uf"]
+# No `formatter` line: `uf fmt` writes files rather than reading a buffer on
+# stdin, so the language server is the only thing that can format what is on
+# screen. With `formatter` unset, `auto-format` asks the server, which answers
+# from the same `uf_fmt` that `uf fmt` calls.
+auto-format = true
+
+[[language]]
+name = "jsx"
+roots = ["uf.config.js"]
+language-servers = ["uf"]
+auto-format = true

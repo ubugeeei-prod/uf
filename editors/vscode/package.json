@@ -1,0 +1,77 @@
+{
+  "name": "uf",
+  "displayName": "uf",
+  "description": "Flow diagnostics, formatting, quick fixes and hover from the uf toolchain, over uf lsp.",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "publisher": "uniflowed",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "workspaceContains:uf.config.js"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "uf starts the `uf` binary from this project's node_modules, which is code the workspace supplies."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "uf.restartServer",
+        "title": "Restart Language Server",
+        "category": "uf"
+      },
+      {
+        "command": "uf.showOutput",
+        "title": "Show Language Server Log",
+        "category": "uf"
+      }
+    ],
+    "configuration": {
+      "title": "uf",
+      "properties": {
+        "uf.server.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the `uf` binary. Absolute, or relative to the workspace folder; `${workspaceFolder}` and a leading `~` are expanded. Leave empty to use `node_modules/.bin/uf` and then `PATH`. A path that is not there is reported rather than ignored."
+        },
+        "uf.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "markdownDescription": "Format Flow files with `uf fmt` (through the language server) when they are saved. Off by default; `editor.formatOnSave` with uf chosen as the default formatter does the same thing."
+        },
+        "uf.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "scope": "window",
+          "description": "Log the JSON-RPC traffic between VS Code and `uf lsp` to the uf output channel."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
