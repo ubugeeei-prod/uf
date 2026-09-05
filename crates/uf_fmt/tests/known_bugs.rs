@@ -18,30 +18,46 @@
 //!
 //! Gone from here: #128, unterminated JSX at end of input, and #125,
 //! exponential call arguments — both now in `guarantees.rs`, beside the
-//! guarantee each broke.
+//! guarantee each broke. #126 has shrunk to its declaration half; its
+//! annotation half is `comment_types.js` in the fixture directory.
 
 use uf_config::FmtConfig;
 use uf_fmt::format_source;
 
-/// ubugeeei-prod/uf#126 — comment types are rewritten into real syntax.
+/// ubugeeei-prod/uf#126 — a `/*:: … */` declaration block is rewritten.
 ///
-/// Flow's comment types exist so that a file can carry annotations *and*
-/// run without a build step. React Native's `scripts/spm` has such a file
-/// and `node` runs it directly; after `uf fmt` it needs a compiler.
+/// The annotation half of that issue is fixed: `/*: string */` survives, and
+/// `comment_types.js` in the fixture directory pins it against Prettier.
+/// What is left is the *declaration* form, where a whole statement lives
+/// inside the comment:
 ///
-/// The corpus caught it as non-idempotence — the signature measures
-/// differently once the annotations stop being comments — which is a
-/// symptom. Fixing the layout alone would leave a formatter that quietly
-/// requires a toolchain.
+/// ```text
+/// /*:: import type { SpmGraph } from './spm-types'; */
+/// /*:: type PbxEntry = { uuid: string }; */
+/// ```
+///
+/// The parser hands those back as ordinary statements — their locations sit
+/// inside the comment, which is how the annotation form is detected, but a
+/// run of them shares one `/*::` and one `*/` and the printer has no notion
+/// of that yet.
+///
+/// React Native's `scripts/spm/generate-spm-xcodeproj.js` is the module: it
+/// is idempotent and keeps its tree now, so it is out of `KNOWN_BROKEN`, and
+/// `node` still cannot run what comes out.
 #[test]
 #[ignore = "ubugeeei-prod/uf#126"]
-fn comment_types_stay_comments() {
+fn comment_type_declarations_stay_comments() {
     let source = concat!(
         "// @flow\n",
         "\n",
-        "function greet(name /*: string */) /*: string */ {\n",
-        "  return 'hi ' + name;\n",
-        "}\n",
+        "/*:: type Named = { name: string }; */\n",
+        "\n",
+        "/*::\n",
+        "type Pair = { a: string, b: string };\n",
+        "type Triple = { a: string, b: string, c: string };\n",
+        "*/\n",
+        "\n",
+        "const x = 1;\n",
     );
 
     let output = format_source(source, &FmtConfig::default())
@@ -49,7 +65,11 @@ fn comment_types_stay_comments() {
         .output;
 
     assert!(
-        output.contains("/*: string */"),
-        "the annotations stopped being comments:\n{output}"
+        output.contains("/*:: type Named"),
+        "the declaration stopped being a comment:\n{output}"
+    );
+    assert!(
+        output.contains("/*::\ntype Pair"),
+        "the block stopped being a comment:\n{output}"
     );
 }
