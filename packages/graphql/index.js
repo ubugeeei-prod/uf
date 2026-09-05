@@ -89,7 +89,7 @@ function fetchOperation(options: EnvironmentOptions) {
       method: "POST",
       headers: {
         accept: "application/graphql-response+json, application/json",
-        ...options.headers ?? {},
+        ...(options.headers ?? {}),
       },
       body: {
         query: request.text,

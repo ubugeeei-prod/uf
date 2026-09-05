@@ -136,7 +136,7 @@ const IDEMPOTENT = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
  * application talks to more than one.
  */
 export function createFetch(config?: FetchConfig): FetchClient {
-  const settings = { ...DEFAULTS, ...config ?? {} };
+  const settings = { ...DEFAULTS, ...(config ?? {}) };
 
   const raw = async (path: string, options?: RequestOptions<mixed>): Promise<Response> =>
     send(settings, path, options ?? {});
@@ -152,7 +152,7 @@ export function createFetch(config?: FetchConfig): FetchClient {
       createFetch({
         ...settings,
         ...extra,
-        headers: { ...settings.headers ?? {}, ...extra.headers ?? {} },
+        headers: { ...(settings.headers ?? {}), ...(extra.headers ?? {}) },
       }),
   };
 }
@@ -214,8 +214,8 @@ function requestInit(
   signal: AbortSignal,
 ): RequestOptions<mixed> {
   const headers: { [string]: string } = {
-    ...settings.headers ?? {},
-    ...options.headers ?? {},
+    ...(settings.headers ?? {}),
+    ...(options.headers ?? {}),
   };
 
   let body = options.body;
