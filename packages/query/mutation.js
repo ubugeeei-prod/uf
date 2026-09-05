@@ -219,13 +219,20 @@ export class Mutation<TVariables, TData, TContext> {
       return data;
     } catch (thrown) {
       const error = asError(thrown);
-      await options.onError?.(error, variables, context);
-      await callbacks?.onError?.(error, variables, context);
-      await options.onSettled?.(undefined, error, variables, context);
-      await callbacks?.onSettled?.(undefined, error, variables, context);
-
-      if (this.runId === id) {
-        this.setState({ status: "error", error, data: undefined });
+      try {
+        await options.onError?.(error, variables, context);
+        await callbacks?.onError?.(error, variables, context);
+        await options.onSettled?.(undefined, error, variables, context);
+        await callbacks?.onSettled?.(undefined, error, variables, context);
+      } finally {
+        // Committed whatever the callbacks did. A callback that throws is the
+        // caller's bug and still reaches them — it comes out of `execute` in
+        // place of the rethrow below — but a mutation left `pending` for ever
+        // because a listener threw would be this module's bug, and the
+        // component showing a spinner has no way back from it.
+        if (this.runId === id) {
+          this.setState({ status: "error", error, data: undefined });
+        }
       }
       // Rethrown so `mutateAsync` can be branched on. `mutate` swallows it,
       // which is why the two exist.

@@ -32,9 +32,7 @@ fn unclear_type_ignores_a_word_inside_a_string() {
     // `it("treats Object as any non-null object", …)` names no type.
     let diagnostics = lint_js(
         "flow/unclear-type",
-        "// @flow
-it(\"treats Object as any non-null object\", () => {});
-",
+        "// @flow\nit(\"treats Object as any non-null object\", () => {});\n",
     );
 
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -44,10 +42,7 @@ it(\"treats Object as any non-null object\", () => {});
 fn unclear_type_still_reads_an_annotation_after_a_string() {
     let diagnostics = lint_js(
         "flow/unclear-type",
-        "// @flow
-const label = \"any\";
-type A = any;
-",
+        "// @flow\nconst label = \"any\";\ntype A = any;\n",
     );
 
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");

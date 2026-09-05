@@ -277,6 +277,14 @@ impl PendingOutput {
             }
             text.truncate(end);
         }
+        // A chunk that truncated to nothing is dropped rather than kept. One
+        // byte of budget left and a test writing multi-byte characters would
+        // otherwise push an empty chunk per write for ever: `bytes` never
+        // grows, so the budget never closes, and the vector is the only thing
+        // that does grow.
+        if text.is_empty() {
+            return;
+        }
         self.bytes += text.len();
         let stream = if event.stream == "stderr" {
             OutputStream::Stderr
@@ -812,8 +820,31 @@ mod tests {
         });
 
         let chunks = pending.drain();
-        assert_eq!(chunks[1].text, "");
+        assert_eq!(chunks.len(), 1, "the half character is not a chunk");
         assert!(chunks.iter().all(|chunk| chunk.text.is_char_boundary(0)));
+    }
+
+    #[test]
+    fn a_test_that_keeps_writing_past_the_budget_does_not_grow_the_vector() {
+        // One byte of room and a multi-byte character: every write truncates
+        // to nothing, `bytes` never grows, and the budget never closes. Keeping
+        // those empty chunks is a way to run the runner out of memory from
+        // inside a test.
+        let mut pending = PendingOutput::default();
+        pending.push(OutputEvent {
+            stream: String::from("stdout"),
+            test: None,
+            text: "x".repeat(MAX_OUTPUT_BYTES_PER_FILE - 1),
+        });
+        for _ in 0..10_000 {
+            pending.push(OutputEvent {
+                stream: String::from("stdout"),
+                test: None,
+                text: String::from("é"),
+            });
+        }
+
+        assert_eq!(pending.drain().len(), 1);
     }
 
     #[test]

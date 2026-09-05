@@ -192,6 +192,58 @@ describe("answering", () => {
     );
   });
 
+  it("does not hand one response to two requests that overlap", async () => {
+    // The one-time handler is reserved before its resolver is awaited. Without
+    // that, two requests in flight at the same time both find it unspent and
+    // both get the response it was written to give once.
+    await withMock(
+      [
+        http.get(
+          "https://api.test/token",
+          async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            return HttpResponse.json({ token: "first" });
+          },
+          { once: true },
+        ),
+        http.get("https://api.test/token", () => HttpResponse.json({ token: "second" })),
+      ],
+      undefined,
+      async () => {
+        const [one, two] = await Promise.all([
+          fetch("https://api.test/token").then((answer) => answer.json()),
+          fetch("https://api.test/token").then((answer) => answer.json()),
+        ]);
+
+        expect([one.token, two.token].sort()).toEqual(["first", "second"]);
+      },
+    );
+  });
+
+  it("puts a once handler back when its resolver declines", async () => {
+    // Reserving before the await must not spend a handler that then says the
+    // request was not its after all.
+    let asked = 0;
+    await withMock(
+      [
+        http.get(
+          "https://api.test/maybe",
+          () => {
+            asked += 1;
+            return asked === 1 ? null : HttpResponse.json({ from: "once" });
+          },
+          { once: true },
+        ),
+        http.get("https://api.test/maybe", () => HttpResponse.json({ from: "fallback" })),
+      ],
+      undefined,
+      async () => {
+        expect(await (await fetch("https://api.test/maybe")).json()).toEqual({ from: "fallback" });
+        expect(await (await fetch("https://api.test/maybe")).json()).toEqual({ from: "once" });
+      },
+    );
+  });
+
   it("spends a once handler and moves on to the next", async () => {
     await withMock(
       [

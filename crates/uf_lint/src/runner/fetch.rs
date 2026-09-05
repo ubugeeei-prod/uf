@@ -3,7 +3,7 @@
 
 use uf_config::UniflowedConfig;
 
-use crate::scan::{FileScan, in_string};
+use crate::scan::FileScan;
 use crate::{Diagnostic, push_in_code, severity};
 
 pub(crate) fn run_fetch_no_global_override(
@@ -22,7 +22,7 @@ pub(crate) fn run_fetch_no_global_override(
         let at = ["globalThis.fetch", "window.fetch", "global.fetch"]
             .into_iter()
             .filter_map(|needle| code.find(needle))
-            .find(|&at| !in_string(code, at));
+            .find(|&at| !line.in_string(at));
         if let Some(at) = at {
             push_in_code(
                 diagnostics,

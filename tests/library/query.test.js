@@ -22,6 +22,7 @@ import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import {
   CancelledError,
+  Mutation,
   Presence,
   QueryClient,
   QueryClientProvider,
@@ -1122,6 +1123,35 @@ describe("useMutation", () => {
     // A repeated write creates the second invoice. Retrying one is a decision
     // about idempotency that only the caller can make.
     expect(mutationFn.mock.calls.length).toBe(1);
+  });
+});
+
+describe("a mutation whose error callback throws", () => {
+  it("still leaves the mutation in the error state", async () => {
+    // A listener that throws is the caller's bug. A mutation left `pending`
+    // for ever because of it would be this package's, and a component showing
+    // a spinner has no way back from that.
+    const mutation = new Mutation();
+
+    let raised = "";
+    try {
+      await mutation.execute(undefined, {
+        mutationFn: async () => {
+          throw new Error("rejected");
+        },
+        onError: () => {
+          throw new Error("the callback is broken too");
+        },
+        retry: 0,
+        retryDelay: () => 0,
+      });
+    } catch (error) {
+      raised = String(error);
+    }
+
+    expect(raised).toContain("the callback is broken too");
+    expect(mutation.state.status).toBe("error");
+    expect(String(mutation.state.error)).toContain("rejected");
   });
 });
 

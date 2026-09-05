@@ -193,18 +193,26 @@ export function mock(...handlers: $ReadOnlyArray<MockHandler>): MockRegistry {
       if (params == null) {
         continue;
       }
+      // A one-time handler is spent *before* its resolver is awaited, not
+      // after. Two requests that arrive while an async resolver is in flight
+      // would otherwise both find it unspent and both get the one response it
+      // was written to give once.
+      if (handler.once) {
+        spent.add(handler);
+      }
       const answer = await handler.resolve({
         request,
         params,
         query: url.searchParams,
       });
       // Nothing back means "not mine after all": try the next handler rather
-      // than treating a silent resolver as an empty response.
+      // than treating a silent resolver as an empty response. It was not spent
+      // either, so it is put back for whatever asks next.
       if (answer == null) {
+        if (handler.once) {
+          spent.delete(handler);
+        }
         continue;
-      }
-      if (handler.once) {
-        spent.add(handler);
       }
       settle(true);
       return isPassthrough(answer) ? null : answer;

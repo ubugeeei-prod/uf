@@ -48,20 +48,23 @@ pub(crate) fn find_words<'a>(
 
 /// Whether the byte at `at` stands inside a string literal.
 ///
-/// [`crate::scan::Line::code`] keeps string literals on purpose —
-/// `uniflowed/no-npm-script-invocation` exists to read them — so a rule about
-/// what the code *does* has to ask before it fires. `const message = "no
-/// globalThis.fetch here"` overrides nothing, and `it("treats Object as any
-/// non-null object", …)` annotates nothing.
+/// `open` says whether the slice begins inside a backtick template, which is
+/// the state [`crate::scan::Line`] carries from the line above. Callers that
+/// have a `Line` should ask it rather than calling this directly.
 ///
-/// One line at a time, like every rule that reads a `Line`: a template literal
-/// that spans lines is understood as far as this line goes. A `${…}`
-/// substitution counts as string rather than as code, which errs towards
-/// silence — the direction a rule should err when it cannot tell.
-pub(crate) fn in_string(haystack: &str, at: usize) -> bool {
+/// Three things are quoted in JavaScript and only two of them are strings. A
+/// regular expression may contain a quote — `const pattern = /"/;` — and
+/// reading that quote as the start of a string would swallow the rest of the
+/// line, which is the direction that *hides* a real finding. So a `/` in a
+/// position where an expression cannot continue is read as a regex and skipped
+/// whole, character class and all.
+///
+/// The `${…}` of a template counts as string rather than as code, which errs
+/// towards silence: the direction to err in when a scanner cannot tell.
+pub(crate) fn in_string_from(haystack: &str, at: usize, open: bool) -> bool {
     let bytes = haystack.as_bytes();
     let end = at.min(bytes.len());
-    let mut quote: Option<u8> = None;
+    let mut quote: Option<u8> = if open { Some(b'`') } else { None };
     let mut index = 0;
     while index < end {
         let byte = bytes[index];
@@ -76,11 +79,73 @@ pub(crate) fn in_string(haystack: &str, at: usize) -> bool {
                 }
             }
             None if matches!(byte, b'"' | b'\'' | b'`') => quote = Some(byte),
+            None if byte == b'/' && starts_a_regex(bytes, index) => {
+                index = regex_end(bytes, index);
+                continue;
+            }
             None => {}
         }
         index += 1;
     }
     quote.is_some()
+}
+
+/// Whether the `/` at `index` opens a regular expression rather than divides.
+///
+/// The classic ambiguity, answered the way every line-at-a-time scanner
+/// answers it: a regex can only appear where an expression can *start*, so the
+/// question is what came before. `Line::code` has already removed `//` and
+/// `/* */`, which is the other half of the ambiguity and the harder half.
+fn starts_a_regex(bytes: &[u8], index: usize) -> bool {
+    let mut before = index;
+    while before > 0 && bytes[before - 1].is_ascii_whitespace() {
+        before -= 1;
+    }
+    if before == 0 {
+        return true;
+    }
+    matches!(
+        bytes[before - 1],
+        b'(' | b','
+            | b'='
+            | b':'
+            | b'['
+            | b'!'
+            | b'&'
+            | b'|'
+            | b'?'
+            | b'{'
+            | b'}'
+            | b';'
+            | b'+'
+            | b'-'
+            | b'*'
+            | b'%'
+            | b'^'
+            | b'~'
+            | b'<'
+            | b'>'
+    )
+}
+
+/// One past the closing `/` of the regex opening at `index`, or the end.
+///
+/// A `/` inside a character class is a literal slash, not the terminator —
+/// `/[/]/` is one regex — so classes are tracked while scanning for the close.
+fn regex_end(bytes: &[u8], index: usize) -> usize {
+    let mut at = index + 1;
+    let mut in_class = false;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at += 1,
+            b'[' => in_class = true,
+            b']' => in_class = false,
+            b'/' if !in_class => return at + 1,
+            _ => {}
+        }
+        at += 1;
+    }
+    bytes.len()
 }
 
 /// The next non-whitespace byte at or after `from`.

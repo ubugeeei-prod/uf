@@ -121,7 +121,7 @@ export function collectErrors(
 ): ResolverErrors {
   const errors: { [string]: FieldError, ... } = {};
   for (const issue of issues) {
-    if (!Object.prototype.hasOwnProperty.call(errors, issue.path)) {
+    if (!Object.hasOwn(errors, issue.path)) {
       // `defineProperty` rather than assignment: a field path comes from a
       // schema, and a schema describes data, and data can contain the key
       // `__proto__`. Assigning to it runs a setter instead of adding a key.
