@@ -144,16 +144,51 @@ fn read(relative: &Utf8Path) -> String {
 
 fn assert_exports(relative: &str, names: &[&str]) {
     let source = code_only(&read(Utf8Path::new(relative)));
+    let listed = exported_in_a_list(&source);
     for name in names {
         assert!(
             source.contains(&format!("export function {name}"))
                 || source.contains(&format!("export hook {name}"))
                 || source.contains(&format!("export const {name}"))
                 || source.contains(&format!("export opaque type {name}"))
-                || source.contains(&format!("export type {name}")),
+                || source.contains(&format!("export type {name}"))
+                || listed.contains(*name),
             "{relative} must export {name}"
         );
     }
+}
+
+/// Every name an `export { … }` or `export type { … }` list carries.
+///
+/// A package whose surface is one file declares its exports where it defines
+/// them; a package split by subject re-exports them from an `index.js` that
+/// defines nothing. Both are exports, and the second is the shape this
+/// repository is moving to — `@uniflowed/validator` and `@uniflowed/query`
+/// are already there.
+fn exported_in_a_list(source: &str) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    for (index, _) in source.match_indices("export ") {
+        let rest = source[index + "export ".len()..].trim_start();
+        let rest = rest.strip_prefix("type ").map_or(rest, str::trim_start);
+        let Some(open) = rest.strip_prefix('{') else {
+            continue;
+        };
+        let Some(close) = open.find('}') else {
+            continue;
+        };
+        for entry in open[..close].split(',') {
+            // `a as b` exports `b`; a bare `a` exports itself.
+            let name = entry
+                .split_whitespace()
+                .last()
+                .unwrap_or_default()
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+            if !name.is_empty() {
+                names.insert(name.to_owned());
+            }
+        }
+    }
+    names
 }
 
 /// Blank out comments and the bodies of string and template literals, keeping
@@ -1066,14 +1101,24 @@ fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
             if !declaration[open..].starts_with("<out ") {
                 continue;
             }
+            // The carrier the opaque type is *defined* as, checked in the
+            // module that declares it rather than against a list of names. A
+            // list grows every time a package earns a carrier of its own, and
+            // a name on it says nothing about whether the type behind it is
+            // covariant. The definition rather than the bound, because a bound
+            // is often a builtin — `Effect` is bounded by `$Iterable` and
+            // defined as `EffectCarrier`.
+            let carrier = carrier_of(declaration).unwrap_or_else(|| {
+                panic!(
+                    "{module} declares a covariant opaque type with no carrier, so `out` \
+                     promises more than the definition delivers: {}",
+                    declaration.trim()
+                )
+            });
             assert!(
-                declaration.contains("NativeHandleCovariant")
-                    || declaration.contains("EffectCarrier")
-                    || declaration.contains("FiberCarrier")
-                    || declaration.contains("TagCarrier")
-                    || declaration.contains("LayerCarrier"),
-                "{module} declares a covariant opaque type without a covariant \
-                 carrier, so `out` promises more than the definition delivers: {}",
+                code.contains(&format!("type {carrier}<out ")),
+                "{module} defines a covariant opaque type as {carrier}, which is not declared \
+                 covariant in the same module: {}",
                 declaration.trim()
             );
             covariant.push(module.clone());
@@ -1084,6 +1129,38 @@ fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
         !covariant.is_empty(),
         "expected at least one covariant opaque type in the shipped surface"
     );
+}
+
+/// The name of the type an `opaque type X<…> = Carrier<…>` is defined as.
+///
+/// The definition follows the `=` that comes after the type parameters and the
+/// bound, so the angle brackets have to be counted rather than searched for:
+/// `<out A, out E = empty>` holds an `=` that is not the one, and a bound may
+/// hold more.
+fn carrier_of(declaration: &str) -> Option<String> {
+    let bytes = declaration.as_bytes();
+    let mut at = declaration.find('<')?;
+    let mut depth = 0usize;
+    let mut definition = None;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'<' => depth += 1,
+            b'>' => depth = depth.saturating_sub(1),
+            // `=>` inside a function type in the bound is not the definition.
+            b'=' if depth == 0 && bytes.get(at + 1) != Some(&b'>') => {
+                definition = Some(at + 1);
+                break;
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    let name: String = declaration[definition?..]
+        .trim_start()
+        .chars()
+        .take_while(|character| character.is_alphanumeric() || *character == '_')
+        .collect();
+    (!name.is_empty()).then_some(name)
 }
 
 /// The shipped surface is written in the Flow of today, not the Flow of 2019.
