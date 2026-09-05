@@ -109,10 +109,42 @@ fn collects_source_files_and_ignores_generated_dirs() {
     fs::write(root.join("app/index.js"), "// @flow\n").unwrap();
     fs::write(root.join("dist/index.js"), "// built\n").unwrap();
 
-    let files = collect_source_files(&root, &UniflowedConfig::default()).unwrap();
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "app/index.js");
+}
+
+/// A file that is not UTF-8 is reported, and the rest of the project is
+/// still discovered.
+///
+/// One stray byte used to abort the walk. `uf fmt`, `uf lint`, `uf check` and
+/// `uf doc` all stopped at the first such file and left every other file in
+/// the project untouched — a build artifact or a vendored blob with a `.js`
+/// name was enough. See ubugeeei-prod/uf#164.
+#[test]
+fn a_source_that_is_not_utf8_is_reported_rather_than_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/ok.js"), "// @flow\n").unwrap();
+    // Sorted after `ok.js`, so a walk that stops at the first failure would
+    // still have found the readable one and this test would pass by accident.
+    fs::write(root.join("src/aaa.js"), [0xff, 0xfe, 0xfa]).unwrap();
+
+    let scan = scan_source_files(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(scan.files.len(), 1);
+    assert_eq!(scan.files[0].relative_path, "src/ok.js");
+    assert_eq!(scan.unreadable.len(), 1);
+    assert_eq!(scan.unreadable[0].relative_path, "src/aaa.js");
+    assert!(
+        scan.unreadable[0].reason.contains("UTF-8"),
+        "{}",
+        scan.unreadable[0].reason
+    );
 }
 
 #[test]
@@ -129,7 +161,9 @@ fn a_build_directory_is_ignored_wherever_it_sits() {
     fs::write(root.join("docs/dist/assets/app.js"), "// built\n").unwrap();
     fs::write(root.join("packages/ui/node_modules/dep.js"), "// vendor\n").unwrap();
 
-    let files = collect_source_files(&root, &UniflowedConfig::default()).unwrap();
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "docs/app/index.js");
@@ -147,7 +181,9 @@ fn a_nested_repository_is_not_this_project() {
     fs::write(root.join("app/index.js"), "// @flow\n").unwrap();
     fs::write(root.join("vendor/upstream/lib.js"), "// @flow\n").unwrap();
 
-    let files = collect_source_files(&root, &UniflowedConfig::default()).unwrap();
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "app/index.js");
@@ -168,7 +204,7 @@ fn an_ignore_entry_with_a_separator_still_means_one_place() {
     config.lint.ignore.push("app/generated".into());
     config.lint.files.push("lib".into());
 
-    let files = collect_source_files(&root, &config).unwrap();
+    let files = scan_source_files(&root, &config).unwrap().files;
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "lib/generated/keep.js");
