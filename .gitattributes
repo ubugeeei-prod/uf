@@ -1,0 +1,8 @@
+# The formatter's expectations are generated, not written:
+#
+#   prettier --parser hermes --plugin prettier-plugin-hermes-parser \
+#     --print-width 100 crates/uf_fmt/tests/fixtures/<name>.js
+#
+# Saying so collapses them in a diff, where the interesting half is the input
+# beside them, and keeps review tools from reading them as code somebody meant.
+crates/uf_fmt/tests/fixtures/*.expected.js linguist-generated=true
