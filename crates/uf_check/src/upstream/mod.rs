@@ -1,9 +1,11 @@
 //! The checker itself, driven from Meta's official Flow Rust port.
 //!
-//! This is `flow_dot_js_wasm`'s check path with three things changed: the
-//! builtin environment is merged once and shared, the work runs on a thread
-//! with enough stack for user-controlled recursion, and the result comes back
-//! as [`TypeDiagnostic`]s instead of JSON.
+//! This is `flow_dot_js_wasm`'s check path with four things changed: the
+//! builtin environment is merged once and shared, an import of another file in
+//! the batch resolves to that file's signature the way
+//! `flow_services_inference` resolves one to the heap's (see [`project`]), the
+//! work runs on a thread with enough stack for user-controlled recursion, and
+//! the result comes back as [`TypeDiagnostic`]s instead of JSON.
 //!
 //! Nothing below this module is allowed to leak upstream's types: everything
 //! the crate exposes is `uf`'s own, so the shape of the port stays an
@@ -24,35 +26,35 @@ mod convert;
 mod environments;
 mod options;
 mod parse;
+mod project;
+mod resolve;
 
-use std::cell::{LazyCell, RefCell};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
 use compact_str::{CompactString, ToCompactString};
-use dupe::Dupe;
-use flow_aloc::{ALoc, ALocTable};
-use flow_common::flow_import_specifier::{FlowImportSpecifier, Userland};
+use dupe::{Dupe, OptionDupedExt};
+use flow_aloc::{ALoc, LazyALocTable, aloc_representation_do_not_use};
 use flow_common::options::Options;
 use flow_common_errors::error_utils::ConcreteLocPrintableErrorSet;
 use flow_parser::ast;
 use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::{LOC_NONE, Loc};
 use flow_typing::{merge, type_inference};
-use flow_typing_context::{Context, MasterContext, ResolvedRequire};
+use flow_typing_context::Context;
 use flow_typing_errors::error_message::ErrorMessage;
 use flow_typing_errors::error_suppressions::ErrorSuppressions;
 use flow_typing_errors::flow_error::ErrorSet;
 use flow_typing_errors::{flow_error, intermediate_error};
-use flow_typing_type::type_::{ModuleType, Type};
 use flow_utils_concurrency::check_budget::CheckBudget;
 use flow_utils_concurrency::job_error::JobError;
 
 use crate::diagnostic::TypeDiagnostic;
 use crate::limits::CHECK_STACK_BYTES;
+use crate::upstream::project::{MkBuiltins, ProjectModules};
 use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
 
 /// The absolute root every Flow path is resolved against.
@@ -117,24 +119,49 @@ fn check_batch(sources: &[Source<'_>], limits: &CheckLimits) -> Result<CheckRepo
     let builtins = builtins::prepare()?;
     let master_cx = builtins::master_context()?;
     let options = options::options(limits);
-    let untyped: UntypedModules = Rc::new(RefCell::new(BTreeSet::new()));
+    // One builtin environment for the batch, made from the metadata a file has
+    // before its own docblock is applied — `mk_check_file` keeps exactly this
+    // one and hands it to every file it checks. Per file it would be both
+    // wasted work and wrong: a type crossing a module boundary is compared
+    // against the importer's builtins, and two independent merges of `core.js`
+    // do not agree on `Array`.
+    let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
+    let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
+    let modules = Rc::new(ProjectModules::new(
+        sources,
+        options.clone(),
+        mk_builtins.dupe(),
+        limits,
+    ));
 
     let started = Instant::now();
     let mut diagnostics = Vec::new();
     let mut skipped = 0usize;
-    for source in sources {
-        let outcome = check_one(&master_cx, &options, limits, source, &untyped)?;
-        if outcome.skipped {
-            skipped += 1;
+    let mut result = Ok(());
+    for (index, source) in sources.iter().enumerate() {
+        match check_one(index, &options, &mk_builtins, limits, source, &modules) {
+            Ok(outcome) => {
+                if outcome.skipped {
+                    skipped += 1;
+                }
+                diagnostics.extend(outcome.diagnostics);
+            }
+            Err(error) => {
+                result = Err(error);
+                break;
+            }
         }
-        diagnostics.extend(outcome.diagnostics);
     }
+    // Whatever happened, the merged dependencies hold this batch alive through
+    // their own resolvers; letting them go is not optional.
+    modules.release();
+    result?;
 
     Ok(CheckReport {
         diagnostics,
         files_checked: sources.len() - skipped,
         files_skipped: skipped,
-        untyped_modules: untyped.borrow().iter().cloned().collect(),
+        untyped_modules: modules.untyped_modules(),
         builtins,
         elapsed: started.elapsed(),
     })
@@ -148,18 +175,13 @@ struct FileOutcome {
     skipped: bool,
 }
 
-/// Module specifiers that resolved to nothing typed, shared across a batch.
-///
-/// A `BTreeSet` rather than a counter: the same import in twenty files is one
-/// hole, not twenty, and the sorted order keeps the report deterministic.
-type UntypedModules = Rc<RefCell<BTreeSet<CompactString>>>;
-
 fn check_one(
-    master_cx: &Arc<MasterContext>,
+    index: usize,
     options: &Options,
+    mk_builtins: &MkBuiltins,
     limits: &CheckLimits,
     source: &Source<'_>,
-    untyped: &UntypedModules,
+    modules: &Rc<ProjectModules>,
 ) -> Result<FileOutcome, CheckError> {
     // Checked before the parser sees the text: the AST alone is several times
     // the size of the source, so an unbounded file is an unbounded allocation.
@@ -201,18 +223,18 @@ fn check_one(
         &options.strict_mode,
         options.lint_severities.clone(),
     );
-    let aloc_table = Rc::new(LazyCell::new(Box::new({
-        let file_key = file_key.dupe();
-        move || Rc::new(ALocTable::empty(file_key))
-    }) as Box<dyn FnOnce() -> Rc<ALocTable>>));
+    // The table this file's own signature was packed with, not an empty one:
+    // it is what makes a class defined here the same class an importing file
+    // sees. See `ProjectModules::aloc_table_for`.
+    let aloc_table = modules.aloc_table_for(index, &parsed);
     let cx = Context::make(
         Rc::new(flow_typing_context::make_ccx()),
         metadata.clone(),
         file_key.dupe(),
         Arc::default(),
         aloc_table,
-        resolve_require(file_key, untyped),
-        merge::mk_builtins(&metadata, master_cx),
+        modules.resolver(source.path),
+        mk_builtins.dupe(),
         CheckBudget::new(limits.file_timeout),
     );
     cx.set_merge_dst_cx(&cx);
@@ -230,7 +252,7 @@ fn check_one(
     )
     .map_err(|error| job_error(source.path, error))?;
 
-    let (errors, warnings) = suppressed(&cx, &parsed, cx.errors());
+    let (errors, warnings) = suppressed(&cx, &parsed, cx.errors(), modules);
     Ok(FileOutcome {
         diagnostics: convert::diagnostics(&errors, &warnings, source.path),
         skipped: false,
@@ -253,55 +275,6 @@ fn job_error(path: &str, error: JobError) -> CheckError {
     }
 }
 
-/// The resolver a file's context looks imports up through.
-type Resolver = Rc<dyn Fn(&Context<'static>, &FlowImportSpecifier) -> ResolvedRequire<'static>>;
-
-/// Resolve an `import` against the builtin `declare module` blocks.
-///
-/// What this gives the checker is Flow's standard library — `react`,
-/// `react-dom`, and everything else the library definitions declare. Anything
-/// else resolves to an *unchecked* module rather than a missing one, exactly as
-/// `flow_services_inference`'s own `unchecked_module_t` does for a dependency
-/// Flow cannot type: the import becomes `any` and the file still checks.
-///
-/// Reporting those as missing instead would be a lie — the modules exist, `uf`
-/// simply does not merge signatures across files yet — and would bury every
-/// real type error under one `cannot-resolve-module` per import. The names are
-/// recorded in [`CheckReport::untyped_modules`] so the gap is stated rather
-/// than hidden.
-fn resolve_require(file_key: FileKey, untyped: &UntypedModules) -> Resolver {
-    let untyped = Rc::clone(untyped);
-    Rc::new(
-        move |cx: &Context<'static>, specifier: &FlowImportSpecifier| match specifier {
-            FlowImportSpecifier::Userland(userland) => match typed_builtin_module(cx, userland) {
-                Some(module) => ResolvedRequire::TypedModule(module),
-                None => {
-                    untyped
-                        .borrow_mut()
-                        .insert(userland.as_str().to_compact_string());
-                    ResolvedRequire::UncheckedModule(ALoc::of_loc(Loc {
-                        source: Some(file_key.dupe()),
-                        ..LOC_NONE
-                    }))
-                }
-            },
-        },
-    )
-}
-
-type TypedModule<'cx> = Rc<dyn Fn(&Context<'cx>, &Context<'cx>) -> Result<ModuleType, Type> + 'cx>;
-
-fn typed_builtin_module<'cx>(cx: &Context<'cx>, name: &Userland) -> Option<TypedModule<'cx>> {
-    cx.builtin_module_opt(name).map(|(reason, lazy_module)| {
-        let forcing_state =
-            flow_typing_type::type_::constraint::forcing_state::ModuleTypeForcingState::of_lazy_module(
-                reason,
-                lazy_module,
-            );
-        flow_typing_utils::annotation_inference::force_module_type_thunk(cx.dupe(), forcing_state)
-    })
-}
-
 fn parse_error_set(parsed: &parse::Parsed) -> ErrorSet {
     let mut errors = ErrorSet::empty();
     for (loc, error) in parsed.parse_errors.iter().cloned() {
@@ -317,12 +290,47 @@ fn printable(parsed: &parse::Parsed, errors: ErrorSet) -> ConcreteLocPrintableEr
     let ast = parsed.ast.dupe();
     let file_key = parsed.file_key.dupe();
     intermediate_error::make_errors_printable(
-        |aloc: &ALoc| aloc.to_loc_exn().dupe(),
+        // Parse errors carry the parser's own concrete locations, so there is
+        // no table to look anything up in.
+        |aloc: &ALoc| concrete_loc(aloc),
         move |requested: &FileKey| (requested == &file_key).then(|| ast.dupe()),
         Some(Path::new(VIRTUAL_ROOT)),
         errors,
         FileKey::is_lib_file,
     )
+}
+
+/// Turn an abstract location into a concrete one, with every file's table.
+///
+/// Merging a dependency's signature produces *keyed* locations: an index into
+/// the table that dependency was packed with, rather than a line and a column.
+/// One of those reaches a diagnostic whenever an error about the importing file
+/// points at where the imported thing was declared, and resolving it needs the
+/// table that made it — which is why the batch keeps every table it built. This
+/// is `flow_cli`'s `make_loc_of_aloc` with the batch standing in for the heap.
+fn loc_of_aloc(tables: &HashMap<FileKey, LazyALocTable>, aloc: &ALoc) -> Loc {
+    match aloc.source().and_then(|source| tables.get(source)) {
+        Some(table) => aloc.to_loc(table),
+        None => concrete_loc(aloc),
+    }
+}
+
+/// An abstract location that is already concrete, or a bare reference to its
+/// file when it is not.
+///
+/// `ALoc::to_loc_exn` *panics* on a keyed location, which would turn "uf built
+/// no table for this file" into an abort during error rendering. Naming the
+/// file without a position is worse than the real location and better than
+/// losing the diagnostic.
+fn concrete_loc(aloc: &ALoc) -> Loc {
+    if aloc_representation_do_not_use::is_keyed(aloc) {
+        Loc {
+            source: aloc.source().duped(),
+            ..LOC_NONE
+        }
+    } else {
+        aloc.to_loc_exn().dupe()
+    }
 }
 
 /// Split lints by severity and drop anything a suppression comment covers.
@@ -334,17 +342,19 @@ fn suppressed(
     cx: &Context<'_>,
     parsed: &parse::Parsed,
     errors: ErrorSet,
+    modules: &ProjectModules,
 ) -> (ConcreteLocPrintableErrorSet, ConcreteLocPrintableErrorSet) {
     let mut suppressions = cx.take_error_suppressions();
     let severity_cover = cx.severity_cover();
     let include_suppressions = cx.include_suppressions();
-    let aloc_tables = cx.aloc_tables();
+    // The batch's tables, not `cx.aloc_tables()`: a dependency is merged in its
+    // own component context, so its table is not in this file's.
+    let aloc_tables = modules.aloc_tables();
     let (errors, warnings) =
         suppressions.filter_lints(errors, &aloc_tables, include_suppressions, &severity_cover);
-    drop(aloc_tables);
     drop(severity_cover);
 
-    let loc_of_aloc = |aloc: &ALoc| aloc.to_loc_exn().dupe();
+    let loc_of_aloc = |aloc: &ALoc| loc_of_aloc(&aloc_tables, aloc);
     let file_key = parsed.file_key.dupe();
     let ast = parsed.ast.dupe();
     let get_ast = move |requested: &FileKey| (requested == &file_key).then(|| ast.dupe());
