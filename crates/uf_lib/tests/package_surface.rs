@@ -165,8 +165,8 @@ fn assert_exports(relative: &str, names: &[&str]) {
 /// defines nothing. Both are exports, and the second is the shape this
 /// repository is moving to — `@uniflowed/validator` and `@uniflowed/query`
 /// are already there.
-fn exported_in_a_list(source: &str) -> std::collections::HashSet<String> {
-    let mut names = std::collections::HashSet::new();
+fn exported_in_a_list(source: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
     for (index, _) in source.match_indices("export ") {
         let rest = source[index + "export ".len()..].trim_start();
         let rest = rest.strip_prefix("type ").map_or(rest, str::trim_start);
