@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/react-native",
-  "version": "0.0.0-alpha.3",
+  "version": "0.0.0-alpha.4",
   "description": "Flow declarations for @uniflowed/react-native, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.3",
-    "@uniflowed/react": "0.0.0-alpha.3"
+    "@uniflowed/core": "0.0.0-alpha.4",
+    "@uniflowed/react": "0.0.0-alpha.4"
   }
 }
