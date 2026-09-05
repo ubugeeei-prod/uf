@@ -5,6 +5,7 @@
 //! primitives it draws with live in `uf_term`.
 
 mod brand;
+mod changelog;
 mod cli;
 mod commands;
 mod menu;
