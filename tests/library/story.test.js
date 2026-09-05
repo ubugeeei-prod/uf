@@ -295,6 +295,24 @@ describe("findStory", () => {
   it("says what the set does hold when it does not hold that", () => {
     expect(() => findStory(badges, "Danger")).toThrow("Neutral, Warning");
   });
+
+  it("prefers a key over another story's name", () => {
+    // One story's name is another story's key. Answering with whichever came
+    // first in the file mounts the wrong component, and the test that asked
+    // for it says nothing about why.
+    const ambiguous = defineStories({
+      title: "Alert",
+      component: Badge,
+      props: { tone: "neutral" },
+      stories: {
+        Quiet: { name: "Loud" },
+        Loud: {},
+      },
+    });
+
+    expect(findStory(ambiguous, "Loud").key).toBe("Loud");
+    expect(findStory(ambiguous, "Quiet").key).toBe("Quiet");
+  });
 });
 
 // --- Collecting --------------------------------------------------------
@@ -593,6 +611,22 @@ describe("a story's mocked requests", () => {
       expect(mounted.requests.map((request) => request.pathname)).toEqual(["/users/7"]);
     } finally {
       mounted.unmount();
+    }
+  });
+
+  it("mounts a second story with mocks after a first that was never unmounted", async () => {
+    // A test that mounts and asserts without unmounting is the ordinary
+    // shape, and `installFetch` refuses to nest — so the second story's
+    // `listen()` threw, with a message about interception rather than about
+    // the story.
+    const first = mountStory(findStory(profiles, "Loaded"));
+    expect(await first.canvas.findByText("user 42")).toBeTruthy();
+
+    const second = mountStory(findStory(profiles, "Missing"));
+    try {
+      expect(await second.canvas.findByRole("alert")).toBeTruthy();
+    } finally {
+      second.unmount();
     }
   });
 

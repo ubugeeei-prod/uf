@@ -278,7 +278,13 @@ export function isStorySet(value: mixed): boolean {
  * rather than in the test.
  */
 export function findStory(set: StorySet, key: string): Story {
-  const found = set.stories.find((story) => story.key === key || story.name === key);
+  // A key first, then a name. Both are looked up because a story's name is
+  // what a report prints and a key is what the file says — but a set where
+  // one story's *name* is another story's *key* would otherwise answer with
+  // whichever came first in the file, and mount the wrong component.
+  const found =
+    set.stories.find((story) => story.key === key) ??
+    set.stories.find((story) => story.name === key);
   if (found == null) {
     const known = set.stories.map((story) => story.key).join(", ");
     throw new Error(`@uniflowed/story: ${set.title} has no story ${key}; it has ${known}`);

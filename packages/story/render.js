@@ -50,7 +50,7 @@
 // theme outside router, and that is what it does.
 
 import { mock } from "@uniflowed/mock";
-import type { RecordedRequest } from "@uniflowed/mock";
+import type { MockRegistry, RecordedRequest } from "@uniflowed/mock";
 import type * as React from "@uniflowed/react";
 import type { Queries } from "@uniflowed/react-testing";
 import { render } from "@uniflowed/react-testing";
@@ -100,10 +100,26 @@ export type MountedStory = {|
  * "there is one Save button" false for reasons that have nothing to do with
  * the story being read.
  */
+/**
+ * The registry the last mounted story installed, if it had one.
+ *
+ * `installFetch` refuses to nest, so a second story with mocks cannot listen
+ * while the first is still listening — and a test that mounts and asserts
+ * without unmounting is the ordinary shape, so "the caller will unmount" is
+ * not something this can rely on. Mounting closes whatever is still
+ * installed, exactly as `@uniflowed/react-testing` takes down the tree the
+ * story before it left.
+ */
+let active: MockRegistry | null = null;
+
 export function mountStory(story: Story): MountedStory {
+  active?.close();
+  active = null;
+
   const registry = story.mocks.length > 0 ? mock(...story.mocks) : null;
   if (registry != null) {
     registry.listen();
+    active = registry;
   }
 
   let result;
@@ -116,6 +132,9 @@ export function mountStory(story: Story): MountedStory {
     // `listen()` refuses to nest — so the next mount would fail with an
     // unrelated message.
     registry?.close();
+    if (active === registry) {
+      active = null;
+    }
     throw error;
   }
 
@@ -140,6 +159,11 @@ export function mountStory(story: Story): MountedStory {
       live = false;
       result.unmount();
       registry?.close();
+      // Only when it is still this story's: a late unmount must not take away
+      // the registry a story mounted afterwards is using.
+      if (active === registry) {
+        active = null;
+      }
     },
   };
 }

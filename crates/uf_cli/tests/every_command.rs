@@ -457,6 +457,19 @@ fn an_unreadable_path_fails_the_run_and_the_rest_is_still_done() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = without_a_config();
+    // A mode of `0o000` does not stop a process with `CAP_DAC_OVERRIDE` —
+    // root in a container, which is how some CI images run. Asserting anyway
+    // would make a correct scanner look broken there, so the test asks first.
+    let probe = dir.path().join("src/probe.js");
+    fs::write(&probe, "// @flow\n").expect("a probe");
+    let enforced = fs::set_permissions(&probe, fs::Permissions::from_mode(0o000)).is_ok()
+        && fs::read_to_string(&probe).is_err();
+    let _ = fs::set_permissions(&probe, fs::Permissions::from_mode(0o644));
+    fs::remove_file(&probe).expect("to take the probe away");
+    if !enforced {
+        return;
+    }
+
     fs::write(dir.path().join("src/blob.js"), [0xff, 0xfe, 0xfa]).expect("a source that is bytes");
     fs::create_dir_all(dir.path().join("src/secret")).expect("a directory");
     fs::write(dir.path().join("src/secret/hidden.js"), "// @flow\n").expect("a source");

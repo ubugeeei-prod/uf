@@ -140,11 +140,13 @@ fn both_templates_ignore_what_uf_generates() {
                 "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
             );
         }
-        // Two more that no ignore list knows about. `router.js` is generated
-        // Flow that looks hand-written — this repository ignores its own
-        // `docs/router.js` for the same reason — and `.uniflowed/` is where
-        // `uf env use` records the active environment.
+        // Three more that no ignore list knows about. `router.js` and
+        // `server-actions.js` are generated Flow that looks hand-written —
+        // this repository ignores its own `docs/router.js` for the same
+        // reason — and `.uniflowed/` is where `uf env use` records the active
+        // environment.
         assert!(named("router.js"), "{kind:?}:\n{ignored}");
+        assert!(named("server-actions.js"), "{kind:?}:\n{ignored}");
         assert!(named(".uniflowed"), "{kind:?}:\n{ignored}");
     }
 }
@@ -687,6 +689,25 @@ fn a_name_nobody_would_type_is_still_discovered_whole() {
     assert_eq!(found, expected);
 }
 
+/// Whether a mode of `0o000` actually stops this process reading a path.
+///
+/// It does not for a process with `CAP_DAC_OVERRIDE` — root in a container,
+/// which is how some CI images run. The permission tests would then fail while
+/// the scanner is right, which is the worst kind of red: a correct change
+/// looks broken. So they ask first and assert what they can.
+fn permissions_are_enforced(dir: &Utf8Path) -> bool {
+    let probe = dir.join(".permission-probe");
+    if fs::write(probe.as_std_path(), "probe").is_err() {
+        return false;
+    }
+    let locked = fs::set_permissions(probe.as_std_path(), fs::Permissions::from_mode(0o000))
+        .is_ok()
+        && fs::read_to_string(probe.as_std_path()).is_err();
+    let _ = fs::set_permissions(probe.as_std_path(), fs::Permissions::from_mode(0o644));
+    let _ = fs::remove_file(probe.as_std_path());
+    locked
+}
+
 /// A file uf can see and cannot open is reported, and the walk goes on.
 ///
 /// The permission case is the one that can be built on purpose; a file deleted
@@ -695,6 +716,9 @@ fn a_name_nobody_would_type_is_still_discovered_whole() {
 #[test]
 fn a_file_that_cannot_be_opened_is_reported_and_the_walk_goes_on() {
     let (_dir, root) = project_root();
+    if !permissions_are_enforced(&root) {
+        return;
+    }
     write(&root, "src/aaa.js", "// @flow\n");
     write(&root, "src/locked.js", "// @flow\n");
     write(&root, "src/zzz.js", "// @flow\n");
@@ -732,6 +756,9 @@ fn a_file_that_cannot_be_opened_is_reported_and_the_walk_goes_on() {
 #[test]
 fn a_directory_that_cannot_be_opened_is_reported_rather_than_ending_the_walk() {
     let (_dir, root) = project_root();
+    if !permissions_are_enforced(&root) {
+        return;
+    }
     write(&root, "src/app.js", "// @flow\n");
     write(&root, "secret/hidden.js", "// @flow\n");
     // Sorted after `secret`, so a walk that stopped at the error would still
