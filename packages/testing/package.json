@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/testing",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "The test API under its other name: every binding re-exported from @uniflowed/test.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/react-testing": "0.0.0-alpha.2",
-    "@uniflowed/test": "0.0.0-alpha.2"
+    "@uniflowed/react-testing": "0.0.0-alpha.3",
+    "@uniflowed/test": "0.0.0-alpha.3"
   }
 }

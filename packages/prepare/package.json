@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/prepare",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "Flow declarations for @uniflowed/prepare, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,6 +17,6 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.2"
+    "@uniflowed/core": "0.0.0-alpha.3"
   }
 }
