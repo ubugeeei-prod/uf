@@ -1000,6 +1000,37 @@ fn creating_a_library_suggests_running_its_tests() {
     assert!(stdout.contains("3. uf test"));
 }
 
+/// A scaffolded project passes uf's own linter.
+///
+/// It did not. `uf create app react` wrote `export default component Page()`
+/// and `export default component Counter()`, and uf's own
+/// `react/no-default-export-component` warned about both — "framework routes
+/// are wired by name; export components with a named export" — on the very
+/// first command a new project runs. The layout in the same template already
+/// used a named export, and `@uniflowed/router` documents the named `Page` as
+/// what `uf create` scaffolds, so the two files were the odd ones out.
+///
+/// A starter that trips the toolchain's own rules teaches the rules are
+/// noise.
+#[test]
+fn a_scaffolded_project_lints_clean() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    create_app(&app);
+
+    let output = uf().arg("--cwd").arg(&app).arg("lint").output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        output.status.success(),
+        "uf lint on a new project:\n{stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("no problems"), "{stdout}");
+    assert!(stdout.contains("warnings       0"), "{stdout}");
+    assert!(stdout.contains("errors         0"), "{stdout}");
+}
+
 #[test]
 fn creating_over_an_existing_project_reports_the_conflict_on_stderr() {
     let dir = tempfile::tempdir().unwrap();
