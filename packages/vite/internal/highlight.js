@@ -26,17 +26,47 @@ import rehypeShiki from "@shikijs/rehype";
 /**
  * Flow's declaration keywords, which a JavaScript grammar reads as names.
  *
- * Whole words only, so `components`, `matcher` and `hooks` stay identifiers,
- * and never after a dot, so `text.match(…)` and `list.hook` are left alone.
- * The grammar splits a line into tokens wherever it likes — `match` arrives at
- * the end of its own token, with the `(` that follows it in the next one — so
- * the rule has to be decidable from the characters around the word alone,
- * which is why it looks behind rather than ahead.
+ * Whole words only, so `components`, `matcher` and `hooks` stay identifiers.
+ *
+ * # Why the context is not in this pattern
+ *
+ * It used to be: a `(?<![.\w$])` look-behind was supposed to leave
+ * `text.match(…)` alone. It does not, and cannot, because the grammar splits
+ * a line into tokens wherever it likes and the look-behind only ever sees
+ * the token it is matching inside. Given `text.` and `match` as two tokens —
+ * which is exactly what happens — the look-behind is at the start of a
+ * string and matches happily, and `text.match(re)` came out with `match`
+ * coloured as a keyword. `{ hook: 1 }` had the same problem from the other
+ * side.
+ *
+ * So the pattern finds candidates and {@link isKeywordAt} decides, against
+ * the whole line. `tokens` is given the line, so the context is there; it
+ * was only ever the per-token matching that threw it away.
  *
  * `enum` is not here: every JavaScript grammar already treats it as a keyword.
  */
 const FLOW_KEYWORD_PATTERN =
-  /(?<![.\w$])(?:component|hook|renders|match|opaque|mixed|empty)(?![\w$])/g;
+  /(?<![\w$])(?:component|hook|renders|match|opaque|mixed|empty)(?![\w$])/g;
+
+/**
+ * Whether the candidate at `[start, end)` in `line` is really a keyword.
+ *
+ * Two rejections, both from real code in this repository's own
+ * documentation:
+ *
+ * * **After a dot.** `text.match(re)`, `list.hook`. A member name is never a
+ *   declaration keyword.
+ * * **Before a colon.** `{ hook: 1 }`, `{ +renders: Node }`. A property name
+ *   is not either, in a value or in a type.
+ */
+function isKeywordAt(line, start, end) {
+  const before = line.slice(0, start).trimEnd();
+  if (before.endsWith(".") || before.endsWith("?.")) {
+    return false;
+  }
+  const after = line.slice(end).trimStart();
+  return !after.startsWith(":");
+}
 
 /**
  * The languages a documentation page actually uses.
@@ -91,10 +121,10 @@ function flowKeywords() {
   return {
     name: "uf:flow-keywords",
     tokens(lines) {
-      return lines.map((line) => line.flatMap(split));
+      return lines.map(markLine);
     },
     span(node, _line, _col, _lineElement, token) {
-      if (!isFlowKeyword(token.content)) {
+      if (token[KEYWORD_FLAG] !== true) {
         return;
       }
       const existing = node.properties.class;
@@ -106,46 +136,83 @@ function flowKeywords() {
 /** The class a Flow keyword's span carries. */
 const KEYWORD_CLASS = "uf-flow-keyword";
 
-/** Whether a token is exactly one Flow keyword, after splitting. */
-function isFlowKeyword(content) {
-  return [...content.matchAll(FLOW_KEYWORD_PATTERN)].some(
-    (match) => match[0].length === content.length,
-  );
+/**
+ * The mark `tokens` leaves for `span` to read.
+ *
+ * A flag rather than re-deciding in `span`, because `span` is given one token
+ * and the decision needs the line. Deciding once, where the context is, is
+ * also the only way the two can never disagree.
+ */
+const KEYWORD_FLAG = Symbol.for("uf.flowKeyword");
+
+/**
+ * One line of tokens, split around the Flow keywords in it.
+ *
+ * Exported because it is where the whole decision lives and it is testable
+ * without starting Shiki: give it the token split a grammar would produce
+ * and it says which words it marked. `tests/library/highlight.test.js` uses
+ * exactly that, and the splits in it are the ones that had bugs.
+ *
+ * The line is reassembled from its tokens so that {@link isKeywordAt} can see
+ * across the boundaries the grammar happened to draw, and the resulting
+ * offsets are line-relative for exactly as long as it takes to slice the
+ * tokens up again.
+ */
+export function markLine(line) {
+  const text = line.map((token) => token.content).join("");
+  const keywords = [];
+  for (const match of text.matchAll(FLOW_KEYWORD_PATTERN)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    if (isKeywordAt(text, start, end)) {
+      keywords.push([start, end]);
+    }
+  }
+  if (keywords.length === 0) {
+    return line;
+  }
+
+  const out = [];
+  let at = 0;
+  for (const token of line) {
+    const start = at;
+    const end = at + token.content.length;
+    at = end;
+
+    // The cut points inside this token, in order.
+    const cuts = [];
+    for (const [from, to] of keywords) {
+      if (from < end && to > start) {
+        cuts.push([Math.max(from, start), Math.min(to, end)]);
+      }
+    }
+    if (cuts.length === 0) {
+      out.push(token);
+      continue;
+    }
+
+    let index = start;
+    for (const [from, to] of cuts) {
+      if (from > index) {
+        out.push(piece(token, text.slice(index, from), index - start));
+      }
+      out.push({ ...piece(token, text.slice(from, to), from - start), [KEYWORD_FLAG]: true });
+      index = to;
+    }
+    if (index < end) {
+      out.push(piece(token, text.slice(index, end), index - start));
+    }
+  }
+  return out;
 }
 
 /**
- * One token, split around any Flow keyword inside it.
+ * A slice of one token.
  *
  * `offset` is carried through for every piece, because Shiki and any other
  * transformer use it to map a token back to the source; a piece with the wrong
  * offset breaks anything that reads positions, such as line highlighting.
  */
-function split(token) {
-  const text = token.content;
-  // `matchAll` works on its own copy of the pattern. `test` would not: on a
-  // global regex it advances `lastIndex`, so every second call would start
-  // partway through an unrelated string and miss.
-  const matches = text.length === 0 ? [] : [...text.matchAll(FLOW_KEYWORD_PATTERN)];
-  if (matches.length === 0) {
-    return [token];
-  }
-
-  const pieces = [];
-  let index = 0;
-  for (const match of matches) {
-    const at = match.index ?? 0;
-    if (at > index) {
-      pieces.push(piece(token, text.slice(index, at), index));
-    }
-    pieces.push(piece(token, match[0], at));
-    index = at + match[0].length;
-  }
-  if (index < text.length) {
-    pieces.push(piece(token, text.slice(index), index));
-  }
-  return pieces;
-}
-
 function piece(token, content, at) {
   return {
     ...token,
