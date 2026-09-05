@@ -276,14 +276,24 @@ impl<'a> Printer<'a> {
                 // An `interface { … }` type has no name, so the only thing
                 // that can make its heritage start a line is having more
                 // than one target.
-                let group_mode = inner.extends.len() > 1;
-                let extends = self.print_interface_extends_list(&inner.extends, key, group_mode);
+                let extends = self.print_interface_extends_list(&inner.extends, key);
+                // An object type, not an interface body. `interface { … }` in
+                // a type position separates its members with `,` and stays on
+                // one line when it fits; the `;` and the line per member
+                // belong to the *declaration*. See ubugeeei-prod/uf#151.
                 let body = self.print_object_type(
                     &inner.body.1,
                     NodeRef::ObjectType(&inner.body.0, &inner.body.1),
-                    true,
+                    false,
                 );
-                self.concat([self.s("interface"), extends, self.s(" "), body])
+                // An `interface { … }` type has no name to hang a comment
+                // on, so heritage is the only thing that can make it group.
+                let head = if inner.extends.is_empty() {
+                    self.s("interface")
+                } else {
+                    self.group(self.indent(self.concat([self.s("interface"), extends])))
+                };
+                self.concat([head, self.s(" "), body])
             }
             T::Array { inner, .. } => {
                 let argument = self.print_type(&inner.argument);
@@ -951,22 +961,58 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// `: T`, with the annotation node's comments.
+    /// `: T`, or `/*: T */` when that is how it was written, with the
+    /// annotation node's comments.
     pub fn print_type_annotation(
         &mut self,
         annotation: &'a types::Annotation<Loc, Loc>,
     ) -> Doc<'a> {
         let node = NodeRef::Annotation(annotation);
         let has_leading = self.has_comment_placed(node.key(), Placement::Leading);
-        let printed = self.print_node(node, |p| {
-            let ty = p.print_type(&annotation.annotation);
-            p.concat([p.s(": "), ty])
+        let comment_form = self.comment_type_source(&annotation.loc);
+        let printed = self.print_node(node, |p| match comment_form {
+            Some(raw) => p.replace_end_of_line(raw),
+            None => {
+                let ty = p.print_type(&annotation.annotation);
+                p.concat([p.s(": "), ty])
+            }
         });
-        if has_leading {
+        if has_leading || comment_form.is_some() {
             self.concat([self.s(" "), printed])
         } else {
             printed
         }
+    }
+
+    /// The source of an annotation written as one of Flow's comment types,
+    /// `/*` to `*/`, or [`None`] when it was written as ordinary syntax.
+    ///
+    /// Flow's parser lexes `/*: string */` as an ordinary annotation and the
+    /// tree records nothing to say where it came from — but the *location*
+    /// does: an annotation written in a comment starts at the `/*` rather
+    /// than at the `:`. That is exact, and it is where Prettier decides the
+    /// same thing.
+    ///
+    /// The bytes come back untouched, which is also what Prettier does:
+    /// `/*: {[string]: string} */` keeps its spacing where a real annotation
+    /// would be re-printed as `{ [string]: string }`. Reformatting inside the
+    /// comment would be a second, quieter way of the same bug — the text is a
+    /// comment to every tool that is not Flow.
+    ///
+    /// Preserving the form at all matters because it is the whole point of
+    /// the syntax: a file can carry annotations *and* run under bare `node`.
+    /// React Native has a build script that does, and after `uf fmt` it
+    /// needed a compiler. See ubugeeei-prod/uf#126.
+    fn comment_type_source(&self, loc: &Loc) -> Option<&'a str> {
+        let span = self.text.span(loc);
+        let source = self.text.text();
+        if !source.get(span.start..)?.starts_with("/*") {
+            return None;
+        }
+        // The location stops before the closing delimiter. A block comment
+        // does not nest, so the next `*/` is this one's.
+        let close = source.get(span.end..)?.find("*/")? + span.end + 2;
+        source.get(span.start..close)
     }
 
     /// `<T, U>` on a declaration, or nothing.
@@ -1223,23 +1269,24 @@ impl<'a> Printer<'a> {
         parts.push(self.s(" "));
         parts.push(id);
         parts.push(self.print_optional_type_params(interface.tparams.as_ref()));
-        let group_mode = self.has_comment_placed(
-            NodeRef::Identifier(&interface.id).key(),
-            Placement::Trailing,
-        ) || interface.extends.len() > 1
-            || interface.extends.first().is_some_and(|(_, generic)| {
-                matches!(generic.id, types::generic::Identifier::Qualified(_))
-                    && generic.targs.is_none()
-            });
-        let extends = self.print_interface_extends_list(&interface.extends, key, group_mode);
-        if group_mode && !interface.extends.is_empty() {
-            let id = self.docs.group_id();
+        // Any heritage at all, or a trailing comment on the name. That is
+        // the hermes plugin's condition, and the hermes plugin is what every
+        // expectation in `tests/fixtures` is generated with — Prettier's own
+        // estree printer answers this differently, and the two disagree
+        // about a long `extends` list. See ubugeeei-prod/uf#143.
+        let group_mode = !interface.extends.is_empty()
+            || self.has_comment_placed(
+                NodeRef::Identifier(&interface.id).key(),
+                Placement::Trailing,
+            );
+        let extends = self.print_interface_extends_list(&interface.extends, key);
+        if group_mode {
             let head = self.docs.concat_vec(std::mem::take(&mut parts));
-            parts.push(self.docs.group_with(
-                self.concat([head, self.indent(extends)]),
-                false,
-                Some(id),
-            ));
+            // The head is indented *with* the clause rather than beside it.
+            // `interface Several` stays whole — the space after `interface`
+            // is a space and not a line — and what the indent reaches is the
+            // line before `extends`.
+            parts.push(self.group(self.indent(self.concat([head, extends]))));
         } else {
             parts.push(extends);
         }
@@ -1254,16 +1301,19 @@ impl<'a> Printer<'a> {
 
     /// ` extends A, B`, or nothing.
     ///
-    /// `group_mode` is Prettier's `shouldPrintHeritageClauses`, and it is
-    /// what decides whether the clause can start a new line. With it, a
-    /// single target is `line` then a group; without it, a literal space —
-    /// a line outside a group always breaks, so the two cases are not the
-    /// same doc with a different verdict.
+    /// One target and several are the same doc but for where the indent
+    /// goes: `extends ` keeps its first target, and only the ones after it
+    /// are indented under it.
+    ///
+    /// ```text
+    /// interface Several
+    ///   extends AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,
+    ///     BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB {
+    /// ```
     fn print_interface_extends_list(
         &mut self,
         extends: &'a [(Loc, types::Generic<Loc, Loc>)],
         key: NodeKey,
-        group_mode: bool,
     ) -> Doc<'a> {
         if extends.is_empty() {
             return self.s("");
@@ -1275,27 +1325,22 @@ impl<'a> Printer<'a> {
         let dangling =
             self.print_dangling_comments(key, crate::flow::comments::Marker::Extends, false);
         let separator = self.concat([self.s(","), &LINE]);
-        if extends.len() > 1 {
-            let list = self.join(separator, printed);
-            return self.concat([
-                &LINE,
-                dangling.map_or(self.s(""), |dangling| {
-                    self.concat([dangling, &crate::doc::HARDLINE])
-                }),
-                self.s("extends"),
-                self.group(self.indent(self.concat([&LINE, list]))),
-            ]);
-        }
         let list = self.join(separator, printed);
-        let clause = self.concat([self.s("extends "), dangling.unwrap_or(self.s("")), list]);
-        if group_mode {
-            // A line, so a trailing line comment on the interface name has
-            // one to end. Without this the comment was a line suffix with no
-            // line before the body, and it came out after the `{` — five
-            // levels from where it was written. See ubugeeei-prod/uf#135.
-            return self.concat([&LINE, self.group(clause)]);
-        }
-        self.concat([self.s(" "), clause])
+        let targets = if extends.len() > 1 {
+            self.indent(list)
+        } else {
+            list
+        };
+        // A line rather than a space, so a trailing line comment on the name
+        // has one to end. Without it the comment was a line suffix with
+        // nothing before the body to flush at, and it came out after the `{`
+        // — five levels from where it was written. See ubugeeei-prod/uf#135.
+        self.concat([
+            &LINE,
+            dangling.unwrap_or(self.s("")),
+            self.s("extends "),
+            targets,
+        ])
     }
 
     /// One `extends` target of an interface or declared class.
