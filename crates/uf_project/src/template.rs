@@ -154,7 +154,7 @@ fn app_page() -> String {
     r#"// @flow
 import * as React from "@uniflowed/react";
 
-import Counter from "./Counter.js";
+import { Counter } from "./Counter.js";
 
 /// The states this page can be in. An enum rather than a union of strings so
 /// the `match` below is exhaustive: adding a member here stops compiling until
@@ -173,7 +173,7 @@ component Headline(mood: Mood) {
   return <h1>Flow {tone}</h1>;
 }
 
-export default component Page() {
+export component Page() {
   return (
     <main>
       <Headline mood={Mood.Calm} />
@@ -198,7 +198,7 @@ import { useCounter } from "./useCounter.js";
 
 /// A component declaration: Flow reads the parameter list as the props, so
 /// there is no separate props type to keep in step with the signature.
-export default component Counter(initial: number) {
+export component Counter(initial: number) {
   const [count, increment] = useCounter(initial);
 
   return (
