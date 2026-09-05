@@ -27,6 +27,18 @@ esac
 repo_root="$(CDPATH= cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
+# The changelog is written first, by `uf release <bump>`, which computes the
+# next version from the workspace it is *about to* leave. Run it after the bump
+# and it plans one version too far — the section comes out headed alpha.6 while
+# the tree says alpha.5, and the mistake is invisible until somebody reads the
+# release. So the order is checked rather than remembered.
+if [ -f CHANGELOG.md ] && ! grep -q "^## uf@$version\$" CHANGELOG.md; then
+  echo "CHANGELOG.md has no section for uf@$version." >&2
+  echo "Run \`uf release <bump>\` first: it writes the section for the version" >&2
+  echo "after the one the workspace is on, which is the one you are bumping to." >&2
+  exit 2
+fi
+
 node - "$version" <<'EOF'
 const fs = require("node:fs");
 const path = require("node:path");
@@ -35,9 +47,13 @@ const version = process.argv[2];
 // Cargo: only the workspace version; crates inherit it.
 const cargo = "Cargo.toml";
 const toml = fs.readFileSync(cargo, "utf8");
-const bumped = toml.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
-if (bumped === toml) throw new Error("workspace version not found in Cargo.toml");
-fs.writeFileSync(cargo, bumped);
+const current = toml.match(/^version = "([^"]+)"$/m);
+// Not "the replacement changed nothing": running the bump twice for the same
+// version is a reasonable thing to do — a release that failed halfway is
+// finished by running it again — and reporting "version not found" for a file
+// that has it is a message that sends the reader to the wrong place.
+if (current == null) throw new Error("workspace version not found in Cargo.toml");
+fs.writeFileSync(cargo, toml.replace(/^version = "[^"]+"$/m, `version = "${version}"`));
 
 // npm: every shipped package, and every manifest that depends on one.
 const manifests = [

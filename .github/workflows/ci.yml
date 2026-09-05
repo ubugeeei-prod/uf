@@ -285,6 +285,10 @@ jobs:
       # round trip and blocks a release — it has cost three. Stubs, so this
       # needs no npm session and no network.
       - run: ./target/release/uf run release:trust:test
+      # And the bump that every release starts with. Its mistakes are all in
+      # the second run — resuming a release, or writing the changelog in the
+      # wrong order — so the release that went right does not catch them.
+      - run: ./target/release/uf run release:bump:test
 
   upstream-integrations:
     name: Upstream Integrations
