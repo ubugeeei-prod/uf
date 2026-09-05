@@ -1,4 +1,8 @@
-//! `uf prepare`, `uf publish`, and `uf release`: the plans written to `.uf`.
+//! `uf publish` and `uf release`: the plans written to `.uf`.
+//!
+//! `uf prepare` was here too, when it was a plan rather than a run of one.
+//! It is in [`super::prepare`] now, because it stopped being a file this
+//! command writes and became five steps that do things.
 
 use std::fs;
 
@@ -6,69 +10,11 @@ use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
-use uf_prepare::default_plan;
-use uf_router::write_router_manifest;
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::cli::ReleaseBump;
-use crate::support::{enabled, project_label, write_json_file, yes_no};
+use crate::support::{write_json_file, yes_no};
 use crate::ui::Ui;
-
-pub(crate) fn prepare(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let resolved = load_config(cwd)?;
-    let plan = default_plan();
-    let router_manifest = write_router_manifest(&resolved.root, &resolved.config)?;
-    let state_dir = resolved.root.join(".uf");
-    fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
-    let manifest = state_dir.join("prepare.json");
-    write_json_file(
-        &manifest,
-        &json!({
-            "version": 1,
-            "routerManifest": router_manifest,
-            "lintStagedCompatible": plan.lint_staged_compatible,
-            "codeGenerator": plan.code_generator,
-            "writeGeneratedFiles": plan.write_generated_files,
-            "cache": format!("{:?}", plan.cache),
-            "steps": plan.steps.iter().map(|step| format!("{step:?}")).collect::<Vec<_>>(),
-        }),
-    )?;
-
-    let root = resolved.root.as_str().to_string();
-    let manifest_path = manifest.to_string();
-    let cache = format!("{:?}", plan.cache);
-    let steps = plan
-        .steps
-        .iter()
-        .map(|step| format!("{step:?}"))
-        .collect::<Vec<_>>();
-    let step_labels = steps.iter().map(String::as_str).collect::<Vec<_>>();
-
-    ui.render(|renderer, out| {
-        renderer.banner(out, "uf prepare", Some(project_label(&resolved.root)));
-        renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::toned("root", &root, Tone::Path),
-                KeyValue::toned("manifest", &manifest_path, Tone::Path),
-                KeyValue::new(
-                    "lint-staged compatible",
-                    yes_no(plan.lint_staged_compatible),
-                ),
-                KeyValue::new("code generator", enabled(plan.code_generator)),
-                KeyValue::new("cache", &cache),
-            ],
-        );
-        renderer.blank(out);
-        renderer.heading(out, 2, "steps");
-        renderer.bullet_list(out, 4, &step_labels);
-        renderer.blank(out);
-        renderer.status(out, Status::Success, "prepare plan written");
-    });
-    Ok(())
-}
 
 pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let resolved = load_config(cwd)?;

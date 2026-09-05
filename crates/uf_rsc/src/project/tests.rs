@@ -68,6 +68,33 @@ fn ignored_directories_are_not_scanned() {
     assert_eq!(analysis.graph.modules().len(), 1);
 }
 
+/// A checkout inside the project is not part of the project.
+///
+/// A submodule, a vendored clone, a git worktree: all of them are directories
+/// with a `.git` in them, and none of them holds this project's modules. This
+/// repository keeps a gigabyte of third-party Flow under `tests/fixtures/git`
+/// and `uf prepare` analysed all of it, found `"use server"` in React's
+/// sources, and wrote a server action table about them.
+#[test]
+fn a_nested_repository_is_not_part_of_the_project() {
+    let (_dir, root) = project(&[
+        ("app/_uf.page.js", "// @flow\n"),
+        (
+            "vendor/upstream/actions.js",
+            "\"use server\";\nexport async function leak() {}\n",
+        ),
+        (
+            "vendor/upstream/.git",
+            "gitdir: ../../.git/modules/upstream\n",
+        ),
+    ]);
+
+    let analysis = analyze_project(&root, &build_id(), &ProjectScanOptions::default()).unwrap();
+
+    assert_eq!(analysis.graph.modules().len(), 1);
+    assert!(analysis.registry.is_empty());
+}
+
 #[test]
 fn test_files_are_not_part_of_the_app_graph() {
     let (_dir, root) = project(&[
