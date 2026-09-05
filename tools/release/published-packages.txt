@@ -10,6 +10,11 @@
 # package here when it is implemented, not when it is declared. `uf_lib`'s
 # registry is the source of truth for what each one is.
 #
+# It has to be a *closure*: `@uniflowed/stylex` depends on `@uniflowed/core`,
+# so a release that sends one without the other produces a package that
+# resolves to nothing — `ETARGET` on the first thing a user types.
+# `tools/release/verify-npm.sh --closure-only` checks that, and CI runs it.
+#
 # Adding a name here is half the job. `publish.yml` publishes over OIDC, and a
 # name that `npm trust` has not bound to that workflow fails the job *after* the
 # names before it have gone out — so a release is half-sent by adding a package
@@ -20,6 +25,7 @@
 #
 # and run `uf run release:preflight` before tagging to see where things stand.
 config
+core
 fetch
 graphql
 hooks
