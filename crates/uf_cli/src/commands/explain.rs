@@ -29,7 +29,16 @@ struct Stage {
 }
 
 /// The commands `uf explain` knows how to describe.
-const KNOWN: &[&str] = &["dev", "build", "doc", "test", "fmt", "lint", "check"];
+///
+/// The order is the order they are tried in a project: build the thing, check
+/// it, then ship it. Commands that do their whole job in this binary and
+/// delegate nothing — `info`, `inspect`, `explain`, `completion`, `create` —
+/// are absent on purpose: there is no provider to name, and an entry saying
+/// "uf" three times would be a list of nothing.
+const KNOWN: &[&str] = &[
+    "dev", "build", "doc", "test", "fmt", "lint", "check", "run", "install", "upgrade", "use",
+    "env", "prepare", "publish", "release", "lsp",
+];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
@@ -41,6 +50,14 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         "fmt" => fmt_stages(&resolved),
         "lint" => lint_stages(&resolved),
         "check" => check_stages(&resolved),
+        "run" => run_stages(&resolved),
+        "install" => install_stages(&resolved),
+        "upgrade" => upgrade_stages(&resolved),
+        "use" | "env" => runtime_stages(&resolved),
+        "prepare" => prepare_stages(&resolved),
+        "publish" => publish_stages(&resolved),
+        "release" => release_stages(&resolved),
+        "lsp" => lsp_stages(&resolved),
         other => bail!(
             "uf explain does not describe {other:?}; it knows {}",
             KNOWN.join(", ")
@@ -112,6 +129,208 @@ fn config_sources(resolved: &ResolvedConfig) -> Vec<String> {
         sources.push(".flowconfig".to_string());
     }
     sources
+}
+
+/// What to call the package resolver in a sentence.
+///
+/// `format!("{:?}")` would print `UfNative`, and lowercasing that gives
+/// `ufnative` — a word nobody wrote and nobody can search for. A provider's
+/// name is the thing a reader has to recognise, so it is spelled out. When a
+/// second resolver lands this stops compiling, which is the right way to be
+/// reminded to name it.
+fn resolver_name(resolved: &ResolvedConfig) -> &'static str {
+    match resolved.config.pm.resolver {
+        uf_config::PackageManagerResolver::UfNative => "uf (its own resolver)",
+    }
+}
+
+/// `uf run`, whose whole question is which runner executes a task.
+fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    // `#[non_exhaustive]`, so the fallback is the debug name: a provider added
+    // upstream should read oddly here rather than not compile here.
+    let engine = match resolved.config.task_runner.engine {
+        uf_config::TaskRunnerEngine::ViteTask => "vite task".to_string(),
+        other => format!("{other:?}"),
+    };
+    vec![
+        Stage {
+            name: "task lookup",
+            provider: "uf".to_string(),
+            detail: format!(
+                "`tasks` in uf.config.js, {} defined here",
+                resolved.config.tasks.len()
+            ),
+        },
+        Stage {
+            name: "scheduling",
+            provider: engine,
+            detail: "dependency order and caching, for a task with no command".to_string(),
+        },
+        Stage {
+            name: "execution",
+            provider: "uf".to_string(),
+            detail: format!(
+                "a task with a `command` runs here; package scripts are {}",
+                if resolved.config.task_runner.allow_package_scripts {
+                    "allowed"
+                } else {
+                    "refused"
+                }
+            ),
+        },
+    ]
+}
+
+/// `uf install`, whose whole question is which resolver decides a tree.
+fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "workspace discovery",
+            provider: "uf_pm".to_string(),
+            detail: "every package.json this project owns".to_string(),
+        },
+        Stage {
+            name: "resolution",
+            provider: resolver_name(resolved).to_string(),
+            detail: format!(
+                "writes {}, and the content-addressed store under {}",
+                resolved.config.pm.lockfile, resolved.config.pm.store_dir
+            ),
+        },
+        Stage {
+            name: "lifecycle scripts",
+            provider: "uf".to_string(),
+            detail: if resolved.config.pm.allow_lifecycle_scripts {
+                "allowed by pm.allowLifecycleScripts".to_string()
+            } else {
+                "refused; a dependency does not get to run code at install".to_string()
+            },
+        },
+    ]
+}
+
+fn upgrade_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "packages",
+            provider: resolver_name(resolved).to_string(),
+            detail: format!("re-resolves against {}", resolved.config.pm.lockfile),
+        },
+        Stage {
+            name: "toolchain",
+            provider: "uf_rm".to_string(),
+            detail: format!(
+                "acquisition {:?}, applied {:?}",
+                resolved.config.rm.acquisition, resolved.config.rm.apply
+            ),
+        },
+    ]
+}
+
+/// `uf use` and `uf env`, which are the same question about the same manager.
+fn runtime_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "inference",
+            provider: "uf_rm".to_string(),
+            detail: if resolved.config.rm.infer_from_config {
+                "reads the version this project asks for".to_string()
+            } else {
+                "off; the version is whatever is active".to_string()
+            },
+        },
+        Stage {
+            name: "acquisition",
+            provider: match resolved.config.rm.acquisition {
+                uf_config::RuntimeManagerAcquisition::Auto => "automatic".to_string(),
+            },
+            detail: format!("auto-switch {}", resolved.config.rm.auto_switch),
+        },
+        host_stage(resolved),
+    ]
+}
+
+fn prepare_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "staged files",
+            provider: "uf_prepare".to_string(),
+            detail: "lint-staged compatible: the files a commit is about".to_string(),
+        },
+        Stage {
+            name: "checks",
+            provider: "uf".to_string(),
+            detail: "the same fmt, lint and check the commands run".to_string(),
+        },
+        Stage {
+            name: "generation",
+            provider: "@uniflowed/router".to_string(),
+            detail: "route metadata and generated types, into .uf/".to_string(),
+        },
+        host_stage(resolved),
+    ]
+}
+
+fn publish_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let publish = &resolved.config.publish;
+    vec![
+        Stage {
+            name: "registry",
+            provider: publish.registry.to_string(),
+            detail: format!(
+                "dry run {}, first publish {:?}",
+                publish.dry_run, publish.first_publish.mode
+            ),
+        },
+        Stage {
+            name: "authentication",
+            provider: "npm trusted publishing (OIDC)".to_string(),
+            detail: "the workflow's own identity; there is no token to hold".to_string(),
+        },
+        Stage {
+            name: "manifest",
+            provider: "uf".to_string(),
+            detail: "tools/release/published-packages.txt, in order".to_string(),
+        },
+    ]
+}
+
+fn release_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "version",
+            provider: "uf".to_string(),
+            detail: "the next prerelease from the current one".to_string(),
+        },
+        Stage {
+            name: "metadata",
+            provider: "uf".to_string(),
+            detail: "writes the tag's manifest; the tag itself is a push".to_string(),
+        },
+        Stage {
+            name: "publish",
+            provider: resolved.config.publish.registry.to_string(),
+            detail: "on the tag, by the workflow — see `uf explain publish`".to_string(),
+        },
+    ]
+}
+
+fn lsp_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "transport",
+            provider: "uf".to_string(),
+            detail: "JSON-RPC over stdio, Content-Length framed".to_string(),
+        },
+        Stage {
+            name: "formatting",
+            provider: "uf_fmt".to_string(),
+            detail: format!(
+                "the same printer `uf fmt` uses, at {} columns",
+                resolved.config.fmt.line_width
+            ),
+        },
+    ]
 }
 
 fn transform_stage() -> Stage {
