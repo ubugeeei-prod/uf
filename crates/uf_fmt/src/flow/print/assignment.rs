@@ -18,7 +18,7 @@ use crate::doc::{Doc, LINE, LINE_SUFFIX_BOUNDARY, can_break, text_of};
 use crate::flow::node::{Expression, NodeRef, Type};
 
 /// How an assignment lays out its two sides.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Layout {
     /// First break after the operator, then the sides are broken
     /// independently on their own lines.
@@ -42,7 +42,7 @@ pub enum Layout {
 /// What Prettier passes down to the print of one child: the layout its
 /// assignment chose, or that it is the hugged first or last argument of a
 /// call.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct PrintArgs {
     /// The layout of the assignment this node is the right side of.
     pub assignment_layout: Option<Layout>,
