@@ -271,6 +271,65 @@ fn invalid_syntax_is_refused() {
     }
 }
 
+/// JSX that runs out at end of input is refused, not closed for the author.
+///
+/// ubugeeei-prod/uf#128. Flow's port recovers a truncated element by
+/// inventing the closing tag, and for this shape — end of input with no
+/// trailing newline — it reports no diagnostic while doing so. The printer
+/// then wrote out a tree with no `</div>` in it, breaking both of the
+/// guarantees above it in this file at once.
+///
+/// The same sources *with* a trailing newline are refused by the parser and
+/// always were, which is why `invalid_syntax_is_refused` did not catch this:
+/// every entry in that list ends in one.
+#[test]
+fn jsx_truncated_at_end_of_input_is_refused() {
+    for source in [
+        // The 58 bytes from the issue.
+        "const el = <div className=\"a\" data-testid='b'>text {value}",
+        // The same without attributes, and nested.
+        "const el = <div>text {value}",
+        "const el = <a><b>{x}",
+        // Truncated after a complete child element.
+        "const el = <ul><li /></ul",
+        // Inside a function body, so the element is not the last thing the
+        // parser sees.
+        "const f = () => <div>{x}",
+    ] {
+        let error = format_source(source, &FmtConfig::default())
+            .expect_err(&format!("{source:?} must be refused"));
+        assert!(
+            matches!(error, FormatError::Flow(_)),
+            "{source:?} gave {error:?}"
+        );
+    }
+}
+
+/// Self-closing elements are not truncated ones.
+///
+/// The check behind {@link jsx_truncated_at_end_of_input_is_refused} reads
+/// "no closing tag", and `<br />` has no closing tag either — the tree
+/// stores `None` for both. Telling them apart is the whole difficulty, so
+/// the case that must keep working gets a test of its own rather than
+/// relying on the corpus to notice.
+#[test]
+fn self_closing_jsx_still_formats() {
+    for source in [
+        "const el = <br />;\n",
+        "const el = <Foo bar={1} />;\n",
+        "const el = <div><br /><hr /></div>;\n",
+        "const el = <Foo.Bar.Baz />;\n",
+        "const el = <svg:rect />;\n",
+        "const el = <></>;\n",
+        "const el = <>{x}</>;\n",
+        // No trailing newline, which is the axis the bug turned on.
+        "const el = <br />;",
+    ] {
+        format_source(source, &FmtConfig::default())
+            .unwrap_or_else(|error| panic!("{source:?} must format: {error:?}"));
+    }
+}
+
 /// Nesting past the parser's ceiling is a typed error rather than a stack
 /// overflow, which is the failure mode this whole design exists to avoid.
 #[test]

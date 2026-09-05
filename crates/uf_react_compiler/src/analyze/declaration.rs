@@ -68,9 +68,14 @@ impl<'a> Walk<'a> {
     /// the body became an ordinary function and every hook in it looked
     /// misplaced. A `renders` clause is covered too: `component P() renders
     /// [Node] {` puts the same brackets in the same place.
+    /// Skipping the parameter list also loses its parentheses, which is why the
+    /// body has to be named: the walk never sees the `(` and `)` that would
+    /// have balanced, so a declaration inside a call is still counted as being
+    /// inside one when its own brace arrives.
     fn skip_return_type(&mut self, open: usize) {
         if let Some(body) = return_type_body(self.tokens, open) {
             self.skip_until = Some(body);
+            self.stack.name_body(body);
         }
     }
 
