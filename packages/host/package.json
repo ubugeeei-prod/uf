@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/host",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "Running Flow on a Capability JS Host, with no bundler in the way.",
   "type": "module",
   "license": "MIT",

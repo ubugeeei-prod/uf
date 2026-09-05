@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/core",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "Shared native-runtime bridge for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "internal/*.js"
   ],
   "dependencies": {
-    "@uniflowed/config": "0.0.0-alpha.2",
-    "@uniflowed/test": "0.0.0-alpha.2"
+    "@uniflowed/config": "0.0.0-alpha.3",
+    "@uniflowed/test": "0.0.0-alpha.3"
   }
 }

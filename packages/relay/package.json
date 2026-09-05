@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/relay",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "Relay, re-exported by name, for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",

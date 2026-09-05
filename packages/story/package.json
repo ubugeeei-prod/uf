@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/story",
-  "version": "0.0.0-alpha.2",
+  "version": "0.0.0-alpha.3",
   "description": "Flow declarations for @uniflowed/story, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,9 +17,9 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/browser": "0.0.0-alpha.2",
-    "@uniflowed/core": "0.0.0-alpha.2",
-    "@uniflowed/mock": "0.0.0-alpha.2",
-    "@uniflowed/react": "0.0.0-alpha.2"
+    "@uniflowed/browser": "0.0.0-alpha.3",
+    "@uniflowed/core": "0.0.0-alpha.3",
+    "@uniflowed/mock": "0.0.0-alpha.3",
+    "@uniflowed/react": "0.0.0-alpha.3"
   }
 }
