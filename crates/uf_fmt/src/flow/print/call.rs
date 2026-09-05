@@ -467,7 +467,40 @@ impl<'a> Printer<'a> {
     }
 
     /// One argument, spread or not.
+    ///
+    /// Memoised. `print_arguments` prints the argument it is considering
+    /// hugging a second time, with different [`PrintArgs`], and every level
+    /// below it does the same — so without this the document is 2^depth and
+    /// nineteen levels of `expect.objectContaining` does not finish. The
+    /// same node printed the same way in the same place is the same
+    /// document, so the second print is a lookup. See ubugeeei-prod/uf#125.
+    ///
+    /// `expansion_bailout` is part of the answer and is replayed with it.
+    /// Nothing reads that flag as an *input* — every reader sets it to
+    /// `false` immediately before the print it is asking about — so a
+    /// cached print restores it rather than merging into it.
     pub fn print_argument(
+        &mut self,
+        argument: &'a expression::ExpressionOrSpread<Loc, Loc>,
+        args: PrintArgs,
+    ) -> Doc<'a> {
+        let key = (
+            argument_node(argument).key(),
+            args,
+            self.ancestors.last().map(|node| node.key()),
+        );
+        if let Some(&(doc, bailed)) = self.argument_docs.get(&key) {
+            self.expansion_bailout = bailed;
+            return doc;
+        }
+        self.expansion_bailout = false;
+        let doc = self.print_argument_uncached(argument, args);
+        let bailed = self.expansion_bailout;
+        self.argument_docs.insert(key, (doc, bailed));
+        doc
+    }
+
+    fn print_argument_uncached(
         &mut self,
         argument: &'a expression::ExpressionOrSpread<Loc, Loc>,
         args: PrintArgs,
