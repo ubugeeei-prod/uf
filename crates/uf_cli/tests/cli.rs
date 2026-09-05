@@ -993,12 +993,20 @@ fn dev_without_the_vite_package_names_the_fix() {
     assert!(stderr.contains("@uniflowed/vite"), "{stderr}");
 }
 
+/// One framed message, the way an editor sends it.
+fn framed(body: &str) -> String {
+    format!("Content-Length: {}\r\n\r\n{body}", body.len())
+}
+
 #[test]
 fn lsp_initialize_returns_native_capabilities() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
-    let input = format!("Content-Length: {}\r\n\r\n{body}", body.len());
-
-    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+    let output = uf()
+        .arg("lsp")
+        .write_stdin(framed(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+        ))
+        .output()
+        .unwrap();
 
     assert!(
         output.status.success(),
@@ -1009,8 +1017,92 @@ fn lsp_initialize_returns_native_capabilities() {
     assert!(stdout.starts_with("Content-Length: "));
     assert!(stdout.contains(r#""name":"uf-lsp""#));
     assert!(stdout.contains(r#""documentFormattingProvider":true"#));
-    assert!(stdout.contains(r#""workspaceDiagnostics":true"#));
+    // Diagnostics are not advertised: nothing serves them, and an editor that
+    // asks for what it is offered and gets nothing is worse off than one that
+    // was never offered it. See ubugeeei-prod/uf#162.
+    assert!(!stdout.contains("diagnosticProvider"), "{stdout}");
     assert_plain(&stdout);
+}
+
+/// Several messages on one open pipe, which is what an editor does.
+///
+/// The previous test was the whole of the coverage and it passed against a
+/// server that read stdin to end of input, answered once and returned — so it
+/// answered nothing at all to a client that keeps the pipe open, which is
+/// every client. Two answers on one connection is the difference.
+#[test]
+fn lsp_answers_more_than_one_message_on_one_connection() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        stdout.matches("Content-Length: ").count(),
+        2,
+        "one answer per request, and no answer to a notification:\n{stdout}"
+    );
+    assert!(stdout.contains(r#""id":1"#), "{stdout}");
+    assert!(stdout.contains(r#""id":2"#), "{stdout}");
+}
+
+/// A document opened and then formatted comes back as `uf fmt` would write it.
+#[test]
+fn lsp_formats_an_open_document() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#),
+        framed(
+            r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///a.js","languageId":"javascript","version":1,"text":"// @flow\nconst   x=1\n"}}}"#,
+        ),
+        framed(
+            r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/formatting","params":{"textDocument":{"uri":"file:///a.js"},"options":{}}}"#,
+        ),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(r#"const x = 1;"#),
+        "the edit should carry the formatted document:\n{stdout}"
+    );
+    assert!(stdout.contains(r#""newText""#), "{stdout}");
+}
+
+/// A request uf does not serve is answered, not ignored.
+///
+/// An editor waiting on an id that never comes back is a hang, which is the
+/// failure this whole command had.
+#[test]
+fn lsp_answers_a_request_it_does_not_serve() {
+    let input = [
+        framed(r#"{"jsonrpc":"2.0","id":7,"method":"textDocument/hover","params":{}}"#),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]
+    .concat();
+
+    let output = uf().arg("lsp").write_stdin(input).output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains(r#""id":7"#), "{stdout}");
 }
 
 #[test]
