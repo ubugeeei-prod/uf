@@ -58,36 +58,29 @@ fn fixtures() -> Vec<String> {
 /// ubugeeei-prod/uf#125 was fixed: `expect.objectContaining` nested
 /// nineteen deep, printed twice per level, so the document was 2^depth.
 ///
-/// Named rather than skipped by a heuristic, so that the day a bug is fixed
-/// this list is what fails and gets deleted. `no_stale_exclusions` keeps it
-/// from rotting the other way.
+/// Named rather than skipped by a heuristic, so that a slow module is a
+/// decision somebody wrote down. `no_stale_exclusions` checks that each name
+/// is still a file in the corpus; it cannot check that the module is still
+/// slow, because finding that out means formatting it, which is the thing
+/// the exclusion exists to avoid.
 const KNOWN_SLOW: [&str; 0] = [];
 
 /// Modules the printer gets wrong, each with the issue that says how.
 ///
 /// Separate from {@link KNOWN_SLOW} because they are different problems and
-/// a single list of excuses hides that. Two bugs, nine modules:
+/// a single list of excuses hides that.
 ///
-/// * **#133** — parentheses around a same-precedence right operand are
-///   dropped, so `a && (b && c)` becomes `a && b && c` and the tree
-///   re-associates. Eight of these; three fail as a changed program and
-///   five as non-idempotence, which is the same bug seen on the second
-///   pass.
-/// * **#134** — `function f(): %checks` loses its colon and the output does
-///   not parse.
-const KNOWN_BROKEN: [&str; 9] = [
-    // #133
-    "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType19.js",
-    "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType31.js",
-    "fbt/runtime/nonfb/FbtNumber/IntlCLDRNumberType46.js",
-    "prepack/src/react/elements.js",
-    "prepack/src/serializer/ResidualFunctions.js",
-    "prepack/src/serializer/ResidualHeapSerializer.js",
-    "prepack/src/serializer/ResidualHeapVisitor.js",
-    "yarn/src/package-request.js",
-    // #134
-    "fbt/packages/babel-plugin-fbt/src/FbtUtil.js",
-];
+/// Empty. It held nine modules across two bugs — ubugeeei-prod/uf#133, a
+/// right-nested logical chain re-associating, and ubugeeei-prod/uf#134, a
+/// predicate function losing its colon — and both are fixed, so all 8,119 of
+/// the Flow modules Meta's parser reads come back parseable, settled, with
+/// the same tree and the same comments. (One of the 8,120 it does not read,
+/// which is not this crate's business.)
+///
+/// It stayed at nine for a while after they were fixed, which is why
+/// `no_stale_exclusions` now formats what is listed here rather than taking
+/// the list's word for it.
+const KNOWN_BROKEN: [&str; 0] = [];
 
 /// The fixtures this run should look at.
 ///
@@ -152,6 +145,80 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// What the three guarantees had to say about one module.
+#[derive(Debug)]
+enum Verdict {
+    /// Meta's parser would not read it. Not this crate's business: the corpus
+    /// is other people's repositories and some of their fixtures are
+    /// deliberately malformed.
+    Unparseable,
+    /// It came back parseable, settled, and saying the same things.
+    Held,
+    /// It did not, and this is the first way it did not.
+    Broke(String),
+}
+
+/// Run the three guarantees over one module.
+///
+/// Shared by [`upstream_flow_survives_formatting`], which needs it to hold,
+/// and [`no_stale_exclusions`], which needs it *not* to for anything still
+/// named in {@link KNOWN_BROKEN}. One implementation, so the two can never
+/// disagree about what "broken" means.
+fn guarantees(source: &str, config: &FmtConfig) -> Verdict {
+    let Ok(once) = format_source(source, config) else {
+        return Verdict::Unparseable;
+    };
+    let once = once.output;
+
+    // 1. The output parses. Anything else means `uf fmt` writes a file that no
+    //    longer builds, which is the one failure a formatter must not have.
+    let twice = match format_source(&once, config) {
+        Ok(twice) => twice.output,
+        Err(error) => return Verdict::Broke(format!("output does not format again: {error}")),
+    };
+
+    // 2. It settles.
+    if once != twice {
+        return Verdict::Broke("not idempotent".to_owned());
+    }
+
+    // 3. It means the same thing, and says the same things.
+    let before = support::structure(source);
+    let after = support::structure(&once);
+    if before != after {
+        // The first place the trees part, rather than "the program changed". A
+        // verdict with no evidence sends whoever reads it back to reproduce
+        // the run by hand, and the run takes minutes.
+        return Verdict::Broke(format!(
+            "the program changed\n{}",
+            first_difference(&before, &after)
+        ));
+    }
+    let before = support::comment_multiset(source);
+    let after = support::comment_multiset(&once);
+    if before != after {
+        let mut changed: Vec<String> = Vec::new();
+        for (comment, count) in &before {
+            let now = after.get(comment).copied().unwrap_or(0);
+            if now != *count {
+                changed.push(format!("  - {count}x {:?} -> {now}x", comment.1));
+            }
+        }
+        for (comment, count) in &after {
+            if !before.contains_key(comment) {
+                changed.push(format!("  + {count}x {:?}", comment.1));
+            }
+        }
+        changed.truncate(6);
+        return Verdict::Broke(format!(
+            "a comment was lost, gained or rewritten\n{}",
+            changed.join("\n")
+        ));
+    }
+
+    Verdict::Held
+}
+
 /// The three invariants, over every upstream module that parses.
 ///
 /// A file the parser rejects is skipped rather than failed: these are other
@@ -202,66 +269,11 @@ fn upstream_flow_survives_formatting() {
             continue;
         };
 
-        let Ok(once) = format_source(&source, &config) else {
-            skipped += 1;
-            continue;
-        };
-        let once = once.output;
-
-        // 1. The output parses. Anything else means `uf fmt` writes a file
-        //    that no longer builds, which is the one failure a formatter
-        //    must not have.
-        let twice = match format_source(&once, &config) {
-            Ok(twice) => twice.output,
-            Err(error) => {
-                failures.push(format!("{label}: output does not format again: {error}"));
-                continue;
-            }
-        };
-
-        // 2. It settles.
-        if once != twice {
-            failures.push(format!("{label}: not idempotent"));
-            continue;
+        match guarantees(&source, &config) {
+            Verdict::Unparseable => skipped += 1,
+            Verdict::Held => formatted += 1,
+            Verdict::Broke(how) => failures.push(format!("{label}: {how}")),
         }
-
-        // 3. It means the same thing, and says the same things.
-        let before = support::structure(&source);
-        let after = support::structure(&once);
-        if before != after {
-            // The first place the trees part, rather than "the program
-            // changed". A verdict with no evidence sends whoever reads it
-            // back to reproduce the run by hand, and the run takes minutes.
-            failures.push(format!(
-                "{label}: the program changed\n{}",
-                first_difference(&before, &after)
-            ));
-            continue;
-        }
-        let before = support::comment_multiset(&source);
-        let after = support::comment_multiset(&once);
-        if before != after {
-            let mut changed: Vec<String> = Vec::new();
-            for (comment, count) in &before {
-                let now = after.get(comment).copied().unwrap_or(0);
-                if now != *count {
-                    changed.push(format!("  - {count}x {:?} -> {now}x", comment.1));
-                }
-            }
-            for (comment, count) in &after {
-                if !before.contains_key(comment) {
-                    changed.push(format!("  + {count}x {:?}", comment.1));
-                }
-            }
-            changed.truncate(6);
-            failures.push(format!(
-                "{label}: a comment was lost, gained or rewritten\n{}",
-                changed.join("\n")
-            ));
-            continue;
-        }
-
-        formatted += 1;
     }
 
     eprintln!(
@@ -284,10 +296,23 @@ fn upstream_flow_survives_formatting() {
     );
 }
 
-/// Every excluded name is a module that is actually there.
+/// Every exclusion is a module that is there, and — where it can be checked
+/// — a module that is still broken.
 ///
-/// An exclusion that no longer matches anything is an exclusion nobody will
-/// ever delete, because nothing goes wrong when they don't.
+/// A list of excuses rots two ways. A name that no longer matches a file is
+/// an exclusion nobody will delete, because nothing goes wrong when they
+/// don't. A name whose bug has been *fixed* is worse: the module goes on
+/// being skipped, silently, and the corpus quietly stops covering it.
+///
+/// That second one happened. ubugeeei-prod/uf#133 and ubugeeei-prod/uf#134
+/// were both closed with all nine of their modules still listed, and the
+/// only thing that noticed was someone emptying the list by hand to see what
+/// would happen. So this formats what {@link KNOWN_BROKEN} names rather than
+/// taking the list's word for it.
+///
+/// {@link KNOWN_SLOW} gets the existence check and not the other one:
+/// finding out whether a module is still slow means formatting it, and not
+/// formatting it is the entire point of the exclusion.
 #[test]
 fn no_stale_exclusions() {
     let modules = flow_modules();
@@ -305,18 +330,48 @@ fn no_stale_exclusions() {
         })
         .collect();
 
-    for slow in KNOWN_SLOW.iter().chain(KNOWN_BROKEN.iter()).copied() {
+    for excluded in KNOWN_SLOW.iter().chain(KNOWN_BROKEN.iter()).copied() {
         // Only when its own fixture is checked out: `UF_CORPUS=metro` must
         // not fail because a React Native path is not there.
-        let fixture = slow.split('/').next().unwrap_or_default();
-        if !corpus_root().join(fixture).is_dir() || !wanted().iter().any(|want| want == fixture) {
+        if !checked_out(excluded) {
             continue;
         }
         assert!(
-            labels.iter().any(|label| label == slow),
-            "{slow} is excluded but no longer in the corpus — delete the entry"
+            labels.iter().any(|label| label == excluded),
+            "{excluded} is excluded but no longer in the corpus — delete the entry"
         );
     }
+
+    let config = FmtConfig::default();
+    let mut fixed: Vec<&str> = Vec::new();
+    for excluded in KNOWN_BROKEN {
+        if !checked_out(excluded) {
+            continue;
+        }
+        let Ok(source) = fs::read_to_string(corpus_root().join(excluded)) else {
+            continue;
+        };
+        if matches!(guarantees(&source, &config), Verdict::Held) {
+            fixed.push(excluded);
+        }
+    }
+
+    assert!(
+        fixed.is_empty(),
+        "{} excluded module(s) now hold all three guarantees — take them out of \
+         KNOWN_BROKEN, and close the issue if it was the last one:\n  {}",
+        fixed.len(),
+        fixed.join("\n  ")
+    );
+}
+
+/// Whether the repository an excluded path belongs to is part of this run.
+///
+/// A path is `<fixture>/<rest>`, and `UF_CORPUS=metro` narrows the run to
+/// one fixture, so an exclusion under another must not be judged.
+fn checked_out(excluded: &str) -> bool {
+    let fixture = excluded.split('/').next().unwrap_or_default();
+    corpus_root().join(fixture).is_dir() && wanted().iter().any(|want| want == fixture)
 }
 
 /// The first line at which two structural renderings differ, with a little
