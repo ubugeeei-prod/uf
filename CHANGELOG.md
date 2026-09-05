@@ -1,5 +1,20 @@
 # Changelog
 
+## uf@0.0.0-alpha.5
+
+_2026-09-06_
+
+### Added
+
+- **prepare**: the command does the five things it lists
+- **story**: the story runner, and four wrong answers the tests found (#211)
+- **lsp**: code actions and hover, and the two bugs that finished them (#209)
+
+### Internal
+
+- check that package-lock.json still describes the manifests
+- the two mistakes the version bump made on its second run
+
 ## uf@0.0.0-alpha.4
 
 _2026-09-05_
