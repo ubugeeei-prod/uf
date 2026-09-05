@@ -59,11 +59,7 @@ impl<'a> Printer<'a> {
                 let value = self.print_expression(&inner.expression);
                 self.concat([value, self.s(" as const")])
             }
-            E::AsExpression { inner, .. } => {
-                let value = self.print_expression(&inner.expression);
-                let annotation = self.print_type(&inner.annot.annotation);
-                self.concat([value, self.s(" as "), annotation])
-            }
+            E::AsExpression { inner, .. } => self.print_as_expression(inner),
             E::TSSatisfies { inner, .. } => {
                 let value = self.print_expression(&inner.expression);
                 let annotation = self.print_type(&inner.annot.annotation);
@@ -212,6 +208,32 @@ impl<'a> Printer<'a> {
             parts.push(argument);
         }
         self.docs.concat_vec(parts)
+    }
+
+    /// `x as T`, or `x /*:: as T */` when that is how it was written.
+    ///
+    /// The comment form is the fourth of Flow's comment types and the one the
+    /// corpus is full of: Relay writes every generated artifact with
+    /// `v0 /*:: as any*/`, because those files ship in npm packages and are
+    /// read by tools that do not strip Flow. `node --check` accepts the
+    /// comment and rejects `v0 as any`, so printing it as real syntax turns a
+    /// file that runs into one that does not.
+    ///
+    /// Like the type arguments in `print_call_type_args`, and unlike an
+    /// annotation, the location is no help: it starts at the type rather than
+    /// at the `/*`. What identifies the form is the block the type sits *in*,
+    /// found once for the file. The operand has to be outside that block —
+    /// otherwise the whole cast is inside a `/*:: … */` declaration, which
+    /// belongs to whoever is printing the block.
+    fn print_as_expression(&mut self, inner: &'a expression::AsExpression<Loc, Loc>) -> Doc<'a> {
+        let value = self.print_expression(&inner.expression);
+        if let Some(block) = self.comment_cast_block(inner) {
+            let raw = self.text.slice(block);
+            let printed = self.replace_end_of_line(raw);
+            return self.concat([value, self.s(" "), printed]);
+        }
+        let annotation = self.print_type(&inner.annot.annotation);
+        self.concat([value, self.s(" as "), annotation])
     }
 
     /// `await x`, which breaks before itself when it is the object of a
