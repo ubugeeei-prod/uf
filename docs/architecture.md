@@ -502,10 +502,35 @@ named `Page`/`Layout` that `uf create` scaffolds.
 Generated projects do not use npm scripts. Tasks are declared in
 `uf.config.js` and executed by `uf run` through Vite Task.
 
-Editor integrations live under `editors/` and should stay thin. VS Code,
-Neovim, Emacs, Vim, Helix, Zed, and Cursor all connect to `uf lsp`; the Rust
-workspace remains responsible for parsing, linting, formatting, route type
-generation, and diagnostics.
+Editor integrations live under `editors/` and stay thin. VS Code, Neovim,
+Emacs, Vim, Helix, Zed and Cursor all connect to `uf lsp`; the Rust workspace
+remains responsible for parsing, linting, formatting, route type generation and
+diagnostics. None of the integrations implements a language feature — each one
+is a client, and what it may offer is exactly what `initialize` advertises:
+diagnostics, `textDocument/formatting`, `textDocument/codeAction` (`quickfix`
+and `source.fixAll.uf`) and `textDocument/hover`, and nothing else.
+
+Only VS Code is a package, and Cursor installs that same package because it is
+the same extension format. The rest are configuration — a `languages.toml`, a
+Lua module, a `uf.el`, a `uf.vim` — small enough to copy, and short because the
+protocol does the work. Zed is the exception: it can only take a language server
+from a Rust/WASM extension, so `editors/zed` carries the manifest and its README
+says what the missing half must do rather than shipping a file nothing can
+build. `tests/library/lsp.test.js` drives the real `uf lsp` binary over framed
+messages and asserts every capability those READMEs claim, including that the
+ones they disclaim are absent.
+
+The constraint every client has to satisfy is the working directory. `uf lsp`
+calls `load_config(".")` once, at start-up, so the process's own directory is
+the only channel a project's `fmt` options and lint levels travel through, and
+starting a server anywhere else silently gives it uf's defaults. The VS Code
+extension starts one server per workspace folder that has a `uf.config.js`, with
+that folder as `cwd`, and restarts it when the file changes — the server has no
+way to be told about a change. `uf lsp --cwd` is not an alternative: `--cwd` is
+a global option, so the command line accepts it and `Commands::Lsp` then ignores
+it, reading `.` instead of the directory it resolved. That is a bug in the
+server rather than in the clients; until it is fixed, `cwd` is the only thing
+that works, and every README under `editors/` says so.
 
 Native package output follows a napi-rs-style target model. The generated
 TypeScript declaration files are converted into Flow declaration files so the

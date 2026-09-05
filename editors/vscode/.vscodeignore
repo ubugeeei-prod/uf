@@ -1,0 +1,16 @@
+# What `vsce package` must leave out of a .vsix.
+#
+# The rule is the opposite of .gitignore's: everything is included unless it is
+# listed here, so a new file is shipped by default and this list only has to
+# name the things that must not be.
+#
+# `node_modules` is deliberately absent: the extension is not bundled, so
+# `vscode-languageclient` has to be in the package for it to load at all.
+
+.vscode/**
+.vscode-test/**
+.gitignore
+.eslintrc*
+**/*.map
+**/.DS_Store
+**/tsconfig.json
