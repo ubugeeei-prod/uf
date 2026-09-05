@@ -579,3 +579,45 @@ fn changed_reports_whether_the_output_differs() {
     assert!(!format_source("const x = 1;\n", &config).unwrap().changed);
     assert!(format_source("const x = 1;  \n", &config).unwrap().changed);
 }
+
+/// A comment cast keeps whatever the source needed to make it parse.
+///
+/// Prettier is the compatibility target, and these two shapes are where
+/// following it would be wrong. Both are in Relay's generated artifacts,
+/// which is most of the `/*:: as … */` in the world.
+///
+/// **Parentheses around the cast.** Relay writes
+/// `(node/*:: as any*/).hash = "…"` and means the parentheses: to Meta's
+/// Flow parser the comment's contents are tokens, so without them the type
+/// runs on into what follows and the file stops parsing —
+///
+/// ```text
+/// syntax error: Invalid indexed access. Indexed access uses bracket
+/// notation. Use the format `T[K]`.
+/// ```
+///
+/// Prettier drops them, and its own output no longer parses. uf keeps them.
+///
+/// **A cast at the end of a statement.** Prettier reads `value /*:: as any*/;`
+/// as a value with a trailing comment and prints `value; /*:: as any*/`,
+/// which moves the cast out of the expression and loses it. uf leaves it
+/// where it was written.
+///
+/// These are the only two, and both are one-way: uf's output is a fixed
+/// point of uf and of Prettier both, so a project formatted by uf stays
+/// formatted.
+#[test]
+fn a_comment_cast_keeps_what_the_source_needed() {
+    let config = FmtConfig::default();
+
+    let parenthesised = "// @flow\n(node/*:: as any*/).hash = \"a\";\n";
+    let output = format_source(parenthesised, &config).expect("formats").output;
+    similar_asserts::assert_eq!(output, "// @flow\n(node /*:: as any*/).hash = \"a\";\n");
+    // Which is the point of the parentheses: Prettier's `node /*:: as any*/.hash`
+    // is not something the parser will read back.
+    assert!(format_source("// @flow\nnode /*:: as any*/.hash = \"a\";\n", &config).is_err());
+
+    let trailing = "// @flow\nconst widened = value/*:: as any*/;\n";
+    let output = format_source(trailing, &config).expect("formats").output;
+    similar_asserts::assert_eq!(output, "// @flow\nconst widened = value /*:: as any*/;\n");
+}

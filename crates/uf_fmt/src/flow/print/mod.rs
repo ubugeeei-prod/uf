@@ -536,6 +536,21 @@ impl<'a> Printer<'a> {
         (span.end <= block.end).then_some(block)
     }
 
+    /// The `/*:: as T */` a cast was written as, if it was.
+    ///
+    /// The fourth of Flow's comment types, and unlike an annotation the
+    /// location is no help: it starts at the type rather than at the `/*`.
+    /// What identifies the form is the block the type sits *in*, with the
+    /// operand outside it — a cast entirely inside a `/*:: … */` declaration
+    /// belongs to whoever is printing that block, not here.
+    pub fn comment_cast_block(
+        &self,
+        inner: &uf_flow::ast::expression::AsExpression<uf_flow::Loc, uf_flow::Loc>,
+    ) -> Option<crate::flow::text::Span> {
+        self.comment_type_around(self.text.span(&inner.annot.loc))
+            .filter(|block| self.text.span(inner.expression.loc()).start < block.start)
+    }
+
     /// The comment-type block to print verbatim in place of `span`, if any.
     ///
     /// [`None`] when something already inside the same block is being
