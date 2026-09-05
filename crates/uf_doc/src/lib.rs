@@ -13,7 +13,7 @@ use thiserror::Error;
 use uf_config::UniflowedConfig;
 use uf_flow::ast::{self, CommentKind, function, pattern, statement};
 use uf_flow::{Loc, ParseDiagnostic, ParseFailure};
-use uf_project::{ProjectError, SourceKind, collect_source_files};
+use uf_project::{ProjectError, SourceKind, scan_source_files};
 
 /// The generated API documentation report.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -25,6 +25,12 @@ pub struct DocReport {
     pub modules: Vec<DocModule>,
     /// Flow parser diagnostics found while reading source files.
     pub diagnostics: Vec<DocDiagnostic>,
+    /// Files discovery could not read at all, as `path: reason`.
+    ///
+    /// Separate from `diagnostics`, which are about Flow: a file that is not
+    /// UTF-8 has no syntax to be wrong about. Reported rather than fatal —
+    /// one stray byte used to stop the whole walk.
+    pub unreadable: Vec<String>,
 }
 
 impl DocReport {
@@ -162,10 +168,18 @@ pub enum DocError {
 /// declarations become entries. Syntax diagnostics are recorded in the report
 /// so callers can render them before failing the command.
 pub fn generate(root: &Utf8Path, config: &UniflowedConfig) -> Result<DocReport, DocError> {
-    let files = collect_source_files(root, config)?;
-    let mut report = DocReport::default();
+    let scan = scan_source_files(root, config)?;
+    let mut report = DocReport {
+        unreadable: scan
+            .unreadable
+            .iter()
+            .map(|file| format!("{}: {}", file.relative_path, file.reason))
+            .collect(),
+        ..DocReport::default()
+    };
 
-    for file in files
+    for file in scan
+        .files
         .into_iter()
         .filter(|file| file.kind == SourceKind::JavaScript)
     {
@@ -965,6 +979,7 @@ function localOnly(): void {}
         let report = DocReport {
             files_scanned: 1,
             diagnostics: Vec::new(),
+            unreadable: Vec::new(),
             modules: vec![DocModule {
                 path: "src/api.js".to_string(),
                 entries: vec![DocEntry {
