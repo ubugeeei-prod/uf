@@ -386,3 +386,50 @@ fn an_object_typed_parameter_does_not_confuse_a_hook_either() {
     assert_eq!(findings(function), Vec::<Finding>::new());
     assert_eq!(findings(declared), Vec::<Finding>::new());
 }
+
+#[test]
+fn a_component_declared_inside_a_call_may_still_call_hooks() {
+    // A test file is full of these: `it("…", () => { component Probe() { … } })`.
+    // The `it(` is still open at the component's `{`, so the scope tracker
+    // classified the body from its tokens rather than from what it was about
+    // to open — and it had no idea what `component` meant.
+    accepts(
+        "it(\"renders\", () => {\n  component Probe() {\n    const [a] = useState(0);\n    return null;\n  }\n  render(<Probe />);\n});\n",
+    );
+}
+
+#[test]
+fn a_hook_declared_inside_a_call_may_still_call_hooks() {
+    accepts(
+        "describe(\"x\", () => {\n  hook useProbe(): number {\n    const [a] = useState(0);\n    return a;\n  }\n});\n",
+    );
+}
+
+#[test]
+fn a_use_prefixed_function_inside_a_call_may_still_call_hooks() {
+    accepts(
+        "it(\"renders\", () => {\n  function useProbe(): number {\n    const [a] = useState(0);\n    return a;\n  }\n});\n",
+    );
+}
+
+#[test]
+fn a_plain_function_inside_a_call_still_may_not() {
+    // The fix must not turn every brace after a `)` into somewhere hooks are
+    // allowed: a callback declared in the same place is still a callback.
+    let diagnostics = check(
+        "it(\"renders\", () => {\n  function helper() {\n    const [a] = useState(0);\n    return a;\n  }\n});\n",
+    );
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].finding, Finding::HookOutsideComponent);
+}
+
+#[test]
+fn a_condition_inside_a_call_is_not_a_function() {
+    // `if (…) {` also ends in `) {`, and reading it as a function body would
+    // silently accept a conditional hook.
+    let diagnostics = check(
+        "it(\"renders\", () => {\n  component Probe(flag: boolean) {\n    if (flag) {\n      const [a] = useState(0);\n    }\n    return null;\n  }\n});\n",
+    );
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].finding, Finding::HookNotAtTopLevel);
+}

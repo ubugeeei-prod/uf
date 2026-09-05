@@ -68,7 +68,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "expect",
                 "fn",
                 "spyOn",
-                "vi",
+                "uft",
                 "beforeAll",
                 "afterAll",
                 "beforeEach",

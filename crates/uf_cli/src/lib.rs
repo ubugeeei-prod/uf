@@ -7,6 +7,7 @@
 mod brand;
 mod cli;
 mod commands;
+mod menu;
 mod suggest;
 mod support;
 mod ui;
@@ -38,6 +39,13 @@ struct Cli {
 pub fn main() -> ExitCode {
     let (cli, target) = match parse_cli() {
         Ok(parsed) => parsed,
+        Err(error) if is_bare_uf(&error) => match ask_what_to_run() {
+            Asked::Run(parsed) => parsed,
+            Asked::Help => return report_startup_error(&error),
+            // The reader opened the menu and closed it. Nothing happened, and
+            // saying so would be one more line to dismiss.
+            Asked::Nothing => return ExitCode::SUCCESS,
+        },
         Err(error) => return report_startup_error(&error),
     };
     let mode = if cli.command.wants_json() || cli.command.owns_stdout() {
@@ -53,6 +61,63 @@ pub fn main() -> ExitCode {
             ui.error(&error);
             ExitCode::FAILURE
         }
+    }
+}
+
+/// What asking the reader came back with.
+enum Asked {
+    /// Run this, as if it had been typed.
+    Run((Cli, Option<String>)),
+    /// Print the help, which is what `uf` alone did before there was a menu.
+    Help,
+    /// The reader changed their mind.
+    Nothing,
+}
+
+/// Whether this is `uf` typed on its own, with nothing after it.
+///
+/// Nothing after it, and not merely "no subcommand": `uf --cwd elsewhere` is
+/// also missing a subcommand, and a menu built for one directory that then ran
+/// a command in another would be answering a question it had not been asked.
+/// The flag is rare and the help is a fine answer to it.
+fn is_bare_uf(error: &anyhow::Error) -> bool {
+    let Some(error) = error.downcast_ref::<clap::Error>() else {
+        return false;
+    };
+    if !matches!(
+        error.kind(),
+        ErrorKind::MissingSubcommand | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    ) {
+        return false;
+    }
+    std::env::args_os().count() == 1
+}
+
+/// Offer the menu, and turn what was chosen back into parsed arguments.
+fn ask_what_to_run() -> Asked {
+    let Ok(cwd) = std::env::current_dir() else {
+        return Asked::Help;
+    };
+    let Ok(cwd) = Utf8PathBuf::from_path_buf(cwd) else {
+        return Asked::Help;
+    };
+
+    let words = match menu::choose(&cwd) {
+        menu::Chosen::Run(words) => words,
+        menu::Chosen::Help => return Asked::Help,
+        menu::Chosen::Nothing => return Asked::Nothing,
+    };
+
+    // Back through the same parser the typed form goes through, so a menu
+    // entry cannot mean something the command line could not have said.
+    let mut args = vec!["uf".to_owned()];
+    args.extend(words);
+    match Cli::try_parse_from(&args) {
+        Ok(cli) => Asked::Run((cli, None)),
+        // Unreachable while the menu's entries are checked against the parser
+        // in `menu::tests`, and the help is the honest answer if that ever
+        // stops being true.
+        Err(_) => Asked::Help,
     }
 }
 
@@ -272,6 +337,24 @@ fn resolve_cwd(cwd: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
 fn current_dir() -> Result<Utf8PathBuf> {
     Utf8PathBuf::from_path_buf(std::env::current_dir()?)
         .map_err(|path| anyhow!("current directory is not UTF-8: {}", path.display()))
+}
+
+/// Whether `uf <name>` parses as a command at all.
+///
+/// For the menu's own tests: an entry that is not a command is one that fails
+/// in front of whoever chose it.
+#[cfg(test)]
+fn parses_as_command(name: &str) -> bool {
+    !matches!(
+        Cli::try_parse_from(["uf", name]).err().map(|e| e.kind()),
+        Some(ErrorKind::InvalidSubcommand | ErrorKind::UnknownArgument)
+    )
+}
+
+/// Whether `uf <name>` needs nothing else to run.
+#[cfg(test)]
+fn runs_with_no_arguments(name: &str) -> bool {
+    Cli::try_parse_from(["uf", name]).is_ok()
 }
 
 #[cfg(test)]

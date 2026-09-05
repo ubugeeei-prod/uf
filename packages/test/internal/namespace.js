@@ -1,19 +1,31 @@
 // @flow
 //
-// Internal to `@uniflowed/test`: the `vi` namespace.
+// Internal to `@uniflowed/test`: the `uft` namespace.
 //
-// Vitest's name, deliberately. A project moving to uf should not have to
-// rewrite the parts of its tests that were never about Vite — `vi.fn`,
-// `vi.spyOn`, `vi.stubEnv` are a vocabulary, and inventing a second one for the
-// same operations would buy nothing and cost every migration.
+// The operations Vitest groups under `vi`, under uf's own name. The *shape* is
+// what a migration needs — `fn`, `spyOn`, `stubEnv`, `useFakeTimers` doing what
+// they do elsewhere — and borrowing another tool's brand for it would be
+// claiming something uf has not earned.
 //
-// What is *not* here is as deliberate. `vi.mock` intercepts a module before it
+// A namespace rather than loose named exports, because several of these names
+// are generic enough to collide in a test file: `@uniflowed/testing` re-exports
+// both this package and `@uniflowed/react-testing`, and both have a `waitFor`.
+//
+// `uft` rather than `uf`, and rather than `uf.test`. A bare `uf` is the command
+// and the project, and a test file would be using the name for something much
+// smaller than everything else in the toolchain answers to. `uf.test` reads as
+// the `test` function this package also exports, which is `it` under another
+// name — two very different things one dot apart. `uft` is three characters,
+// belongs to nothing else, and is what a reader types a hundred times a file.
+//
+// What is *not* here is as deliberate. `uft.mock` intercepts a module before it
 // is imported, which needs the loader rather than the runner, and uf's loader is
 // `@uniflowed/host` — so it is a real piece of work rather than a wrapper, and
 // it is not pretended at here. A missing binding throws with what it would take;
 // a binding that silently did nothing would be worse than not having it.
 
 import { clearAllMocks, fn, resetAllMocks, restoreAllMocks, spyOn } from "./spy.js";
+import * as timers from "./timers.js";
 
 /** Environment variables `stubEnv` replaced, and what they were. */
 const stubbedEnv: Map<string, string | void> = new Map();
@@ -22,9 +34,9 @@ const stubbedEnv: Map<string, string | void> = new Map();
 const stubbedGlobals: Map<string, { readonly owned: boolean, readonly value: mixed }> = new Map();
 
 /**
- * Raised for a `vi` binding uf has not implemented.
+ * Raised for a `uft` namespace binding that is not implemented.
  *
- * Names what the binding needs rather than only that it is missing: `vi.mock`
+ * Names what the binding needs rather than only that it is missing: `uft.mock`
  * is absent because module interception belongs to the loader, and a reader who
  * knows that can decide whether to wait or to restructure the test.
  */
@@ -33,7 +45,7 @@ export class UnsupportedError extends Error {
   binding: string;
 
   constructor(binding: string, reason: string) {
-    super(`vi.${binding} is not implemented yet: ${reason}`);
+    super(`uft.${binding} is not implemented yet: ${reason}`);
     this.name = "UnsupportedError";
     this.binding = binding;
   }
@@ -147,7 +159,7 @@ export async function waitFor<T>(
       last = thrown;
     }
     if (Date.now() >= deadline) {
-      throw last ?? new Error(`vi.waitFor: gave up after ${timeout}ms`);
+      throw last ?? new Error(`uft.waitFor: gave up after ${timeout}ms`);
     }
     await new Promise((resolve) => setTimeout(resolve, interval));
   }
@@ -161,7 +173,7 @@ export async function waitUntil(
   return waitFor(async () => {
     const value = await body();
     if (value == null || value === false) {
-      throw new Error("vi.waitUntil: the condition is not true yet");
+      throw new Error("uft.waitUntil: the condition is not true yet");
     }
     return value;
   }, options);
@@ -172,7 +184,7 @@ export async function waitUntil(
  *
  * Purely a type-level convenience, exactly as in Vitest: at runtime it is the
  * identity function, and its whole job is letting a test write
- * `vi.mocked(client.send).mockReturnValue(…)` without a cast.
+ * `uft.mocked(client.send).mockReturnValue(…)` without a cast.
  */
 export function mocked<T>(value: T): $FlowFixMe {
   return value;
@@ -191,13 +203,13 @@ const NEEDS_LOADER =
   "(`@uniflowed/host`), not to the runner, and uf has not wired it yet";
 
 /**
- * The `vi` namespace.
+ * The `uft` namespace.
  *
  * A frozen object rather than a class: it is a namespace, nothing about it is
  * per-instance, and freezing it means a test cannot leave a monkey-patch behind
  * for the next one.
  */
-export const vi: $FlowFixMe = Object.freeze({
+export const uft: $FlowFixMe = Object.freeze({
   fn,
   spyOn,
   mocked,
@@ -213,6 +225,20 @@ export const vi: $FlowFixMe = Object.freeze({
 
   waitFor,
   waitUntil,
+
+  // The clock a test controls. A test about "after five minutes the session
+  // expires" should not take five minutes.
+  useFakeTimers: timers.useFakeTimers,
+  useRealTimers: timers.useRealTimers,
+  isFakeTimers: timers.isFaked,
+  advanceTimersByTime: timers.advanceTimersByTime,
+  advanceTimersByTimeAsync: timers.advanceTimersByTimeAsync,
+  advanceTimersToNextTimer: timers.advanceTimersToNextTimer,
+  runAllTimers: timers.runAllTimers,
+  runOnlyPendingTimers: timers.runOnlyPendingTimers,
+  getTimerCount: timers.getTimerCount,
+  setSystemTime: timers.setSystemTime,
+  getMockedSystemTime: timers.getMockedSystemTime,
 
   // Module interception. Absent rather than faked; see `NEEDS_LOADER`.
   mock: unsupported("mock", NEEDS_LOADER),

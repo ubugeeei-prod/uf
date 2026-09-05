@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/web",
   "version": "0.0.0-alpha.2",
-  "description": "Flow declarations for @uniflowed/web, part of the Unified Toolchain for Flow.",
+  "description": "The primitives a web page is built from, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -14,10 +14,10 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "internal/*.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.2",
     "@uniflowed/react": "0.0.0-alpha.2"
   }
 }

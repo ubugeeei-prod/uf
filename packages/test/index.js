@@ -33,14 +33,19 @@ export { AssertionError, expect } from "./internal/expect.js";
 export { fn, spyOn } from "./internal/spy.js";
 
 /**
- * Vitest's namespace, under its own name.
+ * Spies, stubs, a controllable clock, and waiting — under uf's own name.
  *
- * A project moving to uf should not have to rewrite the parts of its tests
- * that were never about Vite: `vi.fn`, `vi.spyOn` and `vi.stubEnv` are a
- * vocabulary, and a second one for the same operations would cost every
- * migration and buy nothing.
+ * The same operations Vitest groups under `vi`, so a suite being ported keeps
+ * its shape; the name is uf's, because borrowing another tool's brand for it
+ * would be claiming something uf has not earned.
+ *
+ * A namespace rather than loose named exports, because several of these names
+ * are generic enough to collide: `@uniflowed/testing` re-exports both this
+ * package and `@uniflowed/react-testing`, and both have a `waitFor`.
  */
-export { UnsupportedError, vi } from "./internal/vi.js";
+export { UnsupportedError, uft } from "./internal/namespace.js";
+
+export { RunawayTimersError } from "./internal/timers.js";
 
 export { DEFAULT_TIMEOUT_MS, NAME_SEPARATOR } from "./internal/run.js";
 

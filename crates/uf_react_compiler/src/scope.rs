@@ -77,6 +77,16 @@ pub struct ScopeStack {
     pub parens: u32,
     /// What the next `{` at parenthesis depth zero opens, when it is known.
     pending: Option<ScopeKind>,
+    /// The exact `{` [`Self::pending`] describes, when the declaration knew it.
+    ///
+    /// A `component`, a `hook` and a `function` can all say which brace is
+    /// their body — the caller finds it with `return_type_body` — and a brace
+    /// named that way is the body wherever it stands. Without this, a
+    /// declaration inside a call's arguments lost its answer to the
+    /// parenthesis test below, and every `it("…", () => { component Probe() {
+    /// … } })` in a test file had its hooks reported as being called outside a
+    /// component.
+    pending_body: Option<usize>,
 }
 
 impl ScopeStack {
@@ -143,14 +153,29 @@ impl ScopeStack {
         }
     }
 
+    /// Say which `{` the pending kind belongs to.
+    ///
+    /// Stronger than [`Self::expect`] alone, because a named brace survives the
+    /// parenthesis test in [`Self::open`]. A declaration knows which brace is
+    /// its own body; being written inside a call's arguments does not change
+    /// that, and a test file is nothing but declarations written there.
+    pub fn name_body(&mut self, body: usize) {
+        self.pending_body = Some(body);
+    }
+
     /// Forget what the next `{` opens, at the end of a statement.
     pub fn forget(&mut self) {
         self.pending = None;
+        self.pending_body = None;
     }
 
     /// Open a frame for the `{` at `index`.
     pub fn open(&mut self, source: &str, tokens: &[Token], index: usize) -> ScopeKind {
-        let kind = if self.parens == 0 {
+        let named = self.pending_body == Some(index);
+        if named {
+            self.pending_body = None;
+        }
+        let kind = if named || self.parens == 0 {
             self.pending
                 .take()
                 .unwrap_or_else(|| classify(source, tokens, index))
@@ -258,6 +283,11 @@ fn classify(source: &str, tokens: &[Token], index: usize) -> ScopeKind {
 
 /// Whether the parameter list opening at `open` belongs to a function
 /// expression rather than to `if`, `for`, `while`, `switch` or `catch`.
+///
+/// Only `function` is recognised here, and deliberately: a `component`, a
+/// `hook` and a named `function` all name their own body brace through
+/// [`ScopeStack::expect_body`], which is exact. This is the fallback for a
+/// function expression that named nothing.
 fn is_function_head(source: &str, tokens: &[Token], open: usize) -> bool {
     let word = |at: usize| ident_at(source, tokens, at);
     match open.checked_sub(1).and_then(word) {
