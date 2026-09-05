@@ -19,7 +19,7 @@ use crate::error::{MAX_SOURCE_BYTES, SourcePosition, StyleXError};
 use crate::value::StyleValue;
 
 use bindings::{BindingKind, ModuleBindings};
-use extract::{create_namespaces, variables};
+use extract::{create_namespaces, theme_overrides, variables};
 use object::Cursor;
 
 /// One resolved declaration inside one namespace.
@@ -83,6 +83,24 @@ pub struct DefineVarsCall {
     pub variables: Vec<Variable>,
 }
 
+/// A `stylex.createTheme(tokens, {...})` call and everything read out of it.
+///
+/// A theme is a set of overrides for one `stylex.defineVars` object, so it
+/// carries the namespace it themes rather than a name of its own: the custom
+/// properties it writes are that namespace's, and two themes that give the same
+/// token the same value are the same rule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeCall {
+    /// Byte offset of the first byte of the call expression.
+    pub start: usize,
+    /// Byte offset one past the closing parenthesis.
+    pub end: usize,
+    /// The variables namespace the theme overrides.
+    pub namespace: CompactString,
+    /// The overrides, as declarations of custom properties, in source order.
+    pub overrides: Vec<Declaration>,
+}
+
 /// Everything one module contributes to the stylesheet.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParsedModule {
@@ -90,12 +108,14 @@ pub struct ParsedModule {
     pub creates: Vec<CreateCall>,
     /// `stylex.defineVars` calls, in source order.
     pub defines: Vec<DefineVarsCall>,
+    /// `stylex.createTheme` calls, in source order.
+    pub themes: Vec<ThemeCall>,
 }
 
 impl ParsedModule {
     /// Whether the module declares any styles at all.
     pub fn is_empty(&self) -> bool {
-        self.creates.is_empty() && self.defines.is_empty()
+        self.creates.is_empty() && self.defines.is_empty() && self.themes.is_empty()
     }
 }
 
@@ -104,6 +124,7 @@ impl ParsedModule {
 enum CallKind {
     Create,
     DefineVars,
+    CreateTheme,
 }
 
 /// One call site, before its argument has been read.
@@ -159,16 +180,18 @@ pub fn parse_module(source: &str) -> Result<ParsedModule, StyleXError> {
 
     let mut parsed = ParsedModule::default();
     for site in &sites {
-        let (open, close) = argument_object(cursor, site)?;
         let start = tokens[site.callee].start;
-        let end = tokens[close].end;
         match site.kind {
-            CallKind::Create => parsed.creates.push(CreateCall {
-                start,
-                end,
-                namespaces: create_namespaces(cursor, &bindings, open)?,
-            }),
+            CallKind::Create => {
+                let (open, close) = argument_object(cursor, site)?;
+                parsed.creates.push(CreateCall {
+                    start,
+                    end: tokens[close].end,
+                    namespaces: create_namespaces(cursor, &bindings, open)?,
+                });
+            }
             CallKind::DefineVars => {
+                let (open, close) = argument_object(cursor, site)?;
                 let Some(binding) = site.binding.clone() else {
                     return Err(StyleXError::MalformedEntry {
                         at: cursor.position(site.callee),
@@ -176,9 +199,26 @@ pub fn parse_module(source: &str) -> Result<ParsedModule, StyleXError> {
                 };
                 parsed.defines.push(DefineVarsCall {
                     start,
-                    end,
+                    end: tokens[close].end,
                     variables: variables(cursor, &bindings, &binding, open)?,
                     binding,
+                });
+            }
+            CallKind::CreateTheme => {
+                let (themed, open, close) = theme_arguments(cursor, site)?;
+                let local = cursor.text(themed);
+                let Some(namespace) = bindings.variables_namespace(local) else {
+                    return Err(StyleXError::UnknownVariableBinding {
+                        at: cursor.position(themed),
+                        binding: CompactString::new(local),
+                    });
+                };
+                let namespace = CompactString::new(namespace);
+                parsed.themes.push(ThemeCall {
+                    start,
+                    end: tokens[close].end,
+                    overrides: theme_overrides(cursor, &bindings, &namespace, open)?,
+                    namespace,
                 });
             }
         }
@@ -202,6 +242,7 @@ fn call_sites(cursor: Cursor<'_>, bindings: &ModuleBindings) -> Vec<CallSite> {
             Some(BindingKind::Namespace) => member_call(cursor, index),
             Some(BindingKind::Create) if called => Some((CallKind::Create, index + 1)),
             Some(BindingKind::DefineVars) if called => Some((CallKind::DefineVars, index + 1)),
+            Some(BindingKind::CreateTheme) if called => Some((CallKind::CreateTheme, index + 1)),
             _ => None,
         };
         if let Some((kind, open_paren)) = site {
@@ -229,6 +270,7 @@ fn member_call(cursor: Cursor<'_>, index: usize) -> Option<(CallKind, usize)> {
     let kind = match member.text(cursor.source) {
         "create" => CallKind::Create,
         "defineVars" => CallKind::DefineVars,
+        "createTheme" => CallKind::CreateTheme,
         _ => return None,
     };
     Some((kind, index + 3))
@@ -264,4 +306,44 @@ fn argument_object(cursor: Cursor<'_>, site: &CallSite) -> Result<(usize, usize)
         });
     }
     Ok((open, close_paren))
+}
+
+/// The `(tokens, { ... })` a `createTheme` call was handed.
+///
+/// Returned as `(token binding, open brace, close paren)`. The shape is fixed
+/// on purpose: the first argument says *which* variables object is being
+/// themed, and uf has to resolve it to a namespace to know which custom
+/// properties the overrides name. A spread, a call, or a computed first
+/// argument is a theme uf cannot place, so it is refused rather than dropped.
+fn theme_arguments(
+    cursor: Cursor<'_>,
+    site: &CallSite,
+) -> Result<(usize, usize, usize), StyleXError> {
+    let Some(close_paren) = matching_close(cursor.tokens, site.open_paren, b'(', b')') else {
+        return Err(StyleXError::UnterminatedObject {
+            at: cursor.position(site.open_paren),
+        });
+    };
+    let themed = site.open_paren + 1;
+    let comma = themed + 1;
+    let open = themed + 2;
+    let shaped = cursor
+        .tokens
+        .get(themed)
+        .is_some_and(|token| token.kind == TokenKind::Ident)
+        && cursor
+            .tokens
+            .get(comma)
+            .is_some_and(|token| token.is_punct(b','))
+        && cursor
+            .tokens
+            .get(open)
+            .is_some_and(|token| token.is_punct(b'{'))
+        && open < close_paren;
+    if !shaped {
+        return Err(StyleXError::ExpectedObjectLiteral {
+            at: cursor.position(themed),
+        });
+    }
+    Ok((themed, open, close_paren))
 }

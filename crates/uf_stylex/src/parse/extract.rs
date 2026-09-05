@@ -254,6 +254,75 @@ fn push_declaration_with_key(
     Ok(())
 }
 
+/// Read the overrides out of the second argument of `stylex.createTheme`.
+///
+/// A theme is one level of token keys, each of which may carry a conditional
+/// object — `{ canvas: { default: "#fff", "@media (…)": "#000" } }` — and
+/// nothing deeper. Two levels, so this walks them directly instead of joining
+/// the queue in [`create_namespaces`]: there is no third level to descend into
+/// and no recursion to bound.
+///
+/// The property of every declaration is the *custom property* the token
+/// resolves to, not the authored key, which is what makes a theme merge against
+/// another theme by variable rather than by the word an author happened to
+/// choose for it.
+pub fn theme_overrides(
+    cursor: Cursor<'_>,
+    bindings: &ModuleBindings,
+    namespace: &str,
+    open: usize,
+) -> Result<Vec<Declaration>, StyleXError> {
+    let mut found = Vec::new();
+    for entry in object::entries(cursor, open)? {
+        check_key(&entry)?;
+        let property = variable_name(namespace, &entry.key);
+        match object::object_at(cursor, entry.value_start, entry.value_end) {
+            Some(child) => {
+                for state in object::entries(cursor, child)? {
+                    let nested = object::object_at(cursor, state.value_start, state.value_end);
+                    reject_nesting(&state, nested)?;
+                    let condition = condition_of(&state)?;
+                    push_override(cursor, bindings, &mut found, &property, condition, state)?;
+                }
+            }
+            None => push_override(
+                cursor,
+                bindings,
+                &mut found,
+                &property,
+                StyleCondition::Base,
+                entry,
+            )?,
+        }
+        if found.len() > MAX_DECLARATIONS {
+            return Err(StyleXError::TooManyDeclarations {
+                limit: MAX_DECLARATIONS,
+            });
+        }
+    }
+    Ok(found)
+}
+
+/// Resolve one theme override and add it to the list.
+fn push_override(
+    cursor: Cursor<'_>,
+    bindings: &ModuleBindings,
+    found: &mut Vec<Declaration>,
+    property: &CompactString,
+    condition: StyleCondition,
+    entry: Entry,
+) -> Result<(), StyleXError> {
+    let value = object::value(cursor, bindings, entry.value_start, entry.value_end)?;
+    found.push(Declaration {
+        key: property.clone(),
+        property: property.clone(),
+        condition,
+        value,
+        at: entry.at,
+    });
+    Ok(())
+}
+
 /// Read the entries out of the object handed to `stylex.defineVars`.
 pub fn variables(
     cursor: Cursor<'_>,

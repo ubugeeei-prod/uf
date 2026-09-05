@@ -119,17 +119,26 @@ pub fn check_value_text(text: &str, at: SourcePosition) -> Result<(), StyleXErro
 ///
 /// `0x10`, `1_000`, `10n` and `1e400` all lex as numbers and none of them mean
 /// anything useful once `px` is appended, so the accepted shape is exactly
-/// `-?digits(.digits)?`.
+/// `-?digits(.digits)?` — with the integer part optional when there is a
+/// fraction, which is not a nicety.
+///
+/// This pass runs over the JavaScript the Flow chain produced, not over what an
+/// author typed, and that code generator writes `0.55` as `.55`. Refusing a
+/// leading dot therefore refused `opacity: 0.55`, and because one unresolvable
+/// value fails the whole module, a single fraction anywhere in a stylesheet
+/// silently left every rule in that file uncompiled.
 pub fn check_number(text: &str, at: SourcePosition) -> Result<(), StyleXError> {
     let body = text.strip_prefix('-').unwrap_or(text);
     let mut parts = body.split('.');
     let integer = parts.next().unwrap_or_default();
     let fraction = parts.next();
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
     let malformed = parts.next().is_some()
-        || integer.is_empty()
-        || !integer.bytes().all(|byte| byte.is_ascii_digit())
-        || fraction
-            .is_some_and(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()));
+        || match fraction {
+            // `.5` and `1.5` are both numbers; `1.` and `.` are not.
+            Some(part) => !digits(part) || !(integer.is_empty() || digits(integer)),
+            None => !digits(integer),
+        };
 
     if malformed {
         Err(StyleXError::UnsupportedValue {
@@ -231,6 +240,21 @@ mod tests {
         assert!(check_number("42", position()).is_ok());
         assert!(check_number("1.5", position()).is_ok());
         assert!(check_number("-1.5", position()).is_ok());
+    }
+
+    #[test]
+    fn a_fraction_written_without_its_leading_zero_is_accepted() {
+        // This pass runs over generated JavaScript, and the code generator
+        // writes `0.55` as `.55`. Refusing it failed the whole module, so a
+        // single `opacity: 0.55` anywhere left every rule in that file
+        // uncompiled — and the compiled output looked fine, because it was the
+        // input.
+        assert!(check_number(".55", position()).is_ok());
+        assert!(check_number("-.5", position()).is_ok());
+        assert_eq!(
+            StyleValue::Number(CompactString::const_new(".55")).to_css("opacity"),
+            ".55"
+        );
     }
 
     #[test]

@@ -4,9 +4,11 @@ mod extract;
 mod idempotency;
 mod ordering;
 mod plugin;
+mod preset;
 mod props;
 mod rewrite;
 mod robustness;
+mod theme;
 mod variables;
 
 use crate::compile::{CompiledModule, compile_module};

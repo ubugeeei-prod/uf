@@ -159,14 +159,30 @@
 - [x] Start `@uniflowed/temporal` as a lite Temporal contract.
 - [x] Start `@uniflowed/pwa` with opt-in cache defaults.
 - [ ] Implement `@uniflowed/orm`.
-- [ ] Implement `@uniflowed/stylex` with preset StyleX defaults.
+- [x] Implement `@uniflowed/stylex` with preset StyleX defaults: a compiled
+      token set, a base layer of recipes over it, and `createTheme` so any of
+      it can be replaced. `keyframes`, `firstThatWorks` and `positionTry` are
+      deliberately absent; the Readiness section in `packages/stylex/index.js`
+      says why.
 - [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library that can replace shadcn for Flow React apps.
 - [ ] Implement native terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
 - [x] Make form UI validator-backed and React Compiler-safe by contract.
-- [ ] Add compile-time form value/error type generation from validator schemas.
+- [x] Add compile-time form value/error type generation from validator schemas.
+      Answered by removing the generator rather than writing one. A schema is a
+      runtime value, so generating from it means evaluating the module at build
+      time to write down a second copy of a type Flow already computes:
+      `InferOutput<typeof Account>` is the parsed value and
+      `InferInput<typeof Account>` is what the controls produce, both derived
+      from the schema by the checker, and `validatorResolver` carries them
+      through `handleSubmit` to `onValid` and across a Server Action boundary.
+      The error half cannot be generated at all — a form keys errors by the
+      dotted field path, and Flow has no template-literal types, so a generated
+      `FormErrors` would be `{ [string]: FieldError }` wearing a name that
+      claims more. `crates/uf_prepare/src/lib.rs` and `packages/prepare/index.js`
+      carry the reasoning where the step used to be.
 - [ ] Expose runtime bindings through Flow declarations.
 - [ ] Back the declarations with Rust native runtime modules.
 
@@ -227,7 +243,16 @@
 - [ ] Add visual regression baselines, diffing, and update flows.
 - [x] Add `uf prepare` command surface for lint-staged-compatible checks and code generation.
 - [x] Write `.uf/prepare.json` and generated route metadata from `uf prepare`.
-- [ ] Wire `uf prepare` to staged file discovery and generated type writes.
+- [x] Wire `uf prepare` to staged file discovery and generated type writes.
+      `uf prepare` printed six steps and performed one. It now runs five and
+      every one of them does something: `git diff --cached` narrows the run to
+      the index, `router.js` and `server-actions.js` are written, and `uf lint`
+      and `uf fmt --check` run over the staged files plus the two generated
+      ones — which a scaffolded project git-ignores, so they are never staged
+      and would otherwise never be checked. `.uf/prepare.json` records what
+      each step did, including `not-run` for the ones a generation failure kept
+      from starting. `generate-validator-types` was removed rather than
+      implemented; see the P2 line it came from.
 
 ## P4: Build, Runtime, Package Manager, Publish
 
