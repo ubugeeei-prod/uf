@@ -87,11 +87,17 @@
 
 ## P2: Native Libraries Exposed To Flow
 
-- [ ] Implement `@uniflowed/query` as a native TanStack Query-style data layer.
+- [x] Implement `@uniflowed/query` as a TanStack Query-style data layer, in Flow.
+      Deduplication, supersession, retry policies, collection, optimistic
+      mutations and infinite pages, in twelve modules with no `internal/`.
 - [ ] Implement `@uniflowed/effect` as a typed generator/yield EffectSystem.
 - [x] Start `@uniflowed/state` and `@uniflowed/cell` from this repository.
-- [ ] Complete `@uniflowed/state` and `@uniflowed/cell` as Flow JS implementations.
+- [x] Complete `@uniflowed/state` and `@uniflowed/cell` as Flow JS implementations.
 - [x] Start `@uniflowed/validator` with `v.pipe`-style validation.
+- [x] Implement `@uniflowed/immer`: immutable updates through a draft, in Flow.
+- [x] Implement `@uniflowed/form`: uncontrolled fields, narrow subscriptions and
+      schema validation. Eleven characters typed cost two renders against a
+      controlled `useState`'s twelve.
 - [ ] Add validator-driven Flow type inference and schema exports.
 - [x] Start `@uniflowed/cli` as a Gunshi-style stdlib CLI framework.
 - [x] Start `@uniflowed/fetch` as an explicit fetch client.
@@ -128,12 +134,14 @@
 - [ ] Implement native React Native testing utilities.
 - [x] Add watch mode with dependency-aware reruns.
 - [ ] Add strict CLI integration tests for every command.
+- [x] Report what a test printed. `console.log` in a test used to kill the file
+      it was in, because the worker's stdout was the protocol.
 - [ ] Add snapshot tests for generated templates and router types.
 - [ ] Add e2e type-safety fixtures for app, server actions, router, query, effect, and UI.
 - [x] Start story, mock, browser, and VRT contracts.
 - [ ] Implement `@uniflowed/story` component story runner.
 - [x] Start `@uniflowed/vrt` native visual regression contracts.
-- [ ] Implement `@uniflowed/mock` MSW-compatible native request mocking.
+- [ ] Implement `@uniflowed/mock` MSW-compatible request mocking.
 - [ ] Implement `@uniflowed/browser` Playwright-compatible browser automation.
 - [ ] Add visual regression baselines, diffing, and update flows.
 - [x] Add `uf prepare` command surface for lint-staged-compatible checks and code generation.
