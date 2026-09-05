@@ -139,6 +139,26 @@ existing=0
 mismatched=""
 unpublished=""
 
+# Ask npm what is there, rather than reading what it printed.
+#
+# Binding a name is an account change, so npm asks for a one-time password
+# and prints a URL to authenticate at. Capturing its output to classify the
+# failure hid that prompt, and the run stopped on the first name with
+#
+#   npm error code EOTP
+#   npm error This operation requires a one-time password.
+#   npm error Open this URL in your browser to authenticate: …
+#
+# where the URL was in a file nobody was looking at. So the real binds write
+# straight to the terminal, and what happened is worked out afterwards from
+# two questions npm can answer directly.
+is_bound() {
+  npm trust list "$1" 2>/dev/null | grep -q "$workflow"
+}
+is_published() {
+  npm view "$1" name >/dev/null 2>&1
+}
+
 # `npm trust list` needs the same session *and* a one-time password, so on a
 # session that has not been through 2FA it returns nothing and every name is
 # attempted. That is fine: a name that already has a configuration answers
@@ -153,31 +173,47 @@ unpublished=""
 # which is what it did.
 for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt); do
   name="@uniflowed/${package}"
-  if trust "$name" >"$errors" 2>&1; then
-    echo "trust-npm: bound ${name}"
-    bound=$((bound + 1))
-    continue
-  fi
-  # A name the registry does not have cannot be bound, and that is a
-  # different job rather than a failure of this one.
-  if grep -q 'E404' "$errors"; then
+
+  # Nothing to bind yet. `npm trust` binds a name the registry has; it does
+  # not create one, and asking it to would spend an authentication on a 404.
+  if ! is_published "$name"; then
     echo "trust-npm: ${name} is not on the registry yet"
     unpublished="${unpublished} ${package}"
     continue
   fi
-  if ! grep -q 'E409' "$errors"; then
-    echo "trust-npm: ${name} could not be bound:" >&2
-    grep -v '^npm warn Unknown user config' <"$errors" >&2 || cat "$errors" >&2
-    exit 1
-  fi
-  existing=$((existing + 1))
-  if npm trust list "$name" 2>/dev/null | grep -q "$workflow"; then
+
+  if is_bound "$name"; then
     echo "trust-npm: ${name} already points at ${workflow}"
-  else
-    echo "trust-npm: ${name} already has a configuration, and it is not ${workflow}:"
-    npm trust list "$name" 2>&1 | sed 's/^/    /'
-    mismatched="${mismatched} ${name}"
+    existing=$((existing + 1))
+    continue
   fi
+
+  echo "trust-npm: binding ${name}"
+  if trust "$name"; then
+    bound=$((bound + 1))
+    continue
+  fi
+
+  # It said no. What is there now is the answer: a configuration naming this
+  # workflow means it was already bound and npm refused the duplicate (E409),
+  # and anything else is a real failure.
+  if is_bound "$name"; then
+    echo "trust-npm: ${name} already points at ${workflow}"
+    existing=$((existing + 1))
+    continue
+  fi
+  listing="$(npm trust list "$name" 2>&1 || true)"
+  if printf '%s' "$listing" | grep -q 'file:'; then
+    echo "trust-npm: ${name} already has a configuration, and it is not ${workflow}:"
+    printf '%s\n' "$listing" | sed 's/^/    /'
+    mismatched="${mismatched} ${name}"
+    existing=$((existing + 1))
+    continue
+  fi
+  echo >&2
+  echo "trust-npm: ${name} could not be bound, and npm's own output is above." >&2
+  echo "trust-npm: npm --version ${npm_version}, permission flag '${permission:-none}'" >&2
+  exit 1
 done
 
 echo

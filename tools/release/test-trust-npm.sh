@@ -52,6 +52,10 @@ EOF
 case "$1" in
   --version) echo "11.99.0"; exit 0 ;;
   whoami) echo "tester"; exit 0 ;;
+  view)
+    # `unpublished` is the flavour where the registry has nothing.
+    [ "$flavour" = unpublished ] && exit 1
+    echo "$2"; exit 0 ;;
   trust) ;;
   *) exit 0 ;;
 esac
@@ -101,6 +105,12 @@ if [ "$flavour" = strict ] && [ -z "$permission" ]; then
 fi
 [ -n "$dry" ] && exit 0
 case "$flavour" in
+  otp)
+    echo "npm error code EOTP"
+    echo "npm error This operation requires a one-time password."
+    echo "npm error Open this URL in your browser to authenticate:"
+    echo "npm error   https://www.npmjs.com/auth/cli/deadbeef"
+    exit 1 ;;
   unpublished)
     echo "npm error code E404" >&2
     echo "npm error 404 Not Found - POST https://registry.npmjs.org/-/package/${package}/trust" >&2
@@ -125,9 +135,11 @@ run() {
 for flavour in strict permissive; do
   run "$flavour" || fail "${flavour}: the script failed:
 $(cat "${work}/${flavour}.log")"
-  # The script's own line, not the stub's: the stub's output goes into the
-  # file the script captures so it can tell E409 from a real failure.
-  bound="$(grep -c '^trust-npm: bound ' "${work}/${flavour}.log" || true)"
+  # The summary, not a per-line count: npm's own output goes to the terminal
+  # now — that is the point of the change that made the one-time-password
+  # prompt visible — so the lines in this log are the script's and the
+  # stub's interleaved.
+  bound="$(sed -n 's/^trust-npm: \([0-9][0-9]*\) bound,.*/\1/p' "${work}/${flavour}.log")"
   [ "$bound" = "$names" ] \
     || fail "${flavour}: bound ${bound} of ${names}:
 $(cat "${work}/${flavour}.log")"
@@ -178,12 +190,22 @@ missing="$(grep -c 'is not on the registry yet' "${work}/unpublished.log")"
 $(cat "${work}/unpublished.log")"
 pass "every unpublished name is reported, and the bootstrap is named"
 
-# 6. An npm without the subcommand stops, binds nothing, and says what to do.
+# 6. npm's own output reaches the terminal. Binding is an account change, so
+#    npm asks for a one-time password and prints a URL to open — and a run
+#    that captured that to classify the failure left the URL in a file
+#    nobody was looking at.
+run otp && fail "otp: an npm that refuses should not report success"
+grep -q 'https://www.npmjs.com/auth/cli/' "${work}/otp.log" \
+  || fail "otp: the URL a person has to open did not reach the output:
+$(cat "${work}/otp.log")"
+pass "npm's authentication prompt is not swallowed"
+
+# 7. An npm without the subcommand stops, binds nothing, and says what to do.
 if run ancient; then
   fail "ancient: the script should have stopped:
 $(cat "${work}/ancient.log")"
 fi
-grep -q '^trust-npm: bound ' "${work}/ancient.log" && fail "ancient: it bound something"
+grep -q '^trust-npm: binding ' "${work}/ancient.log" && fail "ancient: it bound something"
 grep -q 'npm install -g npm@' "${work}/ancient.log" \
   || fail "ancient: no upgrade instruction:
 $(cat "${work}/ancient.log")"
