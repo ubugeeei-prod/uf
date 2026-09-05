@@ -696,7 +696,12 @@ impl<'a> Printer<'a> {
                     }
                     Some(E::Conditional { .. }) => role == Role::Test,
                     Some(E::Binary { .. }) => true,
-                    _ => matches!(parent, NodeRef::Spread(_) | NodeRef::JsxSpreadAttribute(_)),
+                    // The third place this had been spelled out rather than
+                    // asked. `{ ...(await x) }` is an `ObjectProperty` and
+                    // `[...(await x)]` is a `Spread`, so naming only the
+                    // second dropped the parentheses from the first while the
+                    // array beside it kept them. See ubugeeei-prod/uf#159.
+                    _ => is_spread_argument(parent),
                 }
             }
             E::StringLiteral { .. } => {
