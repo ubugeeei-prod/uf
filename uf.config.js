@@ -158,6 +158,10 @@ export default defineConfig({
     // published resolves to nothing. No network, so `ci` runs it.
     "release:closure": "tools/release/verify-npm.sh --closure-only",
     "install:test": "tools/release/test-install.sh",
+    // The bootstrap is run by hand, once, by one person, and every mistake
+    // in it costs a round trip and blocks a release. It has cost three, each
+    // a shape of `npm trust github` that no test was strict enough to see.
+    "release:trust:test": "tools/release/test-trust-npm.sh",
     "release:manifest": "tools/release/build-manifest.sh",
     "release:package": "tools/release/package-binaries.sh",
     "release:bump": "tools/release/bump-version.sh",

@@ -93,14 +93,24 @@ fi
 # One argument list, used by the dry run and by every real bind, so the check
 # and the thing it checks cannot drift.
 #
+# `shift` then `"$@"`, so a call with no extra arguments passes none. Writing
+# it as `"${2:-}"` passes an *empty* argument instead, which npm reads as a
+# positional it does not have:
+#
+#   npm error Unknown positional argument:
+#
+# and which only the real bind hits, because the dry run always has one.
+#
 # shellcheck disable=SC2086 # deliberate: $permission is one flag or nothing
 trust() {
-  npm trust github "$1" \
+  package="$1"
+  shift
+  npm trust github "$package" \
     --file "$workflow" \
     --repository "$repository" \
     $permission \
     --yes \
-    "${2:-}"
+    "$@"
 }
 
 # One dry run before the first real one.
