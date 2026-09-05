@@ -1,5 +1,9 @@
 #!/bin/sh
-# Materialize the `upstream/flow` submodule cheaply.
+# Materialize the upstream sources uf builds against.
+#
+# Without arguments: `upstream/flow`, which every cargo invocation needs.
+# With `--integrations`: also the repositories in `tools/upstream/repos.txt`,
+# which nothing in the cargo graph depends on yet.
 #
 # `uf_flow`'s `upstream-parser` feature builds against Meta's official Flow Rust
 # port, which is not published to crates.io. The submodule tracks the whole Flow
@@ -53,3 +57,51 @@ if [ ! -d "$submodule_path/tslib" ]; then
 fi
 
 printf 'upstream/flow ready at %s\n' "$(git -C "$submodule_path" rev-parse --short HEAD)"
+
+# The rest of `upstream/` is pinned by commit in `tools/upstream/repos.txt`
+# rather than tracked as submodules, for the reason that file gives: nothing in
+# the cargo graph depends on them, and this script runs in every CI job.
+#
+# `--integrations` fetches them. Each is filtered to the subtrees uf actually
+# reads — React's compiler crates, Relay's compiler crates, React Native's
+# codegen and Libraries — because the three repositories together are about a
+# gigabyte and uf reads perhaps eighty megabytes of it.
+[ "${1:-}" = "--integrations" ] || exit 0
+
+manifest=tools/upstream/repos.txt
+
+while IFS='|' read -r name url commit subtrees; do
+  name=$(echo "$name" | tr -d '[:space:]')
+  case "$name" in '' | '#'*) continue ;; esac
+  url=$(echo "$url" | tr -d '[:space:]')
+  commit=$(echo "$commit" | tr -d '[:space:]')
+  subtrees=$(echo "$subtrees" | sed 's/^ *//; s/ *$//')
+
+  dest=upstream/$name
+  git_dir=$repo_root/.git/upstream/$name
+
+  if [ ! -e "$dest/.git" ]; then
+    rm -rf "$git_dir"
+    mkdir -p "$(dirname "$git_dir")"
+    git init --quiet --separate-git-dir "$git_dir" "$dest"
+    git -C "$dest" remote add origin "$url"
+    git -C "$dest" config core.sparseCheckout true
+  fi
+
+  if [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null || echo none)" != "$commit" ]; then
+    printf 'upstream: fetching %s at %.12s\n' "$name" "$commit"
+    git -C "$dest" fetch --quiet --depth 1 --filter=blob:none origin "$commit"
+    # shellcheck disable=SC2086 # deliberate word splitting: one argument per subtree
+    git -C "$dest" sparse-checkout set $subtrees
+    git -C "$dest" checkout --quiet --detach "$commit"
+  fi
+
+  for subtree in $subtrees; do
+    if [ ! -e "$dest/$subtree" ]; then
+      echo "upstream sync failed: $dest/$subtree is missing" >&2
+      exit 1
+    fi
+  done
+
+  printf 'upstream/%s ready at %s\n' "$name" "$(git -C "$dest" rev-parse --short HEAD)"
+done < "$manifest"
