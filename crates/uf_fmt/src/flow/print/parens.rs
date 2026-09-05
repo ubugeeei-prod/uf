@@ -237,6 +237,23 @@ pub fn starts_with_no_lookahead_token(
     }
 }
 
+/// Whether `parent` spreads the expression inside it.
+///
+/// A spread argument is parenthesized whatever the brackets around it:
+/// `{...(a || b)}` and `[...(a || b)]` are the same shape, and Prettier
+/// prints both with the parentheses. An object's spread is an
+/// `ObjectProperty` rather than a `Spread`, which is the only reason it was
+/// reaching the printer without them. See ubugeeei-prod/uf#159.
+fn is_spread_argument(parent: NodeRef<'_>) -> bool {
+    match parent {
+        NodeRef::Spread(_) | NodeRef::JsxSpreadAttribute(_) => true,
+        NodeRef::ObjectProperty(property) => {
+            matches!(property, expression::object::Property::SpreadProperty(_))
+        }
+        _ => false,
+    }
+}
+
 /// Binding strength of a binary or logical operator; higher binds tighter.
 pub fn precedence(operator: &str) -> u8 {
     match operator {
@@ -739,10 +756,7 @@ impl<'a> Printer<'a> {
                 }
                 Some(E::Conditional { .. }) => role == Role::Test,
                 Some(E::Member { .. }) | Some(E::OptionalMember { .. }) => role == Role::Object,
-                _ => {
-                    matches!(parent, NodeRef::Spread(_) | NodeRef::JsxSpreadAttribute(_))
-                        || role == Role::ExportDefault
-                }
+                _ => is_spread_argument(parent) || role == Role::ExportDefault,
             },
             E::Function { .. } => match parent_expression {
                 Some(E::Call { .. }) | Some(E::OptionalCall { .. }) | Some(E::New { .. }) => {
@@ -883,16 +897,27 @@ impl<'a> Printer<'a> {
     ) -> bool {
         use expression::ExpressionInner as E;
         let Some(parent_expression) = parent_expression else {
-            return matches!(
-                self.parent(),
-                Some(NodeRef::Spread(_)) | Some(NodeRef::JsxSpreadAttribute(_))
-            );
+            return self
+                .parent()
+                .is_some_and(|parent| is_spread_argument(parent));
         };
         match parent_expression {
             E::AsExpression { .. } | E::AsConstExpression { .. } | E::TSSatisfies { .. } => {
                 !is_binary_cast(expression)
             }
-            E::Conditional { .. } => is_binary_cast(expression),
+            E::Conditional { .. } => {
+                // `??` is parenthesized in any of a conditional's three
+                // positions. It binds tighter than `?:` so the parentheses
+                // change nothing, and `x ?? y ? a : b` is not a line anyone
+                // should have to work out. Prettier does the same, and only
+                // for `??` — `cond ? a || b : c` keeps none.
+                if let E::Logical { inner, .. } = &**expression
+                    && matches!(inner.operator, expression::LogicalOperator::NullishCoalesce)
+                {
+                    return true;
+                }
+                is_binary_cast(expression)
+            }
             E::Call { .. } | E::New { .. } | E::OptionalCall { .. } => role == Role::Callee,
             E::Class { .. } => role == Role::SuperClass,
             E::TaggedTemplate { .. } | E::Unary { .. } | E::Update { .. } => true,
