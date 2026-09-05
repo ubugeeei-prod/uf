@@ -28,6 +28,32 @@ pub(crate) fn unreadable_lines(unreadable: &[uf_project::UnreadableFile]) -> Vec
         .collect()
 }
 
+/// Whether `path` is one of the files the patterns asked for.
+///
+/// Substring rather than glob, and the same rule `uf test` uses for its own
+/// path arguments: `uf lint packages/ui` is the ordinary way to ask, and a
+/// reader who writes it should not have to learn a second matching language
+/// to find out why it read nothing.
+pub(crate) fn selects(patterns: &[String], path: &str) -> bool {
+    patterns.is_empty()
+        || patterns
+            .iter()
+            .any(|pattern| path.contains(pattern.as_str()))
+}
+
+/// `a`, `b` and `c`, quoted, for a message about patterns that matched nothing.
+pub(crate) fn quoted_list(patterns: &[String]) -> String {
+    let quoted: Vec<String> = patterns
+        .iter()
+        .map(|pattern| format!("`{pattern}`"))
+        .collect();
+    match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// Render a count with the right plural, e.g. `1 file` / `3 files`.
 pub(crate) fn plural(count: usize, singular: &str) -> String {
     if count == 1 {

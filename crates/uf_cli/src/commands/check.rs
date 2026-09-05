@@ -407,7 +407,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                     renderer.status(
                         out,
                         Status::Info,
-                        "these imports are typed as any; uf does not check across modules yet",
+                        "these imports are typed as any; uf resolved no module for them",
                     );
                     let items: Vec<&str> = untyped.iter().map(String::as_str).collect();
                     renderer.bullet_list(out, 4, &items);

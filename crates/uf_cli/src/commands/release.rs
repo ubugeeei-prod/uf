@@ -248,20 +248,12 @@ fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Optio
 /// merged, which is a fact about this repository's history rather than about
 /// what changed.
 fn commit_subjects(root: &Utf8Path, tag_prefix: &str) -> Result<Option<Vec<String>>> {
-    let previous = git(
-        root,
-        &[
-            "describe",
-            "--tags",
-            "--abbrev=0",
-            "--match",
-            &format!("{tag_prefix}*"),
-        ],
-    );
-    let range = match previous {
-        Some(previous) if !previous.trim().is_empty() => format!("{}..HEAD", previous.trim()),
+    let range = match previous_tag(root, tag_prefix) {
+        // `A..HEAD` is "reachable from HEAD and not from A", which is the
+        // right set whether or not A is an ancestor.
+        Some(previous) => format!("{previous}..HEAD"),
         // No release yet: everything that has ever been committed.
-        _ => String::from("HEAD"),
+        None => String::from("HEAD"),
     };
     let Some(log) = git(root, &["log", "--no-merges", "--format=%s", &range]) else {
         return Ok(None);
@@ -273,6 +265,35 @@ fn commit_subjects(root: &Utf8Path, tag_prefix: &str) -> Result<Option<Vec<Strin
             .map(str::to_owned)
             .collect(),
     ))
+}
+
+/// The most recently created `<prefix>*` tag, whether or not HEAD can reach it.
+///
+/// Not `git describe`, which finds the nearest tag *reachable from HEAD*. A
+/// release cut on a branch that was then squash-merged leaves a tag no commit
+/// on `main` can reach, so `describe` walks past it to the release before —
+/// and the changelog for the new version repeats every entry of the last one.
+/// `uf@0.0.0-alpha.3` was cut that way and alpha.4's section came out with
+/// fifty-four changes, most of them already released.
+///
+/// By creation date rather than by version, because git's version sort puts a
+/// prerelease after the release it precedes unless `versionsort.suffix` has
+/// been configured, and a repository is not required to have configured it.
+fn previous_tag(root: &Utf8Path, tag_prefix: &str) -> Option<String> {
+    let pattern = format!("refs/tags/{tag_prefix}*");
+    let tags = git(
+        root,
+        &[
+            "for-each-ref",
+            "--sort=-creatordate",
+            "--format=%(refname:short)",
+            &pattern,
+        ],
+    )?;
+    tags.lines()
+        .map(str::trim)
+        .find(|tag| !tag.is_empty())
+        .map(str::to_owned)
 }
 
 /// Run `git` in `root`, or [`None`] when it is not there or says no.

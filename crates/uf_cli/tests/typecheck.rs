@@ -145,22 +145,63 @@ fn two_runs_of_the_same_project_report_identical_diagnostics() {
 }
 
 #[test]
-fn imports_that_uf_cannot_type_yet_are_named_rather_than_hidden() {
+fn a_file_in_the_project_is_typed_by_the_file_it_imports_from() {
     let dir = tempfile::tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(&src).unwrap();
     fs::write(
         src.join("app.js"),
-        "// @flow\nimport { thing } from \"./other.js\";\nexport const used: mixed = thing;\n",
+        "// @flow\nimport type { Mode } from \"./mode.js\";\n         export const mode: Mode = \"onSubmit\";\nexport const wrong: Mode = \"never\";\n",
     )
     .unwrap();
-    fs::write(src.join("other.js"), "// @flow\nexport const thing = 1;\n").unwrap();
+    fs::write(
+        src.join("mode.js"),
+        "// @flow\nexport type Mode = \"onSubmit\" | \"onChange\";\n",
+    )
+    .unwrap();
 
     let value = check_json(dir.path());
 
     let untyped = value["typeCheck"]["untypedModules"].as_array().unwrap();
     assert!(
-        untyped.iter().any(|name| name == "./other.js"),
+        untyped.is_empty(),
+        "`./mode.js` is a file in this project, not a hole: {untyped:?}"
+    );
+    // The import is a type, so the correct annotation is silent and only the
+    // wrong one is reported. Before uf resolved across modules this file
+    // produced three `value-as-type` errors and no real finding.
+    let codes: Vec<&str> = value["typeCheck"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap_or("<none>"))
+        .collect();
+    assert_eq!(codes, ["incompatible-type"], "{value}");
+}
+
+#[test]
+fn imports_that_uf_cannot_type_yet_are_named_rather_than_hidden() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    // A package name, which resolves through `node_modules` or a workspace —
+    // neither of which the checker is handed — and a relative path to a file
+    // the scan never walked. Both are `any`, and both have to be said out loud.
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { thing } from \"some-package\";\n         import { other } from \"./generated/table.js\";\n         export const used: mixed = [thing, other];\n",
+    )
+    .unwrap();
+
+    let value = check_json(dir.path());
+
+    let untyped = value["typeCheck"]["untypedModules"].as_array().unwrap();
+    assert!(
+        untyped.iter().any(|name| name == "some-package"),
+        "{untyped:?}"
+    );
+    assert!(
+        untyped.iter().any(|name| name == "./generated/table.js"),
         "{untyped:?}"
     );
 }

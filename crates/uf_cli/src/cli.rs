@@ -129,6 +129,9 @@ pub(crate) enum Commands {
         /// Report what would change and exit non-zero, writing nothing.
         #[arg(long)]
         check: bool,
+        /// Only format files whose path contains one of these patterns.
+        #[arg(value_name = "PATH")]
+        paths: Vec<String>,
     },
     /// Print the toolchain's version, host, and resolved paths.
     Info,

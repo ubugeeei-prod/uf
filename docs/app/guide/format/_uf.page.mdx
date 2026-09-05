@@ -56,13 +56,13 @@ Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
 alongside uf's rules rather than in a separate `.flowconfig` section, because a
 project should have one place where "this is an error here" is written down.
 
-Both commands take paths, the way `uf test` does:
+`uf fmt`, `uf lint` and `uf check` all take paths, the way `uf test` does:
 
 <div className="command"><code>uf lint packages/ui</code></div>
 
 Anything whose path contains one of the arguments is read and nothing else, so
-`uf lint dialog.js` is a way to ask about the file in front of you. A pattern
-that matches nothing is an error rather than a clean run.
+`uf fmt dialog.js` is a way to format the file in front of you. A pattern that
+matches nothing is an error rather than a clean run.
 
 ## uf check
 
