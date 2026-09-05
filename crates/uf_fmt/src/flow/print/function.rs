@@ -159,12 +159,26 @@ impl<'a> Printer<'a> {
             }
         }
         if let Some(predicate) = &function.predicate {
+            // An *inferred* predicate stands where the return type would
+            // have been, so it brings the colon with it: `function f(x):
+            // %checks {}` is the whole annotation and `function f(x)
+            // %checks {}` does not parse. When a return type is present it
+            // has already written the colon, and `%checks` follows it as a
+            // second word.
+            if matches!(function.return_, function::ReturnAnnot::Missing(_)) {
+                parts.push(self.s(":"));
+            }
             parts.push(self.print_predicate(predicate));
         }
         self.docs.concat_vec(parts)
     }
 
     /// `%checks` or `%checks(expr)`.
+    ///
+    /// Always with a leading space, so it reads as a word after whatever
+    /// precedes it — a return type, or the bare colon
+    /// [`print_return_type`](Self::print_return_type) writes when there is
+    /// none.
     pub fn print_predicate(&mut self, predicate: &'a types::Predicate<Loc, Loc>) -> Doc<'a> {
         self.print_node(NodeRef::Predicate(predicate), |p| match &predicate.kind {
             types::PredicateKind::Inferred => p.s(" %checks"),
