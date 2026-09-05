@@ -24,8 +24,11 @@
 //! decides where it goes and when it goes away, which is what makes every
 //! part of it testable without a network.
 
+pub mod archive;
 pub mod gc;
+pub mod project;
 pub mod roots;
+pub mod source;
 pub mod store;
 pub mod tool;
 
@@ -83,6 +86,86 @@ pub enum EnvError {
     /// store could mean.
     #[error("neither XDG_DATA_HOME nor HOME is set, so there is no store directory")]
     NoHome,
+    /// A program this needs is not installed.
+    #[error("{program} is not installed, and uf needs it to install a tool")]
+    MissingProgram {
+        /// The program.
+        program: &'static str,
+    },
+    /// A program could not be started.
+    #[error("failed to run {program}: {source}")]
+    Program {
+        /// The program.
+        program: &'static str,
+        /// The underlying error.
+        #[source]
+        source: std::io::Error,
+    },
+    /// An archive or a checksum could not be fetched.
+    #[error("failed to download {url}: {detail}")]
+    Download {
+        /// What was being fetched.
+        url: String,
+        /// What curl said.
+        detail: String,
+    },
+    /// The publisher lists no digest for this archive, so it cannot be checked.
+    #[error("{url} does not list a digest for {file}")]
+    ChecksumMissing {
+        /// Where the listing was.
+        url: String,
+        /// The file that is not in it.
+        file: String,
+    },
+    /// The archive is not what the publisher says it is.
+    #[error(
+        "{url} does not match its published digest\n  expected {expected}\n  actual   {actual}"
+    )]
+    ChecksumMismatch {
+        /// What was fetched.
+        url: String,
+        /// What the publisher says.
+        expected: String,
+        /// What arrived.
+        actual: String,
+    },
+    /// An archive would not unpack.
+    #[error("failed to unpack {archive}: {detail}")]
+    Unpack {
+        /// The archive.
+        archive: Utf8PathBuf,
+        /// What the unpacker said.
+        detail: String,
+    },
+    /// `uf.config.js` names something uf does not install.
+    #[error("uf does not install {name}; it installs node, bun, deno, npm, pnpm and yarn")]
+    UnknownTool {
+        /// The name as it was written.
+        name: String,
+    },
+    /// A version is a range, or empty. An environment is pinned or it is not
+    /// an environment.
+    #[error("{tool} is pinned to {version:?}, which is not an exact version")]
+    NotAnExactVersion {
+        /// The tool.
+        tool: &'static str,
+        /// What was written.
+        version: String,
+    },
+    /// A pin has to be installed before it can be linked.
+    #[error("{pin} is not installed; run `uf env install`")]
+    NotInstalled {
+        /// The pin.
+        pin: Pin,
+    },
+    /// An entry was installed but has none of the executables it should.
+    #[error("{pin} unpacked into {entry} with no {pin} executable in it")]
+    NoExecutable {
+        /// The pin.
+        pin: Pin,
+        /// Where it was unpacked.
+        entry: Utf8PathBuf,
+    },
     /// uf runs here but does not know how to fetch tools for this platform.
     #[error("uf does not install tools for {os} on {arch}")]
     UnsupportedPlatform {

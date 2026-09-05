@@ -298,8 +298,32 @@ pub(crate) enum ReleaseBump {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum EnvCommand {
+    /// Report which tools are installed on this machine.
     Doctor,
-    Use { name: String },
+    /// Set the active `.env` profile.
+    Use {
+        /// The profile name, e.g. `production`.
+        name: String,
+    },
+    /// Install the runtimes and package managers `uf.config.js` declares.
+    ///
+    /// Into a store shared by every repository on this machine, linked into
+    /// this one. Nothing is installed globally and `PATH` is not changed.
+    Install,
+    /// List what this project declares and what the store holds.
+    List,
+    /// Run a command with this project's toolchain in front of `PATH`.
+    Exec {
+        /// The command and its arguments.
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Delete store entries no repository is using.
+    Gc {
+        /// Say what would go, and remove nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[cfg(test)]

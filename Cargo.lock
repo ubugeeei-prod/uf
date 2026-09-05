@@ -3352,6 +3352,7 @@ dependencies = [
  "uf_check",
  "uf_config",
  "uf_doc",
+ "uf_env",
  "uf_flow",
  "uf_fmt",
  "uf_infra",
@@ -3400,6 +3401,19 @@ dependencies = [
  "uf_config",
  "uf_flow",
  "uf_project",
+]
+
+[[package]]
+name = "uf_env"
+version = "0.0.0-alpha.3"
+dependencies = [
+ "camino",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "uf_config",
 ]
 
 [[package]]

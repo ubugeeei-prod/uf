@@ -1,6 +1,7 @@
 use camino::Utf8PathBuf;
 
 use super::*;
+use crate::project;
 
 fn temp() -> (tempfile::TempDir, Utf8PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -188,6 +189,129 @@ fn a_pin_names_itself_the_way_a_reader_would() {
     assert_eq!(pin.to_string(), "node@24.14.0");
     assert_eq!(Tool::parse("pnpm"), Some(Tool::Pnpm));
     assert_eq!(Tool::parse("cargo"), None);
-    assert!(Tool::Bun.is_runtime(), "bun runs code as well as installing it");
+    assert!(
+        Tool::Bun.is_runtime(),
+        "bun runs code as well as installing it"
+    );
     assert!(!Tool::Pnpm.is_runtime());
+}
+
+/// A repository's links are rebuilt to exactly what it declares, so a tool
+/// that is dropped stops being on the project's path.
+#[test]
+fn linking_replaces_what_the_repository_had() {
+    let (_guard, root) = temp();
+    let store = Store::new(root.join("store"));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let install = |pin: &Pin, executables: &[&str]| {
+        let staged = store.staging(pin).unwrap();
+        std::fs::create_dir_all(staged.join("bin")).unwrap();
+        for name in executables {
+            std::fs::write(staged.join("bin").join(name), "#!/bin/sh\n").unwrap();
+        }
+        store.adopt(pin, &staged).unwrap();
+    };
+
+    let old = node("22.9.0");
+    let new = node("24.14.0");
+    install(&old, &["node", "npx"]);
+    install(&new, &["node", "npx"]);
+
+    project::link(&project, &store, std::slice::from_ref(&old)).unwrap();
+    let bin = project::bin_dir(&project);
+    assert!(bin.join("node").exists());
+
+    project::link(&project, &store, std::slice::from_ref(&new)).unwrap();
+    assert_eq!(
+        std::fs::read_link(bin.join("node").as_std_path())
+            .unwrap()
+            .to_string_lossy(),
+        store.path(&new).join("bin/node").as_str(),
+        "the link points at the version the project now declares"
+    );
+}
+
+/// Linking a pin that is not installed says so rather than leaving a link to
+/// nothing on the project's path.
+#[test]
+fn linking_something_that_is_not_installed_refuses() {
+    let (_guard, root) = temp();
+    let store = Store::new(root.join("store"));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let error = project::link(&project, &store, &[node("24.14.0")]).unwrap_err();
+    assert!(matches!(error, EnvError::NotInstalled { .. }), "{error:?}");
+}
+
+/// A range is not a pin. An environment that can resolve differently
+/// tomorrow does not answer "what is this built with".
+#[test]
+fn a_version_that_is_not_exact_is_refused() {
+    use uf_config::UniflowedConfig;
+
+    let platform = Platform {
+        os: Os::Darwin,
+        arch: Arch::Arm64,
+    };
+    let mut config = UniflowedConfig::default();
+    config
+        .env
+        .toolchain
+        .insert("node".into(), "^24.14.0".into());
+    let error = project::declared(&config, platform).unwrap_err();
+    assert!(
+        matches!(error, EnvError::NotAnExactVersion { .. }),
+        "{error:?}"
+    );
+
+    config.env.toolchain.clear();
+    config.env.toolchain.insert("cargo".into(), "1.0.0".into());
+    let error = project::declared(&config, platform).unwrap_err();
+    assert!(matches!(error, EnvError::UnknownTool { .. }), "{error:?}");
+
+    config.env.toolchain.clear();
+    config.env.toolchain.insert("node".into(), "24.14.0".into());
+    config.env.toolchain.insert("pnpm".into(), "9.15.0".into());
+    let pins = project::declared(&config, platform).unwrap();
+    assert_eq!(pins.len(), 2);
+    assert_eq!(pins[0].tool, Tool::Node, "runtimes are listed first");
+}
+
+/// Each publisher's URL is built the way that publisher names its files.
+#[test]
+fn a_source_is_where_its_publisher_puts_it() {
+    use crate::source::{Checksum, Format, Source};
+
+    let pin = node("24.14.0");
+    let source = Source::for_pin(&pin).unwrap();
+    assert_eq!(
+        source.archive,
+        "https://nodejs.org/dist/v24.14.0/node-v24.14.0-darwin-arm64.tar.gz"
+    );
+    assert!(matches!(source.format, Format::TarGz));
+    assert_eq!(
+        source.strip, 1,
+        "the tarball wraps everything in one directory"
+    );
+    match source.checksum {
+        Checksum::Sha256File { url, file } => {
+            assert_eq!(url, "https://nodejs.org/dist/v24.14.0/SHASUMS256.txt");
+            assert_eq!(file, "node-v24.14.0-darwin-arm64.tar.gz");
+        }
+        other => panic!("node publishes a SHASUMS file: {other:?}"),
+    }
+
+    let pnpm = Pin {
+        tool: Tool::Pnpm,
+        version: "9.15.0".to_owned(),
+        platform: pin.platform,
+    };
+    let source = Source::for_pin(&pnpm).unwrap();
+    assert_eq!(
+        source.archive, "https://registry.npmjs.org/pnpm/-/pnpm-9.15.0.tgz",
+        "a package manager is an npm package"
+    );
 }
