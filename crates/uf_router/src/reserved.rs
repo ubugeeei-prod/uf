@@ -2,13 +2,20 @@
 //!
 //! `uf` reserves the `_uf.` prefix inside the router root so a project cannot
 //! accidentally shadow a framework file. A reserved name is
-//! `_uf.<role>[.<variant>].js`, where the role is what the file does for the
-//! router and the variant narrows which build it applies to.
+//! `_uf.<role>[.<variant>].js`, where the role is what the file does and the
+//! variant narrows which build it applies to.
 //!
 //! This is the single source of truth for that grammar. `uf create` generates
 //! these names, `discover_routes` looks for them, and `uf lint`'s
 //! `router/reserved-files` rule rejects the ones that do not fit — so all three
 //! read it from here rather than each spelling out the same `matches!`.
+//!
+//! Not every role is the router's. `route` answers a request and `story` names
+//! a rendered state of a component; neither is resolved by
+//! [`ReservedRole::all`], which is the roles a route is built from. They are
+//! here because the *grammar* is the toolchain's rather than the router's: a
+//! second spelling for the same idea is how the scaffold, the router and the
+//! linter drifted apart the first time.
 
 use std::str::FromStr;
 
@@ -23,6 +30,8 @@ pub enum ReservedRole {
     Middleware,
     /// Answers a request instead of rendering a page.
     Route,
+    /// Names a rendered state of a component, for `@uniflowed/story`.
+    Story,
 }
 
 impl ReservedRole {
@@ -34,6 +43,7 @@ impl ReservedRole {
             Self::Page => "page",
             Self::Middleware => "middleware",
             Self::Route => "route",
+            Self::Story => "story",
         }
     }
 
@@ -53,6 +63,7 @@ impl FromStr for ReservedRole {
             "page" => Ok(Self::Page),
             "middleware" => Ok(Self::Middleware),
             "route" => Ok(Self::Route),
+            "story" => Ok(Self::Story),
             _ => Err(()),
         }
     }
@@ -219,6 +230,22 @@ mod tests {
         classify_reserved_file(file_name)
             .recognized()
             .unwrap_or_else(|| panic!("{file_name} should be recognized"))
+    }
+
+    #[test]
+    fn a_story_file_is_reserved_without_being_a_route() {
+        // The grammar is the toolchain's, not the router's: `@uniflowed/story`
+        // names its files by it, and `uf lint` has to recognise them or a
+        // package cannot use the convention the repository asked it to use.
+        assert_eq!(recognized("_uf.story.js").role, ReservedRole::Story);
+        assert_eq!(
+            recognized("_uf.story.native.js").variant,
+            ReservedVariant::Native
+        );
+        assert!(
+            !ReservedRole::all().contains(&ReservedRole::Story),
+            "a story is not something a route is built from"
+        );
     }
 
     #[test]

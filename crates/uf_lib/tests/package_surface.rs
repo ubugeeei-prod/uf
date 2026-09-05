@@ -1039,11 +1039,15 @@ fn a_client_entry_never_imports_a_node_builtin() {
     ///
     /// `react-testing/internal/render.js` is the odd one: it installs a DOM on
     /// a host that has none, which is a thing only a test runner does and never
-    /// a browser, where the DOM is already there.
+    /// a browser, where the DOM is already there. `story/collect.js` walks a
+    /// project directory to find story files, which a browser has no way to do
+    /// and no reason to want — the rendering half of that package imports
+    /// nothing from here.
     const SERVER_MODULES: &[&str] = &[
         "router/server.js",
         "router/handler.js",
         "react-testing/internal/render.js",
+        "story/collect.js",
     ];
 
     let mut leaks = Vec::new();
