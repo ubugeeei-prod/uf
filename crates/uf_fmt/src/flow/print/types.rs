@@ -1082,6 +1082,21 @@ impl<'a> Printer<'a> {
         &mut self,
         targs: &'a expression::CallTypeArgs<Loc, Loc>,
     ) -> Doc<'a> {
+        // `new Map /*:: <string, T> */()` is the third of Flow's comment
+        // forms, and the one that breaks a file most plainly: the angle
+        // brackets are a syntax error to anything that is not Flow.
+        //
+        // Unlike an annotation, the location here starts at the `<` and not
+        // at the `/*` — so it is the block the arguments sit *in* that is
+        // printed, from the spans found once for the file. See
+        // ubugeeei-prod/uf#126.
+        if let Some(block) = self.comment_type_around(self.text.span(&targs.loc)) {
+            let raw = self.text.slice(block);
+            return self.print_node(NodeRef::CallTypeArgs(targs), |p| {
+                let printed = p.replace_end_of_line(raw);
+                p.concat([p.s(" "), printed])
+            });
+        }
         self.print_node(NodeRef::CallTypeArgs(targs), |p| {
             let key = NodeRef::CallTypeArgs(targs).key();
             let printed: Vec<Doc<'a>> = targs
