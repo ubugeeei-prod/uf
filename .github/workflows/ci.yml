@@ -274,6 +274,10 @@ jobs:
       # this too, but in every job that installs and with a message about a
       # package that job has nothing to do with. See ubugeeei-prod/uf#169.
       - run: ./target/release/uf run lockfile
+      # And that the check itself still catches each way a lock falls behind.
+      # It reads the two files rather than asking npm to regenerate one, so
+      # nothing but these cases says it works.
+      - run: ./target/release/uf run lockfile:test
       # And that the set that goes to npm is closed under its own
       # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
       # release that sends one without the other publishes a package that

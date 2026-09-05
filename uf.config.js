@@ -182,6 +182,12 @@ export default defineConfig({
     // package none of those jobs is about. This says it once, where the
     // manifests are the subject.
     lockfile: "tools/ci/lockfile-in-sync.sh",
+    // The check reads the lock rather than regenerating it, so every way a
+    // lock can fall behind has to be written down as a case. Its first
+    // version compared bytes against a fresh `npm install
+    // --package-lock-only`, which passed here and failed in CI over a
+    // difference that could not be reproduced here afterwards.
+    "lockfile:test": "tools/ci/test-lockfile-in-sync.sh",
 
     manifests:
       "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
