@@ -707,7 +707,7 @@ fn native_runtime_message_names_the_module_and_the_export() {
 #[test]
 fn validator_exports_valibot_style_strict_flow_combinators() {
     assert_exports(
-        "validator/internal/schema.js",
+        "validator/index.js",
         &[
             "Infer",
             "brand",

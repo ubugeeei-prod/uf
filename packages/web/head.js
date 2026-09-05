@@ -1,6 +1,6 @@
 // @flow
 //
-// Internal to `@uniflowed/web`: the document head, from a component.
+// `@uniflowed/web/head`: the document head, from a component.
 //
 // A page's title and its meta tags are decided by whatever is rendering, which
 // is usually not the thing that owns `<head>`. `useHead` lets a component say
@@ -18,6 +18,19 @@
 // Saying so matters because the alternative is a silent one. A `useHead` that
 // pretended to work on a server would produce a page whose title is right in a
 // browser and wrong in a crawler, which is the case nobody checks.
+//
+// # What belongs in this module
+//
+// Head tags a component decides while it is running: the title, `<meta>`,
+// canonical and alternate `<link>`s. The test is that the value is not known
+// until something has rendered.
+//
+// Not here: a preload. It is a `<link>` and it still belongs to `media.js`,
+// because what is difficult about a preload is the request it starts — `as`,
+// `crossOrigin`, the second download when they disagree — and not the element
+// it is spelled as. Route metadata is not here either: the router resolves a
+// route's `metadata` export before it renders anything, which is what makes it
+// work in a crawler, and that is exactly the case this module cannot serve.
 
 import * as React from "@uniflowed/react";
 

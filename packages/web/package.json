@@ -11,11 +11,15 @@
     "directory": "packages/web"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./cookie": "./cookie.js",
+    "./head": "./head.js",
+    "./media": "./media.js",
+    "./regions": "./regions.js",
+    "./time": "./time.js"
   },
   "files": [
-    "index.js",
-    "internal/*.js"
+    "*.js"
   ],
   "dependencies": {
     "@uniflowed/react": "0.0.0-alpha.3"

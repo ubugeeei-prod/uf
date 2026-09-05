@@ -1,12 +1,29 @@
 // @flow
 //
-// Watching a node.
+// `@uniflowed/hooks/dom`: watching one node.
 //
 // Each of these takes a ref rather than returning one, so a component can put
 // several on the same element and can hand the ref to something else as well.
 // The listener is attached in a layout effect, so it is in place before the
 // browser paints — a click that lands in the same frame as the mount is a real
 // case on a touch screen.
+//
+// # What belongs in this module
+//
+// A hook whose subject is a particular element the caller is holding: listen
+// to it, measure it, notice a pointer over it, notice it entering the
+// viewport. The signature is the giveaway — if it takes a ref, it is here.
+//
+// The neighbour it is most often confused with is `browser.js`, which reads
+// the ambient environment: the window's size, whether the document is visible,
+// what the reader's media queries say. Those need no ref because there is only
+// one of the thing they read, and they are built on `useSyncExternalStore`
+// with a stated server value. These need a ref because there are as many
+// answers as there are elements, and they are built on effects because there
+// is nothing to read until one is mounted.
+//
+// The file was called `element.js`, which named the argument rather than the
+// job and left `browser.js` looking like its opposite when it is its sibling.
 
 import { useEffect, useRef, useState } from "@uniflowed/react";
 

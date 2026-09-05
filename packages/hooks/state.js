@@ -1,12 +1,26 @@
 // @flow
 //
-// State with a shape.
+// `@uniflowed/hooks/state`: state with a shape.
 //
 // `useStorage` is the one worth reading. Persisted state has three problems a
 // `useState` plus a `useEffect` does not solve: the first render on a
 // prerendered page has no storage to read, two components using the same key
 // must agree, and another tab writing the key should be seen. All three are
 // what `useSyncExternalStore` is for.
+//
+// # What belongs in this module
+//
+// A `useState` a component would otherwise write out by hand, returned as the
+// operations that make sense on it rather than as a setter: a boolean with
+// `toggle`, a number with `increment` and a clamp, a value that survives a
+// reload. The test is that the hook owns the value and hands back a small API
+// over it.
+//
+// Not here: shared application state. An atom two routes both read is
+// `@uniflowed/state`'s, and a value derived from a server response is
+// `@uniflowed/query`'s. Everything in this file is local to one component —
+// `useStorage` reaches outside only to persist, and only under a key the
+// caller named.
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "@uniflowed/react";
 

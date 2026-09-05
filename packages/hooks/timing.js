@@ -1,12 +1,24 @@
 // @flow
 //
-// Timers that stop when the component does.
+// `@uniflowed/hooks/timing`: timers that stop when the component does.
 //
 // Every one of these exists because the hand-written version leaks: a
 // `setInterval` in a `useEffect` whose dependency array includes the callback
 // is torn down and restarted on every render, and one without the callback in
 // the array calls a stale closure forever. `useStableCallback` removes the
 // choice — the timer is set once and always calls the current body.
+//
+// # What belongs in this module
+//
+// A hook whose subject is *when* something runs: on a schedule, after a wait,
+// no more often than some rate. Every one of them owns a handle that has to be
+// cleared, and the cleanup is the reason the hook exists rather than a detail
+// of it.
+//
+// Not here: `useMount` and `useUnmount`, which are about the component's life
+// rather than a clock, and live in `lifecycle.js`; and rendering a time, which
+// is `@uniflowed/web`'s `Time` and is a formatting problem, not a scheduling
+// one.
 
 import { useEffect, useRef, useState } from "@uniflowed/react";
 

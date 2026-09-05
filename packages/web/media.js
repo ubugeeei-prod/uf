@@ -1,6 +1,6 @@
 // @flow
 //
-// Internal to `@uniflowed/web`: the elements that load bytes.
+// `@uniflowed/web/media`: the elements that load bytes.
 //
 // An image, a `<picture>`, and a font preload. They are grouped because they
 // share one problem: each one is a request the browser has to make while the
@@ -10,6 +10,23 @@
 // Every default here is the one that is right more often than not, and every
 // one of them can be overridden — a component whose defaults cannot be turned
 // off is a component people stop using.
+//
+// # What belongs in this module
+//
+// Anything a page renders in order to make the browser fetch bytes while the
+// layout is still being decided: another `<source>` form, a video poster, a
+// preload for a stylesheet. The test is whether the mistake it prevents is a
+// wasted request or a shifted layout.
+//
+// `Font` is the boundary worth stating, because it is a `<link>` and `<head>`
+// has its own module next door. It is here anyway: what is hard about a font
+// preload is the fetch — `as`, `crossOrigin`, the silent second download when
+// they disagree — and not the tag it happens to be written as. `head.js` is
+// for what a component decides to put in the head; this is for what the
+// browser is about to download.
+//
+// Not here: announcing a change (`regions.js`), agreeing with a server about
+// an instant (`time.js`) or about a stored value (`cookie.js`).
 
 import * as React from "@uniflowed/react";
 

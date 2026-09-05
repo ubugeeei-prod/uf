@@ -1,6 +1,6 @@
 // @flow
 //
-// The hooks everything else is built out of.
+// `@uniflowed/hooks/lifecycle`: where a component is in its life.
 //
 // The one that matters most is `useStableCallback`. A callback recreated every
 // render is the single most common cause of a React performance problem and of
@@ -8,6 +8,20 @@
 // and the usual fix, listing the callback in a dependency array, spreads the
 // problem to every hook that takes it. A stable identity that always calls the
 // latest closure fixes it once.
+//
+// # What belongs in this module
+//
+// A hook whose subject is the component itself: has it mounted, is it still
+// mounted, what did it render last time, run this once, run this on the way
+// out, and the two effect-shaped primitives the rest of the package needs
+// (`useIsomorphicLayoutEffect`, `useStableCallback`). None of them reads
+// anything outside React.
+//
+// It is also the one module here the others import, which is a consequence and
+// not the reason: `timing.js`, `state.js` and `dom.js` all need a stable
+// callback. That does not make this a "utils" or a "common" — it has a subject
+// of its own, and a hook lands here because it is about the component's life,
+// never because two other files happened to want it.
 
 import {
   useCallback,

@@ -1,6 +1,6 @@
 // @flow
 //
-// Internal to `@uniflowed/web`: rendering an instant.
+// `@uniflowed/web/time`: rendering an instant.
 //
 // The whole difficulty is that a server and a browser are in different places.
 // `new Date().toLocaleString()` on a server in UTC and in a browser in Tokyo
@@ -13,6 +13,19 @@
 // genuinely wants the reader's locale asks for it, and gets a component that
 // renders the deterministic form first and upgrades after hydration — which is
 // the honest version of what the naive code was trying to do.
+//
+// # What belongs in this module
+//
+// Anything whose difficulty is that the two renders are in different places or
+// at different moments: a formatted date, a duration, a countdown, a
+// timezone-aware label. The test is whether hydration would notice a
+// difference.
+//
+// Not here: a hook that reads a clock to schedule work — `useInterval` and
+// `useTimeout` are `@uniflowed/hooks`'s, and this module renders a value
+// rather than driving one. Locale-formatted numbers and currency have the same
+// hydration problem and would be a module of their own rather than a second
+// subject inside this one, because nothing about a price is about an instant.
 
 import * as React from "@uniflowed/react";
 

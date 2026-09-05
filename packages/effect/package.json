@@ -14,7 +14,6 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js",
-    "internal"
+    "index.js"
   ]
 }

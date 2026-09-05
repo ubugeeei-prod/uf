@@ -1,6 +1,6 @@
 // @flow
 //
-// Reading the browser, safely on a server.
+// `@uniflowed/hooks/browser`: reading the environment, safely on a server.
 //
 // uf prerenders every static route, so each of these runs once where there is
 // no `window`. `useSyncExternalStore` is what makes that correct rather than
@@ -9,6 +9,20 @@
 // check happened to fall through to. It also means React reads the value at
 // the moment it commits, which is what stops a media query changing between
 // render and paint from tearing.
+//
+// # What belongs in this module
+//
+// A reading of the one browser the page is in: its size, its connection, its
+// visibility, the preferences the reader set. There is exactly one answer at a
+// time, nobody has to pass anything in to ask, and a server has no answer at
+// all — which is why every hook here either takes a server value from the
+// caller or states an honest default, and why every one of them is a
+// `useSyncExternalStore` rather than an effect that sets state.
+//
+// Not here: anything about a specific element, which needs a ref and lives in
+// `dom.js`. `useDocumentVisible` is the closest call in the package and stays
+// here, because the document is the environment rather than a node a caller
+// chose.
 
 import { useCallback, useSyncExternalStore } from "@uniflowed/react";
 

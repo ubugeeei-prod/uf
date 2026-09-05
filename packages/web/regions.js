@@ -1,6 +1,6 @@
 // @flow
 //
-// Internal to `@uniflowed/web`: the elements that exist for a screen reader.
+// `@uniflowed/web/regions`: the elements that exist for a screen reader.
 //
 // A single-page application breaks two things a browser does for free. It
 // navigates without a page load, so nothing announces that the page changed;
@@ -9,6 +9,20 @@
 //
 // Both are one element with the right ARIA attributes, and both are easy to
 // get subtly wrong — which is why they are components rather than advice.
+//
+// # What belongs in this module
+//
+// The two kinds of region a document has for assistive technology: landmark
+// regions, which say what a part of the page *is* (`Page`, `Layout`) or how to
+// reach one (`SkipLink`), and live regions, which say that something in it
+// changed (`Announcer`). The test is whether a sighted reader would notice its
+// absence — if only a screen reader would, it is here.
+//
+// Not here: a widget that carries ARIA alongside a visual job. A dialog, a tab
+// list or a menu is `@uniflowed/ui`'s, and comes with focus management and
+// keyboard behaviour this module deliberately has no opinion about. The
+// elements here render markup and nothing else; that is why they can be used
+// on a page that has no design system at all.
 
 import * as React from "@uniflowed/react";
 

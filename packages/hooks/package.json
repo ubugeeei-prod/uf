@@ -11,11 +11,16 @@
     "directory": "packages/hooks"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./async": "./async.js",
+    "./browser": "./browser.js",
+    "./dom": "./dom.js",
+    "./lifecycle": "./lifecycle.js",
+    "./state": "./state.js",
+    "./timing": "./timing.js"
   },
   "files": [
-    "index.js",
-    "internal"
+    "*.js"
   ],
   "dependencies": {
     "@uniflowed/react": "0.0.0-alpha.3"

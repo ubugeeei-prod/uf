@@ -1,6 +1,6 @@
 // @flow
 //
-// Internal to `@uniflowed/web`: reading a cookie from a component.
+// `@uniflowed/web/cookie`: reading a cookie from a component.
 //
 // A cookie is one value with two readers. On a server it is on the request,
 // and `@uniflowed/server` has it; in a browser it is on `document`, and a
@@ -13,6 +13,18 @@
 // through the render instead — the router puts it there — and the browser reads
 // `document.cookie`. Two sources, one call, and no server module in the client
 // graph.
+//
+// # What belongs in this module
+//
+// The browser half of a cookie, and the name under which a server render hands
+// its half over. A cookie is a small enough subject to be one file and a
+// distinct enough one to be its own: it is the only value in this package that
+// is *written* as well as read, and the only one whose two readers are
+// different APIs rather than the same API in two environments.
+//
+// Not here: anything that reads a request. Headers, the URL, and the session
+// are `@uniflowed/server`'s, and the paragraph above is the reason this module
+// must not grow an import of it.
 
 import * as React from "@uniflowed/react";
 
