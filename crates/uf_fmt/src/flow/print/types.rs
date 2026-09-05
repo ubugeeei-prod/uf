@@ -951,22 +951,58 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// `: T`, with the annotation node's comments.
+    /// `: T`, or `/*: T */` when that is how it was written, with the
+    /// annotation node's comments.
     pub fn print_type_annotation(
         &mut self,
         annotation: &'a types::Annotation<Loc, Loc>,
     ) -> Doc<'a> {
         let node = NodeRef::Annotation(annotation);
         let has_leading = self.has_comment_placed(node.key(), Placement::Leading);
-        let printed = self.print_node(node, |p| {
-            let ty = p.print_type(&annotation.annotation);
-            p.concat([p.s(": "), ty])
+        let comment_form = self.comment_type_source(&annotation.loc);
+        let printed = self.print_node(node, |p| match comment_form {
+            Some(raw) => p.replace_end_of_line(raw),
+            None => {
+                let ty = p.print_type(&annotation.annotation);
+                p.concat([p.s(": "), ty])
+            }
         });
-        if has_leading {
+        if has_leading || comment_form.is_some() {
             self.concat([self.s(" "), printed])
         } else {
             printed
         }
+    }
+
+    /// The source of an annotation written as one of Flow's comment types,
+    /// `/*` to `*/`, or [`None`] when it was written as ordinary syntax.
+    ///
+    /// Flow's parser lexes `/*: string */` as an ordinary annotation and the
+    /// tree records nothing to say where it came from — but the *location*
+    /// does: an annotation written in a comment starts at the `/*` rather
+    /// than at the `:`. That is exact, and it is where Prettier decides the
+    /// same thing.
+    ///
+    /// The bytes come back untouched, which is also what Prettier does:
+    /// `/*: {[string]: string} */` keeps its spacing where a real annotation
+    /// would be re-printed as `{ [string]: string }`. Reformatting inside the
+    /// comment would be a second, quieter way of the same bug — the text is a
+    /// comment to every tool that is not Flow.
+    ///
+    /// Preserving the form at all matters because it is the whole point of
+    /// the syntax: a file can carry annotations *and* run under bare `node`.
+    /// React Native has a build script that does, and after `uf fmt` it
+    /// needed a compiler. See ubugeeei-prod/uf#126.
+    fn comment_type_source(&self, loc: &Loc) -> Option<&'a str> {
+        let span = self.text.span(loc);
+        let source = self.text.text();
+        if !source.get(span.start..)?.starts_with("/*") {
+            return None;
+        }
+        // The location stops before the closing delimiter. A block comment
+        // does not nest, so the next `*/` is this one's.
+        let close = source.get(span.end..)?.find("*/")? + span.end + 2;
+        source.get(span.start..close)
     }
 
     /// `<T, U>` on a declaration, or nothing.
