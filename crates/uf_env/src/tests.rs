@@ -304,6 +304,41 @@ fn a_source_is_where_its_publisher_puts_it() {
         other => panic!("node publishes a SHASUMS file: {other:?}"),
     }
 
+    // Each publisher does it differently, and getting one wrong is a 404 on
+    // the checksum rather than a bad install — which is the right failure,
+    // but only if the URL is the one that exists.
+    let bun = Pin {
+        tool: Tool::Bun,
+        version: "1.2.19".to_owned(),
+        platform: pin.platform,
+    };
+    let source = Source::for_pin(&bun).unwrap();
+    assert_eq!(
+        source.archive,
+        "https://github.com/oven-sh/bun/releases/download/bun-v1.2.19/bun-darwin-aarch64.zip"
+    );
+    assert!(
+        matches!(source.checksum, Checksum::Sha256File { .. }),
+        "bun publishes one listing"
+    );
+
+    let deno = Pin {
+        tool: Tool::Deno,
+        version: "2.1.4".to_owned(),
+        platform: pin.platform,
+    };
+    let source = Source::for_pin(&deno).unwrap();
+    match source.checksum {
+        // Beside each asset, not one listing: asking deno for a
+        // `SHASUMS256.txt` is a 404.
+        Checksum::Sha256Sidecar { url } => assert_eq!(
+            url,
+            "https://github.com/denoland/deno/releases/download/v2.1.4/deno-aarch64-apple-darwin.zip.sha256sum"
+        ),
+        other => panic!("deno publishes a sidecar: {other:?}"),
+    }
+    assert_eq!(source.strip, 0, "deno's zip holds the binary at its root");
+
     let pnpm = Pin {
         tool: Tool::Pnpm,
         version: "9.15.0".to_owned(),

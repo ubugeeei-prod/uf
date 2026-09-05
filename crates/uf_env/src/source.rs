@@ -66,6 +66,15 @@ pub enum Checksum {
         /// The archive's name, as it appears in the list.
         file: String,
     },
+    /// A file holding one digest, published beside the archive it is for.
+    ///
+    /// Deno's `<asset>.zip.sha256sum`. It is a `sha256sum` line — the digest,
+    /// two spaces, the name — so the name is there but there is nothing to
+    /// look up.
+    Sha256Sidecar {
+        /// Where it is.
+        url: String,
+    },
     /// The npm registry's version manifest, which carries `dist.integrity`
     /// as `sha512-<base64>`.
     NpmIntegrity {
@@ -161,6 +170,11 @@ impl Source {
     }
 
     /// Deno's GitHub release asset, named by Rust target triple.
+    ///
+    /// Deno publishes a `.sha256sum` *beside each asset* rather than one
+    /// combined listing, so there is no `SHASUMS256.txt` to look a name up
+    /// in — asking for one is a 404, which is what the first version of this
+    /// did.
     fn deno(pin: &Pin) -> Option<Self> {
         let base = base("https://github.com/denoland/deno/releases/download");
         let version = &pin.version;
@@ -170,14 +184,11 @@ impl Source {
             (Os::Linux, Arch::Arm64) => "aarch64-unknown-linux-gnu",
             (Os::Linux, Arch::X64) => "x86_64-unknown-linux-gnu",
         };
+        let file = format!("deno-{triple}.zip");
         Some(Self {
-            archive: format!("{base}/v{version}/deno-{triple}.zip"),
-            // Deno publishes no per-asset digest file beside the release, so
-            // there is nothing to check against and this is refused rather
-            // than installed unverified. See `for_pin`'s doc.
-            checksum: Checksum::Sha256File {
-                url: format!("{base}/v{version}/SHASUMS256.txt"),
-                file: format!("deno-{triple}.zip"),
+            archive: format!("{base}/v{version}/{file}"),
+            checksum: Checksum::Sha256Sidecar {
+                url: format!("{base}/v{version}/{file}.sha256sum"),
             },
             format: Format::Zip,
             // The zip holds `deno` at its root.

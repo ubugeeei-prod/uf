@@ -88,6 +88,23 @@ fn expected_digest(source: &Source, scratch: &Utf8Path) -> Result<Digest, EnvErr
                     file: file.clone(),
                 })
         }
+        Checksum::Sha256Sidecar { url } => {
+            let sidecar = scratch.join(".sha256sum");
+            download(url, &sidecar)?;
+            let body = std::fs::read_to_string(&sidecar).map_err(|error| EnvError::Read {
+                path: sidecar.clone(),
+                source: error,
+            })?;
+            let _ = std::fs::remove_file(&sidecar);
+            body.split_whitespace()
+                .next()
+                .filter(|digest| digest.len() == 64)
+                .map(|digest| Digest::Sha256Hex(digest.to_owned()))
+                .ok_or_else(|| EnvError::ChecksumMissing {
+                    url: url.clone(),
+                    file: "the digest".to_owned(),
+                })
+        }
         Checksum::NpmIntegrity { url } => {
             let manifest = scratch.join(".manifest.json");
             download(url, &manifest)?;
