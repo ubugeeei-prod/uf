@@ -1,5 +1,5 @@
-//! `uf build`, `uf dev`, `uf preview` and `uf start` end to end, through Vite
-//! on the real driver.
+//! `uf build`, `uf build --compile`, `uf dev`, `uf preview` and `uf start` end
+//! to end, through Vite on the real driver.
 //!
 //! Two fixtures, because they answer different questions.
 //!
@@ -18,6 +18,8 @@
 //! The tests skip, loudly, when Node or the workspace's `node_modules` are
 //! absent, so a checkout that never ran `npm ci` still passes `cargo test`
 //! and a CI runner that forgot to will say so rather than silently cover less.
+//! `uf build --compile` needs Bun as well, and skips on the same terms; see
+//! [`bun_ready`].
 
 mod support;
 
@@ -76,11 +78,29 @@ fn fixture_ready() -> bool {
     false
 }
 
+/// The docs fixture has one output directory, and two tests build into it.
+///
+/// Cargo runs the tests in a file on threads of one process, so without this
+/// they race: one `uf build` empties `dist/docs` while the other is reading
+/// what it found there. The lock covers the build *and* the assertions, which
+/// together are the only window in which that directory means anything.
+static DIST: Mutex<()> = Mutex::new(());
+
+/// Take [`DIST`], stepping over a poisoning left by an unrelated failure.
+///
+/// The panic that poisoned it has already been reported; turning it into a
+/// second failure here would only bury the first one under this one.
+fn dist_lock() -> std::sync::MutexGuard<'static, ()> {
+    DIST.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[test]
 fn build_renders_the_docs_site_through_vite() {
     if !fixture_ready() {
         return;
     }
+    let _dist = dist_lock();
     let root = docs_root();
 
     let output = uf()
@@ -334,6 +354,13 @@ fn loopback_ready() -> bool {
 /// the failure as well as a way to be unable to explain it. The threads end
 /// when the pipes close, which is when the child does — so the server has to be
 /// dropped inside the scope, or the scope waits for a process nobody killed.
+///
+/// It drives `uf dev`, it drives `uf preview` and `uf start`, and it drives a
+/// compiled binary. No test here cares which process is listening, only that
+/// something is and that it can be made to explain itself when it is not — so
+/// there are two ways in: [`Server::start`] for a `uf` subcommand, and
+/// [`Server::spawn`] for a command that is already built, which is the only
+/// shape a standalone binary comes in.
 struct Server {
     child: Child,
 }
@@ -346,12 +373,23 @@ impl Server {
         scope: &'scope std::thread::Scope<'scope, 'env>,
         said: &'env Mutex<String>,
     ) -> Self {
-        let mut child = Command::new(uf_path())
+        let mut command = Command::new(uf_path());
+        command
             .arg("--cwd")
             .arg(root)
             .args(args)
             .env_remove("NO_COLOR")
-            .env("TERM", "xterm-256color")
+            .env("TERM", "xterm-256color");
+        Self::spawn(command, scope, said)
+    }
+
+    /// Start an already-built server, draining what it says into `said`.
+    fn spawn<'scope, 'env: 'scope>(
+        mut command: Command,
+        scope: &'scope std::thread::Scope<'scope, 'env>,
+        said: &'env Mutex<String>,
+    ) -> Self {
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -767,4 +805,420 @@ fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&s
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
     response
+}
+
+/// Whether a standalone binary can be produced here: Bun on PATH.
+///
+/// The same policy as [`fixture_ready`] and for the same reason. `uf build
+/// --compile` embeds Bun's runtime, so a machine without `bun` cannot produce
+/// one — and a test that quietly passed on such a machine would be the second
+/// way this repository has learned that a silent skip reads exactly like a
+/// green run.
+fn bun_ready() -> bool {
+    if Command::new("bun")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+    {
+        return true;
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "`uf build --compile` needs `bun` on PATH and there is none, so this test would \
+         prove nothing"
+    );
+    eprintln!("skipping: `bun` is not on PATH");
+    false
+}
+
+/// The whole claim, end to end: one file, an empty directory, a served page.
+///
+/// Nothing about this test is a stand-in. It runs the real `uf build
+/// --compile` on the real docs site, copies the *only* file it produced into a
+/// directory that has nothing else in it — no `dist/`, no `node_modules`, not
+/// even the project — starts it, and asks it for pages. That is the shape
+/// `tools/release/test-install.sh` uses to prove the installer works from
+/// nothing, and it is the only shape in which "runs anywhere" is a claim
+/// rather than a hope.
+///
+/// It is written to prove as much as the machine allows. A sandbox that
+/// refuses `bind` cannot host the request half — but it can still host the
+/// half that matters most for a *binary*, which is whether the file carries
+/// the site at all, and that half runs unconditionally. What the requests add
+/// on top is covered without a socket by `tests/library/standalone.test.js`,
+/// which drives the same handler directly.
+#[test]
+fn compile_writes_one_file_that_serves_the_site_from_an_empty_directory() {
+    if !fixture_ready() || !bun_ready() {
+        return;
+    }
+    let _dist = dist_lock();
+    let root = docs_root();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--compile"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    for expected in ["standalone", "binary", "bun", "✓ build succeeded in"] {
+        assert!(
+            stdout.contains(expected),
+            "missing {expected:?} in:\n{stdout}"
+        );
+    }
+    let embedded = summary_value(&stdout, "embedded assets");
+    assert!(
+        embedded.parse::<u32>().is_ok_and(|count| count > 0),
+        "the summary must report how many assets went in, not {embedded:?}:\n{stdout}"
+    );
+
+    // Copied out rather than run in place, because running it in place would
+    // prove nothing: `dist/`, `node_modules` and the source are all still
+    // there, and a binary quietly reading one of them would pass.
+    let empty = tempfile::tempdir().unwrap();
+    let binary = empty.path().join("docs");
+    fs::copy(root.join("dist/docs/docs"), &binary).expect("`--compile` writes dist/docs/docs");
+    assert_eq!(
+        fs::read_dir(empty.path()).unwrap().count(),
+        1,
+        "the directory must hold the binary and nothing else"
+    );
+
+    // The line the binary prints before it takes a socket. Matching it against
+    // the number the *build* reported is what proves the embedded copy of
+    // `dist/` survived the link — from a directory where no copy of `dist/`
+    // exists to be found by accident.
+    let inventory = format!("uf: {embedded} embedded files");
+
+    if !loopback_ready() {
+        let said = run_briefly(&binary, empty.path());
+        assert!(
+            said.contains(&inventory),
+            "the binary must carry all {embedded} assets, and said:\n{said}"
+        );
+        return;
+    }
+
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut command = Command::new(&binary);
+            command
+                .current_dir(empty.path())
+                .args(["--port", &port.to_string()]);
+            let mut server = Server::spawn(command, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(60)) {
+                assert_compiled_site(&mut server, port, &said, &body);
+                let said = said.lock().unwrap();
+                assert!(
+                    said.contains(&inventory),
+                    "the binary must carry all {embedded} assets, and said:\n{said}"
+                );
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the compiled binary never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// The value beside `key` in the build summary's aligned key/value block.
+fn summary_value(stdout: &str, key: &str) -> String {
+    stdout
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(key))
+        .map(|value| value.trim().to_owned())
+        .unwrap_or_else(|| panic!("no {key:?} in the summary:\n{stdout}"))
+}
+
+/// Start the binary, let it say what it holds, and stop it.
+///
+/// For the machine that cannot bind: the process gets far enough to print its
+/// inventory and then fails on the socket, and the inventory is the thing
+/// being read. Everything it says is returned, including the failure, because
+/// a binary that died for some *other* reason must not look like a pass.
+fn run_briefly(binary: &Path, cwd: &Path) -> String {
+    let said = Mutex::new(String::new());
+    std::thread::scope(|scope| {
+        let mut command = Command::new(binary);
+        command.current_dir(cwd).args(["--port", "0"]);
+        let mut server = Server::spawn(command, scope, &said);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            if said
+                .lock()
+                .is_ok_and(|said| said.contains("embedded files"))
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let evidence = server.evidence(&said);
+        drop(server);
+        evidence
+    })
+}
+
+/// Everything the binary has to serve, once it is listening.
+///
+/// Four things, and each one is a different part of the file: the prerendered
+/// document, an embedded asset, a route the router has to resolve, and a path
+/// that must not be answered with somebody else's page.
+fn assert_compiled_site(server: &mut Server, port: u16, said: &Mutex<String>, body: &str) {
+    assert!(
+        body.starts_with("HTTP/1.1 200"),
+        "the binary must serve the home page:\n{body}"
+    );
+    assert!(body.contains("<!doctype html>"), "{body}");
+    assert!(
+        body.contains("Unified Toolchain for Flow"),
+        "the page did not render:\n{body}"
+    );
+    assert!(
+        !body.contains("/@vite/client"),
+        "a compiled binary must serve the production document, not the dev one:\n{body}"
+    );
+
+    // The hydration script, fetched from the binary. This is the assertion that
+    // says the embedded copy of `dist/` is really in there and reachable: the
+    // file exists nowhere on this machine but inside the executable.
+    let script = body
+        .split_once("<script type=\"module\" src=\"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(url, _)| url.to_owned())
+        .unwrap_or_else(|| panic!("no hydration script in the document:\n{body}"));
+    let asset = get(server, port, &script, said);
+    let head = &asset[..asset.len().min(400)];
+    assert!(
+        asset.starts_with("HTTP/1.1 200"),
+        "the embedded asset {script} was not served:\n{head}"
+    );
+    assert!(
+        asset.contains("text/javascript"),
+        "the embedded asset {script} was served with the wrong type:\n{head}"
+    );
+
+    // A nested route proves the router ran, not just that a file was found.
+    let guide = get(server, port, "/guide/", said);
+    assert!(guide.starts_with("HTTP/1.1 200"), "{guide}");
+    assert!(guide.contains("What uf is"), "{guide}");
+
+    let missing = get(server, port, "/definitely-not-a-page/", said);
+    assert!(
+        missing.starts_with("HTTP/1.1 404"),
+        "an unrouted path must be a 404:\n{missing}"
+    );
+}
+
+/// A project that cannot be one file, written out so the build can refuse it.
+///
+/// The arrangement matters more than the addon does, and it took a wrong guess
+/// to find the right one. The first version imported the addon from a route
+/// handler and expected the ordinary build to be untroubled by it, on the
+/// reasoning that a handler is server-only. It is not: the generated route
+/// table lists handlers beside pages, so the *client* build resolves a
+/// handler's imports even though it tree-shakes them back out — and the plain
+/// build failed too, which would have made the guard below untestable and the
+/// claim about it untrue.
+///
+/// So the addon is behind a package that ships a browser build, which is how
+/// every real native dependency is packaged. The `browser` condition gives the
+/// client bundle a shim, the ordinary SSR build leaves the bare import alone,
+/// and only the standalone link — which has to resolve everything for real —
+/// ever reaches the `.node` file. That is exactly the project that builds
+/// today and cannot become one file, which is the project this guard exists
+/// for.
+///
+/// It lives under `CARGO_TARGET_TMPDIR` rather than in a system temporary
+/// directory because module resolution has to be able to walk up to this
+/// repository's `node_modules` for `@uniflowed/*`, `react` and `react-dom`. A
+/// project outside the tree would fail for want of dependencies, and would
+/// prove nothing about native addons.
+fn native_addon_project() -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("native-addon");
+    let _ = fs::remove_dir_all(&root);
+
+    let write = |path: &str, contents: &str| {
+        let file = root.join(path);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    };
+
+    write(
+        "package.json",
+        r#"{
+  "name": "native-addon-app",
+  "private": true,
+  "type": "module",
+  "dependencies": { "fake-native": "1.0.0" }
+}
+"#,
+    );
+    write(
+        "uf.config.js",
+        r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+    );
+    write(
+        "app.js",
+        r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+    );
+    write(
+        "app/_uf.layout.js",
+        r#"// @flow
+import * as React from "@uniflowed/react";
+
+export component Layout(children: React.Node) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+"#,
+    );
+    write(
+        "app/_uf.page.js",
+        r#"// @flow
+import * as React from "@uniflowed/react";
+
+export default component Home() {
+  return <p>a project with a native addon</p>;
+}
+"#,
+    );
+    write(
+        "app/api/_uf.route.js",
+        r#"// @flow
+import { reading } from "fake-native";
+
+export function GET(): Response {
+  return new Response(String(reading()));
+}
+"#,
+    );
+
+    // The dependency, packaged the way a native one really is: a browser build
+    // for bundlers that cannot load a shared object, and a Node build that
+    // reaches for it. Nothing in this fixture is contrived except the addon's
+    // emptiness.
+    write(
+        "node_modules/fake-native/package.json",
+        r#"{
+  "name": "fake-native",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./browser.js",
+      "default": "./index.js"
+    }
+  }
+}
+"#,
+    );
+    write(
+        "node_modules/fake-native/index.js",
+        "import bindings from \"./sensor.node\";\n\n         export function reading() {\n  return bindings.read();\n}\n",
+    );
+    write(
+        "node_modules/fake-native/browser.js",
+        "export function reading() {\n  return 0;\n}\n",
+    );
+    // Empty on purpose. The build must refuse it on sight, without reading it:
+    // a real `.node` file is a shared object for one platform, and nothing
+    // about this test should depend on having one.
+    write("node_modules/fake-native/sensor.node", "");
+
+    root
+}
+
+/// A project that cannot be one file is told which dependency made it so.
+///
+/// This is the difference between a feature and a trap. Without it the build
+/// either fails somewhere inside the bundler with a complaint about an
+/// unexpected character, or — worse — succeeds and produces a binary that dies
+/// on the first request that reaches the addon. Naming the file and the
+/// importer at build time is what makes `--compile` safe to reach for.
+#[test]
+fn compile_refuses_a_native_addon_and_names_it() {
+    if !fixture_ready() || !bun_ready() {
+        return;
+    }
+    let root = native_addon_project();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--compile"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        !output.status.success(),
+        "a project with a native addon must not compile to one file:\n{said}"
+    );
+    assert!(
+        said.contains("sensor.node"),
+        "the build must name the addon it cannot embed:\n{said}"
+    );
+    assert!(
+        said.contains("single executable"),
+        "the build must say what it was unable to do:\n{said}"
+    );
+
+    // The ordinary build still works: a native addon is a limit of `--compile`
+    // and not a limit of uf, and the message says so by telling the user what
+    // to do instead. If this ever fails, the guard has started rejecting
+    // projects that were fine.
+    let plain = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        plain.status.success(),
+        "the same project must still build without `--compile`:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&plain.stdout),
+        String::from_utf8_lossy(&plain.stderr)
+    );
 }

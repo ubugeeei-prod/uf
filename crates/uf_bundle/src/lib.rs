@@ -9,6 +9,8 @@
 //! - [`budget`] checks that picture against ceilings declared in `uf.config.js`
 //!   and returns **every** violation, so a size regression is one CI failure
 //!   rather than a sequence of them.
+//! - [`embed`] packs the same set of assets into a JavaScript module, which is
+//!   how `uf build --compile` gets `dist/` inside a standalone binary.
 //!
 //! Compressed figures come from really compressing the bytes at fixed settings
 //! ([`size::GZIP_LEVEL`], [`size::BROTLI_QUALITY`]), never from an estimate, and
@@ -16,6 +18,7 @@
 //! on equal terms.
 
 pub mod budget;
+pub mod embed;
 pub mod report;
 pub mod size;
 
@@ -23,6 +26,7 @@ pub use budget::{
     BudgetOutcome, BudgetScope, BudgetViolation, BudgetViolations, BundleBudgets, SizeBudget,
     evaluate,
 };
+pub use embed::{EmbedError, Embedded, content_type, write_embedded_assets};
 pub use report::{
     AssetEntry, AssetKind, BundleReport, MAX_ASSET_DEPTH, MAX_ASSETS, ReportError, ReportOptions,
     RouteEntry, build_report, collect_assets, write_report,
