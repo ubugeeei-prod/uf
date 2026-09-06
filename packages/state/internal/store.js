@@ -40,6 +40,7 @@ import {
   computed,
   peek,
   read,
+  refresh,
   resource,
   status,
   subscribe,
@@ -71,6 +72,7 @@ export type StoreInstance = {
   readonly set: AtomSetter,
   readonly sub: <V>(target: AtomRecord<V, empty>, listener: () => void) => Unsubscribe,
   readonly bind: <V, A>(target: AtomRecord<V, A>) => Binding<V, A>,
+  readonly reload: <V>(target: AtomRecord<V, empty>) => void,
 };
 
 /**
@@ -115,6 +117,16 @@ type AnyBinding = Binding<any, any>;
 export function createStore(): StoreInstance {
   const cells: WeakMap<AtomIdentity, AnyCell> = new WeakMap();
   const bindings: WeakMap<AtomIdentity, AnyBinding> = new WeakMap();
+  /**
+   * How to make an asynchronous atom load again, per atom instantiated here.
+   *
+   * An async atom is two cells — a resource and the projection over it — and
+   * `cells` holds the projection, because that is the one an application
+   * reads. Refreshing the projection would do nothing: it is a `computed`,
+   * and recomputing it reads a resource that is perfectly up to date. So the
+   * resource is recorded here as it is built, next to the map that hides it.
+   */
+  const reloads: WeakMap<AtomIdentity, () => void> = new WeakMap();
 
   function cellFor<V, A>(target: AtomRecord<V, A>): Cell<V> {
     const existing = cells.get(target);
@@ -161,7 +173,12 @@ export function createStore(): StoreInstance {
     if (loader === null) {
       return cell(target.initial, options);
     }
-    const pending = resource(() => loader(get));
+    // The load's own context is forwarded rather than rebuilt: the cell owns
+    // the signal, because the cell is what abandons the load.
+    const pending = resource((context) => loader(get, context));
+    reloads.set(target, () => {
+      refresh(pending);
+    });
     return computed(() => {
       try {
         // Read first, and unconditionally: this is what makes the projection
@@ -244,6 +261,29 @@ export function createStore(): StoreInstance {
   const sub = <V>(target: AtomRecord<V, empty>, listener: () => void): Unsubscribe =>
     subscribe(cellFor(target), listener);
 
+  /**
+   * Start an asynchronous atom's load again with the dependencies it already
+   * has.
+   *
+   * Instantiating first is what makes this work on an atom this store has
+   * never been asked for: the resource is built as the atom is instantiated,
+   * so the entry exists by the time it is looked up.
+   *
+   * The throw is a runtime guard behind a static one. `refresh` takes an
+   * `AsyncAtom`, which only `asyncAtom` produces, so a `selector` that happens
+   * to return a `Loadable` is rejected by Flow before it gets here — but the
+   * type is erased at run time and an untyped caller deserves the name of the
+   * atom rather than a silent no-op.
+   */
+  const reload = <V>(target: AtomRecord<V, empty>): void => {
+    cellFor(target);
+    const again = reloads.get(target);
+    if (again === undefined) {
+      throw Error(`@uniflowed/state ${target.label} is not an asynchronous atom`);
+    }
+    again();
+  };
+
   function bind<V, A>(target: AtomRecord<V, A>): Binding<V, A> {
     const existing = bindings.get(target);
     if (existing != null) {
@@ -262,7 +302,7 @@ export function createStore(): StoreInstance {
     return created;
   }
 
-  return { get, set, sub, bind };
+  return { get, set, sub, bind, reload };
 }
 
 /**
