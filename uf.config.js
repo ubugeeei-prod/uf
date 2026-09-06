@@ -23,6 +23,18 @@ export default defineConfig({
     router: { enabled: false },
   },
 
+  fmt: {
+    nonFlow: {
+      // Named rather than left to the default, and the difference is the
+      // point: uf's default is a suggestion, and `uf fmt` warns when a
+      // suggested formatter is missing rather than failing. This repository
+      // installs Biome, its `uf fmt --check` is a required check, and a run
+      // that could not look at the JSON must not pass as if it had. Saying so
+      // here is how a project asks for that. See ubugeeei-prod/uf#441.
+      formatter: "biome",
+    },
+  },
+
   lint: {
     // `upstream/` is Meta's and React's source, vendored as submodules. It is
     // not ours to format or lint, and a diff there would be lost on the next
@@ -287,6 +299,13 @@ export default defineConfig({
     // shell reads as command substitution. It had been correct for weeks —
     // under bash, which is `/bin/sh` on a laptop, where dash is `/bin/sh` on
     // the runner. `sh -n` reads and does not run, so this costs milliseconds.
+    // And that the installer's banner fits an eighty-column terminal. The two
+    // lines `curl … | sh` prints before it does anything are the first uf
+    // anybody sees, and they shared one line until the tagline grew to
+    // ninety-six columns with its indent — wrapping mid-sentence onto a second
+    // line with no indent. The installer cannot ask how wide the terminal is,
+    // so the width is a property of the text and is checked here.
+    "install:banner": "tools/ci/install-banner-fits.sh",
     "scripts:parse": "tools/ci/scripts-parse.sh",
     "scripts:parse:test": "tools/ci/test-scripts-parse.sh",
     lockfile: "tools/ci/lockfile-in-sync.sh",
@@ -329,6 +348,7 @@ export default defineConfig({
         "manifests",
         "lockfile",
         "lockfile:test",
+        "install:banner",
         "scripts:parse",
         "scripts:parse:test",
         "release:closure",

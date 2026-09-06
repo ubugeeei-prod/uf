@@ -53,6 +53,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import { focusable } from "./internal/focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 type DialogState = {|
@@ -367,28 +368,6 @@ export component DialogClose(children: React.Node, ...rest: Rest) {
     >
       {children}
     </button>
-  );
-}
-
-/**
- * The focus stops inside an element, in document order.
- *
- * Disabled controls and `tabindex="-1"` are excluded because the browser
- * excludes them, and anything inside `[hidden]`, `[inert]` or `aria-hidden` is
- * excluded because a reader cannot reach it.
- */
-function focusable(root: HTMLElement): Array<HTMLElement> {
-  const selector =
-    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(root.querySelectorAll(selector)).filter(
-    (element: $FlowFixMe) =>
-      // All three attributes hide a whole subtree, so all three are checked on
-      // the ancestors. Reading `aria-hidden` off the element alone returned a
-      // button inside `<div aria-hidden="true">` as a focus stop, and the trap
-      // then moved focus to a control no screen reader exposes.
-      element.closest("[hidden]") == null &&
-      element.closest("[inert]") == null &&
-      element.closest('[aria-hidden="true"]') == null,
   );
 }
 

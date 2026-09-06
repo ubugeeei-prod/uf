@@ -645,6 +645,153 @@ fn selecting_no_formatter_leaves_non_flow_files_alone() {
     );
 }
 
+/// A project uf just scaffolded must not fail the first `uf fmt` a reader runs.
+///
+/// `fmt.nonFlow.formatter` defaults to Biome and `uf create` does not install
+/// it, so uf's own default and uf's own scaffold disagreed on the first
+/// command after `uf install`: `uf fmt` exited 1 over a JSON file nothing was
+/// wrong with. A formatter uf chose and the project never named is a
+/// suggestion — the run says what it could not look at, names the files, and
+/// the exit code goes on answering for the files uf could format. See
+/// ubugeeei-prod/uf#441.
+#[test]
+fn a_default_formatter_that_is_not_installed_warns_rather_than_failing() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default defineConfig({});\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("app.js"),
+        "// @flow\nexport const a: number = 1;\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("package-lock.json"), "{\n  \"a\": 1\n}\n").unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["--color", "never", "fmt"])
+        // Nothing is installed here, and nothing is on the way to being: the
+        // formatter is missing because this directory does not exist.
+        .env("PATH", dir.path().join("no-tools"))
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        output.status.success(),
+        "the first `uf fmt` in a new project failed over uf's own default\n{stdout}{stderr}"
+    );
+    assert!(stdout.contains("biome is not installed"), "{stdout}");
+    assert!(
+        stdout.contains("1 non-Flow file was skipped"),
+        "the count and its verb must agree:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("package-lock.json"),
+        "a reader told a file was skipped must be told which:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("fmt.nonFlow.formatter"),
+        "and how to make it stop:\n{stdout}"
+    );
+    // Once. It used to be printed as a warning and then again as the error
+    // that ended the run.
+    assert_eq!(
+        stdout.matches("is not installed").count() + stderr.matches("is not installed").count(),
+        1,
+        "stdout:\n{stdout}stderr:\n{stderr}"
+    );
+}
+
+/// A formatter the project asked for by name is a requirement, not a default.
+///
+/// The same missing binary, and the opposite answer, because the project wrote
+/// `fmt.nonFlow.formatter` down itself. This is also the way a project makes
+/// CI insist on the non-Flow half: name the formatter, and a run that could
+/// not check those files fails.
+#[test]
+fn a_formatter_the_project_named_is_an_error_when_it_is_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default defineConfig({ fmt: { nonFlow: { formatter: \"biome\" } } });\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("app.js"),
+        "// @flow\nexport const a: number = 1;\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("package-lock.json"), "{\n  \"a\": 1\n}\n").unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["--color", "never", "fmt", "--check"])
+        .env("PATH", dir.path().join("no-tools"))
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a formatter the project asked for is a requirement\n{stdout}{stderr}"
+    );
+    assert!(
+        stderr.contains("uf.config.js asks for biome"),
+        "the error must say why this one is fatal:\n{stderr}"
+    );
+    assert!(stderr.contains("1 non-Flow file was skipped"), "{stderr}");
+}
+
+/// The warning must not become an excuse.
+///
+/// `uf fmt --check` still answers for the files uf can format, whether or not
+/// somebody else's formatter is installed — which is the whole reason the exit
+/// code was worth keeping honest.
+#[test]
+fn a_missing_default_formatter_does_not_excuse_an_unformatted_flow_file() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "export default defineConfig({});\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("app.js"),
+        "// @flow\nexport const a: number =    1;\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("package-lock.json"), "{\n  \"a\": 1\n}\n").unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["--color", "never", "fmt", "--check"])
+        .env("PATH", dir.path().join("no-tools"))
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "an unformatted Flow file must still fail the check\n{stdout}{stderr}"
+    );
+    assert!(stderr.contains("1 file needs formatting"), "{stderr}");
+    assert!(
+        stdout.contains("biome is not installed"),
+        "and the skip is still reported:\n{stdout}"
+    );
+}
+
 #[test]
 fn alias_binaries_print_the_root_version() {
     for name in ["uf", "ufr", "ufx"] {

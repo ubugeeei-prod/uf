@@ -18,9 +18,11 @@
     "./combobox": "./combobox.js",
     "./dialog": "./dialog.js",
     "./field": "./field.js",
+    "./hover-card": "./hover-card.js",
     "./menu": "./menu.js",
     "./navigation-menu": "./navigation-menu.js",
     "./pagination": "./pagination.js",
+    "./popover": "./popover.js",
     "./progress": "./progress.js",
     "./radio-group": "./radio-group.js",
     "./resizable": "./resizable.js",
@@ -31,7 +33,8 @@
     "./tabs": "./tabs.js",
     "./toast": "./toast.js",
     "./toggle": "./toggle.js",
-    "./toggle-group": "./toggle-group.js"
+    "./toggle-group": "./toggle-group.js",
+    "./tooltip": "./tooltip.js"
   },
   "files": [
     "*.js",

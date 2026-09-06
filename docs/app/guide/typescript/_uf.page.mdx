@@ -75,9 +75,12 @@ equivalent, from Vite or from uf, so a five-line file using them reports five
 type errors — [issue #264](https://github.com/ubugeeei-prod/uf/issues/264) has
 the file and the output.
 
-**Top-level `await` does not parse.** ES2022, accepted by Flow, refused by uf's
-parse options — so a module using it cannot be checked, formatted, transformed,
-tested or built.
+**A module with no `import` and no `export` is read as a script.** That is how
+uf decides which of ECMAScript's two goal symbols a file is written in, and the
+difference it makes is `await`: a module may await at its top level, a script
+may not, because in a script `await` is still an ordinary identifier. A file
+that awaits and neither imports nor exports is refused, and an `export {}` is
+enough to say what it is.
 [Issue #204](https://github.com/ubugeeei-prod/uf/issues/204).
 
 None of those three is an argument about Flow. They are uf's, they have issue
@@ -199,8 +202,8 @@ for you this quarter. That is most people, and it is a reasonable answer.
 **Try uf** if you are writing React rather than JavaScript-with-React — if the
 things you want the type system to catch are a missing prop, a hook called from
 the wrong place, a child component that does not belong, and a `match` you
-forgot to extend — and if you can work in pre-release software where the
-packages are not on npm yet
+forgot to extend — and if you can work in pre-release software whose interfaces
+move without warning and where only some of the packages have reached npm
 ([issue #210](https://github.com/ubugeeei-prod/uf/issues/210)).
 
 The syntax argument in full is [Why Flow](/guide/why). The boundaries are

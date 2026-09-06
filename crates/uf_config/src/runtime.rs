@@ -109,21 +109,25 @@ pub struct DeployAnywhereConfig {
 }
 
 impl Default for DeployAnywhereConfig {
-    /// One adapter, because there is one implementation.
+    /// The adapters that write something, and no others.
     ///
     /// This listed all seven, and every one of them was a name. Grepping the
     /// workspace for `DeployAdapter` outside this crate found nothing, so the
     /// list described a feature rather than reporting one — which is precisely
     /// what `docs/red-lines.md` closes with and what ubugeeei-prod/uf#250 and
-    /// ubugeeei-prod/uf#335 are about. The default is now what
-    /// [`DeployAdapter::is_implemented`] says is true, and naming any of the
-    /// other six is an error that says which issue tracks it rather than a
-    /// build that quietly produces nothing.
+    /// ubugeeei-prod/uf#335 are about. The default is what
+    /// [`DeployAdapter::is_implemented`] says is true, and naming one of the
+    /// rest is an error that says which issue tracks it rather than a build
+    /// that quietly produces nothing.
     fn default() -> Self {
         Self {
             enabled: true,
             adapter: None,
-            adapters: vec![DeployAdapter::Node],
+            adapters: DeployAdapter::ALL
+                .iter()
+                .copied()
+                .filter(|adapter| adapter.is_implemented())
+                .collect(),
         }
     }
 }
@@ -177,27 +181,64 @@ impl DeployAdapter {
     /// Whether `uf build --adapter` can actually write this one.
     ///
     /// The distinction is load-bearing rather than documentary: it is what
-    /// makes `uf build --adapter edge` an error naming an issue instead of a
+    /// makes `uf build --adapter bun` an error naming an issue instead of a
     /// command that appears to work. Keep it in step with
     /// `docs/app/reference/cli/_uf.page.mdx`, which is where a reader looks
     /// first.
+    ///
+    /// "Writes something the platform accepts, in that platform's documented
+    /// shape, driven by a test" — and not "has been deployed". None of these
+    /// four has ever run on the platform it targets; the sandbox uf is
+    /// developed in has no credentials for any cloud and cannot bind a socket.
+    /// What the tests establish is the emitted file set, the emitted handler's
+    /// answers in process, and that those answers match `uf start`'s. The
+    /// documentation says the same thing in the same words.
     #[must_use]
     pub const fn is_implemented(self) -> bool {
-        matches!(self, Self::Node)
+        matches!(
+            self,
+            Self::Node | Self::Edge | Self::Serverless | Self::Container
+        )
     }
 
     /// The issue that tracks an adapter nobody has written yet.
     ///
-    /// One issue rather than one per target, because they are one piece of
-    /// work: the application half is already shared (`@uniflowed/server/fetch`),
-    /// and what each of the six still needs is its own entry file and its own
-    /// answer for where the static half lives.
+    /// One issue rather than one per target, because what is left is one piece
+    /// of work in three parts. `bun` and `deno` need a benchmark before they
+    /// need code — the `node` output already runs unchanged on both, so an
+    /// adapter that is not measurably faster is a directory with a different
+    /// name on it — and `static` needs the route table rather than a bundler,
+    /// because the whole of what it has to do is refuse a project whose routes
+    /// a static host cannot serve.
     #[must_use]
     pub const fn tracking_issue(self) -> Option<u32> {
         if self.is_implemented() {
             None
         } else {
             Some(391)
+        }
+    }
+
+    /// What each unwritten adapter is still waiting for, in one clause.
+    ///
+    /// Beside [`Self::tracking_issue`] because a reader who has just been told
+    /// "not yet" wants to know whether that means "nobody got to it" or "the
+    /// design says not to" — and for these three it is the second. `None` for
+    /// an adapter that is implemented, which is what makes the two functions
+    /// answer the same question.
+    #[must_use]
+    pub const fn unimplemented_because(self) -> Option<&'static str> {
+        match self {
+            Self::Bun | Self::Deno => Some(
+                "the `node` output already runs unchanged on both, so this is worth writing \
+                 only once a benchmark shows the native server beating `node:http` under the \
+                 same handler",
+            ),
+            Self::Static => Some(
+                "it emits nothing new and its whole job is to refuse a project whose routes a \
+                 static host cannot serve, which needs the route table rather than a bundler",
+            ),
+            _ => None,
         }
     }
 }

@@ -126,9 +126,10 @@ nothing when it did not; `uf-rsc-manifest.json` carries the decision per module
 as `proximity`.
 
 Two flags write something you can take away with you: `--adapter TARGET`
-writes a directory that runs on a host with a JavaScript runtime and nothing
-else, and `--compile` writes a single executable file that needs not even
-that. Both are described below, beside the two ways to serve a build in place.
+writes a directory for one deployment target — a host with a JavaScript
+runtime, a container image, a Cloudflare Worker or a Lambda function — and
+`--compile` writes a single executable file that needs not even a runtime.
+Both are described below, beside the two ways to serve a build in place.
 
 ### Serving a build
 
@@ -140,7 +141,7 @@ the request.
 | --- | --- | --- | --- |
 | `uf preview` | Vite's preview server | the project, its dependencies and Vite | check a build on your own machine |
 | `uf start` | uf's own `node:http` server | a JavaScript host, `node_modules`, and the build | serve from the checkout you built in |
-| `uf build --adapter node` | that server, inside the output | a JavaScript runtime | copy a directory to a host |
+| `uf build --adapter TARGET` | the target's own entry, inside the output | whatever the target is | copy a directory to a host, or upload it |
 | `uf build --compile` | that server, inside the executable | nothing at all | deploy one file |
 
 What they must *not* differ in is the answer, and they do not: an asset or a
@@ -148,12 +149,15 @@ prerendered document is served first, then a route handler is offered the
 request for any method, and anything left is rendered. That order is Vite's
 rather than a preference — its preview server runs its own file middleware
 before anything uf mounts behind it — so `uf start` matches `uf preview`, and
-the adapter's output and a compiled binary match both. A route that works when
-you check it works when you deploy it, whichever of the four you deployed with.
+every adapter's output and a compiled binary match both. A route that works
+when you check it works when you deploy it, whichever of them you deployed
+with.
 
-The first three are the same code, not merely the same idea: the application is
-`@uniflowed/server/fetch` and the socket and the files are
-`@uniflowed/server/node`, in every one of them.
+They are the same code, not merely the same idea: the application is
+`@uniflowed/server/fetch` in every one of them, and what differs is the host
+half — `@uniflowed/server/node` for a socket and a directory,
+`@uniflowed/server/edge` for a Worker, `@uniflowed/server/lambda` for an
+invocation.
 
 ### uf preview
 
@@ -199,20 +203,22 @@ how a container or a secret manager provides one — always wins over a file. Se
 
 ### uf build --adapter TARGET
 
-Writes `.uf/deploy/TARGET/`, a directory you can copy to a machine that has a
-JavaScript runtime and nothing else — no `node_modules`, no checkout, no `uf`.
-`cd` into the copy and `node server.js`; `--port` and `PORT` choose the port,
-`--host` and `HOST` the address, the same way `uf start` reads them.
+Writes `.uf/deploy/TARGET/`: everything the target needs and nothing that is
+still in your checkout — no `node_modules`, no source, no `uf`. Four targets
+are implemented, and they share every line of the application:
 
-It holds five things:
+| Target | What you get | What runs it |
+| --- | --- | --- |
+| `node` | `handler.js`, `server.js`, `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
+| `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
+| `edge` | `handler.js`, `worker.js`, `wrangler.json`, `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
+| `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
 
-| | |
-| --- | --- |
-| `handler.js` | the application, as `export default { fetch }` — a `Request` in, a `Response` out |
-| `server.js` | `node:http` around that handler, serving `static/` |
-| `chunks/` | the route modules, which the router loads lazily |
-| `static/` | a copy of the output directory |
-| `package.json` | `{"type": "module"}`, so `node server.js` reads what is beside it as ES modules |
+`handler.js` is the seam and is identical work in all four: it is
+`@uniflowed/server/fetch`'s handler over your server bundle, it touches no
+filesystem, and it is the same function `uf preview` and `uf start` answer
+through. An adapter is the file beside it and an answer for where `static/`
+lives — not a second application.
 
 The difference from `uf start` is what the host must already have. `uf start`
 reads `dist/` and `.uf/build/server` and needs the project's `node_modules`
@@ -220,19 +226,128 @@ around them, because the server bundle leaves `react` and `react-dom` as bare
 imports. An adapter's output links them in, so the directory is the whole of
 what has to travel.
 
-**`node` is the only target implemented.** `bun`, `deno`, `edge`,
-`serverless`, `static` and `container` are names in `DeployAdapter` and nothing
-else; asking for one is an error that says so and names
-[#391](https://github.com/ubugeeei-prod/uf/issues/391), which is where the
-design for each of them is written down. `app.runtime.deploy.adapters` lists
-what this toolchain can actually produce, and `uf explain build` names the
-adapter a build will run.
+**No adapter output has ever been deployed.** uf is developed in a sandbox with
+no cloud credentials, no Docker daemon and no ability to bind a socket. What
+its tests establish is that each directory has the file set the platform
+documents, that the emitted entry answers when it is driven in process, and
+that all four answer *identically* — byte for byte, the same as `uf start`.
+None of that is a deployment. The first person to run `wrangler deploy` or
+upload the zip is finding something out, and
+[#391](https://github.com/ubugeeei-prod/uf/issues/391) is where to say what.
 
-`handler.js` is the seam those six plug into: it is
-`@uniflowed/server/fetch`'s handler over your server bundle, it touches no
-filesystem, and it is the same function `uf preview` and `uf start` answer
-through. What a second adapter has to write is `server.js` and an answer for
-where `static/` lives — not the application.
+#### node and container
+
+`cd` into the copy and `node server.js`; `--port` and `PORT` choose the port,
+`--host` and `HOST` the address, the same way `uf start` reads them.
+
+`container` writes exactly what `node` writes, plus a `Dockerfile` and a
+`.dockerignore`. **The `Dockerfile` is a template and its first line says so.**
+It has no build stage — the build already happened and the directory is its
+result — and nothing to install, because the whole claim of an adapter's output
+is that it needs no `node_modules`. It pins `node:24-alpine`, runs as the
+`node` user, and exposes 3000. uf does not build the image, does not tag it,
+does not push it, and does not keep the base image current: it is a file in
+your output that you are expected to read and edit.
+
+#### edge
+
+The target is **Cloudflare Workers**, and the `wrangler.json` beside
+`worker.js` is what makes the directory one. You need [Wrangler][wrangler]
+installed and a Cloudflare account authenticated with it; uf runs neither.
+
+Three lines of that file are load-bearing, and it is yours to edit once you
+have read them:
+
+- `"compatibility_flags": ["nodejs_compat"]`. `handler.js` imports
+  `node:async_hooks`, because `@uniflowed/server`'s request context is an
+  `AsyncLocalStorage` — that is what makes `headers()` and `cookies()` work
+  without threading a request through every component. Without the flag the
+  script does not link at all. It is the *only* Node built-in the bundle
+  imports, which a test asserts, so nothing else about your compatibility date
+  is uf's business.
+- `"compatibility_date": "2024-09-23"` — the earliest date at which
+  `nodejs_compat` provides that module. It is pinned rather than set to the day
+  of your build, because a date ahead of the runtime you deploy onto is an
+  error from Wrangler and a build whose output changes with the calendar is a
+  build nobody can reproduce. Bump it yourself when you want newer runtime
+  behaviour.
+- `"run_worker_first": true`, with `"binding": "ASSETS"` and
+  `"not_found_handling": "none"`. Cloudflare's default is to serve a matching
+  asset without invoking your script; uf asks for the asset *from inside* the
+  Worker instead, so the file-then-handler-then-render order is uf's own and is
+  the same order `uf start` uses. A miss comes back as a 404 the Worker falls
+  through, so the 404 a visitor sees is your `_uf.not-found` page rather than
+  Cloudflare's.
+
+React is linked from its `server.edge.js` build for this target, so a document
+comes out of `renderToReadableStream` rather than the Node renderer. That is a
+different code path from every other target, and the test that says all four
+adapters answer identically is the one that covers it.
+
+What uf does not do: create the Worker, upload the assets, configure a route or
+a custom domain, add a KV namespace or any other binding, or set a secret. Add
+your own bindings to `wrangler.json` after reading it — it is regenerated on
+every build, so keep a copy or commit a `wrangler.jsonc` of your own and point
+`main` at the generated `worker.js`.
+
+**`after()` is different here, and only here.** A Worker has no line at which
+the last byte went out, so `settle` is handed to `ctx.waitUntil`: an `after()`
+callback begins once the response has been *decided* rather than once it has
+been sent. For a streamed document those are a document apart.
+
+#### serverless
+
+The target is **AWS Lambda**, and the event format is **payload format 2.0** —
+what a [Lambda Function URL][function-url] always sends and what an API Gateway
+*HTTP* API sends by default. An API Gateway *REST* API sends format 1.0 and an
+ALB sends its own shape; neither is supported, and an event that is neither is
+refused with a message saying which format the handler reads rather than
+answered from fields that happen to be undefined.
+
+Zip the directory, upload it, and set the function's handler to
+`lambda.handler` on a Node.js 20 or later runtime. uf does not create the
+function, does not zip it for you, does not configure a Function URL or an API
+Gateway, and writes no infrastructure-as-code of any kind.
+
+Two limits are worth knowing before you choose this target:
+
+- **The response is buffered.** `createFetchHandler` answers a document as a
+  stream so a `<Suspense>` fallback reaches the browser first; a Lambda
+  response in this format is a JSON value, so the whole body is read before the
+  invocation returns and none of that streaming survives. Response streaming
+  exists — `awslambda.streamifyResponse`, on a Function URL whose invoke mode
+  is `RESPONSE_STREAM` — and uf does not implement it, because the wrapper is a
+  global the managed runtime injects and nothing outside a real invocation can
+  drive it. AWS's 6 MB response payload limit applies to what comes back.
+- **`static/` is inside the package.** The function answers a prerendered
+  document and a hashed asset the moment it is uploaded, with no other
+  infrastructure existing — which is the shape that works, not the shape to
+  keep. Every byte is then billed as invocation time and counted against the
+  package limit. Put CloudFront or S3 in front of it and the application half
+  answers alone, exactly as it does on a Worker.
+
+Cookies are handled where the format puts them: the event's `cookies` array
+becomes the request's `Cookie` header, and every `Set-Cookie` a response sets
+comes back in the result's `cookies` rather than in `headers`, because
+iterating headers would join two cookies into one field nothing can parse
+apart. A response body whose media type is not text comes back base64-encoded.
+
+#### The three that are not written
+
+`bun`, `deno` and `static` are names in `DeployAdapter` and nothing else.
+Asking for one is an error that says which and why, and names
+[#391](https://github.com/ubugeeei-prod/uf/issues/391).
+
+| Target | Why not |
+| --- | --- |
+| `bun`, `deno` | The `node` output already runs unchanged on both. An adapter here is `Bun.serve` or `Deno.serve` in place of `node:http`, and it is worth writing only once a benchmark shows the native server beating `node:http` *under the same handler* — otherwise it is a directory with a different name on it. Nobody has run that benchmark. |
+| `static` | It emits nothing new: `uf build` already writes `dist/`. Its whole job is to **refuse** — a project whose routes include a handler, a middleware, or a route with parameters and no `generateStaticParams` cannot be served statically, and a build that silently dropped them is the failure this target exists to prevent. That needs the route table rather than a bundler, and it is a different piece of work from the other six. |
+
+`app.runtime.deploy.adapters` lists what this toolchain can actually produce,
+and `uf explain build` names the adapter a build will run.
+
+[wrangler]: https://developers.cloudflare.com/workers/wrangler/
+[function-url]: https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html
 
 ### uf build --compile
 
@@ -303,6 +418,12 @@ Runs uf's rules and Flow's built-in lints. `--json` for the report.
 
 Formats the project. `--check` reports what would change and exits non-zero
 instead of writing.
+
+JSON, CSS and TypeScript go to `fmt.nonFlow.formatter` — Biome by default —
+which uf runs rather than ships. A formatter uf chose and the project does not
+have is reported, with the files it left alone, and does not change the exit
+code; one the project named in `uf.config.js` is an error, because the project
+asked for it.
 
 ### uf test [PATH...]
 

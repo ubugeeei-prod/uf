@@ -36,6 +36,7 @@ upstream-typecheck = [
   "dep:flow_typing_type",
   "dep:flow_typing_utils",
   "dep:flow_utils_concurrency",
+  "dep:uf_flow",
 ]
 
 [dependencies]
@@ -66,6 +67,9 @@ flow_typing_errors = { workspace = true, optional = true }
 flow_typing_type = { workspace = true, optional = true }
 flow_typing_utils = { workspace = true, optional = true }
 flow_utils_concurrency = { workspace = true, optional = true }
+# The parse boundary, for the one question the port cannot be asked: whether
+# it is reading a module. See `uf_flow::module`.
+uf_flow = { path = "../uf_flow", optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -30,7 +30,7 @@ use anyhow::{Context, Result, bail};
 use camino::Utf8PathBuf;
 use serde_json::json;
 use uf_config::{ResolvedConfig, load_config};
-use uf_fmt::format_source;
+use uf_fmt::{NonFlowOutcome, format_source};
 use uf_lint::{LintReport, Severity, SourceFile, lint_sources};
 use uf_prepare::{
     GeneratedFile, GeneratedFileKind, NoStagedSet, PrepareStep, StagedFiles, StepOutcome,
@@ -433,19 +433,27 @@ impl Run<'_> {
             }
         );
         match uf_fmt::non_flow::run(
-            self.resolved.config.fmt.non_flow.formatter,
             &self.resolved.root,
             &non_flow,
             true,
             &self.resolved.config.fmt,
         ) {
-            Ok(true) => {}
-            Ok(false) => {
+            Ok(NonFlowOutcome::Formatted) => {}
+            Ok(NonFlowOutcome::Unformatted) => {
                 failed = true;
                 lines.push(format!(
                     "{} reports that some of the staged non-Flow files need formatting",
                     self.resolved.config.fmt.non_flow.formatter.as_str()
                 ));
+            }
+            // A commit is not the place to discover that uf's own default
+            // formatter is missing from a project that never named it. The
+            // step says what it did not look at and passes; a hook that
+            // refuses a clean commit over that is a hook that gets
+            // uninstalled. See ubugeeei-prod/uf#441.
+            Ok(NonFlowOutcome::Skipped { formatter, paths }) => {
+                lines.push(uf_fmt::non_flow::skipped_message(&formatter, paths.len()));
+                lines.extend(paths);
             }
             Err(error) => {
                 failed = true;
@@ -453,10 +461,13 @@ impl Run<'_> {
             }
         }
 
+        // The lines go under the step either way: a step that passed while
+        // leaving files unlooked-at has something to say, and saying it only
+        // on failure would hide exactly the case this reports.
         if failed {
             StepReport::failed(step, detail).with_lines(lines)
         } else {
-            StepReport::ok(step, detail)
+            StepReport::ok(step, detail).with_lines(lines)
         }
     }
 

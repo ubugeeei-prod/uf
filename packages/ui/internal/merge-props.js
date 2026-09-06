@@ -147,6 +147,38 @@ export function composeRefs<T>(
 }
 
 /**
+ * Two sets of props, the component's on top.
+ *
+ * The same rule as everywhere else in this package, applied where the element
+ * is the *caller's* rather than the component's: `Tooltip.Trigger` and
+ * `HoverCard.Trigger` hand their attributes to a render function so a caller
+ * can put them on a link or a menu item of their own, and the attributes that
+ * make the trigger work — the `aria-describedby` naming the content, the ref
+ * the content is measured against — have to survive whatever the caller passed
+ * alongside them.
+ *
+ * A spread would say this in one line and cannot be written: Flow declines to
+ * compute a type for `{ ...base, name: value }` when `base` has an indexer,
+ * because the indexer may overwrite the named key in a way it cannot track.
+ * The loop is that spread, with `key` dropped for the reason `withoutComposed`
+ * gives.
+ */
+export function withProps(base: Rest, ours: Rest): Rest {
+  const merged: { key?: empty, [string]: mixed } = {};
+  for (const name of Object.keys(base)) {
+    if (name !== "key") {
+      merged[name] = base[name];
+    }
+  }
+  for (const name of Object.keys(ours)) {
+    if (name !== "key") {
+      merged[name] = ours[name];
+    }
+  }
+  return merged;
+}
+
+/**
  * A caller's props with the handlers and ref removed.
  *
  * They are pulled out because they have to be composed rather than spread, and
