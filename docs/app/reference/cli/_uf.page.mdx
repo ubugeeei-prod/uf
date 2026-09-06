@@ -269,7 +269,22 @@ staged is checked as it is on disk; uf does not stash the unstaged half the way
 
 ### uf install
 
-Installs dependencies with the host's package manager.
+Installs dependencies with the host's package manager, and refuses lifecycle
+scripts while doing it — the manager is passed `--ignore-scripts`, and a
+manifest that declares scripts of its own fails before anything is fetched.
+
+On a terminal, the phases are drawn as they happen and redrawn where they
+stand: resolving, fetching, linking, auditing, each with what it is working on,
+how many it has done and how long it has taken. Off a terminal — a pipe, a
+file, a CI log — nothing is redrawn and nothing is animated.
+
+Afterwards it reports what changed rather than a count: the packages added,
+removed, updated and moved between the lockfile before the install and the one
+after, the time each phase took, which manager ran and what named it, and what
+to run next. An install that changed nothing says so in a line and stops.
+
+The manager's own output is passed through untouched, on the stream it wrote it
+to. A failed install still says why in the manager's words.
 
 ### uf use TOOLCHAIN
 

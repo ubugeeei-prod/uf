@@ -1,70 +1,21 @@
 //! `uf install`, `uf upgrade`, and `uf use`: packages and runtimes.
 
+mod install;
+
+pub(crate) use install::install;
+
 use std::fs;
 
 use anyhow::{Context, Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
-use uf_pm::{PackageManagerPlan, install_workspace, run_install};
+use uf_pm::{PackageManagerPlan, install_workspace};
 use uf_rm::{RuntimeManagerPlan, RuntimeReference, RuntimeUsePlan, XdgEnv, XdgLayout};
 use uf_term::{KeyValue, Status, Tone};
 
-use crate::brand;
 use crate::support::{enabled, project_label, write_json_file};
 use crate::ui::Ui;
-
-/// `uf install`.
-///
-/// The install itself is done by the package manager that drives the project.
-/// uf's own resolver records what a workspace declares but reaches no registry,
-/// so running it alone would create no `node_modules` and report success — which
-/// is what it used to do. See `uf_pm::run` for why npm stands in when a project
-/// evidences no manager at all.
-pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let resolved = load_config(cwd)?;
-    let plan = PackageManagerPlan::infer_from_config(&resolved.config);
-
-    // A manifest that declares scripts is refused before anything is fetched,
-    // the way it was when uf planned the install itself. `--ignore-scripts`
-    // below covers the dependencies; this covers the project.
-    install_workspace(&resolved.root, &resolved.config)?;
-
-    // The manager writes to the terminal itself, so nothing of uf's may be on
-    // screen while it runs — including a progress line waiting to be erased.
-    ui.render(|renderer, out| {
-        brand::render_product_card(renderer, out, "uf install");
-        renderer.blank(out);
-        renderer.banner(out, "uf install", Some(project_label(&resolved.root)));
-        renderer.blank(out);
-    });
-
-    let run = run_install(&resolved.root, !plan.forbids_npm_scripts())?;
-
-    let manager = run.manager.to_string();
-    let command = run.invocation.to_string();
-    let chosen = if run.substituted {
-        "no lockfile or packageManager field; npm".to_owned()
-    } else {
-        format!("{:?}", run.source)
-    };
-
-    ui.render(|renderer, out| {
-        renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("manager", &manager),
-                KeyValue::new("chosen by", &chosen),
-                KeyValue::toned("command", &command, Tone::Path),
-            ],
-        );
-        renderer.blank(out);
-        renderer.status(out, Status::Success, "dependencies installed");
-    });
-    Ok(())
-}
 
 pub(crate) fn upgrade(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let resolved = load_config(cwd)?;

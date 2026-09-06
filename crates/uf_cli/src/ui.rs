@@ -12,7 +12,7 @@
 use std::io::{self, Write};
 
 use uf_term::{
-    Capabilities, ColorChoice, Progress, Renderer, TerminalEnv, display_width, push_spaces,
+    Capabilities, ColorChoice, Live, Progress, Renderer, TerminalEnv, display_width, push_spaces,
 };
 
 /// Whether a command is rendering for a person or emitting machine JSON.
@@ -80,6 +80,18 @@ impl Ui {
         write_all(&mut io::stdout().lock(), text);
     }
 
+    /// Write text to stderr exactly as given, with no styling and no framing.
+    ///
+    /// The counterpart of [`Ui::plain`] for the other stream, and it exists
+    /// for one caller: `uf install` reads a package manager's output so that
+    /// it can draw the phases, and every line of that output which the manager
+    /// would have printed anyway has to reach the terminal unedited, on the
+    /// stream the manager chose. A warning npm wrote to stderr belongs on
+    /// stderr.
+    pub(crate) fn plain_err(&mut self, text: &str) {
+        write_all(&mut io::stderr().lock(), text);
+    }
+
     /// Emit machine-readable JSON on stdout with no styling of any kind.
     pub(crate) fn json(&mut self, value: &serde_json::Value) -> serde_json::Result<()> {
         let mut rendered = serde_json::to_string_pretty(value)?;
@@ -97,6 +109,17 @@ impl Ui {
             self.stderr.capabilities()
         };
         Progress::stderr(capabilities)
+    }
+
+    /// A multi-line live region on stderr, under the same rules as
+    /// [`Ui::progress`].
+    pub(crate) fn live(&self) -> Live<io::Stderr> {
+        let capabilities = if self.is_json() {
+            Capabilities::plain()
+        } else {
+            self.stderr.capabilities()
+        };
+        Live::stderr(capabilities)
     }
 
     /// Render a failure as a distinct block on stderr.
