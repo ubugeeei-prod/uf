@@ -137,7 +137,7 @@ for you — that is a better thing to learn here than three days in.
 | **Test coverage, and a reporter CI can read.** No coverage. Module mocking works on Node — `uft.mock` and its siblings replace a module through `@uniflowed/host`'s loader hooks — and raises `UnsupportedError` on Bun and Deno, which have no synchronous module hook | `uf test --json` exists; nothing emits LCOV or JUnit | [#280](https://github.com/ubugeeei-prod/uf/issues/280) |
 | **`uf lint --fix`.** The fix catalogue exists and only an editor can reach it | `uf prepare` can tell you a file is misformatted and cannot format it | [#290](https://github.com/ubugeeei-prod/uf/issues/290) |
 | **An image and font pipeline.** `Image` and `Font` are the markup and none of the pipeline: no resizing, no formats, no `srcset` | They prevent layout shift and double downloads, which is what they claim | [#273](https://github.com/ubugeeei-prod/uf/issues/273) |
-| **Packages on npm.** Nothing under `@uniflowed/*` is published | They resolve through this repository's workspace, which is how this site imports them | [#210](https://github.com/ubugeeei-prod/uf/issues/210) |
+| **Every implemented package on npm.** Seventeen names go out on each `uf@*` tag — the closure a project needs, plus the test runner. Eleven more are implemented and waiting in `tools/release/pending-packages.txt`, `@uniflowed/state` and `@uniflowed/effect` among them | Those eleven resolve only through this repository's workspace, which is how this site imports them | [#210](https://github.com/ubugeeei-prod/uf/issues/210) |
 
 The uncomfortable summary: **uf builds a static site today.** Everything that
 needs a server at run time works while `uf dev` is running and disappears at
