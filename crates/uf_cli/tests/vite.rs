@@ -132,6 +132,16 @@ fn build_renders_the_docs_site_through_vite() {
             "missing {expected:?} in:\n{stdout}"
         );
     }
+    // A build that works and complains is a build people stop reading. Vite
+    // deprecated `envFile: false` in 8.x and printed a line saying so on every
+    // build — twice in this one, once per environment — until the driver moved
+    // to `envDir: false`. This asserts the whole class rather than that one
+    // sentence: uf passes Vite the options, so a warning Vite prints about them
+    // is uf's to fix, not the reader's to learn to ignore.
+    assert!(
+        !stdout.contains("deprecated"),
+        "the build must not report a deprecated option:\n{stdout}"
+    );
     for phase in [
         "config",
         "routes",

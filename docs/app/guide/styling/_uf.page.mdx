@@ -23,9 +23,161 @@ Vite bundles it, hashes it, and — because uf prerenders — links it from the
 generated HTML. CSS Modules work with the usual `.module.css` suffix, and so do
 the preprocessors Vite supports, if you install one.
 
-There is no CSS-in-JS in uf and none is planned. A stylesheet that the browser
-can cache separately from the JavaScript is faster than one it cannot, and the
-prerendered HTML needs the styles before hydration anyway.
+There is no runtime CSS-in-JS in uf and none is planned. A stylesheet the
+browser can cache separately from the JavaScript is faster than one it cannot,
+and the prerendered HTML needs the styles before hydration anyway. uf's own
+styling system, below, is a compiler: it writes CSS at build time and leaves one
+small function in the bundle.
+
+## StyleX, and the tokens that come with it
+
+`app.builtins.style` is `"style-x"` by default, so `stylex.create` in any module
+of your project is compiled by `uf transform` — the same pass that handles Flow
+and the React Compiler — into class names, with the rules extracted as CSS.
+There is no Babel plugin to add and no PostCSS step.
+
+```js
+// @flow
+import { props, stylex } from "@uniflowed/stylex";
+import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
+
+const styles = stylex.create({
+  card: {
+    backgroundColor: ufTokens.surface,
+    color: ufTokens.ink,
+    borderRadius: ufTokens.radiusMd,
+    padding: ufTokens.space4,
+  },
+});
+
+export component Card(children: mixed) {
+  return <section {...props(styles.card)}>{children}</section>;
+}
+```
+
+`props` is the only function in that import that exists at run time; it merges
+compiled styles left to right, one winner per CSS property. `create`,
+`defineVars` and `createTheme` are compile-time forms, and each of them throws
+if it is ever reached at run time, naming the binding that got there rather than
+silently doing nothing.
+
+### The tokens
+
+`@uniflowed/stylex/tokens.stylex.js` exports `ufTokens`, 48 custom properties
+the build declares on `:root`. They are named for what they are *for*, never for
+what they look like — `accent` is the colour a primary action wears, and it can
+become green without a rule in the preset changing.
+
+| Group | Names |
+| --- | --- |
+| Surfaces | `canvas`, `sunken`, `surface`, `surfaceHover`, `border` |
+| Text | `ink`, `muted` |
+| Accent | `accent`, `accentHover`, `accentInk`, `accentSoft` |
+| Danger | `danger`, `dangerHover`, `dangerInk`, `dangerSoft` |
+| State | `focus`, `scrim` |
+| Type | `fontSans`, `fontMono`, `textXs` … `text2Xl`, `leadingTight`, `leadingBase`, `weightRegular`, `weightMedium`, `weightBold` |
+| Space | `space1` … `space12` |
+| Shape | `radiusSm` … `radiusXl`, `radiusPill`, `sizeControl` |
+| Motion and depth | `shadowCard`, `shadowPanel`, `durationFast`, `durationBase`, `easing` |
+
+What is deliberately *not* a token is geometry exactly one control uses. A
+switch's track is 36 by 20 because that is what a switch is; promoting it to a
+token would invite a theme to change it into something the thumb no longer fits.
+
+### The presets
+
+`@uniflowed/stylex/preset` is uf's default look, as twelve functions that each
+answer with `{ className }` and nothing else:
+
+```js
+import { buttonStyles, cardStyles } from "@uniflowed/stylex/preset";
+import { Dialog } from "@uniflowed/ui";
+
+<div {...cardStyles()}>
+  <button {...buttonStyles({ tone: "primary" })}>Save</button>
+</div>;
+```
+
+`surfaceStyles`, `cardStyles`, `textStyles`, `buttonStyles`, `fieldStyles`,
+`backdropStyles`, `dialogStyles`, `menuStyles`, `menuItemStyles`,
+`tabListStyles`, `tabStyles` and `controlStyles`, with variants like
+`tone: "primary" | "neutral" | "ghost" | "danger"` and `size: "sm" | "md" | "lg"`.
+
+Because they answer with a plain `className`, they style
+[the headless components](/guide/ui) without those components knowing StyleX
+exists — `<Switch {...controlStyles({ shape: "track" })} />` keeps every one of
+its ARIA attributes and its keyboard behaviour. Two files assert that rather
+than assuming it, and they are not the same file:
+`tests/library/stylex.test.js` renders the *styled* switch and holds the preset
+against it — the classes land on the control, and it still reports
+`aria-checked` — while the keys are `tests/library/ui.test.js`'s, in *"toggles a
+switch on Space and on Enter"*, over a switch with no classes at all. Which is
+the arrangement the claim needs: a `className` cannot reach a key handler, so
+the styled test proves the styling arrives and the unstyled one proves there was
+behaviour there to keep.
+
+### Dark mode
+
+Two themes ship, and both are one spread:
+
+```js
+import { props } from "@uniflowed/stylex";
+import { ufAutoTheme } from "@uniflowed/stylex/theme";
+
+<body {...props(ufAutoTheme)}>…</body>;
+```
+
+`ufAutoTheme` wraps every override in `@media (prefers-color-scheme: dark)`, so
+it follows the operating system and costs nothing in light mode.
+`ufDarkTheme` is unconditional, for a switch a reader flips. Both override the
+same 19 tokens, and applying both leaves the unconditional one winning token by
+token.
+
+Your own theme is `createTheme` over the same token set, so it changes what the
+presets and every component built on them look like:
+
+```js
+export const brandTheme = stylex.createTheme(ufTokens, {
+  accent: "#0f766e",
+  accentHover: "#115e59",
+});
+```
+
+The contrast is checked rather than claimed.
+`crates/uf_stylex/src/tests/preset.rs` compiles the stylesheet and computes
+WCAG relative luminance over the 14 foreground/background pairs the preset
+actually pairs, asserting **4.5:1 in the light default and again in the dark
+theme**, and **3:1 for the focus ring** against both `surface` and `canvas`,
+which is the non-text threshold. The tightest of those margins today are
+`accent` on `accentSoft` at 4.69:1 and the focus ring at 3.89:1 on `canvas`.
+Three more tests in the same file hold the two themes to the same token set, and
+one asserts the automatic theme emits nothing at all in light mode.
+
+### Where it stops today
+
+An application build does not yet write that stylesheet.
+`stylex.create` compiles — the class names are in the built JavaScript and in the
+prerendered HTML — and the CSS module carrying the rules never reaches `dist/`,
+so the classes name rules that do not exist and `ufAutoTheme` has nothing to
+switch. It is [issue #306](https://github.com/ubugeeei-prod/uf/issues/306), with
+a reproduction, and until it closes the working paths are a plain stylesheet or
+CSS Modules, both of which this site is built with.
+
+What is real today, and tested: the compiler
+(`crates/uf_stylex`, including the contrast suite above), the runtime merge in
+`props` (`tests/library/stylex.test.js`), and the preset applied to a headless
+component. What is not is the last hop into a built page.
+
+### Not there, and saying so
+
+`keyframes`, `firstThatWorks` and `positionTry` are not implemented. Writing one
+is a compile error today rather than a call that silently does nothing, which is
+the deliberate half of that sentence.
+
+`@uniflowed/stylex` is also not a global reset, and not a component library.
+Getting uf's look means the preset functions plus the tokens; getting uf's
+behaviour means [`@uniflowed/ui`](/guide/ui); and either can be replaced without
+the other noticing.
 
 ## Markdown and MDX
 
