@@ -1,0 +1,9 @@
+{
+  "name": "uf-bench-tui",
+  "private": true,
+  "type": "module",
+  "description": "The workload @uniflowed/tui and React Ink are measured on, written twice. Not published; see docs/app/guide/tui/_uf.page.mdx.",
+  "devDependencies": {
+    "ink": "7.1.1"
+  }
+}

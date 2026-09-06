@@ -22,6 +22,7 @@ fn claims_only_the_features_the_package_implements() {
         TuiFeature::Keyboard,
         TuiFeature::Focus,
         TuiFeature::RichText,
+        TuiFeature::Scrollback,
         TuiFeature::InMemoryTesting,
         TuiFeature::SnapshotTesting,
     ] {
@@ -35,7 +36,6 @@ fn claims_only_the_features_the_package_implements() {
     for feature in [
         TuiFeature::Mouse,
         TuiFeature::Selection,
-        TuiFeature::Scrollback,
         TuiFeature::Keymap,
         TuiFeature::TerminalAutomation,
         TuiFeature::CodeHighlight,
@@ -58,16 +58,17 @@ fn claims_only_the_features_the_package_implements() {
 }
 
 #[test]
-fn exposes_the_three_components_that_exist() {
+fn exposes_the_components_that_exist_and_no_others() {
     let contract = contract();
 
-    assert_eq!(contract.components.len(), 3);
+    assert_eq!(contract.components.len(), 4);
     assert!(contract.has_component("Box"));
     assert!(contract.has_component("Text"));
     assert!(contract.has_component("Input"));
+    assert!(contract.has_component("ScrollBox"));
 
     assert!(!contract.has_component("Select"));
-    assert!(!contract.has_component("ScrollBox"));
+    assert!(!contract.has_component("ScrollBar"));
     assert!(!contract.has_component("FrameBuffer"));
     assert!(!contract.has_component("EmbeddedTerminal"));
 

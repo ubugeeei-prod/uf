@@ -76,6 +76,16 @@ export type TuiNode = {
   y: number,
   width: number,
   height: number,
+  /** Whether a scrolling ancestor put this node outside its window. */
+  hidden: boolean,
+  /** Rows of content this node holds, when it scrolls. */
+  scrollHeight: number,
+  /** The first row it shows, after clamping, when it scrolls. */
+  scrollOffset: number,
+  /** Where its window is: first row, how many rows, and the bar's column. */
+  scrollViewTop: number,
+  scrollViewRows: number,
+  scrollBarColumn: number,
 };
 
 /** Read a prop, preferring the direct spelling over the one inside `style`. */
@@ -164,6 +174,7 @@ export function styleFromProps(props: TuiProps): LayoutStyle {
     "gap",
     "rowGap",
     "columnGap",
+    "scrollTop",
   ]) {
     copy(name, asNumber);
   }
@@ -278,6 +289,12 @@ export function createNode(type: TuiNodeType, props: TuiProps): TuiNode {
     y: 0,
     width: 0,
     height: 0,
+    hidden: false,
+    scrollHeight: 0,
+    scrollOffset: 0,
+    scrollViewTop: 0,
+    scrollViewRows: 0,
+    scrollBarColumn: 0,
   };
   applyProps(node, props);
   return node;

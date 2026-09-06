@@ -23,6 +23,10 @@
 //! * [`Progress`] is a spinner that writes nothing unless the stream is an
 //!   interactive terminal, so CI logs stay clean, and [`Live`] is the same
 //!   promise for a block of several lines redrawn where they stand.
+//! * [`TerminalSize`] is how wide the window actually is. A region redrawn in
+//!   place has to fit: a row that wraps makes every "cursor up" after it land
+//!   one line short, so a display laid out for a terminal wider than this one
+//!   does not merely look cramped, it smears.
 //!
 //! # Alignment
 //!
@@ -67,7 +71,10 @@ mod theme;
 mod timing;
 mod tree;
 
-pub use crate::capability::{Capabilities, ColorChoice, ColorLevel, GlyphSet, TerminalEnv, Tty};
+pub use crate::capability::{
+    Capabilities, ColorChoice, ColorLevel, FALLBACK_COLUMNS, FALLBACK_ROWS, GlyphSet, TerminalEnv,
+    TerminalSize, Tty,
+};
 pub use crate::diagnostic::{CodeFrame, DiagnosticLevel};
 pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
 pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
