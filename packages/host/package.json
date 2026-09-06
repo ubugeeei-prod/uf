@@ -23,6 +23,7 @@
     "bun-preload.js",
     "module-mocks.js",
     "transform.js",
+    "write-atomically.js",
     "internal/*.js"
   ]
 }

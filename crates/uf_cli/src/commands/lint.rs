@@ -1,7 +1,7 @@
 //! `uf lint` and `uf check`: grouped diagnostics with code frames.
 
 use anyhow::{Result, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
 use uf_lint::{Diagnostic, LintReport, Severity, SourceFile, lint_sources};
@@ -46,7 +46,12 @@ pub(crate) fn lint_command(
 ) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("scanning sources");
-    let (report, sources, unreadable) = run_lint(cwd, paths)?;
+    let LintRun {
+        report,
+        sources,
+        unreadable,
+        ..
+    } = run_lint(cwd, paths)?;
     progress.finish();
     drop(progress);
 
@@ -78,10 +83,23 @@ pub(crate) fn lint_command(
 /// `paths` narrows the run to the files whose relative path contains one of
 /// the patterns, which is what `uf test` already means by a path argument.
 /// Empty means the whole project.
-pub(crate) fn run_lint(
-    cwd: &Utf8Path,
-    paths: &[String],
-) -> Result<(LintReport, Vec<SourceFile>, Vec<String>)> {
+/// What one pass of the linter over a project produced.
+pub(crate) struct LintRun {
+    /// The linter's own findings.
+    pub(crate) report: LintReport,
+    /// Every source the scan collected, in the order it collected them.
+    pub(crate) sources: Vec<SourceFile>,
+    /// Files that could not be read, already rendered as lines.
+    pub(crate) unreadable: Vec<String>,
+    /// The project root the scan ran from.
+    ///
+    /// Returned rather than resolved again by the caller: `uf check` keeps its
+    /// type-check cache under it, and reading the config twice to learn the
+    /// same answer is how the two come to disagree.
+    pub(crate) root: Utf8PathBuf,
+}
+
+pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
     let resolved = load_config(cwd)?;
     // Flow only. Discovery also returns the JSON, CSS and TypeScript that
     // `uf fmt` hands to the non-Flow formatter, and uf's linter is a Flow
@@ -109,7 +127,12 @@ pub(crate) fn run_lint(
         bail!("no file matched {}", quoted_list(paths));
     }
     let report = lint_sources(&sources, &resolved.config)?;
-    Ok((report, sources, unreadable))
+    Ok(LintRun {
+        report,
+        sources,
+        unreadable,
+        root: resolved.root,
+    })
 }
 
 pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {

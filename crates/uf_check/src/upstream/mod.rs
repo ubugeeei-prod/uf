@@ -1,11 +1,13 @@
 //! The checker itself, driven from Meta's official Flow Rust port.
 //!
-//! This is `flow_dot_js_wasm`'s check path with four things changed: the
+//! This is `flow_dot_js_wasm`'s check path with five things changed: the
 //! builtin environment is merged once and shared, an import of another file in
 //! the batch resolves to that file's signature the way
 //! `flow_services_inference` resolves one to the heap's (see [`project`]), the
-//! work runs on a thread with enough stack for user-controlled recursion, and
-//! the result comes back as [`TypeDiagnostic`]s instead of JSON.
+//! work runs on a thread with enough stack for user-controlled recursion, a
+//! file whose answer is already on disk is not inferred again (see
+//! [`crate::cache`] and [`graph`]), and the result comes back as
+//! [`TypeDiagnostic`]s instead of JSON.
 //!
 //! Nothing below this module is allowed to leak upstream's types: everything
 //! the crate exposes is `uf`'s own, so the shape of the port stays an
@@ -25,11 +27,14 @@ mod assets;
 mod builtins;
 mod convert;
 mod environments;
+mod graph;
 mod options;
 mod packages;
 mod parse;
 mod project;
 mod resolve;
+
+pub(crate) use convert::error_code;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -54,8 +59,10 @@ use flow_typing_errors::{flow_error, intermediate_error};
 use flow_utils_concurrency::check_budget::CheckBudget;
 use flow_utils_concurrency::job_error::JobError;
 
+use crate::cache::{CheckCache, Digest, Fields, Record, hex};
 use crate::diagnostic::TypeDiagnostic;
 use crate::limits::CHECK_STACK_BYTES;
+use crate::upstream::graph::{Graph, ModuleFacts};
 use crate::upstream::project::{MkBuiltins, ProjectModules};
 use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
 
@@ -84,9 +91,10 @@ pub(crate) fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
 pub(crate) fn check_sources(
     sources: &[Source<'_>],
     limits: &CheckLimits,
+    cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
     let path = sources.first().map_or("<empty>", |source| source.path);
-    on_check_thread(path, || check_batch(sources, limits))?
+    on_check_thread(path, || check_batch(sources, limits, cache))?
 }
 
 /// Run `work` on a thread with a stack large enough for recursive descent over
@@ -117,7 +125,40 @@ where
     })
 }
 
-fn check_batch(sources: &[Source<'_>], limits: &CheckLimits) -> Result<CheckReport, CheckError> {
+/// One batch, in two passes.
+///
+/// The first pass says what every file *is* — its signature and its imports —
+/// without running inference over any of them: from the cache where it has a
+/// record, and by parsing and packing where it does not. Only then can the
+/// second pass ask, per file, whether the answer on disk is still the right
+/// one, because that question is about the whole batch and not about the file.
+///
+/// The order matters in one more way. Packing a signature in the first pass
+/// leaves it where the second pass looks, so a file's signature is built at
+/// most once whichever pass needed it; the cost the split really adds is one
+/// extra parse of the files nothing imports, which the batch used to parse
+/// once and now parses twice.
+fn check_batch(
+    sources: &[Source<'_>],
+    limits: &CheckLimits,
+    cache: Option<&CheckCache>,
+) -> Result<CheckReport, CheckError> {
+    // Before anything reads a source, including the pass that only wants its
+    // signature: the AST alone is several times the size of the text, so an
+    // unbounded file is an unbounded allocation and no phase of this function
+    // may be the one that finds out. It used to be checked inside `check_one`,
+    // which was the only thing that parsed; it is checked here now because
+    // `ProjectModules::facts` parses too.
+    for source in sources {
+        if source.source.len() > limits.max_source_bytes {
+            return Err(CheckError::SourceTooLarge {
+                path: source.path.to_compact_string(),
+                size: source.source.len(),
+                limit: limits.max_source_bytes,
+            });
+        }
+    }
+
     let builtins = builtins::prepare()?;
     let master_cx = builtins::master_context()?;
     let options = options::options(limits);
@@ -137,16 +178,85 @@ fn check_batch(sources: &[Source<'_>], limits: &CheckLimits) -> Result<CheckRepo
     ));
 
     let started = Instant::now();
+    // What each file's record is filed under. Computed even for a file the
+    // cache turns out to know nothing about, because it is also where the
+    // recomputed answer is written back.
+    let keys: Vec<Digest> = match cache {
+        Some(cache) => sources
+            .iter()
+            .map(|source| file_key(cache, limits, source))
+            .collect(),
+        None => Vec::new(),
+    };
+    let mut records: Vec<Option<Record>> = match cache {
+        Some(cache) => keys
+            .iter()
+            .zip(sources)
+            .map(|(key, source)| cache.read(key, source.path))
+            .collect(),
+        None => vec![None; sources.len()],
+    };
+
+    // The batch described before anything is checked: from the cache where it
+    // could answer, and by parsing and packing where it could not. Nothing here
+    // runs inference, so a run whose every file is unchanged never reaches it.
+    let mut facts: Vec<ModuleFacts> = Vec::with_capacity(sources.len());
+    for (index, record) in records.iter_mut().enumerate() {
+        match record.as_ref().and_then(facts_of) {
+            Some(known) => facts.push(known),
+            None => {
+                // A record that cannot be read back as facts is a record about
+                // a shape this build does not understand: dropped, not
+                // repaired, so nothing downstream reads half of it.
+                *record = None;
+                facts.push(modules.facts(index));
+            }
+        }
+    }
+    let graph = Graph::new(
+        sources.iter().map(|source| source.path).collect(),
+        &facts,
+        &modules,
+    );
+
     let mut diagnostics = Vec::new();
+    let mut untyped = BTreeSet::new();
     let mut skipped = 0usize;
+    let mut from_cache = 0usize;
     let mut result = Ok(());
     for (index, source) in sources.iter().enumerate() {
+        if facts[index].skipped {
+            skipped += 1;
+        }
+        untyped.extend(graph.untyped(index));
+
+        let dependencies = graph.dependency_digest(index);
+        // The record is about this file; the digest says whether it is still
+        // about this *batch*. Both have to hold, and they fail for different
+        // reasons: the key stops matching when the file was edited, the digest
+        // when something it reaches was.
+        if let Some(record) = records[index]
+            .as_ref()
+            .filter(|record| record.dependencies == dependencies)
+        {
+            diagnostics.extend(record.diagnostics.iter().cloned());
+            // Counted against `files_checked`, which is why a `@noflow` file is
+            // not counted at all: it was not checked either way.
+            if !facts[index].skipped {
+                from_cache += 1;
+            }
+            continue;
+        }
+
         match check_one(index, &options, &mk_builtins, limits, source, &modules) {
-            Ok(outcome) => {
-                if outcome.skipped {
-                    skipped += 1;
+            Ok(found) => {
+                if let Some(cache) = cache {
+                    cache.write(
+                        &keys[index],
+                        &record_of(source.path, &facts[index], dependencies, &found),
+                    );
                 }
-                diagnostics.extend(outcome.diagnostics);
+                diagnostics.extend(found);
             }
             Err(error) => {
                 result = Err(error);
@@ -163,18 +273,91 @@ fn check_batch(sources: &[Source<'_>], limits: &CheckLimits) -> Result<CheckRepo
         diagnostics,
         files_checked: sources.len() - skipped,
         files_skipped: skipped,
-        untyped_modules: modules.untyped_modules(),
+        files_from_cache: from_cache,
+        untyped_modules: untyped.into_iter().collect(),
         builtins,
         elapsed: started.elapsed(),
     })
 }
 
-/// What checking one file produced, and whether it was checked at all.
-struct FileOutcome {
-    /// Diagnostics for the file. A skipped file can still have parse errors.
-    diagnostics: Vec<TypeDiagnostic>,
-    /// Whether the file opted out of inference with `@noflow`.
-    skipped: bool,
+/// Where one file's record is filed.
+///
+/// The compiler's identity is first because it is the input a reader is most
+/// likely to forget is one: see [`crate::cache`]. The limits are here rather
+/// than in the dependency digest because they are not a property of any file —
+/// raising the recursion limit changes what every file in the batch reports.
+fn file_key(cache: &CheckCache, limits: &CheckLimits, source: &Source<'_>) -> Digest {
+    let mut fields = Fields::new("uf-check-file-v1");
+    fields.push(cache.identity());
+    fields.push(&limits_field(limits));
+    fields.push(source.path);
+    fields.push(source.source);
+    fields.finish()
+}
+
+/// Every limit that can change what a check reports, as one field.
+fn limits_field(limits: &CheckLimits) -> String {
+    format!(
+        "max-source-bytes={};recursion-limit={};type-expansion-recursion-limit={};file-timeout-nanos={}",
+        limits.max_source_bytes,
+        limits.recursion_limit,
+        limits.type_expansion_recursion_limit,
+        // A batch with no budget is not a batch with an enormous one: the
+        // budget decides whether a slow file is an error, so "none" needs a
+        // spelling of its own.
+        limits.file_timeout.map_or_else(
+            || "none".to_owned(),
+            |timeout| timeout.as_nanos().to_string()
+        ),
+    )
+}
+
+/// What a record says about the file, or [`None`] when it does not say it in a
+/// shape this build can read.
+fn facts_of(record: &Record) -> Option<ModuleFacts> {
+    let signature = match &record.signature {
+        Some(spelling) => Some(unhex(spelling)?),
+        None => None,
+    };
+    Some(ModuleFacts {
+        signature,
+        requires: record.requires.clone(),
+        skipped: record.skipped,
+    })
+}
+
+/// A thirty-two byte digest written as hex, or [`None`] when it is not one.
+fn unhex(spelling: &str) -> Option<Digest> {
+    let bytes = spelling.as_bytes();
+    if bytes.len() != std::mem::size_of::<Digest>() * 2 {
+        return None;
+    }
+    let mut digest = [0u8; std::mem::size_of::<Digest>()];
+    let (pairs, _) = bytes.as_chunks::<2>();
+    for (byte, pair) in digest.iter_mut().zip(pairs) {
+        let high = char::from(pair[0]).to_digit(16)?;
+        let low = char::from(pair[1]).to_digit(16)?;
+        *byte = u8::try_from(high * 16 + low).ok()?;
+    }
+    Some(digest)
+}
+
+/// The record one checked file leaves behind.
+fn record_of(
+    path: &str,
+    facts: &ModuleFacts,
+    dependencies: String,
+    diagnostics: &[TypeDiagnostic],
+) -> Record {
+    Record {
+        version: crate::cache::RECORD_VERSION,
+        path: path.to_compact_string(),
+        signature: facts.signature.as_ref().map(hex),
+        requires: facts.requires.clone(),
+        skipped: facts.skipped,
+        dependencies,
+        diagnostics: diagnostics.to_vec(),
+    }
 }
 
 fn check_one(
@@ -184,39 +367,26 @@ fn check_one(
     limits: &CheckLimits,
     source: &Source<'_>,
     modules: &Rc<ProjectModules>,
-) -> Result<FileOutcome, CheckError> {
-    // Checked before the parser sees the text: the AST alone is several times
-    // the size of the source, so an unbounded file is an unbounded allocation.
-    if source.source.len() > limits.max_source_bytes {
-        return Err(CheckError::SourceTooLarge {
-            path: source.path.to_compact_string(),
-            size: source.source.len(),
-            limit: limits.max_source_bytes,
-        });
-    }
-
+) -> Result<Vec<TypeDiagnostic>, CheckError> {
     let file_key = FileKey::new(FileKeyInner::SourceFile(source.path.to_owned()));
     let parsed = parse::parse_file(file_key.dupe(), source.source, options, false);
     if !parsed.is_parseable() {
+        // A file that does not parse is broken whatever its docblock says, so
+        // it is reported. Whether it also *counts* as checked is
+        // `ProjectModules::facts`' answer, not this one: a run that reads this
+        // file's diagnostics from the cache never gets here and must still
+        // count it the same way.
         let errors = printable(&parsed, parse_error_set(&parsed));
-        return Ok(FileOutcome {
-            diagnostics: convert::diagnostics(
-                &errors,
-                &ConcreteLocPrintableErrorSet::empty(),
-                source.path,
-            ),
-            // A file that does not parse is broken whatever its docblock says,
-            // so it is reported — but it was not checked either.
-            skipped: !parsed.is_checked(),
-        });
+        return Ok(convert::diagnostics(
+            &errors,
+            &ConcreteLocPrintableErrorSet::empty(),
+            source.path,
+        ));
     }
 
     // `@noflow`. The file parsed, and that is all uf asked of it.
     if !parsed.is_checked() {
-        return Ok(FileOutcome {
-            diagnostics: Vec::new(),
-            skipped: true,
-        });
+        return Ok(Vec::new());
     }
 
     let metadata = parsed.metadata.clone();
@@ -255,10 +425,7 @@ fn check_one(
     .map_err(|error| job_error(source.path, error))?;
 
     let (errors, warnings) = suppressed(&cx, &parsed, cx.errors(), modules);
-    Ok(FileOutcome {
-        diagnostics: convert::diagnostics(&errors, &warnings, source.path),
-        skipped: false,
-    })
+    Ok(convert::diagnostics(&errors, &warnings, source.path))
 }
 
 fn job_error(path: &str, error: JobError) -> CheckError {

@@ -111,8 +111,12 @@ type AtomIdentity = interface { readonly label: string };
  * Every function that reaches a value is generic in its type, so nothing
  * outside this file sees either of these.
  */
+// Suppressed rather than left to fail `check:lib`: the reason above is the
+// whole argument, and it does not end in a change anyone can make to this file.
+// uf-lint-disable flow/unclear-type
 type AnyCell = Cell<any>;
 type AnyBinding = Binding<any, any>;
+// uf-lint-enable flow/unclear-type
 
 export function createStore(): StoreInstance {
   const cells: WeakMap<AtomIdentity, AnyCell> = new WeakMap();
