@@ -91,11 +91,20 @@ export default defineConfig({
     // check in the pipeline.
     //
     // Not in `ci` yet, and the reason is written down rather than left to be
-    // rediscovered: it reports 315 errors today. The largest groups are
-    // `flow/unclear-type` (125), `flow/react-intrinsic-overlap` (89) and
-    // `react/hooks-rules` (86), and each needs looking at on its own terms —
-    // some are real findings in uf's packages, and some are rules that are
-    // wrong the way `flow/ambiguous-object-type` was wrong.
+    // rediscovered: it reports 153 errors and 11 warnings over 280 files.
+    // `flow/unclear-type` is 139 of them — 81 in `tests/library`, 58 in
+    // shipped packages, which are not the same question — and
+    // `react/no-render-side-effects` is 8, all of them `packages/test`'s fake
+    // timers, where a `useX` name that is not a hook is read as one. The rest
+    // are one small fix each. ubugeeei-prod/uf#225 counts them and says what
+    // each group needs.
+    //
+    // The numbers were wrong here for a while, which is its own lesson: this
+    // said 315 errors and named `flow/react-intrinsic-overlap` (89) and
+    // `react/hooks-rules` (86) as the largest groups, and both of those report
+    // nothing at all today — the first is one of sixteen rules that need type
+    // inference uf does not implement yet, so it is skipped rather than
+    // passing.
     "check:lib": {
       command: "./target/release/uf lint",
       dependsOn: ["build"],

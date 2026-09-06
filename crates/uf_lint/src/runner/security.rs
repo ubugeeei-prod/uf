@@ -4,7 +4,7 @@
 
 use uf_config::UniflowedConfig;
 
-use crate::scan::{FileScan, find_words, identifier_len, next_non_space, previous_word};
+use crate::scan::{FileScan, Line, find_words, identifier_len, next_non_space, previous_word};
 use crate::{Diagnostic, push_in_code, severity};
 
 /// The sanitizing package whose helpers may feed `dangerouslySetInnerHTML`.
@@ -32,16 +32,16 @@ pub(crate) fn run_security_no_dangerously_set_inner_html(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         for at in find_words(code, "dangerouslySetInnerHTML") {
+            // Naming the sink is not reaching for it. The rule's own message
+            // names it, and so does every page that documents it.
+            if line.in_string(at) {
+                continue;
+            }
             // The `__html` value may wrap onto the next line, so both are checked.
-            let next = scan
-                .lines
-                .get(position + 1)
-                .map(|line| line.code())
-                .unwrap_or("");
-            if sanitizers
-                .iter()
-                .any(|&name| is_called_in(code, name) || is_called_in(next, name))
-            {
+            let next = scan.lines.get(position + 1);
+            if sanitizers.iter().any(|&name| {
+                is_called_in(line, name) || next.is_some_and(|next| is_called_in(next, name))
+            }) {
                 continue;
             }
             push_in_code(
@@ -86,10 +86,18 @@ fn markdown_sanitizers<'a>(scan: &FileScan<'a>) -> Vec<&'a str> {
     names
 }
 
-/// Whether `name` is used as a call or a namespace member in `code`.
-fn is_called_in(code: &str, name: &str) -> bool {
+/// Whether `name` is used as a call or a namespace member on `line`.
+///
+/// Inside a string it is a mention, not a call, and this answer suppresses a
+/// finding rather than raising one — so reading a sanitizer's name out of a
+/// message would hide a real sink, which is the expensive direction to be
+/// wrong in.
+fn is_called_in(line: &Line<'_>, name: &str) -> bool {
+    let code = line.code();
     find_words(code, name).any(|at| {
-        next_non_space(code, at + name.len()).is_some_and(|(_, byte)| byte == b'(' || byte == b'.')
+        !line.in_string(at)
+            && next_non_space(code, at + name.len())
+                .is_some_and(|(_, byte)| byte == b'(' || byte == b'.')
     })
 }
 
@@ -112,6 +120,9 @@ pub(crate) fn run_security_no_eval(
         let code = line.code();
 
         for at in find_words(code, "eval") {
+            if line.in_string(at) {
+                continue;
+            }
             if !next_non_space(code, at + "eval".len()).is_some_and(|(_, byte)| byte == b'(') {
                 continue;
             }
@@ -127,6 +138,9 @@ pub(crate) fn run_security_no_eval(
         }
 
         for at in find_words(code, "Function") {
+            if line.in_string(at) {
+                continue;
+            }
             if !next_non_space(code, at + "Function".len()).is_some_and(|(_, byte)| byte == b'(') {
                 continue;
             }
@@ -146,6 +160,9 @@ pub(crate) fn run_security_no_eval(
 
         for timer in TIMER_FUNCTIONS {
             for at in find_words(code, timer) {
+                if line.in_string(at) {
+                    continue;
+                }
                 let Some((paren_at, b'(')) = next_non_space(code, at + timer.len()) else {
                     continue;
                 };

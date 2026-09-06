@@ -25,6 +25,29 @@ fn mixed_import_and_require_accepts_a_pure_esm_module() {
 }
 
 #[test]
+fn mixed_import_and_require_ignores_a_require_inside_a_string() {
+    // `uf.config.js` in this repository: a `node -e "…"` task whose command
+    // happens to contain `require(...)`. Twice on one line, and neither of
+    // them a module system this file mixes in.
+    let diagnostics = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nimport { defineConfig } from '@uniflowed/config';\nexport default defineConfig({ tasks: { m: \"node -e \\\"require('node:fs')\\\"\" } });\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn export_renamed_default_ignores_the_phrase_inside_a_string() {
+    let diagnostics = lint_js(
+        "flow/export-renamed-default",
+        "// @flow\nexport const advice = 'do not export it as default';\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn non_const_var_export_rejects_mutable_exports() {
     let diagnostics = lint_js(
         "flow/non-const-var-export",
