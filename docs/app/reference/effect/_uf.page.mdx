@@ -374,9 +374,95 @@ Effect's `repeat` returns the schedule's output. This one returns the effect's
 last value, because this `Schedule` is arithmetic over an attempt count and has
 no output channel to return.
 
+## Streams
+
+An `Effect` produces one value. `@uniflowed/effect/stream` is for the programs
+that produce many — a large file, a paginated API, a response body — without
+buying the whole thing into memory first, and without leaving the error
+channel, the interruption protocol and `Scope` behind to do it.
+
+```js
+import { streamFromReadableStream, streamRunForEach, streamTake } from "@uniflowed/effect/stream";
+
+const firstTen = streamTake(streamFromReadableStream(() => response.body), 10);
+await runPromise(streamRunForEach(firstTen, handleChunk));
+```
+
+A `Stream<A, E, R>` is a pull: opening one hands back a step that produces the
+next batch, or nothing when there is no next batch, plus the way to close what
+the traversal opened. Batches rather than elements, because one `Effect`
+allocated per row is the whole cost of a stream on a large file. Effect calls
+the batch a `Chunk`; here it is a `$ReadOnlyArray<A>`, which is the honest
+equivalent in a language with no `Chunk` and no reason to grow a lookalike.
+
+| Sources | |
+| --- | --- |
+| `streamFromArray(items, { chunkSize? })` | An array, in batches |
+| `streamFromIterator(open, { chunkSize? })` | Anything iterable, including an infinite generator |
+| `streamFromEffect(effect)` | One element |
+| `streamPaginate(cursor, page)` | A page at a time, until a page says there is no next |
+| `streamFromReadableStream(open)` | A web `ReadableStream` — `Response.body` on every host uf targets |
+
+| Transforms | |
+| --- | --- |
+| `streamMap`, `streamFilter`, `streamTap` | Per element |
+| `streamTake(n)` | The first `n`, then stop pulling |
+| `streamMapEffect(body, { concurrency? })` | Per element, effectfully, in order |
+| `streamEnsuring(finalizer)` | Run something when a traversal ends |
+
+| Runners | |
+| --- | --- |
+| `streamRunCollect` | Every element, as an array |
+| `streamRunFold` | Fold into one value |
+| `streamRunDrain` | For the effects, discarding the elements |
+| `streamRunForEach` | An effect per element |
+| `streamRunHead` | The first element, without draining the rest |
+
+Every runner produces an ordinary `Effect`, so a stream ends where the rest of
+the package begins.
+
+### The guarantees that matter
+
+A traversal is closed on success, on a failure from a pull, on a defect, and on
+the fiber being interrupted — the same guarantee `acquireRelease` gives, reached
+the same way, because the runners are written with `ensuring`. `streamTake(3)`
+of an infinite source releases what the source opened rather than leaking it,
+and a fiber draining a stream stops *between* pulls rather than in the middle of
+one.
+
+A failure mid-stream ends the traversal with that failure in the error channel,
+and the elements before it are not reported. A defect stays a defect.
+
+`streamMapEffect` fills its window across batch boundaries, so the concurrency
+a caller asks for is the concurrency they get whatever the source's batching
+was. There is no `"unbounded"`, unlike `all` and `forEach`: a stream has no
+length, so unbounded would mean buffering the whole of it, which is the thing a
+stream exists to avoid.
+
+### Why it is a separate module and the runtime is not
+
+`index.js` argues that the runtime cannot be split, because moving a combinator
+out means handing `makeEffect` to a sibling and giving away the opaque type's
+guarantee. A stream looked like it fell under that rule — it produces effects
+and runs them — and it does not: a `Stream` needs the `Effect` *interface* and
+never the `Effect` *carrier*. Every line of `stream.js` is written with the
+public exports, and `index.js` has no seam for it.
+
+### What streams deliberately do not have
+
+`Channel`, `Sink` and `GroupBy`. Effect defines `Stream` and `Sink` in terms of
+`Channel`, a bidirectional primitive; a `Stream` defined directly cannot express
+a `Sink` as the dual of a source. That is a real cost and the right one to pay
+before porting a primitive nothing yet needs — the runners are the nearest
+honest shape.
+
+`streamToReadableStream`, `merge`, `zip`, `buffer` and `fromQueue`. The last
+four want a bounded queue with back pressure, and there is no `Queue` yet.
+
 ## What is not here
 
-`Queue`, `Hub` and STM; streams; `forkScoped` and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
+`Queue`, `Hub` and STM; `Channel`, `Sink`, `GroupBy` and `Chunk`; `forkScoped`
+and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
 Effect's input and output combinators (`whileInput`, `fixed`, `cron`,
 `compose`) are defined over; a fiber scheduler of its own — this runs on the host's microtask
 queue and its `sleep` is `setTimeout`; tracing, spans and metrics; a typed

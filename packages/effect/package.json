@@ -12,10 +12,12 @@
   },
   "exports": {
     ".": "./index.js",
-    "./schedule": "./schedule.js"
+    "./schedule": "./schedule.js",
+    "./stream": "./stream.js"
   },
   "files": [
     "index.js",
-    "schedule.js"
+    "schedule.js",
+    "stream.js"
   ]
 }

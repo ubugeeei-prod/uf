@@ -82,6 +82,24 @@ import {
   zip,
 } from "@uniflowed/effect";
 import { scheduleDelay } from "@uniflowed/effect/schedule";
+import {
+  streamEnsuring,
+  streamFilter,
+  streamFromArray,
+  streamFromEffect,
+  streamFromIterator,
+  streamFromReadableStream,
+  streamMap,
+  streamMapEffect,
+  streamPaginate,
+  streamRunCollect,
+  streamRunDrain,
+  streamRunFold,
+  streamRunForEach,
+  streamRunHead,
+  streamTake,
+  streamTap,
+} from "@uniflowed/effect/stream";
 
 describe("succeed and fail", () => {
   it("runs a pure success synchronously", () => {
@@ -2241,5 +2259,247 @@ describe("a layer that acquires something", () => {
 
     await expect(runPromise(provide(program, pool.layer))).resolves.toBe("row");
     expect(events).toEqual(["open", "close"]);
+  });
+});
+
+describe("streams", () => {
+  it("collects what a source produces, in order", async () => {
+    const collected = await runPromise(
+      streamRunCollect(streamMap(streamFromArray([1, 2, 3, 4]), (value) => value * 2)),
+    );
+    expect(collected).toEqual([2, 4, 6, 8]);
+  });
+
+  it("keeps take honest whatever the batching was", async () => {
+    // The batch size is a throughput knob and nothing else depends on it.
+    const wide = streamFromArray([1, 2, 3, 4, 5], { chunkSize: 4 });
+    const narrow = streamFromArray([1, 2, 3, 4, 5], { chunkSize: 1 });
+    await expect(runPromise(streamRunCollect(streamTake(wide, 3)))).resolves.toEqual([1, 2, 3]);
+    await expect(runPromise(streamRunCollect(streamTake(narrow, 3)))).resolves.toEqual([1, 2, 3]);
+  });
+
+  it("does not treat an emptied batch as the end", async () => {
+    // A filter that rejects everything in one batch returns `[]`, and only
+    // `null` ends a traversal.
+    const evens = streamFilter(
+      streamFromArray([1, 3, 5, 2, 7, 4], { chunkSize: 3 }),
+      (value) => value % 2 === 0,
+    );
+    await expect(runPromise(streamRunCollect(evens))).resolves.toEqual([2, 4]);
+  });
+
+  it("takes three from an infinite source and releases what it opened", async () => {
+    const events = [];
+    const counting = function* () {
+      for (let value = 0; ; value += 1) {
+        yield value;
+      }
+    };
+    const source = streamEnsuring(streamFromIterator(counting, { chunkSize: 1 }), () =>
+      sync(() => events.push("closed")),
+    );
+
+    await expect(runPromise(streamRunCollect(streamTake(source, 3)))).resolves.toEqual([0, 1, 2]);
+    // The traversal ended without draining the source, and the finalizer still
+    // ran — the guarantee `acquireRelease` gives, for a stream.
+    expect(events).toEqual(["closed"]);
+  });
+
+  it("reports a failure mid-stream and not the elements before it", async () => {
+    const failing = streamMapEffect(streamFromArray([1, 2, 3, 4]), (value) =>
+      value === 3 ? fail({ kind: "row", value }) : succeed(value),
+    );
+
+    const result = await runPromiseExit(streamRunCollect(failing));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toEqual({ kind: "row", value: 3 });
+    } else {
+      throw new Error("expected the failing row's typed error");
+    }
+  });
+
+  it("keeps a defect a defect", async () => {
+    const broken = streamMap(streamFromArray([1, 2, 3]), (value) => {
+      if (value === 2) {
+        throw new Error("bad transform");
+      }
+      return value;
+    });
+
+    const result = await runPromiseExit(streamRunCollect(broken));
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("closes the source when the failure came from a step", async () => {
+    const events = [];
+    const source = streamEnsuring(streamFromArray([1, 2, 3]), () =>
+      sync(() => events.push("closed")),
+    );
+
+    await runPromiseExit(streamRunCollect(streamMapEffect(source, () => fail("no"))));
+    expect(events).toEqual(["closed"]);
+  });
+
+  it("stops pulling when the fiber draining it is interrupted, and closes", async () => {
+    const events = [];
+    let pulled = 0;
+    const slow = function* () {
+      for (let value = 0; ; value += 1) {
+        pulled += 1;
+        yield value;
+      }
+    };
+    const source = streamEnsuring(streamFromIterator(slow, { chunkSize: 1 }), () =>
+      sync(() => events.push("closed")),
+    );
+    const draining = streamRunForEach(source, () => sleep(5));
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(draining);
+        yield* sleep(30);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+    expect(events).toEqual(["closed"]);
+
+    const seen = pulled;
+    await runPromise(sleep(40));
+    expect(pulled).toBe(seen);
+  });
+
+  it("preserves order under a concurrency limit, and honours the limit", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    // One element per batch, so the window has to be filled across batch
+    // boundaries for the limit to mean anything at all.
+    const source = streamFromArray([1, 2, 3, 4, 5, 6], { chunkSize: 1 });
+    const mapped = streamMapEffect(
+      source,
+      (value: number) =>
+        effect(function* () {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          yield* sleep(5);
+          inFlight -= 1;
+          return value * 10;
+        }),
+      { concurrency: 3 },
+    );
+
+    await expect(runPromise(streamRunCollect(mapped))).resolves.toEqual([10, 20, 30, 40, 50, 60]);
+    expect(peak).toBe(3);
+  });
+
+  it("walks a paginated source until a page says there is no next one", async () => {
+    const pages: Map<string, { items: Array<number>, next: string | null }> = new Map([
+      ["first", { items: [1, 2], next: "second" }],
+      ["second", { items: [3], next: "third" }],
+      ["third", { items: [4, 5], next: null }],
+    ]);
+    const walked: Array<string> = [];
+    const source = streamPaginate("first", (cursor: string) =>
+      sync(() => {
+        walked.push(cursor);
+        const page = pages.get(cursor);
+        if (page == null) {
+          throw new Error(`no page ${cursor}`);
+        }
+        return page;
+      }),
+    );
+
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2, 3, 4, 5]);
+    expect(walked).toEqual(["first", "second", "third"]);
+  });
+
+  it("does not ask a paginated source for a page it will not use", async () => {
+    let requested = 0;
+    const source = streamPaginate(0, (cursor: number) =>
+      sync(() => {
+        requested += 1;
+        return { items: [cursor], next: cursor + 1 };
+      }),
+    );
+
+    await expect(runPromise(streamRunCollect(streamTake(source, 2)))).resolves.toEqual([0, 1]);
+    expect(requested).toBe(2);
+  });
+
+  it("folds, drains and reads a head without collecting the rest", async () => {
+    const source = streamFromArray([1, 2, 3, 4]);
+    await expect(runPromise(streamRunFold(source, 0, (total, item) => total + item))).resolves.toBe(
+      10,
+    );
+    await expect(runPromise(streamRunDrain(source))).resolves.toBe(undefined);
+    await expect(runPromise(streamRunHead(source))).resolves.toBe(1);
+    await expect(runPromise(streamRunHead(streamFromArray([])))).resolves.toBe(null);
+  });
+
+  it("traverses the same stream twice, from the start each time", async () => {
+    // `open` per traversal is what makes this true; an iterator handed over as
+    // a value would leave the second traversal empty.
+    const source = streamFromIterator(function* () {
+      yield 1;
+      yield 2;
+    });
+
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2]);
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2]);
+  });
+
+  it("reads a web ReadableStream and cancels it when it stops early", async () => {
+    // Structural, so this is the same shape `Response.body` has on Node, Deno,
+    // Bun and an edge runtime — and a double can stand in for all four.
+    let cancelled = 0;
+    const chunks = ["a", "b", "c", "d"];
+    const readable = () => {
+      let index = 0;
+      return {
+        getReader: () => ({
+          read: () =>
+            Promise.resolve(
+              index >= chunks.length ? { done: true } : { done: false, value: chunks[index++] },
+            ),
+          cancel: () => {
+            cancelled += 1;
+            return Promise.resolve();
+          },
+        }),
+      };
+    };
+
+    await expect(runPromise(streamRunCollect(streamFromReadableStream(readable)))).resolves.toEqual(
+      ["a", "b", "c", "d"],
+    );
+
+    await expect(
+      runPromise(streamRunCollect(streamTake(streamFromReadableStream(readable), 2))),
+    ).resolves.toEqual(["a", "b"]);
+    // Stopping early closes the connection rather than reading to the end.
+    expect(cancelled).toBe(2);
+  });
+
+  it("makes a stream from an effect, and one element out of it", async () => {
+    await expect(runPromise(streamRunCollect(streamFromEffect(succeed(7))))).resolves.toEqual([7]);
+
+    const result = await runPromiseExit(streamRunCollect(streamFromEffect(fail("no"))));
+    expect(result.kind).toBe("failure");
+  });
+
+  it("looks at every element without changing it", async () => {
+    const seen = [];
+    const source = streamTap(streamFromArray([1, 2, 3]), (value) => sync(() => seen.push(value)));
+
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2, 3]);
+    expect(seen).toEqual([1, 2, 3]);
   });
 });

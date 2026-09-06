@@ -99,7 +99,9 @@
 // memoised build per `provide`, so a layer reached twice in one graph is
 // built once and `runSync` still answers for a program that uses one; and
 // `Ref`, `Deferred` and `Semaphore` for the things two fibers have to share,
-// each of which a blocked fiber can be interrupted out of.
+// each of which a blocked fiber can be interrupted out of; and a pull-based
+// `Stream` in `./stream.js`, whose traversal closes what it opened on success,
+// on failure and on interruption.
 //
 // **Experimental.** Requirement subtraction, for the reason above: `provide`,
 // `provideService` and `scoped` state the service they remove and let Flow
@@ -113,8 +115,9 @@
 // waiting mechanism `Deferred` and `Semaphore` are built on with a buffer in
 // front, and STM is a transaction log and a retry-on-conflict scheduler,
 // which is larger than everything above it put together and has no use that a
-// serialised `Ref` cannot serve at a cost worth measuring first; streams;
-// a fiber scheduler of its own (this runs on the host's microtask
+// serialised `Ref` cannot serve at a cost worth measuring first; `Channel`,
+// `Sink`, `GroupBy` and `Chunk`, which `./stream.js` explains being without
+// rather than pending; a fiber scheduler of its own (this runs on the host's microtask
 // queue and its `sleep` is `setTimeout`); tracing, spans, metrics and the
 // logging layer; a `Runtime` or `ManagedRuntime` that builds a layer once and
 // runs many effects against it, so a layer handed to two `provide`s is still
@@ -144,9 +147,19 @@
 // the package found a list of sixty names and had to open a second file, named
 // after nothing narrower than the package itself, to see any code.
 //
-// `./schedule.js` is the one thing that is genuinely separable, and it is
-// separate: a retry policy is arithmetic over an attempt count that never sees
-// a `Context`, an `Exit` or a fiber, and it explains itself there.
+// `./schedule.js` is the one thing that is genuinely separable on those terms,
+// and it is separate: a retry policy is arithmetic over an attempt count that
+// never sees a `Context`, an `Exit` or a fiber, and it explains itself there.
+//
+// `./stream.js` is separate on different terms, and finding out which was the
+// first task of writing it. A stream does reach the runtime — it produces
+// effects and runs them — so the argument above looked like it applied, and
+// the choice looked like "put it in this file or give the runtime a seam".
+// Neither: a `Stream` needs the `Effect` *interface* and never the `Effect`
+// *carrier*, so it is written entirely with this file's public exports and
+// there is no seam here for it. The rule that generalises is worth keeping —
+// "this needs the runtime" is usually "this needs the runtime's public API",
+// and only the second one costs an invariant.
 //
 // That split costs one thing today, and it is uf's rather than Flow's:
 // `uf check` does not yet resolve types across modules, so it reports the
