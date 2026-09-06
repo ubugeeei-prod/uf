@@ -294,8 +294,24 @@ impl Commands {
 #[derive(Debug, Subcommand)]
 pub(crate) enum CreateCommand {
     App {
-        #[arg(value_enum, default_value = "react")]
-        template: AppTemplate,
+        /// The template, or the path when it is the only argument given.
+        ///
+        /// Two positionals with the template first is what `uf create app`
+        /// has always taken, and it is the right grammar once there is more
+        /// than one template to choose from. It is the wrong grammar for the
+        /// first command a reader types, which is one word: `uf create app
+        /// my-site` is what the home page and the CLI reference both print,
+        /// and it was rejected with "invalid value 'my-site' for
+        /// '[TEMPLATE]'". `ufx @uniflowed/create app my-site` already read a
+        /// lone argument as the path, so the two front doors disagreed as
+        /// well. See ubugeeei-prod/uf#322.
+        ///
+        /// A single argument that names a template is the template — so
+        /// `uf create app react` still scaffolds into the current directory,
+        /// and a directory that wants to be called `react` is written out in
+        /// full as `uf create app react react`.
+        #[arg(value_name = "TEMPLATE|PATH")]
+        template_or_path: Option<String>,
         path: Option<Utf8PathBuf>,
         #[arg(long)]
         name: Option<String>,
@@ -325,9 +341,26 @@ pub(crate) enum Shell {
     PowerShell,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum AppTemplate {
     React,
+}
+
+impl AppTemplate {
+    /// Every template, for a message that has to list them.
+    pub(crate) const ALL: [&'static str; 1] = ["react"];
+
+    /// The template `value` names, or `None` when it names something else.
+    ///
+    /// The one place the spelling of a template is decided, so
+    /// `uf create app`, `ufx @uniflowed/create app` and the error that lists
+    /// them cannot drift apart — they did, and #322 is what that cost.
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "react" => Some(Self::React),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

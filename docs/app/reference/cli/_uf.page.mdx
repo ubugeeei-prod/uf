@@ -22,10 +22,16 @@ before the subcommand; a subcommand's own flags come after it.
 
 ## Project
 
-### uf create app NAME
+### uf create app [TEMPLATE] PATH
 
 Scaffolds an application: `uf.config.js`, `app.js`, a layout, a page and a
 `package.json`. Writes files and nothing else — no install, no git.
+
+`react` is the only template today, so `uf create app my-site` is the usual
+form: a single argument is the template when it names one and the directory
+when it does not. With two arguments the first must be a template, and a name
+that is not one is refused rather than read as a directory — `uf create app
+raect my-site` scaffolding into `raect/` is a worse answer than an error.
 
 ### uf create lib NAME
 
