@@ -69,7 +69,7 @@ which is the fastest way to answer "what is it actually using".
 | --- | --- | --- |
 | `host` | `"127.0.0.1"` | Interface to bind |
 | `port` | `5173` | Port to listen on |
-| `strictPort` | `false` | Fail rather than move to the next free port |
+| `strictPort` | `false` | Fail rather than move to the next free port. `uf dev --port` is always strict, whatever this says |
 | `allowedHosts` | `[]` | Host headers accepted when binding a routable address |
 | `allowedOrigins` | `[]` | Origins accepted for cross-origin dev requests |
 | `fs.allow` | `[]` | Extra roots the dev server may serve from |
