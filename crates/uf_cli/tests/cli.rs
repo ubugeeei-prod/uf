@@ -826,18 +826,82 @@ fn exec_runs_an_installed_binary_and_forwards_its_arguments_and_status() {
         "the binary owns stdout; uf must not render onto it"
     );
 
-    // And its failure is uf's failure, or a red step would go green.
+    // And its failure is uf's failure, with the child's own number on it.
+    //
+    // `42` rather than `1`, because `1` is what a wrapper that loses the
+    // status also produces and the assertion would prove nothing. `uf exec`
+    // used to `bail!`, which `main` turns into `ExitCode::FAILURE` — so
+    // `jest`'s codes, `eslint`'s, and a codegen script's all arrived as the
+    // same `1` and a script branching on one could tell nothing apart, while
+    // `docs/app/reference/cli` said "exiting with its status".
     let failed = uf()
         .arg("--cwd")
         .arg(project.path())
-        .env("UF_FIXTURE_EXIT", "3")
+        .env("UF_FIXTURE_EXIT", "42")
         .args(["exec", "uf-fixture-tool"])
         .output()
         .unwrap();
-    assert!(!failed.status.success());
+    assert_eq!(
+        failed.status.code(),
+        Some(42),
+        "the child's exit status is uf's:\n{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
     assert!(
         String::from_utf8_lossy(&failed.stderr).contains("uf-fixture-tool exited with"),
         "{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
+}
+
+/// A path is the third way to spell what `uf exec` runs, and adopts a status too.
+///
+/// `ufx ./scripts/codegen.js` is a thing people do and it is not a package
+/// name: `exec_package` tries it with `spawn_executable` between the
+/// `node_modules/.bin` lookup and the package manager. It is the path
+/// `uf explain exec` did not describe, and the one whose exit status a CI step
+/// is most likely to be branching on — a codegen script that exits `42` to mean
+/// "nothing to do" is exactly the shape.
+#[test]
+fn exec_runs_an_explicit_path_and_adopts_its_exit_status() {
+    let project = Project::new(&[]);
+    let script = project.path().join("scripts/codegen.js");
+    fs::create_dir_all(script.parent().unwrap()).unwrap();
+    fs::write(
+        &script,
+        "#!/bin/sh\necho \"codegen saw: $*\"\nexit \"${UF_FIXTURE_EXIT:-0}\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "./scripts/codegen.js", "--write"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "codegen saw: --write\n",
+        "the script owns stdout; uf must not render onto it"
+    );
+
+    let failed = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .env("UF_FIXTURE_EXIT", "42")
+        .args(["exec", "./scripts/codegen.js"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        failed.status.code(),
+        Some(42),
+        "the script's exit status is uf's:\n{}",
         String::from_utf8_lossy(&failed.stderr)
     );
 }

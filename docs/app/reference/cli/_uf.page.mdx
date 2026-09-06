@@ -331,6 +331,12 @@ Publishes the package to the registry.
 | `1` | The command ran and reported a problem: a failing test, a lint error, a type error, a file that needs formatting |
 | `2` | uf could not run the command at all: an argument it cannot parse |
 
+`uf exec` and `uf env exec` are the exceptions, and deliberately: both hand
+control to another program, and both exit with whatever that program exited
+with. A `2` from `ufx tsc` is tsc's `2`, not uf's — wrapping it in uf's `1`
+would make every code a child can produce indistinguishable from every other,
+which is the whole reason a script reads one.
+
 A missing `uf.config.js` is not one of these — a project without one gets the
 defaults, and every read-only command works. Two cases that *should* be `2` are
 `1` today, and the reason is written down rather than rounded off: a

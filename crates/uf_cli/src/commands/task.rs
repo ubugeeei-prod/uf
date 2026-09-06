@@ -340,7 +340,7 @@ pub(crate) fn exec_package(
     }
 
     if let Some(binary) = installed_binary(&resolved.root, package) {
-        return spawn_executable(&resolved.root, &binary, args, package);
+        return spawn_executable(&resolved.root, ui, &binary, args, package);
     }
 
     // A path, executed as written. `ufx ./scripts/codegen.js` is a thing
@@ -352,7 +352,7 @@ pub(crate) fn exec_package(
         resolved.root.join(candidate)
     };
     if executable.is_file() {
-        return spawn_executable(&resolved.root, &executable, args, package);
+        return spawn_executable(&resolved.root, ui, &executable, args, package);
     }
 
     let detection = detect_package_manager(&resolved.root);
@@ -390,7 +390,7 @@ pub(crate) fn exec_package(
         .status()
         .with_context(|| format!("failed to run `{invocation}`"))?;
     if !status.success() {
-        bail!("{package} exited with {status}");
+        adopt_exit_status(ui, status, package);
     }
     Ok(())
 }
@@ -417,6 +417,7 @@ fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
 /// Run one executable, forwarding its arguments and its exit status.
 fn spawn_executable(
     root: &Utf8Path,
+    ui: &mut Ui,
     executable: &Utf8Path,
     args: &[String],
     package: &str,
@@ -427,9 +428,38 @@ fn spawn_executable(
         .status()
         .with_context(|| format!("failed to execute {executable}"))?;
     if !status.success() {
-        bail!("{package} exited with {status}");
+        adopt_exit_status(ui, status, package);
     }
     Ok(())
+}
+
+/// Report a child's failure and leave with the child's own exit code.
+///
+/// Not a `bail!`. An error out of `run` becomes [`ExitCode::FAILURE`], which is
+/// `1`, so every code a child could exit with — `jest`'s, `eslint`'s, a
+/// codegen script's `42` — arrived at the caller as the same number, and a
+/// script branching on it could tell nothing apart. `docs/app/reference/cli`
+/// has said "exiting with its status" since this command started running
+/// anything at all, and #353 said "exit status adopted"; neither was true of
+/// any of the three paths that spawn.
+///
+/// `std::process::exit`, because there is nowhere else to put a number:
+/// `run` answers `Result<()>` for every command and `main` turns that into one
+/// of two codes. `uf env exec` reached the same conclusion and makes the same
+/// call, and its comment says the rest. Nothing is buffered past this point —
+/// `Ui` writes and flushes inside `render_err` — so there is nothing for the
+/// skipped destructors to lose.
+///
+/// A child killed by a signal has no code of its own, and answers `1` here.
+/// That loses which signal it was, and matching `uf env exec` is worth more
+/// than fixing it in one of the two commands: a sibling pair that disagreed
+/// about the same event would be the harder thing to reason about.
+fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, package: &str) -> ! {
+    // Said before leaving, because the number alone does not say whose it is:
+    // a reader looking at `42` should not have to guess whether uf failed or
+    // the thing uf ran did.
+    ui.error(&anyhow::anyhow!("{package} exited with {status}"));
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 /// The manager that can fetch and run a package that is not installed.
