@@ -80,16 +80,76 @@ fi
 
 echo
 echo "verify-npm: checking @uniflowed/* at $version on the registry"
+
+# npm's read path is eventually consistent: `npm publish` returns before every
+# replica can answer for the version it just accepted. Asking once, straight
+# after the publish job, reported `@uniflowed/host` missing from the
+# `uf@0.0.0-alpha.5` release while it was in fact published — a release that
+# had gone out perfectly, failed by the step that exists to say so.
+#
+# So the names that are not there yet are asked again, backing off, and only a
+# name still absent after all of it is missing.
+#
+# The waiting is shared rather than per name: a first pass asks everything
+# once, and each round after it asks only what is still missing. Backing off
+# per name would multiply the wait by the length of the list — 17 packages at
+# half a minute each is nine minutes to report a release that never went out,
+# which is the case that most wants to be quick.
+# One deadline for the whole wait, and every request bounded by what is left of
+# it. `curl` with no `--max-time` will sit on a stalled connection for as long
+# as the kernel lets it, so a message promising "a minute of asking" would be a
+# claim nothing enforced — and seventeen names times six rounds is a lot of
+# chances to be stalled.
+WAIT_SECONDS=60
+REQUEST_SECONDS=10
+deadline=$(( $(date +%s) + WAIT_SECONDS ))
+
+remaining() {
+  left=$(( deadline - $(date +%s) ))
+  [ "$left" -lt 0 ] && left=0
+  [ "$left" -gt "$REQUEST_SECONDS" ] && left=$REQUEST_SECONDS
+  echo "$left"
+}
+
+present_line() {
+  printf '  on npm      @uniflowed/%s@%s\n' "$1" "$version"
+}
+
+on_registry() {
+  budget="$(remaining)"
+  # Out of time is not "not there": the caller stops asking and reports what it
+  # knows, rather than reporting a name absent because the clock ran out.
+  [ "$budget" -eq 0 ] && return 1
+  curl -sS -o /dev/null -w '%{http_code}' \
+    --connect-timeout "$budget" --max-time "$budget" \
+    "https://registry.npmjs.org/@uniflowed%2f$1/$version" 2>/dev/null \
+    | grep -q '^200$'
+}
+
 absent=""
 for name in $packages; do
-  url="https://registry.npmjs.org/@uniflowed%2f$name/$version"
-  status="$(curl -fsS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo 000)"
-  if [ "$status" = "200" ]; then
-    printf '  on npm      @uniflowed/%s@%s\n' "$name" "$version"
-  else
-    printf '  MISSING     @uniflowed/%s@%s\n' "$name" "$version"
-    absent="$absent $name"
-  fi
+  if on_registry "$name"; then present_line "$name"; else absent="$absent $name"; fi
+done
+
+delay=1
+while [ -n "$absent" ] && [ "$(remaining)" -gt 0 ]; do
+  # Never sleep past the deadline: a 32-second nap that starts with 3 seconds
+  # left is 29 seconds of doing nothing before reporting.
+  left=$(( deadline - $(date +%s) ))
+  [ "$delay" -gt "$left" ] && delay="$left"
+  [ "$delay" -le 0 ] && break
+  printf '  waiting     %ss for%s\n' "$delay" "$absent"
+  sleep "$delay"
+  delay=$((delay * 2))
+  still=""
+  for name in $absent; do
+    if on_registry "$name"; then present_line "$name"; else still="$still $name"; fi
+  done
+  absent="$still"
+done
+
+for name in $absent; do
+  printf '  MISSING     @uniflowed/%s@%s\n' "$name" "$version"
 done
 
 if [ -n "$absent" ]; then
@@ -97,9 +157,9 @@ if [ -n "$absent" ]; then
 
 Not on the registry at $version:$absent
 
-The tag says this version was released. npm does not have it, so nobody can
-install it. Re-run the publish job once the names are bound; npm is additive,
-so the ones that did go out stay.
+The tag says this version was released. npm does not have it after retrying for
+$WAIT_SECONDS seconds, so nobody can install it. Re-run the publish job once
+the names are bound; npm is additive, so the ones that did go out stay.
 MESSAGE
   exit 1
 fi
