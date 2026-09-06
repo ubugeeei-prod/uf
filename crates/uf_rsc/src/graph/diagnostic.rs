@@ -186,4 +186,19 @@ impl RscDiagnostic {
             Self::Directive { issue, .. } => issue.line(),
         }
     }
+
+    /// 1-based column the diagnostic points at.
+    ///
+    /// Only the client-only API check records one — it is the only variant
+    /// that points at an expression rather than at a statement — so the rest
+    /// answer with the first column, which is where a reporter's caret goes
+    /// when the whole line is at fault. A reporter cannot ask "is there a
+    /// column?" and do something sensible with `None`, so it is not offered
+    /// one.
+    pub fn column(&self) -> u32 {
+        match self {
+            Self::ClientOnlyApiInServerModule { column, .. } => *column,
+            _ => 1,
+        }
+    }
 }

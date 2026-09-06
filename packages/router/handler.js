@@ -25,8 +25,16 @@
 // It does answer `405` itself when the path matches and the method does not,
 // with the `Allow` header the specification requires — that is not the
 // handler's business, and every handler would otherwise write it.
+//
+// It also does not establish the request a handler is inside. The host does,
+// around the whole of it, so a handler and the guard above it share one
+// context; see the same section in `./middleware.js`. This module used to
+// build its own and drain it the moment the handler returned, which the
+// comment there called "the response is in hand" — true, and not what
+// `after()` promises. A handler that streams its body has not sent a byte at
+// that point. See ubugeeei-prod/uf#389.
 
-import { contextFor, drainDeferred, runWithContext } from "@uniflowed/server/host";
+import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
 
 /** What a handler is given besides the request. */
@@ -76,6 +84,9 @@ export function createDispatcher(options: {|
   const table = [...options.handlers].sort((a, b) => specificity(b.path) - specificity(a.path));
 
   return async function dispatch(request: Request): Promise<Response | null> {
+    // The host's half of the contract, checked rather than assumed; see
+    // `./internal/request.js`.
+    requireRequest("dispatch");
     const url = new URL(request.url);
     for (const record of table) {
       const params = matchPath(record.path, url.pathname);
@@ -90,17 +101,13 @@ export function createDispatcher(options: {|
         return methodNotAllowed(module);
       }
 
-      // Inside the request, so a handler that calls `headers()`, `cookies()`
-      // or `after()` has something to answer about. `drainDeferred` runs after
-      // the response is in hand, which is what `after()` means.
-      const context = contextFor(request);
-      const response = await runWithContext(context, () =>
-        handler(request, {
-          params,
-          searchParams: url.searchParams,
-        }),
-      );
-      await drainDeferred(context);
+      // In the host's request, so a handler that calls `headers()`,
+      // `cookies()` or `after()` answers about the same one its guard did, and
+      // what it defers is drained once, by the host, after the bytes are out.
+      const response = await handler(request, {
+        params,
+        searchParams: url.searchParams,
+      });
 
       // A `HEAD` answered by `GET` must not carry the body. The test is
       // against the module's own `HEAD`, not `pick`'s — `pick` falls back to

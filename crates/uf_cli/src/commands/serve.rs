@@ -52,7 +52,9 @@ use camino::Utf8Path;
 use uf_config::load_config;
 use uf_term::{KeyValue, Status, Tone};
 
-use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
+use crate::commands::vite::{
+    Driver, Event, LogLevel, package_dir, render_error, render_log, resolve_host,
+};
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
 
@@ -189,6 +191,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
                     renderer.status(out, Status::Success, "serving the production build");
                 });
             }
+            Event::Log { level, message } => render_log(ui, level, &message),
             // `page-failed` is emitted from exactly one place — `build()`'s
             // prerender loop in `driver.js` — so neither of these servers can
             // produce it today. It is reported rather than ignored because the
@@ -199,14 +202,9 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             // to stop answering every other request, which is `uf build`'s
             // decision to make and not a running server's.
             Event::PageFailed { url, error } => {
-                render_log(
-                    ui,
-                    crate::commands::vite::LogLevel::Error,
-                    &format!("{url} failed to render"),
-                );
+                render_log(ui, LogLevel::Error, &format!("{url} failed to render"));
                 let _ = render_error(ui, &root, &error);
             }
-            Event::Log { level, message } => render_log(ui, level, &message),
             Event::Error(error) => {
                 let failure = render_error(ui, &root, &error);
                 let _ = driver.finish(&banner);

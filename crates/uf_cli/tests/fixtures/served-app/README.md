@@ -9,6 +9,14 @@ until `uf preview` and `uf start` existed:
 - `app/api/health/_uf.route.js` — a route handler, which answers a `POST` that
   no page can and which `uf build` never called.
 
+It also has the route that shows the renderer streaming:
+
+- `app/slow/[id]/_uf.page.js` — a page that suspends for 500 ms while it
+  renders, with `app/slow/_uf.loading.js` beside it. A parameter and no
+  `generateStaticParams` keeps it out of the prerender, so `uf start` renders it
+  per request and the test can watch the layout and the fallback arrive before
+  the page does.
+
 The documentation site is the fixture for everything else, and it deliberately
 has neither: it is a static site, and adding a `/posts/[slug]` to it to make a
 test pass would be the artificial usage `ubugeeei-redundancy.md` forbids. This

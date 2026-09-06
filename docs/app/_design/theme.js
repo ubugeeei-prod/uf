@@ -1,3 +1,4 @@
+"use client";
 // @flow
 //
 // Light and dark.
@@ -6,6 +7,14 @@
 // system, and the two explicit choices are stored so a reader who prefers
 // dark on a light machine keeps it. The stored choice is written to
 // `data-theme` on the root element, which every rule in `seam.css` keys off.
+//
+// This is the first `"use client"` in this repository, and it is here because
+// the module is honest about what it needs: `useEffect`, `localStorage` and
+// `document.documentElement` are the browser's, and a module that reaches for
+// them is a client module whether or not it says so. `uf build` used to count
+// the five resulting contract violations and print the number; now it reports
+// them and fails, so the boundary has to be declared rather than tolerated.
+// See ubugeeei-prod/uf#281.
 
 import { useEffect, useState } from "@uniflowed/react";
 

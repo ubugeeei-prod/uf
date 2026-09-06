@@ -346,10 +346,10 @@ const assets = { scripts: [], styles: [], preloads: [] };
 
 describe("rendering on the server", () => {
   it("renders the boundary in place of the page and keeps the layouts", async () => {
-    // React does not run class error boundaries in `renderToString`, so this
-    // is `createRenderer`'s own catch. Without it the whole response was the
-    // exception.
-    const render = createRenderer({
+    // React runs a class error boundary inside a `<Suspense>` and not outside
+    // one, so a throw in the shell is `createRenderer`'s own catch. Without it
+    // the whole response was the exception.
+    const { prerender } = createRenderer({
       App: routerView("./app"),
       routes: [
         {
@@ -372,7 +372,7 @@ describe("rendering on the server", () => {
       ],
     });
 
-    const result = await render("/broken", assets);
+    const result = await prerender("/broken", assets);
 
     expect(result.status).toBe(500);
     expect(result.html).toContain("site error");
@@ -381,11 +381,12 @@ describe("rendering on the server", () => {
   });
 
   it("reports the exception on the result, with nothing about it in the document", async () => {
-    // How `uf build` learns the route failed, and how `uf dev` gets something
-    // to print. The message is deliberately not in the markup: it is written
-    // for whoever deployed the application, and the markup goes to whoever
-    // asked for the page.
-    const render = createRenderer({
+    // How `uf build` learns the route failed. `uf dev` learns the same way for
+    // a shell that threw, and through `render`'s `onError` for a boundary that
+    // threw after the response had begun. The message is deliberately not in
+    // the markup: it is written for whoever deployed the application, and the
+    // markup goes to whoever asked for the page.
+    const { prerender } = createRenderer({
       App: routerView("./app"),
       routes: [
         {
@@ -401,7 +402,7 @@ describe("rendering on the server", () => {
       errors: [],
     });
 
-    const result = await render("/broken", assets);
+    const result = await prerender("/broken", assets);
 
     expect(result.error instanceof Error && result.error.message).toBe("the page threw");
     expect(result.html).not.toContain("the page threw");
@@ -409,7 +410,7 @@ describe("rendering on the server", () => {
   });
 
   it("says nothing failed for a page that rendered", async () => {
-    const render = createRenderer({
+    const { prerender } = createRenderer({
       App: routerView("./app"),
       routes: [
         {
@@ -425,14 +426,14 @@ describe("rendering on the server", () => {
       errors: [],
     });
 
-    const result = await render("/", assets);
+    const result = await prerender("/", assets);
 
     expect(result.status).toBe(200);
     expect(result.error).toBe(undefined);
   });
 
   it("does not report forbidden() as a failure, because it is an answer", async () => {
-    const render = createRenderer({
+    const { prerender } = createRenderer({
       App: routerView("./app"),
       routes: [
         {
@@ -448,7 +449,7 @@ describe("rendering on the server", () => {
       errors: [],
     });
 
-    const result = await render("/secret", assets);
+    const result = await prerender("/secret", assets);
 
     // A 403 in `dist/` is a page the application meant to write.
     expect(result.status).toBe(403);

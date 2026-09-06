@@ -94,25 +94,6 @@ pub(crate) fn write_json_file(path: &Utf8Path, value: &serde_json::Value) -> Res
     std::fs::write(path, contents).with_context(|| format!("failed to write {path}"))
 }
 
-/// Reduce a package specifier to something safe to use as a file name.
-///
-/// Guards against path traversal from a hostile package name: `../../etc/passwd`
-/// becomes `.._.._etc_passwd` rather than escaping the cache directory.
-pub(crate) fn safe_file_label(value: &str) -> String {
-    let mut output = String::with_capacity(value.len().max(1));
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-            output.push(ch);
-        } else {
-            output.push('_');
-        }
-    }
-    if output.is_empty() {
-        output.push('_');
-    }
-    output
-}
-
 /// The first line a tool prints for `--version`, or an error when it is absent.
 pub(crate) fn command_output(bin: &str, arg: &str) -> Result<String> {
     let output = ProcessCommand::new(bin).arg(arg).output()?;
@@ -168,14 +149,6 @@ mod tests {
     fn the_project_label_is_the_last_path_segment() {
         assert_eq!(project_label(Utf8Path::new("/tmp/demo-app")), "demo-app");
         assert_eq!(project_label(Utf8Path::new("/")), "/");
-    }
-
-    #[test]
-    fn file_labels_cannot_escape_their_directory() {
-        assert_eq!(safe_file_label("@uniflowed/create"), "_uniflowed_create");
-        assert_eq!(safe_file_label("../../etc/passwd"), ".._.._etc_passwd");
-        assert_eq!(safe_file_label(""), "_");
-        assert_eq!(safe_file_label("a b\tc"), "a_b_c");
     }
 
     #[test]

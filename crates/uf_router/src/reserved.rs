@@ -26,10 +26,13 @@
 //! reads that table now, which is the part that was missing: a rule that both
 //! files must agree, enforced by neither, is a comment.
 //!
-//! [`ReservedRole::Error`] is the first role added since, and it is what those
+//! [`ReservedRole::Error`] was the first role added since, and it is what those
 //! tests are for: a role here that the build router does not scan for, or a
 //! name there this enum does not know, now fails by name rather than becoming
-//! the next thing nobody noticed.
+//! the next thing nobody noticed. [`ReservedRole::Loading`] is the second, and
+//! the tests did their job — adding it here alone left
+//! `every_role_the_router_resolves_is_in_the_build_router` failing until
+//! `RESERVED` in the build router named it too.
 
 use std::str::FromStr;
 
@@ -63,6 +66,18 @@ pub enum ReservedRole {
     /// It is not one of [`route_parts`](ReservedRole::route_parts): it renders
     /// *instead* of a route, never as part of one.
     Error,
+    /// Renders while the subtree under it has not resolved.
+    ///
+    /// A segment's `_uf.loading.js` is the fallback of a `<Suspense>` around
+    /// that segment's page and everything below it, which is what lets the
+    /// renderer send the layouts around it before the page's data is in hand.
+    ///
+    /// It is not one of [`route_parts`](ReservedRole::route_parts) for the
+    /// same reason [`Error`](ReservedRole::Error) is not: it renders while the
+    /// route is *not* there, and the finished route contains none of it. The
+    /// boundary it declares outlives the fallback, but the boundary is the
+    /// router's and the file is only what fills it.
+    Loading,
     /// Answers a request instead of rendering a page.
     Route,
     /// Names a rendered state of a component, for `@uniflowed/story`.
@@ -79,6 +94,7 @@ impl ReservedRole {
             Self::Middleware => "middleware",
             Self::NotFound => "not-found",
             Self::Error => "error",
+            Self::Loading => "loading",
             Self::Route => "route",
             Self::Story => "story",
         }
@@ -92,13 +108,14 @@ impl ReservedRole {
     /// Two `all` in one module meaning two different things is the drift this
     /// module exists to prevent, one level up.
     #[must_use]
-    pub const fn all() -> [Self; 7] {
+    pub const fn all() -> [Self; 8] {
         [
             Self::Layout,
             Self::Page,
             Self::Middleware,
             Self::NotFound,
             Self::Error,
+            Self::Loading,
             Self::Route,
             Self::Story,
         ]
@@ -107,9 +124,10 @@ impl ReservedRole {
     /// The roles a rendered route is built from.
     ///
     /// A `route` answers a request rather than rendering, a `story` names a
-    /// state of a component, a `not-found` is reached by no path, and an
-    /// `error` renders instead of the route rather than as part of it — so
-    /// none of the four composes a route, though all four are reserved names.
+    /// state of a component, a `not-found` is reached by no path, an `error`
+    /// renders instead of the route rather than as part of it, and a `loading`
+    /// renders while it is not there yet — so none of the five composes a
+    /// route, though all five are reserved names.
     #[must_use]
     pub const fn route_parts() -> [Self; 3] {
         [Self::Layout, Self::Page, Self::Middleware]
@@ -126,6 +144,7 @@ impl FromStr for ReservedRole {
             "middleware" => Ok(Self::Middleware),
             "not-found" => Ok(Self::NotFound),
             "error" => Ok(Self::Error),
+            "loading" => Ok(Self::Loading),
             "route" => Ok(Self::Route),
             "story" => Ok(Self::Story),
             _ => Err(()),
@@ -353,6 +372,23 @@ mod tests {
                 "{name} should be unknown"
             );
         }
+    }
+
+    #[test]
+    fn a_loading_file_is_reserved_and_is_not_part_of_a_route() {
+        // The fallback of the `<Suspense>` the router puts around a segment.
+        // `_uf.loader.js` is not this file and never was — a loader is an
+        // export of a page module — so the near-miss stays unknown.
+        assert_eq!(recognized("_uf.loading.js").role, ReservedRole::Loading);
+        assert_eq!(
+            recognized("_uf.loading.web.js").variant,
+            ReservedVariant::Web
+        );
+        assert!(
+            !ReservedRole::route_parts().contains(&ReservedRole::Loading),
+            "a fallback renders while the route is not there, so no route is built from one"
+        );
+        assert!(classify_reserved_file("_uf.loader.js").is_unknown());
     }
 
     #[test]

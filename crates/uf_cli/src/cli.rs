@@ -2,6 +2,7 @@
 
 use camino::Utf8PathBuf;
 use clap::{Subcommand, ValueEnum};
+use uf_config::DeployAdapter;
 use uf_term::ColorChoice;
 
 /// The `--color` flag, mapped to [`ColorChoice`].
@@ -14,6 +15,50 @@ pub(crate) enum ColorOption {
     Always,
     /// Never colour.
     Never,
+}
+
+/// The `--adapter` flag, mapped to [`DeployAdapter`].
+///
+/// A value enum of its own rather than `DeployAdapter` directly: clap's
+/// `ValueEnum` is a derive on the type, and `uf_config` is data that the LSP,
+/// the docs build and the plugin host all read — putting a CLI dependency in
+/// it to spell one flag would be the wrong crate paying for it.
+///
+/// Every target is accepted here, including the six nobody has written. That
+/// is deliberate: `uf build --adapter edge` should be answered with a sentence
+/// saying so and naming the issue, not with clap's list of valid values, which
+/// would leave a reader unable to tell "uf will never have this" from "uf does
+/// not have this yet".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum DeployAdapterOption {
+    /// A directory served by `node:http`.
+    Node,
+    /// Bun.
+    Bun,
+    /// Deno.
+    Deno,
+    /// A Web-standard worker.
+    Edge,
+    /// A serverless function.
+    Serverless,
+    /// Prerendered files only.
+    Static,
+    /// A container image.
+    Container,
+}
+
+impl From<DeployAdapterOption> for DeployAdapter {
+    fn from(value: DeployAdapterOption) -> Self {
+        match value {
+            DeployAdapterOption::Node => Self::Node,
+            DeployAdapterOption::Bun => Self::Bun,
+            DeployAdapterOption::Deno => Self::Deno,
+            DeployAdapterOption::Edge => Self::Edge,
+            DeployAdapterOption::Serverless => Self::Serverless,
+            DeployAdapterOption::Static => Self::Static,
+            DeployAdapterOption::Container => Self::Container,
+        }
+    }
 }
 
 impl From<ColorOption> for ColorChoice {
@@ -41,6 +86,11 @@ pub(crate) enum Commands {
         /// build. Needs Bun on PATH; the file itself needs nothing.
         #[arg(long)]
         compile: bool,
+        /// Also write a directory that can be copied to a host with a
+        /// JavaScript runtime and nothing else. Overrides
+        /// `app.runtime.deploy.adapter`.
+        #[arg(long, value_name = "TARGET")]
+        adapter: Option<DeployAdapterOption>,
     },
     /// Lint the project, then type check it with Flow.
     ///
@@ -108,12 +158,24 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: EnvCommand,
     },
-    /// Run a package's binary without installing it. Also `ufx`.
+    /// Run a package's binary, fetching it only with `--yes`. Also `ufx`.
     Exec {
-        /// The package to fetch and run, for example `@uniflowed/create`.
+        /// Fetch a package the project has not installed, and run it.
+        ///
+        /// Off by default: fetching an unpinned name and executing it is the
+        /// most dangerous thing a package manager does, and uf already refuses
+        /// to run a dependency's install scripts without being asked.
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// The package to run, for example `@uniflowed/create`.
         package: String,
         /// Everything after the package name, handed to it untouched.
-        #[arg(trailing_var_arg = true)]
+        ///
+        /// `allow_hyphen_values` because "untouched" has to include `--fix`:
+        /// without it `ufx eslint --fix` was `error: unexpected argument
+        /// '--fix' found`, which is uf reading an argument that was never
+        /// addressed to it.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
     /// Say what a command will do, and which provider does each part.
@@ -426,7 +488,8 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
-                compile: false
+                compile: false,
+                adapter: None
             }
             .wants_json()
         );
@@ -453,7 +516,8 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
-                compile: false
+                compile: false,
+                adapter: None
             }
             .owns_stdout()
         );
