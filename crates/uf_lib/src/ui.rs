@@ -99,6 +99,13 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Client,
         ),
+        // Deliberately not implemented, which is the same answer shadcn gives:
+        // it ships a guide rather than a component, because a data table is a
+        // table-state library composed with a table. uf has no TanStack Table
+        // equivalent — `@uniflowed/query` is the fetching layer, not table
+        // state — so a `DataTable` here would mean shipping that library
+        // first. `packages/ui/table.js` is the half that is uf's to own: the
+        // accessibility of a table whose state somebody else holds.
         UiComponent::new(
             "DataTable",
             &["Root", "Header", "Body", "Row", "Cell", "Pagination"],
@@ -182,12 +189,19 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "List", "Item", "Trigger", "Body", "Link"],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/pagination.js`: a named `<nav>`, one
+        // `aria-current="page"`, previous and next named in words rather than
+        // in chevrons, and a live region that was already there to say the
+        // page changed.
         UiComponent::new(
             "Pagination",
             &["Root", "Content", "Item", "Previous", "Next"],
             UiRuntime::Server,
         ),
         UiComponent::new("Popover", &["Root", "Trigger", "Body"], UiRuntime::Client),
+        // Implemented in `packages/ui/progress.js`, and one element: the whole
+        // component is the conditional that omits `aria-valuenow` when the
+        // amount is unknown rather than setting it to zero.
         UiComponent::new("Progress", &["Root"], UiRuntime::Server),
         // Implemented in `packages/ui/radio-group.js`: the WAI-ARIA radio group,
         // with the arrow keys that check as they move and the tab stop an
@@ -197,6 +211,10 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Item", "Indicator"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/resizable.js`: the APG window splitter,
+        // which is a separator that behaves like a slider. Not the same
+        // `separator` as `Menu`'s — that one is a rule between groups and is
+        // not focusable — and the two module headers each say which they are.
         UiComponent::new(
             "Resizable",
             &["PanelGroup", "Panel", "Handle"],
@@ -207,9 +225,28 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Viewport", "Scrollbar"],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/select.js`: the ARIA 1.2 *select-only*
+        // combobox, the other half of the pattern `Combobox` implements.
+        //
+        // `List` and `Option` rather than `Body` and `Item`, for the reason
+        // `Tabs` gives below — the shipped parts are named after the ARIA roles
+        // they render — and because a reader who has met `Combobox.List` and
+        // `Combobox.Option` should not have to learn two names for the same
+        // listbox. `Label` names the field and `GroupLabel` names a group of
+        // options; shadcn has one `SelectLabel` and it is the second of those.
         UiComponent::new(
             "Select",
-            &["Root", "Trigger", "Body", "Item", "Value"],
+            &[
+                "Root",
+                "Label",
+                "Trigger",
+                "Value",
+                "List",
+                "Option",
+                "Group",
+                "GroupLabel",
+                "Separator",
+            ],
             UiRuntime::Client,
         ),
         UiComponent::new("Separator", &["Root"], UiRuntime::Server),
@@ -226,6 +263,10 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Split,
         ),
         UiComponent::new("Skeleton", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/slider.js`: the APG slider, with
+        // `role="slider"` on the thumb rather than on the track — which is what
+        // makes it reachable — and a second thumb for the range case, each with
+        // its own bounds.
         UiComponent::new(
             "Slider",
             &["Root", "Track", "Range", "Thumb"],
@@ -233,19 +274,48 @@ pub fn ui_components() -> Vec<UiComponent> {
         ),
         UiComponent::new("Sonner", &["Root", "Toast", "Action"], UiRuntime::Client),
         UiComponent::new("Switch", &["Root", "Thumb"], UiRuntime::Client),
+        // Implemented in `packages/ui/table.js`. A real `<table>` and
+        // deliberately not a `role="grid"`: a grid is a two-dimensional
+        // keyboard contract rather than an attribute, and declaring one
+        // without it takes the arrow keys away from the screen reader's own
+        // table-reading commands and gives nothing back.
+        //
+        // `RowHeader`, `SelectAll` and `RowSelect` beyond the table's first
+        // guess, and `Client` rather than `Server`, because the parts that
+        // earn the component are the sort state, the announcement and the
+        // `mixed` "select all" — none of which a server can hold.
         UiComponent::new(
             "Table",
-            &["Root", "Header", "Body", "Row", "Head", "Cell", "Caption"],
-            UiRuntime::Server,
+            &[
+                "Root",
+                "Caption",
+                "Header",
+                "Body",
+                "Row",
+                "Head",
+                "RowHeader",
+                "Cell",
+                "SelectAll",
+                "RowSelect",
+            ],
+            UiRuntime::Client,
         ),
         // `Tab` and `Panel` rather than `Trigger` and `Body`: the shipped parts
         // are named after the ARIA roles they render, so `Tabs.Tab` is a `tab`
         // and `Tabs.Panel` is a `tabpanel`. See `packages/ui/tabs.js`.
         UiComponent::new("Tabs", &["Root", "List", "Tab", "Panel"], UiRuntime::Split),
         UiComponent::new("Textarea", &["Root"], UiRuntime::Client),
+        // Implemented in `packages/ui/toast.js`. `Region` is the part the table
+        // was missing and the one the component exists for: the live region has
+        // to be in the document before the notification it announces, so it is
+        // a part a caller renders once in the layout rather than something a
+        // `Root` conjures when a message arrives.
+        //
+        // `Sonner` below is the same component under another project's name,
+        // which is ubugeeei-prod/uf#249's to settle rather than this entry's.
         UiComponent::new(
             "Toast",
-            &["Root", "Title", "Description", "Action", "Close"],
+            &["Region", "Root", "Title", "Description", "Action", "Close"],
             UiRuntime::Client,
         ),
         // Implemented in `packages/ui/toggle.js`, and the shipped part is the
