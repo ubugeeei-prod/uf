@@ -31,6 +31,21 @@ import path from "node:path";
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { act, cleanup, userEvent } from "@uniflowed/react-testing";
+// `@uniflowed/router`, imported statically into a process that has no document
+// yet — deliberately, because that is the order a `uf test` worker produces on
+// its own. One worker serves many files out of one module registry, and six
+// other files in this suite (`streaming`, `request-lifecycle`,
+// `error-boundary`, `routing`, `middleware`, `route-handler`) import this
+// package at the top of the file, long before anything installs a DOM; which
+// of them shares a worker with this one changes with the schedule.
+//
+// ubugeeei-prod/uf#445 was the runtime answering "is there a document" once,
+// at module scope, under that ordering. Hydration still worked and React still
+// called the `Link`'s handler; the navigation it asked for was dropped in
+// silence. Importing it here the way a server-side file does puts that
+// ordering in front of the last case below on every run, rather than on the
+// runs the scheduler happened to arrange it.
+import { Link, routerView } from "@uniflowed/router";
 import { afterAll, afterEach, describe, expect, it } from "@uniflowed/test";
 
 // Reached by path rather than by package name, the way `routing.test.js` and
@@ -240,20 +255,15 @@ describe("the client route table", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * `@uniflowed/router`, imported only once a document exists.
+ * The two entry points that sit either side of a request, imported only once a
+ * document exists.
  *
- * The runtime decides whether it is in a browser once, at module scope —
- * `const isBrowser = typeof window !== "undefined" && …` — so a static import
- * at the top of this file would evaluate it in a process that has no DOM yet
- * and every navigation below would return without doing anything. `installDom`
- * is idempotent, and the dynamic import is evaluated once, on the first call.
+ * `@uniflowed/router/client` statically imports `react-dom/client`, which
+ * reads `document` while it is being evaluated. For these two the DOM has to
+ * exist before the *import* and not merely before the first render, which is
+ * the whole of what these wrappers are for. `installDom` is idempotent, and
+ * each dynamic import is evaluated once, on the first call.
  */
-async function routerModule() {
-  installDom();
-  return import("@uniflowed/router");
-}
-
-/** The same, for the two entry points that sit either side of a request. */
 async function clientModule() {
   installDom();
   return import("@uniflowed/router/client");
@@ -274,11 +284,10 @@ async function serverModule() {
  */
 let built: mixed = null;
 
-async function tables() {
+function tables() {
   if (built != null) {
     return built;
   }
-  const { Link } = await routerModule();
 
   /** A counter with state, standing in for a `"use client"` component. */
   component Counter() {
@@ -353,8 +362,7 @@ async function tables() {
  */
 async function serve(url: string): Promise<void> {
   const { createRenderer, ROOT_ID } = await serverModule();
-  const { routerView } = await routerModule();
-  const { server } = await tables();
+  const { server } = tables();
   const renderer = createRenderer({
     App: routerView("./app"),
     routes: server,
@@ -378,8 +386,7 @@ async function serve(url: string): Promise<void> {
 /** Hydrate the current document with the browser's copy of the table. */
 async function hydrateHere(): Promise<void> {
   const { hydrate } = await clientModule();
-  const { routerView } = await routerModule();
-  const { client } = await tables();
+  const { client } = tables();
   await act(async () => {
     await hydrate({ App: routerView("./app"), routes: client, notFound: [], errors: [] });
   });
