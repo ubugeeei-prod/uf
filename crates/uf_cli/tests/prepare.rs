@@ -477,3 +477,119 @@ fn fix_over_a_clean_commit_passes() {
 
     assert_eq!(code, SUCCESS, "{stdout}{stderr}");
 }
+
+/// `--fix` fails when the *other* formatter rewrote a staged file, too.
+///
+/// The rule the module header states — a run that changed a file fails, because
+/// what it wrote is in the working tree and not in the index — held for the
+/// Flow half only. Biome exits 0 whether it rewrote every file or none of them,
+/// so a staged `.json` was reformatted on disk, the hook reported success, and
+/// git committed the bytes from before the rewrite. See the review on #455.
+///
+/// The formatter here is a stub, which is deliberate twice over: the test says
+/// nothing about Biome's own opinions, and it runs on a machine that has never
+/// installed it.
+#[cfg(unix)]
+#[test]
+fn fix_stops_the_commit_when_the_non_flow_formatter_rewrote_a_staged_file() {
+    let dir = a_repository();
+    stub_formatter(dir.path());
+    fs::write(dir.path().join("data.json"), UNFORMATTED_JSON).expect("an unformatted file");
+    git(dir.path(), &["add", "data.json"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+
+    assert_eq!(
+        code, FOUND_A_PROBLEM,
+        "the hook passed over a file it had just rewritten and left unstaged\n{stdout}{stderr}"
+    );
+    assert!(stderr.contains("run-format-check"), "{stderr}");
+    assert!(stderr.contains("stage them, and commit again"), "{stderr}");
+    assert!(
+        stdout.contains("data.json"),
+        "the step did not say which file\n{stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("data.json")).expect("the file is there"),
+        FORMATTED_JSON,
+        "the format step did not write"
+    );
+    let record = record(dir.path());
+    assert_eq!(status_of(&record, "run-format-check"), "failed");
+    assert!(
+        field_of(&record, "run-format-check", "detail").contains("1 non-Flow file rewritten"),
+        "the record does not say what happened: {record}"
+    );
+    assert_eq!(record["ok"], false);
+
+    // Staging what it wrote is all that was left to do, and the same command
+    // passes: nothing about the file was wrong, only unstaged.
+    git(dir.path(), &["add", "data.json"]);
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+    assert_eq!(code, SUCCESS, "{stdout}{stderr}");
+}
+
+/// A staged non-Flow file the formatter is content with does not fail a commit.
+///
+/// The other half of the test above, and the one that says the check is a
+/// comparison rather than "the formatter ran, so something changed".
+#[cfg(unix)]
+#[test]
+fn fix_passes_when_the_non_flow_formatter_had_nothing_to_change() {
+    let dir = a_repository();
+    stub_formatter(dir.path());
+    fs::write(dir.path().join("data.json"), FORMATTED_JSON).expect("a formatted file");
+    git(dir.path(), &["add", "data.json"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+
+    assert_eq!(code, SUCCESS, "{stdout}{stderr}");
+    assert_eq!(status_of(&record(dir.path()), "run-format-check"), "ok");
+}
+
+/// What the stub below is content with, and what it writes over anything else.
+#[cfg(unix)]
+const FORMATTED_JSON: &str = "{\n  \"answer\": 42\n}\n";
+
+/// And a file it is not content with.
+#[cfg(unix)]
+const UNFORMATTED_JSON: &str = "{\"answer\":42}\n";
+
+/// Install a stand-in for the project's non-Flow formatter in `root`.
+///
+/// `node_modules/.bin` is where uf looks for a project's formatter first, so
+/// this needs nothing of the machine's `PATH` — and this machine has no Biome.
+/// It has a real formatter's two modes: it rewrites what it dislikes when it is
+/// given `--write`, which is how uf spells "format" to Biome, and reports it by
+/// exiting 1 when it is not.
+#[cfg(unix)]
+fn stub_formatter(root: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = root.join("node_modules/.bin");
+    fs::create_dir_all(&bin).expect("a place for the stub");
+    let stub = bin.join("biome");
+    fs::write(
+        &stub,
+        format!(
+            "#!/usr/bin/env sh\n\
+             set -eu\n\
+             write=no\n\
+             case \" $* \" in *' --write '*) write=yes ;; esac\n\
+             status=0\n\
+             formatted={FORMATTED_JSON:?}\n\
+             for arg in \"$@\"; do\n\
+             \x20 [ -f \"$arg\" ] || continue\n\
+             \x20 [ \"$(cat \"$arg\")\" != \"$(printf '%b' \"$formatted\")\" ] || continue\n\
+             \x20 if [ \"$write\" = yes ]; then printf '%b' \"$formatted\" > \"$arg\"; else status=1; fi\n\
+             done\n\
+             exit \"$status\"\n"
+        ),
+    )
+    .expect("the stub is written");
+    let mut permissions = fs::metadata(&stub)
+        .expect("the stub is there")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&stub, permissions).expect("the stub is executable");
+}

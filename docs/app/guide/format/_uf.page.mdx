@@ -128,9 +128,14 @@ could turn `any` into `mixed`, an opaque type, or a generated router type
 depending on what you meant; three answers is none, and guessing at one is
 worse than leaving the finding where you can see it.
 
-What is written parses, `uf fmt --check` still passes, and running it twice is
-running it once. The [CLI reference](/reference/cli) spells out each of those
-and what the exit status means.
+What is written parses, and running it twice is running it once. Every file
+that passed `uf fmt --check` before the fix passes it after: a file the
+formatter was content with is reprinted around the edit, because four bytes is
+enough to push a line past the print width. A file that was already failing
+that check keeps failing it — the edit is written as the edit left it, and
+laying out a file nobody asked to have laid out is `uf fmt`'s job rather than
+this one's. The [CLI reference](/reference/cli) spells out each of those and
+what the exit status means.
 
 `uf fmt`, `uf lint` and `uf check` all take paths, the way `uf test` does:
 

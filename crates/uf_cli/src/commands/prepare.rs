@@ -509,6 +509,11 @@ impl Run<'_> {
                 }
             )
         };
+        // Which non-Flow files the other formatter rewrote, if it wrote at all.
+        // Applied below rather than here: the `Err` arm replaces `detail`, and
+        // an arm that both replaced and appended to it would have to know
+        // which of the two happened.
+        let mut rewritten = Vec::new();
         match uf_fmt::non_flow::run(
             &self.resolved.root,
             &non_flow,
@@ -518,7 +523,7 @@ impl Run<'_> {
             !fix,
             &self.resolved.config.fmt,
         ) {
-            Ok(NonFlowOutcome::Formatted) => {}
+            Ok(NonFlowOutcome::Formatted { rewritten: written }) => rewritten = written,
             Ok(NonFlowOutcome::Unformatted) => {
                 failed = true;
                 lines.push(format!(
@@ -539,6 +544,22 @@ impl Run<'_> {
                 failed = true;
                 detail = error.to_string();
             }
+        }
+
+        // The module header's rule, for the other half of the project. It has
+        // to be asked rather than inferred: a formatter in write mode exits 0
+        // whether it rewrote every file or none of them, so a `--fix` run that
+        // reformatted a staged `.json` used to pass the hook while the bytes
+        // git was about to commit were the ones from before the rewrite.
+        if !rewritten.is_empty() {
+            self.rewrote = true;
+            failed = true;
+            detail = format!(
+                "{detail}, {} rewritten by {}",
+                plural(rewritten.len(), "non-Flow file"),
+                self.resolved.config.fmt.non_flow.formatter.as_str()
+            );
+            lines.extend(rewritten);
         }
 
         // The lines go under the step either way: a step that passed while
