@@ -118,7 +118,8 @@ do not arrive either, because uf turns Vite's `.env` loading off
 turns it back on and the prefix becomes `VITE_`.
 
 **Cost.** The route and entry work is a day's shape regardless of size; the
-long pole is the test suite, in proportion to how much of it uses snapshots.
+long pole is the test suite, in proportion to how much of it reports coverage
+or leans on a hoisted `jest.mock`.
 
 ## From Vite + React
 
