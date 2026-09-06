@@ -50,22 +50,19 @@ fn zero_config_defaults_to_flow_react_app_stack() {
         ]
     );
     assert!(config.app.runtime.capability_js_host.auto_detect);
-    assert!(
-        config
-            .app
-            .runtime
-            .deploy
-            .adapters
-            .contains(&DeployAdapter::Edge)
+    // The defaults list what uf can produce, not what it would like to. This
+    // asserted that `edge` and `serverless` were in the list, which they were
+    // and which nothing read: `DeployAdapter` had no consumer outside this
+    // crate at all. Asserting the honest list is what makes the next adapter's
+    // author change this line rather than inherit a claim.
+    assert_eq!(
+        config.app.runtime.deploy.adapters,
+        vec![DeployAdapter::Node]
     );
-    assert!(
-        config
-            .app
-            .runtime
-            .deploy
-            .adapters
-            .contains(&DeployAdapter::Serverless)
-    );
+    assert_eq!(config.app.runtime.deploy.adapter, None);
+    assert!(DeployAdapter::Node.is_implemented());
+    assert!(!DeployAdapter::Edge.is_implemented());
+    assert!(!DeployAdapter::Serverless.is_implemented());
     assert!(!config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.route);
     assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));

@@ -438,7 +438,42 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "@uniflowed/router".to_string(),
             detail: "every route without parameters, to static HTML".to_string(),
         },
+        adapter_stage(resolved),
     ]
+}
+
+/// Which deploy adapter a build will write for, named rather than assumed.
+///
+/// Red line 7, and the last unticked box of ubugeeei-prod/uf#250: an
+/// integrated toolchain that cannot say what it is doing is a black box, and
+/// "which of the seven targets did that build produce" is a question a person
+/// asks at exactly the moment they can least afford to guess.
+///
+/// A project that has asked for none is told so, and told what the build
+/// therefore is: `dist/` plus a server bundle that needs the checkout around
+/// it. That sentence is the honest description of `uf build` today, and it is
+/// the reason `--adapter` exists.
+fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
+    match resolved.config.app.runtime.deploy.adapter {
+        Some(adapter) => Stage {
+            name: "adapter",
+            provider: format!("uf ({})", adapter.as_str()),
+            detail: format!(
+                ".uf/deploy/{}: handler.js, server.js and a copy of {}",
+                adapter.as_str(),
+                resolved.config.build.out_dir
+            ),
+        },
+        None => Stage {
+            name: "adapter",
+            provider: "none".to_string(),
+            detail: format!(
+                "{} plus a server bundle that needs this checkout; \
+                 `uf build --adapter node` writes a directory that does not",
+                resolved.config.build.out_dir
+            ),
+        },
+    }
 }
 
 /// `uf preview`, whose whole question is who answers a request.
@@ -464,7 +499,7 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "requests vite did not answer",
-            provider: "@uniflowed/router".to_string(),
+            provider: "@uniflowed/server".to_string(),
             detail: "route handlers, then a render — from .uf/build/server/server.js".to_string(),
         },
     ]
@@ -481,7 +516,12 @@ fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         host_stage(resolved),
         Stage {
             name: "server",
-            provider: "@uniflowed/vite (node:http)".to_string(),
+            // `@uniflowed/server`, and no longer `@uniflowed/vite`: the socket,
+            // the file lookup and the request translation moved there when the
+            // first deploy adapter needed them, and a deployment may not link
+            // the package named after the bundler. Naming the old one here
+            // would be `uf explain` describing a graph uf no longer has.
+            provider: "@uniflowed/server (node:http)".to_string(),
             detail: format!(
                 "static files from {}, then route handlers, then a render",
                 resolved.config.build.out_dir

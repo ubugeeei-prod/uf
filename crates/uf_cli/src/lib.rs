@@ -170,7 +170,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Build {
             size_report,
             compile,
-        } => commands::build::build(&cwd, ui, size_report, compile),
+            adapter,
+        } => commands::build::build(&cwd, ui, size_report, compile, adapter.map(Into::into)),
         Commands::Check { json, paths } => commands::check::check(&cwd, ui, json, &paths),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);

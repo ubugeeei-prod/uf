@@ -36,7 +36,7 @@ you need the production-server row, uf cannot serve you at all yet.
 | What uf loses | To | By how much |
 | --- | --- | --- |
 | Test throughput | `bun test` | 0.20 s against **0.06 s** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
-| A deployable application | Next.js | `uf build` prerenders and stops; SSR, route handlers and every adapter exist only under `uf dev` ([#250](https://github.com/ubugeeei-prod/uf/issues/250)) |
+| Deployment targets | Next.js | `uf build --adapter node` writes a directory you can copy, and it is the only one of the seven adapters that exists; `edge`, `serverless` and the rest are names ([#391](https://github.com/ubugeeei-prod/uf/issues/391)) |
 | Server Components | Next.js | the analysis is complete and nothing reads it — every page module ships to the browser ([#252](https://github.com/ubugeeei-prod/uf/issues/252)) |
 | The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
 | Being installable | everything | `@uniflowed/*` is not on npm ([#210](https://github.com/ubugeeei-prod/uf/issues/210)) |

@@ -118,7 +118,8 @@
 - [ ] Execute Flow through Hermes once the Vite/host-runtime path is stable.
 - [ ] Implement Vite-backed server entry generation and RSC streaming adapters.
 - [ ] Map host-provided IO capabilities for Node.js, Deno, and Bun.
-- [ ] Support deploy-anywhere adapters for Node.js, Deno, Bun, edge, serverless, static, and container targets.
+- [x] Support a deploy-anywhere adapter for Node.js: `uf build --adapter node` writes a directory that runs on a host with a JavaScript runtime and nothing else.
+- [ ] Support the other six deploy targets — Deno, Bun, edge, serverless, static and container — against the same `@uniflowed/server/fetch` handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - [ ] Assume React 19, Suspense, `use`, and Async React.
 - [ ] Bundle GraphQL Relay primitives.
 - [ ] Provide explicit fetch clients without global fetch override.
