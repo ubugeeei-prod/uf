@@ -154,6 +154,16 @@ type Node<T> = {
   readonly equals: (previous: T, next: T) => boolean,
   readonly evaluate: Evaluate<T>,
   readonly onMount: null | ((self: Cell<T>) => void | (() => void)),
+  /**
+   * How to tell whoever started this node's asynchronous work that it has been
+   * superseded. `null` for every node that starts none.
+   *
+   * [`generation`] is the passive half of the same idea and answers "should
+   * this result be adopted?"; this is the active half and answers "should this
+   * work still be running?". Only a write needs it: an evaluation supersedes
+   * itself and already knows, and nothing else here replaces a load.
+   */
+  readonly abandon: null | (() => void),
 
   /** The last committed value. For a resource, the last settled one. */
   value: T,
@@ -248,6 +258,7 @@ export function createNode<T>(config: {
   readonly value: T,
   readonly status?: ResourceStatus,
   readonly evaluate?: Evaluate<T>,
+  readonly abandon?: () => void,
   readonly options?: void | CellOptions<T>,
 }): Cell<T> {
   const evaluate = config.evaluate ?? null;
@@ -259,6 +270,7 @@ export function createNode<T>(config: {
     equals: options?.equals ?? defaultEquals,
     evaluate,
     onMount: options?.onMount ?? null,
+    abandon: config.abandon ?? null,
     value: config.value,
     hasValue: evaluate === null,
     thrown: NOTHING,
@@ -690,6 +702,13 @@ export function generationOf<T>(node: Cell<T>): number {
 export function writeNode<T>(node: Cell<T>, value: T): void {
   if (node.kind === "derived") {
     throw Error(`@uniflowed/cell ${node.scope} cells are read-only`);
+  }
+  // The written value is the node's answer now, so any load still trying to
+  // produce one is working for nobody. Told before the generation moves, so a
+  // teardown that reads it sees the state the write is replacing.
+  const abandon = node.abandon;
+  if (abandon !== null) {
+    abandon();
   }
   node.generation += 1;
   node.status = "success";

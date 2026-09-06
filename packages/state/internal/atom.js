@@ -31,7 +31,7 @@
 // to every atom ever declared, which is what lets an `atomFamily` member be
 // collected once the key is gone.
 
-import type { Unsubscribe } from "@uniflowed/cell";
+import type { LoadContext, Unsubscribe } from "@uniflowed/cell";
 
 /** What a setter accepts: a value, or a reducer over the current one. */
 export type SetAction<T> = T | ((current: T) => T);
@@ -88,7 +88,7 @@ export type AtomRecord<T, A> = {
    * async atom's `loading`, a write-only atom's `null`. */
   readonly initial: T,
   readonly read: null | ((get: AtomGetter) => T),
-  readonly load: null | ((get: AtomGetter) => Promise<T>),
+  readonly load: null | ((get: AtomGetter, context: LoadContext) => Promise<T>),
   readonly write: null | ((get: AtomGetter, set: AtomSetter, arg: A) => void),
   readonly equals: null | ((previous: T, next: T) => boolean),
   readonly onMount: null | ((mount: AtomMount<T>) => void | (() => void)),
@@ -185,15 +185,22 @@ export function defineAction<A>(
  * left for the store: a promise that rejects with nobody attached is an
  * unhandled rejection, and the store attaches its handler one turn later than
  * this does.
+ *
+ * Which is also why the abandoned-load check cannot live here. Folding turns
+ * every rejection into a *resolution* carrying `{ state: "hasError" }`, so by
+ * the time a value reaches the cell there is nothing left to recognise an
+ * aborted load by. The cell decides whether a settlement still speaks for it,
+ * before this projection is ever consulted — see `@uniflowed/cell`'s
+ * `internal/resource.js`.
  */
 export function defineAsync<T>(
-  load: (get: AtomGetter) => Promise<T>,
+  load: (get: AtomGetter, context: LoadContext) => Promise<T>,
   options?: AtomOptions<Loadable<T>>,
 ): AtomRecord<Loadable<T>, empty> {
   const pending: Loadable<T> = { state: "loading" };
   return {
     ...baseRecord("async", "asyncAtom", pending, options),
-    load: (get) => load(get).then(asData, asError),
+    load: (get, context) => load(get, context).then(asData, asError),
   };
 }
 

@@ -126,6 +126,27 @@ export type UseFormOptions<TValues extends FieldValues, TOutput = TValues> = {|
   readonly context?: mixed,
   /** Move focus to the first field with an error after a failed submit. */
   readonly shouldFocusError?: boolean,
+  /**
+   * Put the rules on the elements, so the browser enforces them before the
+   * JavaScript arrives. `false` by default.
+   *
+   * `register` then emits `required`, `min`, `max`, `minlength`, `maxlength`
+   * and `pattern` from the rules it was given, and a server-rendered form is
+   * validated by the browser with no hydration at all. Off by default because
+   * `pattern` gives the browser a second opinion about the same regular
+   * expression — `rules.js`'s `constraintsOf` says exactly where the two stop
+   * agreeing — and a form should not acquire that without asking.
+   */
+  readonly progressive?: boolean,
+  /**
+   * Switch the whole form off: every field disabled, none validated, and none
+   * of their values submitted.
+   *
+   * `useForm({ disabled: isSaving })` is what it is for — a user must not be
+   * able to keep typing into a form that is being saved, because those
+   * keystrokes are in the store and not in the request.
+   */
+  readonly disabled?: boolean,
 |};
 
 /**
@@ -188,6 +209,8 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   const resolver = options?.resolver ?? null;
   const context = options?.context;
   const shouldFocusError = options?.shouldFocusError ?? true;
+  const progressive = options?.progressive ?? false;
+  const disabled = options?.disabled ?? false;
 
   const [instance] = useState(() => {
     const control = createFormStore<TValues, TOutput>({
@@ -197,10 +220,20 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
       resolver,
       context,
       shouldFocusError,
+      disabled,
     });
     return { control, registrar: createRegistrar(control, idBase) };
   });
   const control = instance.control;
+
+  // `disabled` is left in the store here, during render, because the effect
+  // below is one commit too late for it: a form switched off while it saves has
+  // to be switched off in the commit that switched it on. `register` is handed
+  // it directly and needs nothing from the store; `useController` holds a
+  // `control` and nothing else, so this is where it gets to find out. The store
+  // says why this is safe to write during a render, alongside the two writes
+  // `register` and `watch` already make.
+  control.noteDisabled(disabled);
 
   // The options the store was built from are the first render's. Anything that
   // can change between renders — a resolver closed over a prop, a context that
@@ -214,6 +247,7 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
       resolver,
       context,
       shouldFocusError,
+      disabled,
     });
   });
 
@@ -252,9 +286,15 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   const errors = formState.errors;
   const registrar = instance.registrar;
 
+  // `progressive` and `disabled` are read from this render rather than from the
+  // store, which learns them from the effect above one commit later. That is
+  // soon enough for an event and one commit too late for an attribute: a form
+  // disabled while it saves has to render a disabled control on the render that
+  // disabled it.
   const register = useCallback(
-    (name: FieldPath, rules?: ValidationRules) => registrar.registerWith(errors, name, rules),
-    [registrar, errors],
+    (name: FieldPath, rules?: ValidationRules) =>
+      registrar.registerWith(errors, { progressive, disabled }, name, rules),
+    [registrar, errors, progressive, disabled],
   );
 
   const watch = useCallback(
