@@ -141,6 +141,93 @@ and you get a plain atom — nothing reaches for `localStorage` on its own, whic
 is what makes the same module safe on a server. Stored data that cannot be read
 falls back to the initial value rather than throwing.
 
+## The small ones
+
+Four constructors and two hooks that are each a few lines over what is above.
+They are here because they are the names a Jotai user reaches for, and because
+writing them in the package is how the claim that the four constructors are
+enough stays honest — none of them needed anything the public API does not
+already offer.
+
+**`selectAtom`** is one part of an atom, so that a reader of the part is woken
+only when the part changes:
+
+```js
+const name = selectAtom(user, (current) => current.name);
+```
+
+A component reading `name` re-renders when the name changes and not when the
+avatar does. A selection that builds a fresh value each time — an array of ids,
+a filtered list — takes a third argument saying what "unchanged" means for it:
+
+```js
+const ids = selectAtom(
+  rows,
+  (all) => all.map((row) => row.id),
+  (previous, next) => previous.length === next.length && previous.every((id, at) => id === next[at]),
+);
+```
+
+Jotai's selector is also handed the previous slice. This one is not: a read that
+can see its own output is not a pure function of its dependencies, which is what
+the equality cutoff underneath rests on — and `equals` says the thing that
+parameter was used to say.
+
+**`atomWithReducer`** is `useReducer` as an atom, and the point is the type: the
+value and the argument are different, so `useSetAtom` hands a component a
+dispatch that takes actions rather than states.
+
+```js
+const count = atomWithReducer<number, "increment" | "clear">(0, (current, action) =>
+  action === "increment" ? current + 1 : 0,
+);
+```
+
+**`atomWithReset`** is a piece of state that also answers to `RESET`. `atom(0)`
+cannot — its argument type is a value or a reducer and nothing else — so this is
+what "back to the default" is written with:
+
+```js
+const theme = atomWithReset("light");
+write(theme, "dark");
+write(theme, RESET); // "light"
+```
+
+**`freezeAtom`** deep-freezes a value so that changing it in place fails where
+it happens:
+
+```js
+const guarded = freezeAtom(settings);
+read(guarded).tags.push("b"); // throws, in a module
+```
+
+That mutation is the most expensive bug in this style of state, because the
+symptom — nothing re-rendered — appears in a component that is not the one at
+fault. Note that there is one object and not two: the atom this derives from is
+frozen along with it, which is what makes the guard worth having and is worth
+knowing before wrapping an atom other code writes to.
+
+**`useResetAtom`** is the `() => void` that goes straight onto an `onClick`,
+where `useSetAtom` would need a wrapper to supply the symbol. It takes an atom
+whose write accepts `RESET`, so a plain `atom` is refused at the call.
+
+**`useAtomCallback`** is a handler that can read and write any atom and
+subscribes to none of them:
+
+```js
+component Submit() {
+  const submit = useAtomCallback((get, set) => send(get(user)));
+  return (
+    <button type="button" onClick={submit}>
+      Send
+    </button>
+  );
+}
+```
+
+`useAtomValue(user)` would re-render this component every time the user
+changed, for a value it only ever looks at once.
+
 ## Async atoms are values, not suspense
 
 This is the difference that will catch a Jotai reader out.
@@ -296,14 +383,59 @@ createJSONStorage(() => localStorage, { revive: (raw) => themeSchema.parse(raw) 
 A `revive` that throws is a value that will not parse, which falls back to
 `initial` like any other unreadable key.
 
-Asynchronous storage — a value that has to be awaited — is **not** implemented,
-and the reason is the same as the one that ruled out Suspense above. Jotai's
-async storage makes the atom's value `T | Promise<T>` and leans on Suspense to
-render it; without Suspense the honest shape is an atom whose value is a
-`Loadable<T>`, which is a different type and therefore a different constructor
-rather than an option on this one. Until that constructor exists — ubugeeei-prod/uf#317 — an
-atom persisted to something asynchronous is written as an `asyncAtom` reading
-it and an `action` writing it.
+### Storage that has to be awaited
+
+IndexedDB, a React Native `AsyncStorage`, a preference store behind a request:
+none of them can answer a read on the spot, and Jotai's `atomWithStorage` copes
+by making the atom's value `T | Promise<T>` and leaning on Suspense. Without
+Suspense the honest shape is an atom whose value is a `Loadable<T>` — a
+different value type, and therefore a different constructor rather than an
+option on the one above:
+
+```js
+import { atomWithAsyncStorage } from "@uniflowed/state";
+
+const draft = atomWithAsyncStorage("draft", "", indexedDb);
+// { state: "loading" }, and then { state: "hasData", data: "…" }
+```
+
+The adapter is the same `{ getItem, setItem, removeItem }` with the read made a
+promise; `getItem` is also handed the load's `AbortSignal`, so an adapter that
+can stop early has what it needs to. `createJSONStorage` stays synchronous — it
+is defined over the Web Storage shape, and there is no asynchronous storage it
+would fit.
+
+Three things behave differently from the synchronous version, and each is a
+decision rather than a consequence:
+
+- **A write while the first read is in flight wins**, and the read is abandoned
+  — signal aborted, result never adopted. Nothing here counts generations to
+  achieve that: the write takes the load out of the atom's dependencies, and
+  `@uniflowed/cell` does the rest, exactly as `atomWithDefault` stops depending
+  on its default.
+- **A read that fails is `{ state: "hasError" }`**, not a fallback. That is the
+  whole reason the second constructor can exist: "the database is locked" is
+  not "nobody has set a preference", and the synchronous version has nowhere to
+  say so. An *absent* key is still the initial value.
+- **A write that fails is silent.** The value the caller wrote is the atom's
+  value whatever storage did with it; it simply will not outlive the session.
+
+`RESET` removes the key and puts the atom back to its initial value without
+reading again — a re-read would race a removal that has not finished and could
+answer with what it had just deleted. And the setter's reducer form is handed
+the `Loadable`, not the value: a write can happen before the first read has
+settled, so `(current) => current + 1` would be a promise the atom cannot keep.
+
+One habit does not carry over: the read starts as soon as a store is asked for
+the atom, mounted or not. `atomWithStorage` waits for a mount because the first
+client render has to be the one the server already sent; here both sides render
+`loading`, so there is nothing to disagree with and nothing to wait for.
+
+```js
+write(draft, "typed");
+write(draft, (current) => (current.state === "hasData" ? `${current.data}!` : "!"));
+write(draft, RESET);
+```
 
 ## Coming from Jotai
 
@@ -313,15 +445,23 @@ it and an `action` writing it.
 | Async atoms suspend | Async atoms are `Loadable` values | A `useSyncExternalStore` reader cannot suspend safely |
 | Its own dependency graph | `@uniflowed/cell`'s | Two implementations of dependency tracking is one too many, and the copy is the one that rots |
 | `atomWithStorage` defaults to `localStorage` | No storage unless you pass an adapter | The same module has to be safe on a server |
+| `atomWithStorage` takes an async storage | `atomWithAsyncStorage`, whose value is a `Loadable<T>` | Different value type, so a different constructor rather than an option |
 | `atomWithRefresh` makes the atom writable | `refresh(atom, store?)`, a free function | `WritableAtom<T, A>` promises `A` is the argument, and a refresh has none — and a free function works from a route handler |
 | `atomFamily(create, areEqual?)` | `atomFamily(create)` plus `remove` and `size` | Keys are compared by identity; a comparator invites a family keyed by a fresh object every render |
+| `selectAtom(a, f, equalityFn)` | `selectAtom(a, f, equals?)` | Same thing, minus the previous slice the selector was handed |
 | `debugLabel`, devtools | A `label` for diagnostics only | Never load-bearing |
 
-Not implemented: `useHydrateAtoms`, `useAtomCallback`, `useResetAtom`,
-`useReducerAtom`, `selectAtom`, `splitAtom`, `atomWithReducer`,
-`atomWithReset`, `atomWithObservable`, `freezeAtom`, and
-Jotai's `loadable` utility. Some of those are one composition away from what is
-here; none of them is pretended at.
+Not implemented, each for a stated reason rather than for want of time:
+
+| Jotai | Why not |
+| --- | --- |
+| `atomWithLazy` | `atomWithDefault` already takes exactly that function. A second name for one thing is worse than one name for it |
+| `useHydrateAtoms` | It writes to shared state during render. `createStore()`, `write(...)`, `<Provider store>` is one line longer and writes nothing during one |
+| `atomFamily`'s `areEqual` | It turns an `O(1)` lookup into a scan of every key the family has seen, on a call that happens once per row per render. Make a tuple key a string instead |
+| `loadable` | Deprecated upstream in favour of `unwrap`, which is here — and `asyncAtom` produces the `Loadable` shape directly rather than needing a wrapper |
+| `useReducerAtom` | Deprecated upstream. `atomWithReducer` is the replacement, and it is here |
+| `splitAtom` | Not a stub and not a few lines: the per-row atoms have to be memoised somewhere, and a `selector`'s read is handed a `get` and nothing else. Every version of it changes the store's model, which does not belong inside a utility |
+| `atomWithObservable` | The half that does not read other atoms is `atom(initial, { onMount })`. The half that does needs a mount that re-runs when a dependency changes, and `onMount` runs for the first subscriber and stops for the last — never in between |
 
 There is one thing with no Jotai analogue: `useCell` reads a
 [`@uniflowed/cell`](/reference/packages) cell directly, for the layer below this
@@ -331,6 +471,6 @@ Every snippet on this page was run before it was published — as parts of a
 module, not as programs. Only the first fence stands on its own: the rest
 continue from it, most leave their `@uniflowed/state` import to it, and a few
 name something a real module would have declared — `base`, `storage`, `userId`,
-`fetchUser`, `first`, `second` — rather than repeating a setup that is not the
-point of the example. `tests/library/state.test.js` is where the behaviour above
+`fetchUser`, `first`, `second`, `user`, `rows`, `settings`, `send`, `indexedDb`
+— rather than repeating a setup that is not the point of the example. `tests/library/state.test.js` is where the behaviour above
 is pinned, with that setup written out — `uf test#library state.test.js`.

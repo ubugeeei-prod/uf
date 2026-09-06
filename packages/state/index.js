@@ -59,6 +59,47 @@
 // Nothing here mutates anything a render can observe, no hook returns a live
 // mutable object, and the callbacks handed to React have an identity that does
 // not change — see `internal/store.js` for why each of those matters.
+//
+// # What is deliberately not here
+//
+// `jotai/utils` is fifteen names and this package answers most of them. The
+// ones it does not are listed here rather than left to be discovered, because
+// "we thought about it and decided against" is worth more to somebody porting
+// an application than silence is. ubugeeei-prod/uf#292 is the triage in full.
+//
+// * `atomWithLazy` — `atomWithDefault` already takes exactly that function.
+//   A second name for one thing is worse than one name for it.
+// * `useHydrateAtoms` — hydrates the store the component is already in, on
+//   first render. That is a write to shared state during render, and
+//   `internal/store.js` sets out the conditions under which this package
+//   makes its one render-time write; this would meet none of them. The same
+//   job outside React is `createStore()`, `write(...)`, `<Provider store>`,
+//   which is one line longer and writes nothing during a render.
+// * `atomFamily`'s `areEqual` — it turns an `O(1)` `Map` lookup into a linear
+//   scan of every key the family has ever seen, on a call that happens once
+//   per row per render. A key that is a tuple should be made a string;
+//   `family(\`${year}:${month}\`)` costs nothing and says what it costs.
+// * `loadable` — deprecated upstream in favour of `unwrap`, which is here,
+//   and `asyncAtom` produces the `Loadable` shape directly rather than
+//   needing a wrapper to put it there.
+// * `atomWithRefresh` — `refresh(target, store?)` is the same capability as a
+//   free function; the doc comment on it says why that shape was chosen.
+// * `splitAtom` — an atom of one atom per row, each keeping its identity
+//   across an insert, a remove and a move. Not a stub and not a few lines:
+//   the row atoms have to be memoised somewhere, and a `selector`'s read is
+//   handed a `get` and nothing else, so there is no store to memoise them
+//   against. Every version of it either invents a per-store cache the read
+//   cannot reach or shares row atoms between stores and then has to answer
+//   what a row means in a store whose list does not contain it. That is a
+//   change to the store's model, and it does not belong inside a utility.
+// * `atomWithObservable` — an atom fed by an `Observable` that may itself
+//   depend on other atoms. The half that does not is already `atom(initial,
+//   { onMount })`. The half that does needs a mount that re-runs when a
+//   dependency changes, and `onMount` is a subscription lifecycle: it runs
+//   for the first subscriber and stops for the last, and never in between.
+//   Offering it on a derived atom — which `internal/store.js` would already
+//   honour — would hand callers a `get` whose changes their subscription
+//   never hears about, which is worse than not offering it.
 
 import type { Cell, LoadContext, Unsubscribe } from "@uniflowed/cell";
 import * as React from "@uniflowed/react";
@@ -72,10 +113,23 @@ import type {
   SetAction,
 } from "./internal/atom.js";
 import { defineAction, defineAsync, definePrimitive, defineSelector } from "./internal/atom.js";
-import type { Reset, StorageAdapter, StorageOptions } from "./internal/composed.js";
+import type {
+  AsyncSetAction,
+  AsyncStorageAdapter,
+  AsyncStorageOptions,
+  Reset,
+  StorageAdapter,
+  StorageOptions,
+} from "./internal/composed.js";
 import {
+  RESET,
+  atomWithAsyncStorage as composeWithAsyncStorage,
   atomWithDefault as composeWithDefault,
+  atomWithReducer as composeWithReducer,
+  atomWithReset as composeWithReset,
   atomWithStorage as composeWithStorage,
+  freezeAtom as composeFreeze,
+  selectAtom as composeSelect,
   unwrap as composeUnwrap,
 } from "./internal/composed.js";
 import type { StoreInstance } from "./internal/store.js";
@@ -83,6 +137,9 @@ import { bindCell, createStore as createStoreInstance, defaultStore } from "./in
 import { StoreScope, useStoreInstance } from "./internal/provider.js";
 
 export type {
+  AsyncSetAction,
+  AsyncStorageAdapter,
+  AsyncStorageOptions,
   AtomFamily,
   JSONStorageOptions,
   Reset,
@@ -309,6 +366,87 @@ export function atomWithDefault<T>(
 }
 
 /**
+ * A piece of state that also answers to [`RESET`].
+ *
+ * `atom(0)` cannot be reset — its argument type is `SetAction<number>` and
+ * nothing else — so this is what an application reaches for when "back to the
+ * default" is a thing the interface offers. It is [`atomWithDefault`] taking a
+ * value instead of a read, which is what a caller who has one already has.
+ */
+export function atomWithReset<T>(
+  initial: T,
+  options?: AtomOptions<T>,
+): WritableAtom<T, SetAction<T> | Reset> {
+  return composeWithReset(initial, options);
+}
+
+/**
+ * State and the actions that change it: `useReducer`, as an atom.
+ *
+ * ```
+ * const count = atomWithReducer<number, "increment" | "reset">(0, (n, action) =>
+ *   action === "increment" ? n + 1 : 0,
+ * );
+ * ```
+ *
+ * The value and the argument are different types, which is the reason to use
+ * this rather than an [`atom`]: `useSetAtom(count)` hands a component a
+ * dispatch that takes an action, so a state written to it by mistake is a
+ * type error rather than a state machine with a hole in it.
+ */
+export function atomWithReducer<State, Action>(
+  initial: State,
+  reduce: (state: State, action: Action) => State,
+  options?: AtomOptions<State>,
+): WritableAtom<State, Action> {
+  return composeWithReducer(initial, reduce, options);
+}
+
+/**
+ * One part of another atom, so that a reader of the part is woken only when
+ * the part changes.
+ *
+ * ```
+ * const name = selectAtom(user, (current) => current.name);
+ * ```
+ *
+ * A component reading that re-renders when the name changes and not when
+ * anything else about the user does. `equals` is for a selection that builds a
+ * fresh value each time — an array of ids, a filtered list — which would
+ * otherwise be a new value on every recompute and wake every reader.
+ *
+ * Jotai's selector also takes the previous slice. This one does not: a read
+ * that can see its own output is not a pure function of its dependencies,
+ * which is what the equality cutoff underneath rests on, and `equals` is the
+ * direct way to say the thing that parameter was used to say.
+ */
+export function selectAtom<T, Slice>(
+  source: ReadonlyAtom<T>,
+  select: (value: T) => Slice,
+  equals?: (previous: Slice, next: Slice) => boolean,
+): ReadonlyAtom<Slice> {
+  return composeSelect(source, select, equals);
+}
+
+/**
+ * The same atom, deeply frozen, so a mutation in place fails where it happens.
+ *
+ * `state.items.push(row)` does not replace the value, so the equality cutoff
+ * correctly reports no change and nothing re-renders — the most expensive
+ * beginner bug in this style of state, because the symptom appears in a
+ * component that is not the one at fault. Frozen, the push throws in a module
+ * and does nothing outside one, and either way it is at the line that did it.
+ *
+ * There is one object, not two: the value handed back is the value that came
+ * in, so the atom this derives from is frozen along with it. That is what
+ * makes the guard worth anything, and it is worth knowing before wrapping an
+ * atom other code writes to.
+ */
+export function freezeAtom<T>(source: ReadonlyAtom<T>): ReadonlyAtom<T> {
+  return composeFreeze(source);
+}
+
+/**
  * An atom mirrored into a key-value store on every write, and read back from
  * it when a store mounts it.
  *
@@ -334,6 +472,52 @@ export function atomWithStorage<T>(
   options?: StorageOptions<T>,
 ): WritableAtom<T, SetAction<T> | Reset> {
   return composeWithStorage(key, initial, storage, options);
+}
+
+/**
+ * An atom persisted to a storage whose read is asynchronous — IndexedDB, a
+ * React Native `AsyncStorage`, a preference store behind a request.
+ *
+ * ```
+ * const draft = atomWithAsyncStorage("draft", "", indexedDb);
+ * // { state: "loading" }, and then { state: "hasData", data: "…" }
+ * ```
+ *
+ * A second constructor rather than an option on [`atomWithStorage`], because
+ * the value is a different type. It is a [`Loadable`] until the first read
+ * settles, for the reason [`asyncAtom`] gives: a `useSyncExternalStore` reader
+ * cannot suspend, so a value that has not arrived is a state to render rather
+ * than a promise to throw. Jotai's `atomWithStorage` takes an async storage
+ * and makes the value `T | Promise<T>`; taking that signature without Suspense
+ * would leave the type promising a `T` that is not there.
+ *
+ * The setter takes a `T`, so the two type parameters differ. Its reducer form
+ * is handed the `Loadable`, not the value, because a write can happen before
+ * the first read has settled and there may be nothing to reduce.
+ *
+ * Three behaviours worth knowing before reaching for it, each of them a
+ * decision rather than a consequence:
+ *
+ * * a write while the first read is in flight wins, and the read is abandoned
+ *   and its signal aborted — the load stops being a dependency, and the cell
+ *   underneath decides the rest;
+ * * a read that *fails* is `{ state: "hasError" }` rather than `initial`,
+ *   which is the whole reason this constructor can exist and the synchronous
+ *   one cannot do it: "the database is locked" is not "nobody set a
+ *   preference". An absent key is still `initial`;
+ * * a *write* that fails is silent. The value the caller wrote is the atom's
+ *   value regardless; it simply will not outlive the session.
+ *
+ * [`RESET`] removes the key and puts the atom back to `initial` without
+ * reading again — a re-read would race the removal it has not waited for.
+ */
+export function atomWithAsyncStorage<T>(
+  key: string,
+  initial: T,
+  storage: AsyncStorageAdapter<T>,
+  options?: AsyncStorageOptions<T>,
+): WritableAtom<Loadable<T>, AsyncSetAction<T> | Reset> {
+  return composeWithAsyncStorage(key, initial, storage, options);
 }
 
 /** The data an asynchronous atom is holding, or `fallback` until it has some. */
@@ -431,6 +615,61 @@ export hook useSetAtom<T, A>(target: WritableAtom<T, A>, store?: Store): (argume
 /** Read and write an atom, in the shape `useState` returns. */
 export hook useAtom<T, A>(target: WritableAtom<T, A>, store?: Store): [T, (argument: A) => void] {
   return [useAtomValue(target, store), useSetAtom(target, store)];
+}
+
+/**
+ * Put a resettable atom back, from a component.
+ *
+ * Jotai's `useResetAtom`. `useSetAtom(target)` already does this — the
+ * argument is [`RESET`] — and the difference is the shape of what comes back:
+ * `() => void` goes straight onto an `onClick`, where the setter needs a
+ * wrapper that supplies the symbol.
+ *
+ * It takes an atom whose write accepts `RESET` as well as a value, which is
+ * what [`atomWithReset`], [`atomWithDefault`] and [`atomWithStorage`] all
+ * return. A plain [`atom`] is refused, and refused at the call rather than
+ * with a runtime error, because its argument type does not include the symbol.
+ * [`atomWithAsyncStorage`]'s setter has a different value type, so it resets
+ * through `useSetAtom` — its own doc comment says so.
+ */
+export hook useResetAtom<T>(
+  target: WritableAtom<T, SetAction<T> | Reset>,
+  store?: Store,
+): () => void {
+  const setter = useSetAtom<T, SetAction<T> | Reset>(target, store);
+  return React.useCallback(() => {
+    setter(RESET);
+  }, [setter]);
+}
+
+/**
+ * A callback that can read and write any atom, and subscribes to none of them.
+ *
+ * Jotai's `useAtomCallback`. For the handler that needs the *current* value of
+ * something it does not render — a submit that reads a draft, an analytics
+ * call that reads a filter — where `useAtomValue` would re-render the
+ * component every time that value changed for a value it only ever looks at
+ * once.
+ *
+ * The `get` and `set` are the same pair a [`writableSelector`]'s write is
+ * given, resolved through the store this component is in. Reading through it
+ * records no dependency, because a handler runs outside any computation and
+ * there is nothing for one to be recorded against — which is the point: the
+ * component that holds this callback is subscribed to nothing.
+ *
+ * The identity of what comes back changes when `callback` does, so a handler
+ * written inline is a new function every render. Wrap it in `useCallback` when
+ * that matters — the same rule as every other hook that takes a function.
+ */
+export hook useAtomCallback<Args extends $ReadOnlyArray<mixed>, Result>(
+  callback: (get: Getter, set: Setter, ...args: Args) => Result,
+  store?: Store,
+): (...args: Args) => Result {
+  const instance = useStoreInstance(store);
+  return React.useCallback(
+    (...args: Args) => callback(instance.get, instance.set, ...args),
+    [callback, instance],
+  );
 }
 
 /**
