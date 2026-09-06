@@ -188,6 +188,7 @@ pub(crate) fn deploy(
             String::from("--output"),
             directory.to_string(),
         ],
+        &[],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

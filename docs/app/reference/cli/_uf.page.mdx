@@ -107,6 +107,15 @@ under `guards`, and in `uf-build-manifest.json` as
 the guard, and which half of `dist/` you deploy is the one thing the build
 cannot know.
 
+The two bundles are not the same route table. A route with no `"use client"`
+module reachable from its page, its layouts or its fallbacks keeps its page out
+of the *client* one, so nothing in the browser imports it and nothing only it
+reached is emitted — its stylesheet excepted, which is still linked, because a
+route that ships no JavaScript still has to look right. The summary says
+`pages in the client bundle N of M` when that removed something, and says
+nothing when it did not; `uf-rsc-manifest.json` carries the decision per module
+as `proximity`.
+
 Two flags write something you can take away with you: `--adapter TARGET`
 writes a directory that runs on a host with a JavaScript runtime and nothing
 else, and `--compile` writes a single executable file that needs not even

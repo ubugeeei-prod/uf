@@ -200,6 +200,13 @@ pub(crate) enum Event {
     /// because nothing that listens is incremental — a second answer to "which
     /// file" would be a promise the recompute does not keep.
     SourceChanged,
+    /// How the client route table came out of the server-component split.
+    ///
+    /// Emitted by `@uniflowed/vite` while it generates the *client* copy of the
+    /// route table, so the numbers are the table's rather than a prediction
+    /// made before the bundle existed. `pages` is how many routes kept their
+    /// page module; `routes` is how many there were.
+    RscSplit { pages: u64, routes: u64 },
     /// A build finished.
     Done { out_dir: String, pages: u64 },
     /// The JSON projection of the config, from `driver config`.
@@ -289,6 +296,10 @@ impl Event {
                 error: failure(),
             },
             Some("source-changed") => Self::SourceChanged,
+            Some("rsc-split") => Self::RscSplit {
+                pages: number("pages").unwrap_or(0),
+                routes: number("routes").unwrap_or(0),
+            },
             Some("done") => Self::Done {
                 out_dir: text("outDir").unwrap_or_default(),
                 pages: number("pages").unwrap_or(0),
@@ -315,12 +326,19 @@ pub(crate) struct Driver {
 
 impl Driver {
     /// Start `driver.js <command> --root <root> <args>` on `host`.
+    ///
+    /// `env` is what this build knows and the driver cannot work out for
+    /// itself. It is deliberately not a general escape hatch: today it carries
+    /// [`uf_rsc::RSC_MANIFEST_ENV`], the path to the server-component analysis
+    /// the bundler splits the route table by, because that analysis is Rust's
+    /// and runs before Vite starts.
     pub(crate) fn spawn(
         host: &Host,
         package: &Utf8Path,
         root: &Utf8Path,
         command: &str,
         args: &[String],
+        env: &[(&str, &str)],
     ) -> Result<Self> {
         let driver = package.join(DRIVER);
         let mut process = Command::new(host.program.as_std_path());
@@ -348,6 +366,7 @@ impl Driver {
                 env::current_exe().context("locating the uf binary")?,
             )
             .env("UF_PROJECT_ROOT", root.as_str())
+            .envs(env.iter().copied())
             .current_dir(root.as_std_path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
