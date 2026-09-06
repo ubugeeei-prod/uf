@@ -1,0 +1,226 @@
+---
+title: "Effects · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Effects
+
+<div className="lede">
+`@uniflowed/effect` puts the failure in the type: an `Effect<A, E, R>` says what
+it produces, how it can fail, and what it needs. It is Effect-TS's model, minus
+everything that model gets from higher-kinded types — which Flow does not have,
+and which this package does not pretend to.
+</div>
+
+## The three channels
+
+An `Effect<A, E, R>` is a description of work that has not run: `A` is what it
+produces, `E` is the failure it *names*, and `R` is the services it needs. It is
+inert until you run it.
+
+```js
+import { runPromise, runSync, succeed } from "@uniflowed/effect";
+
+runSync(succeed(3)); // 3
+```
+
+`runSync` returns the value or raises; `runPromise` is the asynchronous form;
+`runSyncExit` and `runPromiseExit` hand back an `Exit` instead of raising; and
+`runFork` starts one and gives you a fiber.
+
+Failure is three things, not one, and the distinction runs through every
+combinator:
+
+| | What it is | What acts on it |
+| --- | --- | --- |
+| `fail(e)` | The typed failure the signature promised | `catchAll`, `catchTag`, `either`, `orElse`, `retry` |
+| `die(x)` | A bug in the program | Nothing recovers it by design; it reaches `Exit` |
+| Interruption | A decision somebody already took | Neither of the above; it is not a failure |
+
+So a `throw` inside `sync`, `promise` or `call` becomes a **defect**, not a
+typed failure. `tryPromise` is the one adopter that names a failure, because it
+is the one you hand a `catch`:
+
+```js
+const fetched = tryPromise({
+  try: () => fetch(url).then((response) => response.json()),
+  catch: (cause) => ({ kind: "network", cause }),
+});
+```
+
+That is deliberate: a `catch (e)` that turns every throw into a typed error is
+how a null-pointer bug ends up being retried three times and reported to a user
+as "the network is busy".
+
+## Composing
+
+Two ways, and the generator is the one to reach for:
+
+```js
+import { effect, succeed } from "@uniflowed/effect";
+
+const program = effect(function* () {
+  const first = yield* succeed(2);
+  const second = yield* succeed(3);
+  return first * second;
+});
+```
+
+`yield*` is the typed form — `first` is a `number` there, where a bare `yield`
+would hand back `mixed`. The failure channels of everything yielded are unioned
+into the program's.
+
+Or combinators, all of them **data-first, two arguments**: `map(self, f)`,
+`flatMap(self, next)`, `tap`, `zip`, `as`, `mapError`, `delay`. There is no
+`pipe` and no `self.pipe(...)`, because there is no higher-kinded encoding for
+one `pipe` to be generic over.
+
+## Recovering
+
+```js
+catchAll(parse(input), (problem) => succeed(fallbackFor(problem.field)));
+catchTag(request, "timeout", () => succeed(cached));
+either(request); // { ok: true, value } | { ok: false, error }
+exit(request); // the Exit, defects and interruption included
+orDie(request); // a typed failure becomes a defect
+filterOrFail(request, ok, (value) => ({ kind: "rejected", value }));
+timeout(request, 2000); // adds TimeoutError to the error channel
+```
+
+`catchTag` reads `kind` first and then `tag`, so it works with uf's own
+discriminant and with an error ported from Effect-TS. **It does not narrow**:
+`recover` still sees the whole `E`, because Flow cannot narrow a type variable by
+a string compared at run time. That is a real loss against Effect-TS, and the
+package says so rather than shipping a type that looks like it narrows.
+
+## Concurrency
+
+```js
+all(effects, { concurrency: 4 });
+forEach(items, (item) => work(item), { concurrency: "unbounded" });
+race([fromCache, fromNetwork]);
+```
+
+`all` fails fast on the first failure *in completion order*, then interrupts its
+siblings **and waits for them** — the difference between a combinator and a leak.
+`concurrency` is a number or `"unbounded"`; Effect's `"inherit"` is absent
+because there is no enclosing limit recorded to inherit, and an option that
+silently means something else is worse than one that is not offered.
+
+`race` waits for a **success**, not for the first thing to settle. A failing
+entrant drops out of the race rather than ending it; if every entrant fails, the
+result carries all of their causes. The cost is stated: a loser is interrupted
+and not awaited, so a loser with side effects has to survive running a little
+past the point `race` returned.
+
+```js
+const fiber = await runPromise(fork(work));
+await runPromise(join(fiber));
+await runPromise(interrupt(fiber)); // the Exit, so you can tell in time from too late
+```
+
+`fork` is **detached** — Effect-TS's `forkDaemon`, not its `fork`. Cancelling
+the parent does not cancel the child. Work that should die with its parent is
+what `all`, `race` and `timeout` open a child fiber for.
+
+Interruption is cooperative and checkpointed *between* steps: an effect that has
+started runs to its own end, and interruption decides whether the next one
+starts.
+
+## Resources
+
+```js
+const handle = acquireRelease(
+  sync(() => open(path)),
+  (file) => sync(() => file.close()),
+);
+
+runPromise(scoped(flatMap(handle, read)));
+```
+
+`acquireRelease` needs a scope, and `scoped` is what provides one. Without it
+the effect **dies** with a message telling you to wrap it — a skipped release is
+a leak that only shows up in production, so it is not something to be silently
+tolerant of.
+
+Finalizers run detached from the interrupted fiber, so a scope closing *because*
+its fiber was interrupted still releases what it took. `ensuring` is the
+unconditional form.
+
+## Retrying
+
+A `Schedule` is plain data — eight shapes, no builder:
+
+```js
+retry(request, { kind: "exponential", baseMillis: 100, factorPercent: 200 });
+retry(request, { kind: "intersect", left: { kind: "recurs", times: 5 }, right: { kind: "upTo", millis: 10_000 } });
+```
+
+`recurs`, `spaced`, `exponential`, `fibonacci`, `upTo`, `intersect`, `union` and
+`maxDelay`. `factorPercent` is an integer percentage rather than a float,
+because 1.5 written as `150` survives a round trip through a JSON config file
+without becoming `1.4999999999999998`.
+
+`scheduleDelay(schedule, attempt)` from `@uniflowed/effect/schedule` is the whole
+runtime: it answers the delay before an attempt, or `null` when the schedule is
+finished. It is arithmetic with no failure mode, which is what lets a schedule
+say *when* to try again and never *whether*.
+
+`retry` counts retries, so `{ kind: "recurs", times: 2 }` runs the effect three
+times — measured, not assumed. It retries a typed failure only: a defect is a
+bug, and running a bug again is not a strategy.
+
+## Services
+
+```js
+const Clock = tag<{ readonly now: () => number }>("Clock");
+
+const program = flatMap(Clock, (clock) => succeed(clock.now()));
+
+runPromise(provideService(program, Clock, { now: () => Date.now() }));
+runPromise(provide(program, layerSucceed(Clock, { now: () => 42 })));
+```
+
+A `Tag` is itself an `Effect`, so `yield* Clock` works inside a generator.
+`layerSucceed`, `layerEffect` and `layerMerge` build layers; `provide` applies
+one.
+
+This is the part marked **experimental**, and for a specific reason. Flow has no
+type-level set difference, so requirement subtraction is typed as
+`(Effect<A, E, R | Out>, Layer<Out, …>) => Effect<A, E, R>` and the checker
+solves for `R` from the union. That works when the provided service is a
+distinct member of the union, and silently leaves it in `R` when it is not. A
+service that is missing at run time is a **defect**, not a failure — the type
+was meant to have made it impossible.
+
+## Coming from Effect-TS
+
+| Effect-TS | Here | Why |
+| --- | --- | --- |
+| `self.pipe(map(f))` | `map(self, f)` | No higher-kinded types, so no generic `pipe`, no typeclasses, no `Do` |
+| Requirement subtraction | Solved from a union | Flow has no type-level set difference |
+| `catchTag` narrows on `_tag` | `catchTag` reads `kind` then `tag`, and does not narrow | Flow cannot narrow a type variable by a run-time string |
+| `fork` is scoped to its parent | `fork` is `forkDaemon` | Structured children are what `all`, `race` and `timeout` use internally |
+| `race` takes the first to settle | `race` takes the first to succeed | "Whichever settles first" is not what a caller wants when the fastest answer is an error |
+| Heterogeneous `all` keeping tuple types | One array type in, one out | No variadic tuple inference to build it from |
+| `"inherit"` concurrency | Absent | Nothing tracks an enclosing limit |
+
+**Not implemented**, quoting the package: `Ref`, `Deferred`, `Queue`, `Hub`,
+`Semaphore` and STM; streams; a fiber scheduler of its own — this runs on the
+host's microtask queue and its `sleep` is `setTimeout`; tracing, spans, metrics
+and the logging layer; `Layer` memoisation, so a layer passed to two `provide`s
+is built twice; and a typed defect channel.
+
+There is no `Context` module either: `tag`, `provideService` and `provide` are
+the whole surface, and the context they thread is internal.
+
+One more thing that will catch you: `runSync` on an effect that has to wait —
+`sleep`, `promise`, `race`, `timeout`, `retry`, `fork`, anything scoped — is a
+**defect**, not a promise. A silently unawaited promise is how a
+synchronous-looking call ends up returning `undefined`, so the synchronous
+runtime refuses rather than degrading.
+
+The package has **no dependencies at all**, and every snippet on this page was
+run before it was published. `tests/library/effect.test.js` is where the
+behaviour above is pinned — `uf test#library effect.test.js`.
