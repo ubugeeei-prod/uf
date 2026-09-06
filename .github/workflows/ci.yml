@@ -276,6 +276,11 @@ jobs:
       # resolves to nothing. No network, so it belongs here rather than in the
       # pre-tag check alone.
       - run: ./target/release/uf run release:closure
+      # And that a package somebody implemented is on its way to npm at all.
+      # Ten were not — about 22,000 lines of Flow that `npm install` answered
+      # `ETARGET` for — because the manifest is a list somebody adds to.
+      - run: ./target/release/uf run publishable
+      - run: ./target/release/uf run publishable:test
       # And that the one command the release bootstrap depends on still runs.
       # It is invoked by hand, once, by one person, so a mistake in it costs a
       # round trip and blocks a release — it has cost three. Stubs, so this
