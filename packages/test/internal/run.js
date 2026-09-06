@@ -193,34 +193,40 @@ async function runCase(
 
   const timeoutMs = test.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let outcome: Outcome = { status: "passed" };
-  // From here to the end of teardown is exactly the window in which this
-  // case's own code runs, so it is exactly the window whose printing is this
-  // case's. The cases above never reach it: nothing runs for a `todo`, a
-  // `skip` or a filtered-out case, so nothing of theirs can print.
-  output.enterTest(name);
-  try {
-    for (const hook of context.beforeEach) {
-      await withTimeout(hook, timeoutMs);
-    }
-    await withTimeout(test.body, timeoutMs);
-  } catch (thrown) {
-    outcome = failure(thrown);
-  }
-  // Teardown runs whatever happened above, and only reports its own failure
-  // when the body had not already failed.
-  for (const hook of context.afterEach) {
+  // Setup, body and teardown run *inside* the case's output context, and that
+  // nesting is the whole of the fix for #207. What names a printed line is no
+  // longer where the runner had got to when the line arrived — which named the
+  // next case for anything a `setTimeout` left behind — but which case's work
+  // the write descends from. A callback scheduled here keeps this name however
+  // late it fires.
+  //
+  // The cases above never reach this: nothing runs for a `todo`, a `skip` or a
+  // filtered-out case, so nothing of theirs can print.
+  await output.runInTest(name, async () => {
     try {
-      await withTimeout(hook, timeoutMs);
+      for (const hook of context.beforeEach) {
+        await withTimeout(hook, timeoutMs);
+      }
+      await withTimeout(test.body, timeoutMs);
     } catch (thrown) {
-      if (outcome.status === "passed") {
-        outcome = failure(thrown);
+      outcome = failure(thrown);
+    }
+    // Teardown runs whatever happened above, and only reports its own failure
+    // when the body had not already failed.
+    for (const hook of context.afterEach) {
+      try {
+        await withTimeout(hook, timeoutMs);
+      } catch (thrown) {
+        if (outcome.status === "passed") {
+          outcome = failure(thrown);
+        }
       }
     }
-  }
-  // No test is running once this one is reported, so a snapshot taken outside
-  // one fails with something better than a key belonging to whichever test
-  // happened to run last, and a line printed outside one is the file's.
-  output.exitTest();
+  });
+  // The `await` above resumes outside the context it entered, so this line and
+  // everything after it belong to no case again — a line printed between cases
+  // is the file's, and a snapshot taken outside one fails with something better
+  // than a key belonging to whichever test happened to run last.
   snapshot.exitTest();
   report(outcome);
   return outcome.status !== "failed";
