@@ -180,13 +180,61 @@ fn a_file_in_the_project_is_typed_by_the_file_it_imports_from() {
 }
 
 #[test]
+fn a_workspace_package_is_typed_through_the_manifest_that_publishes_it() {
+    // The end-to-end half of ubugeeei-prod/uf#248: that `uf check` really does
+    // hand the checker the `package.json` it resolves a package name through.
+    // The library tests state a batch directly and so cannot see this; only a
+    // project on disk can.
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("packages/cell");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("package.json"),
+        "{\n  \"name\": \"@uniflowed/cell\",\n  \"exports\": { \".\": \"./index.js\" }\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        package.join("index.js"),
+        "// @flow\nexport type Cell<T> = { readonly read: () => T };\n",
+    )
+    .unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport type { Cell } from \"@uniflowed/cell\";\n\
+         export const bad: Cell<number> = 1;\n",
+    )
+    .unwrap();
+
+    let value = check_json(dir.path());
+
+    let untyped = value["typeCheck"]["untypedModules"].as_array().unwrap();
+    assert!(
+        untyped.is_empty(),
+        "this project publishes `@uniflowed/cell`, so it is not a hole: {untyped:?}"
+    );
+    // The type is real, so the wrong value is the only finding. Before the
+    // manifest was read this file produced one `value-as-type` and nothing
+    // about the `1`.
+    let codes: Vec<&str> = value["typeCheck"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["incompatible-type"], "{value}");
+}
+
+#[test]
 fn imports_that_uf_cannot_type_yet_are_named_rather_than_hidden() {
     let dir = tempfile::tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(&src).unwrap();
-    // A package name, which resolves through `node_modules` or a workspace —
-    // neither of which the checker is handed — and a relative path to a file
-    // the scan never walked. Both are `any`, and both have to be said out loud.
+    // A package name no manifest in this project publishes, so it resolves
+    // through `node_modules`, which the checker is not handed — and a relative
+    // path to a file the scan never walked. Both are `any`, and both have to be
+    // said out loud.
     fs::write(
         src.join("app.js"),
         "// @flow\nimport { thing } from \"some-package\";\n         import { other } from \"./generated/table.js\";\n         export const used: mixed = [thing, other];\n",

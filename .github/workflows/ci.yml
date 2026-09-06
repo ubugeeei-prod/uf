@@ -399,3 +399,59 @@ jobs:
       - run: ./target/release/uf run flow:clippy
       - run: ./target/release/uf run flow:test
 
+
+  # One check that is true only when every other one is.
+  #
+  # Every job above declares `needs: toolchain`, and a job whose dependency
+  # fails is not run — it reports `skipped`. GitHub counts a skipped required
+  # check as satisfied, so a `Toolchain` that fails turns `Format`, `Clippy`,
+  # `Test`, `Bench Compile` and `Metadata` — the whole required set — into
+  # passes, and an armed auto-merge fires.
+  #
+  # That is not hypothetical. `main` was left not compiling on 2026-09-06:
+  # `Toolchain` on #343 failed with the exact `E0004` the merge went on to
+  # introduce, at 08:03:24, and the pull request merged at 08:04:00. See #367.
+  #
+  # This job runs whatever happened above it (`if: always()`) and is red unless
+  # every job it names is green. `skipped` is a failure here, deliberately:
+  # a check that did not run has not passed, and that is the whole bug.
+  #
+  # `Upstream Flow` is not in the list, and that is not an oversight — it
+  # builds the parser on the *moving* nightly on purpose, to say early when the
+  # pin will have to move, so it is expected to go red and must not block a
+  # merge. Everything else is here, including the jobs that were never in the
+  # required set: a job worth running is a job worth failing on.
+  ci:
+    name: CI
+    if: always()
+    needs:
+      - toolchain
+      - format
+      - clippy
+      - test
+      - flow-format
+      - docs
+      - library
+      - installer
+      - bench-compile
+      - metadata
+      - upstream-integrations
+      - upstream-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job it depends on succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -eu
+          echo "$RESULTS"
+          # `jq` over the results rather than `contains(needs.*.result, …)`,
+          # so the message names the jobs rather than only saying that one of
+          # them was not green.
+          failed=$(printf '%s' "$RESULTS" | jq -r 'to_entries | map(select(.value.result != "success")) | .[] | "\(.key): \(.value.result)"')
+          if [ -n "$failed" ]; then
+            echo "these jobs did not succeed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "every job succeeded"
