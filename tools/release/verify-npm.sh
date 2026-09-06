@@ -100,7 +100,16 @@ echo "verify-npm: checking @uniflowed/* at $version on the registry"
 # as the kernel lets it, so a message promising "a minute of asking" would be a
 # claim nothing enforced — and seventeen names times six rounds is a lot of
 # chances to be stalled.
-WAIT_SECONDS=60
+#
+# Three minutes, not one. `uf@0.0.0-alpha.7` published all seventeen names and
+# this job failed anyway: sixteen were on the registry within three seconds and
+# `@uniflowed/host` was not there at 55 seconds, when the backoff ran out of
+# deadline. It was there a few minutes later, unchanged and correct. A release
+# that went out and is reported as broken costs more than a release that never
+# went out being reported slowly — and the case this budget was tightened for,
+# a publish that produced nothing, is still bounded, because every name is
+# asked in the same rounds rather than one after another.
+WAIT_SECONDS=180
 REQUEST_SECONDS=10
 deadline=$(( $(date +%s) + WAIT_SECONDS ))
 
@@ -158,8 +167,17 @@ if [ -n "$absent" ]; then
 Not on the registry at $version:$absent
 
 The tag says this version was released. npm does not have it after retrying for
-$WAIT_SECONDS seconds, so nobody can install it. Re-run the publish job once
-the names are bound; npm is additive, so the ones that did go out stay.
+$WAIT_SECONDS seconds, so nobody can install it.
+
+Two things this can be, and they are told apart by the publish job above:
+
+  * npm never accepted the name — look for `npm notice 📦  @uniflowed/<name>`
+    in that job. If it is absent, the name is not bound by `npm trust` and
+    `tools/release/bootstrap-publish.sh` has not been run for it. See #210.
+  * npm accepted it and the registry had not caught up. The notice is there,
+    and `npm view @uniflowed/<name>@$version` answers now. Re-run this job.
+
+Either way npm is additive, so the names that did go out stay.
 MESSAGE
   exit 1
 fi
