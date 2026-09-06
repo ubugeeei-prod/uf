@@ -178,6 +178,20 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
                     renderer.status(out, Status::Success, "serving the production build");
                 });
             }
+            // A route that was not prerendered is rendered on request, so this
+            // is one request failing rather than the server failing. It is
+            // reported — the URL and the error, the same shape `uf build`
+            // prints — and the server keeps answering, because the next
+            // request is very likely a different route and killing the server
+            // would take those with it.
+            Event::PageFailed { url, error } => {
+                render_log(
+                    ui,
+                    crate::commands::vite::LogLevel::Error,
+                    &format!("{url} failed to render"),
+                );
+                let _ = render_error(ui, &root, &error);
+            }
             Event::Log { level, message } => render_log(ui, level, &message),
             Event::Error(error) => {
                 let failure = render_error(ui, &root, &error);

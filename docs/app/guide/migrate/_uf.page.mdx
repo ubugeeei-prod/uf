@@ -110,7 +110,7 @@ and no module mocking ([#280](https://github.com/ubugeeei-prod/uf/issues/280),
 [#283](https://github.com/ubugeeei-prod/uf/issues/283)), so a suite that leans
 on any of the three does not come across. `REACT_APP_*` environment variables
 do not arrive either, because uf turns Vite's `.env` loading off
-([#259](https://github.com/ubugeeei-prod/uf/issues/259)); `vite: { envFile: true }`
+([#259](https://github.com/ubugeeei-prod/uf/issues/259)); `vite: { envDir: "." }`
 turns it back on and the prefix becomes `VITE_`.
 
 **Cost.** The route and entry work is a day's shape regardless of size; the
