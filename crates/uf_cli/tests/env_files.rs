@@ -511,3 +511,80 @@ fn explain_describes_the_cascade_and_this_projects_client_prefix() {
         "and must not name the one this project replaced:\n{stdout}"
     );
 }
+
+/// A mode a nested `uf` must not overrule is not one it may be told about by
+/// accident either.
+///
+/// The marker is inherited, and `Command::env` only adds: when a task overrides
+/// every name uf was handed, there is nothing left to write and the child would
+/// keep the parent's marker — still naming the variable the task just claimed.
+/// This project has no `.env` files precisely so that the marker uf writes is
+/// empty, which is the only case where the inherited one survives.
+#[test]
+fn an_inherited_marker_does_not_outlive_the_name_a_task_took_over() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\n\
+         export default defineConfig({\n  \
+         tasks: {\n    \
+         show: {\n      \
+         command: 'echo \"GREETING=[$GREETING]\"; echo \"INJECTED=[$UF_ENV_INJECTED]\"',\n      \
+         env: { GREETING: \"from the task\" },\n    \
+         },\n  \
+         },\n});\n",
+    )
+    .unwrap();
+
+    // What a `uf run` one level up would have left for this one.
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["run", "show"])
+        .env("UF_ENV_INJECTED", "GREETING")
+        .env("GREETING", "from the parent")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success(), "{stdout}");
+
+    assert!(stdout.contains("GREETING=[from the task]"), "{stdout}");
+    assert!(
+        stdout.contains("INJECTED=[]"),
+        "the inherited marker still names the task's own value:\n{stdout}"
+    );
+}
+
+/// `uf explain` says when it could not resolve the mode, rather than describing
+/// the fallback as though it were the answer.
+///
+/// A hand-edited `.uniflowed/profile` or an `env.active` that is not a mode is
+/// the fault somebody runs this command about. It still answers — that is what
+/// the command is for — but the file list it prints belongs to `development`
+/// and not to this project, and saying so is the difference between an answer
+/// and a wrong one.
+#[test]
+fn explain_says_when_it_could_not_resolve_the_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\n\
+         export default defineConfig({ env: { active: \"local\" } });\n",
+    )
+    .unwrap();
+
+    let stdout = run(dir.path(), &["explain", "dev"]);
+
+    assert!(
+        stdout.contains("could not be resolved"),
+        "the stage must say the mode is not this project's:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("the fallback"),
+        "and must say the mode it is describing is the default:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("is not a mode"),
+        "and must carry the reason:\n{stdout}"
+    );
+}

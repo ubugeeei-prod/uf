@@ -612,3 +612,51 @@ fn overriding_every_name_writes_no_marker() {
 
     assert!(env.exported_beneath(&overridden).is_empty());
 }
+
+/// And the marker a *parent* set is taken off the command, not merely not
+/// written.
+///
+/// A child inherits this process's environment and `Command::env` only adds to
+/// it, so "write no marker" and "hand on no marker" are different sentences.
+/// When every name has been overridden there is nothing left to write, and
+/// without the removal the child would inherit a marker naming the one variable
+/// the caller had just taken ownership of — which is the whole defect
+/// [`ProjectEnv::apply_over`] exists to prevent, one process further along.
+#[test]
+fn apply_over_takes_an_inherited_marker_off_the_command() {
+    let dir = project(&[]);
+    let process: BTreeMap<String, String> = [
+        (String::from(INJECTED), String::from("API")),
+        (String::from("API"), String::from("from the parent")),
+    ]
+    .into_iter()
+    .collect();
+
+    let env = load_from(
+        &root(&dir),
+        &UniflowedConfig::default(),
+        "development",
+        &process,
+    )
+    .unwrap();
+    let mut command = std::process::Command::new("true");
+    env.apply_over(&mut command, &[("API", "from the task")]);
+
+    let written: BTreeMap<String, Option<String>> = command
+        .get_envs()
+        .map(|(name, value)| {
+            (
+                name.to_string_lossy().into_owned(),
+                value.map(|value| value.to_string_lossy().into_owned()),
+            )
+        })
+        .collect();
+
+    // `None` is a removal, which is the assertion: absent from this map would
+    // mean the child keeps whatever it inherited.
+    assert_eq!(written.get(INJECTED), Some(&None));
+    assert_eq!(
+        written.get("API"),
+        Some(&Some(String::from("from the task")))
+    );
+}

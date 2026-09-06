@@ -484,6 +484,12 @@ fn transform_stage() -> Stage {
 /// that cannot be resolved falls back to the command's default rather than
 /// failing: `uf explain` is what somebody runs *because* something is wrong.
 ///
+/// It says so, though. A hand-edited `.uniflowed/profile` or an `env.active`
+/// that is not a mode is exactly the fault somebody runs this command about,
+/// and a stage that quietly described `development` instead would answer the
+/// question they asked with a description of a project they do not have — and
+/// the file list below would be the fallback's, not theirs.
+///
 /// The files are the cascade, not a reading of the disk. `uf explain` describes
 /// a pipeline and nothing here calls [`env_files::load`], so the list is what a
 /// command will look for and an absent file is skipped when it does — which the
@@ -491,8 +497,11 @@ fn transform_stage() -> Stage {
 /// unset will read a file name here and conclude the file was found.
 /// `uf inspect` is the command that reports what was actually read.
 fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
-    let mode = env_files::resolve_mode(&resolved.root, &resolved.config, None, default_mode)
-        .unwrap_or_else(|_| default_mode.to_owned());
+    let (mode, unresolved) =
+        match env_files::resolve_mode(&resolved.root, &resolved.config, None, default_mode) {
+            Ok(mode) => (mode, None),
+            Err(error) => (default_mode.to_owned(), Some(error.to_string())),
+        };
     let files = if resolved.config.env.files.is_empty() {
         format!(".env, .env.local, .env.{mode}, .env.{mode}.local")
     } else {
@@ -510,13 +519,21 @@ fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
     // `PUBLIC_TOKEN` stays on the server, which is the one mistake this line
     // exists to prevent.
     let prefix = env_files::client_prefixes(&resolved.config).join(", ");
-    Stage {
-        name: "environment",
-        provider: format!("uf (mode {mode})"),
-        detail: format!(
-            "looks for {files}, skipping any that are absent; later wins, the process \
-             environment beats all, {prefix} reaches the client"
-        ),
+    let cascade = format!(
+        "looks for {files}, skipping any that are absent; later wins, the process \
+         environment beats all, {prefix} reaches the client"
+    );
+    match unresolved {
+        None => Stage {
+            name: "environment",
+            provider: format!("uf (mode {mode})"),
+            detail: cascade,
+        },
+        Some(reason) => Stage {
+            name: "environment",
+            provider: format!("uf (mode {mode}, the fallback)"),
+            detail: format!("this project's mode could not be resolved — {reason}; {cascade}"),
+        },
     }
 }
 

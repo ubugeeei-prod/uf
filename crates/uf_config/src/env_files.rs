@@ -232,7 +232,15 @@ impl ProjectEnv {
     /// files and then the overrides leaves the child holding the caller's value
     /// under uf's own label, and the next uf in the chain reads that label and
     /// lets a file win over it.
+    /// The marker is *removed* first, and that is not belt and braces. A child
+    /// inherits this process's environment, and `Command::env` only adds to it
+    /// — so when every name has been overridden there is nothing left to write
+    /// and the child would inherit the marker a parent uf set on this one,
+    /// naming the very variable the caller just took ownership of. The loop
+    /// below writes it again whenever a name survives. [`Self::apply`] needs no
+    /// such line: it can only ever widen the marker it was given.
     pub fn apply_over(&self, command: &mut std::process::Command, overrides: &[(&str, &str)]) {
+        command.env_remove(INJECTED);
         let overridden: BTreeSet<&str> = overrides.iter().map(|(name, _)| *name).collect();
         for (name, value) in self.exported_beneath(&overridden) {
             command.env(name, value);
