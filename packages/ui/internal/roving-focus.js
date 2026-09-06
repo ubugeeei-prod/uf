@@ -28,6 +28,11 @@
 //   * **Typeahead.** Pressing `r` in a menu goes to Refresh. Without it a menu
 //     of thirty items is thirty arrow presses, and every native menu on every
 //     platform has had this since before the web.
+//   * **The horizontal arrows point at the reader's "next", not at the west.**
+//     In a right-to-left page the first item of a row is the rightmost one, so
+//     `ArrowLeft` is *next* and `ArrowRight` is *previous*. Hard-coding the
+//     left-to-right answer renders identically and walks an Arabic, Hebrew,
+//     Persian or Urdu reader backwards through every set in this package.
 //
 // # Why this is `internal/` and not a subpath
 //
@@ -45,6 +50,9 @@ export type Movement = "previous" | "next" | "first" | "last";
 
 /** The axis a set's arrow keys run along. */
 export type Orientation = "horizontal" | "vertical";
+
+/** Which way the inline axis runs where a set sits: the reader's direction. */
+export type Direction = "ltr" | "rtl";
 
 /** How long a typeahead buffer survives without another key, in milliseconds. */
 const TYPEAHEAD_WINDOW = 500;
@@ -80,20 +88,76 @@ export function isEnabled(element: HTMLElement): boolean {
 }
 
 /**
+ * Which way the page reads where `element` sits.
+ *
+ * Every caller asks from inside a `keydown` handler, which is a moment where
+ * reading the document is legitimate — so no direction prop, no context and no
+ * provider: the answer is already in the DOM, and asking it there means a
+ * component nested under someone else's `dir="rtl"` is right without anybody
+ * having had to thread a value down to it.
+ *
+ * # Two questions, because one of them is not answered everywhere
+ *
+ * `getComputedStyle(element).direction` is the whole answer in a browser: the
+ * HTML user-agent stylesheet carries `[dir="rtl" i] { direction: rtl }`, so the
+ * computed value accounts for a `dir` attribute on any ancestor *and* for a CSS
+ * `direction` a caller wrote, which an attribute walk alone would miss. It is
+ * what this was written as first, and it is wrong on its own here: `happy-dom`,
+ * the DOM this package's own tests run in, ships no user-agent stylesheet for
+ * `[dir]`, so a button inside `<div dir="rtl">` computes `ltr` and every RTL
+ * test passed for the wrong reason. `element.matches(":dir(rtl)")` — the
+ * pseudo-class HTML defines directionality against — answers `false` there too,
+ * silently, which makes it the worse of the two to rely on.
+ *
+ * So the `dir` attribute is asked first and the computed style second, and the
+ * order is the useful one rather than a workaround: `dir` is HTML's own
+ * statement about directionality and the thing an RTL page actually sets, while
+ * `closest` stops at the *nearest* ancestor that carries one, so a `dir="ltr"`
+ * island inside a `dir="rtl"` page reads as `ltr`. `dir="auto"` is deliberately
+ * not an answer — it means "work it out from the content", which only the
+ * layout engine can do — so it falls through to the computed style, where a
+ * browser has already worked it out.
+ *
+ * The cost is one `closest` per arrow key press, plus one `getComputedStyle` on
+ * a page that declares no `dir` at all — which is most left-to-right pages.
+ * Both are paid at the rate a person presses arrow keys, so neither was worth
+ * caching behind a context that could then be stale.
+ */
+export function directionOf(element: HTMLElement): Direction {
+  const declared = element.closest("[dir]")?.getAttribute("dir")?.toLowerCase();
+  if (declared === "rtl" || declared === "ltr") {
+    return declared;
+  }
+  const style: $FlowFixMe = element.ownerDocument?.defaultView?.getComputedStyle?.(element);
+  return style?.direction === "rtl" ? "rtl" : "ltr";
+}
+
+/**
  * The movement a key asks for along `orientation`, or nothing if it is not ours.
  *
  * The unhandled keys matter as much as the handled ones. `ArrowDown` inside a
  * *horizontal* tab list belongs to the page — it scrolls — and a component that
  * swallows it has taken a key away from every reader who uses it to read.
+ *
+ * `direction` mirrors the horizontal pair and nothing else. `ArrowUp` and
+ * `ArrowDown` are unaffected because a right-to-left page still runs top to
+ * bottom, and `Home` and `End` are unaffected because they name the first and
+ * last item in *reading* order, which is what `moveTo` already walks: in an RTL
+ * row the first item is the rightmost one, and `Home` should go to it.
  */
-export function movementFor(key: string, orientation: Orientation): Movement | null {
+export function movementFor(
+  key: string,
+  orientation: Orientation,
+  direction: Direction,
+): Movement | null {
+  const rtl = direction === "rtl";
   return match (key) {
     "Home" => "first",
     "End" => "last",
     "ArrowUp" => orientation === "vertical" ? "previous" : null,
     "ArrowDown" => orientation === "vertical" ? "next" : null,
-    "ArrowLeft" => orientation === "horizontal" ? "previous" : null,
-    "ArrowRight" => orientation === "horizontal" ? "next" : null,
+    "ArrowLeft" => orientation === "horizontal" ? (rtl ? "next" : "previous") : null,
+    "ArrowRight" => orientation === "horizontal" ? (rtl ? "previous" : "next") : null,
     _ => null,
   };
 }

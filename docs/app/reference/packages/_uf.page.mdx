@@ -87,6 +87,30 @@ on every file.
 | `@uniflowed/brand` | The design tokens this site is built from |
 | `@uniflowed/temporal` | Dates and times |
 
+## What `@uniflowed/ui` ships today
+
+The registry in `crates/uf_lib/src/ui.rs` names every component the package is
+going to have. These are the ones that exist. Each implements the WAI-ARIA
+authoring practices pattern it is named after — the roles, the `aria-*` wiring,
+the focus management and the whole keyboard map — and ships no styles at all.
+
+| Component | Pattern | The part that is easy to leave out |
+| --- | --- | --- |
+| `Field` | — | The label, description, error and `aria-invalid` wiring, and never an `aria-describedby` pointing at an element that is not there |
+| `Switch`, `Checkbox` | Switch, Checkbox | Two components, because a reader hears "on" for one and "checked" for the other, and only one of them has a third state |
+| `Tabs` | Tabs | One tab stop for the whole list, and the choice between automatic and manual activation |
+| `Dialog` | Dialog (Modal) | A focus trap that cannot be escaped, focus given back, the page held still and made inert |
+| `Menu` | Menu | Arrow keys, `Home`/`End`, typeahead, submenus, and one `Escape` closing one level |
+| `Combobox` | Combobox | `aria-activedescendant` over a list the caller filters, and the count a reader is told |
+
+**The arrow keys follow the reader, not the compass.** In a page that reads
+right to left the first item of a row is the rightmost one, so `ArrowLeft` moves
+to the *next* tab and a submenu opens onto the left. Every set here asks the DOM
+which way the page reads at the moment a key is pressed, so putting `dir="rtl"`
+where you would have put it anyway is the whole configuration; a `dir="ltr"`
+island inside an RTL page keeps its own keys. `Home` and `End` are not mirrored:
+they name the first and last item in *reading* order.
+
 ## Publishing status
 
 None of these are on npm yet. Until they are, they resolve through the

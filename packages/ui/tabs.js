@@ -52,7 +52,13 @@ import {
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
-import { indexOfActive, itemsOf, movementFor, moveTo } from "./internal/roving-focus.js";
+import {
+  directionOf,
+  indexOfActive,
+  itemsOf,
+  movementFor,
+  moveTo,
+} from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Orientation } from "./internal/roving-focus.js";
 
@@ -154,7 +160,10 @@ export component TabsList(children: renders* TabsTab, ...rest: Rest) {
       aria-orientation={tabs.orientation}
       onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         const list: $FlowFixMe = event.currentTarget;
-        const movement = movementFor(event.key, tabs.orientation);
+        // Read from the list the key arrived on rather than taken from a prop:
+        // a tab set inside somebody else's `dir="rtl"` gets this right without
+        // the caller having had to know it needed to say so.
+        const movement = movementFor(event.key, tabs.orientation, directionOf(list));
         if (movement == null) {
           return;
         }

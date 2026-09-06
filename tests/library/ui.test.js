@@ -1015,6 +1015,148 @@ describe("Menu: named groups", () => {
   });
 });
 
+describe("right to left", () => {
+  // The bug this block exists for is invisible twice over: the page renders
+  // identically, the pointer still works, and the reading order is still right
+  // — only the keyboard walks backwards. In a right-to-left page the first item
+  // of a row is the rightmost one, so `ArrowLeft` is the reader's "next", and
+  // every set in this package took its answer from one hard-coded pair of keys.
+  //
+  // The LTR cases above are the other half of the evidence: if they still pass
+  // and these do too, the mirroring is conditional rather than swapped.
+
+  component Sections() {
+    return (
+      <Tabs.Root defaultValue="one">
+        <Tabs.List aria-label="Sections">
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+          <Tabs.Tab value="three">Three</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first panel</Tabs.Panel>
+        <Tabs.Panel value="two">second panel</Tabs.Panel>
+        <Tabs.Panel value="three">third panel</Tabs.Panel>
+      </Tabs.Root>
+    );
+  }
+
+  component Export() {
+    return (
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item>Open</Menu.Item>
+          <Menu.Sub>
+            <Menu.SubTrigger>Export</Menu.SubTrigger>
+            <Menu.Body>
+              <Menu.Item>PNG</Menu.Item>
+              <Menu.Item>SVG</Menu.Item>
+            </Menu.Body>
+          </Menu.Sub>
+        </Menu.Body>
+      </Menu.Root>
+    );
+  }
+
+  it("walks a horizontal tab list the way the reader reads", async () => {
+    render(
+      <div dir="rtl">
+        <Sections />
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("first panel");
+  });
+
+  it("leaves Home and End naming the first and last tab in reading order", async () => {
+    render(
+      <div dir="rtl">
+        <Sections />
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    // Unmirrored on purpose: `Home` is the first tab a reader reads, which in
+    // an RTL row is the rightmost one, and `moveTo` already walks the document
+    // in reading order.
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("third panel");
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("first panel");
+  });
+
+  it("reads a direction a caller wrote in CSS rather than with the attribute", async () => {
+    render(
+      <div style={{ direction: "rtl" }}>
+        <Sections />
+      </div>,
+    );
+    // No `dir` anywhere, so this is the computed style answering — which is
+    // the half of `directionOf` an attribute walk on its own would miss.
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+  });
+
+  it("lets a left-to-right island inside a right-to-left page keep its own keys", async () => {
+    render(
+      <div dir="rtl">
+        <div dir="ltr">
+          <Sections />
+        </div>
+      </div>,
+    );
+    // `closest` stops at the nearest ancestor carrying a `dir`, so the island
+    // is not dragged along by the page around it.
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+  });
+
+  it("opens a submenu with the arrow that points at it", async () => {
+    render(
+      <div dir="rtl">
+        <Export />
+      </div>,
+    );
+    const trigger = screen.getByRole("menuitem", { name: "Export" });
+    act(() => trigger.focus());
+    // A submenu opens onto the inline end, which in RTL is the left. Pressing
+    // the key aimed at it used to close the menu the reader was standing in.
+    fireEvent.keyDown(trigger, { key: "ArrowLeft" });
+    expect(screen.getAllByRole("menu").length).toBe(2);
+    expect(screen.getByRole("menuitem", { name: "PNG" })).toHaveFocus();
+  });
+
+  it("closes a submenu with the arrow that points away from it", async () => {
+    render(
+      <div dir="rtl">
+        <Export />
+      </div>,
+    );
+    const trigger = screen.getByRole("menuitem", { name: "Export" });
+    act(() => trigger.focus());
+    fireEvent.keyDown(trigger, { key: "ArrowLeft" });
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getAllByRole("menu").length).toBe(1);
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveFocus();
+  });
+
+  it("leaves the vertical arrows alone, because the page still runs downwards", async () => {
+    render(
+      <div dir="rtl">
+        <Export />
+      </div>,
+    );
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+  });
+});
+
 describe("Combobox", () => {
   const FRUIT = ["Apple", "Apricot", "Banana", "Cherry"];
 
