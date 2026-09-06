@@ -60,11 +60,16 @@ pub fn parse(source: &str) -> Result<Value, TransformError> {
         flow_parser::parse_program_without_file(false, None, Some(PARSE_OPTIONS), Ok(source));
 
     if let Some((loc, error)) = errors.first() {
+        // Through `uf_flow` so a module that fails to transform is refused in
+        // the same words `uf check` and `uf lint` refuse it. A construct the
+        // parser does not implement described three ways is three bugs to
+        // report.
+        let (message, start) = uf_flow::explain::explained(source, loc, error.to_string());
         let position = offsets
-            .convert_flow_position_to_js_position(loc.start)
-            .unwrap_or(loc.start);
+            .convert_flow_position_to_js_position(start)
+            .unwrap_or(start);
         return Err(TransformError::Syntax {
-            message: error.to_string(),
+            message,
             line: u32::try_from(position.line).unwrap_or(u32::MAX),
             column: u32::try_from(position.column).unwrap_or(u32::MAX),
         });
@@ -89,6 +94,18 @@ mod tests {
         assert_eq!(body[0]["type"], "ComponentDeclaration");
         assert_eq!(body[0]["params"][0]["type"], "ComponentParameter");
         assert_eq!(program["comments"][0]["type"], "Line");
+    }
+
+    #[test]
+    fn refuses_top_level_await_in_the_same_words_as_the_linter() {
+        // The same module, the same sentence, whichever command reached it.
+        let source = "// @flow\nconst value = await load();\n";
+        let TransformError::Syntax { message, line, .. } = parse(source).unwrap_err() else {
+            panic!("expected a syntax error");
+        };
+        let expected = uf_flow::validate_source(source).unwrap().diagnostics[0].clone();
+        assert_eq!(message, expected.message);
+        assert_eq!(line, expected.line.unwrap());
     }
 
     #[test]
