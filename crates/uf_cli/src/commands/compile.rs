@@ -176,6 +176,7 @@ pub(crate) fn compile(
             String::from("--bundle"),
             work.to_string(),
         ],
+        &[],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

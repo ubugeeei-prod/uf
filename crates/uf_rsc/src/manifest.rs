@@ -21,13 +21,35 @@ use serde::{Deserialize, Serialize};
 use crate::RscError;
 use crate::action::{ActionId, ServerActionKind, ServerActionRegistry};
 use crate::directive::ModuleEnvironment;
-use crate::graph::{ModuleReachability, RscGraph, RscSeverity};
+use crate::graph::{ClientBoundaryProximity, ModuleReachability, RscGraph, RscSeverity};
 
 /// File name of the manifest inside the build output directory.
 pub const RSC_MANIFEST_FILE_NAME: &str = "uf-rsc-manifest.json";
 
+/// Directory, relative to the project root, the bundler reads the manifest from.
+///
+/// `dist/` is written *after* Vite — it is emptied at the start of a build, so
+/// a copy put there beforehand would not survive to be read — and the split the
+/// bundler performs needs the analysis *before* it emits anything. So the same
+/// bytes are written here first, and the path is handed to the driver in
+/// [`RSC_MANIFEST_ENV`].
+pub const RSC_MANIFEST_BUILD_DIR: &str = ".uf/rsc";
+
+/// Environment variable naming the manifest the bundler must read.
+///
+/// Handed to `@uniflowed/vite`'s driver the way `UF_BINARY` is: the plugin has
+/// no way to run the analysis itself, and a path it guessed could be a manifest
+/// some older build left behind. Absent, the plugin performs no split at all
+/// and every route keeps its page — which is what a project driving Vite
+/// directly, without `uf build` or `uf dev`, gets.
+pub const RSC_MANIFEST_ENV: &str = "UF_RSC_MANIFEST";
+
 /// Schema version of the manifest.
-pub const RSC_MANIFEST_VERSION: u32 = 1;
+///
+/// 2 added `proximity` to every module: version 1 published the client
+/// boundaries and nothing that said which modules were *above* one, so a reader
+/// could not tell a route that needs the browser from one that does not.
+pub const RSC_MANIFEST_VERSION: u32 = 2;
 
 /// The serialized React Server Components manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +83,12 @@ pub struct RscManifestModule {
     pub environment: ModuleEnvironment,
     /// Which halves of the app reach it.
     pub reachability: ModuleReachability,
+    /// Whether this module, or something it imports, crosses a client boundary.
+    ///
+    /// The bundler's question: a route whose page and layouts are all
+    /// `isolated` renders nothing the browser will ever re-render, so its page
+    /// is left out of the client route table.
+    pub proximity: ClientBoundaryProximity,
     /// Resolved internal imports, ordered.
     pub imports: Vec<Utf8PathBuf>,
     /// Unresolved specifiers, ordered.
@@ -142,6 +170,7 @@ impl RscManifest {
                     path: module.path.clone(),
                     environment: module.environment,
                     reachability: module.reachability,
+                    proximity: module.proximity,
                     imports,
                     external_imports,
                     exports,

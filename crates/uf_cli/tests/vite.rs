@@ -54,6 +54,11 @@ fn served_app_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/served-app")
 }
 
+/// The application whose two routes differ by one `"use client"` import.
+fn rsc_split_app_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rsc-split-app")
+}
+
 /// Whether the fixture can be built here: Node on PATH and the workspace
 /// installed.
 ///
@@ -2281,4 +2286,210 @@ fn compile_refuses_a_native_addon_and_names_it() {
         String::from_utf8_lossy(&plain.stdout),
         String::from_utf8_lossy(&plain.stderr)
     );
+}
+
+/// The server/client split, asserted on the bundle rather than on the analysis.
+///
+/// `crates/uf_rsc` has been able to say which modules a `"use client"`
+/// boundary is reachable from since it was written, and every test of that
+/// answer passed while the build ignored it: `virtual:uf/routes` emitted
+/// `page: () => import(<file>)` for every route and `virtual:uf/client`
+/// imported that table, so every page in the application was a chunk of the
+/// *client* bundle. A test over the analysis is a test that already passed.
+/// This one reads the emitted JavaScript.
+///
+/// `tests/fixtures/rsc-split-app` has two routes and one import between them:
+/// `/counter` renders a `"use client"` component and `/` renders a module in
+/// `app/_content/`. Each carries a marker *string*, because a production
+/// bundle renames identifiers and keeps string literals, so a marker is the
+/// only thing a grep over `dist/assets/*.js` can be about.
+///
+/// Five things have to hold at once, and each of the first three is a way the
+/// change could be wrong rather than absent:
+///
+/// 1. the counter's marker is in the client bundle — a split that dropped the
+///    route the browser needs would be worse than no split;
+/// 2. the almanac's is not, and neither is the static page's — the module and
+///    the subtree only it reached are gone;
+/// 3. both routes still prerender, and the interactive one still gets its
+///    hydration script;
+/// 4. `uf build`'s summary says `1 of 2`, and it says it because the bundler
+///    reported what it emitted rather than because uf predicted it;
+/// 5. the manifest published beside the build carries the same decision.
+///
+/// The stylesheet assertion inside (3) is the one that is not obvious. A uf
+/// build links the CSS it finds in the *client* graph, so the first version of
+/// this split — which removed a dropped route's page from that graph and left
+/// it at that — silently unstyled the whole site. See the note in
+/// `routesModuleSource`.
+#[test]
+fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
+    if !fixture_ready() {
+        return;
+    }
+    let _split = split_lock();
+    let root = rsc_split_app_root();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let dist = root.join("dist");
+    let scripts = client_scripts(&dist);
+    assert!(
+        !scripts.is_empty(),
+        "the build emitted no client JavaScript at all, so nothing below proves anything"
+    );
+    let bundle = scripts
+        .iter()
+        .map(|(name, source)| format!("// {name}\n{source}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // 1. The route that needs the browser is still whole.
+    assert!(
+        bundle.contains("counter-marker-the-browser-needs-this"),
+        "the `\"use client\"` counter is missing from the client bundle:\n{}",
+        script_names(&scripts)
+    );
+
+    // 2. The route that does not is gone, and so is what only it imported.
+    assert!(
+        !bundle.contains("almanac-marker-only-the-server-reads-this"),
+        "`app/_content/almanac.js` is server-only and reached the browser:\n{}",
+        script_names(&scripts)
+    );
+    assert!(
+        !bundle.contains("rsc-split-app home"),
+        "the static route's page reached the browser:\n{}",
+        script_names(&scripts)
+    );
+
+    // 3. Both routes are still documents, and the interactive one still says
+    //    how it is going to become interactive.
+    let home = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    assert!(
+        home.contains("almanac-marker-only-the-server-reads-this"),
+        "the static route stopped rendering its server-only content:\n{home}"
+    );
+    // And it is still styled. A uf build links the stylesheets it finds in the
+    // *client* graph, so the first version of this split — which removed the
+    // page from that graph outright — took the rules off every page in the
+    // site and said nothing. The page is imported for its side effects for
+    // exactly this, and the assertion is on the emitted CSS rather than on the
+    // import, because the import is the mechanism and this is the promise.
+    assert!(
+        home.contains("rel=\"stylesheet\" href=\"/assets/"),
+        "the static route's document links no stylesheet:\n{home}"
+    );
+    let css = stylesheets(&dist);
+    assert!(
+        css.contains(".almanac-note"),
+        "the static route's stylesheet was dropped with its JavaScript:\n{css}"
+    );
+    let counter =
+        fs::read_to_string(dist.join("counter/index.html")).expect("the counter is prerendered");
+    assert!(
+        counter.contains("counter-marker-the-browser-needs-this"),
+        "the counter did not render on the server:\n{counter}"
+    );
+    assert!(
+        counter.contains("<script type=\"module\" src=\"/assets/"),
+        "the interactive route lost its hydration script:\n{counter}"
+    );
+
+    // 4. The summary is the bundler's own count of what it emitted, not a
+    //    second implementation of the decision above.
+    assert_eq!(
+        summary_value(&stdout, "pages in the client bundle"),
+        "1 of 2",
+        "the summary must say what the bundler emitted:\n{stdout}"
+    );
+
+    // 5. And the manifest carries the field the bundler read, so a future
+    //    reader of `dist/uf-rsc-manifest.json` sees the same decision.
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join("uf-rsc-manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["version"], serde_json::json!(2));
+    let proximity = |path: &str| {
+        manifest["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["path"] == serde_json::json!(path))
+            .unwrap_or_else(|| panic!("no {path} in the manifest"))["proximity"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(proximity("app/counter/_uf.page.js"), "reaches-boundary");
+    assert_eq!(proximity("app/_uf.page.js"), "isolated");
+    assert_eq!(proximity("app/_content/almanac.js"), "isolated");
+}
+
+/// One output directory, one test building it — with the lock the other two
+/// fixtures have, because the next test written against this one will race it.
+static SPLIT: Mutex<()> = Mutex::new(());
+
+fn split_lock() -> std::sync::MutexGuard<'static, ()> {
+    SPLIT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Every `.js` file the client build emitted, as `(name, source)`.
+///
+/// `.js` and not `.js.map`: a source map carries the *source* of every module
+/// in the chunk, so a bundle that dropped a module still has its text in the
+/// map beside it. What ships to a browser as code is the question.
+fn client_scripts(dist: &Path) -> Vec<(String, String)> {
+    let assets = dist.join("assets");
+    let mut scripts = Vec::new();
+    let Ok(entries) = fs::read_dir(&assets) else {
+        return scripts;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.ends_with(".js") {
+            continue;
+        }
+        if let Ok(source) = fs::read_to_string(entry.path()) {
+            scripts.push((name, source));
+        }
+    }
+    scripts.sort();
+    scripts
+}
+
+/// Every stylesheet the client build emitted, concatenated.
+fn stylesheets(dist: &Path) -> String {
+    let assets = dist.join("assets");
+    let mut sheets = Vec::new();
+    let Ok(entries) = fs::read_dir(&assets) else {
+        return String::new();
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().ends_with(".css") {
+            continue;
+        }
+        if let Ok(source) = fs::read_to_string(entry.path()) {
+            sheets.push(source);
+        }
+    }
+    sheets.sort();
+    sheets.join("\n")
+}
+
+/// The emitted file names, for a failure that has to say what it looked at.
+fn script_names(scripts: &[(String, String)]) -> String {
+    scripts
+        .iter()
+        .map(|(name, source)| format!("  {name} ({} bytes)", source.len()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

@@ -88,7 +88,12 @@ in `uf`.
 - Fully type-safe `useRoute`, `useRouter`, navigation guards, Remix-style
   loaders/actions, Next-style metadata/static params, and React Router-style
   route modules.
-- RSC module graph split.
+- RSC module graph split. **The route level is done**: a route with no
+  `"use client"` boundary reachable from its page, its layouts or its
+  fallbacks keeps its page module out of the client bundle, and the browser is
+  not asked to hydrate it. Splitting a *module* — dropping a Server Component
+  that sits above a boundary — is not, and is blocked on a Flight-shaped
+  payload the client can re-render a tree from.
 - Server action transform and request bridge.
 - StyleX transform as the default style engine.
 - React Compiler syntax-mode pass.
