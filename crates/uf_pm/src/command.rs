@@ -16,13 +16,15 @@
 //! | --------- | -- | --- | ---- | ------------ | ---------- | --- |
 //! | `Install` | `uf install` | `npm install` | `pnpm install` | `yarn install` | `yarn install` | `bun install` |
 //! | `InstallFrozen` | `uf install --frozen-lockfile` | `npm ci` | `pnpm install --frozen-lockfile` | `yarn install --frozen-lockfile` | `yarn install --immutable` | `bun install --frozen-lockfile` |
-//! | `Add { dev: false }` | `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
-//! | `Add { dev: true }` | `uf add --dev` | `npm install --save-dev` | `pnpm add --save-dev` | `yarn add --dev` | `yarn add --dev` | `bun add --dev` |
+//! | `Add { kind: Prod }` | `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
+//! | `Add { kind: Dev }` | `uf add --dev` | `npm install --save-dev` | `pnpm add --save-dev` | `yarn add --dev` | `yarn add --dev` | `bun add --dev` |
+//! | `Add { kind: Optional }` | `uf add --optional` | `npm install --save-optional` | `pnpm add --save-optional` | `yarn add --optional` | `yarn add --optional` | `bun add --optional` |
+//! | `Add { kind: Peer }` | `uf add --peer` | `npm install --save-peer` | `pnpm add --save-peer` | `yarn add --peer` | `yarn add --peer` | `bun add --peer` |
 //! | `Remove` | `uf remove` | `npm uninstall` | `pnpm remove` | `yarn remove` | `yarn remove` | `bun remove` |
 //! | `Run { task }` | `uf run <task>` | `npm run <task>` | `pnpm run <task>` | `yarn run <task>` | `yarn run <task>` | `bun run <task>` |
 //! | `Exec` | `uf exec` | `npm exec --` | `pnpm exec` | `yarn run` | `yarn exec` | `bun run` |
 //! | `DlxExec` | `uf exec` | `npx --yes` | `pnpm dlx` | `npx --yes` | `yarn dlx` | `bunx` |
-//! | `Update` | `uf upgrade` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
+//! | `Update` | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
 //! | `Why` | `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
 //!
 //! Callers append their own operands (package names for `Add`/`Remove`/`Why`, the
@@ -46,6 +48,44 @@ pub type InvocationArgs = SmallVec<[Cow<'static, str>; 8]>;
 /// manifest content out of `argv[0]`.
 pub const PROGRAMS: [&str; 7] = ["uf", "npm", "npx", "pnpm", "yarn", "bun", "bunx"];
 
+/// Which of a manifest's dependency maps an added package is recorded in.
+///
+/// Every manager in the table spells all four, so `uf add --peer` is a real
+/// answer everywhere rather than one that works on npm and is dropped on the
+/// floor elsewhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DependencyKind {
+    /// `dependencies`: needed wherever the package runs.
+    Prod,
+    /// `devDependencies`: needed to build, test or lint it, not to run it.
+    Dev,
+    /// `optionalDependencies`: installed when it can be, skipped when it
+    /// cannot, and the install still succeeds.
+    Optional,
+    /// `peerDependencies`: required of whoever depends on this package,
+    /// rather than installed underneath it.
+    Peer,
+}
+
+impl DependencyKind {
+    /// Every kind, for exhaustive testing and for an error that lists them.
+    pub const ALL: [Self; 4] = [Self::Prod, Self::Dev, Self::Optional, Self::Peer];
+
+    /// The manifest field the manager will write the package into.
+    ///
+    /// The field rather than the flag, because the flag is the manager's
+    /// vocabulary and the field is the one a reader can go and look at.
+    #[must_use]
+    pub const fn manifest_field(self) -> &'static str {
+        match self {
+            Self::Prod => "dependencies",
+            Self::Dev => "devDependencies",
+            Self::Optional => "optionalDependencies",
+            Self::Peer => "peerDependencies",
+        }
+    }
+}
+
 /// Package manager operation requested by `uf`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation<'a> {
@@ -55,8 +95,8 @@ pub enum Operation<'a> {
     InstallFrozen,
     /// Add dependencies; the caller appends the package specifiers.
     Add {
-        /// Record the packages as development dependencies.
-        dev: bool,
+        /// The manifest field the packages are recorded in.
+        kind: DependencyKind,
     },
     /// Remove dependencies; the caller appends the package names.
     Remove,
@@ -77,11 +117,21 @@ pub enum Operation<'a> {
 
 impl Operation<'_> {
     /// Every operation, with a representative payload, for exhaustive testing.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Install,
         Self::InstallFrozen,
-        Self::Add { dev: false },
-        Self::Add { dev: true },
+        Self::Add {
+            kind: DependencyKind::Prod,
+        },
+        Self::Add {
+            kind: DependencyKind::Dev,
+        },
+        Self::Add {
+            kind: DependencyKind::Optional,
+        },
+        Self::Add {
+            kind: DependencyKind::Peer,
+        },
         Self::Remove,
         Self::Run { task: "build" },
         Self::Exec,
@@ -89,6 +139,24 @@ impl Operation<'_> {
         Self::Update,
         Self::Why,
     ];
+
+    /// Whether this operation can cause a dependency's install scripts to run.
+    ///
+    /// Everything that changes what is in `node_modules` can; `Why` reads the
+    /// tree and reports on it. The distinction decides which invocations carry
+    /// `--ignore-scripts`, and passing that flag to a manager's read-only
+    /// query would only be a way to have it rejected as an unknown option.
+    #[must_use]
+    pub const fn installs_packages(self) -> bool {
+        match self {
+            Self::Install
+            | Self::InstallFrozen
+            | Self::Add { .. }
+            | Self::Remove
+            | Self::Update => true,
+            Self::Run { .. } | Self::Exec | Self::DlxExec | Self::Why => false,
+        }
+    }
 }
 
 /// A concrete process invocation for a package manager operation.
@@ -159,22 +227,43 @@ const fn uf_spec(operation: Operation<'_>) -> CommandSpec {
     match operation {
         Operation::Install => spec("uf", &["install"]),
         Operation::InstallFrozen => spec("uf", &["install", "--frozen-lockfile"]),
-        Operation::Add { dev: false } => spec("uf", &["add"]),
-        Operation::Add { dev: true } => spec("uf", &["add", "--dev"]),
+        Operation::Add {
+            kind: DependencyKind::Prod,
+        } => spec("uf", &["add"]),
+        Operation::Add {
+            kind: DependencyKind::Dev,
+        } => spec("uf", &["add", "--dev"]),
+        Operation::Add {
+            kind: DependencyKind::Optional,
+        } => spec("uf", &["add", "--optional"]),
+        Operation::Add {
+            kind: DependencyKind::Peer,
+        } => spec("uf", &["add", "--peer"]),
         Operation::Remove => spec("uf", &["remove"]),
         Operation::Run { .. } => spec("uf", &["run"]),
         Operation::Exec | Operation::DlxExec => spec("uf", &["exec"]),
-        Operation::Update => spec("uf", &["upgrade"]),
+        Operation::Update => spec("uf", &["update"]),
         Operation::Why => spec("uf", &["why"]),
     }
 }
 
 const fn npm_spec(operation: Operation<'_>) -> CommandSpec {
     match operation {
-        Operation::Install | Operation::Add { dev: false } => spec("npm", &["install"]),
+        Operation::Install
+        | Operation::Add {
+            kind: DependencyKind::Prod,
+        } => spec("npm", &["install"]),
         // `npm ci` is the only npm install that refuses a stale lockfile.
         Operation::InstallFrozen => spec("npm", &["ci"]),
-        Operation::Add { dev: true } => spec("npm", &["install", "--save-dev"]),
+        Operation::Add {
+            kind: DependencyKind::Dev,
+        } => spec("npm", &["install", "--save-dev"]),
+        Operation::Add {
+            kind: DependencyKind::Optional,
+        } => spec("npm", &["install", "--save-optional"]),
+        Operation::Add {
+            kind: DependencyKind::Peer,
+        } => spec("npm", &["install", "--save-peer"]),
         Operation::Remove => spec("npm", &["uninstall"]),
         Operation::Run { .. } => spec("npm", &["run"]),
         Operation::Exec => spec("npm", &["exec", "--"]),
@@ -189,8 +278,18 @@ const fn pnpm_spec(operation: Operation<'_>) -> CommandSpec {
     match operation {
         Operation::Install => spec("pnpm", &["install"]),
         Operation::InstallFrozen => spec("pnpm", &["install", "--frozen-lockfile"]),
-        Operation::Add { dev: false } => spec("pnpm", &["add"]),
-        Operation::Add { dev: true } => spec("pnpm", &["add", "--save-dev"]),
+        Operation::Add {
+            kind: DependencyKind::Prod,
+        } => spec("pnpm", &["add"]),
+        Operation::Add {
+            kind: DependencyKind::Dev,
+        } => spec("pnpm", &["add", "--save-dev"]),
+        Operation::Add {
+            kind: DependencyKind::Optional,
+        } => spec("pnpm", &["add", "--save-optional"]),
+        Operation::Add {
+            kind: DependencyKind::Peer,
+        } => spec("pnpm", &["add", "--save-peer"]),
         Operation::Remove => spec("pnpm", &["remove"]),
         Operation::Run { .. } => spec("pnpm", &["run"]),
         Operation::Exec => spec("pnpm", &["exec"]),
@@ -206,8 +305,7 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> CommandSpec {
     match operation {
         Operation::Install => spec("yarn", &["install"]),
         Operation::InstallFrozen => spec("yarn", &["install", "--frozen-lockfile"]),
-        Operation::Add { dev: false } => spec("yarn", &["add"]),
-        Operation::Add { dev: true } => spec("yarn", &["add", "--dev"]),
+        Operation::Add { kind } => yarn_add(kind),
         Operation::Remove => spec("yarn", &["remove"]),
         Operation::Run { .. } | Operation::Exec => spec("yarn", &["run"]),
         Operation::DlxExec => spec("npx", &["--yes"]),
@@ -216,13 +314,23 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> CommandSpec {
     }
 }
 
+/// Both Yarn editions spell the dependency maps the same way, which is why
+/// `Add` is the one row the editions share a function for.
+const fn yarn_add(kind: DependencyKind) -> CommandSpec {
+    match kind {
+        DependencyKind::Prod => spec("yarn", &["add"]),
+        DependencyKind::Dev => spec("yarn", &["add", "--dev"]),
+        DependencyKind::Optional => spec("yarn", &["add", "--optional"]),
+        DependencyKind::Peer => spec("yarn", &["add", "--peer"]),
+    }
+}
+
 /// Yarn 2+ renamed the frozen install to `--immutable` and the update to `yarn up`.
 const fn yarn_berry_spec(operation: Operation<'_>) -> CommandSpec {
     match operation {
         Operation::Install => spec("yarn", &["install"]),
         Operation::InstallFrozen => spec("yarn", &["install", "--immutable"]),
-        Operation::Add { dev: false } => spec("yarn", &["add"]),
-        Operation::Add { dev: true } => spec("yarn", &["add", "--dev"]),
+        Operation::Add { kind } => yarn_add(kind),
         Operation::Remove => spec("yarn", &["remove"]),
         Operation::Run { .. } => spec("yarn", &["run"]),
         Operation::Exec => spec("yarn", &["exec"]),
@@ -236,8 +344,18 @@ const fn bun_spec(operation: Operation<'_>) -> CommandSpec {
     match operation {
         Operation::Install => spec("bun", &["install"]),
         Operation::InstallFrozen => spec("bun", &["install", "--frozen-lockfile"]),
-        Operation::Add { dev: false } => spec("bun", &["add"]),
-        Operation::Add { dev: true } => spec("bun", &["add", "--dev"]),
+        Operation::Add {
+            kind: DependencyKind::Prod,
+        } => spec("bun", &["add"]),
+        Operation::Add {
+            kind: DependencyKind::Dev,
+        } => spec("bun", &["add", "--dev"]),
+        Operation::Add {
+            kind: DependencyKind::Optional,
+        } => spec("bun", &["add", "--optional"]),
+        Operation::Add {
+            kind: DependencyKind::Peer,
+        } => spec("bun", &["add", "--peer"]),
         Operation::Remove => spec("bun", &["remove"]),
         Operation::Run { .. } | Operation::Exec => spec("bun", &["run"]),
         Operation::DlxExec => spec("bunx", &[]),

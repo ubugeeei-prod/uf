@@ -1,11 +1,13 @@
 #![deny(missing_docs)]
-//! Native package manager for `uf install`, `uf upgrade`, and `@uniflowed/pm`.
+//! Native package manager for `uf install`, `uf add`, `uf remove`, `uf update`,
+//! `uf why`, `uf upgrade`, and `@uniflowed/pm`.
 //!
 //! The crate has two halves. [`install_workspace`] and [`PackageManagerPlan`]
 //! describe uf's own resolver: `uf.lock` plus the content-addressed `.uf/store`.
 //! [`detect_package_manager`] and [`command_for`] let uf *interoperate* with a
 //! repository that already uses npm, pnpm, yarn, or bun, driving that manager
-//! instead of forcing a migration.
+//! instead of forcing a migration — [`run_operation`] is where the second half
+//! actually spawns one, for every command from `uf install` to `uf why`.
 
 pub mod command;
 pub mod delta;
@@ -24,7 +26,9 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use uf_config::UniflowedConfig;
 
-pub use crate::command::{Invocation, InvocationArgs, Operation, PROGRAMS, command_for};
+pub use crate::command::{
+    DependencyKind, Invocation, InvocationArgs, Operation, PROGRAMS, command_for,
+};
 pub use crate::delta::{
     ChangeKind, LockedEntry, LockfileDelta, LockfileSnapshot, MAX_LOCKFILE_BYTES, PackageChange,
 };
@@ -41,8 +45,8 @@ pub use crate::progress::{
     Reader, safe_label,
 };
 pub use crate::run::{
-    InstallObserver, InstallRun, InstallRunError, ManagerStream, installable, run_install,
-    run_install_watched,
+    InstallObserver, ManagerRun, ManagerRunError, ManagerStream, check_operands, installable,
+    invocation_for, run_install, run_install_watched, run_operation, run_watched,
 };
 
 /// JSON object keys that must never be treated as data.

@@ -69,7 +69,10 @@ tools/upstream/sync.sh && cargo build --release --bin uf
 - `uf fmt`: Run the native formatter
 - `uf check`: Run Flow type checker
 - `uf test`: Run the native Flow-aware test runner
-- `uf install`: Write `uf.lock` and the content-addressed `.uf/store`
+- `uf install`: Install dependencies with the project's package manager, and
+  write `uf.lock` and the content-addressed `.uf/store`
+- `uf add` / `uf remove` / `uf update` / `uf why`: The same, one dependency at a
+  time
 - `uf upgrade`: Re-apply the native package/runtime manifests
 - `uf use`: Install and activate a versioned `uf` runtime when the deferred
   native runtime line is explicitly selected
@@ -100,7 +103,14 @@ The current CLI already executes the first native vertical slice:
   than Bun's built-in runner; see `docs/architecture.md`.
 - `uf install` discovers workspace `package.json` files, rejects npm scripts by
   default, writes `uf.lock`, writes `.uf/store/manifest.json`, and materializes
-  content-addressed package entries in `.uf/store/packages`.
+  content-addressed package entries in `.uf/store/packages` — then runs the
+  project's own package manager, because uf's resolver reaches no registry yet.
+  `uf install --frozen-lockfile` is the CI install and fails on a lockfile that
+  has drifted from the manifests.
+- `uf add`, `uf remove`, `uf update` and `uf why` drive that same manager for
+  one dependency at a time, with `--dev`, `--optional` and `--peer` writing the
+  field they name, and rewrite `uf.lock` and the store from the manifests it
+  changed.
 - `uf upgrade` reapplies the package store and writes `.uf/upgrade.json`.
 - `uf use uf@0.1.0` installs the current `uf` binary into the XDG runtime
   version directory, writes active runtime metadata, and writes the user-local
