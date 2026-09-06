@@ -70,6 +70,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Your first project",
         blurb: "From an empty directory to a built site.",
       },
+      {
+        href: "/guide/migrate",
+        title: "Migrating to uf",
+        blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
+      },
     ],
   },
   {
