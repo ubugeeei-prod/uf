@@ -35,6 +35,20 @@ import { send } from "@uniflowed/server/node";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
+/**
+ * The half of a `ReadableStream` controller these fixtures use.
+ *
+ * `ReadableStream`'s own controller type is not among the libdefs uf ships,
+ * and the fixture below used to reach for `(controller: any)` — two casts,
+ * which `flow/unclear-type` rejects. Naming the two methods the fixture
+ * actually calls says more than `any` did and costs one line.
+ */
+type StreamController = {
+  readonly enqueue: (chunk: Uint8Array) => mixed,
+  readonly close: () => mixed,
+  ...
+};
+
 /** A server bundle, as `loadBuild` would have imported one. */
 function entryWith(options: {
   guard?: (request: Request) => Promise<Response | null> | Response | null,
@@ -86,9 +100,9 @@ function bodyOf(html: string) {
     text: async () => html,
     stream: () =>
       new ReadableStream({
-        start(controller: mixed) {
-          (controller: any).enqueue(new TextEncoder().encode(html));
-          (controller: any).close();
+        start(controller: StreamController) {
+          controller.enqueue(new TextEncoder().encode(html));
+          controller.close();
         },
         cancel() {
           cancelled = true;
