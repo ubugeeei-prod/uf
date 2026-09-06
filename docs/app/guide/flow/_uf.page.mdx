@@ -124,8 +124,15 @@ Status.Idle.toString();  // "Idle"
 
 They are exhaustively checkable, they cannot be compared to a plain string by
 accident, and unlike a union of string literals they exist at runtime, so you
-can iterate them. uf lowers an enum to a call into `@uniflowed/enums`, a tiny
-runtime with no dependencies.
+can iterate them.
+
+They also need about twenty lines of runtime, and uf **prepends** those to any
+module that declares one rather than importing them from a package. Upstream
+Hermes emits `require("flow-enums-runtime")`, and a CommonJS call is not
+something a browser or an ES module can make — so `enum Status { Active, Off }`
+becomes `const Status = $$ufEnumMirrored(["Active", "Off"])` beside a copy of
+`$$ufEnumMirrored` itself. Nothing to install, nothing to resolve, and no
+package whose version could disagree with the compiler that emitted the call.
 
 ## What uf does with all of it
 

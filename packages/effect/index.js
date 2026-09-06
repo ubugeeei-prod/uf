@@ -51,6 +51,36 @@
 // carried forty-three `as any` casts before, and the reason it no longer needs
 // them is `EffectKernel` — see below.
 //
+// # What a fiber owns
+//
+// A fiber owns the fibers it starts. `fork` gives back a handle to a child,
+// and the child's lifetime is contained in its parent's: interrupting the
+// parent interrupts the child, and a parent that simply *ends* interrupts
+// whatever it still had running. Neither half is optional — a tree that only
+// propagates cancellation downwards leaks every child of a fiber that returned
+// normally, and a tree that only cleans up on return leaks every child of a
+// fiber that was cancelled.
+//
+// That is a statement about the runtime and not about one combinator, so it is
+// stated once here and enforced in three places: `childContext` links a new
+// fiber to its parent, `interruptFiber` walks the link downwards, and
+// `releaseChild` — which every group and both forks end at — walks it upwards.
+// `all`, `race` and `timeout` were already written against it; before this,
+// `fork` was the one hole in it.
+//
+// `forkDaemon` is the deliberate way out, and it is a separate name rather
+// than an option because the two answers fail in opposite directions. A caller
+// who wanted a daemon and got a child sees their work stop, and goes looking.
+// A caller who wanted a child and got a daemon sees nothing at all, until a
+// cancelled request is still writing to a socket nobody is reading, or the
+// process will not exit. The silent failure is the one that must be spelled
+// out at the call site.
+//
+// What this does *not* have is `forkScoped` and `forkIn`: a child tied to a
+// `Scope` rather than to a fiber. `Scope` is already an ordinary member of `R`
+// so they are expressible, and they are the right way to say "outlive this
+// fiber, die with this request". Filed as #325 rather than guessed at.
+//
 // # Readiness
 //
 // **Implemented.** The `Effect<A, E, R>` value and its three channels;
@@ -58,29 +88,43 @@
 // generators; `runSync`, `runPromise` and the `Exit`-returning `runSyncExit`,
 // `runPromiseExit`, `exit`; typed failures kept distinct from defects and from
 // interruption, with `catchAll`, `catchTag`, `orElse`, `either` and `orDie`;
-// `retry` over a `Schedule`; `timeout`; `acquireRelease` with `scoped`, and
+// `retry` over a `Schedule`, narrowed by a predicate over the error, and
+// `repeat` over the same schedules; `timeout`; `acquireRelease` with `scoped`, and
 // `ensuring`, both of which release on success, failure, defect and
-// interruption; `all` and `forEach` with a concurrency limit and a synchronous
-// form when every element has one, `race`, and `fork`/`join`/`interrupt`;
-// `Tag` and `Layer` for services.
+// interruption and both of which keep a synchronous program synchronous; `all` and `forEach` with a concurrency limit and a synchronous
+// form when every element has one, `race`, and
+// `fork`/`forkDaemon`/`join`/`interrupt` over fibers whose lifetimes nest;
+// `Tag` and `Layer` for services, with `layerProvide` feeding one layer into
+// another, `layerScoped` for a layer that acquires something, and one
+// memoised build per `provide`, so a layer reached twice in one graph is
+// built once and `runSync` still answers for a program that uses one; and
+// `Ref`, `Deferred` and `Semaphore` for the things two fibers have to share,
+// each of which a blocked fiber can be interrupted out of; and a pull-based
+// `Stream` in `./stream.js`, whose traversal closes what it opened on success,
+// on failure and on interruption.
 //
 // **Experimental.** Requirement subtraction, for the reason above: `provide`,
 // `provideService` and `scoped` state the service they remove and let Flow
 // solve for the rest, which is weaker than Effect-TS's `Exclude`. `catchTag`
 // reads a `kind` (or `tag`) string off the error at run time and does not
 // narrow `E` for the recovery function, because Flow cannot narrow a type
-// variable by a string compared at run time. `fork` is detached rather than
-// scoped to its parent: cancelling the parent does not cancel the child, which
-// is `forkDaemon`'s semantics rather than `fork`'s.
+// variable by a string compared at run time. `layerProvide` and `layerScoped`
+// subtract requirements the same way and carry the same caveat.
 //
-// **Not implemented.** `Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM;
-// streams; a fiber scheduler of its own (this runs on the host's microtask
+// **Not implemented.** `Queue`, `Hub` and STM — the first two are the same
+// waiting mechanism `Deferred` and `Semaphore` are built on with a buffer in
+// front (#328), and STM is a transaction log and a retry-on-conflict scheduler,
+// which is larger than everything above it put together and has no use that a
+// serialised `Ref` cannot serve at a cost worth measuring first; `Channel`,
+// `Sink`, `GroupBy` and `Chunk`, which `./stream.js` explains being without
+// rather than pending; a fiber scheduler of its own (this runs on the host's microtask
 // queue and its `sleep` is `setTimeout`); tracing, spans, metrics and the
-// logging layer; `Layer` memoisation and dependency resolution, so a layer
-// passed to two `provide`s is built twice; a typed defect channel; a
-// heterogeneous `all`, which in Effect-TS keeps a tuple's element types and
-// here takes and returns one array type; and Effect's `"inherit"` concurrency,
-// because no enclosing limit is tracked to inherit.
+// logging layer; a `Runtime` or `ManagedRuntime` that builds a layer once and
+// runs many effects against it, so a layer handed to two `provide`s is still
+// built twice — the memo lives for one build and not for the process (#326); a typed
+// defect channel; a heterogeneous `all`, which in Effect-TS keeps a tuple's
+// element types and here takes and returns one array type; and Effect's
+// `"inherit"` concurrency, because no enclosing limit is tracked to inherit.
 //
 // # Why the runtime is one file
 //
@@ -103,9 +147,19 @@
 // the package found a list of sixty names and had to open a second file, named
 // after nothing narrower than the package itself, to see any code.
 //
-// `./schedule.js` is the one thing that is genuinely separable, and it is
-// separate: a retry policy is arithmetic over an attempt count that never sees
-// a `Context`, an `Exit` or a fiber, and it explains itself there.
+// `./schedule.js` is the one thing that is genuinely separable on those terms,
+// and it is separate: a retry policy is arithmetic over an attempt count that
+// never sees a `Context`, an `Exit` or a fiber, and it explains itself there.
+//
+// `./stream.js` is separate on different terms, and finding out which was the
+// first task of writing it. A stream does reach the runtime — it produces
+// effects and runs them — so the argument above looked like it applied, and
+// the choice looked like "put it in this file or give the runtime a seam".
+// Neither: a `Stream` needs the `Effect` *interface* and never the `Effect`
+// *carrier*, so it is written entirely with this file's public exports and
+// there is no seam here for it. The rule that generalises is worth keeping —
+// "this needs the runtime" is usually "this needs the runtime's public API",
+// and only the second one costs an invariant.
 //
 // That split costs one thing today, and it is uf's rather than Flow's:
 // `uf check` does not yet resolve types across modules, so it reports the
@@ -176,7 +230,43 @@ type FiberCarrier<out A, out E> = {
   readonly __fiber: FiberState,
 };
 
-type LayerKernel<out E> = (Context) => Promise<Exit<$ReadOnlyMap<string, mixed>, E>>;
+/**
+ * How one layer builds its services.
+ *
+ * The same two-kernel shape as `EffectKernel`, for the same reason. `build` is
+ * the general form and every layer has one; `buildSync` is present on the
+ * layers whose services can be produced without yielding to the event loop,
+ * and `provide` has a synchronous kernel because of it. Before this, every
+ * layer was a `Promise` by construction, so "use a layer" and "use `runSync`"
+ * were mutually exclusive — including in a test, which is where `runSync`
+ * earns its keep.
+ *
+ * Both take the memo for the build they belong to. A layer graph is a graph
+ * and not a tree — `Database` and `Logger` both wanting `Config` is the
+ * ordinary shape — so a builder that does not remember what it has already
+ * built walks the graph once per path and opens two connection pools.
+ */
+type LayerKernel<out E> = {
+  readonly build: (Context, LayerMemo) => Promise<Exit<$ReadOnlyMap<string, mixed>, E>>,
+  readonly buildSync?: (Context, LayerMemo) => Exit<$ReadOnlyMap<string, mixed>, E>,
+};
+
+/**
+ * What one build pass has already built, keyed by layer identity.
+ *
+ * Successes only, and that is not a shortcut: a failed build ends the pass, so
+ * nothing can ask for a second layer after one has failed. Holding the
+ * services rather than the `Exit` is also what keeps the memo's value type
+ * free of `E` — a `Map<Layer<…>, Exit<…, E>>` holding layers with different
+ * error types cannot be read back at the type it was written at, and that
+ * would have cost this file a fifth suppression to buy nothing.
+ *
+ * The memo lives for one `provide` and is keyed by the layer object, so a
+ * layer that appears twice in one graph is built once and a layer handed to
+ * two `provide`s is built twice. The second half is a real limit; see
+ * Readiness.
+ */
+type LayerMemo = Map<Layer<mixed, mixed, mixed>, $ReadOnlyMap<string, mixed>>;
 
 type LayerCarrier<out Out, out E, out In> = {
   readonly __kind: "Layer",
@@ -187,6 +277,57 @@ type LayerCarrier<out Out, out E, out In> = {
 
 type ScopeState = {
   readonly finalizers: Array<() => Effect<void, mixed, empty>>,
+};
+
+type RefCarrier<A> = {
+  readonly __kind: "Ref",
+  value: A,
+};
+
+/**
+ * A one-shot handshake: a value that has not been produced yet, and everyone
+ * waiting for it.
+ *
+ * `settled` is the `Exit` once there is one and `null` before, which is why
+ * it is not a plain `?A`: a `Deferred<?string>` completed with `null` is done,
+ * and telling that from "not yet" is the whole job.
+ */
+type DeferredState<A, E> = {
+  settled: ?Exit<A, E>,
+  readonly waiters: Set<(Exit<A, E>) => void>,
+};
+
+type DeferredCarrier<A, E> = {
+  readonly __kind: "Deferred",
+  readonly state: DeferredState<A, E>,
+};
+
+/** One fiber queued for permits, and how to tell it whether it got them. */
+type SemaphoreWaiter = {
+  readonly permits: number,
+  readonly settle: (taken: boolean) => void,
+};
+
+/**
+ * Permits, and the fibers queued for them in the order they asked.
+ *
+ * `capacity` is kept so that a request for more permits than exist can be a
+ * defect rather than a fiber that waits for ever: nothing will ever release
+ * enough, and a hang is the least debuggable way to say so.
+ *
+ * The queue is served strictly from the head. Letting a later small request
+ * past a waiting large one would raise throughput and starve the large one,
+ * and a semaphore nobody can rely on for the widest request is not a bound.
+ */
+type SemaphoreState = {
+  available: number,
+  readonly capacity: number,
+  readonly waiters: Array<SemaphoreWaiter>,
+};
+
+type SemaphoreCarrier = {
+  readonly __kind: "Semaphore",
+  readonly state: SemaphoreState,
 };
 
 /**
@@ -242,6 +383,41 @@ export opaque type Tag<out Service>: Effect<Service, empty, Service> = TagCarrie
 
 /** A recipe for building services, itself possibly failing. */
 export opaque type Layer<out Out, out E = empty, out In = empty> = LayerCarrier<Out, E, In>;
+
+/**
+ * A place two fibers can both read and write.
+ *
+ * Invariant in `A`, unlike `Effect` and `Fiber`: a `Ref` is written as well as
+ * read, so a `Ref<string>` is not a `Ref<mixed>` — writing a number through
+ * the second would break the first.
+ *
+ * The operations are flat monomorphic functions — `refGet`, `refUpdate` — and
+ * not methods or a `Ref` namespace object. That is this package's convention
+ * rather than a preference expressed once more: there is no `pipe` with
+ * inference to lose, nothing to dispatch at run time, and a bundler can drop
+ * the eleven of these a program does not call. It is stated here because
+ * `Ref` is the first type where a namespace would have looked natural.
+ */
+export opaque type Ref<A> = RefCarrier<A>;
+
+/**
+ * A value one fiber will produce and others are waiting for.
+ *
+ * `Fiber` covers "wait for the thing this fiber returns". This covers the
+ * other one: waiting for a value nobody has promised yet — a one-shot
+ * handshake, a lazy singleton, "the first caller does the work and the rest
+ * wait".
+ */
+export opaque type Deferred<A, E = empty> = DeferredCarrier<A, E>;
+
+/**
+ * Permission to run, in a fixed number of copies.
+ *
+ * `all`'s `concurrency` bounds one call. This bounds a budget shared across
+ * call sites, which is what a rate-limited API needs: two independent
+ * `forEach`es against the same host can hold one of these between them.
+ */
+export opaque type Semaphore = SemaphoreCarrier;
 
 /**
  * The lifetime a resource is released at.
@@ -332,6 +508,21 @@ function withService<Service>(
 }
 
 /**
+ * A context with a built layer's services added to it.
+ *
+ * The fiber comes through unchanged, and that is load-bearing rather than
+ * tidy: every interruption check reads `runContext.fiber`, so a context
+ * assembled without it makes anything underneath a layer uninterruptible.
+ */
+function withServices(parent: Context, added: $ReadOnlyMap<string, mixed>): Context {
+  const services = new Map(parent.services);
+  for (const [key, value] of added) {
+    services.set(key, value);
+  }
+  return { services, scope: parent.scope, fiber: parent.fiber };
+}
+
+/**
  * A context whose interruption is nobody else's.
  *
  * Two callers, for opposite reasons. `fork` starts work the caller intends to
@@ -360,13 +551,40 @@ function childContext(parent: Context): Context {
 }
 
 /**
- * Forget a finished child.
+ * A fiber has settled: stop whatever it still had running.
  *
- * Without this a long-lived fiber calling `all` in a loop holds every group it
- * ever opened, and the leak is invisible because nothing reads the set except
- * an interruption that never comes.
+ * The half of structured concurrency that is not about cancellation. A fiber
+ * that returns normally is as finished as one that was interrupted, and its
+ * children are as orphaned either way — nobody is left holding a handle to
+ * them, so nothing will ever stop them. Effect ties a `fork`ed child to the
+ * parent's scope, which closes when the parent terminates however it
+ * terminates; this is the same rule said in terms of the link `childContext`
+ * already builds.
+ *
+ * Called wherever a fiber's run is known to have settled: both forks, the two
+ * asynchronous runners, and `releaseChild`. The synchronous runners need no
+ * call — `fork` has no `runSync` kernel, so a program `runSync` will answer for
+ * has no children to end.
+ */
+function endFiber(state: FiberState): void {
+  for (const child of state.children) {
+    interruptFiber(child);
+  }
+}
+
+/**
+ * Forget a finished child, having first stopped whatever it started.
+ *
+ * Two failures, and one call site fixes both. Without the `delete`, a
+ * long-lived fiber calling `all` in a loop holds every group it ever opened,
+ * and that leak is invisible because nothing reads the set except an
+ * interruption that never comes. Without the `endFiber`, the `delete` *causes*
+ * a leak rather than closing one: cutting a finished fiber out of the tree
+ * takes its own still-running children with it, and they are then unreachable
+ * from any root. Removing a subtree is only safe once the subtree is empty.
  */
 function releaseChild(parent: Context, child: Context): void {
+  endFiber(child.fiber);
   parent.fiber.children.delete(child.fiber);
 }
 
@@ -548,6 +766,67 @@ function makeLayer<Out, E, In>(kernel: LayerKernel<E>): Layer<Out, E, In> {
 
 function readLayer<Out, E, In>(layer: Layer<Out, E, In>): LayerKernel<E> {
   return layer.__layer;
+}
+
+/**
+ * Build a layer once per pass.
+ *
+ * The memo is consulted here rather than inside a layer's own kernel because
+ * a kernel has no name for the carrier it belongs to, and identity is the key.
+ * Every composite — `layerMerge`, `layerProvide` — reaches its children
+ * through this rather than through `readLayer`, which is what makes a diamond
+ * build its shared node once.
+ *
+ * A memoised layer keeps the services it was first built with. Handing the
+ * same layer to two different `layerProvide`s in one graph therefore gives it
+ * one of the two outers rather than each in turn; that is Effect's rule too,
+ * and the answer is two layers rather than one used twice.
+ */
+function buildLayer<Out, E, In>(
+  layer: Layer<Out, E, In>,
+  runContext: Context,
+  memo: LayerMemo,
+): Promise<Exit<$ReadOnlyMap<string, mixed>, E>> {
+  const alreadyBuilt = memo.get(layer);
+  if (alreadyBuilt != null) {
+    const settled: Exit<$ReadOnlyMap<string, mixed>, E> = success(alreadyBuilt);
+    return Promise.resolve(settled);
+  }
+  return readLayer(layer)
+    .build(runContext, memo)
+    .then((built) => {
+      if (built.kind === "success") {
+        memo.set(layer, built.value);
+      }
+      return built;
+    });
+}
+
+/**
+ * Build a layer once per pass, without yielding to the event loop.
+ *
+ * A layer with no synchronous kernel ends the run the same way an effect with
+ * none does, and by the same route: a defect naming what was asked for, rather
+ * than a promise nobody is awaiting.
+ */
+function buildLayerSync<Out, E, In>(
+  layer: Layer<Out, E, In>,
+  runContext: Context,
+  memo: LayerMemo,
+): Exit<$ReadOnlyMap<string, mixed>, E> {
+  const alreadyBuilt = memo.get(layer);
+  if (alreadyBuilt != null) {
+    return success(alreadyBuilt);
+  }
+  const buildSync = readLayer(layer).buildSync;
+  if (buildSync == null) {
+    return failure(dieCause("layer is asynchronous"));
+  }
+  const built = buildSync(runContext, memo);
+  if (built.kind === "success") {
+    memo.set(layer, built.value);
+  }
+  return built;
 }
 
 function success<A, E>(value: A): Exit<A, E> {
@@ -1362,24 +1641,94 @@ export function either<A, E, R>(
 }
 
 /**
+ * Which typed failures another attempt is worth making for.
+ *
+ * A separate parameter rather than a `{ schedule, while, until }` union in
+ * `retry`'s second position, which is what Effect takes. Flow's objects are
+ * exact, so a union of `Schedule` and an options object cannot be refined by
+ * reading a property one of them does not have, and the trick that makes it
+ * possible would be a worse thing to explain than a third parameter. Effect's
+ * `times` is not here either: it is `intersect` with `recurs`, which the
+ * schedule union already says, and two ways to say one thing is the cost of
+ * copying an API rather than reading it.
+ *
+ * The predicates see the first typed failure in the cause, which is the same
+ * error `catchAll` would hand a recovery function.
+ */
+export type RetryOptions<in E> = {
+  readonly while?: (error: E) => boolean,
+  readonly until?: (error: E) => boolean,
+};
+
+/**
+ * Whether another attempt is worth making.
+ *
+ * `isRetriable` draws the line the runtime knows about — a defect is a bug and
+ * an interruption is a decision already taken — and the predicates draw the
+ * line only the application knows: a 429 is worth retrying and a 400 is not,
+ * and both are typed failures.
+ *
+ * Total apart from the caller's predicate, which is why the call site catches:
+ * a predicate that throws is a bug in the predicate, and it becomes a defect
+ * rather than an extra attempt or a silent stop.
+ */
+function worthRetrying<E>(cause: Cause<E>, options: ?RetryOptions<E>): boolean {
+  if (!isRetriable(cause)) {
+    return false;
+  }
+  if (options == null) {
+    return true;
+  }
+  const found = failureNode(cause);
+  if (found == null) {
+    return false;
+  }
+  const whilePredicate = options.while;
+  if (whilePredicate != null && !whilePredicate(found.error)) {
+    return false;
+  }
+  const untilPredicate = options.until;
+  return untilPredicate == null || !untilPredicate(found.error);
+}
+
+/**
  * Try again on a typed failure, on the schedule's timetable.
  *
  * The first run is not a retry, so `{ kind: "recurs", times: 2 }` runs the
  * effect three times. Only a typed failure is worth another attempt: a defect
  * is a bug, so running it again runs the bug again, and an interruption is a
  * decision already taken.
+ *
+ * `options` narrows that further to the failures the *application* thinks are
+ * worth repeating. Without it a policy retries every typed failure, which
+ * means a permanently rejected request is retried on an exponential backoff
+ * until the schedule gives up — slower than failing and no more likely to
+ * work.
+ *
+ * The random factor a `jittered` schedule needs is drawn here, once per wait,
+ * and passed in: `scheduleDelay` stays a pure function of its arguments, which
+ * is what lets a policy be tested without a clock or a seed.
  */
-export function retry<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effect<A, E, R> {
+export function retry<A, E, R>(
+  self: Effect<A, E, R>,
+  schedule: Schedule,
+  options?: RetryOptions<E>,
+): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
       let attempt = 0;
       let settled = await runKernel(self, runContext);
-      while (
-        settled.kind === "failure" &&
-        isRetriable(settled.cause) &&
-        !isInterrupted(runContext)
-      ) {
-        const millis = scheduleDelay(schedule, attempt);
+      while (settled.kind === "failure" && !isInterrupted(runContext)) {
+        let worthIt;
+        try {
+          worthIt = worthRetrying(settled.cause, options);
+        } catch (error) {
+          return defect(error);
+        }
+        if (!worthIt) {
+          return settled;
+        }
+        const millis = scheduleDelay(schedule, attempt, Math.random());
         if (millis == null) {
           return settled;
         }
@@ -1387,6 +1736,57 @@ export function retry<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effec
         await pause(millis, runContext);
         if (isInterrupted(runContext)) {
           return settled;
+        }
+        settled = await runKernel(self, runContext);
+      }
+      return settled;
+    },
+  });
+}
+
+/**
+ * Run again on *success*, on the schedule's timetable: a poll, a heartbeat, a
+ * cache refresh.
+ *
+ * The other half of what a schedule is for, and the half that was missing
+ * entirely rather than approximated. The first run is not a repetition, so
+ * `{ kind: "recurs", times: 2 }` runs the effect three times, and
+ * `{ kind: "spaced", millis: 1000 }` runs it until something stops it.
+ *
+ * A failure ends the repetition and is the result. That is not a policy
+ * choice: an effect that failed produced no value to repeat *from*, and
+ * swallowing the failure to keep polling would hide the outage the poll exists
+ * to notice. `retry` is what wraps an unreliable step, and the two compose —
+ * `repeat(retry(poll, backoff), everySecond)` is a poll that tolerates a blip
+ * and stops on a real failure.
+ *
+ * Interruption is checked before each wait and after it, so a fiber polling
+ * once a minute stops when it is cancelled rather than at the top of the next
+ * minute, and reports an interruption rather than the last value it happened
+ * to have. That is the bug `pause` exists to prevent, on the other side.
+ *
+ * Effect's `repeat` returns the *schedule's* output. This one returns the
+ * effect's last value, because this `Schedule` is arithmetic over an attempt
+ * count and has no output channel to return. A `Schedule<Out, In>` with a
+ * state and a step would change that; filed as #327 rather than half-built.
+ */
+export function repeat<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effect<A, E, R> {
+  return makeEffect({
+    run: async (runContext) => {
+      let attempt = 0;
+      let settled = await runKernel(self, runContext);
+      while (settled.kind === "success") {
+        if (isInterrupted(runContext)) {
+          return interruptedExit();
+        }
+        const millis = scheduleDelay(schedule, attempt, Math.random());
+        if (millis == null) {
+          return settled;
+        }
+        attempt += 1;
+        await pause(millis, runContext);
+        if (isInterrupted(runContext)) {
+          return interruptedExit();
         }
         settled = await runKernel(self, runContext);
       }
@@ -1463,6 +1863,23 @@ export function acquireRelease<A, E, R>(
       scope.finalizers.push(() => release(resource));
       return success(resource);
     },
+    // Acquiring is not inherently asynchronous — a file handle, a prepared
+    // statement, an object taken out of a pool — and there is no reason a
+    // program made of synchronous steps should lose `runSync` for using a
+    // resource. `ensuring` already had this arm for the same reason.
+    runSync: (runContext) => {
+      const scope = runContext.scope;
+      if (scope == null) {
+        return defect("acquireRelease needs a Scope; wrap the effect in scoped()");
+      }
+      const settled = runSyncKernel(acquire, runContext);
+      if (settled.kind === "failure") {
+        return failure(settled.cause);
+      }
+      const resource = settled.value;
+      scope.finalizers.push(() => release(resource));
+      return success(resource);
+    },
   });
 }
 
@@ -1484,20 +1901,68 @@ export function scoped<A, E, R>(self: Effect<A, E, R | Scope>): Effect<A, E, R> 
       const scopedContext = withScope(runContext);
       const state = scopedContext.scope;
       const settled = await runKernel(self, scopedContext);
-      const finalizers = state == null ? [] : state.finalizers;
-      let broken: ?Cause<mixed> = null;
-      for (let index = finalizers.length - 1; index >= 0; index -= 1) {
-        const released = await runKernel(finalizers[index](), detachedContext(runContext));
-        if (released.kind === "failure" && broken == null) {
-          broken = released.cause;
-        }
+      const broken = state == null ? null : await closeScope(state, runContext);
+      if (settled.kind === "success" && broken != null) {
+        return releaseDefect(broken);
       }
+      return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
+    },
+    // The other half of `acquireRelease`'s synchronous arm. Without it a scope
+    // could be opened without waiting and never closed without waiting, which
+    // is an asymmetry with no argument behind it.
+    runSync: (runContext) => {
+      const scopedContext = withScope(runContext);
+      const state = scopedContext.scope;
+      const settled = runSyncKernel(self, scopedContext);
+      const broken = state == null ? null : closeScopeSync(state, runContext);
       if (settled.kind === "success" && broken != null) {
         return releaseDefect(broken);
       }
       return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
     },
   });
+}
+
+/**
+ * Run a scope's finalizers, newest first, and report the first that failed.
+ *
+ * Detached, because a scope closing *because* its fiber was interrupted still
+ * has to release what it took, and a finalizer running under the interrupted
+ * fiber would stop at its own first checkpoint.
+ *
+ * Shared by `scoped` and `provide`: a layer that acquires a resource has the
+ * same lifetime problem as an effect that does, and it would be a poor answer
+ * to solve it twice slightly differently.
+ */
+async function closeScope(state: ScopeState, runContext: Context): Promise<?Cause<mixed>> {
+  const finalizers = state.finalizers;
+  let broken: ?Cause<mixed> = null;
+  for (let index = finalizers.length - 1; index >= 0; index -= 1) {
+    const released = await runKernel(finalizers[index](), detachedContext(runContext));
+    if (released.kind === "failure" && broken == null) {
+      broken = released.cause;
+    }
+  }
+  return broken;
+}
+
+/**
+ * The same, for a run that has promised not to yield to the event loop.
+ *
+ * A finalizer with no synchronous kernel fails the way any other asynchronous
+ * effect does under `runSync`, and that failure is reported rather than
+ * swallowed: a release that did not happen is exactly the news this returns.
+ */
+function closeScopeSync(state: ScopeState, runContext: Context): ?Cause<mixed> {
+  const finalizers = state.finalizers;
+  let broken: ?Cause<mixed> = null;
+  for (let index = finalizers.length - 1; index >= 0; index -= 1) {
+    const released = runSyncKernel(finalizers[index](), detachedContext(runContext));
+    if (released.kind === "failure" && broken == null) {
+      broken = released.cause;
+    }
+  }
+  return broken;
 }
 
 /**
@@ -1555,6 +2020,17 @@ export function provideService<A, E, R, Service>(
  *
  * The layer's own failure joins the effect's error channel, because a service
  * that could not be built is a way the whole thing can fail.
+ *
+ * One build pass, with one memo, so a layer reached twice in the graph is
+ * built once. The pass also gets a scope of its own — separate from the body's
+ * — which is what a `layerScoped` resource is released at: the layer that
+ * opened a connection pool has somewhere to close it, and it closes after the
+ * body that was using it has finished, however it finished.
+ *
+ * That scope is deliberately not the body's. Handing the body a scope here
+ * would silently discharge the `Scope` an `acquireRelease` inside it requires,
+ * and the requirement channel would go on saying otherwise; `scoped` is still
+ * the only thing that answers for an effect's own resources.
  */
 export function provide<A, E, R, Out, LayerError, In>(
   self: Effect<A, E, R | Out>,
@@ -1562,23 +2038,48 @@ export function provide<A, E, R, Out, LayerError, In>(
 ): Effect<A, E | LayerError, R | In> {
   return makeEffect({
     run: async (runContext) => {
-      const built = await readLayer(layer)(runContext);
+      const layerScope: ScopeState = { finalizers: [] };
+      const buildContext = {
+        services: runContext.services,
+        scope: layerScope,
+        fiber: runContext.fiber,
+      };
+      const built = await buildLayer(layer, buildContext, new Map());
       if (built.kind === "failure") {
+        // A merge whose left side acquired and whose right side failed has
+        // something to give back, and the build's own failure is the more
+        // useful half of the news, so it survives the release.
+        await closeScope(layerScope, runContext);
         return failure(built.cause);
       }
-      const services = new Map(runContext.services);
-      for (const [key, value] of built.value) {
-        services.set(key, value);
+      const settled = await runKernel(self, withServices(runContext, built.value));
+      const broken = await closeScope(layerScope, runContext);
+      if (settled.kind === "success" && broken != null) {
+        return releaseDefect(broken);
       }
-      // The fiber has to come through with the services. Every interruption
-      // check reads `runContext.fiber`, so a context assembled without it makes
-      // anything that can be interrupted throw instead — which nothing noticed
-      // while no effect under a layer ever checked.
-      const settled = await runKernel(self, {
-        services,
-        scope: runContext.scope,
+      return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
+    },
+    // Nothing about a layer is inherently asynchronous: `layerSucceed` holds a
+    // value that is already built, and a `layerEffect` over a `sync` has an
+    // answer to give. This is the arm that was missing, and without it
+    // `runSync` and `provide` could not appear in the same program.
+    runSync: (runContext) => {
+      const layerScope: ScopeState = { finalizers: [] };
+      const buildContext = {
+        services: runContext.services,
+        scope: layerScope,
         fiber: runContext.fiber,
-      });
+      };
+      const built = buildLayerSync(layer, buildContext, new Map());
+      if (built.kind === "failure") {
+        closeScopeSync(layerScope, runContext);
+        return failure(built.cause);
+      }
+      const settled = runSyncKernel(self, withServices(runContext, built.value));
+      const broken = closeScopeSync(layerScope, runContext);
+      if (settled.kind === "success" && broken != null) {
+        return releaseDefect(broken);
+      }
       return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
     },
   });
@@ -1588,7 +2089,10 @@ export function provide<A, E, R, Out, LayerError, In>(
 export function layerSucceed<Service>(serviceTag: Tag<Service>, service: Service): Layer<Service> {
   const built: $ReadOnlyMap<string, mixed> = new Map([[readTag(serviceTag), service]]);
   const settled: Exit<$ReadOnlyMap<string, mixed>, empty> = success(built);
-  return makeLayer(() => Promise.resolve(settled));
+  return makeLayer({
+    build: () => Promise.resolve(settled),
+    buildSync: () => settled,
+  });
 }
 
 /** A layer that builds its service with an effect, which may itself fail. */
@@ -1596,12 +2100,43 @@ export function layerEffect<Service, E, R>(
   serviceTag: Tag<Service>,
   build: Effect<Service, E, R>,
 ): Layer<Service, E, R> {
-  return makeLayer(async (runContext) => {
-    const settled = await runKernel(build, runContext);
-    if (settled.kind === "failure") {
-      return failure(settled.cause);
-    }
-    return success(new Map([[readTag(serviceTag), settled.value]]));
+  const identifier = readTag(serviceTag);
+  const collect = (settled: Exit<Service, E>): Exit<$ReadOnlyMap<string, mixed>, E> =>
+    settled.kind === "failure"
+      ? failure(settled.cause)
+      : success(new Map([[identifier, settled.value]]));
+  return makeLayer({
+    build: async (runContext) => collect(await runKernel(build, runContext)),
+    buildSync: (runContext) => collect(runSyncKernel(build, runContext)),
+  });
+}
+
+/**
+ * A layer that acquires something, released when the `provide` using it ends.
+ *
+ * The difference from `layerEffect` is entirely in the type, and that is the
+ * point rather than an admission: `provide` gives every build a scope, so a
+ * `layerEffect` over an `acquireRelease` would already release — but its
+ * `Scope` requirement would sit in the layer's `In` for ever, and a `Layer`
+ * has no `scoped` of its own to discharge it with. This is that discharge, in
+ * the same shape and with the same caveat `scoped` carries: the service being
+ * removed is stated and Flow solves for the rest.
+ *
+ * The resource outlives the build and dies with the `provide`, which is the
+ * whole reason a pool belongs in a layer rather than in the body.
+ */
+export function layerScoped<Service, E, R>(
+  serviceTag: Tag<Service>,
+  build: Effect<Service, E, R | Scope>,
+): Layer<Service, E, R> {
+  const identifier = readTag(serviceTag);
+  const collect = (settled: Exit<Service, E>): Exit<$ReadOnlyMap<string, mixed>, E> =>
+    settled.kind === "failure"
+      ? failure(settled.cause)
+      : success(new Map([[identifier, settled.value]]));
+  return makeLayer({
+    build: async (runContext) => collect(await runKernel(build, runContext)),
+    buildSync: (runContext) => collect(runSyncKernel(build, runContext)),
   });
 }
 
@@ -1610,40 +2145,178 @@ export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
   left: Layer<Out1, E1, In1>,
   right: Layer<Out2, E2, In2>,
 ): Layer<Out1 | Out2, E1 | E2, In1 | In2> {
-  return makeLayer(async (runContext) => {
-    const leftBuilt = await readLayer(left)(runContext);
-    if (leftBuilt.kind === "failure") {
-      return failure(leftBuilt.cause);
-    }
-    const rightBuilt = await readLayer(right)(runContext);
-    if (rightBuilt.kind === "failure") {
-      return failure(rightBuilt.cause);
-    }
-    const merged = new Map(leftBuilt.value);
-    for (const [key, value] of rightBuilt.value) {
-      merged.set(key, value);
-    }
-    return success(merged);
+  return makeLayer({
+    build: async (runContext, memo) => {
+      const leftBuilt = await buildLayer(left, runContext, memo);
+      if (leftBuilt.kind === "failure") {
+        return failure(leftBuilt.cause);
+      }
+      const rightBuilt = await buildLayer(right, runContext, memo);
+      if (rightBuilt.kind === "failure") {
+        return failure(rightBuilt.cause);
+      }
+      return success(mergedServices(leftBuilt.value, rightBuilt.value));
+    },
+    buildSync: (runContext, memo) => {
+      const leftBuilt = buildLayerSync(left, runContext, memo);
+      if (leftBuilt.kind === "failure") {
+        return failure(leftBuilt.cause);
+      }
+      const rightBuilt = buildLayerSync(right, runContext, memo);
+      if (rightBuilt.kind === "failure") {
+        return failure(rightBuilt.cause);
+      }
+      return success(mergedServices(leftBuilt.value, rightBuilt.value));
+    },
   });
+}
+
+/**
+ * Build `inner` with `outer`'s services in scope, discharging what it needed.
+ *
+ * This is what makes a layer's `In` mean something. Before it, `In` was
+ * carried through every signature and could never be satisfied: a
+ * `Layer<Database, ConfigError, Config>` could only be used by an effect that
+ * still required `Config`, so the requirement was a label rather than a debt
+ * anything could pay.
+ *
+ * The same requirement-subtraction caveat as `provide`, in the same words:
+ * Flow has no type-level set difference, so the discharged service is stated
+ * — `inner` is typed as needing `In1 | Out2` — and the checker solves for
+ * `In1`. That works when `Out2` is a distinct member of the union and silently
+ * leaves it in `In1` when it is not. See Readiness.
+ *
+ * `outer` is built first and through the pass's memo, so a `Config` that two
+ * layers both provide into is built once.
+ */
+export function layerProvide<Out, E1, In1, Out2, E2, In2>(
+  inner: Layer<Out, E1, In1 | Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out, E1 | E2, In1 | In2> {
+  return makeLayer({
+    build: async (runContext, memo) => {
+      const outerBuilt = await buildLayer(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = await buildLayer(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure" ? failure(innerBuilt.cause) : success(innerBuilt.value);
+    },
+    buildSync: (runContext, memo) => {
+      const outerBuilt = buildLayerSync(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = buildLayerSync(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure" ? failure(innerBuilt.cause) : success(innerBuilt.value);
+    },
+  });
+}
+
+/**
+ * `layerProvide`, keeping the outer layer's services in the result.
+ *
+ * For the ordinary case where `Config` is wanted by the application as well as
+ * by the `Database` it was built for. Free, because the merge is the one line
+ * that differs.
+ */
+export function layerProvideMerge<Out, E1, In1, Out2, E2, In2>(
+  inner: Layer<Out, E1, In1 | Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out | Out2, E1 | E2, In1 | In2> {
+  return makeLayer({
+    build: async (runContext, memo) => {
+      const outerBuilt = await buildLayer(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = await buildLayer(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure"
+        ? failure(innerBuilt.cause)
+        : success(mergedServices(outerBuilt.value, innerBuilt.value));
+    },
+    buildSync: (runContext, memo) => {
+      const outerBuilt = buildLayerSync(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = buildLayerSync(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure"
+        ? failure(innerBuilt.cause)
+        : success(mergedServices(outerBuilt.value, innerBuilt.value));
+    },
+  });
+}
+
+/** Two built layers' services in one map, the second winning a collision. */
+function mergedServices(
+  first: $ReadOnlyMap<string, mixed>,
+  second: $ReadOnlyMap<string, mixed>,
+): $ReadOnlyMap<string, mixed> {
+  const merged = new Map(first);
+  for (const [key, value] of second) {
+    merged.set(key, value);
+  }
+  return merged;
 }
 
 /**
  * Start `self` beside the current fiber and hand back a handle to it.
  *
  * The child gets its own interruption state, so cancelling it does not cancel
- * the fiber that forked it, and cancelling the parent does not silently take
- * the child down with it. That is Effect's `forkDaemon` rather than its `fork`,
- * and it is what makes this usable for the case it exists for: starting work
- * you intend to be able to stop. Work that should die with its parent is what
- * `all`, `race` and `timeout` open a child fiber for.
+ * the fiber that forked it. The link runs the other way: the child is
+ * registered as the caller's, so the caller's interruption reaches it, and the
+ * caller ending reaches it too. See *What a fiber owns* in the header — this
+ * is where the rule stated there is entered.
+ *
+ * The handle is the fiber's own promise with the bookkeeping attached in
+ * front, so a caller that has `join`ed or `interrupt`ed a child is looking at
+ * a tree the child has already left. The promise has no rejection arm because
+ * no kernel in this file has one: `runKernel` turns a throw into a defect and
+ * every asynchronous kernel below settles its own errors into an `Exit`.
+ *
+ * This used to be `detachedContext`, which is `forkDaemon` under this name.
+ * The bug that made was not that a cancelled child kept running — nobody
+ * cancels a fiber they cannot see — but that cancelling a *request* left the
+ * work it had started writing to a connection that was already closed, with no
+ * handle anywhere that could have stopped it.
  */
 export function fork<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty, R> {
   return makeEffect({
     run: (runContext) => {
+      const child = childContext(runContext);
+      const running = runKernel(self, child).then((settled) => {
+        releaseChild(runContext, child);
+        return settled;
+      });
+      const started: Exit<Fiber<A, E>, empty> = success(makeFiber(running, child.fiber));
+      return Promise.resolve(started);
+    },
+  });
+}
+
+/**
+ * Start `self` in a fiber that outlives the one that forked it.
+ *
+ * The escape from the rule `fork` keeps, for work whose lifetime is genuinely
+ * not the caller's: a cache warmer, a metrics flush, a supervisor started from
+ * a request that has no business owning it. Nothing but the returned handle
+ * can stop a daemon, so dropping that handle is dropping the work — which is
+ * why this is a name a reader can look up rather than an option on `fork`.
+ *
+ * A daemon is detached from its parent, not from its own children: it still
+ * ends the fibers it started, or the escape would be inherited by everything
+ * below it.
+ */
+export function forkDaemon<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty, R> {
+  return makeEffect({
+    run: (runContext) => {
       const child = detachedContext(runContext);
-      const started: Exit<Fiber<A, E>, empty> = success(
-        makeFiber(runKernel(self, child), child.fiber),
-      );
+      const running = runKernel(self, child).then((settled) => {
+        endFiber(child.fiber);
+        return settled;
+      });
+      const started: Exit<Fiber<A, E>, empty> = success(makeFiber(running, child.fiber));
       return Promise.resolve(started);
     },
   });
@@ -1676,6 +2349,348 @@ export function interrupt<A, E>(fiber: Fiber<A, E>): Effect<Exit<A, E>> {
       return success(await fiber.__promise);
     },
   });
+}
+
+/**
+ * A place two fibers can both read and write, starting at `initial`.
+ *
+ * An `Effect` rather than a value, so that making one is part of the program:
+ * a `Ref` built at module scope is shared by every run of that program, which
+ * is rarely what anybody wants and never what they meant to write.
+ *
+ * Every operation has a synchronous kernel, so a program that uses a `Ref` can
+ * still be answered by `runSync`.
+ */
+export function ref<A>(initial: A): Effect<Ref<A>> {
+  return sync(() => {
+    const made: RefCarrier<A> = { __kind: "Ref", value: initial };
+    return made;
+  });
+}
+
+/** What the ref holds now. */
+export function refGet<A>(self: Ref<A>): Effect<A> {
+  const step = (): Exit<A, empty> => success(self.value);
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Replace what the ref holds. */
+export function refSet<A>(self: Ref<A>, value: A): Effect<void> {
+  const step = (): Exit<void, empty> => {
+    self.value = value;
+    return success(undefined);
+  };
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/**
+ * Read, compute a new value and an answer, and write, without yielding.
+ *
+ * The one place a `Ref` is read and written, and the reason the rest of these
+ * are one line each. It needs no lock: `transform` runs between two property
+ * accesses in one step, and nothing in this runtime interleaves fibers except
+ * at an `await`. That is also the guarantee's boundary — a transform that
+ * returned an `Effect` would yield, and serialising *that* is what a semaphore
+ * is for. See `refUpdateEffect`.
+ *
+ * A transform that throws leaves the ref alone and becomes a defect, because
+ * half of a read-modify-write is worse than none of it.
+ */
+export function refModify<A, B>(self: Ref<A>, transform: (value: A) => [B, A]): Effect<B> {
+  const step = (): Exit<B, empty> => {
+    try {
+      const [answer, next] = transform(self.value);
+      self.value = next;
+      return success(answer);
+    } catch (error) {
+      return defect(error);
+    }
+  };
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Apply a function to what the ref holds. */
+export function refUpdate<A>(self: Ref<A>, transform: (value: A) => A): Effect<void> {
+  return refModify(self, (value) => [undefined, transform(value)]);
+}
+
+/** Apply a function, and give back what it produced. */
+export function refUpdateAndGet<A>(self: Ref<A>, transform: (value: A) => A): Effect<A> {
+  return refModify(self, (value) => {
+    const next = transform(value);
+    return [next, next];
+  });
+}
+
+/** Apply a function, and give back what was there before it. */
+export function refGetAndUpdate<A>(self: Ref<A>, transform: (value: A) => A): Effect<A> {
+  return refModify(self, (value) => [value, transform(value)]);
+}
+
+/** Replace what the ref holds, and give back what was there before. */
+export function refGetAndSet<A>(self: Ref<A>, value: A): Effect<A> {
+  return refModify(self, (current) => [current, value]);
+}
+
+/**
+ * Update a ref with an effect, one fiber at a time.
+ *
+ * This is Effect's `SynchronizedRef`, and it is a `Ref` and a `Semaphore` held
+ * together rather than a third opaque type. Passing the lock in is what makes
+ * the serialisation visible at the call site, and it lets two refs that must
+ * move together share one — which a bundled lock could not express.
+ *
+ * `refModify` needs no lock because it cannot yield. This can, so it must
+ * have one: without it, two fibers read the same value, both compute from it,
+ * and the second write silently discards the first.
+ */
+export function refUpdateEffect<A, E, R>(
+  self: Ref<A>,
+  lock: Semaphore,
+  transform: (value: A) => Effect<A, E, R>,
+): Effect<A, E, R> {
+  // Written with `flatMap` rather than the generator form: the runtime does
+  // not otherwise use its own `effect`, and a combinator that did would be the
+  // one place where a bug in the driver could not be debugged with the driver.
+  return withPermits(
+    lock,
+    1,
+    flatMap(refGet(self), (current) =>
+      flatMap(transform(current), (next) => as(refSet(self, next), next)),
+    ),
+  );
+}
+
+/**
+ * A value that has not been produced yet, and can be waited for.
+ *
+ * Completed at most once: the first `deferredSucceed` or `deferredFail` wins
+ * and says so by returning `true`, and every later one returns `false` rather
+ * than overwriting an answer somebody may already have acted on.
+ */
+export function deferred<A, E = empty>(): Effect<Deferred<A, E>> {
+  return sync(() => {
+    const made: DeferredCarrier<A, E> = {
+      __kind: "Deferred",
+      state: { settled: null, waiters: new Set() },
+    };
+    return made;
+  });
+}
+
+/**
+ * Wait for the value, and take its outcome as this effect's outcome.
+ *
+ * Interruptible, by the protocol `pause` uses for a `sleep`: a waker goes on
+ * the fiber's list, and cancelling the fiber ends the wait now. Getting this
+ * wrong is how a handshake becomes a fiber `interrupt` cannot stop, which is
+ * the whole reason a hand-written `Promise` and a `let` are not good enough
+ * for this.
+ *
+ * No synchronous kernel: waiting for a value nobody has produced is what this
+ * is, and an effect that pretended otherwise would have to answer for a value
+ * that does not exist. `deferredIsDone` is the question with a synchronous
+ * answer.
+ */
+export function deferredAwait<A, E>(self: Deferred<A, E>): Effect<A, E> {
+  return makeEffect({
+    run: (runContext) =>
+      new Promise((resolve) => {
+        const state = self.state;
+        const already = state.settled;
+        if (already != null) {
+          resolve(already);
+          return;
+        }
+        if (isInterrupted(runContext)) {
+          resolve(interruptedExit());
+          return;
+        }
+        const finish = (outcome: Exit<A, E>) => {
+          state.waiters.delete(deliver);
+          runContext.fiber.wakers.delete(wake);
+          resolve(outcome);
+        };
+        const deliver = (outcome: Exit<A, E>) => finish(outcome);
+        const wake = () => finish(interruptedExit());
+        state.waiters.add(deliver);
+        runContext.fiber.wakers.add(wake);
+      }),
+  });
+}
+
+/** Complete it with a value. `true` if this call was the one that did. */
+export function deferredSucceed<A, E>(self: Deferred<A, E>, value: A): Effect<boolean> {
+  const settled: Exit<A, E> = success(value);
+  const step = (): Exit<boolean, empty> => success(completeDeferred(self.state, settled));
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Complete it with a typed failure. `true` if this call was the one that did. */
+export function deferredFail<A, E>(self: Deferred<A, E>, error: E): Effect<boolean> {
+  const settled: Exit<A, E> = failure(failCause(error));
+  const step = (): Exit<boolean, empty> => success(completeDeferred(self.state, settled));
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Whether it has been completed, without waiting to find out. */
+export function deferredIsDone<A, E>(self: Deferred<A, E>): Effect<boolean> {
+  const step = (): Exit<boolean, empty> => success(self.state.settled != null);
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/**
+ * Settle a deferred and hand the outcome to everyone waiting.
+ *
+ * Deleting from the set inside the loop is safe for the reason `interruptFiber`
+ * gives: a `Set` iteration tolerates removal of entries it has reached, and a
+ * waiter only resolves a promise, which cannot add another before this
+ * returns. The `clear` afterwards is for waiters that were added and never
+ * reached, which cannot happen today and costs one call to keep true.
+ */
+function completeDeferred<A, E>(state: DeferredState<A, E>, outcome: Exit<A, E>): boolean {
+  if (state.settled != null) {
+    return false;
+  }
+  state.settled = outcome;
+  for (const waiter of state.waiters) {
+    waiter(outcome);
+  }
+  state.waiters.clear();
+  return true;
+}
+
+/**
+ * A budget of permits, shared by whoever holds this.
+ *
+ * `permits` is the capacity and the starting count. Asking for more than the
+ * capacity later is a defect rather than a wait, because nothing will ever
+ * release enough and a permanent hang is the least debuggable way to say so.
+ */
+export function semaphore(permits: number): Effect<Semaphore> {
+  return sync(() => {
+    const capacity = Math.max(0, Math.floor(permits));
+    const made: SemaphoreCarrier = {
+      __kind: "Semaphore",
+      state: { available: capacity, capacity, waiters: [] },
+    };
+    return made;
+  });
+}
+
+/** Run `body` holding one permit. */
+export function withPermit<A, E, R>(self: Semaphore, body: Effect<A, E, R>): Effect<A, E, R> {
+  return withPermits(self, 1, body);
+}
+
+/**
+ * Run `body` holding `permits` of them, and give them back however it ends.
+ *
+ * The same guarantee `ensuring` gives, and for the same reason: a permit that
+ * is not returned when the fiber holding it is interrupted is a budget that
+ * shrinks every time somebody cancels a request, until nothing can run at all.
+ * `finally` rather than a finalizer effect, because releasing is a counter and
+ * an array splice — it cannot fail, and it must not be interruptible.
+ *
+ * A fiber interrupted while *queued* never took a permit, so it returns
+ * without releasing one it does not hold.
+ */
+export function withPermits<A, E, R>(
+  self: Semaphore,
+  permits: number,
+  body: Effect<A, E, R>,
+): Effect<A, E, R> {
+  return makeEffect({
+    run: async (runContext) => {
+      const wanted = Math.max(0, Math.floor(permits));
+      if (wanted > self.state.capacity) {
+        return defect(
+          `withPermits asked for ${wanted} permits of a semaphore that has ${self.state.capacity}`,
+        );
+      }
+      const taken = await acquirePermits(self.state, wanted, runContext);
+      if (!taken) {
+        return interruptedExit();
+      }
+      try {
+        return await runKernel(body, runContext);
+      } finally {
+        releasePermits(self.state, wanted);
+      }
+    },
+  });
+}
+
+/**
+ * Take `wanted` permits, or wait for them. `false` means interrupted instead.
+ *
+ * A fiber that could be served immediately still queues when anybody is ahead
+ * of it, which is what keeps the order the one people asked in.
+ */
+function acquirePermits(
+  state: SemaphoreState,
+  wanted: number,
+  runContext: Context,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (isInterrupted(runContext)) {
+      resolve(false);
+      return;
+    }
+    if (state.waiters.length === 0 && state.available >= wanted) {
+      state.available -= wanted;
+      resolve(true);
+      return;
+    }
+    const waiter: SemaphoreWaiter = {
+      permits: wanted,
+      settle: (taken: boolean) => {
+        const queued = state.waiters.indexOf(waiter);
+        if (queued >= 0) {
+          state.waiters.splice(queued, 1);
+        }
+        runContext.fiber.wakers.delete(wake);
+        resolve(taken);
+      },
+    };
+    const wake = () => waiter.settle(false);
+    state.waiters.push(waiter);
+    runContext.fiber.wakers.add(wake);
+  });
+}
+
+/**
+ * Give permits back, and serve whoever the queue owes them to.
+ *
+ * Strictly from the head. Serving a later small request that happens to fit
+ * would raise throughput and starve a large one for ever, and a bound that the
+ * widest caller cannot rely on is not a bound.
+ */
+function releasePermits(state: SemaphoreState, permits: number): void {
+  state.available += permits;
+  while (state.waiters.length > 0 && state.available >= state.waiters[0].permits) {
+    const next = state.waiters[0];
+    state.available -= next.permits;
+    next.settle(true);
+  }
 }
 
 /**
@@ -1776,18 +2791,36 @@ export function as<A, B, E, R>(self: Effect<A, E, R>, value: B): Effect<B, E, R>
   return map(self, () => value);
 }
 
-/** Run an effect, raising whatever it failed with. */
+/**
+ * Run an effect, raising whatever it failed with.
+ *
+ * The root fiber ends when this returns, which is what stops a program that
+ * forked and did not wait from leaving the fork behind. `forkDaemon` is how a
+ * caller says the work should outlive the run.
+ */
 export async function runPromise<A, E>(self: Effect<A, E>): Promise<A> {
-  const settled = await runKernel(self, context());
+  const runContext = context();
+  const settled = await runKernel(self, runContext);
+  endFiber(runContext.fiber);
   if (settled.kind === "success") {
     return settled.value;
   }
   throw throwable(settled.cause);
 }
 
-/** Run an effect, returning its outcome rather than raising. */
+/**
+ * Run an effect, returning its outcome rather than raising.
+ *
+ * `.then` rather than `async`, because an extra async frame costs a microtask
+ * on a function whose whole body is one call, and the root fiber has to be
+ * ended after the run either way.
+ */
 export function runPromiseExit<A, E>(self: Effect<A, E>): Promise<Exit<A, E>> {
-  return runKernel(self, context());
+  const runContext = context();
+  return runKernel(self, runContext).then((settled) => {
+    endFiber(runContext.fiber);
+    return settled;
+  });
 }
 
 /** Run a synchronous effect, returning its outcome rather than raising. */
@@ -1811,8 +2844,17 @@ export function runSync<A, E>(self: Effect<A, E>): A {
   throw throwable(settled.cause);
 }
 
-/** Start an effect from outside the runtime and keep a handle on it. */
+/**
+ * Start an effect from outside the runtime and keep a handle on it.
+ *
+ * The handle is a root fiber, so it owns what it forks in the same way any
+ * other fiber does: when it settles, the children it still has are stopped.
+ */
 export function runFork<A, E>(self: Effect<A, E>): Fiber<A, E> {
   const runContext = context();
-  return makeFiber(runKernel(self, runContext), runContext.fiber);
+  const running = runKernel(self, runContext).then((settled) => {
+    endFiber(runContext.fiber);
+    return settled;
+  });
+  return makeFiber(running, runContext.fiber);
 }

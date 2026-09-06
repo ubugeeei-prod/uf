@@ -1,0 +1,476 @@
+---
+title: "Effects · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# @uniflowed/effect
+
+<div className="lede">
+Work described as a value, with its failures and its requirements in the type.
+Plain Flow — no native binding — so `Effect<A, E, R>` is a thing you can read
+the source of in an afternoon.
+</div>
+
+```js
+// @flow
+import { effect, fail, retry, runPromise, sleep } from "@uniflowed/effect";
+
+const fetchUser = (id: string) =>
+  effect(function* () {
+    const response = yield* tryPromise({
+      try: () => fetch(`/users/${id}`),
+      catch: () => ({ kind: "offline" }),
+    });
+    if (!response.ok) {
+      return yield* fail({ kind: "notFound", id });
+    }
+    return yield* promise(() => response.json());
+  });
+
+await runPromise(retry(fetchUser("7"), { kind: "exponential", baseMillis: 100 }));
+```
+
+## The three channels
+
+An `Effect<A, E, R>` produces an `A`, may fail with an `E`, and needs an `R`.
+`E` and `R` default to `empty`, so `Effect<number>` reads as *cannot fail, needs
+nothing*.
+
+The channels accumulate as a union rather than by subtraction, because Flow has
+no type-level set difference. `flatMap(a, b)` is `Effect<B, E1 | E2, R1 | R2>`,
+and a generator body accumulates the same way: Flow infers a generator's yield
+type as the union of everything yielded, so a pipeline's failure type is the sum
+of its steps' without anyone writing it down.
+
+## Failure is not the same as a defect
+
+Three ways an effect can end without a value, and keeping them apart is the
+point of the package.
+
+| Cause | What it is | Who acts on it |
+| --- | --- | --- |
+| `fail` | The typed error the signature promised | `catchAll`, `catchTag`, `either`, `retry` |
+| `die` | A bug: a thrown exception, a missing service | Nobody. It reaches the runner |
+| `interrupt` | A decision somebody already took | Nobody. Repeating it repeats the decision |
+
+`retry` only retries a `fail`, because running a bug again runs the bug again.
+`catchAll` only catches a `fail`, because catching a defect is how a bug gets
+reported as a handled condition. `orDie` moves a failure into the defect channel
+when nobody downstream is going to handle it.
+
+## Running
+
+| Runner | Gives back | When |
+| --- | --- | --- |
+| `runSync` | `A`, raising the failure | Every step has a synchronous kernel |
+| `runSyncExit` | `Exit<A, E>` | The same, without raising |
+| `runPromise` | `Promise<A>`, rejecting with the failure | Always |
+| `runPromiseExit` | `Promise<Exit<A, E>>` | Always |
+| `runFork` | `Fiber<A, E>`, immediately | Always |
+
+An effect with an asynchronous step run under `runSync` fails as a defect
+rather than handing back a promise nobody is awaiting.
+
+## Fibers, and what a fiber owns
+
+`fork` starts work beside the current fiber and hands back a handle. The child's
+lifetime is contained in its parent's, in both directions:
+
+- interrupting the parent interrupts the child, and
+- a parent that *ends* — returns, fails, or is interrupted — stops whatever it
+  still had running.
+
+```js
+const handler = effect(function* () {
+  const refresh = yield* fork(refreshCache);
+  const page = yield* render();
+  yield* interrupt(refresh); // optional: it would be stopped anyway
+  return page;
+});
+```
+
+A cancelled request cannot leave a background refresh writing to a connection
+that is already closed, and a handler that returns early cannot either.
+
+`forkDaemon` is the way out, for work whose lifetime genuinely is not the
+caller's — a cache warmer, a metrics flush. A daemon outlives its parent, so the
+handle `forkDaemon` returns is the only thing that can ever stop it. It is a
+separate name rather than an option because the two answers fail in opposite
+directions: a caller who wanted a daemon and got a child sees their work stop
+and goes looking, while a caller who wanted a child and got a daemon sees
+nothing at all until the process will not exit.
+
+A daemon is detached from its parent, not from its own children — otherwise one
+`forkDaemon` would detach a whole subtree.
+
+`all`, `race` and `timeout` open child fibers under the same rule, which is why
+a failing `all` stops its siblings before it returns and a `timeout` stops the
+effect it timed out on.
+
+## Interruption is cooperative
+
+The flag is read between steps, never inside one: an effect that has started
+runs to its own end, and interruption decides whether the *next* step begins.
+A pending `sleep` is the exception — it registers a waker, so cancelling a fiber
+that is asleep for a minute takes effect now rather than in a minute.
+
+`interrupt` returns the fiber's `Exit` rather than `void`, so a caller can tell
+"cancelled in time" from "too late, it had finished".
+
+## What two fibers can share
+
+Starting and stopping fibers is the easy half of concurrency. Three types cover
+the coordinating half, and all three are the same waiting mechanism with a
+different list attached — which is why a fiber blocked on any of them can still
+be interrupted.
+
+| | |
+| --- | --- |
+| `Ref<A>` | A place two fibers can both read and write |
+| `Deferred<A, E>` | A value one fiber will produce and others are waiting for |
+| `Semaphore` | Permission to run, in a fixed number of copies |
+
+The operations are flat functions — `refGet`, `deferredAwait`, `withPermit` —
+rather than methods or namespaces, which is this package's convention
+throughout: nothing to dispatch at run time, and a bundler drops what you do
+not call.
+
+### Ref
+
+```js
+const total = effect(function* () {
+  const counter = yield* ref(0);
+  yield* forEach(items, (item) => refUpdate(counter, (n) => n + item), { concurrency: 4 });
+  return yield* refGet(counter);
+});
+```
+
+`ref`, `refGet`, `refSet`, `refModify`, `refUpdate`, `refUpdateAndGet`,
+`refGetAndUpdate`, `refGetAndSet` — all with synchronous kernels, so a program
+that uses a `Ref` can still be answered by `runSync`.
+
+`refModify` reads, computes and writes without yielding, so it needs no lock. A
+transform that throws leaves the ref alone and becomes a defect: half of a
+read-modify-write is worse than none of it.
+
+An *effectful* update does yield, so it needs one. `refUpdateEffect(ref, lock,
+transform)` is Effect's `SynchronizedRef` — a `Ref` and a `Semaphore` held
+together rather than a third type. Passing the lock in makes the serialisation
+visible, and lets two refs that must move together share one.
+
+### Deferred
+
+`Fiber` covers "wait for what this fiber returns". `Deferred` covers the other
+one: waiting for a value nobody has promised yet.
+
+```js
+const handshake = yield* deferred();
+yield* fork(effect(function* () {
+  yield* deferredSucceed(handshake, yield* openConnection());
+}));
+const connection = yield* deferredAwait(handshake); // interruptible
+```
+
+It completes at most once: the first `deferredSucceed` or `deferredFail` returns
+`true` and every later one returns `false`, rather than overwriting an answer
+somebody may already have acted on. `deferredIsDone` asks without waiting.
+
+`deferredAwait` registers a waker, the same way a pending `sleep` does, so
+interrupting a fiber blocked on a handshake stops it now. A hand-written
+`Promise` in the same place would not — which is the reason this type exists
+rather than the convenience.
+
+### Semaphore
+
+`all`'s `concurrency` bounds one call. A `Semaphore` bounds a budget shared
+across call sites, which is what a rate-limited API needs:
+
+```js
+const budget = yield* semaphore(2);
+const request = (item) => withPermit(budget, fetchItem(item));
+// Two forEaches, one budget of two between them.
+yield* all([forEach(pageOne, request), forEach(pageTwo, request)]);
+```
+
+`withPermit` and `withPermits` give the permits back however the body ends —
+success, failure, defect, interruption — with the same guarantee `ensuring`
+gives. A permit that leaked on cancellation would shrink the budget every time
+somebody cancelled a request, until nothing could run at all.
+
+The queue is served strictly from the head, so a later small request cannot
+overtake a waiting large one. Asking for more permits than the semaphore has is
+a defect rather than a wait, because nothing will ever release enough and a
+permanent hang is the least debuggable way to say so.
+
+`Queue` and `PubSub` are the same mechanism with a buffer in front, and are not
+here yet. STM is deliberately not planned: it needs a transaction log and a
+retry-on-conflict scheduler, which is larger than everything above put together,
+and its uses can be written with a serialised `Ref` at a cost worth measuring
+before it is paid.
+
+## Resources
+
+`acquireRelease` puts `Scope` in the requirement channel, so an effect that
+acquires something cannot be run until somebody has said where the release
+belongs. `scoped` is what says it, and it closes the scope however the effect
+ends — success, failure, defect, interruption.
+
+Finalizers run in a detached fiber, because a cleanup that is itself cancelled
+is not a cleanup.
+
+`ensuring` is the same guarantee without the `Scope`, for the ordinary "close
+this when the block is done" case.
+
+## Services
+
+A `Tag` is both the name of a service and the effect that reads it, so
+`yield* Clock` inside a generator produces the service and there is no second
+accessor to learn. `provideService` satisfies one requirement with a value;
+`provide` satisfies them by building a `Layer`.
+
+Requirement subtraction is the experimental part. Flow has no type-level set
+difference, so `provide` is typed as
+`(Effect<A, E, R | Out>, Layer<Out, …>) => Effect<A, E, R>` and the checker
+solves for `R`. That works when the provided service is a distinct member of the
+union, and silently leaves it in `R` when it is not. `layerProvide` and
+`layerScoped` subtract the same way and carry the same caveat.
+
+### Layers compose
+
+| | |
+| --- | --- |
+| `layerSucceed(tag, service)` | A service already in hand |
+| `layerEffect(tag, build)` | Built by an effect, which may fail |
+| `layerScoped(tag, build)` | Built by an effect that acquires something |
+| `layerMerge(left, right)` | Both layers' services, side by side |
+| `layerProvide(inner, outer)` | `outer` feeds `inner`, discharging what it needed |
+| `layerProvideMerge(inner, outer)` | The same, keeping `outer`'s services too |
+
+`layerProvide` is what makes a layer's `In` mean something. Without it, a
+`Layer<Database, ConfigError, Config>` could only be used by an effect that
+still required `Config`, so the requirement was a label rather than a debt
+anything could pay.
+
+```js
+const configLayer = layerEffect(Config, readConfigFile);
+const databaseLayer = layerProvide(layerEffect(Database, openPool), configLayer);
+const loggerLayer = layerProvide(layerEffect(Logger, openLog), configLayer);
+
+// Config is read once, not twice.
+await runPromise(provide(program, layerMerge(databaseLayer, loggerLayer)));
+```
+
+### One build per provide
+
+A layer graph is a graph, not a tree: `Database` and `Logger` both wanting
+`Config` is the ordinary shape. One `provide` is one build pass with one memo
+keyed by layer identity, so a layer reached twice is built once — a pool is
+opened once, and a config file read once gives one answer.
+
+The memo lives for one build and not for the process, so a layer handed to two
+`provide`s is built twice. Building once for a whole application is what
+Effect-TS calls a `ManagedRuntime`, and there is not one here yet.
+
+A memoised layer keeps the services it was first built with, so the same layer
+under two different `layerProvide`s in one graph gets one of the two outers.
+The answer is two layers rather than one used twice.
+
+### Layers do not force a program asynchronous
+
+`provide` has a synchronous kernel, so `runSync` still answers for a program
+that uses a layer — which matters most in a test, where `runSync` earns its
+keep. A layer whose build genuinely has to wait fails the same way any other
+asynchronous effect does under `runSync`: a defect saying so, rather than a
+promise nobody is awaiting.
+
+### A layer that acquires something
+
+`layerScoped` builds its service with an effect that may `acquireRelease`. The
+resource is released when the `provide` using it ends — on success, on failure,
+and on interruption — rather than when the build finishes, which is the whole
+reason a connection pool belongs in a layer.
+
+That scope is the layer's, not the body's. `provide` deliberately does not hand
+the body a scope: doing so would silently discharge the `Scope` an
+`acquireRelease` inside the body requires while the requirement channel went on
+saying otherwise. `scoped` is still the only thing that answers for an effect's
+own resources.
+
+## Retrying
+
+A `Schedule` is data — arithmetic over an attempt count, importable on its own
+from `@uniflowed/effect/schedule` and testable with no runtime at all.
+
+| Schedule | Waits |
+| --- | --- |
+| `{ kind: "recurs", times }` | Not at all, `times` more attempts |
+| `{ kind: "spaced", millis }` | A fixed gap, for ever |
+| `{ kind: "exponential", baseMillis, factorPercent? }` | Doubling by default |
+| `{ kind: "fibonacci", baseMillis }` | More gently than doubling |
+| `{ kind: "upTo", millis }` | Once, then stops |
+| `{ kind: "intersect", left, right }` | While both would, the longer wait |
+| `{ kind: "union", left, right }` | While either would, the shorter wait |
+| `{ kind: "maxDelay", schedule, millis }` | The inner schedule, capped |
+| `{ kind: "jittered", schedule, minPercent?, maxPercent? }` | The inner schedule, spread |
+
+Reach for `jittered` on anything a crowd of clients runs. Without it, every
+client that failed at the same moment retries at the same moment, for ever, and
+`maxDelay` does not help — it caps the wait, it does not spread it. The default
+range is 80% to 120% of what the inner schedule said.
+
+The random factor is an argument to `scheduleDelay`, not something the module
+reads, which is what keeps a policy testable across its whole range without a
+seed:
+
+```js
+const backoff = { kind: "jittered", schedule: { kind: "exponential", baseMillis: 100 } };
+scheduleDelay(backoff, 0, 0); // 80  — the bottom of the range
+scheduleDelay(backoff, 0, 1); // 120 — the top
+scheduleDelay(backoff, 0); //    100 — the midpoint, when nobody asks
+```
+
+### Which failures are worth another attempt
+
+A schedule says *when*, never *whether*. `retry` takes an optional third
+argument for the second question, because a 429 is worth retrying and a 400 is
+not and both are typed failures:
+
+```js
+retry(request, backoff, { while: (error) => error.kind !== "forbidden" });
+```
+
+`while` keeps going only while the predicate holds; `until` stops as soon as it
+does. Both compose with the line the runtime already draws — a defect is a bug
+and an interruption is a decision already taken, so neither is ever retried. A
+predicate that throws becomes a defect rather than one more attempt.
+
+Effect takes `{ schedule, while, until, times }` in one argument. Flow's objects
+are exact, so a union of a schedule and an options object cannot be refined by
+reading a property one of them lacks; a third parameter is the shape the checker
+can follow. `times` is absent for a different reason: it is `intersect` with
+`recurs`, which the schedule union already says.
+
+### repeat
+
+The other half of what a schedule is for: run again on *success*, on a
+timetable. A poll, a heartbeat, a cache refresh.
+
+```js
+const poll = repeat(retry(checkHealth, backoff), { kind: "spaced", millis: 1000 });
+const fiber = runFork(poll);
+// …later
+await runPromise(interrupt(fiber));
+```
+
+A failure ends the repetition and is the result — an effect that failed produced
+no value to repeat from, and swallowing it to keep polling would hide the outage
+the poll exists to notice. `retry` is what tolerates a blip; the two compose.
+
+Interruption is checked before each wait and after it, so a fiber polling once a
+minute stops when it is cancelled rather than at the top of the next minute.
+
+Effect's `repeat` returns the schedule's output. This one returns the effect's
+last value, because this `Schedule` is arithmetic over an attempt count and has
+no output channel to return.
+
+## Streams
+
+An `Effect` produces one value. `@uniflowed/effect/stream` is for the programs
+that produce many — a large file, a paginated API, a response body — without
+buying the whole thing into memory first, and without leaving the error
+channel, the interruption protocol and `Scope` behind to do it.
+
+```js
+import { streamFromReadableStream, streamRunForEach, streamTake } from "@uniflowed/effect/stream";
+
+const firstTen = streamTake(streamFromReadableStream(() => response.body), 10);
+await runPromise(streamRunForEach(firstTen, handleChunk));
+```
+
+A `Stream<A, E, R>` is a pull: opening one hands back a step that produces the
+next batch, or nothing when there is no next batch, plus the way to close what
+the traversal opened. Batches rather than elements, because one `Effect`
+allocated per row is the whole cost of a stream on a large file. Effect calls
+the batch a `Chunk`; here it is a `$ReadOnlyArray<A>`, which is the honest
+equivalent in a language with no `Chunk` and no reason to grow a lookalike.
+
+| Sources | |
+| --- | --- |
+| `streamFromArray(items, { chunkSize? })` | An array, in batches |
+| `streamFromIterator(open, { chunkSize? })` | Anything iterable, including an infinite generator |
+| `streamFromEffect(effect)` | One element |
+| `streamPaginate(cursor, page)` | A page at a time, until a page says there is no next |
+| `streamFromReadableStream(open)` | A web `ReadableStream` — `Response.body` on every host uf targets |
+
+| Transforms | |
+| --- | --- |
+| `streamMap`, `streamFilter`, `streamTap` | Per element |
+| `streamTake(n)` | The first `n`, then stop pulling |
+| `streamMapEffect(body, { concurrency? })` | Per element, effectfully, in order |
+| `streamEnsuring(finalizer)` | Run something when a traversal ends |
+
+| Runners | |
+| --- | --- |
+| `streamRunCollect` | Every element, as an array |
+| `streamRunFold` | Fold into one value |
+| `streamRunDrain` | For the effects, discarding the elements |
+| `streamRunForEach` | An effect per element |
+| `streamRunHead` | The first element, without draining the rest |
+
+Every runner produces an ordinary `Effect`, so a stream ends where the rest of
+the package begins.
+
+### The guarantees that matter
+
+A traversal is closed on success, on a failure from a pull, on a defect, and on
+the fiber being interrupted — the same guarantee `acquireRelease` gives, reached
+the same way, because the runners are written with `ensuring`. `streamTake(3)`
+of an infinite source releases what the source opened rather than leaking it,
+and a fiber draining a stream stops *between* pulls rather than in the middle of
+one.
+
+A failure mid-stream ends the traversal with that failure in the error channel,
+and the elements before it are not reported. A defect stays a defect.
+
+`streamMapEffect` fills its window across batch boundaries, so the concurrency
+a caller asks for is the concurrency they get whatever the source's batching
+was. There is no `"unbounded"`, unlike `all` and `forEach`: a stream has no
+length, so unbounded would mean buffering the whole of it, which is the thing a
+stream exists to avoid.
+
+### Why it is a separate module and the runtime is not
+
+`index.js` argues that the runtime cannot be split, because moving a combinator
+out means handing `makeEffect` to a sibling and giving away the opaque type's
+guarantee. A stream looked like it fell under that rule — it produces effects
+and runs them — and it does not: a `Stream` needs the `Effect` *interface* and
+never the `Effect` *carrier*. Every line of `stream.js` is written with the
+public exports, and `index.js` has no seam for it.
+
+### What streams deliberately do not have
+
+`Channel`, `Sink` and `GroupBy`. Effect defines `Stream` and `Sink` in terms of
+`Channel`, a bidirectional primitive; a `Stream` defined directly cannot express
+a `Sink` as the dual of a source. That is a real cost and the right one to pay
+before porting a primitive nothing yet needs — the runners are the nearest
+honest shape.
+
+`streamToReadableStream`, `merge`, `zip`, `buffer` and `fromQueue`. The last
+four want a bounded queue with back pressure, and there is no `Queue` yet.
+
+## What is not here
+
+`Queue`, `Hub` and STM; `Channel`, `Sink`, `GroupBy` and `Chunk`; `forkScoped`
+and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
+Effect's input and output combinators (`whileInput`, `fixed`, `cron`,
+`compose`) are defined over; a fiber scheduler of its own — this runs on the host's microtask
+queue and its `sleep` is `setTimeout`; tracing, spans and metrics; a typed
+defect channel; and a heterogeneous `all`, which in Effect-TS keeps a tuple's
+element types and here takes and returns one array type.
+
+Effect-TS is built on a higher-kinded encoding. Flow has no higher-kinded types
+— a type parameter cannot itself take type arguments — so there is no `pipe`
+with inference and no typeclass dispatch here. Composition is monomorphic
+functions over `Effect`, which is a smaller surface and one with nothing to
+resolve at run time.

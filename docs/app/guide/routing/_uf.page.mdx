@@ -205,6 +205,13 @@ types, not a framework's wrapper. That is what runs unchanged on Node.js, Bun,
 Deno and a Cloudflare Worker, which is the whole point of treating the host as
 a capability rather than a target.
 
+**A handler needs something serving.** `uf dev`, `uf preview`, `uf start` and a
+binary from `uf build --compile` all dispatch to it; a `dist/` handed to a
+plain static file server does not, because there is nothing there to run. That
+is the one thing to know before designing an application around handlers, and
+it is why `uf preview` exists: it is where you find out that what answered in
+development also answers from the build.
+
 One export per method: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
 `OPTIONS`. Anything else a module exports is a helper, not a method — a
 dispatcher that treated every export as one would answer requests with your
