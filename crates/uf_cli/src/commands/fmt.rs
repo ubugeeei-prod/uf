@@ -72,27 +72,38 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     // The other formatter, over the other pile. A failure here is reported
     // beside uf's own rather than raised: a project whose Biome is missing
     // should still learn what uf's formatter found.
-    let formatter = resolved.config.fmt.non_flow.formatter;
-    let formatter_name = formatter.as_str();
+    let formatter_name = resolved.config.fmt.non_flow.formatter.as_str();
     let mut non_flow_unformatted = false;
     // Kept apart from `skipped`, which is "the parser refused this file". A
     // formatter that is not installed is a different problem with a different
     // fix, and folding the two together reported a missing binary as an
     // unparseable file.
     let mut non_flow_failure = None;
-    match uf_fmt::non_flow::run(
-        formatter,
-        &resolved.root,
-        &non_flow,
-        check,
-        &resolved.config.fmt,
-    ) {
-        Ok(formatted) => non_flow_unformatted = !formatted,
+    // And kept apart from both: the formatter uf chose is not installed, which
+    // is neither uf's failure nor the project's. It is reported, named file by
+    // file, and it does not decide the exit code. See ubugeeei-prod/uf#441.
+    let mut non_flow_skipped = None;
+    match uf_fmt::non_flow::run(&resolved.root, &non_flow, check, &resolved.config.fmt) {
+        Ok(uf_fmt::NonFlowOutcome::Formatted) => {}
+        Ok(uf_fmt::NonFlowOutcome::Unformatted) => non_flow_unformatted = true,
+        Ok(uf_fmt::NonFlowOutcome::Skipped { formatter, paths }) => {
+            non_flow_skipped = Some((
+                uf_fmt::non_flow::skipped_message(&formatter, paths.len()),
+                paths,
+            ));
+        }
         Err(error) => non_flow_failure = Some(error.to_string()),
     }
 
     let paths = changed.iter().map(String::as_str).collect::<Vec<_>>();
     let skipped_paths = skipped.iter().map(String::as_str).collect::<Vec<_>>();
+    let left_alone = non_flow_skipped
+        .as_ref()
+        .map(|(_, paths)| paths.iter().map(String::as_str).collect::<Vec<_>>())
+        .unwrap_or_default();
+    // A formatter uf chose and the project does not have is deliberately not
+    // here: the exit code answers for the files uf could format, which is the
+    // question `uf fmt --check` is asked in CI.
     let failing = (check && (!changed.is_empty() || non_flow_unformatted))
         || !skipped.is_empty()
         || !unreadable.is_empty()
@@ -115,6 +126,7 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
             && skipped_paths.is_empty()
             && unreadable.is_empty()
             && non_flow_failure.is_none()
+            && non_flow_skipped.is_none()
             && !non_flow_unformatted
         {
             renderer.status(out, Status::Success, "every file is already formatted");
@@ -150,6 +162,14 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
             }
             if let Some(failure) = non_flow_failure.as_deref() {
                 renderer.status(out, Status::Warn, failure);
+                renderer.blank(out);
+            }
+            // Once, and with the files named: a reader told that "1 non-Flow
+            // file was skipped" and not which one has been given a puzzle
+            // rather than a report.
+            if let Some((message, _)) = non_flow_skipped.as_ref() {
+                renderer.status(out, Status::Warn, message);
+                renderer.bullet_list(out, 2, &left_alone);
                 renderer.blank(out);
             }
             if non_flow_unformatted {
