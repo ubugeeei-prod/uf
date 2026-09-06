@@ -57,10 +57,20 @@
 //
 // One component does use it, and it is the case the API is actually for.
 // `toast("Saved")` is called from an event handler or a `catch`, so the queue
-// of notifications lives outside React — an atom in `@uniflowed/state`, read
-// through `useSyncExternalStore` with the cached immutable snapshots and the
-// consistent server snapshot that requires. A queue is a store; the DOM is
-// not.
+// of notifications lives outside React — a store at module scope in
+// `toast.js`, read through `useSyncExternalStore` with the cached immutable
+// snapshots and the consistent server snapshot that requires. A queue is a
+// store; the DOM is not.
+//
+// That store should be an atom in `@uniflowed/state`, and was one. It is
+// written out by hand in `toast.js` because `@uniflowed/ui` is published to
+// npm and `@uniflowed/state` is not: its name has never been bound, and
+// binding it takes a person with an `npm login` session and a 2FA prompt —
+// ubugeeei-prod/uf#210. A published package whose dependency is missing
+// installs as nothing, `ETARGET` on the first thing a user types, so this
+// package cannot declare that dependency until the name exists. The queue
+// moves back to `@uniflowed/state` when #210 binds it. The local store is the
+// shippable design, not the better one.
 //
 // # Server and client
 //

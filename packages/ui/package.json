@@ -39,8 +39,7 @@
   ],
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.6",
-    "@uniflowed/react": "0.0.0-alpha.6",
-    "@uniflowed/state": "0.0.0-alpha.6"
+    "@uniflowed/react": "0.0.0-alpha.6"
   },
   "peerDependencies": {
     "react": ">=19"

@@ -92,16 +92,53 @@
 //
 // `toast("Saved")` is called from an event handler, from a `catch`, from a
 // Server Action's error path — none of which have a component to put state in.
-// So the queue is an atom in `@uniflowed/state`, read through
-// `useSyncExternalStore`, which is what `ubugeeei-redundancy.md` requires of an
-// external store: cached immutable snapshots, and a server snapshot consistent
-// with them. Nothing here is a mutable array a render reads.
+// So the queue is a store in this module, read through `useSyncExternalStore`,
+// which is what `ubugeeei-redundancy.md` requires of an external store: cached
+// immutable snapshots, and a server snapshot consistent with them. Nothing here
+// is a mutable array a render reads.
 //
-// It is the default store on both sides, deliberately, and not the one a
-// `Provider` scopes. `toast()` is a function in a module; it has no component
-// and no context and therefore no way to find a scoped store, so a region that
-// read one would show an empty stack while the queue filled up somewhere else.
-// One page, one set of notifications.
+// Three properties are what that hook is actually asking for, and the store
+// below has those three and nothing more:
+//
+// - *An immutable snapshot whose reference changes only on a write.* The
+//   getter hands back the array it is holding rather than building one, and a
+//   write that computes the value already there is dropped rather than
+//   announced. A getter that returns a fresh `[]` is a new identity every time
+//   React asks, which renders, which asks again — the infinite loop React
+//   reports rather than tolerates.
+// - *A server snapshot consistent with the first client render.* It is the
+//   same getter, so both sides see the same frozen `NONE` and hydration
+//   compares like with like instead of against a placeholder.
+// - *Module scope.* `toast()` is a function rather than a hook, so it has no
+//   component and no context to reach state through — and an event handler, a
+//   `catch` and a Server Action's error path all have to be able to call it.
+//
+// The third of those settles the scoping question as well: one page, one set
+// of notifications. A queue something could scope to a subtree would leave a
+// region showing an empty stack while `toast()` filled up a store it had no
+// way to find.
+//
+// # Why this is not an atom in `@uniflowed/state`
+//
+// It was one, and it should be one again. A queue read through
+// `useSyncExternalStore` is exactly what an atom is for, `@uniflowed/state` is
+// what this project offers instead of Jotai, and the version of this file that
+// imported `atom`, `read`, `subscribe` and `write` was not making a mistake.
+//
+// It cannot ship that way today. `@uniflowed/ui` is published to npm and
+// `@uniflowed/state` is not: its name has never been bound, binding it takes a
+// person with an `npm login` session and a 2FA prompt, and that is
+// ubugeeei-prod/uf#210. Until it happens the package waits in
+// `tools/release/pending-packages.txt`. A published package whose dependency
+// is missing installs as nothing — `ETARGET` on the first thing a user types —
+// so `tools/release/verify-npm.sh` refuses to release `@uniflowed/ui` while it
+// declares that dependency, and it is right to refuse.
+//
+// So the store below is the shippable design rather than the better one. It is
+// a second implementation of something this repository already has, written
+// out by hand because the first one cannot be installed. When #210 binds the
+// name and `state` moves into `published-packages.txt`, this goes back to an
+// atom and this section goes with it.
 //
 // This is the first `useSyncExternalStore` in this package, and `index.js` says
 // the package deliberately does not use one. That sentence is about reading
@@ -127,8 +164,6 @@ import { useDocumentVisible } from "@uniflowed/hooks/browser";
 import { useElementRef, useFocusWithin, useHover } from "@uniflowed/hooks/dom";
 import { useKeyCombo } from "@uniflowed/hooks/keyboard";
 import { useTimeout } from "@uniflowed/hooks/timing";
-import type { Atom } from "@uniflowed/state";
-import { atom, read, subscribe, write } from "@uniflowed/state";
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
@@ -180,13 +215,46 @@ const DEFAULT_DURATION = 5000;
 const NONE: $ReadOnlyArray<Notification> = Object.freeze([]);
 
 /**
- * The queue.
+ * The queue, and what is watching it.
  *
- * Declared at module scope, which `@uniflowed/state` documents as safe: an
- * atom allocates nothing and belongs to no store until a store is asked for
- * it, so a server importing this file starts nothing.
+ * Module scope is the requirement rather than a convenience: `toast()` has
+ * nowhere else to put this. It costs a server nothing — importing this file
+ * allocates one frozen array and one empty `Set` and starts no work, and
+ * nothing on a server calls `toast()`, because this module is `"use client"`.
  */
-const queue: Atom<$ReadOnlyArray<Notification>> = atom(NONE);
+let queue: $ReadOnlyArray<Notification> = NONE;
+const watchers: Set<() => void> = new Set();
+
+/**
+ * Replace the queue, and wake what is watching it.
+ *
+ * `change` is handed the current queue and returns the next one. Returning the
+ * same array is how a write that changed nothing says so, and such a write
+ * wakes nobody: `useSyncExternalStore` decides whether to render by comparing
+ * the reference it last read against this one, so a fresh array for an
+ * unchanged queue re-renders every region on the page, and a queue mutated in
+ * place re-renders none of them.
+ *
+ * The listeners are iterated over a copy, because one may unsubscribe while
+ * they run — React unmounts a `useSyncExternalStore` subscriber by calling
+ * exactly that unsubscribe — and a `Set` mutated mid-iteration skips entries.
+ * The membership test is against the live set, so one that has just left is
+ * not called anyway.
+ */
+function writeQueue(
+  change: (current: $ReadOnlyArray<Notification>) => $ReadOnlyArray<Notification>,
+): void {
+  const next = change(queue);
+  if (next === queue) {
+    return;
+  }
+  queue = next;
+  for (const watcher of Array.from(watchers)) {
+    if (watchers.has(watcher)) {
+      watcher();
+    }
+  }
+}
 
 /** Ids are this module's, because `useId` needs a component and `toast()` is not one. */
 let sequence = 0;
@@ -210,7 +278,7 @@ export function toast(content: React.Node, options?: ToastOptions): string {
     urgency: options?.urgency ?? "polite",
     duration: options?.duration === undefined ? DEFAULT_DURATION : options.duration,
   };
-  write(queue, (current) => [...current, notification]);
+  writeQueue((current) => [...current, notification]);
   return notification.id;
 }
 
@@ -225,7 +293,7 @@ export function toast(content: React.Node, options?: ToastOptions): string {
  * region it is in, which is the point.
  */
 export function updateToast(id: string, changes: ToastChanges): void {
-  write(queue, (current) =>
+  writeQueue((current) =>
     current.map((each) =>
       each.id === id
         ? {
@@ -241,7 +309,7 @@ export function updateToast(id: string, changes: ToastChanges): void {
 
 /** Take a notification away, whether it expired, was dismissed, or was acted on. */
 export function dismissToast(id: string): void {
-  write(queue, (current) => {
+  writeQueue((current) => {
     const left = current.filter((each) => each.id !== id);
     // The same array back when nothing matched, so a stray dismissal is not a
     // new snapshot and does not render every region on the page.
@@ -257,24 +325,28 @@ export function dismissToast(id: string): void {
  * there in the next one unless something clears it.
  */
 export function dismissAllToasts(): void {
-  write(queue, () => NONE);
+  writeQueue(() => NONE);
 }
 
 /** Module-level and therefore stable, which is what stops React re-subscribing. */
 function subscribeToQueue(listener: () => void): () => void {
-  return subscribe(queue, listener);
+  watchers.add(listener);
+  return () => {
+    watchers.delete(listener);
+  };
 }
 
 /**
  * The current queue.
  *
- * Used for the server snapshot as well as the client one, because an atom
- * holds its value on both sides: hydration then compares like with like rather
- * than against a placeholder. On a server that value is `NONE`, since nothing
- * on a server calls `toast()` — this module is `"use client"`.
+ * Used for the server snapshot as well as the client one, because the value is
+ * the same frozen array on both sides until something writes: hydration then
+ * compares like with like rather than against a placeholder. On a server it is
+ * always `NONE`, since nothing on a server calls `toast()` — this module is
+ * `"use client"`.
  */
 function readQueue(): $ReadOnlyArray<Notification> {
-  return read(queue);
+  return queue;
 }
 
 const NotificationContext: React.Context<Notification | null> = createContext(null);
