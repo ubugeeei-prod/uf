@@ -46,17 +46,53 @@ const assets = {
 const document = { scripts: ["/assets/app-a1b2c3.js"], styles: [], preloads: [] };
 
 /**
+ * A render result of the shape the router hands back: a shell that is ready,
+ * and a body still arriving.
+ *
+ * The two delivery methods a Node server uses — `pipe` for a response and
+ * `stream` for the `HEAD` that cancels it. Written out rather than imported
+ * from the router, because what is under test is the shim's half of the
+ * contract, and a fake that satisfies the real one is the only way to see the
+ * shim get it wrong.
+ */
+function rendered(status: number, html: string) {
+  let cancelled = false;
+  return {
+    status,
+    pipe: (destination) => {
+      destination.write(Buffer.from(html, "utf8"));
+      destination.end();
+    },
+    stream: () => ({
+      cancel: async () => {
+        cancelled = true;
+      },
+      get cancelled() {
+        return cancelled;
+      },
+    }),
+    wasCancelled: () => cancelled,
+  };
+}
+
+/**
  * An application that records what it was asked, so a test can tell "the
  * renderer produced this" from "a file was found".
  */
 function application() {
-  const asked = { rendered: [], dispatched: [] };
+  const asked = { rendered: [], dispatched: [], guarded: [] };
   const app = {
     render: async (url: string) => {
       asked.rendered.push(url);
       return url.startsWith("/nowhere")
-        ? { status: 404, html: "<!doctype html><p>not found</p>" }
-        : { status: 200, html: `<!doctype html><p>rendered ${url}</p>` };
+        ? rendered(404, "<!doctype html><p>not found</p>")
+        : rendered(200, `<!doctype html><p>rendered ${url}</p>`);
+    },
+    // A guard that lets everything through, so every existing case is about
+    // what it was about. The two cases below turn it on.
+    runMiddleware: async (request: Request) => {
+      asked.guarded.push(new URL(request.url).pathname);
+      return null;
     },
     dispatch: async (request: Request) => {
       const { pathname } = new URL(request.url);
@@ -209,7 +245,8 @@ describe("route handlers", () => {
     const dispatched = [];
     const handle = createHandler({
       app: {
-        render: async () => ({ status: 200, html: "<!doctype html><p>rendered</p>" }),
+        render: async () => rendered(200, "<!doctype html><p>rendered</p>"),
+        runMiddleware: async () => null,
         dispatch: async (request: Request) => {
           dispatched.push(new URL(request.url).pathname);
           return new Response("handled", { status: 201 });
@@ -251,5 +288,83 @@ describe("HEAD", () => {
     const { response } = await request("HEAD", "/guide/dynamic");
     expect(response.statusCode).toBe(200);
     expect(response.body()).toBe("");
+  });
+});
+
+describe("the guard on the path", () => {
+  it("runs before the dispatcher and before the render", async () => {
+    // ubugeeei-prod/uf#260, in the one place it had not been closed: a
+    // middleware ran under `uf dev`, under `uf preview` and under `uf start`,
+    // and a compiled binary served the same application without it. An auth
+    // check that stops running when the build is compiled is worse than one
+    // that never worked, because the version that was tested is the version
+    // that had it.
+    const { app, asked } = application();
+    const handle = createHandler({
+      app: {
+        ...app,
+        runMiddleware: async (request: Request) => {
+          asked.guarded.push(new URL(request.url).pathname);
+          return new URL(request.url).pathname.startsWith("/dashboard")
+            ? new Response(null, { status: 302, headers: { location: "/sign-in" } })
+            : null;
+        },
+      },
+      assets,
+      document,
+    });
+
+    const guarded = recorder();
+    await handle(
+      { method: "GET", url: "/dashboard/reports", headers: { host: "example.test" } },
+      guarded,
+    );
+
+    expect(guarded.statusCode).toBe(302);
+    expect(guarded.headers.location).toBe("/sign-in");
+    // Neither of the two below it was reached.
+    expect(asked.dispatched).toEqual([]);
+    expect(asked.rendered).toEqual([]);
+  });
+
+  it("guards a path under it that matches no route at all", async () => {
+    // The reason the guard is a flat table keyed by path rather than a field
+    // on a route: `/dashboard/typo` matches nothing, and a 404 rendered
+    // without the guard is the page the guard existed to keep private saying
+    // "no such page" to someone who should not have been asked.
+    const { app, asked } = application();
+    const handle = createHandler({
+      app: {
+        ...app,
+        runMiddleware: async (request: Request) =>
+          new URL(request.url).pathname.startsWith("/dashboard")
+            ? new Response(null, { status: 302, headers: { location: "/sign-in" } })
+            : null,
+      },
+      assets,
+      document,
+    });
+
+    const response = recorder();
+    await handle(
+      { method: "GET", url: "/dashboard/typo", headers: { host: "example.test" } },
+      response,
+    );
+
+    expect(response.statusCode).toBe(302);
+    expect(asked.rendered).toEqual([]);
+  });
+
+  it("lets an unguarded path through to the render", async () => {
+    // The half that proves the guard is conditional rather than a wall.
+    const { app, asked } = application();
+    const handle = createHandler({ app, assets, document });
+
+    const response = recorder();
+    await handle({ method: "GET", url: "/about", headers: { host: "example.test" } }, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(asked.guarded).toEqual(["/about"]);
+    expect(asked.rendered).toEqual(["/about"]);
   });
 });

@@ -94,15 +94,36 @@ export type DocumentAssets = {|
 
 /** What the project's server bundle exports; see `virtual:uf/server`. */
 export type StandaloneApp = {|
+  /**
+   * Render `url`, resolving when the *shell* is ready.
+   *
+   * The same `{ status, headers?, pipe }` the router hands `uf start` and
+   * every adapter — not a finished string. A binary that collected the whole
+   * document before answering would be the one deployment target that does not
+   * stream, and the reason `renderToString` was replaced is that the wait is
+   * the slowest thing on the page.
+   */
   readonly render: (
     url: string,
     assets: DocumentAssets,
+    options?: {| readonly onError?: (error: mixed) => void |},
   ) => Promise<{|
     readonly status: number,
-    readonly html: string,
     readonly headers?: { readonly [string]: string },
+    readonly pipe: (destination: NodeResponse) => void,
+    readonly stream: () => ReadableStream<Uint8Array>,
   |}>,
   readonly dispatch: (request: Request) => Promise<Response | null>,
+  /**
+   * The guard on the path, run before anything under it answers.
+   *
+   * Called rather than tested for: a server bundle without it is a `TypeError`
+   * on the first request, not an application whose auth check quietly stopped
+   * running once it was compiled. See ubugeeei-prod/uf#260, and
+   * `@uniflowed/vite`'s `createApplicationHandler`, which says the same thing
+   * about `uf preview` and `uf start`.
+   */
+  readonly runMiddleware: (request: Request) => Promise<Response | null>,
 |};
 
 /** Everything an application needs to answer a request, all of it built in. */
@@ -292,7 +313,22 @@ export function createHandler(
       }
     }
 
-    const handled = await app.dispatch(toRequest(request, url));
+    // Middleware above the dispatcher and above the render, and below the two
+    // lookups on purpose. It guards a path, so it must run for a page, for a
+    // route handler, and for a path under it that matches neither — but an
+    // embedded asset and a prerendered document are answered before it, which
+    // is exactly what `uf preview` does, because Vite's file middleware runs
+    // before anything mounted behind it. The three front doors have to give
+    // one answer; that a prerendered page under a guard ships unguarded is
+    // true of all of them and is ubugeeei-prod/uf#342.
+    const asRequest = toRequest(request, url);
+    const guarded = await app.runMiddleware(asRequest);
+    if (guarded != null) {
+      await send(response, method, guarded);
+      return;
+    }
+
+    const handled = await app.dispatch(asRequest);
     if (handled != null) {
       await send(response, method, handled);
       return;
@@ -316,16 +352,33 @@ export function createHandler(
       return;
     }
 
-    const rendered = await app.render(url.pathname + url.search, document);
+    const rendered = await app.render(url.pathname + url.search, document, {
+      // There is no terminal to render into: this is a binary somebody started
+      // with `./app`, possibly under a supervisor. The console is where a
+      // supervisor looks, and losing a boundary's exception entirely would be
+      // worse — it is the only trace a page that failed after its first byte
+      // leaves anywhere.
+      onError: (error) => {
+        console.error(error);
+      },
+    });
     response.statusCode = rendered.status;
     response.setHeader("content-type", "text/html; charset=utf-8");
     response.setHeader("cache-control", DOCUMENT_CACHE_CONTROL);
     for (const name of Object.keys(rendered.headers ?? {})) {
       response.setHeader(name, (rendered.headers ?? {})[name]);
     }
-    const html = Buffer.from(rendered.html, "utf8");
-    response.setHeader("content-length", String(html.byteLength));
-    response.end(method === "HEAD" ? undefined : html);
+    // No `content-length`: the length is not known until the last byte, and
+    // waiting for it is the whole of what streaming is not. `HEAD` gets the
+    // status and the headers, and the stream is cancelled rather than dropped
+    // so the render behind it stops instead of filling its queue and waiting
+    // for a reader that is never coming.
+    if (method === "HEAD") {
+      await rendered.stream().cancel();
+      response.end();
+      return;
+    }
+    rendered.pipe(response);
   };
 }
 
