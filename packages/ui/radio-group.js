@@ -97,6 +97,7 @@ export function radioSet(orientation: Orientation): RovingSet {
     owner: '[role="radiogroup"]',
     orientation,
     wrap: true,
+    skipDisabled: true,
   };
 }
 

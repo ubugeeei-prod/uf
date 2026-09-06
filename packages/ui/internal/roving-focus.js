@@ -20,11 +20,12 @@
 //   * **Nesting.** A submenu's items are inside its parent menu's element, so
 //     "the items of this menu" cannot be `querySelectorAll` alone. An item
 //     belongs to the nearest container of its own kind.
-//   * **Disabled is skipped, not landed on.** And the direction to keep
-//     searching in cannot be inferred from the target index: `End` aims at the
-//     last item and, if that one is disabled, has to walk *backwards*. Guessing
-//     "forwards, because the target is ahead of us" wrapped `End` around to the
-//     first item.
+//   * **Disabled is skipped, not landed on** — in a set with a roving tab stop,
+//     which is not all of them; `moveTo` says which and why. And the direction
+//     to keep searching in cannot be inferred from the target index: `End` aims
+//     at the last item and, if that one is disabled, has to walk *backwards*.
+//     Guessing "forwards, because the target is ahead of us" wrapped `End`
+//     around to the first item.
 //   * **Typeahead.** Pressing `r` in a menu goes to Refresh. Without it a menu
 //     of thirty items is thirty arrow presses, and every native menu on every
 //     platform has had this since before the web.
@@ -169,6 +170,15 @@ export function movementFor(
  * `ArrowDown` on a freshly opened menu land on the first item. `wrap` is false
  * for a set where running off the end should stop rather than cycle.
  *
+ * `skipDisabled` is true for every set with a roving tab stop, where an
+ * unavailable item is announced and stepped over. It is false for an accordion,
+ * and that is not a preference: an accordion's headers are ordinary buttons in
+ * the page's tab order, so `Tab` reaches every one of them, and arrow keys that
+ * stepped over one would disagree with `Tab` about which headers exist. The
+ * item they would step over is the open section's own header, which
+ * `aria-disabled` marks as "pressing this closes nothing" rather than "there is
+ * nothing here".
+ *
  * Returns null when every item is disabled, or when the ends are closed and
  * there is nothing further in that direction — in both cases the caller should
  * leave focus where it is rather than move it somewhere arbitrary.
@@ -178,6 +188,7 @@ export function moveTo(
   from: number,
   movement: Movement,
   wrap: boolean,
+  skipDisabled?: boolean = true,
 ): HTMLElement | null {
   const count = items.length;
   if (count === 0) {
@@ -210,7 +221,7 @@ export function moveTo(
       return null;
     }
     const candidate = items[((at % count) + count) % count];
-    if (isEnabled(candidate)) {
+    if (!skipDisabled || isEnabled(candidate)) {
       return candidate;
     }
   }
@@ -235,6 +246,8 @@ export type RovingSet = {|
   readonly orientation: Orientation,
   /** Whether running off the end cycles or stops. */
   readonly wrap: boolean,
+  /** Whether an `aria-disabled` item is stepped over; see `moveTo`. */
+  readonly skipDisabled: boolean,
 |};
 
 /** The part of a key event a set reads, and the right to claim the key. */
@@ -277,6 +290,7 @@ export function moveOnKey(
     indexOfActive(items, container.ownerDocument?.activeElement),
     movement,
     set.wrap,
+    set.skipDisabled,
   );
   if (next == null) {
     return null;
@@ -325,7 +339,13 @@ export hook useFirstItem(
     // `moveTo` rather than `items[0]`, so a disabled first item is stepped over
     // here exactly as the arrow keys step over it: a group whose first choice
     // is unavailable must still be reachable.
-    const landing = moveTo(itemsOf(root, set.item, set.owner), -1, "first", false);
+    const landing = moveTo(
+      itemsOf(root, set.item, set.owner),
+      -1,
+      "first",
+      false,
+      set.skipDisabled,
+    );
     setFirst(landing?.id ?? null);
   });
 

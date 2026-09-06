@@ -23,11 +23,14 @@ import { useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
 import {
+  Accordion,
   Checkbox,
+  Collapsible,
   Combobox,
   Dialog,
   Field,
   Menu,
+  NavigationMenu,
   RadioGroup,
   Switch,
   Tabs,
@@ -1916,6 +1919,325 @@ describe("ToggleGroup", () => {
       message = String(error);
     }
     expect(message).toContain("ToggleGroup.Item must be rendered inside a ToggleGroup.Root");
+  });
+});
+
+describe("Collapsible", () => {
+  component Details() {
+    return (
+      <Collapsible.Root>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+        <Collapsible.Content>the small print</Collapsible.Content>
+      </Collapsible.Root>
+    );
+  }
+
+  it("says that the button controls something, and whether it is showing", async () => {
+    render(<Details />);
+    const trigger = screen.getByRole("button", { name: "Details" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger.getAttribute("aria-controls")).toBe(
+      screen.getByText("the small print").getAttribute("id"),
+    );
+    expect(danglingReferences()).toEqual([]);
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("claims no aria-controls when there is no content to name", () => {
+    render(
+      <Collapsible.Root>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+      </Collapsible.Root>,
+    );
+    // A caller may render the content conditionally, or not at all until data
+    // arrives. An `aria-controls` pointing at an id nothing has tells a reader
+    // there is somewhere to go and then has nowhere to send them.
+    expect(screen.getByRole("button", { name: "Details" })).not.toHaveAttribute("aria-controls");
+  });
+
+  it("keeps the closed content in the document, where find-in-page can reach it", async () => {
+    render(<Details />);
+    const content = screen.getByText("the small print");
+    // Not `null`, which is what `Tabs.Panel` returns and what would take the
+    // text out of the browser's find-in-page. `until-found` rather than a bare
+    // `hidden` is the whole point, and React cannot say it through the prop —
+    // `<div hidden="until-found">` renders `hidden=""` — so an effect upgrades
+    // the attribute React has already committed.
+    expect(content).toHaveAttribute("hidden", "until-found");
+    await userEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(content).not.toHaveAttribute("hidden");
+  });
+
+  it("lets a parent own whether it is open", async () => {
+    const onOpenChange = fn();
+    render(
+      <Collapsible.Root onOpenChange={onOpenChange} open={false}>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+        <Collapsible.Content>the small print</Collapsible.Content>
+      </Collapsible.Root>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("button", { name: "Details" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+});
+
+describe("Accordion", () => {
+  component Faq(
+    collapsible?: boolean = true,
+    level?: number = 3,
+    type?: "single" | "multiple" = "single",
+  ) {
+    return (
+      <Accordion.Root collapsible={collapsible} defaultValue={["shipping"]} type={type}>
+        <Accordion.Item value="shipping">
+          <Accordion.Header level={level}>
+            <Accordion.Trigger>Shipping</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>ships in two days</Accordion.Content>
+        </Accordion.Item>
+        <Accordion.Item value="returns">
+          <Accordion.Header level={level}>
+            <Accordion.Trigger>Returns</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>thirty days</Accordion.Content>
+        </Accordion.Item>
+        <Accordion.Item value="warranty">
+          <Accordion.Header level={level}>
+            <Accordion.Trigger>Warranty</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>two years</Accordion.Content>
+        </Accordion.Item>
+      </Accordion.Root>
+    );
+  }
+
+  // The panels that a reader can actually read, by their text. Asked this way
+  // rather than with `getByRole("region")` on purpose: every panel keeps its
+  // role and its place in the document whether it is open or closed — that is
+  // the point of `hidden="until-found"` — so "which are open" is a question
+  // about the `hidden` attribute, and asking it directly says so.
+  const showing = () =>
+    screen
+      .getAllByRole("region")
+      .filter((panel) => !panel.hasAttribute("hidden"))
+      .map((panel) => panel.textContent);
+
+  it("names the region after the trigger that opens it", async () => {
+    render(<Faq />);
+    const region = screen.getAllByRole("region")[0];
+    const named = region.getAttribute("aria-labelledby") ?? "";
+    expect(document.getElementById(named)?.textContent).toBe("Shipping");
+    // A region with no name is a landmark that says "region" and nothing else.
+    expect(danglingReferences()).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Shipping" }));
+    // And still true with everything closed, which is when a name pointing at
+    // an unmounted trigger would have gone stale.
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("puts the trigger in a heading at the level the caller asked for", () => {
+    render(<Faq level={3} />);
+    // An accordion inside a section titled by an `<h2>` needs `<h3>`, and a
+    // component that hard-codes one produces an outline nobody can navigate.
+    // The tag name rather than `getByRole("heading", { level })`, because that
+    // option is not implemented in this testing library and every heading comes
+    // back whichever level is asked for — a test that would pass on `<h2>`.
+    const heading: $FlowFixMe = screen.getByRole("button", { name: "Shipping" }).parentElement;
+    expect(heading.tagName).toBe("H3");
+    expect(within(heading).getByRole("button", { name: "Shipping" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading").length).toBe(3);
+  });
+
+  it("takes a different heading level without changing anything else", () => {
+    render(<Faq level={2} />);
+    const heading: $FlowFixMe = screen.getByRole("button", { name: "Shipping" }).parentElement;
+    expect(heading.tagName).toBe("H2");
+    expect(screen.getAllByRole("heading").length).toBe(3);
+  });
+
+  it("keeps a single accordion to one open item", async () => {
+    render(<Faq />);
+    expect(showing()).toEqual(["ships in two days"]);
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(showing()).toEqual(["thirty days"]);
+    expect(screen.getByRole("button", { name: "Shipping" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("lets a multiple accordion hold two open at once", async () => {
+    render(<Faq type="multiple" />);
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(showing()).toEqual(["ships in two days", "thirty days"]);
+  });
+
+  it("says why the open one cannot be closed, and keeps it announced", async () => {
+    render(<Faq collapsible={false} />);
+    const open = screen.getByRole("button", { name: "Shipping" });
+    // `aria-disabled` rather than `disabled`: a reader is told "pressing this
+    // does nothing" instead of finding that a header they can see has left the
+    // accessibility tree.
+    expect(open).toHaveAttribute("aria-disabled", "true");
+    expect(open).toBeInTheDocument();
+    await userEvent.click(open);
+    expect(open).toHaveAttribute("aria-expanded", "true");
+    // And the constraint is only about closing: another section still opens,
+    // and the first trigger is then an ordinary one again.
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(showing()).toEqual(["thirty days"]);
+    expect(screen.getByRole("button", { name: "Shipping" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("leaves every header in the page's tab order", () => {
+    render(<Faq />);
+    // The inverse of the tab list's "keeps exactly one tab in the page's tab
+    // order", and the pair is what documents that an accordion is a stack of
+    // ordinary buttons rather than one control.
+    const headers = screen.getAllByRole("button");
+    expect(headers.length).toBe(3);
+    for (const header of headers) {
+      expect(header).not.toHaveAttribute("tabindex");
+    }
+  });
+
+  it("moves between headers with the arrows, Home and End", async () => {
+    render(<Faq />);
+    act(() => screen.getByRole("button", { name: "Shipping" }).focus());
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("button", { name: "Returns" })).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("button", { name: "Warranty" })).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("button", { name: "Shipping" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("button", { name: "Warranty" })).toHaveFocus();
+  });
+
+  it("lands the arrows on a header that cannot be pressed, rather than over it", async () => {
+    render(<Faq collapsible={false} />);
+    act(() => screen.getByRole("button", { name: "Returns" }).focus());
+    // Every other set in this package steps over an `aria-disabled` item. This
+    // one must not: `Tab` reaches all three headers, and arrows that skipped
+    // the open one would disagree with `Tab` about which headers exist.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("button", { name: "Shipping" })).toHaveFocus();
+  });
+
+  it("keeps the closed sections findable", async () => {
+    render(<Faq />);
+    const closed = screen.getByText("thirty days");
+    expect(closed).toHaveAttribute("hidden", "until-found");
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(closed).not.toHaveAttribute("hidden");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Accordion.Trigger>orphan</Accordion.Trigger>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Accordion.Trigger must be rendered inside an Accordion.Item");
+  });
+});
+
+describe("Navigation menu", () => {
+  component Site() {
+    return (
+      <NavigationMenu.Root aria-label="Main">
+        <NavigationMenu.List>
+          <NavigationMenu.Item value="docs">
+            <NavigationMenu.Trigger>Docs</NavigationMenu.Trigger>
+            <NavigationMenu.Body>
+              <NavigationMenu.Link href="/guide">Guide</NavigationMenu.Link>
+              <NavigationMenu.Link href="/reference">Reference</NavigationMenu.Link>
+            </NavigationMenu.Body>
+          </NavigationMenu.Item>
+          <NavigationMenu.Item value="blog">
+            <NavigationMenu.Trigger>Blog</NavigationMenu.Trigger>
+            <NavigationMenu.Body>
+              <NavigationMenu.Link href="/blog/latest">Latest</NavigationMenu.Link>
+            </NavigationMenu.Body>
+          </NavigationMenu.Item>
+        </NavigationMenu.List>
+      </NavigationMenu.Root>
+    );
+  }
+
+  it("is a list of links and not a menu", async () => {
+    render(<Site />);
+    await userEvent.click(screen.getByRole("button", { name: "Docs" }));
+    // `menu`, `menubar` and `menuitem` are for application commands. A reader
+    // told "menu, five items" expected a list of links, and a `menuitem` is not
+    // announced as a link, is not in the list of links they can pull up, and
+    // brings a whole keyboard map with it that this is not implementing.
+    expect(screen.queryByRole("menu")).toBe(null);
+    expect(screen.queryByRole("menubar")).toBe(null);
+    expect(screen.queryAllByRole("menuitem").length).toBe(0);
+    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Guide",
+      "Reference",
+    ]);
+    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+  });
+
+  it("says whether an entry is open, and names the group only while it is", async () => {
+    render(<Site />);
+    const trigger = screen.getByRole("button", { name: "Docs" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const group = screen.getAllByRole("list")[1];
+    expect(trigger.getAttribute("aria-controls")).toBe(group.getAttribute("id"));
+    expect(group.getAttribute("aria-labelledby")).toBe(trigger.getAttribute("id"));
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("closes the group on Escape and gives focus back to its button", async () => {
+    render(<Site />);
+    const trigger = screen.getByRole("button", { name: "Docs" });
+    await userEvent.click(trigger);
+    act(() => screen.getByRole("link", { name: "Guide" }).focus());
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("link", { name: "Guide" })).toBe(null);
+    // Leaving focus on the `<li>` the group was removed from drops the reader
+    // at the top of the page.
+    expect(trigger).toHaveFocus();
+  });
+
+  it("keeps one group open at a time", async () => {
+    render(<Site />);
+    await userEvent.click(screen.getByRole("button", { name: "Docs" }));
+    await userEvent.click(screen.getByRole("button", { name: "Blog" }));
+    expect(screen.queryByRole("link", { name: "Guide" })).toBe(null);
+    expect(screen.getByRole("link", { name: "Latest" })).toBeInTheDocument();
+  });
+
+  it("closes the group when a link in it is chosen", async () => {
+    render(<Site />);
+    await userEvent.click(screen.getByRole("button", { name: "Docs" }));
+    await userEvent.click(screen.getByRole("link", { name: "Guide" }));
+    expect(screen.getByRole("button", { name: "Docs" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<NavigationMenu.Trigger>orphan</NavigationMenu.Trigger>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain(
+      "NavigationMenu.Trigger must be rendered inside a NavigationMenu.Item",
+    );
   });
 });
 

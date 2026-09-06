@@ -96,6 +96,7 @@ function toggleSet(orientation: Orientation): RovingSet {
     owner: '[role="group"]',
     orientation,
     wrap: true,
+    skipDisabled: true,
   };
 }
 

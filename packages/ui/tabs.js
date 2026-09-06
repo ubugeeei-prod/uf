@@ -163,6 +163,7 @@ export component TabsList(children: renders* TabsTab, ...rest: Rest) {
           owner: '[role="tablist"]',
           orientation: tabs.orientation,
           wrap: true,
+          skipDisabled: true,
         });
         if (next != null && tabs.activation === "automatic") {
           tabs.select(next.getAttribute("data-value") ?? "");

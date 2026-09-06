@@ -101,6 +101,9 @@ the focus management and the whole keyboard map — and ships no styles at all.
 | `RadioGroup` | Radio Group | Arrows that check as they move, and a tab stop on the first item while nothing is chosen, without which an unanswered group cannot be reached by `Tab` at all |
 | `ToggleGroup` | Button, Radio Group | One tab stop for a row of toggle buttons. `type="single"` is a radio group drawn as segments, and is rendered by `RadioGroup` rather than written twice |
 | `Tabs` | Tabs | One tab stop for the whole list, and the choice between automatic and manual activation |
+| `Collapsible` | Disclosure | `aria-expanded`, and an `aria-controls` that names the content only while there is content to name |
+| `Accordion` | Accordion | The heading level is the caller's, each panel is a region named after its header, and the closed ones stay findable by the browser's find-in-page |
+| `NavigationMenu` | Disclosure Navigation Menu | A `<nav>` of links behind `aria-expanded` buttons — *not* `role="menu"`, which is for application commands and tells a reader the wrong thing about what they are looking at |
 | `Dialog` | Dialog (Modal) | A focus trap that cannot be escaped, focus given back, the page held still and made inert |
 | `Menu` | Menu | Arrow keys, `Home`/`End`, typeahead, submenus, and one `Escape` closing one level |
 | `Combobox` | Combobox | `aria-activedescendant` over a list the caller filters, and the count a reader is told |
@@ -119,6 +122,15 @@ does everywhere else. `aria-orientation` says which pair is live, so a reader is
 told rather than left to guess. This is a deliberate narrowing of the WAI-ARIA
 practices for `RadioGroup`, which list both pairs; the reasoning is in
 `packages/ui/radio-group.js`.
+
+**A closed section is hidden, not removed.** `Collapsible` and `Accordion` leave
+their panels in the document and mark them `hidden="until-found"`, so the
+browser's find-in-page can still reach the text inside a collapsed section,
+reveal it, and scroll to the match. Closed tab panels and closed navigation
+groups are removed instead, and both modules say why. React cannot express
+`hidden="until-found"` through the `hidden` prop — it is on React's list of
+boolean attributes, so the string is flattened to `hidden=""` — so the
+components upgrade the attribute after React commits it.
 
 ## Publishing status
 
