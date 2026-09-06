@@ -74,24 +74,47 @@ export type StoreInstance = {
 };
 
 /**
- * An atom, a cell or a binding whose types are not known here.
+ * An atom, as the thing a store's maps are keyed by.
  *
- * A store's maps hold every atom in the application at once, and the lookup
- * does not care what any of them holds — only the call that comes back out
- * does, and those are generic. Flow has no existential to say "some `T`", and
- * the obvious substitute does not work: an atom's `equals` and `onMount` take
- * a `T`, so `AtomRecord<T, A>` is not an `AtomRecord<mixed, empty>`.
- *
- * These three aliases are the whole of it. Every function that reaches a value
- * is generic in its type, so nothing outside this file sees them.
+ * A key is an identity and nothing else: the maps are looked up by the atom
+ * the caller already holds, and no property of one is ever read through this
+ * type. So the honest key type is not "an atom record of some value type" —
+ * which is `AtomRecord<any, any>`, and is a claim that every field of one may
+ * be read and will answer `any` — it is "something with an atom's name on it".
+ * An interface is how Flow says that: `AtomRecord<V, A>` satisfies it for
+ * every `V` and `A`, and nothing that comes back out of a map has this type.
  */
-type AnyRecord = AtomRecord<any, any>;
+type AtomIdentity = interface { readonly label: string };
+
+/**
+ * A cell or a binding whose value type is not known here.
+ *
+ * This is the existential the key type escaped, and it does not escape: a
+ * store's maps hold every atom in the application at once, and the lookup that
+ * comes back out has to be a `Cell<V>` for the `V` of the atom it was found
+ * under. That is a *correspondence* between a key's type and its value's, and
+ * Flow has no way to write one — not an existential (`some T` loses which
+ * `T`), not variance (`Cell` is invariant, deliberately: a `Cell<Dog>` is not
+ * a `Cell<Animal>` because anything holding the second may write a `Cat`), and
+ * not `mixed` with a cast at the read, which is this same unsoundness spelled
+ * three times instead of twice.
+ *
+ * `Binding` is the near miss worth recording. Its `T` is only ever returned
+ * and its `A` only ever taken, so with the sigils that say so —
+ * `Binding<out T, in A>` — every binding really would be a
+ * `Binding<mixed, empty>` and could be *stored* as one. It is reading it back
+ * as the caller's `Binding<V, A>` that has nowhere to go, so the sigils would
+ * buy nothing here and are not added for the look of it.
+ *
+ * Every function that reaches a value is generic in its type, so nothing
+ * outside this file sees either of these.
+ */
 type AnyCell = Cell<any>;
 type AnyBinding = Binding<any, any>;
 
 export function createStore(): StoreInstance {
-  const cells: WeakMap<AnyRecord, AnyCell> = new WeakMap();
-  const bindings: WeakMap<AnyRecord, AnyBinding> = new WeakMap();
+  const cells: WeakMap<AtomIdentity, AnyCell> = new WeakMap();
+  const bindings: WeakMap<AtomIdentity, AnyBinding> = new WeakMap();
 
   function cellFor<V, A>(target: AtomRecord<V, A>): Cell<V> {
     const existing = cells.get(target);
