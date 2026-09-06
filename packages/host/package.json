@@ -13,6 +13,7 @@
   "exports": {
     "./bun-preload": "./bun-preload.js",
     "./internal/node-hooks.js": "./internal/node-hooks.js",
+    "./module-mocks": "./module-mocks.js",
     "./register": "./register.js",
     "./transform": "./transform.js",
     "./write-atomically": "./write-atomically.js"
@@ -20,6 +21,7 @@
   "files": [
     "register.js",
     "bun-preload.js",
+    "module-mocks.js",
     "transform.js",
     "internal/*.js"
   ]
