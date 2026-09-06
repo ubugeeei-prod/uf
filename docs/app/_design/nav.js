@@ -95,6 +95,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Styling and content",
         blurb: "CSS, Markdown and MDX, all on by default.",
       },
+      {
+        href: "/guide/tui",
+        title: "Terminal UI",
+        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
+      },
     ],
   },
   {
