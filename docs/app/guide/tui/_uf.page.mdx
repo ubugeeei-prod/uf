@@ -289,8 +289,16 @@ and drops the control characters, because it is one line and cannot hold either.
 
 A clipboard is as long as it is, and a large one arrives in whatever pieces the
 operating system's reads happen to make — including a piece that ends in the
-middle of a word, or in the middle of the marker itself. The decoder holds the
-partial one back and delivers the paste once, whole.
+middle of a word, or part-way through the marker. The decoder holds the partial
+one back and delivers the paste once, whole.
+
+One split is deliberately not held, and it is the first one. A piece that ends
+on a lone `ESC`, with none of the marker after it, is delivered as the Escape
+key — because that is what it usually is. `ESC` begins every escape sequence and
+is also a key on the keyboard, nothing here has a timer to end a wait with, and
+a decoder that held it would give you an Escape key that does nothing until you
+press something else. From `ESC[` on there is nothing else it could be, so that
+is where the hold begins.
 
 The mode is turned off again when the application stops: a terminal left in it
 hands the *shell* brackets around every paste.

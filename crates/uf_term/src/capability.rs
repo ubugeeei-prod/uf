@@ -10,6 +10,7 @@
 //! more: see [`TerminalSize::detect`].
 
 use std::io::IsTerminal;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::image::{ImageEnv, ImageProtocol};
@@ -519,10 +520,12 @@ fn reported_rows(reported: Option<(usize, usize)>) -> Option<usize> {
 /// region is drawn on is not the stream a caller piped something into: `echo y
 /// | uf install` still draws on the terminal the reader is looking at, and
 /// `stty` reads the terminal attached to *its* standard input. On a platform
-/// with no `/dev/tty` this answers `None` and the fallback applies.
+/// with no `/dev/tty`, or none that has `stty` at one of [`STTY_PROGRAMS`],
+/// this answers `None` and the fallback applies.
 fn probe_size() -> Option<(usize, usize)> {
+    let program = stty_program()?;
     let terminal = std::fs::File::open("/dev/tty").ok()?;
-    let output = Command::new("stty")
+    let output = Command::new(program)
         .arg("size")
         .stdin(Stdio::from(terminal))
         .stderr(Stdio::null())
@@ -533,6 +536,47 @@ fn probe_size() -> Option<(usize, usize)> {
     }
     let reported = String::from_utf8(output.stdout).ok()?;
     parse_stty_size(&reported)
+}
+
+/// The absolute paths this crate will run `stty` from, in the order tried.
+///
+/// Naming a program by its bare name resolves it through the `PATH` this
+/// process inherited, and [`probe_size`] runs during ordinary terminal
+/// probing — so a `stty` planted anywhere earlier on a user's `PATH` than the
+/// system one would be executed, as that user, by a command that only wanted
+/// to know how wide the window is. That is CWE-426, and the answer is to not
+/// ask `PATH` at all.
+///
+/// These two are POSIX's own default utility path, `/bin:/usr/bin` — what
+/// `confstr(_CS_PATH)` answers on macOS and on glibc — and between them they
+/// cover the platforms uf supports: macOS ships `/bin/stty`, the GNU
+/// distributions ship `/usr/bin/stty` with `/bin` a symlink to it or a copy,
+/// and BusyBox ships `/bin/stty`. What makes them trustworthy is not that the
+/// file is usually there but that the *directory* is root-owned on all of
+/// them, which is the entire vulnerability: an attacker who can write to
+/// `/bin` does not need this bug.
+///
+/// A system that keeps its utilities somewhere else entirely — NixOS, whose
+/// are under `/run/current-system/sw/bin` — matches neither, and gets `None`:
+/// the size falls back to `COLUMNS`/`LINES` and then to 80×24. That is a
+/// deliberate trade. A terminal measured wrongly costs a worse layout; a
+/// terminal measured by whatever `PATH` happened to point at costs more than
+/// a layout, and `COLUMNS`/`LINES` are already the documented way to say how
+/// big the window is when it cannot be asked.
+///
+/// The alternative that needs no subprocess at all is `TIOCGWINSZ`, and it is
+/// tracked rather than done here: it needs either a `libc` dependency this
+/// crate does not have or a hand-written `winsize` whose layout differs
+/// between macOS and Linux, which is the same reason [`TerminalSize::detect`]
+/// gives for spawning in the first place.
+const STTY_PROGRAMS: [&str; 2] = ["/bin/stty", "/usr/bin/stty"];
+
+/// The `stty` this process will run, or nothing when no trusted one is there.
+fn stty_program() -> Option<&'static Path> {
+    STTY_PROGRAMS
+        .iter()
+        .map(Path::new)
+        .find(|program| program.is_file())
 }
 
 /// `stty size` prints rows first, then columns, separated by a space.

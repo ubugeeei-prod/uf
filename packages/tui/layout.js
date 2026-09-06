@@ -542,7 +542,9 @@ export function layout(
  * A scrolling box is a column, always. `flexDirection`, `justifyContent` and
  * growth do not apply inside one and are ignored rather than half-honoured: a
  * child that grew to fill a viewport it is meant to scroll past is a child
- * whose height depends on where it has been scrolled to.
+ * whose height depends on where it has been scrolled to. Margins do apply, and
+ * for the opposite reason — they are a fixed number of cells around a child,
+ * so they say the same thing at every offset.
  *
  * # What this costs, exactly
  *
@@ -568,13 +570,22 @@ function layoutScroll(node: LayoutNode, x: number, y: number, width: number, hei
   const unbounded = Number.MAX_SAFE_INTEGER;
   const gap = gapOf(node.style, false);
 
+  // Margins are part of the stack, exactly as they are in the flex path and
+  // in `intrinsicSize`: a child's outer height is what the next one starts
+  // after and what the scroll range is made of. Leaving them out of any one
+  // of those makes the content shorter than it is drawn, which is a bottom
+  // the offset clamps to too early and a last row nobody can scroll to.
+  const margins = children.map((child) => margin(child.style));
+
   const heights = new Array<number>(children.length);
   let content = 0;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
+    const available = Math.max(0, width - marginLeft - marginRight);
     const fixed = resolve(child.style.height, height);
-    heights[index] = fixed ?? intrinsicSize(child, width, unbounded).height;
-    content += heights[index] + (index > 0 ? gap : 0);
+    heights[index] = fixed ?? intrinsicSize(child, available, unbounded).height;
+    content += heights[index] + marginTop + marginBottom + (index > 0 ? gap : 0);
   }
 
   const offset = clamp(Math.floor(node.style.scrollTop ?? 0), 0, Math.max(0, content - height));
@@ -589,15 +600,19 @@ function layoutScroll(node: LayoutNode, x: number, y: number, width: number, hei
   let cursor = 0;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
     const childHeight = heights[index];
-    const childY = y + cursor - offset;
-    cursor += childHeight + gap;
+    const childY = y + cursor + marginTop - offset;
+    cursor += marginTop + childHeight + marginBottom + gap;
+    // The border box, not the outer one: a margin draws nothing, so a child
+    // whose own box has left the window has left it.
     if (childY + childHeight <= y || childY >= y + height) {
       hide(child);
       continue;
     }
-    const childWidth = Math.min(width, resolve(child.style.width, width) ?? width);
-    layout(child, x, childY, childWidth, childHeight);
+    const available = Math.max(0, width - marginLeft - marginRight);
+    const childWidth = Math.min(available, resolve(child.style.width, width) ?? available);
+    layout(child, x + marginLeft, childY, childWidth, childHeight);
   }
 }
 

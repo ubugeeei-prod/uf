@@ -403,3 +403,57 @@ fn stty_size_reports_rows_before_columns() {
     assert_eq!(parse_stty_size("43"), None);
     assert_eq!(parse_stty_size("stty: stdin: Not a typewriter"), None);
 }
+
+#[test]
+fn stty_is_run_from_a_root_owned_directory_and_not_from_path() {
+    // The whole of CWE-426 is *which directory* the program came out of. A
+    // relative name, or an absolute one under a directory an unprivileged
+    // process can write to, is a program somebody else chooses.
+    for program in STTY_PROGRAMS {
+        let path = Path::new(program);
+        assert!(
+            path.is_absolute(),
+            "{program} would be resolved through PATH"
+        );
+        assert!(
+            path.parent() == Some(Path::new("/bin"))
+                || path.parent() == Some(Path::new("/usr/bin")),
+            "{program} is outside POSIX's default utility path"
+        );
+    }
+    // And the resolver hands back one of those or nothing — never a path it
+    // went looking for.
+    if let Some(resolved) = stty_program() {
+        assert!(
+            STTY_PROGRAMS
+                .iter()
+                .any(|program| Path::new(program) == resolved),
+            "{} is not one of the paths this crate trusts",
+            resolved.display()
+        );
+    }
+}
+
+#[test]
+fn no_subprocess_in_this_module_is_named_by_anything_but_an_absolute_path() {
+    // The finding is about *names*, so the guard has to be about names rather
+    // than about the one call site that had one. A future `Command::new` given
+    // a bare program here is the same vulnerability again, and this fails on
+    // it whichever line it is written on.
+    let source = include_str!("../capability.rs");
+    for (index, line) in source.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        let Some((_, rest)) = line.split_once("Command::new(\"") else {
+            continue;
+        };
+        let named = rest.split('"').next().unwrap_or_default();
+        assert!(
+            named.starts_with('/'),
+            "capability.rs:{}: `{named}` is resolved through the inherited PATH",
+            index + 1
+        );
+    }
+}

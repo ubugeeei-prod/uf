@@ -551,6 +551,45 @@ describe("a window onto more than fits", () => {
     }
     handle.stop();
   });
+
+  it("gives a child inside the window the margins it asked for", () => {
+    // `intrinsicSize` and the ordinary flex path both give a child its
+    // margins. A scrolling box that did not would start every child after the
+    // first one a margin too high and draw it a margin too far left, which is
+    // the same tree laid out two ways depending on which branch it took.
+    const handle = testRender(
+      <ScrollBox height={3} width={8} scrollbar={false} scrollTop={0}>
+        <Text wrap="none" marginLeft={2}>
+          ab
+        </Text>
+        <Text wrap="none" marginTop={1}>
+          cd
+        </Text>
+      </ScrollBox>,
+      { width: 8, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["  ab    ", "        ", "cd      "]);
+    handle.stop();
+  });
+
+  it("scrolls to the end of the margins, not to the end of the text", () => {
+    // The content is four rows — two lines and the blank row under each — so
+    // the last window is the second line and the margin below it. Left out of
+    // the range, the offset clamps to zero and the box never moves at all.
+    const handle = testRender(
+      <ScrollBox height={2} width={8} scrollbar={false} scrollTop={Number.MAX_SAFE_INTEGER}>
+        <Text wrap="none" marginBottom={1}>
+          one
+        </Text>
+        <Text wrap="none" marginBottom={1}>
+          two
+        </Text>
+      </ScrollBox>,
+      { width: 8, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["two     ", "        "]);
+    handle.stop();
+  });
 });
 
 describe("the diff writes only what changed", () => {
@@ -720,6 +759,44 @@ describe("input reaches what has focus", () => {
     // A lone escape is still the Escape key, though: holding it back would
     // mean Escape never fires until the next keystroke.
     expect(decoder.push("\u001b").map((key) => key.name)).toEqual(["escape"]);
+  });
+
+  it("treats a chunk ending on a lone escape as Escape, and says what that costs", () => {
+    // The boundary the hold deliberately does not cover, asserted rather than
+    // left to the sentence above it. `ESC` on its own is the Escape key as
+    // well as the first byte of every escape sequence, and nothing here has a
+    // timer to end a wait with — so a driver that held it would have an
+    // Escape key that does nothing until you press something else.
+    const decoder = createKeyDecoder();
+    expect(decoder.push("\u001b").map((key) => key.name)).toEqual(["escape"]);
+
+    // The price, written down: the marker after the split is no longer a
+    // marker, so a pasted carriage return arrives as Return. The guide claims
+    // the hold from `ESC[` on, which is what this decoder does, and not "any
+    // split inside the six-byte marker", which is what it does not.
+    expect(decoder.push("[200~a\rb\u001b[201~").map((key) => key.name)).toEqual([
+      "[",
+      "2",
+      "0",
+      "0",
+      "~",
+      "a",
+      "return",
+      "b",
+      "[",
+      "2",
+      "0",
+      "1",
+      "~",
+    ]);
+    expect(decoder.flush()).toEqual([]);
+
+    // One byte later, and it is held: `ESC[` cannot be the Escape key.
+    const held = createKeyDecoder();
+    expect(held.push("\u001b[")).toEqual([]);
+    expect(held.push("200~a\rb\u001b[201~").map((key) => [key.name, key.sequence])).toEqual([
+      ["paste", "a\rb"],
+    ]);
   });
 
   it("gives back the bytes when a held marker turns out not to be one", () => {
