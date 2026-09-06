@@ -50,6 +50,12 @@ across a package boundary, which is the first hop of everything else.
 - **vite**: a build that works and complains is a build people stop reading —
   the deprecated `envFile` spelling is gone (#363)
 - **fmt**: the same file, formatted twice, is the same file (#361)
+- **state**: an abandoned load stops, and a persisted atom is read on mount so
+  a server render hydrates — the read moved out of module evaluation, where it
+  raced the first client render (#344)
+- **form**: the validation rules reach the element, and a form can be switched
+  off. A disabled field behaves like an absent one, including through a
+  resolver (#344)
 - **react-testing**: the queries stop lying to the test — `getByRole` no longer
   returns hidden elements, `level` and `current` are honoured, and an option
   the query does not take is refused rather than ignored (#381)
