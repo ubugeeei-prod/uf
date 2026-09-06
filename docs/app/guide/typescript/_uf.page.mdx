@@ -1,0 +1,208 @@
+---
+title: "Flow and TypeScript · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Flow and TypeScript
+
+<div className="lede">
+You already write TypeScript. Everyone arriving here does, and pretending the
+comparison is close would be the fastest way to lose your attention. TypeScript
+wins most of the rows. Flow wins four that only exist because it is the type
+system React itself is written in — and one fact about Flow's implementation is
+the reason a toolchain like uf can be built at all.
+</div>
+
+## The rows TypeScript wins
+
+**The ecosystem.** A package on npm ships `.d.ts`. Flow reads
+[library definitions](https://flow.org/en/docs/libdefs/), and a package that has
+none is `any` until somebody writes one. `flow-typed` covers a fraction of what
+DefinitelyTyped covers. If your application stands on twenty typed
+dependencies, this is the bill, and it does not get smaller by choosing uf.
+
+**Editors.** uf ships `uf lsp`, and every editor integration under
+[`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client
+of it. What it advertises in `initialize` is the whole of what it can do:
+diagnostics, `textDocument/formatting`, `textDocument/codeAction`
+(`quickfix` and `source.fixAll.uf`) and `textDocument/hover`. There is no
+rename, no go-to-definition, no find-references, no auto-import.
+`tests/library/lsp.test.js` drives the real binary and asserts both the
+capabilities the READMEs claim and the absence of the ones they disclaim.
+
+**People.** More engineers have written TypeScript, more answers exist, and the
+odds that your next contributor has seen `renders` before are low.
+
+uf does not argue with any of that.
+
+## The rows uf loses, which is a different list
+
+The list above is Flow's. This one is uf's, and it is the more useful one,
+because it is the part that can be fixed and the part that will bite you this
+week.
+
+**Types stop at the module boundary.** `uf check` runs Flow's own inference,
+and today it resolves no modules: every import is `any`, and the report says
+which ones rather than leaving you to discover it.
+
+<figure className="terminal">
+
+```
+  types checked  1
+  inference      821.3µs
+  builtins       72.9ms (cold)
+
+  › these imports are typed as any; uf resolved no module for them
+    - ./a.js
+```
+
+</figure>
+
+That is a two-file project where `b.js` assigns the result of a function
+returning `string` to a `number` and nothing complains, because the function
+came from the other file. Cross-module inference is the next step in
+[`docs/architecture.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md),
+and
+[issue #248](https://github.com/ubugeeei-prod/uf/issues/248) counts what the
+related resolver bug costs on this repository: 145 of 581 reported errors — 31%
+— are one thing, a type imported by its published name resolving to nothing.
+
+**Vite's client API has no Flow types.** A TypeScript project gets
+`import.meta.glob`, `import.meta.hot`, `import.meta.env` and the ambient
+declarations for `*.svg`, `?raw` and `?url` from `vite/client`. There is no Flow
+equivalent, from Vite or from uf, so a five-line file using them reports five
+type errors — [issue #264](https://github.com/ubugeeei-prod/uf/issues/264) has
+the file and the output.
+
+**Top-level `await` does not parse.** ES2022, accepted by Flow, refused by uf's
+parse options — so a module using it cannot be checked, formatted, transformed,
+tested or built.
+[Issue #204](https://github.com/ubugeeei-prod/uf/issues/204).
+
+None of those three is an argument about Flow. They are uf's, they have issue
+numbers, and [what uf does not do](/guide/scope) keeps the rest of the list.
+
+## What Flow says that TypeScript has no spelling for
+
+### Props are the parameter list
+
+```js
+component Avatar(src: string, size: number = 32, alt?: string) {
+  return <img src={src} width={size} height={size} alt={alt ?? ""} />;
+}
+```
+
+The TypeScript that does the same job is three declarations of one thing:
+
+```ts
+type AvatarProps = { src: string; size?: number; alt?: string };
+
+function Avatar({ src, size = 32, alt }: AvatarProps) {
+  return <img src={src} width={size} height={size} alt={alt ?? ""} />;
+}
+```
+
+An interface, a destructuring pattern and a defaults list: three places that
+describe one prop and can drift apart. The default is the clearest case —
+`size?: number` says a caller may omit it, and says nothing about the 32 they
+get when they do. Flow's
+[component syntax](https://flow.org/en/docs/react/component-syntax/) has one
+place to write a prop, so there is nothing to keep in step.
+
+It also means the React Compiler is *told* this is a component instead of
+inferring it from a capital letter — see [Flow, the modern
+parts](/guide/flow) for what uf hands it.
+
+### The rules of hooks are a type error
+
+```js
+hook useNow(interval: number): Date { … }
+```
+
+Flow refuses to let that be called from anything but a component or another
+hook. TypeScript's answer to the same problem is `eslint-plugin-react-hooks`: a
+lint rule, in a second tool, with a second configuration, enforcing something
+the type checker has no opinion about.
+[Flow's hook syntax](https://flow.org/en/docs/react/hook-syntax/) makes it the
+same checker that checks everything else.
+
+### A component can constrain its children
+
+```js
+component Tab(label: string) renders React.Node { … }
+component Tabs(children: renders* Tab) { … }
+```
+
+`renders Tab` says the component's output eventually renders a `Tab`; `renders?`
+allows nothing instead, and `renders*` allows any number.
+TypeScript's nearest expression is
+`children: ReactElement<ComponentProps<typeof Tab>>`, which checks the *props*
+of the element — so a different component that happens to take a `label: string`
+satisfies it, and a wrapper around `Tab` does not. Flow checks the render chain,
+which is the thing a design system actually means.
+[Render types](https://flow.org/en/docs/react/render-types/).
+
+### Exhaustiveness that is a language feature
+
+```js
+enum Status { Idle, Loading, Failed }
+
+const label = match (status) {
+  Status.Idle => "Ready",
+  Status.Loading => "Working…",
+  Status.Failed => "Failed",
+};
+```
+
+[`match`](https://flow.org/en/docs/match/) reports `match-not-exhaustive` when a
+case is missing and flags patterns that can never run, and
+[Flow enums](https://flow.org/en/docs/enums/) are real runtime values with
+`cast`, `isValid`, `members` and `getName` — a union of string literals is none
+of those, and TypeScript's `enum` is a different construct with its own
+history. uf lowers both where it parses them, with no import added to your
+module; [Flow, the modern parts](/guide/flow) has the output.
+
+## Why uf could be built at all
+
+This is the part written nowhere else, and it is the actual reason this project
+exists rather than a wish for better React types.
+
+**Flow's parser and type checker have an official Rust port**, and uf links it.
+`upstream/flow` is a git submodule pinned to a commit;
+`upstream/flow/rust_port/crates/flow_parser` is the parser Flow itself runs, and
+`uf_check` embeds the typing crates beside it. There is no second backend and no
+feature flag selecting one, because a build of uf that spoke a different dialect
+would make `uf lint` and `uf check` disagree with the grammar this site
+documents.
+
+So the dev server, the production build, the test runner, the formatter and the
+linter read one syntax tree produced by Meta's own code. That is not an
+integration uf is proud of having assembled — it is the reason there is nothing
+to assemble.
+
+**What it costs, in the same paragraph.** 23 crates in the port declare
+`#![feature(box_patterns)]`, and that feature was removed from the compiler
+around the 2026-09-01 nightly, so `rust-toolchain.toml` pins the whole workspace
+to `nightly-2026-08-01`. **No stable Rust toolchain can build uf.** The
+`Upstream Flow` CI job builds the parser on the floating channel as an early
+warning, so the pin moves deliberately rather than being discovered when it
+breaks. Every number and every embedding hazard is in
+[`docs/architecture.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md).
+
+## How to decide
+
+**Stay on TypeScript** if your application leans on many typed dependencies, if
+your team is hiring, or if anything on the list of rows uf loses is load-bearing
+for you this quarter. That is most people, and it is a reasonable answer.
+
+**Try uf** if you are writing React rather than JavaScript-with-React — if the
+things you want the type system to catch are a missing prop, a hook called from
+the wrong place, a child component that does not belong, and a `match` you
+forgot to extend — and if you can work in pre-release software where the
+packages are not on npm yet
+([issue #210](https://github.com/ubugeeei-prod/uf/issues/210)).
+
+The syntax argument in full is [Why Flow](/guide/why). The boundaries are
+[What uf does not do](/guide/scope). If you want the head-to-head against the
+tool you are actually using today, that is [uf compared](/guide/compare).
