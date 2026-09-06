@@ -123,7 +123,9 @@
 - [ ] Implement Vite-backed server entry generation and RSC streaming adapters.
 - [ ] Map host-provided IO capabilities for Node.js, Deno, and Bun.
 - [x] Support a deploy-anywhere adapter for Node.js: `uf build --adapter node` writes a directory that runs on a host with a JavaScript runtime and nothing else.
-- [ ] Support the other six deploy targets — Deno, Bun, edge, serverless, static and container — against the same `@uniflowed/server/fetch` handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
+- [x] Support the edge, serverless and container deploy targets against the same `@uniflowed/server/fetch` handler: Cloudflare Workers with a `wrangler.json`, AWS Lambda payload format 2.0, and `node` with a `Dockerfile` ([#391](https://github.com/ubugeeei-prod/uf/issues/391)). None has been deployed to a real platform.
+- [ ] Support the Deno and Bun deploy targets, once a benchmark shows a native server beating `node:http` under the same handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
+- [ ] Support the static deploy target, which has to refuse a project whose routes a static host cannot serve rather than drop them ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - [ ] Assume React 19, Suspense, `use`, and Async React.
 - [ ] Bundle GraphQL Relay primitives.
 - [ ] Provide explicit fetch clients without global fetch override.

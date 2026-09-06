@@ -546,8 +546,10 @@ Native engines being deepened:
   cron, S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
 - host-provided event loop and IO capability mapping for Node.js, Deno, and Bun
 - deferred WinterTC-aligned Flow runtime backed by Hermes
-- deploy-anywhere adapters for Node.js, Deno, Bun, edge, serverless, static, and
-  container targets in a Nitro-like model
+- deploy-anywhere adapters in a Nitro-like model: `node`, `container`, `edge`
+  (Cloudflare Workers) and `serverless` (AWS Lambda) are written against one
+  `@uniflowed/server/fetch` handler and none has been deployed to a real
+  platform; Deno, Bun and static are not written
 
 ## Testing
 
