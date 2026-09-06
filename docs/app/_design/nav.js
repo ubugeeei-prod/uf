@@ -180,6 +180,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Components",
         blurb: "The headless primitives, their parts, and the keys each one owns.",
       },
+      {
+        href: "/reference/effect",
+        title: "Effects",
+        blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
+      },
     ],
   },
 ];
