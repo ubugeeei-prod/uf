@@ -728,13 +728,64 @@ async function compile() {
 }
 
 /**
+ * What each adapter links, and what it links it against.
+ *
+ * Every entry in this table produces the same `handler.js` — the application
+ * as `Request` → `Response`, from `@uniflowed/server/fetch` — and differs only
+ * in the file wrapped around it and, for a target whose dependencies have a
+ * different build, in the export conditions that pick one. That is the whole
+ * of what an adapter is, and keeping the differences in one object is what
+ * stops a second one from quietly becoming a second application.
+ *
+ * `bun`, `deno` and `static` are deliberately absent; `uf_config`'s
+ * `DeployAdapter::is_implemented` is the other half of that fact and
+ * `docs/app/reference/cli/_uf.page.mdx` says why for each of them.
+ */
+const ADAPTERS = {
+  node: {
+    entries: (document) => ({
+      handler: handlerEntrySource(document),
+      server: nodeEntrySource("./handler.js"),
+    }),
+  },
+  // The same two files. What `--adapter container` adds is a `Dockerfile` and
+  // a `.dockerignore`, and both are plain text that `uf` writes beside this
+  // output rather than anything the bundler produces — see `uf_cli`'s
+  // `commands::deploy`.
+  container: {
+    entries: (document) => ({
+      handler: handlerEntrySource(document),
+      server: nodeEntrySource("./handler.js"),
+    }),
+  },
+  edge: {
+    entries: (document) => ({
+      handler: handlerEntrySource(document),
+      worker: workerEntrySource("./handler.js"),
+    }),
+    // `workerd` first, so React resolves to the build that has
+    // `renderToReadableStream` and no `node:stream`. `browser` and `module`
+    // after it are Vite's own SSR defaults, kept so a dependency with no
+    // worker condition still resolves the way it does for every other target.
+    conditions: ["workerd", "worker", "edge-light", "browser", "module", "import", "default"],
+  },
+  serverless: {
+    entries: (document) => ({
+      handler: handlerEntrySource(document),
+      lambda: lambdaEntrySource("./handler.js"),
+    }),
+  },
+};
+
+/**
  * Link the application into a directory that can be copied, for
  * `uf build --adapter`.
  *
  * `uf start` serves a build and `uf build --compile` puts one inside an
  * executable, and between them is the shape most hosts actually want: a
- * directory you copy onto a machine that has a JavaScript runtime and nothing
- * else — no `node_modules`, no checkout, no `uf`. That is what this writes.
+ * directory that carries everything and nothing that is still in the checkout
+ * — no `node_modules`, no source, no `uf`. That is what this writes, for
+ * whichever of [`ADAPTERS`] was asked for.
  *
  * It differs from the server build in [`build`] in one way, and that one way
  * is the whole of the difference between a build artefact and a checkout:
@@ -750,16 +801,17 @@ async function compile() {
  *
  * `handler.js` is the application as a Web-standard `fetch` export: a
  * `Request` in, a `Response` out, no filesystem, no socket, no `node:` import
- * that a worker does not already have. That is the seam — every other target
- * in `app.runtime.deploy.adapters` is this file with a different thing wrapped
- * around it.
+ * that a worker does not already have. That is the seam, and it is the same
+ * file for every target in [`ADAPTERS`].
  *
- * `server.js` is the wrapper for *this* target: `node:http`, with the build's
- * files served from `static/` beside it. It is thirty lines, and that is the
- * point — the work is in the handler, and what a second adapter has to write
- * is the thirty lines, not the application.
+ * The second entry is the wrapper for *this* target — `node:http` for `node`
+ * and `container`, `export default { fetch }` for a Worker, `export const
+ * handler` for a Lambda — and each of them is a handful of lines around an
+ * import from `@uniflowed/server`. That is the point: the work is in the
+ * handler, and what a new adapter has to write is the handful of lines, not
+ * the application.
  *
- * Both are ordinary entries of one Rolldown build, so `server.js` imports the
+ * Both are ordinary entries of one Rolldown build, so the wrapper imports the
  * emitted `handler.js` rather than a second copy of the application.
  *
  * The `static/` directory is *not* written here. `uf` copies it (see
@@ -785,11 +837,12 @@ async function deploy() {
   // future `uf` that knows an adapter this copy does not, and answering "one
   // moment, here is a directory" for a target nobody wrote would be the silent
   // wrong answer the whole issue is about.
-  if (adapter !== "node") {
+  const shape = ADAPTERS[adapter];
+  if (shape == null) {
     throw new Error(
-      `uf: this driver implements the \`node\` adapter and was asked for ${JSON.stringify(
-        adapter,
-      )}`,
+      `uf: this driver implements ${Object.keys(ADAPTERS)
+        .map((name) => JSON.stringify(name))
+        .join(", ")} and was asked for ${JSON.stringify(adapter)}`,
     );
   }
   const work = path.resolve(root, workArgument);
@@ -803,14 +856,29 @@ async function deploy() {
   // misbehaves.
   mkdirSync(work, { recursive: true });
   const document = assetsFromManifest(readManifest(outDir));
-  writeFileSync(path.join(work, "handler.js"), handlerEntrySource(document));
-  writeFileSync(path.join(work, "server.js"), nodeEntrySource("./handler.js"));
+  const entries = shape.entries(document);
+  const input = {};
+  for (const name of Object.keys(entries)) {
+    writeFileSync(path.join(work, `${name}.js`), entries[name]);
+    input[name] = path.join(work, `${name}.js`);
+  }
+
+  const ssr = { ...(inline.ssr ?? {}), noExternal: true };
+  if (shape.conditions != null) {
+    // Which build of a dependency this target gets, and it is the difference
+    // between a worker that renders and one that fails to link. React ships
+    // `server.node.js` under the `node` condition and `server.edge.js` under
+    // `workerd`; the first one imports `node:stream`, and the router picks its
+    // renderer by asking whether `renderToPipeableStream` is there — so the
+    // condition list is what decides that, not a flag in the application.
+    ssr.resolve = { ...(inline.ssr?.resolve ?? {}), conditions: shape.conditions };
+  }
 
   await vite.build({
     ...inline,
     customLogger: eventLogger("warn"),
     plugins: [...inline.plugins, nativeAddonGuard()],
-    ssr: { ...(inline.ssr ?? {}), noExternal: true },
+    ssr,
     build: {
       ...inline.build,
       manifest: false,
@@ -825,10 +893,7 @@ async function deploy() {
       // that happens.
       emptyOutDir: false,
       rollupOptions: {
-        input: {
-          handler: path.join(work, "handler.js"),
-          server: path.join(work, "server.js"),
-        },
+        input,
         output: {
           entryFileNames: "[name].js",
           // Route modules are lazy `import()`s, so the server bundle splits
@@ -922,6 +987,60 @@ serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
   process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
   process.exit(1);
 });
+`;
+}
+
+/**
+ * The source of `worker.js`: the Cloudflare Workers entry around that handler.
+ *
+ * `export default { fetch }`, which is the modules-format Worker Cloudflare
+ * runs, and everything host-specific is in `@uniflowed/server/edge` — the
+ * asset lookup through the `ASSETS` binding `wrangler.json` declares, and the
+ * `ctx.waitUntil` that keeps the isolate alive for `after()`.
+ *
+ * `beginRequest` comes from the handler beside this file for the reason
+ * `nodeEntrySource` gives: the request has to be established in the storage the
+ * *application* reads. See ubugeeei-prod/uf#389.
+ */
+function workerEntrySource(handlerSpecifier) {
+  return `// Generated by \`uf build --adapter edge\`. Not checked in, not edited.
+import { createWorkerFetch } from "@uniflowed/server/edge";
+
+import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
+
+export default { fetch: createWorkerFetch({ handle, beginRequest }) };
+`;
+}
+
+/**
+ * The source of `lambda.js`: the AWS Lambda entry around that handler.
+ *
+ * `export const handler`, so the function's configured handler is
+ * `lambda.handler`. Everything platform-specific — the payload format 2.0
+ * event, the base64 rules, the `cookies` array — is in
+ * `@uniflowed/server/lambda`.
+ *
+ * `staticDir` points at the `static/` copied beside this file, so an uploaded
+ * package answers a prerendered document without any other infrastructure
+ * existing. That is a starting point rather than a destination, and the module
+ * it is passed to says so at length.
+ */
+function lambdaEntrySource(handlerSpecifier) {
+  return `// Generated by \`uf build --adapter serverless\`. Not checked in, not edited.
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { createLambdaHandler } from "@uniflowed/server/lambda";
+
+import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
+
+// Resolved from this file and not from the working directory: Lambda sets the
+// working directory to the task root today and is under no obligation to keep
+// doing so, and a deployment that only found its own assets by accident is a
+// deployment with a trap in it.
+const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
+
+export const handler = createLambdaHandler({ handle, beginRequest, staticDir });
 `;
 }
 

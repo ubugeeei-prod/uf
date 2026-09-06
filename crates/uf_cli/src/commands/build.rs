@@ -403,8 +403,10 @@ pub(crate) fn build(
             // The command, spelled out, because the whole claim of this
             // directory is that nothing else is needed to run it — and a
             // reader who has to guess whether it is `node server.js` or
-            // `npm start` does not yet believe that claim.
-            format!("cd {directory} && node server.js"),
+            // `npm start` does not yet believe that claim. It differs per
+            // adapter, and for the two that are uploaded rather than started
+            // it is the upload; see `deploy::next_command`.
+            deploy::next_command(deployed.adapter, &resolved.root, &directory),
         )
     });
     let binary = compiled.as_ref().map(|compiled| {

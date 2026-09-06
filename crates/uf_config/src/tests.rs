@@ -57,12 +57,34 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     // author change this line rather than inherit a claim.
     assert_eq!(
         config.app.runtime.deploy.adapters,
-        vec![DeployAdapter::Node]
+        vec![
+            DeployAdapter::Node,
+            DeployAdapter::Edge,
+            DeployAdapter::Serverless,
+            DeployAdapter::Container,
+        ]
     );
     assert_eq!(config.app.runtime.deploy.adapter, None);
     assert!(DeployAdapter::Node.is_implemented());
-    assert!(!DeployAdapter::Edge.is_implemented());
-    assert!(!DeployAdapter::Serverless.is_implemented());
+    assert!(DeployAdapter::Edge.is_implemented());
+    assert!(DeployAdapter::Serverless.is_implemented());
+    assert!(DeployAdapter::Container.is_implemented());
+    // And the three that are not, each of which is waiting for something
+    // named rather than for somebody's attention.
+    for adapter in [
+        DeployAdapter::Bun,
+        DeployAdapter::Deno,
+        DeployAdapter::Static,
+    ] {
+        assert!(!adapter.is_implemented(), "{}", adapter.as_str());
+        assert_eq!(adapter.tracking_issue(), Some(391));
+        assert!(
+            adapter.unimplemented_because().is_some(),
+            "{}",
+            adapter.as_str()
+        );
+    }
+    assert_eq!(DeployAdapter::Node.unimplemented_because(), None);
     assert!(!config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.route);
     assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));

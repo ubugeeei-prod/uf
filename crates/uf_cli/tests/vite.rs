@@ -1211,13 +1211,53 @@ fn preview_and_start_serve_the_whole_of_a_build() {
     }
 }
 
-/// The script the deployed directory is asked with, when no socket may be had.
+/// The script a deployed directory is asked with, when no socket may be had.
 ///
 /// It is written *beside* the copied directory rather than inside it, and
 /// imports it by a relative path — which is the assertion, not the setup. A
 /// probe living inside the artefact could be resolving something the artefact
 /// happens to sit next to; one outside it can only reach what was copied.
-const ASK_THE_ARTEFACT: &str = r#"import handler from "./app/handler.js";
+///
+/// One script for four adapters, because the whole claim of the seam is that
+/// they differ in one file. `node` and `container` are asked through
+/// `handler.js` and own the request themselves, the way `server.js` does;
+/// `edge` is asked through `worker.js`'s default export, with the two
+/// arguments Cloudflare passes; `serverless` is asked through `lambda.js`'s
+/// `handler`, with the payload format 2.0 event a Function URL sends. The four
+/// questions below are the same four for all of them, and none of them has a
+/// file behind it — so what is being compared is the application, and the
+/// static halves stay out of it. `tests/library/deploy.test.js` is where those
+/// are compared, because there they can be driven side by side.
+///
+/// The `ASSETS` stub is the only part of a platform this stands in for, and it
+/// is one line of Cloudflare's documentation: the binding answers a `Request`
+/// with a `Response`, and with a `404` where there is no such asset, which is
+/// what `"not_found_handling": "none"` means.
+const ASK_THE_ARTEFACT: &str = r#"import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const staticDir = path.join(here, "app", "static");
+
+const ASSETS = {
+  fetch: async (request) => {
+    const pathname = decodeURIComponent(new URL(request.url).pathname);
+    const resolved = path.resolve(staticDir, `.${pathname}`);
+    const candidates = pathname.endsWith("/")
+      ? [path.join(resolved, "index.html")]
+      : [resolved, path.join(resolved, "index.html"), `${resolved}.html`];
+    for (const candidate of candidates) {
+      if (!candidate.startsWith(staticDir)) continue;
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return new Response(fs.readFileSync(candidate), {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+    }
+    return new Response("not found", { status: 404 });
+  },
+};
 
 // The probe is the host, so it owns the request the way `server.js` does:
 // `beginRequest` from the artefact's own handler, `run` around answering, and
@@ -1226,23 +1266,297 @@ const ASK_THE_ARTEFACT: &str = r#"import handler from "./app/handler.js";
 // `beginRequest` at all is half of what this asserts: it is the copy inlined
 // into `handler.js`, and a host that used any other would establish a request
 // the application cannot see. See ubugeeei-prod/uf#389.
+async function applicationDoor() {
+  const handler = (await import("./app/handler.js")).default;
+  return async (request) => {
+    const { run, settle } = handler.beginRequest(request);
+    try {
+      return await run(() => handler.fetch(request));
+    } finally {
+      await settle();
+    }
+  };
+}
+
+// A Worker owns the request itself, so the probe is only the runtime: the
+// bindings and an execution context whose `waitUntil` is where `after()` goes.
+async function workerDoor() {
+  const worker = (await import("./app/worker.js")).default;
+  const pending = [];
+  return async (request) => {
+    const response = await worker.fetch(request, { ASSETS }, { waitUntil: (p) => pending.push(p) });
+    await Promise.all(pending.splice(0));
+    return response;
+  };
+}
+
+// And a Lambda owns it too, so what the probe does is speak the event format.
+async function lambdaDoor() {
+  const { handler } = await import("./app/lambda.js");
+  return async (request) => {
+    const url = new URL(request.url);
+    const headers = { host: url.host };
+    for (const [name, value] of request.headers) headers[name] = value;
+    const method = request.method.toUpperCase();
+    const result = await handler({
+      version: "2.0",
+      rawPath: url.pathname,
+      rawQueryString: url.search.replace(/^\?/, ""),
+      cookies: [],
+      headers,
+      body: method === "GET" || method === "HEAD" ? undefined : await request.text(),
+      isBase64Encoded: false,
+      requestContext: { domainName: url.host, http: { method, path: url.pathname } },
+    });
+    return new Response(
+      result.isBase64Encoded ? Buffer.from(result.body, "base64") : result.body,
+      { status: result.statusCode, headers: result.headers },
+    );
+  };
+}
+
+const doors = {
+  node: applicationDoor,
+  container: applicationDoor,
+  edge: workerDoor,
+  serverless: lambdaDoor,
+};
+const adapter = process.argv[2];
+const answer = await doors[adapter]();
+
 const ask = async (label, url, init) => {
   const request = new Request(`http://127.0.0.1${url}`, init);
-  const { run, settle } = handler.beginRequest(request);
-  try {
-    const response = await run(() => handler.fetch(request));
-    const body = (await response.text()).replace(/\s+/g, " ");
-    process.stdout.write(`${label} ${response.status} ${body}\n`);
-  } finally {
-    await settle();
-  }
+  const response = await answer(request);
+  const body = (await response.text()).replace(/\s+/g, " ");
+  process.stdout.write(`${label} ${response.status} ${body}\n`);
 };
 
 await ask("handler-get", "/api/health");
 await ask("handler-post", "/api/health", { method: "POST", body: JSON.stringify({ name: "uf" }) });
 await ask("rendered", "/posts/hello-world");
 await ask("missing", "/definitely-not-a-page/");
+// The two adapters whose entry carries a static half of its own: Cloudflare's
+// asset server through the binding, and the copy inside the Lambda package.
+if (adapter === "edge" || adapter === "serverless") {
+  await ask("prerendered", "/guide/");
+}
 "#;
+
+/// Build one adapter's artefact and copy it out of the checkout.
+///
+/// The copy is the point rather than the setup: in place proves nothing,
+/// because `dist/`, `node_modules` and the source are all still there and an
+/// artefact quietly reading one of them would pass. Returns the build's stdout
+/// and the temporary directory holding `app/`, which the caller keeps alive.
+fn deploy_and_copy(root: &Path, adapter: &str) -> (String, tempfile::TempDir) {
+    let output = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["build", "--adapter", adapter])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "`uf build --adapter {adapter}` failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    for expected in ["adapter", &format!(".uf/deploy/{adapter}")] {
+        assert!(
+            stdout.contains(expected),
+            "the summary must say what was written; missing {expected:?} in:\n{stdout}"
+        );
+    }
+
+    let empty = tempfile::tempdir().unwrap();
+    let deployed = empty.path().join("app");
+    copy_tree(&root.join(format!(".uf/deploy/{adapter}")), &deployed);
+    for ancestor in deployed.ancestors() {
+        assert!(
+            !ancestor.join("node_modules").exists(),
+            "this test means nothing with a node_modules at {}",
+            ancestor.display()
+        );
+    }
+    (stdout, empty)
+}
+
+/// Ask the copied artefact the four questions, with [`ASK_THE_ARTEFACT`].
+fn ask_the_artefact(empty: &Path, adapter: &str) -> String {
+    fs::write(empty.join("ask.mjs"), ASK_THE_ARTEFACT).unwrap();
+    let answered = Command::new("node")
+        .arg("ask.mjs")
+        .arg(adapter)
+        .current_dir(empty)
+        .output()
+        .unwrap();
+    let said = format!(
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&answered.stdout),
+        String::from_utf8_lossy(&answered.stderr)
+    );
+    assert!(
+        answered.status.success(),
+        "the `{adapter}` artefact could not answer\n{said}"
+    );
+    String::from_utf8_lossy(&answered.stdout).into_owned()
+}
+
+/// The half of a probe's answers every adapter has to give identically.
+///
+/// Everything but `prerendered`, which only the two adapters carrying a static
+/// half are asked for — a `node` artefact's static half is `server.js`'s, and
+/// `server.js` takes a socket rather than answering a function call.
+fn shared_answers(said: &str) -> Vec<&str> {
+    said.lines()
+        .filter(|line| !line.starts_with("prerendered "))
+        .collect()
+}
+
+/// Assert on the answers themselves, once, for whichever adapter produced them.
+///
+/// The four are chosen so that each says something a static host could not:
+/// a route handler for a `GET` and for a `POST` with a body, a route with
+/// parameters and no `generateStaticParams`, and the project's own 404.
+fn assert_artefact_answers(answers: &str) {
+    for expected in [
+        // A route handler, which is the clearest thing a build could not serve.
+        "handler-get 200 {\"status\":\"ok\"}",
+        // With a body, so the assertion is that the request reached the module
+        // rather than that something answered 200.
+        "handler-post 200 {\"echoed\":\"uf\"}",
+    ] {
+        assert!(
+            answers.contains(expected),
+            "missing {expected:?} in:\n{answers}"
+        );
+    }
+    let rendered = answers
+        .lines()
+        .find(|line| line.starts_with("rendered "))
+        .unwrap_or_else(|| panic!("no rendered line in:\n{answers}"));
+    assert!(
+        rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
+        "a route with no prerendered file has to be rendered per request:\n{rendered}"
+    );
+    let missing = answers
+        .lines()
+        .find(|line| line.starts_with("missing "))
+        .unwrap_or_else(|| panic!("no missing line in:\n{answers}"));
+    assert!(
+        missing.starts_with("missing 404") && missing.contains("served-app has no such page"),
+        "an unrouted path is the project's own 404, not somebody else's page:\n{missing}"
+    );
+}
+
+/// What has to be in an adapter's directory, per adapter.
+///
+/// The shared half first, because it is the seam: `handler.js`, the copy of
+/// the build, and the `package.json` without which `node` and Lambda read
+/// every `.js` beside them as CommonJS. Then the one entry that differs and
+/// the platform file, if any, beside it.
+fn assert_artefact_shape(adapter: &str, deployed: &Path) {
+    assert!(deployed.join("handler.js").is_file());
+    assert!(
+        deployed.join("package.json").is_file(),
+        "`.js` is CommonJS without it, on Node and on Lambda alike"
+    );
+    // The static half came along: the prerendered documents and the hashed
+    // client assets. And the route that was *not* prerendered is still not
+    // there, which is what makes the render assertion a render.
+    assert!(deployed.join("static/index.html").is_file());
+    assert!(deployed.join("static/guide/index.html").is_file());
+    assert!(
+        !deployed.join("static/posts").exists(),
+        "a route with parameters and no `generateStaticParams` must reach the copy unprerendered"
+    );
+
+    match adapter {
+        "node" => assert!(deployed.join("server.js").is_file()),
+        "container" => {
+            assert!(deployed.join("server.js").is_file());
+            let dockerfile = fs::read_to_string(deployed.join("Dockerfile")).unwrap();
+            assert!(
+                dockerfile.contains("CMD [\"node\", \"server.js\"]"),
+                "the image has to start the server this directory carries:\n{dockerfile}"
+            );
+            assert!(
+                dockerfile.contains("A template"),
+                "the first line has to say what it is, because it is not a supported \
+                 configuration:\n{dockerfile}"
+            );
+            let ignored = fs::read_to_string(deployed.join(".dockerignore")).unwrap();
+            assert!(ignored.contains("Dockerfile"));
+        }
+        "edge" => assert_worker_shape(deployed),
+        "serverless" => {
+            let lambda = fs::read_to_string(deployed.join("lambda.js")).unwrap();
+            assert!(
+                lambda.contains("export { handler }"),
+                "the function's configured handler is `lambda.handler`:\n{lambda}"
+            );
+        }
+        other => panic!("no shape is written down for the `{other}` adapter"),
+    }
+}
+
+/// The Worker's own half: `wrangler.json`, and what the bundle needs from it.
+///
+/// Every assertion here is a line of Cloudflare's documented configuration
+/// schema, and each one is load-bearing rather than decorative — which is why
+/// they are asserted rather than left to be read. The last is the one that
+/// would otherwise rot silently: the bundle is linked with `workerd` first in
+/// the export conditions so that React resolves to `server.edge.js`, and a
+/// change that lost that would pull in `server.node.js`, whose `node:stream`
+/// would arrive with no line here going red.
+fn assert_worker_shape(deployed: &Path) {
+    assert!(deployed.join("worker.js").is_file());
+    assert!(
+        !deployed.join("server.js").exists(),
+        "a Worker takes no socket, so there is nothing for a `server.js` to do here"
+    );
+
+    let wrangler: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(deployed.join("wrangler.json")).unwrap()).unwrap();
+    assert_eq!(wrangler["main"], "./worker.js");
+    assert_eq!(wrangler["compatibility_flags"][0], "nodejs_compat");
+    assert_eq!(wrangler["assets"]["directory"], "./static/");
+    assert_eq!(wrangler["assets"]["binding"], "ASSETS");
+    // The Worker asks for an asset before the application answers, which is
+    // what puts the resolution order in uf rather than in a platform setting.
+    assert_eq!(wrangler["assets"]["run_worker_first"], true);
+    // And a miss falls through, so the 404 a visitor sees is the project's own.
+    assert_eq!(wrangler["assets"]["not_found_handling"], "none");
+
+    let mut imported = Vec::new();
+    let mut files = vec![deployed.join("worker.js"), deployed.join("handler.js")];
+    if let Ok(chunks) = fs::read_dir(deployed.join("chunks")) {
+        files.extend(chunks.map(|entry| entry.unwrap().path()));
+    }
+    for file in files {
+        let source = fs::read_to_string(&file).unwrap();
+        for (at, _) in source.match_indices("\"node:") {
+            let rest = &source[at + 1..];
+            let name = &rest[..rest.find('"').unwrap_or(0)];
+            if !imported.contains(&name.to_owned()) {
+                imported.push(name.to_owned());
+            }
+        }
+    }
+    imported.sort();
+    // `node:async_hooks` alone, and `nodejs_compat` in `wrangler.json` is what
+    // provides it: the request context is an `AsyncLocalStorage`, so the flag
+    // is not optional and the script does not link without it. Anything else
+    // appearing here is a decision somebody has to make about a compatibility
+    // date rather than a line to relax.
+    assert_eq!(
+        imported,
+        vec!["node:async_hooks".to_owned()],
+        "the edge bundle's Node built-ins decide what `wrangler.json` has to ask for"
+    );
+}
 
 /// `uf build --adapter node`, copied somewhere that is not a checkout.
 ///
@@ -1276,98 +1590,14 @@ fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
     let _served = served_lock();
     let root = served_app_root();
 
-    let output = uf()
-        .arg("--cwd")
-        .arg(&root)
-        .args(["build", "--adapter", "node"])
-        .output()
-        .unwrap();
+    let (stdout, empty) = deploy_and_copy(&root, "node");
     assert!(
-        output.status.success(),
-        "stdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        stdout.contains("node server.js"),
+        "the summary must say how to run it; missing \"node server.js\" in:\n{stdout}"
     );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_plain(&stdout);
-    for expected in ["adapter", ".uf/deploy/node", "node server.js"] {
-        assert!(
-            stdout.contains(expected),
-            "the summary must say what was written and how to run it; missing {expected:?} in:\n{stdout}"
-        );
-    }
-
-    // Copied out rather than driven in place, because in place proves nothing:
-    // `dist/`, `node_modules` and the source are all still there, and an
-    // artefact quietly reading one of them would pass.
-    let empty = tempfile::tempdir().unwrap();
     let deployed = empty.path().join("app");
-    copy_tree(&root.join(".uf/deploy/node"), &deployed);
-    for ancestor in deployed.ancestors() {
-        assert!(
-            !ancestor.join("node_modules").exists(),
-            "this test means nothing with a node_modules at {}",
-            ancestor.display()
-        );
-    }
-
-    // The static half came along: the prerendered documents and the hashed
-    // client assets, which are what `server.js` serves before it renders
-    // anything. And the route that was *not* prerendered is still not there,
-    // which is what makes the render assertion below a render.
-    assert!(deployed.join("static/index.html").is_file());
-    assert!(deployed.join("static/guide/index.html").is_file());
-    assert!(
-        !deployed.join("static/posts").exists(),
-        "a route with parameters and no `generateStaticParams` must reach the copy unprerendered"
-    );
-    assert!(
-        deployed.join("package.json").is_file(),
-        "`node server.js` reads `.js` as CommonJS without it"
-    );
-
-    let ask = empty.path().join("ask.mjs");
-    fs::write(&ask, ASK_THE_ARTEFACT).unwrap();
-    let answered = Command::new("node")
-        .arg("ask.mjs")
-        .current_dir(empty.path())
-        .output()
-        .unwrap();
-    let said = format!(
-        "stdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&answered.stdout),
-        String::from_utf8_lossy(&answered.stderr)
-    );
-    assert!(answered.status.success(), "{said}");
-    let answers = String::from_utf8_lossy(&answered.stdout).into_owned();
-    for expected in [
-        // A route handler, which is the clearest thing a build could not serve.
-        "handler-get 200 {\"status\":\"ok\"}",
-        // With a body, so the assertion is that the request reached the module
-        // rather than that something answered 200.
-        "handler-post 200 {\"echoed\":\"uf\"}",
-    ] {
-        assert!(
-            answers.contains(expected),
-            "missing {expected:?} in:\n{said}"
-        );
-    }
-    let rendered = answers
-        .lines()
-        .find(|line| line.starts_with("rendered "))
-        .unwrap_or_else(|| panic!("no rendered line in:\n{said}"));
-    assert!(
-        rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
-        "a route with no prerendered file has to be rendered per request:\n{rendered}"
-    );
-    let missing = answers
-        .lines()
-        .find(|line| line.starts_with("missing "))
-        .unwrap_or_else(|| panic!("no missing line in:\n{said}"));
-    assert!(
-        missing.starts_with("missing 404") && missing.contains("served-app has no such page"),
-        "an unrouted path is the project's own 404, not somebody else's page:\n{missing}"
-    );
+    assert_artefact_shape("node", &deployed);
+    assert_artefact_answers(&ask_the_artefact(empty.path(), "node"));
 
     if !loopback_ready() {
         return;
@@ -1410,6 +1640,84 @@ fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
         "the deployed directory never answered, on {PORT_ATTEMPTS} different ports\n{}",
         refused.join("\n\n")
     );
+}
+
+/// The other three adapters, and the one thing they may not differ in.
+///
+/// `uf build --adapter node` has its own test above, because it is the one
+/// with a socket to take. This is the rest of ubugeeei-prod/uf#391: `edge`,
+/// `serverless` and `container`, each built for real, each copied to a
+/// directory with no `node_modules` anywhere above it, and each asked the same
+/// four questions through the entry its platform would call — a Worker's
+/// `export default { fetch }`, a Lambda's `handler(event)`, and for the
+/// container the same `handler.js` the Node adapter writes.
+///
+/// The assertion is that the four answers are **byte-identical**, `node`
+/// included. That is the whole claim of the seam: `createFetchHandler` is one
+/// function, an adapter is the file wrapped around it, and an adapter that
+/// answered differently would be a second application wearing the first one's
+/// name. It is a stronger statement than it looks for `edge`, which is linked
+/// against a different build of React — `server.edge.js` rather than
+/// `server.node.js`, so the document comes out of `renderToReadableStream`
+/// rather than `renderToPipeableStream` — and still comes out the same.
+///
+/// # None of this has run on Cloudflare or on AWS
+///
+/// Nor has the container been built: this sandbox has no Docker daemon, no
+/// cloud credentials and no socket. What is established here is that the
+/// directory is complete, that its shape is the platform's documented one, and
+/// that the application inside it answers. Deploying it is a step nobody has
+/// taken, and `docs/app/reference/cli/_uf.page.mdx` says so in those words.
+#[test]
+fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
+    if !fixture_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let mut reference: Option<(&str, Vec<String>)> = None;
+    for adapter in ["node", "edge", "serverless", "container"] {
+        let (_, empty) = deploy_and_copy(&root, adapter);
+        assert_artefact_shape(adapter, &empty.path().join("app"));
+
+        let answers = ask_the_artefact(empty.path(), adapter);
+        assert_artefact_answers(&answers);
+
+        let shared: Vec<String> = shared_answers(&answers)
+            .iter()
+            .map(|line| (*line).to_owned())
+            .collect();
+        match &reference {
+            None => reference = Some((adapter, shared)),
+            Some((first, expected)) => {
+                similar_asserts::assert_eq!(
+                    &shared,
+                    expected,
+                    "the `{}` adapter and the `{}` adapter answered differently",
+                    adapter,
+                    first
+                );
+            }
+        }
+
+        // And the static half, for the two whose entry carries one: the
+        // Worker's through the `ASSETS` binding, the Lambda's out of the
+        // deployment package. Both have to answer the prerendered document
+        // rather than render the page again — which is the resolution order
+        // `uf preview` fixes for everybody.
+        if adapter == "edge" || adapter == "serverless" {
+            let prerendered = answers
+                .lines()
+                .find(|line| line.starts_with("prerendered "))
+                .unwrap_or_else(|| panic!("no prerendered line in:\n{answers}"));
+            assert!(
+                prerendered.starts_with("prerendered 200")
+                    && prerendered.contains("served-app guide"),
+                "a path the build wrote a file for is answered with the file:\n{prerendered}"
+            );
+        }
+    }
 }
 
 /// Copy `from` to `to`, recursively.
