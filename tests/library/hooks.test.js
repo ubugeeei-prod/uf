@@ -9,7 +9,7 @@
 
 import * as React from "@uniflowed/react";
 import { useRef, useState } from "@uniflowed/react";
-import { describe, expect, fn, it } from "@uniflowed/test";
+import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import {
   useAnimationFrame,
@@ -56,6 +56,26 @@ import {
 } from "@uniflowed/hooks";
 
 const tick = (millis: number) => act(() => new Promise((resolve) => setTimeout(resolve, millis)));
+
+/**
+ * Move a clock the test installed itself, and let React catch up.
+ *
+ * The counterpart to `tick`, and the difference is what each one is entitled
+ * to claim. `tick` sleeps, so it promises *at least* `millis` and nothing
+ * about the most: `setTimeout(resolve, 35)` on a box running twelve workers
+ * comes back whenever the worker is scheduled again, and a test that left five
+ * milliseconds of slack against a forty-millisecond hook fails when it comes
+ * back six late. `advance` is the only thing moving the clock, so 39 means 39.
+ *
+ * Use it for anything built on `setTimeout`, `setInterval` or `Date.now`,
+ * which is every hook in this file except `useAnimationFrame`: `uft` replaces
+ * the scheduling globals, and the frame callback is the document's.
+ */
+const advance = (millis: number) => {
+  act(() => {
+    uft.advanceTimersByTime(millis);
+  });
+};
 
 describe("useStableCallback", () => {
   it("keeps one identity across renders", async () => {
@@ -967,6 +987,16 @@ describe("more element hooks", () => {
 });
 
 describe("more timing hooks", () => {
+  // Each case that wants a fake clock installs it itself, next to the reason
+  // it needs one; this puts the real one back however the case ended. A leaked
+  // fake clock is the failure that costs the most to read — the next file's
+  // `setTimeout` never fires and the run hangs with nothing on screen saying
+  // why — and `afterEach` runs after a case that threw, which a line at the
+  // end of each body would not.
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
   it("runs a frame loop and cancels it at unmount", async () => {
     let frames = 0;
     let sawDelta = false;
@@ -981,12 +1011,23 @@ describe("more timing hooks", () => {
     }
 
     const { unmount } = render(<Probe />);
-    await tick(40);
-    expect(frames > 1).toBe(true);
-    expect(sawDelta).toBe(true);
+    // The one hook here that has to have real time: `requestAnimationFrame`
+    // belongs to the document rather than to the globals `uft` replaces, so
+    // there is no clock to advance. Waited for instead of slept through —
+    // what this asserts is "the loop painted more than one frame", and a
+    // fixed sleep asserts that only for as long as the machine keeps up. On a
+    // worker that lost its slice the sleep is short by however long it lost,
+    // and the answer is a longer sleep in every suite that ever gets wider.
+    await waitFor(() => {
+      expect(frames > 1).toBe(true);
+      expect(sawDelta).toBe(true);
+    });
 
     unmount();
     const before = frames;
+    // A sleep, because the claim is that nothing happens and there is no
+    // event to wait for. Nothing to lose to jitter either: a slow worker
+    // gives the loop that should be cancelled more chances to prove it is not.
     await tick(40);
     expect(frames).toBe(before);
   });
@@ -1000,11 +1041,23 @@ describe("more timing hooks", () => {
       return null;
     }
     render(<Probe />);
+    // Real time again, and a sleep for the same reason as the one above: the
+    // claim is that no frame ran, and every extra millisecond is one more
+    // chance for the loop to contradict it.
     await tick(30);
     expect(frames).toBe(0);
   });
 
-  it("notices the reader stopping, and starts the wait again when they move", async () => {
+  it("notices the reader stopping, and starts the wait again when they move", () => {
+    // On a clock this test owns. `useIdle` is a `setTimeout` and nothing else,
+    // so real time bought no coverage here and cost the assertion below:
+    // `tick(35)` against a `useIdle(40)` left five milliseconds of slack, and
+    // a worker descheduled for six of them — an ordinary amount of jitter with
+    // twelve of them on the box — read "idle" and failed, about one run in ten
+    // (#337). Waiting longer would only have moved the same margin somewhere
+    // else; what the test is about is a new wait replacing the old one, and
+    // that has nothing to do with elapsed wall time.
+    uft.useFakeTimers();
     component Probe() {
       const idle = useIdle(40);
       return <output>{idle ? "idle" : "here"}</output>;
@@ -1012,32 +1065,46 @@ describe("more timing hooks", () => {
     render(<Probe />);
     expect(screen.getByText("here")).toBeInTheDocument();
 
-    await tick(20);
+    advance(20);
     fireEvent.pointerMove(globalThis.document.body);
-    await tick(35);
+    advance(39);
     // Past the moment the *first* wait would have expired. A version that
     // started a new timer without clearing the old one would say "idle" here,
-    // forty milliseconds after the reader last moved the pointer.
+    // forty milliseconds after the reader last moved the pointer. On a clock
+    // that only moves when this line moves it, the margin is one millisecond
+    // on purpose: it pins the boundary rather than approaching it.
     expect(screen.getByText("here")).toBeInTheDocument();
 
-    await tick(40);
+    // And the fortieth millisecond after the move is the one that expires.
+    advance(1);
     expect(screen.getByText("idle")).toBeInTheDocument();
 
     fireEvent.pointerMove(globalThis.document.body);
     expect(screen.getByText("here")).toBeInTheDocument();
   });
 
-  it("moves the clock forward", async () => {
-    const seen = new Set();
+  it("moves the clock forward", () => {
+    uft.useFakeTimers();
+    const seen = new Set<number>();
     component Probe() {
       const now = useNow(5);
       seen.add(now.getTime());
       return null;
     }
     const { unmount } = render(<Probe />);
-    await tick(40);
+    // The instant the first render read, which is the clock's and not a
+    // separate reading of it: `useNow` takes its initial state from `new
+    // Date()` during that render, and nothing has moved the clock since.
+    const started = Date.now();
+    // One advance per interval rather than one of forty. Eight `setState`s
+    // inside a single `act` are one React render with the last value, so a
+    // single advance would prove only that the clock moved at all — which is
+    // what `seen.size > 1` used to settle for.
+    for (let step = 0; step < 8; step += 1) {
+      advance(5);
+    }
     unmount();
-    expect(seen.size > 1).toBe(true);
+    expect([...seen]).toEqual([0, 5, 10, 15, 20, 25, 30, 35, 40].map((at) => started + at));
   });
 
   it("turns a stable instant into relative text once it has hydrated", async () => {
@@ -1056,7 +1123,12 @@ describe("more timing hooks", () => {
     unmount();
   });
 
-  it("re-reads a recent label often and an old one hardly at all", async () => {
+  it("re-reads a recent label often and an old one hardly at all", () => {
+    // A second and a fifth of real time, spent to watch a `setInterval` that
+    // this can simply advance past. The dates below are read from the clock
+    // before it is faked and stay true afterwards, because `useFakeTimers`
+    // starts the fake clock at the real instant rather than at zero.
+    uft.useFakeTimers();
     let recentRenders = 0;
     let oldRenders = 0;
     const recent = new Date(Date.now() - 5_000);
@@ -1084,7 +1156,7 @@ describe("more timing hooks", () => {
     const { unmount } = render(<Probe />);
     const recentBefore = recentRenders;
     const oldBefore = oldRenders;
-    await tick(1_200);
+    advance(1_200);
     unmount();
 
     // "5 seconds ago" is wrong a second later, so it is worked out again.
@@ -1095,6 +1167,7 @@ describe("more timing hooks", () => {
   });
 
   it("throttles on the leading edge and debounces on the trailing one", async () => {
+    uft.useFakeTimers();
     const throttled = fn();
     const debounced = fn();
     component Probe() {
@@ -1117,18 +1190,27 @@ describe("more timing hooks", () => {
     await userEvent.click(throttle);
     await userEvent.click(throttle);
     await userEvent.click(throttle);
-    // The first goes through immediately; the rest are inside the window.
+    // The first goes through immediately; the rest are inside the window —
+    // and on a clock nothing but this test moves, "inside the window" is a
+    // fact rather than a hope that three `userEvent.click`s take less than
+    // fifty milliseconds. `useThrottledCallback` compares `Date.now()`, so on
+    // real time a slow enough third click let a second call through.
     expect(throttled.mock.calls.length).toBe(1);
 
     const debounce = screen.getByRole("button", { name: "debounce" });
     await userEvent.click(debounce);
     await userEvent.click(debounce);
     expect(debounced).not.toHaveBeenCalled();
-    await tick(40);
+    // Nineteen of the twenty, then the twentieth: the wait that used to be a
+    // 40ms sleep against a 20ms debounce is now the boundary itself.
+    advance(19);
+    expect(debounced).not.toHaveBeenCalled();
+    advance(1);
     expect(debounced.mock.calls.length).toBe(1);
   });
 
   it("cancels a pending debounce at unmount", async () => {
+    uft.useFakeTimers();
     const body = fn();
     component Probe() {
       const run = useDebouncedCallback(body, 20);
@@ -1141,7 +1223,7 @@ describe("more timing hooks", () => {
     const { unmount } = render(<Probe />);
     await userEvent.click(screen.getByRole("button"));
     unmount();
-    await tick(40);
+    advance(40);
     // The version people write calls `setState` on a component that is gone.
     expect(body).not.toHaveBeenCalled();
   });
