@@ -179,6 +179,13 @@ pub(crate) enum Event {
         status: u16,
         bytes: u64,
     },
+    /// One route did not prerender.
+    ///
+    /// Not [`Self::Error`], which ends the command: the build carries on and
+    /// writes the routes that did render, then fails once with all of them
+    /// named. A page that throws is one page's problem until the build is
+    /// over, and the reader needs the whole list rather than the first item.
+    PageFailed { url: String, error: DriverError },
     /// A build finished.
     Done { out_dir: String, pages: u64 },
     /// The JSON projection of the config, from `driver config`.
@@ -229,6 +236,15 @@ impl Event {
                 .unwrap_or_default()
         };
         let number = |key: &str| value.get(key).and_then(Value::as_u64);
+        // Two events carry a failure, and they are the same shape because
+        // `errorEvent` in the driver builds both.
+        let failure = || DriverError {
+            message: text("message").unwrap_or_else(|| String::from("the driver failed")),
+            file: text("file"),
+            line: number("line").and_then(|n| usize::try_from(n).ok()),
+            column: number("column").and_then(|n| usize::try_from(n).ok()),
+            frame: text("frame"),
+        };
         match value.get("event").and_then(Value::as_str) {
             Some("config-loaded") => Self::ConfigLoaded { file: text("file") },
             Some("phase") => Self::Phase {
@@ -253,6 +269,10 @@ impl Event {
                 status: u16::try_from(number("status").unwrap_or(200)).unwrap_or(200),
                 bytes: number("bytes").unwrap_or(0),
             },
+            Some("page-failed") => Self::PageFailed {
+                url: text("url").unwrap_or_default(),
+                error: failure(),
+            },
             Some("done") => Self::Done {
                 out_dir: text("outDir").unwrap_or_default(),
                 pages: number("pages").unwrap_or(0),
@@ -260,13 +280,7 @@ impl Event {
             Some("config") => Self::Config {
                 config: value.get("config").cloned().unwrap_or(Value::Null),
             },
-            Some("error") => Self::Error(DriverError {
-                message: text("message").unwrap_or_else(|| String::from("the driver failed")),
-                file: text("file"),
-                line: number("line").and_then(|n| usize::try_from(n).ok()),
-                column: number("column").and_then(|n| usize::try_from(n).ok()),
-                frame: text("frame"),
-            }),
+            Some("error") => Self::Error(failure()),
             _ => Self::Log {
                 level: LogLevel::Info,
                 message: line.trim().to_owned(),

@@ -52,6 +52,26 @@ export function stripAnsi(text) {
 }
 
 /**
+ * Report a page that rendered its error boundary instead of itself.
+ *
+ * `uf dev` has two renderers — the plugin's middleware and the driver's — and
+ * this is the one place either of them says so, because a message written
+ * twice is a message that ends up saying two things. The document the browser
+ * gets is the application's error page, which is what a visitor would see;
+ * the exception belongs in the terminal, which is uf's.
+ *
+ * The stack is mapped back onto the Flow source first, so the frames name the
+ * file that was written rather than the one that was compiled.
+ */
+export function reportRenderError(server, url, error) {
+  if (error instanceof Error) {
+    server.ssrFixStacktrace(error);
+  }
+  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  server.config.logger.error(`${url} rendered its error boundary\n${stripAnsi(detail)}`);
+}
+
+/**
  * Describe an error for the channel: message, and a location when Babel or
  * Rolldown attached one.
  */
