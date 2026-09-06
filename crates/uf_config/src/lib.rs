@@ -5,6 +5,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
+pub use uf_assets::{FontsConfig, ImagesConfig};
 pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
 
 mod app;

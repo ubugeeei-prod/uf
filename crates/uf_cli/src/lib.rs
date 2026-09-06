@@ -221,6 +221,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
+        Commands::Assets => commands::assets::assets_service(&cwd),
         Commands::Install { frozen_lockfile } => commands::pm::install(&cwd, ui, frozen_lockfile),
         Commands::Lint { json, paths } => {
             commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json, &paths)
