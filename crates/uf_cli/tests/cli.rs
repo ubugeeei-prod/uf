@@ -1123,7 +1123,7 @@ fn explain_says_which_commands_it_knows() {
 /// one list or the other. `help` and `completion` are clap's; `create`,
 /// `explain`, `info` and `inspect` are uf's own work start to finish.
 ///
-/// `exec` left this list when it started running things: two of its three
+/// `exec` left this list when it started running things: three of its four
 /// paths hand control to something else, so there is a provider to name.
 const SELF_CONTAINED: &[&str] = &["completion", "create", "explain", "help", "info", "inspect"];
 
@@ -1229,6 +1229,62 @@ fn explain_emits_json_when_asked() {
     assert!(
         value["configurationSources"].as_array().is_some(),
         "{value}"
+    );
+}
+
+/// `uf explain exec` describes the path that runs without asking.
+///
+/// `exec_package` tries four things in order, and the explanation listed three:
+/// uf's own packages, `node_modules/.bin`, and the package manager. The one it
+/// skipped runs an explicit path — `ufx ./scripts/codegen.js` — and it sits
+/// *before* the package-manager branch, so a reader who came here to find out
+/// what would happen was told their path would be fetched from a registry and
+/// refused without `--yes`, when in fact it executes with no consent asked for
+/// at all.
+///
+/// Being wrong about which of two paths asks permission is the one thing this
+/// command must not be, which is why the order is asserted and not only the
+/// presence.
+#[test]
+fn explain_exec_describes_every_path_exec_actually_takes() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "exec", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("uf explain --json emits JSON");
+    let stages = value["stages"].as_array().expect("stages is an array");
+    let names: Vec<&str> = stages
+        .iter()
+        .map(|stage| stage["name"].as_str().unwrap())
+        .collect();
+
+    // One per branch of `exec_package`, in `exec_package`'s order.
+    assert_eq!(
+        names,
+        vec![
+            "uf's own packages",
+            "installed binaries",
+            "an explicit path",
+            "everything else",
+        ],
+        "{value}"
+    );
+    // And the reader is told which of the two asks first.
+    let explicit = stages[2]["detail"].as_str().unwrap();
+    assert!(
+        explicit.contains("--yes"),
+        "the explicit-path stage must say whether it asks: {explicit}"
     );
 }
 

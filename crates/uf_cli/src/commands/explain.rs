@@ -186,13 +186,21 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     ]
 }
 
-/// `uf install`, whose whole question is which resolver decides a tree.
-/// `uf exec`, which is three different commands wearing one name.
+/// `uf exec`, which is four different commands wearing one name.
 ///
 /// Worth explaining precisely because of that: the answer to "what will
-/// `ufx foo` do" is one of three things, and which one depends on a directory
-/// listing the reader cannot see. It used to be a fourth — write a JSON file
-/// and exit 0 — which is the thing nobody could have guessed.
+/// `ufx foo` do" is one of four things, and which one depends on a directory
+/// listing the reader cannot see. It used to be a fifth — write a JSON file and
+/// exit 0 — which is the thing nobody could have guessed.
+///
+/// The stages are `exec_package`'s branches in `exec_package`'s order, and that
+/// is the whole contract of this function. The explicit-path stage was missing
+/// for a while and the omission was not cosmetic: `ufx ./scripts/codegen.js`
+/// runs *before* the package-manager branch, so a reader who checked here was
+/// told their path would be fetched from a registry and refused without
+/// `--yes`, when in fact it runs with no consent asked for at all. Being wrong
+/// about which of two paths asks permission is the one thing this command must
+/// not be.
 fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {
@@ -210,6 +218,14 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             ),
         },
         Stage {
+            name: "an explicit path",
+            provider: "the project".to_string(),
+            detail: format!(
+                "a name that is a file — `ufx ./scripts/codegen.js` — is executed as written from {}, with no --yes asked for",
+                resolved.root
+            ),
+        },
+        Stage {
             name: "everything else",
             provider: command_for(
                 fetchable(detect_package_manager(&resolved.root).package_manager),
@@ -217,7 +233,7 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             )
             .to_string(),
             detail: format!(
-                "refused unless --yes: fetching a name {} does not pin runs code the project never asked for",
+                "a package that is not installed: refused unless --yes, because fetching a name {} does not pin runs code the project never asked for",
                 resolved.config.pm.lockfile
             ),
         },
