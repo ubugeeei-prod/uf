@@ -16,6 +16,7 @@
 // promises too, and it is not a promise any amount of rendering can check.
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 import * as React from "@uniflowed/react";
@@ -2464,14 +2465,38 @@ describe("the props a part spreads onto its element", () => {
   // `any` — a different bug, with a different fix, and not one this test
   // should start failing over.
 
-  // The repository, two levels up from the project this worker runs in.
-  // `uf test` names that project in `UF_PROJECT_ROOT` and starts the worker
-  // there, so it is `tests/library` whichever directory the command was typed
-  // in. `import.meta.url` would say it more directly, and
-  // `fileURLToPath(import.meta.url)` is itself one of the type errors
-  // `uf check` reports against this suite today — see `story.test.js` — which
-  // is a poor thing for a test about type errors to add another of.
-  const repository = path.resolve(process.env.UF_PROJECT_ROOT ?? process.cwd(), "..", "..");
+  // This checkout, found by the file under test rather than by counting `..`.
+  //
+  // Two levels above the worker's project is this repository only while that
+  // project is `tests/library`, and which project it is depends on how the
+  // command was typed. `uf test#library` selects `tests/library` by name;
+  // `uf test tests/library/ui.test.js` from the checkout selects the
+  // *repository*, because a path is a filter over the project the command was
+  // typed in and `UF_PROJECT_ROOT` is that project's root. Two levels above
+  // the checkout holds no uf project at all, so `uf check` printed nothing,
+  // and what a reader got was `SyntaxError: Unexpected end of JSON input` at
+  // the parse below — a message about JSON for a mistake about a directory,
+  // in the invocation someone reaches for when they want one file. That is
+  // #313.
+  //
+  // Searching upwards for a file this repository has is true under both, and
+  // is what `write-atomically.test.js` already does for the same reason.
+  // `fileURLToPath(import.meta.url)` would say it more directly still, and is
+  // itself one of the type errors `uf check` reports against this suite today
+  // — see `story.test.js` — which is a poor thing for a test about type errors
+  // to add another of.
+  const repository: string = (() => {
+    // The package this block checks, so a checkout that moved it says so here
+    // rather than three lines later in a parse.
+    const wanted = path.join("packages", "ui", "internal", "merge-props.js");
+    const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
+    let directory = from;
+    for (let up = 0; up < 8; up += 1) {
+      if (fs.existsSync(path.join(directory, wanted))) return directory;
+      directory = path.dirname(directory);
+    }
+    throw new Error(`could not find ${wanted} above ${from}`);
+  })();
 
   // The binary running this suite, the way `lsp.test.js` names it: `uf test`
   // puts its own path in `UF_BINARY`, so this checks *this* build rather than
@@ -2502,7 +2527,17 @@ describe("the props a part spreads onto its element", () => {
       maxBuffer: 32 * 1024 * 1024,
     });
     // A non-zero status is expected: the package still has the `value-as-type`
-    // errors above. The answer is on stdout either way.
+    // errors above. The answer is on stdout either way — and when it is not,
+    // this says so. `JSON.parse("")` reports `Unexpected end of JSON input`
+    // and names neither the command, the directory, nor what the command said
+    // instead, which is the half of #313 that made a wrong directory take an
+    // afternoon to find rather than a minute.
+    if (run.stdout === "") {
+      throw new Error(
+        `\`uf check packages/ui --json\` in ${repository} printed nothing: ` +
+          `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
+      );
+    }
     const report: Report = JSON.parse(run.stdout);
     // Without this the test would pass just as happily on a run that checked
     // nothing at all.
