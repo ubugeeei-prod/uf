@@ -91,6 +91,12 @@ behaviour unless `dev.strictPort` says otherwise; it is a preference the project
 wrote down once, not an instruction you just gave. `--host HOST` binds a
 routable address, which requires a non-empty `dev.allowedHosts`.
 
+It also runs the server-component analysis, and runs it again whenever a module
+changes, so a Server Component that reaches for `useEffect` or `localStorage`
+is named where it was written rather than in a build days later. It is a report
+and not a gate: `uf dev` does not refuse to serve a module over it, and nothing
+here changes an exit code.
+
 ### uf build
 
 Builds the client and server bundles and prerenders what can be prerendered.

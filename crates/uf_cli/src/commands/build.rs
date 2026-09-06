@@ -129,8 +129,12 @@ pub(crate) fn build(
                     let _ = driver.finish("uf build");
                     return Err(failure);
                 }
+                // A build has no watcher, so `SourceChanged` never reaches
+                // it; it is in the match because the driver's channel is one
+                // vocabulary and every reader has to know the whole of it.
                 Event::ConfigLoaded { .. }
                 | Event::Listening { .. }
+                | Event::SourceChanged
                 | Event::Done { .. }
                 | Event::Config { .. } => {}
             }

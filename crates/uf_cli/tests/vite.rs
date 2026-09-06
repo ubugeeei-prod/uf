@@ -322,6 +322,184 @@ fn a_page_that_throws_fails_its_route_and_not_the_others() {
     );
 }
 
+/// A project whose only page is a Server Component, built under `target/` for
+/// the reason [`project_with_a_throwing_page`] gives.
+///
+/// It starts clean on purpose: the thing being tested is that a violation
+/// appearing while the dev server runs is *reported*, and a project that was
+/// already wrong at start-up would prove only that the analysis runs once.
+fn project_with_a_clean_server_component() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/rsc-dev");
+    fs::remove_dir_all(&root).ok();
+    for (relative, contents) in [
+        (
+            "package.json",
+            r#"{ "name": "uf-rsc-dev", "private": true, "type": "module" }
+"#,
+        ),
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+import { greeting } from "./greeting.js";
+
+export default component Home() {
+  return <h1>{greeting()}</h1>;
+}
+"#,
+        ),
+        ("app/greeting.js", CLEAN_HELPER),
+    ] {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    }
+    root
+}
+
+/// A helper a Server Component imports, with nothing client-only in it.
+const CLEAN_HELPER: &str = r#"// @flow
+export function greeting(): string {
+  return "hello from the server";
+}
+"#;
+
+/// The same helper, reaching for a browser global. `_uf.page.js` is a server
+/// entry and this module is reachable from it, so the graph says the server
+/// runs `localStorage` — which it does not have.
+const HELPER_THAT_TOUCHES_THE_BROWSER: &str = r#"// @flow
+export function greeting(): string {
+  return localStorage.getItem("greeting") ?? "hello";
+}
+"#;
+
+/// `uf dev` runs the server-component analysis, and runs it again when a
+/// module changes.
+///
+/// It ran it never. `uf build` counted the violations and `uf lint`'s
+/// `server/*` rules are per-file scans that cannot see reachability, so the
+/// only place a contract violation was visible was CI — after a push, about
+/// code that worked when it was written, because nothing is split yet and
+/// every module still runs in both places. See ubugeeei-prod/uf#347.
+///
+/// Both halves are asserted because both are the issue: a graph computed once
+/// at start-up is a complete answer that is wrong the moment a file changes,
+/// which is why this edits a file the server is already watching.
+#[test]
+fn dev_reports_a_contract_violation_when_one_appears() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let root = project_with_a_clean_server_component();
+    let helper = root.join("app/greeting.js");
+    let mut refused = Vec::new();
+
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut server =
+                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
+            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: {}",
+                    server.evidence(&said)
+                ));
+                drop(server);
+                return false;
+            }
+
+            // A clean project says nothing. Asserted after the server has
+            // answered a request, which is well after the start-up analysis.
+            assert!(
+                !said_contains(&said, "server components"),
+                "a project with no violations must not report any:\n{}",
+                server_said(&said)
+            );
+
+            fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
+            let reported = wait_for_said(
+                &said,
+                "rsc/client-only-api-in-server",
+                Duration::from_secs(30),
+            );
+            assert!(
+                reported,
+                "the dev server did not report the violation that appeared:\n{}",
+                server.evidence(&said)
+            );
+            let text = server_said(&said);
+            assert!(
+                text.contains("app/greeting.js"),
+                "the report must name the module:\n{text}"
+            );
+            assert!(
+                text.contains("localStorage"),
+                "the report must name the API:\n{text}"
+            );
+
+            // And it goes away again: a report that only ever accumulates is a
+            // report nobody can use to tell whether they fixed it.
+            fs::write(&helper, CLEAN_HELPER).unwrap();
+            let cleared = wait_for_said(
+                &said,
+                "the server-component contract holds",
+                Duration::from_secs(30),
+            );
+            assert!(
+                cleared,
+                "the dev server never said the violation was gone:\n{}",
+                server.evidence(&said)
+            );
+            true
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Whether the server has said `needle` yet, waiting up to `budget` for it.
+fn wait_for_said(said: &Mutex<String>, needle: &str, budget: Duration) -> bool {
+    let deadline = Instant::now() + budget;
+    while Instant::now() < deadline {
+        if said_contains(said, needle) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+fn said_contains(said: &Mutex<String>, needle: &str) -> bool {
+    said.lock().is_ok_and(|said| said.contains(needle))
+}
+
 /// A project with a route that is both guarded and static, built under
 /// `target/` for the reason [`project_with_a_throwing_page`] gives.
 ///
