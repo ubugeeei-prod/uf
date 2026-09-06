@@ -15,7 +15,8 @@
 //   * `Escape` closes *this* menu — the submenu if one is open, not the whole
 //     tree — and gives focus back to what opened it.
 //   * `ArrowRight` opens a submenu and lands on its first item; `ArrowLeft`
-//     closes it and comes back to the item that opened it.
+//     closes it and comes back to the item that opened it — and the two swap in
+//     a right-to-left page, because a submenu opens onto the *inline end*.
 //   * `Tab` closes the menu and carries on through the page, rather than
 //     walking the reader through thirty items they have already dismissed.
 //
@@ -61,6 +62,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import {
+  directionOf,
   indexOfActive,
   isTypeaheadKey,
   itemsOf,
@@ -69,6 +71,7 @@ import {
   useTypeahead,
 } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import type { Direction } from "./internal/roving-focus.js";
 
 /**
  * Anything that plays the part of a menu item, including the two checkable
@@ -80,6 +83,22 @@ const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemcheckbox"], [role="menu
 
 /** What owns an item: the nearest menu, so a submenu keeps its own. */
 const MENU_SELECTOR = '[role="menu"]';
+
+/**
+ * Which arrow key opens a submenu, and which closes it.
+ *
+ * The WAI-ARIA menu pattern puts a submenu on the *inline end*, so it opens to
+ * the right of a left-to-right menu and to the left of a right-to-left one, and
+ * the key that opens it is the one pointing at it. Written out as
+ * `ArrowRight` to open and `ArrowLeft` to close, an RTL reader pressed the key
+ * aimed at the submenu and closed the menu they were standing in — which is
+ * worse than nothing happening, because it loses their place.
+ */
+function submenuKeys(direction: Direction): {| readonly open: string, readonly close: string |} {
+  return direction === "rtl"
+    ? { open: "ArrowLeft", close: "ArrowRight" }
+    : { open: "ArrowRight", close: "ArrowLeft" };
+}
 
 type MenuState = {|
   readonly base: string,
@@ -424,14 +443,19 @@ export component MenuBody(
             return;
           }
 
-          if (!isRoot && event.key === "ArrowLeft") {
+          // Asked once, here, and used for both questions below: which key
+          // closes this submenu, and — for a menu a caller has laid out
+          // horizontally one day — which way the arrows run.
+          const direction = directionOf(body);
+
+          if (!isRoot && event.key === submenuKeys(direction).close) {
             event.preventDefault();
             event.stopPropagation();
             menu.setOpen(false);
             return;
           }
 
-          const movement = movementFor(event.key, "vertical");
+          const movement = movementFor(event.key, "vertical", direction);
           if (movement != null) {
             // Before moving, or the arrow also scrolls the page under the item
             // that just took focus.
@@ -547,7 +571,8 @@ export component MenuSubTrigger(children: React.Node, ...rest: Rest) {
       onClick={composeHandlers(rest.onClick, open)}
       onFocus={composeHandlers(rest.onFocus, () => setActiveId?.(id))}
       onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        if (event.key !== "ArrowRight") {
+        const trigger: $FlowFixMe = event.currentTarget;
+        if (event.key !== submenuKeys(directionOf(trigger)).open) {
           return;
         }
         event.preventDefault();
