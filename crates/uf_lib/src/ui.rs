@@ -246,9 +246,17 @@ pub fn ui_components() -> Vec<UiComponent> {
         // and `Tabs.Panel` is a `tabpanel`. See `packages/ui/tabs.js`.
         UiComponent::new("Tabs", &["Root", "List", "Tab", "Panel"], UiRuntime::Split),
         UiComponent::new("Textarea", &["Root"], UiRuntime::Client),
+        // Implemented in `packages/ui/toast.js`. `Region` is the part the table
+        // was missing and the one the component exists for: the live region has
+        // to be in the document before the notification it announces, so it is
+        // a part a caller renders once in the layout rather than something a
+        // `Root` conjures when a message arrives.
+        //
+        // `Sonner` below is the same component under another project's name,
+        // which is ubugeeei-prod/uf#249's to settle rather than this entry's.
         UiComponent::new(
             "Toast",
-            &["Root", "Title", "Description", "Action", "Close"],
+            &["Region", "Root", "Title", "Description", "Action", "Close"],
             UiRuntime::Client,
         ),
         UiComponent::new("Toggle", &["Root"], UiRuntime::Client),

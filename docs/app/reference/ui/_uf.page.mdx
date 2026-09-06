@@ -35,6 +35,7 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter | `combobox.js` |
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
 | `Tabs` | Tabs: a roving `tabindex`, automatic or manual activation | `tabs.js` |
+| `Toast` | Notifications: a live region that was already watching, and timers that stop | `toast.js` |
 | `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
 | `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
 
@@ -223,6 +224,131 @@ move it — is already in the component, as the `scrollIntoView({ block:
 "nearest" })` every move performs, and it works inside your own scroll
 container without either button.
 
+## Toast
+
+Notifications, and the live region that was watching before them.
+
+```js
+// @flow
+import { Toast, toast } from "@uniflowed/ui";
+
+// Once, in the layout.
+<Toast.Region>
+  {(each) => (
+    <Toast.Root>
+      <Toast.Title>{each.content}</Toast.Title>
+      <Toast.Action onClick={undo}>Undo</Toast.Action>
+      <Toast.Close />
+    </Toast.Root>
+  )}
+</Toast.Region>;
+
+// Anywhere at all.
+toast("Saved");
+toast("Could not save", { urgency: "assertive" });
+```
+
+### The bug it exists for
+
+Every hand-written toast mounts a `<div role="alert">` at the moment the
+message arrives, and that is exactly the commit that makes it silent: a screen
+reader announces a live region's *changes*, so it has to have been watching the
+region before the change. Mounting the region and its first message together
+gives it nothing to have been watching.
+
+It looks perfect on screen, it passes review, and the reader who most needs to
+be told that the save failed is told nothing. `Toast.Region` renders on mount
+and stays, holding nothing; notifications are appended into it. That is the
+whole component in one sentence, and everything else here follows from it.
+
+### Parts
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Toast.Region` | `div role="region"` | The named landmark, and the two live regions inside it. Render it once |
+| `Toast.Root` | `div role="group"` | One notification, and its countdown |
+| `Toast.Title` | `div` | Names the group |
+| `Toast.Description` | `div` | Describes it |
+| `Toast.Action` | `button` | Undo, Retry, View. Taking it dismisses the notification |
+| `Toast.Close` | `button` | `label` becomes its accessible name, defaulting to "Dismiss" |
+
+| Function | What it does |
+| --- | --- |
+| `toast(content, options?)` | Queues a notification; returns its id |
+| `updateToast(id, changes)` | Changes one already queued |
+| `dismissToast(id)` | Takes one away |
+| `dismissAllToasts()` | Empties the queue |
+
+`Toast.Region` takes `label` (default `"Notifications"`) and `limit` (default
+`3`). `toast` takes `urgency` (`"polite"` or `"assertive"`) and `duration` in
+milliseconds, or `null` for one that never expires.
+
+### Two regions, not one
+
+"Saved" and "could not save" interrupt a reader differently and should, and
+which of the two a notification is belongs to the notification rather than to
+the application. That cannot be a role that changes: swapping a live region's
+`role` while it is being watched is the same bug as mounting it late. So there
+are two regions inside the landmark, `role="status"` and `role="alert"`, both
+mounted from the start and both empty, and a notification is appended into the
+one that matches it.
+
+What that costs is chronological order between the two: a failure and a success
+on screen together are in separate containers, and no CSS interleaves them. It
+buys the thing that matters more, which is that what a reader hears is exactly
+what a reader sees — the alternative, one visible stack plus hidden announcers
+mirroring its text, puts every notification in the document twice.
+
+Both regions are `aria-atomic="true"`, so a change presents the whole region.
+With one notification showing that is exactly right. With three, adding a fourth
+reads all four — so `limit` is not only how tall the stack may get, it is how
+much a reader is made to listen to.
+
+### Focus, and the key that gives it
+
+Nothing here moves focus when a notification appears. That interrupts whatever
+the reader was typing, and it is the single failure that makes people turn
+notifications off.
+
+But a notification carrying an Undo button that vanishes after four seconds is a
+control no keyboard reader can operate, so the region is a named landmark and
+**`F6`** — the key the APG suggests for moving between panes — moves focus into
+it. Focus lands on the region itself rather than on the first button in it, so a
+screen reader reads the region's name and its contents; `Tab` from there reaches
+the buttons. Pressing `F6` again while focus is inside gives it back to wherever
+it came from. The binding fires while the reader is typing, because a
+notification that arrives during a form fill is the one most likely to be about
+the form.
+
+### Timers that stop
+
+WCAG 2.2.1, *Timing Adjustable*, applies to anything that disappears on its own.
+The countdown stops while the pointer is over a notification, while focus is
+inside it, and while the document is hidden — the third because a reader who
+switches tabs for a minute should not come back to an empty region.
+
+It stops; it does not restart. What is left is banked and resumed, so brushing
+the stack with the pointer does not hand a notification its whole life again.
+Anything carrying an action should be given `duration: null` and dismissed by
+the action or the close button: the countdown stopping while focus is inside
+makes the button reachable, and that is not a promise that five seconds was
+enough time to decide.
+
+### The queue
+
+`toast("Saved")` is called from an event handler, from a `catch`, from a Server
+Action's error path — none of which have a component to put state in. So the
+queue lives outside React, as an atom in `@uniflowed/state` read through
+`useSyncExternalStore`, and one page has one set of notifications: it is the
+default store on both sides and not one a `Provider` scopes, because a function
+in a module has no context with which to find a scoped store.
+
+The queue is what makes the fiddly parts ordinary. `limit` notifications are
+shown and the rest wait behind them, oldest first — and a waiting one's
+countdown has not started, because it is not rendered. `updateToast` changes one
+in place, so "Uploading…" becoming "Uploaded" is one notification rather than
+two contradicting each other.
+
 ## What this page is
 
 A reference for what `@uniflowed/ui` guarantees, not a gallery. The guarantees
@@ -233,3 +359,9 @@ would pass while every one of them was broken.
 Sections for `Dialog`, `Menu`, `Combobox`, `Tabs`, `Field`, `Switch` and
 `Checkbox` are still to be written; until they are, each module's header is the
 documentation, and it is written to be read.
+
+For a live region that is *only* a live region — a route change announced, a
+count that updates where nothing visible moves — `Announcer` in
+[`@uniflowed/web/regions`](/reference/packages) is the smaller thing, and the
+right one. The test that module states is whether a sighted reader would notice
+its absence: if only a screen reader would, it belongs there rather than here.

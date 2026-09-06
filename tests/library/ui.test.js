@@ -20,7 +20,7 @@ import path from "node:path";
 
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
-import { describe, expect, fn, it } from "@uniflowed/test";
+import { afterEach, beforeEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import {
   act,
   cleanup,
@@ -30,7 +30,20 @@ import {
   userEvent,
   within,
 } from "@uniflowed/react-testing";
-import { Checkbox, Combobox, Dialog, Field, Menu, Select, Switch, Tabs } from "@uniflowed/ui";
+import {
+  Checkbox,
+  Combobox,
+  Dialog,
+  Field,
+  Menu,
+  Select,
+  Switch,
+  Tabs,
+  Toast,
+  dismissAllToasts,
+  toast,
+  updateToast,
+} from "@uniflowed/ui";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -60,6 +73,26 @@ function danglingReferences(): Array<string> {
     }
   }
   return dangling;
+}
+
+/**
+ * Switch away from the document and back, the way another tab does.
+ *
+ * `visibilityState` is a getter rather than a property, so it is redefined
+ * rather than assigned. Both halves are needed: the event is what
+ * `useDocumentVisible` subscribes to, and the property is what it reads when
+ * the event arrives.
+ */
+function hideDocument(hidden: boolean): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    // Annotated, because Flow types `visibilityState` as the four states the
+    // specification names and infers a bare `string` from the conditional.
+    get: (): "hidden" | "visible" => (hidden ? "hidden" : "visible"),
+  });
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
 }
 
 describe("Field", () => {
@@ -1932,6 +1965,422 @@ describe("one Escape is one dismissal", () => {
   });
 });
 
+describe("Toast", () => {
+  // The queue is one module-level value — that is what lets `toast()` be
+  // called from a `catch` — so what one test queued is still there in the next
+  // one unless something clears it.
+  //
+  // Inside `act`, because `render` cleans up the previous test's tree when the
+  // next one starts rather than in an `afterEach`: the region from the test
+  // before is still mounted here, and emptying the queue is an update to it.
+  beforeEach(() => {
+    act(() => {
+      dismissAllToasts();
+    });
+  });
+
+  // A leaked fake clock is the failure mode that matters most here: the next
+  // file's `setTimeout` never fires and the run hangs with no explanation.
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  component Example(limit?: number = 3) {
+    return (
+      <Toast.Region limit={limit}>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  component WithUndo(onUndo?: () => void) {
+    return (
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Action onClick={onUndo}>Undo</Toast.Action>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  /** Queue a notification the way an event handler or a `catch` would. */
+  const notify = (content: string, options?: $FlowFixMe) => {
+    act(() => {
+      toast(content, options);
+    });
+  };
+
+  it("is watching before there is anything to announce", () => {
+    render(<Example />);
+    // The assertion the whole component exists for, and the one that fails for
+    // every implementation that mounts the region together with the message:
+    // a live region added in the same commit as its text is usually not
+    // announced at all, because the technology watching it had nothing to
+    // watch until it was already too late.
+    const polite = screen.getByRole("status");
+    expect(polite).toBeInTheDocument();
+    expect(polite.textContent).toBe("");
+    expect(screen.getByRole("alert").textContent).toBe("");
+    expect(screen.queryAllByRole("group").length).toBe(0);
+  });
+
+  it("announces a failure assertively and a success politely", () => {
+    render(<Example />);
+    notify("Saved");
+    notify("Could not save", { urgency: "assertive" });
+
+    const polite = screen.getByRole("status");
+    const assertive = screen.getByRole("alert");
+    expect(polite).toHaveAttribute("aria-live", "polite");
+    expect(polite).toHaveAttribute("aria-atomic", "true");
+    expect(assertive).toHaveAttribute("aria-live", "assertive");
+    expect(assertive).toHaveAttribute("aria-atomic", "true");
+    // Which region a notification lands in is what decides whether it
+    // interrupts, and it is chosen per notification rather than per
+    // application: interrupting a reader mid-sentence to say "saved" is why
+    // assertive is not the default, and waiting politely to say "could not
+    // save" is why it has to be available.
+    expect(polite.textContent).toContain("Saved");
+    expect(polite.textContent).not.toContain("Could not save");
+    expect(assertive.textContent).toContain("Could not save");
+  });
+
+  it("does not move focus when one appears", () => {
+    render(
+      <div>
+        <input aria-label="Note" />
+        <Example />
+      </div>,
+    );
+    const field = screen.getByLabelText("Note");
+    field.focus();
+    notify("Saved");
+    // Moving focus to a notification interrupts whatever the reader was
+    // typing, and it is the single failure that makes people turn
+    // notifications off.
+    expect(field).toHaveFocus();
+    expect(screen.getByRole("status").textContent).toContain("Saved");
+  });
+
+  it("names a notification after its title and describes it with the rest", () => {
+    render(
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Description>Two of three files.</Toast.Description>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>,
+    );
+    notify("Uploading");
+    // The group is what turns a stack of three into three things a reader can
+    // move between after F6, rather than one run of text.
+    const group = screen.getByRole("group", { name: "Uploading" });
+    const described = group.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(described)?.textContent).toBe("Two of three files.");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("claims no name when nothing named it", () => {
+    render(
+      <Toast.Region>
+        {() => (
+          <Toast.Root>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>,
+    );
+    notify("Saved");
+    const group = screen.getByRole("group");
+    expect(group).not.toHaveAttribute("aria-labelledby");
+    expect(group).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("names its dismiss button", async () => {
+    render(<Example />);
+    notify("Saved");
+    // An icon-only close with no name is announced as "button": a control a
+    // reader can find and cannot identify.
+    const dismiss = screen.getByRole("button", { name: /dismiss/i });
+    await userEvent.click(dismiss);
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("takes the notification away when its action is taken", async () => {
+    const onUndo = fn();
+    render(<WithUndo onUndo={onUndo} />);
+    notify("Deleted", { duration: null });
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(onUndo).toHaveBeenCalled();
+    // A notification whose offer has been accepted is describing something
+    // that is no longer true.
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("reaches the notifications from the keyboard", async () => {
+    render(<WithUndo />);
+    notify("Deleted", { duration: null });
+    const region = screen.getByRole("region", { name: "Notifications" });
+    fireEvent.keyDown(document, { key: "F6" });
+    // Focus lands on the region rather than on the first button in it, which
+    // is what makes a screen reader read the region's name and its contents
+    // instead of skipping straight past both.
+    expect(region).toHaveFocus();
+    await userEvent.tab();
+    // And from there the action is one Tab away, which is the whole point: an
+    // Undo button that vanishes after four seconds is a control no keyboard
+    // reader can operate.
+    expect(screen.getByRole("button", { name: "Undo" })).toHaveFocus();
+  });
+
+  it("gives focus back when the key is pressed again", () => {
+    render(
+      <div>
+        <input aria-label="Note" />
+        <WithUndo />
+      </div>,
+    );
+    const field = screen.getByLabelText("Note");
+    field.focus();
+    notify("Deleted", { duration: null });
+
+    fireEvent.keyDown(document, { key: "F6" });
+    expect(screen.getByRole("region", { name: "Notifications" })).toHaveFocus();
+    fireEvent.keyDown(document, { key: "F6" });
+    // A key that only goes one way strands the reader it was meant to help.
+    expect(field).toHaveFocus();
+  });
+
+  it("says which part was used outside a region", () => {
+    let message = "";
+    try {
+      render(<Toast.Title>orphan</Toast.Title>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Toast.Title must be rendered inside a Toast.Root");
+  });
+});
+
+describe("Toast: the queue behind the stack", () => {
+  beforeEach(() => {
+    act(() => {
+      dismissAllToasts();
+    });
+  });
+
+  component Example(limit?: number = 2) {
+    return (
+      <Toast.Region limit={limit}>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  const notify = (content: string): string => {
+    let id = "";
+    act(() => {
+      id = toast(content);
+    });
+    return id;
+  };
+
+  it("shows no more than the limit, oldest first", () => {
+    render(<Example />);
+    notify("One");
+    notify("Two");
+    notify("Three");
+    // A queue rather than a pile: what arrived first is what a reader is shown
+    // first, and what is over the limit is not rendered at all — which is also
+    // what keeps its countdown from running before anyone has seen it.
+    expect(screen.getAllByRole("group").length).toBe(2);
+    expect(screen.getByRole("status").textContent).toContain("One");
+    expect(screen.getByRole("status").textContent).not.toContain("Three");
+  });
+
+  it("promotes the one behind when a notification is dismissed", async () => {
+    render(<Example />);
+    notify("One");
+    notify("Two");
+    notify("Three");
+    await userEvent.click(screen.getAllByRole("button", { name: /dismiss/i })[0]);
+    expect(screen.getByRole("status").textContent).toContain("Three");
+  });
+
+  it("changes a notification in place rather than stacking a second one", () => {
+    render(<Example />);
+    const id = notify("Uploading…");
+    act(() => {
+      updateToast(id, { content: "Uploaded" });
+    });
+    // A reader told the second thing without the first disappearing has been
+    // told the upload is both in progress and finished.
+    expect(screen.getAllByRole("group").length).toBe(1);
+    expect(screen.getByRole("status").textContent).toContain("Uploaded");
+  });
+
+  it("does not render a region's notification twice", () => {
+    render(<Example />);
+    notify("Saved");
+    // One notification, in one of the two regions, and never mirrored into a
+    // hidden announcer beside it — a reader browsing the page would find each
+    // one again with no way to tell it is the same one.
+    expect(screen.getAllByText("Saved").length).toBe(1);
+  });
+});
+
+describe("Toast: timers that stop", () => {
+  beforeEach(() => {
+    act(() => {
+      dismissAllToasts();
+    });
+  });
+
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  component Example() {
+    return (
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Action>Undo</Toast.Action>
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  /** What the polite region is holding, which is what a reader would hear. */
+  const announced = (): string => screen.getByRole("status").textContent ?? "";
+
+  const advance = (millis: number) => {
+    act(() => {
+      uft.advanceTimersByTime(millis);
+    });
+  };
+
+  const notify = (content: string, duration: number | null) => {
+    act(() => {
+      toast(content, { duration });
+    });
+  };
+
+  it("goes away when its time is up", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Saved", 4000);
+    advance(3999);
+    expect(announced()).toContain("Saved");
+    advance(1);
+    expect(announced()).toBe("");
+  });
+
+  it("stops the clock while the pointer is over it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Saved", 4000);
+    advance(1000);
+
+    const notification = screen.getByRole("group");
+    fireEvent.pointerEnter(notification);
+    advance(30_000);
+    // WCAG 2.2.1, Timing Adjustable: anything that disappears on its own has
+    // to be stoppable by the reader who is still reading it.
+    expect(announced()).toContain("Saved");
+
+    fireEvent.pointerLeave(notification);
+    // What is left, not the whole duration again. The one-line version of
+    // this component re-arms the timeout on every unpause, so a pointer
+    // resting near the stack keeps a notification on screen for ever.
+    advance(2999);
+    expect(announced()).toContain("Saved");
+    advance(1);
+    expect(announced()).toBe("");
+  });
+
+  it("stops the clock while focus is inside it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Deleted", 4000);
+
+    const undo = screen.getByRole("button", { name: "Undo" });
+    act(() => {
+      undo.focus();
+    });
+    advance(30_000);
+    // Otherwise the control the notification exists to offer is taken away
+    // from the reader in the middle of reaching for it.
+    expect(announced()).toContain("Deleted");
+    expect(undo).toHaveFocus();
+  });
+
+  it("stops the clock while the document is hidden", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Saved", 4000);
+
+    hideDocument(true);
+    advance(30_000);
+    // A reader who switches tabs for a minute should not come back to an
+    // empty region and no idea what they missed.
+    expect(announced()).toContain("Saved");
+
+    hideDocument(false);
+    advance(4000);
+    expect(announced()).toBe("");
+  });
+
+  it("never expires when it was given no duration", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Deleted", null);
+    advance(30_000);
+    // What anything carrying an action should be: the countdown stopping
+    // while focus is inside makes the button reachable, and that is not a
+    // promise that four seconds was enough time to decide.
+    expect(announced()).toContain("Deleted");
+  });
+
+  it("starts the countdown again when the duration is changed under it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    let id = "";
+    act(() => {
+      id = toast("Uploading…", { duration: null });
+    });
+    advance(30_000);
+    expect(announced()).toContain("Uploading…");
+
+    act(() => {
+      updateToast(id, { content: "Uploaded", duration: 4000 });
+    });
+    advance(3999);
+    expect(announced()).toContain("Uploaded");
+    advance(1);
+    expect(announced()).toBe("");
+  });
+});
+
 describe("Switch and Checkbox", () => {
   it("announces a switch as a switch, not a checkbox", () => {
     render(<Switch aria-label="Notifications" />);
@@ -2195,6 +2644,29 @@ describe("caller props never disable the component", () => {
     await userEvent.click(screen.getByRole("combobox"));
     await userEvent.click(screen.getByRole("option", { name: "France" }));
     expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
+  it("keeps a notification dismissable when the caller passes onClick", async () => {
+    const theirs = fn();
+    act(() => {
+      dismissAllToasts();
+    });
+    render(
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Close onClick={theirs} />
+          </Toast.Root>
+        )}
+      </Toast.Region>,
+    );
+    act(() => {
+      toast("Saved");
+    });
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 
   it("keeps the field's ids authoritative", () => {

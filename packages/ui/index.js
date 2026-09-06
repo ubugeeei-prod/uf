@@ -50,9 +50,17 @@
 // Where a component has to learn something the DOM knows — how many options a
 // caller filtered down to, which item the arrow key should move to — it reads
 // the document in an effect or an event handler and, if a render depends on
-// the answer, puts it in state. It is deliberately *not* `useSyncExternalStore`:
-// that is for a store whose value a render reads, and reading layout during a
-// render is the thing it exists to prevent.
+// the answer, puts it in state. That is deliberately *not*
+// `useSyncExternalStore`: the DOM is not a store whose value a render may
+// read, and reading layout during a render is the thing that API exists to
+// prevent.
+//
+// One component does use it, and it is the case the API is actually for.
+// `toast("Saved")` is called from an event handler or a `catch`, so the queue
+// of notifications lives outside React — an atom in `@uniflowed/state`, read
+// through `useSyncExternalStore` with the cached immutable snapshots and the
+// consistent server snapshot that requires. A queue is a store; the DOM is
+// not.
 //
 // # Server and client
 //
@@ -74,6 +82,8 @@
 // - `select.js` — the other half of the combobox pattern: the select-only one,
 //   with typeahead, option groups and a value a form can submit.
 // - `tabs.js` — the roving `tabindex`, and automatic versus manual activation.
+// - `toast.js` — the live region that was watching before there was anything
+//   to announce, and the countdown that stops.
 // - `field.js` — the label, description, error and `aria-invalid` wiring.
 // - `switch.js` and `checkbox.js` — the two two-state controls, apart because
 //   the third state and the `Enter` key genuinely differ between them.
@@ -139,10 +149,36 @@ import {
 } from "./select.js";
 import { Switch } from "./switch.js";
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
+import {
+  ToastAction,
+  ToastClose,
+  ToastDescription,
+  ToastRegion,
+  ToastRoot,
+  ToastTitle,
+  dismissAllToasts,
+  dismissToast,
+  toast,
+  updateToast,
+} from "./toast.js";
 
 export type { ActivationMode } from "./tabs.js";
+export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 
 export { Checkbox, Switch };
+
+/**
+ * Queueing a notification, from anywhere.
+ *
+ * Functions rather than a hook, because the places a notification comes from —
+ * an event handler, a `catch`, a Server Action's error path — do not have a
+ * component to hold state in. `Toast.Region` is what displays them.
+ *
+ *     const id = toast("Uploading…", { duration: null });
+ *     updateToast(id, { content: "Uploaded", duration: 4000 });
+ *     toast("Could not save", { urgency: "assertive" });
+ */
+export { dismissAllToasts, dismissToast, toast, updateToast };
 
 /**
  * An accessible form field.
@@ -308,4 +344,28 @@ export const Select = {
   Group: SelectGroup,
   GroupLabel: SelectGroupLabel,
   Separator: SelectSeparator,
+};
+
+/**
+ * Notifications, in a live region that was watching before them.
+ *
+ * Render `Toast.Region` once, in the layout; `toast()` from anywhere.
+ *
+ *   <Toast.Region>
+ *     {(each) => (
+ *       <Toast.Root>
+ *         <Toast.Title>{each.content}</Toast.Title>
+ *         <Toast.Action onClick={undo}>Undo</Toast.Action>
+ *         <Toast.Close />
+ *       </Toast.Root>
+ *     )}
+ *   </Toast.Region>
+ */
+export const Toast = {
+  Region: ToastRegion,
+  Root: ToastRoot,
+  Title: ToastTitle,
+  Description: ToastDescription,
+  Action: ToastAction,
+  Close: ToastClose,
 };

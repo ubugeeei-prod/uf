@@ -19,7 +19,8 @@
     "./menu": "./menu.js",
     "./select": "./select.js",
     "./switch": "./switch.js",
-    "./tabs": "./tabs.js"
+    "./tabs": "./tabs.js",
+    "./toast": "./toast.js"
   },
   "files": [
     "*.js",
@@ -27,7 +28,8 @@
   ],
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.5",
-    "@uniflowed/react": "0.0.0-alpha.5"
+    "@uniflowed/react": "0.0.0-alpha.5",
+    "@uniflowed/state": "0.0.0-alpha.5"
   },
   "peerDependencies": {
     "react": ">=19"
