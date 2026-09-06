@@ -166,11 +166,17 @@ pub(crate) enum Event {
     Phase { name: String },
     /// A line from Vite's logger, or anything else the driver printed.
     Log { level: LogLevel, message: String },
-    /// The dev server is up.
+    /// A server is up: `dev`, `preview` or `start`.
+    ///
+    /// `handlers` is empty for `uf dev`, which reports page routes only. The
+    /// two servers that serve a *build* report both, because a route handler
+    /// silently absent from a build is the failure they were written to make
+    /// visible, and a count of zero is the thing to look at when it is.
     Listening {
         local: Vec<String>,
         network: Vec<String>,
         routes: Vec<String>,
+        handlers: Vec<String>,
     },
     /// One page was prerendered.
     Page {
@@ -246,6 +252,7 @@ impl Event {
                 local: list("local"),
                 network: list("network"),
                 routes: list("routes"),
+                handlers: list("handlers"),
             },
             Some("page") => Self::Page {
                 url: text("url").unwrap_or_default(),
@@ -456,6 +463,22 @@ mod tests {
                 local: vec![String::from("http://127.0.0.1:5173/")],
                 network: vec![],
                 routes: vec![String::from("/"), String::from("/docs")],
+                handlers: vec![],
+            }
+        );
+        // `uf preview` and `uf start` report the handler table as well, and
+        // `uf dev` does not, so its absence has to mean "none" rather than
+        // failing to parse the event that has it.
+        let event = Event::parse(
+            r#"{"event":"listening","local":[],"network":[],"routes":["/"],"handlers":["/api/health"]}"#,
+        );
+        assert_eq!(
+            event,
+            Event::Listening {
+                local: vec![],
+                network: vec![],
+                routes: vec![String::from("/")],
+                handlers: vec![String::from("/api/health")],
             }
         );
         let event = Event::parse(
