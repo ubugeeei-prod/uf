@@ -36,6 +36,9 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
 | `Tabs` | Tabs: a roving `tabindex`, automatic or manual activation | `tabs.js` |
 | `Toast` | Notifications: a live region that was already watching, and timers that stop | `toast.js` |
+| `Slider` | A value in a range, with the slider role on the thumb | `slider.js` |
+| `Resizable` | The window splitter: a separator that behaves like a slider | `resizable.js` |
+| `Progress` | How far along something is, or that it is under way at all | `progress.js` |
 | `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
 | `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
 
@@ -348,6 +351,124 @@ shown and the rest wait behind them, oldest first — and a waiting one's
 countdown has not started, because it is not rendered. `updateToast` changes one
 in place, so "Uploading…" becoming "Uploaded" is one notification rather than
 two contradicting each other.
+
+## A value in a range
+
+Three components report a number between two others, and all three make the
+same four promises through `aria-valuemin`, `aria-valuemax`, `aria-valuenow`
+and `aria-valuetext`. The arithmetic that keeps those true about each other
+lives once, in `internal/range.js`.
+
+### Slider
+
+```js
+<Slider.Root defaultValue={[20, 60]} valueText={(each) => `£${each}`}>
+  <Slider.Track>
+    <Slider.Range />
+  </Slider.Track>
+  <Slider.Thumb aria-label="Minimum" index={0} />
+  <Slider.Thumb aria-label="Maximum" index={1} />
+</Slider.Root>
+```
+
+`role="slider"` goes on the **thumb**, not on the track and not on the wrapper.
+That single placement is the difference between a control a keyboard reader can
+operate and a decorative div, because the element carrying the role is the
+element carrying `tabindex="0"`.
+
+It follows that a range is **two** sliders. Two thumbs are two elements with
+`role="slider"`, each in the tab order, each named — "Minimum" and "Maximum" —
+and each bounded by its neighbour's current value rather than by the slider's
+ends. Announcing both as 0–100 while the behaviour stops them passing each
+other is worse than not shipping the range at all: the reader is told they may
+set the low thumb to 90, they try, and the control silently refuses.
+
+| Key | What it does |
+| --- | --- |
+| `ArrowRight` / `ArrowUp` | Add a step |
+| `ArrowLeft` / `ArrowDown` | Subtract a step |
+| `PageUp` / `PageDown` | Move by `largeStep` |
+| `Home` / `End` | That thumb's own ends, which for a range thumb is its neighbour |
+
+The horizontal keys mirror in a right-to-left page — `ArrowRight` means
+"further along", and further along is to the left there. The vertical keys and
+`Home`/`End` are unaffected.
+
+`valueText` is the reason to reach for this component rather than an
+`<input type="range">` you cannot style. `aria-valuenow="3"` is announced as
+"3"; if the scale is Low, Medium, High then 3 is the implementation and
+"Medium" is the meaning. It is a function on the root rather than a string on
+the thumb, because an uncontrolled slider's value is the component's and a
+caller cannot write down a string for a number they have not been told.
+
+A press anywhere on `Slider.Track` moves the nearest thumb there. That is WCAG
+2.5.7, *Dragging Movements*: a control operated by dragging needs a way that is
+not a drag, and the arrow keys are only half of it.
+
+Nothing here has a width or a position. Each thumb carries
+`--uf-slider-fraction` and the range carries `--uf-slider-start` and
+`--uf-slider-end`, all numbers between 0 and 1, and your stylesheet decides
+what to do with them. A caller who writes no CSS sees nothing.
+
+### Resizable
+
+```js
+<Resizable.PanelGroup defaultValue={30}>
+  <Resizable.Panel primary>Files</Resizable.Panel>
+  <Resizable.Handle label="Resize the file list" />
+  <Resizable.Panel>Editor</Resizable.Panel>
+</Resizable.PanelGroup>
+```
+
+The APG calls this a **window splitter** and defines it as a separator that
+behaves like a slider, which is why it is documented beside one. Almost every
+resizable panel on the web is pointer-only — a WCAG 2.1.1 failure, no keyboard
+operation at all — so here the keyboard is the feature: the arrows move the
+splitter by a step, `Home` and `End` go to the ends of its range, and `Enter`
+collapses the primary pane and restores it.
+
+`aria-controls` names the primary pane, and only while one is rendered.
+`aria-valuenow` is that pane's percentage of the group.
+
+Two things are worth knowing:
+
+- **`aria-orientation` describes the separator, not the layout.** Two panes
+  side by side are divided by a *vertical* line, so a `PanelGroup` whose
+  `orientation` is `"horizontal"` renders a handle whose `aria-orientation` is
+  `"vertical"`. ARIA's default for the role is `horizontal`, so a vertical
+  splitter that says nothing is announced as a horizontal rule.
+- **This is not `Menu.Separator`.** Both are `role="separator"` and only one is
+  a control. A menu's separator is a rule between groups: not focusable, no
+  value. A splitter is focusable, carries a value, and changes the layout.
+
+Two panes is the pattern rather than a limitation — the window splitter is
+defined between a primary pane and the rest. A group of five panels is a
+layout-constraint problem and a different component. There is no drag yet; a
+keyboard-only splitter is a working splitter, where a pointer-only one is not.
+
+### Progress
+
+```js
+<Progress aria-label="Uploading" max={10} value={3} valueText="3 of 10 files" />
+<Progress aria-label="Uploading" />
+```
+
+The second one is indeterminate, and its one line is the line everybody gets
+wrong: a progress bar that does not know how far along it is **omits
+`aria-valuenow` entirely**. It does not set it to `0`.
+
+The two are opposite statements. `aria-valuenow="0"` says "nothing has happened
+yet", and a reader who asks again in ten seconds and hears zero again concludes
+the operation is stuck. Omitting it says "in progress, amount unknown", which
+is what a spinner means and what is actually true.
+
+`valueText` replaces what is announced without touching `aria-valuenow`, so a
+reader hears "3 of 10 files" and anything drawing a gauge still has the number.
+It is a prop rather than something you add afterwards because the two have to
+agree.
+
+This one renders on a server: it holds no state, listens to nothing and manages
+no focus.
 
 ## What this page is
 

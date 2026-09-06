@@ -87,19 +87,23 @@
 // - `field.js` — the label, description, error and `aria-invalid` wiring.
 // - `switch.js` and `checkbox.js` — the two two-state controls, apart because
 //   the third state and the `Enter` key genuinely differ between them.
+// - `slider.js`, `resizable.js` and `progress.js` — the three that report a
+//   number in a range. A window splitter is a slider wearing a separator's
+//   role, which is why it is beside one rather than with the layout.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
 // is by primitive because that is the unit a reader looks for, the unit a
 // bundler drops, and the unit the WAI-ARIA practices are written in.
 //
-// `internal/` holds four modules and nothing else, each a rule the primitives
+// `internal/` holds five modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
 // last), `controlled-state.js` (what "controlled" means here),
-// `roving-focus.js` (how a set of items is found and moved between), and
+// `roving-focus.js` (how a set of items is found and moved between),
 // `form-value.js` (what a `<form>` submits for a control the browser has never
-// heard of). Each says in its own header why it is unreachable rather than
+// heard of), and `range.js` (the arithmetic that keeps `aria-valuemin`,
+// `aria-valuemax` and `aria-valuenow` true about each other). Each says in its own header why it is unreachable rather than
 // exported. There is no `internal/props.js`-shaped bag of helpers: a module
 // that cannot say what it is about does not belong in this package.
 
@@ -136,6 +140,8 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "./menu.js";
+import { Progress } from "./progress.js";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
 import {
   SelectGroup,
   SelectGroupLabel,
@@ -147,6 +153,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select.js";
+import { SliderRange, SliderRoot, SliderThumb, SliderTrack } from "./slider.js";
 import { Switch } from "./switch.js";
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
 import {
@@ -165,7 +172,7 @@ import {
 export type { ActivationMode } from "./tabs.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 
-export { Checkbox, Switch };
+export { Checkbox, Progress, Switch };
 
 /**
  * Queueing a notification, from anywhere.
@@ -368,4 +375,40 @@ export const Toast = {
   Description: ToastDescription,
   Action: ToastAction,
   Close: ToastClose,
+};
+
+/**
+ * A value in a range, with `role="slider"` on the thumb where it belongs.
+ *
+ * One thumb or two; a range is the same component with a second one, each
+ * bounded by its neighbour and each needing its own name.
+ *
+ *   <Slider.Root defaultValue={[20, 60]} valueText={(each) => `£${each}`}>
+ *     <Slider.Track>
+ *       <Slider.Range />
+ *     </Slider.Track>
+ *     <Slider.Thumb aria-label="Minimum" index={0} />
+ *     <Slider.Thumb aria-label="Maximum" index={1} />
+ *   </Slider.Root>
+ */
+export const Slider = {
+  Root: SliderRoot,
+  Track: SliderTrack,
+  Range: SliderRange,
+  Thumb: SliderThumb,
+};
+
+/**
+ * Two panes and the splitter between them, operable from the keyboard.
+ *
+ *   <Resizable.PanelGroup defaultValue={30}>
+ *     <Resizable.Panel primary>Files</Resizable.Panel>
+ *     <Resizable.Handle label="Resize the file list" />
+ *     <Resizable.Panel>Editor</Resizable.Panel>
+ *   </Resizable.PanelGroup>
+ */
+export const Resizable = {
+  PanelGroup: ResizablePanelGroup,
+  Panel: ResizablePanel,
+  Handle: ResizableHandle,
 };

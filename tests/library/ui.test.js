@@ -36,7 +36,10 @@ import {
   Dialog,
   Field,
   Menu,
+  Progress,
+  Resizable,
   Select,
+  Slider,
   Switch,
   Tabs,
   Toast,
@@ -93,6 +96,35 @@ function hideDocument(hidden: boolean): void {
   act(() => {
     document.dispatchEvent(new Event("visibilitychange"));
   });
+}
+
+/**
+ * Give an element a box, because this DOM gives every element a zero one.
+ *
+ * A slider turns a press into a value by measuring its track, and a track that
+ * is nought pixels wide has no values in it. This is the one place these tests
+ * pretend about layout, and it pretends about exactly four numbers.
+ */
+function measure(
+  element: HTMLElement,
+  box: {|
+    readonly left: number,
+    readonly width: number,
+    readonly top: number,
+    readonly height: number,
+  |},
+): void {
+  const rect = {
+    left: box.left,
+    width: box.width,
+    top: box.top,
+    height: box.height,
+    right: box.left + box.width,
+    bottom: box.top + box.height,
+    x: box.left,
+    y: box.top,
+  };
+  (element as $FlowFixMe).getBoundingClientRect = () => rect;
 }
 
 describe("Field", () => {
@@ -2378,6 +2410,354 @@ describe("Toast: timers that stop", () => {
     expect(announced()).toContain("Uploaded");
     advance(1);
     expect(announced()).toBe("");
+  });
+});
+
+describe("Progress", () => {
+  it("says how far along it is", () => {
+    render(<Progress aria-label="Uploading" max={10} min={0} value={3} />);
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+  });
+
+  it("says nothing about how far along it is when it does not know", () => {
+    render(<Progress aria-label="Uploading" />);
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    // The whole component is this conditional. `aria-valuenow="0"` says
+    // "nothing has happened yet", and a reader who asks again in ten seconds
+    // and hears zero again concludes the operation is stuck. Omitting it says
+    // "in progress, amount unknown", which is what is actually true.
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+    expect(bar).toHaveAttribute("aria-valuemax", "100");
+  });
+
+  it("says what the number means when the percentage is not the answer", () => {
+    render(<Progress aria-label="Uploading" max={10} value={3} valueText="3 of 10 files" />);
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    // The text is what a reader hears; the number is still there for anything
+    // that draws a gauge from it.
+    expect(bar).toHaveAttribute("aria-valuetext", "3 of 10 files");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+  });
+
+  it("never reports a value outside its own bounds", () => {
+    render(<Progress aria-label="Uploading" max={10} value={40} />);
+    // An `aria-valuenow` above `aria-valuemax` is a contradiction a screen
+    // reader reads out loud.
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "10");
+  });
+});
+
+describe("Slider", () => {
+  component Example(
+    defaultValue?: $ReadOnlyArray<number> = [20],
+    disabled?: boolean = false,
+    step?: number = 1,
+    valueText?: (value: number, index: number) => string,
+  ) {
+    return (
+      <Slider.Root
+        defaultValue={defaultValue}
+        disabled={disabled}
+        step={step}
+        valueText={valueText}
+      >
+        <Slider.Track data-testid="track">
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Volume" />
+      </Slider.Root>
+    );
+  }
+
+  const now = (thumb: HTMLElement): string | null | void => thumb.getAttribute("aria-valuenow");
+
+  it("puts the slider role on the thumb and reaches it with Tab", async () => {
+    render(<Example />);
+    const thumb = screen.getByRole("slider", { name: "Volume" });
+    // On the thumb, not on the track. The element carrying the role is the
+    // element carrying `tabindex="0"`, and a track with the role is a track
+    // nobody can focus with a thumb nobody can find.
+    expect(thumb).toHaveAttribute("aria-valuemin", "0");
+    expect(thumb).toHaveAttribute("aria-valuemax", "100");
+    expect(thumb).toHaveAttribute("aria-valuenow", "20");
+    expect(thumb).toHaveAttribute("aria-orientation", "horizontal");
+    await userEvent.tab();
+    expect(thumb).toHaveFocus();
+  });
+
+  it("moves by a step, by a page, and to the ends", async () => {
+    render(<Example />);
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(now(thumb)).toBe("21");
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(now(thumb)).toBe("19");
+    await userEvent.keyboard("{PageUp}");
+    // The key that makes a slider from 0 to 10,000 crossable without holding
+    // another one down for a minute.
+    expect(now(thumb)).toBe("29");
+    await userEvent.keyboard("{PageDown}{PageDown}");
+    expect(now(thumb)).toBe("9");
+    await userEvent.keyboard("{End}");
+    expect(now(thumb)).toBe("100");
+    await userEvent.keyboard("{Home}");
+    expect(now(thumb)).toBe("0");
+  });
+
+  it("stops at its ends rather than running past them", async () => {
+    render(<Example />);
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{Home}{ArrowLeft}");
+    // An `aria-valuenow` below `aria-valuemin` is a contradiction a screen
+    // reader reads out loud.
+    expect(now(thumb)).toBe("0");
+    await userEvent.keyboard("{End}{ArrowRight}");
+    expect(now(thumb)).toBe("100");
+  });
+
+  it("lands only on its own steps", async () => {
+    render(<Example defaultValue={[20]} step={5} />);
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(now(thumb)).toBe("25");
+  });
+
+  it("says what the value means when the number does not", async () => {
+    const words = ["Off", "Low", "Medium", "High"];
+    render(
+      <Slider.Root defaultValue={[2]} max={3} valueText={(each) => words[each] ?? ""}>
+        <Slider.Track>
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Fan" />
+      </Slider.Root>,
+    );
+    const thumb = screen.getByRole("slider", { name: "Fan" });
+    // "2" is the implementation. "Medium" is the meaning — and the number is
+    // still there, so anything drawing a gauge still has it.
+    expect(thumb).toHaveAttribute("aria-valuetext", "Medium");
+    expect(thumb).toHaveAttribute("aria-valuenow", "2");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(thumb).toHaveAttribute("aria-valuetext", "High");
+  });
+
+  it("mirrors the horizontal keys in a right-to-left page", async () => {
+    render(
+      <div dir="rtl">
+        <Example />
+      </div>,
+    );
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    // `ArrowRight` means "further along", and further along is to the left
+    // here. A slider that ignores this looks identical and walks backwards.
+    expect(now(thumb)).toBe("19");
+    await userEvent.keyboard("{ArrowUp}");
+    // The vertical axis is not mirrored by writing direction.
+    expect(now(thumb)).toBe("20");
+    await userEvent.keyboard("{Home}");
+    // Nor are the ends: `Home` is the smallest value in both directions.
+    expect(now(thumb)).toBe("0");
+  });
+
+  it("does nothing while disabled, and leaves the tab order", () => {
+    render(<Example disabled />);
+    const thumb = screen.getByRole("slider");
+    expect(thumb).toHaveAttribute("tabindex", "-1");
+    expect(thumb).toHaveAttribute("aria-disabled", "true");
+    fireEvent.keyDown(thumb, { key: "ArrowRight" });
+    expect(now(thumb)).toBe("20");
+  });
+
+  it("moves the nearest thumb when the track is pressed", () => {
+    render(<Example />);
+    const track = screen.getByTestId("track");
+    measure(track, { left: 0, width: 200, top: 0, height: 10 });
+    // WCAG 2.5.7, Dragging Movements: a control operated by dragging needs a
+    // way that is not a drag, and a press on the track is the one a pointer
+    // reader reaches for.
+    fireEvent.pointerDown(track, { clientX: 150, clientY: 5 });
+    expect(now(screen.getByRole("slider"))).toBe("75");
+  });
+});
+
+describe("Slider: a range is two sliders", () => {
+  component Example() {
+    return (
+      <Slider.Root defaultValue={[20, 60]}>
+        <Slider.Track>
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Minimum" index={0} />
+        <Slider.Thumb aria-label="Maximum" index={1} />
+      </Slider.Root>
+    );
+  }
+
+  it("bounds each thumb by its neighbour", async () => {
+    render(<Example />);
+    const lower = screen.getByRole("slider", { name: "Minimum" });
+    const upper = screen.getByRole("slider", { name: "Maximum" });
+    // Two names, told apart. Two identical "slider"s is the whole difference
+    // between a control a reader can operate and one they cannot.
+    expect(lower).toHaveAttribute("aria-valuenow", "20");
+    expect(upper).toHaveAttribute("aria-valuenow", "60");
+    // Announcing both as 0–100 while the behaviour stops them passing each
+    // other is worse than not shipping the range: the reader is told they may
+    // set the low thumb to 90, they try, and the control silently refuses.
+    expect(lower).toHaveAttribute("aria-valuemax", "60");
+    expect(upper).toHaveAttribute("aria-valuemin", "20");
+
+    upper.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    // The neighbour moved, so the bound moved with it.
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute("aria-valuemax", "61");
+  });
+
+  it("will not let one thumb pass the other", async () => {
+    render(<Example />);
+    const lower = screen.getByRole("slider", { name: "Minimum" });
+    lower.focus();
+    await userEvent.keyboard("{End}");
+    // `End` on the lower thumb is its own end, which is its neighbour.
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute("aria-valuenow", "60");
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute("aria-valuenow", "60");
+    expect(screen.getByRole("slider", { name: "Maximum" })).toHaveAttribute("aria-valuenow", "60");
+  });
+
+  it("keeps both thumbs in the tab order, in the order they were written", async () => {
+    render(<Example />);
+    await userEvent.tab();
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveFocus();
+    await userEvent.tab();
+    // The APG is explicit that a thumb passing another does not reorder them,
+    // which is why the index is a prop rather than a position counted from the
+    // page.
+    expect(screen.getByRole("slider", { name: "Maximum" })).toHaveFocus();
+  });
+});
+
+describe("Resizable", () => {
+  component Example(defaultValue?: number = 50, min?: number = 0, withPrimary?: boolean = true) {
+    return (
+      <Resizable.PanelGroup defaultValue={defaultValue} min={min} step={10}>
+        <Resizable.Panel primary={withPrimary}>Files</Resizable.Panel>
+        <Resizable.Handle label="Resize the file list" />
+        <Resizable.Panel>Editor</Resizable.Panel>
+      </Resizable.PanelGroup>
+    );
+  }
+
+  const handle = (): HTMLElement => screen.getByRole("separator", { name: "Resize the file list" });
+
+  it("resizes from the keyboard", async () => {
+    render(<Example />);
+    const splitter = handle();
+    // Almost every resizable panel on the web is pointer-only, which is a
+    // WCAG 2.1.1 failure. The keyboard is the feature.
+    expect(splitter).toHaveAttribute("tabindex", "0");
+    expect(splitter).toHaveAttribute("aria-valuenow", "50");
+    await userEvent.tab();
+    expect(splitter).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "60");
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("names the pane it sizes", () => {
+    render(<Example />);
+    const controls = handle().getAttribute("aria-controls") ?? "";
+    expect(document.getElementById(controls)?.textContent).toBe("Files");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("names no pane when there is no primary one to name", () => {
+    render(<Example withPrimary={false} />);
+    // The rule every part of this package repeats: an `aria-controls` naming
+    // an id nothing has is worse than saying nothing at all.
+    expect(handle()).not.toHaveAttribute("aria-controls");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("collapses the pane on Enter and restores it on the next one", async () => {
+    render(<Example defaultValue={40} />);
+    handle().focus();
+    await userEvent.keyboard("{Enter}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "0");
+    await userEvent.keyboard("{Enter}");
+    // A collapse with no way back is a pane a keyboard reader has thrown away.
+    expect(handle()).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("goes to the ends of its range with Home and End", async () => {
+    render(<Example min={10} />);
+    handle().focus();
+    await userEvent.keyboard("{Home}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "10");
+    await userEvent.keyboard("{End}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("says it is a vertical separator when the panes are side by side", () => {
+    render(<Example />);
+    // The inversion worth stating: `aria-orientation` on a separator describes
+    // the separator, and two panes side by side are divided by a vertical
+    // line. ARIA's default for the role is `horizontal`, so a vertical
+    // splitter that says nothing is announced as a horizontal rule.
+    expect(handle()).toHaveAttribute("aria-orientation", "vertical");
+  });
+
+  it("uses the vertical keys when the panes are stacked", async () => {
+    render(
+      <Resizable.PanelGroup defaultValue={50} orientation="vertical" step={10}>
+        <Resizable.Panel primary>Top</Resizable.Panel>
+        <Resizable.Handle />
+        <Resizable.Panel>Bottom</Resizable.Panel>
+      </Resizable.PanelGroup>,
+    );
+    const splitter = screen.getByRole("separator", { name: "Resize" });
+    expect(splitter).toHaveAttribute("aria-orientation", "horizontal");
+    splitter.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "60");
+    // `ArrowRight` in a stacked group is the page's, and swallowing it takes a
+    // key away from every reader who uses one.
+    expect(fireEvent.keyDown(screen.getByRole("separator"), { key: "ArrowRight" })).toBe(true);
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "60");
+  });
+
+  it("tells a menu's separator and a splitter apart", () => {
+    render(
+      <div>
+        <Menu.Root defaultOpen>
+          <Menu.Trigger>File</Menu.Trigger>
+          <Menu.Body>
+            <Menu.Item>Open</Menu.Item>
+            <Menu.Separator />
+          </Menu.Body>
+        </Menu.Root>
+        <Example />
+      </div>,
+    );
+    const [rule, splitter] = screen.getAllByRole("separator");
+    // Same role, and only one of them is a control. `tabindex` and
+    // `aria-valuenow` are the difference, and they are also how a screen
+    // reader tells them apart.
+    expect(rule).not.toHaveAttribute("tabindex");
+    expect(rule).not.toHaveAttribute("aria-valuenow");
+    expect(splitter).toHaveAttribute("tabindex", "0");
+    expect(splitter).toHaveAttribute("aria-valuenow");
   });
 });
 

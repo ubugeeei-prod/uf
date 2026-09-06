@@ -175,12 +175,19 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Server,
         ),
         UiComponent::new("Popover", &["Root", "Trigger", "Body"], UiRuntime::Client),
+        // Implemented in `packages/ui/progress.js`, and one element: the whole
+        // component is the conditional that omits `aria-valuenow` when the
+        // amount is unknown rather than setting it to zero.
         UiComponent::new("Progress", &["Root"], UiRuntime::Server),
         UiComponent::new(
             "RadioGroup",
             &["Root", "Item", "Indicator"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/resizable.js`: the APG window splitter,
+        // which is a separator that behaves like a slider. Not the same
+        // `separator` as `Menu`'s — that one is a rule between groups and is
+        // not focusable — and the two module headers each say which they are.
         UiComponent::new(
             "Resizable",
             &["PanelGroup", "Panel", "Handle"],
@@ -229,6 +236,10 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Split,
         ),
         UiComponent::new("Skeleton", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/slider.js`: the APG slider, with
+        // `role="slider"` on the thumb rather than on the track — which is what
+        // makes it reachable — and a second thumb for the range case, each with
+        // its own bounds.
         UiComponent::new(
             "Slider",
             &["Root", "Track", "Range", "Thumb"],
