@@ -150,6 +150,17 @@ grep -q '^version = "0.1.0"$' "$work/order/Cargo.toml" || fail "the refusal stil
 [ "$(declares "$work/order/packages/core/package.json")" = "0.1.0" ] || fail "the refusal still rewrote a package"
 pass "a bump to a version the changelog does not have is refused, and changes nothing"
 
+# --- and the heading is matched, not pattern-matched -------------------------
+# A version is mostly dots, and a dot in a regular expression matches anything.
+# `## uf@0x2y0` used to satisfy the check for `0.2.0`: a guard that passes on
+# the one file it exists to read.
+scratch pattern 0.1.0
+printf '\n## uf@0x2y0\n\n_2026-01-02_\n' >> "$work/pattern/CHANGELOG.md"
+run pattern 0.2.0
+[ "$status" -eq 2 ] || fail "a heading that only matches the version as a pattern was accepted: $out"
+grep -q '^version = "0.1.0"$' "$work/pattern/Cargo.toml" || fail "the refusal still rewrote Cargo.toml"
+pass "a heading that matches the version only as a pattern is not the version's heading"
+
 # --- a bump can be run again ------------------------------------------------
 scratch resume 0.2.0
 run resume 0.2.0

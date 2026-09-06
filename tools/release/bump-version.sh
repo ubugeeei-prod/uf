@@ -32,7 +32,10 @@ cd "$repo_root"
 # and it plans one version too far — the section comes out headed alpha.6 while
 # the tree says alpha.5, and the mistake is invisible until somebody reads the
 # release. So the order is checked rather than remembered.
-if [ -f CHANGELOG.md ] && ! grep -q "^## uf@$version\$" CHANGELOG.md; then
+# `-Fx`, not a pattern: a version is full of dots, and as a regular expression
+# a dot matches anything. `## uf@0x2y0` satisfied the check for `0.2.0`, which
+# is a guard that passes on the one file it exists to read.
+if [ -f CHANGELOG.md ] && ! grep -Fqx "## uf@$version" CHANGELOG.md; then
   echo "CHANGELOG.md has no section for uf@$version." >&2
   echo "Run \`uf release <bump>\` first: it writes the section for the version" >&2
   echo "after the one the workspace is on, which is the one you are bumping to." >&2

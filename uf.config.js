@@ -196,18 +196,39 @@ export default defineConfig({
     //
     // What CI runs, in one command. A check that is in the pipeline and not
     // here is a check a contributor cannot run before pushing.
+    //
+    // It had drifted eight tasks wide: the pipeline grew `flow:clippy`,
+    // `flow:test`, `rust:bench`, `release:closure`, `release:trust:test` and
+    // three more, and each was added to a workflow without being added here —
+    // including `release:closure`, whose own comment says "no network, so `ci`
+    // runs it" while `ci` did not. The list is the whole of `uf run` in
+    // `.github/workflows/`, and `install:test` is the one deliberate omission,
+    // below.
     ci: {
       command: "echo 'every check passed'",
       dependsOn: [
         "rust:fmt:check",
         "rust:clippy",
         "rust:test",
+        "rust:bench",
+        "flow:clippy",
+        "flow:test",
         "fmt:check",
         "test:lib",
         "docs:build",
         "rust:metadata",
         "manifests",
         "lockfile",
+        "lockfile:test",
+        "release:closure",
+        "release:trust:test",
+        "release:bump:test",
+        // Not `install:test`. It packages a release before installing it, and
+        // packaging needs `wild-linker`, which CI installs in that job and a
+        // laptop has no reason to have. A `uf run ci` that fails on a fresh
+        // checkout for a missing linker teaches people to ignore failures,
+        // which costs more than this check earns here — it still runs in the
+        // pipeline, where the linker is present.
       ],
     },
   },
