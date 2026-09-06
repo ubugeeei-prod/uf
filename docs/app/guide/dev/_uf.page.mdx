@@ -56,6 +56,34 @@ hashed assets under `dist/`.
 `--size-report` prints what each chunk cost, so a dependency that doubled the
 bundle is visible in the same command that built it.
 
+`--compile` adds one file to that output and it is the interesting one: an
+executable that *is* the site. Everything above goes inside it — the documents,
+the assets, the route handlers, the renderer — so deploying becomes copying one
+file. There is no runtime to install beside it and no `node_modules` to restore:
+
+```console
+$ uf build --compile
+  standalone
+    binary           dist/docs
+    runtime          bun
+    bytes            59.26 MB
+    embedded assets  67
+    embedded bytes   1.81 MB
+
+$ scp dist/docs server:/srv/docs && ssh server /srv/docs --port 8080
+uf: 67 embedded files
+uf: listening on http://127.0.0.1:8080
+```
+
+Building one needs `bun` installed; running one needs nothing at all.
+
+It is not the only way to serve a build, and it is the most self-contained of
+three: `uf preview` checks a build through Vite's own server before you deploy
+it, and `uf start` serves the same build over uf's server on a host that
+already has a JavaScript runtime. All three answer identically — that is the
+point of having more than one — and [Commands](/reference/cli) says which to
+reach for.
+
 ## Reaching past uf
 
 uf generates the Vite config; it does not hide it. A `plugins` array at the top
