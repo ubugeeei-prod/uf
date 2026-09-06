@@ -10,6 +10,11 @@
 /crates/uf_cli/tests/fixtures/served-app/dist/
 /crates/uf_cli/tests/fixtures/served-app/router.js
 /crates/uf_cli/tests/fixtures/served-app/server-actions.js
+# The application the server/client bundle split is measured against, built in
+# place for the same reason.
+/crates/uf_cli/tests/fixtures/rsc-split-app/dist/
+/crates/uf_cli/tests/fixtures/rsc-split-app/router.js
+/crates/uf_cli/tests/fixtures/rsc-split-app/server-actions.js
 /server-actions.js
 node_modules/
 .uf/
