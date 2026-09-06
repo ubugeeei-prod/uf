@@ -40,7 +40,8 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "@uniflowed/react";
 
-import type { FieldPath, FieldValues } from "./internal/field-path.js";
+import type { FieldPath, FieldSegments, FieldValues, ValueAtPath } from "./internal/field-path.js";
+import { pathOf } from "./internal/field-path.js";
 import type { Control, FormState } from "./internal/form-store.js";
 
 /** Joins several names into one cache key. A field path never contains a NUL. */
@@ -53,7 +54,7 @@ function keyOf(name: FieldPath | $ReadOnlyArray<FieldPath> | void): string {
   return typeof name === "string" ? name : name.join(KEY_SEPARATOR);
 }
 
-export type UseWatchOptions<TValues extends FieldValues, TOutput> = {|
+export type UseWatchOptions<TValues extends FieldValues, TOutput, TPath> = {|
   readonly control: Control<TValues, TOutput>,
   /**
    * One path, several, or none for the whole form.
@@ -62,7 +63,21 @@ export type UseWatchOptions<TValues extends FieldValues, TOutput> = {|
    * a change to it, which is what makes watching a field array's root work.
    */
   readonly name?: FieldPath | $ReadOnlyArray<FieldPath>,
-  /** Used while the value at `name` is `undefined`. */
+  /**
+   * The same field, addressed by its segments — and typed.
+   *
+   * `path: ["address", "city"]` is `string` where `name: "address.city"` is
+   * `mixed`, and a segment that is not a key is refused. It is a separate
+   * option rather than a shape `name` also accepts because `name: ["a", "b"]`
+   * already means the two fields `a` and `b`, and that meaning is not
+   * available to be reinterpreted.
+   *
+   * Pass one or the other. `path` wins if both are given, which is a
+   * tiebreaker rather than a feature: passing both is a mistake, and the typed
+   * one is the one that was meant.
+   */
+  readonly path?: TPath,
+  /** Used while the value at the field is `undefined`. */
   readonly defaultValue?: mixed,
 |};
 
@@ -71,13 +86,31 @@ export type UseWatchOptions<TValues extends FieldValues, TOutput> = {|
  *
  * One name answers with the value; several answer with a frozen tuple in the
  * order they were asked for; none answers with the whole values object, which
- * changes identity on every write and so re-renders on every one.
+ * changes identity on every write and so re-renders on every one. A `path`
+ * answers with the value *at its type* — see [`ValueAtPath`].
+ *
+ * # Why `path` is typed differently from `getValues`'s segments
+ *
+ * `getValues` is a field on an object, so its type can be an intersection of
+ * one signature per path length, and each of those bounds its segments by the
+ * keys of what the segment before it landed on. A hook is a declaration, and a
+ * declaration has one signature: there is nowhere to put the other three.
+ *
+ * So `path` is one generic tuple and the value is computed from it by
+ * [`ValueAtPath`], which is a conditional type rather than a bound. The type it
+ * produces is the same. What differs is *when* a misspelt segment is reported:
+ * a bound is checked at the call whatever the result is used for, and a
+ * conditional is evaluated against the type the result is wanted at — so
+ * `const city: string = useWatch({ control, path: ["address", "cty"] })` is an
+ * error and `const city: mixed = ...` is not. Both are better than `mixed`
+ * everywhere, and the difference is written down here rather than found.
  */
-export hook useWatch<TValues extends FieldValues, TOutput>(
-  options: UseWatchOptions<TValues, TOutput>,
-): mixed {
+export hook useWatch<TValues extends FieldValues, TOutput, TPath extends FieldSegments = []>(
+  options: UseWatchOptions<TValues, TOutput, TPath>,
+): ValueAtPath<TValues, TPath> {
   const control = options.control;
-  const key = keyOf(options.name);
+  const path = options.path;
+  const key = path == null ? keyOf(options.name) : pathOf(path);
   const defaultValue = options.defaultValue;
 
   // Split back out of the key rather than kept from the caller's array, so an
@@ -91,7 +124,13 @@ export hook useWatch<TValues extends FieldValues, TOutput>(
   const snapshot = useCallback(() => control.watchSnapshot(key, paths), [control, key, paths]);
 
   const value = useSyncExternalStore(subscribe, snapshot, snapshot);
-  return value === undefined ? defaultValue : value;
+  // The one cast in this file, and it is the seam between a store keyed by
+  // strings and a signature that answers at a type. `watchSnapshot` reads a
+  // value tree it has no type for — the store is one object with `mixed` at
+  // every leaf — and `ValueAtPath` is the caller's own values object indexed by
+  // the segments they passed. The two agree because `pathOf` above turned those
+  // segments into the very key the snapshot was read at.
+  return (value === undefined ? defaultValue : value) as $FlowFixMe;
 }
 
 export type UseFormStateOptions<TValues extends FieldValues, TOutput> = {|
@@ -118,7 +157,7 @@ export type UseFormStateOptions<TValues extends FieldValues, TOutput> = {|
  */
 export hook useFormState<TValues extends FieldValues, TOutput>(
   options: UseFormStateOptions<TValues, TOutput>,
-): FormState {
+): FormState<TValues> {
   const control = options.control;
   const key = keyOf(options.name);
   const scoped = options.name != null;

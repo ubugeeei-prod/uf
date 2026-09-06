@@ -86,18 +86,66 @@
 // coerces. Inference flows through `useForm({ defaultValues })` without an
 // annotation.
 //
-// Field *paths* are `string`, and the value at a path is `mixed`. Flow has no
-// template-literal types, so `"address.city"` cannot be checked against the
-// shape of the values, and there is no way to say "the type at this path".
-// Pretending otherwise — a `FieldPath<T>` alias that is really `string` — would
-// be a type that looks like it checks something and does not. Where a value's
-// type matters, name it at the use site: `const city = watch("address.city") as
-// string`.
+// So does a *per-field* read, if the path is given as segments:
+//
+//   const city = getValues("address", "city");   // string
+//   const price = watch("items", 0, "price");    // number
+//   setValue(["items", 0, "price"], 12);         // and 12 has to be a number
+//
+// A dotted `"address.city"` is still `mixed`, and still works. The difference
+// is one fact about Flow rather than a preference: there are no template
+// literal types, so a string cannot be checked against the shape of the values
+// — but a *segment* can, because a generic bounded by the keys of the object it
+// indexes resolves, and composes to the next segment. Everything below follows
+// from that one observation.
+//
+// Three things the checker really does refuse, since the difference between
+// them and "there is no way to say the type at this path" is the whole of this
+// section. There are **no template literal types**, so React Hook Form's
+// `FieldPath<T>` — a union of every dotted string a shape admits — cannot be
+// built. There is **no `as` key remapping** in a mapped type, which is the
+// other half of how that union is built and also why the errors cannot be
+// nested. And a **recursive conditional over a tuple** binds its first element
+// as `unknown`, which is ubugeeei-prod/uf#300 and is why the depth below is a
+// number rather than a recursion. None of those stops a segment from being
+// checked.
+//
+// What is checked, precisely:
+//
+// - **The segment.** `getValues("address", "country")` is an error naming
+//   `country`, at the call. `setValue(["items", 0, "price"], "cheap")` is an
+//   error naming the value's type, which no read could have told you.
+// - **Four segments deep**, which reaches `items.0.tags.0`. A fifth falls back
+//   to `mixed`. The cap is not a taste: the recursive form of the type — one
+//   arm matching `[K, ...Rest]` — binds `K` as `unknown` in this checker, which
+//   is filed as ubugeeei-prod/uf#300 with a reproduction. When that is fixed
+//   the cap can go.
+// - **A segment that is not a key falls back to the dotted form**, because the
+//   dotted form has to keep working. So `getValues("addres")` is `mixed` rather
+//   than an error at the call — it is caught where the value is used at a type,
+//   which is where every read was caught before this. A *second* segment is
+//   caught at the call, because by then the first has narrowed what is being
+//   indexed.
+// - **`useWatch` is a hook, and a hook declaration has one signature**, so its
+//   typed path is a single `path` option rather than an intersection of
+//   arities. The type it produces is the same; a misspelt segment there is
+//   `mixed` rather than an error at the call, wherever it appears in the path.
+//   `watch.js` says why in full.
+//
+// `watch(["a", "b"])` is *not* a path and does not become one: it means the two
+// fields `a` and `b`, here as in React Hook Form. That is why the readers take
+// segments as arguments rather than as an array — the array slot was taken —
+// and why `setValue`, whose value has to follow the path, takes an array
+// instead. `tests/type-tests/field-paths.js` holds every line of this to the
+// checker's actual output.
 //
 // The errors are flat, keyed by the same string `register` was given:
 // `errors["address.city"]`, not `errors.address.city`. `resolver.js` explains
 // why, and the short version is that the nested shape needs a mapped type over
-// a path Flow cannot spell, so it would be `any` all the way down.
+// a path Flow cannot spell, so it would be `any` all the way down. The typed
+// way to ask about one field's error is `getFieldState("address", "city")`,
+// which checks the path even though a `FieldState` is the same shape whatever
+// the field holds.
 //
 // # Readiness
 //
@@ -106,14 +154,46 @@
 // re-validation; the seven built-in rules with `deps`; resolvers, synchronous
 // and asynchronous, with stale results discarded; `useFieldArray` with stable
 // keys and index remapping of errors, dirty and touched flags; `reset` with its
-// keep options; accessible error wiring; narrow subscriptions;
+// eleven keep options; accessible error wiring; narrow subscriptions;
 // `useForm({ disabled })` and `register(name, { disabled })`; and
 // `useForm({ progressive })`.
 //
-// Not implemented: `defaultValues` as a promise, `values`, `errors` as an
-// input, `shouldUnregister`, `delayError`, and form-level persistence.
-// `isValid` in `onSubmit` mode reflects the most recent submit rather than a
-// validation nobody asked for — see `internal/form-store.js`.
+// Values can also enter a form after it has rendered, which is what an edit
+// form fed by a server needs and what used to take a `useEffect` and a second
+// render:
+//
+//   // The record is fetched, and the form is usable while it is in flight.
+//   useForm({ defaultValues: () => fetchRecord(id) })
+//
+//   // The record is owned by something else, and the form follows it.
+//   useForm({ values: record, resetOptions: { keepDirtyValues: true } })
+//
+//   // The server rejected the submit, and said which fields.
+//   useForm({ errors: rejection })
+//
+// `formState.isLoading` is true while an asynchronous default is pending, and
+// `formState.defaultValues` is what `reset()` would go back to. A default that
+// resolves after the user has typed does not take their text away, and one that
+// resolves after a `reset(values)` does not land at all — the same
+// stale-answer rule the resolver runs on, applied to values.
+//
+// A re-seed is a `reset`, so what it keeps is `ResetOptions`, and the three
+// questions that decides are answered there: a **dirty** field is replaced
+// unless `keepDirtyValues`; **validation state** goes back to what it is for a
+// fresh form unless `keepErrors` or `keepIsValid`; and a field the new values
+// **no longer contain** is gone, because the tree is replaced rather than
+// merged.
+//
+// Not implemented: `shouldUnregister`, `delayError`, and form-level
+// persistence. `isValid` in `onSubmit` mode reflects the most recent submit
+// rather than a validation nobody asked for — see `internal/form-store.js`.
+//
+// `formState.isReady` is **declined** rather than pending. React Hook Form has
+// one because its form finishes setting itself up after the first render; this
+// store is built in a `useState` initialiser, so its first snapshot is already
+// the real one. An `isReady` here would be `!isLoading` under a second name, or
+// a flag that flipped in an effect — which would cost every form in the package
+// a render to learn something that was true before it started.
 //
 // `shouldUseNativeValidation` is **declined** rather than pending, and the
 // reason is that it and this package's accessibility wiring cannot both be in
@@ -147,7 +227,13 @@
 // the server it posts to. Every half of this is covered by
 // `tests/library/form.test.js`.
 
-export type { FieldPath, FieldValues } from "./internal/field-path.js";
+export type {
+  FieldPath,
+  FieldSegment,
+  FieldSegments,
+  FieldValues,
+  ValueAtPath,
+} from "./internal/field-path.js";
 export type {
   Control,
   FieldErrors,
@@ -164,6 +250,9 @@ export type { FieldConstraints, FieldError, Rule, Validate, ValidationRules } fr
 export type { Resolver, ResolverErrors, ResolverResult } from "./resolver.js";
 export type {
   FieldState,
+  GetFieldState,
+  GetValues,
+  SetValue,
   UseFormOptions,
   UseFormReturn,
   Watch,

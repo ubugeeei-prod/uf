@@ -523,10 +523,11 @@ list that until then looked fine.
 
 Coming from React Hook Form, three differences matter here and
 [the form guide](/guide/form) has the rest. Errors are flat, keyed by the string
-you registered — `errors["profile.city"]`, not `errors.profile.city`. Field
-paths are `string` and values are `mixed`, because Flow has no template-literal
-types and a `FieldPath<T>` that is really `string` would be a type pretending to
-check something. And reading `formState` where you called `useForm` costs one
+you registered — `errors["profile.city"]`, not `errors.profile.city`. A *dotted*
+field path is `string` and the value behind it is `mixed`, because Flow has no
+template-literal types; the same path given as **segments** is checked and
+typed — `getValues("profile", "city")` is a `string`, four segments deep. And
+reading `formState` where you called `useForm` costs one
 render when `isDirty` first turns on and two per submit, rather than the zero
 React Hook Form buys with a `Proxy` — a technique that depends on a render
 having happened, which is exactly what the React Compiler is allowed to skip.
