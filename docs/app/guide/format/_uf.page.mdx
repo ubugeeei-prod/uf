@@ -29,6 +29,15 @@ width is 100 rather than Prettier's 80; `fmt.lineWidth` changes it.
 That claim is checked rather than asserted: every fixture in `uf_fmt`'s suite
 is compared byte for byte against Prettier's own output for the same input.
 
+One difference, and it is a feature uf does not have rather than a rule it gets
+wrong. Prettier formats the code *inside* a tagged template when it recognises
+the tag — `graphql`, `css`, `html`, `sql`, `markdown` — and re-indents it to
+the code around it. uf leaves every template's contents exactly as written. So
+uf matches `prettier --embedded-language-formatting=off`, which is not
+Prettier's default, and a `graphql` template that stops moving when the code
+around it moves is this and not a bug. The one that matters for a Flow React
+toolchain is `graphql`; see [ubugeeei-prod/uf#177](https://github.com/ubugeeei-prod/uf/issues/177).
+
 Files uf has no opinion about are handed to Biome, which is also Rust and also
 fast, so a repository with a `README.md` and a `package.json` in it does not
 need a second formatter installed.
