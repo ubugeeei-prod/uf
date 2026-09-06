@@ -50,6 +50,7 @@ import {
   useState,
 } from "@uniflowed/react";
 
+import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
 import { indexOfActive, itemsOf, movementFor, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
@@ -93,7 +94,7 @@ export component TabsRoot(
   onValueChange?: (value: string) => void,
   activationMode?: ActivationMode = "automatic",
   orientation?: Orientation = "horizontal",
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const base = useId();
   const [selected, select] = useControlled(value, defaultValue, onValueChange);
@@ -141,7 +142,7 @@ export component TabsRoot(
  * tabs push themselves into as they mount answers with mount order, which stops
  * being document order the first time a tab is conditional.
  */
-export component TabsList(children: renders* TabsTab, ...rest: { readonly [string]: mixed }) {
+export component TabsList(children: renders* TabsTab, ...rest: Rest) {
   const tabs = useTabs("Tabs.List");
   const passed = withoutComposed(rest, ["onKeyDown"]);
 
@@ -190,7 +191,7 @@ export component TabsTab(
   value: string,
   children: React.Node,
   disabled?: boolean = false,
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const tabs = useTabs("Tabs.Tab");
   const active = tabs.selected === value;
@@ -248,11 +249,7 @@ export component TabsTab(
  * subscription rather than "the selected value equals mine", because a caller
  * may render a subset of panels, or none at all until data arrives.
  */
-export component TabsPanel(
-  value: string,
-  children: React.Node,
-  ...rest: { readonly [string]: mixed }
-) {
+export component TabsPanel(value: string, children: React.Node, ...rest: Rest) {
   const tabs = useTabs("Tabs.Panel");
   const register = tabs.registerPanel;
   const selected = tabs.selected === value;
