@@ -17,11 +17,12 @@
 // data and cannot use the functions.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { transformFlow } from "@uniflowed/host/transform";
+import { writeAtomically } from "@uniflowed/host/write-atomically";
 
 /** The one config file name uf reads. */
 export const CONFIG_FILES = ["uf.config.js"];
@@ -94,8 +95,13 @@ async function compileConfig(source, file, root) {
 
   const out = await transformFlow(source, file, { root, sourceMap: false });
   const code = rewriteRelativeImports(out?.code ?? source, path.dirname(file));
-  mkdirSync(directory, { recursive: true });
-  writeFileSync(target, `// Compiled from ${file}. Do not edit; edit the source.\n${code}`);
+  // Atomically, because two `uf` commands in one project write this same path
+  // at the same time — the hash is of the source, so they agree on the name —
+  // and `writeFileSync` truncates before it writes. A reader that caught it
+  // mid-write imported a module with no exports and reported it as
+  // `uf.config.js must export default defineConfig({ ... })`, which is a
+  // sentence about a file that is perfectly correct. See ubugeeei-prod/uf#240.
+  writeAtomically(target, `// Compiled from ${file}. Do not edit; edit the source.\n${code}`);
   return target;
 }
 
