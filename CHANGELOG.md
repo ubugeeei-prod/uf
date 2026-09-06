@@ -6,14 +6,30 @@ _2026-09-06_
 
 ### Added
 
-- **prepare**: the command does the five things it lists
-- **story**: the story runner, and four wrong answers the tests found (#211)
 - **lsp**: code actions and hover, and the two bugs that finished them (#209)
+- **story**: the story runner, and four wrong answers the tests found (#211)
+- **prepare**: the command does the five things it lists
+- **flow**: say what is wrong with top-level await, and point at it (#222)
+
+### Fixed
+
+- **ui**: a part's rest props no longer make React's `key` mixed — 32 of
+  `@uniflowed/ui`'s 73 type errors, one per element it renders (#220)
+- **test**: a line a finished test's callback printed is still that test's (#221)
+- **test**: an event that outlives its file is not the next file's (#228)
+- **flow**: a parse tree is freed where there is room, not where it is held (#230)
+- **router**: `_uf.not-found` is a reserved name, and the linter says so (#224)
+- **lint**: a rule about what code does no longer reads strings (#227)
 
 ### Internal
 
-- check that package-lock.json still describes the manifests
-- the two mistakes the version bump made on its second run
+- one set of parse options, and the test that keeps it one (#216)
+- a package somebody implemented has to be on its way to npm (#229)
+- check that `package-lock.json` still describes the manifests, and the two
+  mistakes the version bump made on its second run
+- say which Prettier `uf fmt` is compatible with (#223)
+- match the changelog heading literally, and run in `uf run ci` what the
+  pipeline runs — the two had drifted eight tasks apart
 
 ## uf@0.0.0-alpha.4
 

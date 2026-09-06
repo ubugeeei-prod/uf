@@ -243,6 +243,8 @@ export default defineConfig({
         "lockfile",
         "lockfile:test",
         "release:closure",
+        "publishable",
+        "publishable:test",
         "release:trust:test",
         "release:bump:test",
         // Not `install:test`. It packages a release before installing it, and
