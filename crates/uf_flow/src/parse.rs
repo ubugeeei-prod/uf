@@ -21,7 +21,6 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use flow_parser::ParseOptions;
-use flow_parser::parse_error::ParseError;
 use thiserror::Error;
 
 pub use flow_parser::ast;
@@ -261,16 +260,11 @@ pub fn parse(source: &str) -> Result<Parsed, ParseFailure> {
 
     Ok(Parsed {
         program,
-        diagnostics: errors.iter().map(diagnostic_from_error).collect(),
+        diagnostics: errors
+            .iter()
+            .map(|error| crate::diagnostic_from_error(source, error))
+            .collect(),
     })
-}
-
-fn diagnostic_from_error((loc, error): &(Loc, ParseError)) -> ParseDiagnostic {
-    ParseDiagnostic {
-        message: error.to_string(),
-        line: u32::try_from(loc.start.line).ok(),
-        column: u32::try_from(loc.start.column).ok(),
-    }
 }
 
 /// What the depth scanner is inside: JavaScript, with the number of `{`

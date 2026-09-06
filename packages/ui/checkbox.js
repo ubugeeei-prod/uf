@@ -31,6 +31,7 @@
 
 import * as React from "@uniflowed/react";
 
+import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
@@ -42,7 +43,7 @@ export component Checkbox(
   onCheckedChange?: (checked: boolean) => void,
   disabled?: boolean = false,
   children?: React.Node,
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   // A mixed checkbox moves to checked, not to "the opposite of the boolean
