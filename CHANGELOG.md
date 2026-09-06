@@ -1,5 +1,55 @@
 # Changelog
 
+## uf@0.0.0-alpha.8
+
+_2026-09-07_
+
+The release that made the published tool work. `uf test` could not run in any
+project installed from npm — `@uniflowed/host` exported a file it did not
+publish — and `uf create` pinned `latest`, which on npm still pointed six
+releases back. Both are fixed, and both now have a test that fails before the
+next one can happen: every published package is checked against what npm would
+actually pack, and the release preflight reports where each dist-tag points.
+
+`uf check` also stopped re-doing its work. A second run over an unchanged
+project is answered from a cache keyed on the compiler, the limits, the
+transitive signatures and how each specifier resolved — measured on this
+repository at 5.26s to 0.54s, reporting byte-identical diagnostics.
+
+And the Server Components analysis became load-bearing for the first time: a
+route no `"use client"` boundary reaches keeps its page out of the browser
+bundle. On a four-route application with no client boundary anywhere that is
+2,886 raw bytes and five chunks fewer.
+
+### Added
+
+- **rsc**: keep a route with no client boundary out of the client bundle (#438)
+- **pm**: the four package-manager commands the operation table already named (#422)
+- **test, host**: `uft.mock` replaces a module, and seven bindings stop throwing (#415)
+- **install**: the install says what it is doing while it does it (#399)
+
+### Fixed
+
+- **create, release**: pin the scaffold to the uf that wrote it, and give `latest` a way to move (#416)
+- **test**: the packaging check reads code, not the prose beside it (#414)
+- **host**: the file `@uniflowed/host` exports is one it publishes (#410)
+- **test**: the four `any` casts that make `main` red (#412)
+- **lint**: uf lints its own repository, and CI runs it (#404)
+- **router, build, exec**: three commands that did nothing and said nothing about it (#353)
+- **lib**: the registry names exactly what each package exports, and a test says so (#397)
+- **build, dev, rsc**: the server-component analysis says what it found, everywhere it runs (#394)
+- **release**: a release that went out is not a release that failed (#395)
+
+### Performance
+
+- **check**: `uf check` keeps what it already worked out (#407)
+
+### Documentation
+
+- **site**: the heading says what uf is for (#413), sharpened to "The best React
+  experience, typed by Flow." ([#440](https://github.com/ubugeeei-prod/uf/pull/440))
+- six claims the site made that the source does not (#384)
+
 ## uf@0.0.0-alpha.7
 
 _2026-09-06_
