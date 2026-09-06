@@ -46,6 +46,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
       },
       {
+        href: "/guide/scope",
+        title: "What uf does not do",
+        blurb: "The refusals, and the gaps — the second list with issue numbers.",
+      },
+      {
         href: "/guide/vite-plus",
         title: "uf and Vite+",
         blurb: "Where uf sits next to the toolchain it will be compared to.",
