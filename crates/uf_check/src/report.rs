@@ -55,6 +55,16 @@ pub struct CheckReport {
     /// result as a clean check over the project, and a reader is entitled to
     /// tell those apart at a glance.
     pub files_skipped: usize,
+    /// How many of [`Self::files_checked`] were answered from a cache rather
+    /// than inferred again.
+    ///
+    /// Reported because it is the only way to tell a fast run from a wrong
+    /// one: a check that answered every file from disk and a check that found
+    /// nothing to say look identical from the outside, and they are not the
+    /// same event. A file that opted out with `@noflow` is not counted, for the
+    /// same reason it is not counted in [`Self::files_checked`] — it was not
+    /// checked either way, so a cache cannot be what saved it.
+    pub files_from_cache: usize,
     /// Module specifiers that resolved to nothing typed, sorted and de-duped.
     ///
     /// A relative import of another file in the batch is checked against that
@@ -95,6 +105,8 @@ impl CheckReport {
     ///
     /// Reported rather than logged so a benchmark and the CLI agree on what
     /// throughput means here: inference only, with the builtins already warm.
+    /// A run with [`Self::files_from_cache`] above zero is not measuring
+    /// inference over those files and this number does not describe it.
     pub fn files_per_second(&self) -> Option<f64> {
         let seconds = self.elapsed.as_secs_f64();
         (seconds > 0.0).then(|| self.files_checked as f64 / seconds)

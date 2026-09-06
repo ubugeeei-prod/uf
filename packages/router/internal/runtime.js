@@ -1455,11 +1455,14 @@ function layoutComponent(module: LayoutModule): React.ComponentType<LayoutRender
  * unsoundness spread over six declarations, where it also stopped anyone from
  * checking that `RouteView` passes the props a page is documented to receive.
  * Here it is one line, and everything on either side of it is checked: what a
- * module may export, and what a page is handed.
+ * module may export, and what a page is handed. Suppressed by name so that
+ * `check:lib` can gate CI without this file being the thing that stops it; the
+ * directive names the rule, and this is the argument for escaping it.
  */
 function renderable<TProps extends { ... }>(
   component: RouteComponent,
 ): React.ComponentType<TProps> {
+  // uf-lint-disable-next-line flow/unclear-type
   return component as any;
 }
 

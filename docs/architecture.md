@@ -216,7 +216,9 @@ weight.
 
 Measured on that toolchain, optimized: builtins merge in **19 ms** cold and cost
 nothing warm; a dense Flow React component file checks in **4.3 ms**
-(230 files/s, one thread). Unoptimized those are 60 ms and 15 ms.
+(230 files/s, one thread). Unoptimized those are 60 ms and 15 ms. Over this
+repository — 319 sources, 302 of them checked — `uf check` is **4.0 s** with a
+cold cache and **0.28 s** with a warm one, medians of eight alternating runs.
 
 Modules resolve against the batch, not against a filesystem. A relative
 specifier names another source `uf check` collected, and that module's
@@ -233,6 +235,20 @@ of the file check. Those specifiers are reported in
 `CheckReport::untyped_modules`, so the hole is stated rather than silent: on this
 repository they are the third-party packages and the `node:` builtins that no
 manifest here publishes.
+
+Nothing is checked twice. A run keeps one record per file under
+`.uf/cache/check/`, keyed by the identity of the `uf` that wrote it — its path,
+size and modification time, the discipline `.uf/cache/transform` already
+holds — together with the limits the check ran under and the file's own path and
+text. A record also carries a *dependency digest*, over the packed signature of
+every module the file reaches and how each of those modules' specifiers
+resolved; the diagnostics in it are believed only while that digest still
+describes the batch. So editing one file re-checks that file and the files that
+reach it, and nothing else — and editing a function body, which moves no
+declaration and changes no exported type, re-checks only the file itself. A
+process that cannot name its own binary caches nothing in either direction, and
+an entry that is unreadable, out of date, or about another file is a miss rather
+than an error.
 
 Errors are never flattened into strings. `flow_common_errors`'s accessors give
 the code, kind, and primary location directly; the message tree itself is private

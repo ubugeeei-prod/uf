@@ -29,6 +29,29 @@ export const metadata: {| readonly title: string, readonly description: string |
     "One binary that runs, builds, tests, formats and lints Flow and React. No Babel, no plugin list, no second config file.",
 };
 
+/**
+ * The theme bootstrap, as an element.
+ *
+ * Written out here rather than in the head below because the suppression it
+ * carries needs a line of its own: a `//` directive inside JSX children would
+ * be text on the page, and the rule reads the line the attribute is written
+ * on.
+ *
+ * `security/no-dangerously-set-inner-html` is about HTML that came from
+ * somewhere — a comment, a profile, a response — and its escape hatch is a
+ * `@uniflowed/markdown` sanitizer, which is the right answer for markup and no
+ * answer at all for a script. This is the opposite end of the rule's subject:
+ * a string constant in `_design/theme.js`, assembled from a literal through
+ * `JSON.stringify`, with no parameter and nothing user-supplied within reach
+ * of it. There is also no other spelling. A script's body has to be `__html`
+ * because React escapes a text child — `t === "dark"` would reach the page as
+ * `t === &quot;dark&quot;` — and it has to be inline because an external one
+ * costs a round trip before first paint, which is the white flash the script
+ * exists to prevent.
+ */
+// uf-lint-disable-next-line security/no-dangerously-set-inner-html
+const themeBootstrapScript = <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />;
+
 export component Layout(children: React.Node) {
   return (
     <html lang="en">
@@ -38,7 +61,7 @@ export component Layout(children: React.Node) {
         <meta name="color-scheme" content="light dark" />
         <link rel="icon" href="/brand/favicon.svg" />
         <link rel="stylesheet" href="/brand/tokens.css" />
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+        {themeBootstrapScript}
       </head>
       <body>
         <a className="skip" href="#content">
