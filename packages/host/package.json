@@ -11,10 +11,11 @@
     "directory": "packages/host"
   },
   "exports": {
-    "./register": "./register.js",
     "./bun-preload": "./bun-preload.js",
+    "./internal/node-hooks.js": "./internal/node-hooks.js",
+    "./register": "./register.js",
     "./transform": "./transform.js",
-    "./internal/node-hooks.js": "./internal/node-hooks.js"
+    "./write-atomically": "./write-atomically.js"
   },
   "files": [
     "register.js",
