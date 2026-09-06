@@ -150,22 +150,28 @@ unconditional form.
 
 ## Retrying
 
-A `Schedule` is plain data — eight shapes, no builder:
+A `Schedule<In>` is plain data — a state machine, still written as a literal:
 
 ```js
 retry(request, { kind: "exponential", baseMillis: 100, factorPercent: 200 });
 retry(request, { kind: "intersect", left: { kind: "recurs", times: 5 }, right: { kind: "upTo", millis: 10_000 } });
 ```
 
-`recurs`, `spaced`, `exponential`, `fibonacci`, `upTo`, `intersect`, `union` and
-`maxDelay`. `factorPercent` is an integer percentage rather than a float,
-because 1.5 written as `150` survives a round trip through a JSON config file
-without becoming `1.4999999999999998`.
+`factorPercent` is an integer percentage rather than a float, because 1.5
+written as `150` survives a round trip through a JSON config file without
+becoming `1.4999999999999998` — the same reason the whole type is data rather
+than a builder.
 
-`scheduleDelay(schedule, attempt)` from `@uniflowed/effect/schedule` is the whole
-runtime: it answers the delay before an attempt, or `null` when the schedule is
-finished. It is arithmetic with no failure mode, which is what lets a schedule
-say *when* to try again and never *whether*.
+`scheduleStep(schedule, state, input, now)` from `@uniflowed/effect/schedule` is
+the whole runtime: given what has happened, it answers "go again after this long"
+or "stop", with the number the schedule reached. It reads no clock and no random
+source — both are arguments — so a policy is a pure function you can test across
+its whole behaviour without waiting for any of it.
+
+The input is the error for `retry` and the value for `repeat`, which is what
+makes one type serve both and lets a policy decide on *what* rather than only on
+*how many*: `{ kind: "untilInput", schedule, predicate }` is "poll until the job
+reports finished".
 
 `retry` counts retries, so `{ kind: "recurs", times: 2 }` runs the effect three
 times — measured, not assumed. It retries a typed failure only: a defect is a
@@ -201,16 +207,17 @@ was meant to have made it impossible.
 | `self.pipe(map(f))` | `map(self, f)` | No higher-kinded types, so no generic `pipe`, no typeclasses, no `Do` |
 | Requirement subtraction | Solved from a union | Flow has no type-level set difference |
 | `catchTag` narrows on `_tag` | `catchTag` reads `kind` then `tag`, and does not narrow | Flow cannot narrow a type variable by a run-time string |
-| `fork` is scoped to its parent | `fork` is `forkDaemon` | Structured children are what `all`, `race` and `timeout` use internally |
+| Four forks | `fork`, `forkDaemon` and `forkScoped` | `forkIn` needs a `Scope` that is a value, and here it is a phantom |
+| `Schedule<Out, In, R>` | `Schedule<In>`, output always a number | A union arm cannot constrain a type parameter it does not mention |
 | `race` takes the first to settle | `race` takes the first to succeed | "Whichever settles first" is not what a caller wants when the fastest answer is an error |
 | Heterogeneous `all` keeping tuple types | One array type in, one out | No variadic tuple inference to build it from |
 | `"inherit"` concurrency | Absent | Nothing tracks an enclosing limit |
 
-**Not implemented**, quoting the package: `Ref`, `Deferred`, `Queue`, `Hub`,
-`Semaphore` and STM; streams; a fiber scheduler of its own — this runs on the
-host's microtask queue and its `sleep` is `setTimeout`; tracing, spans, metrics
-and the logging layer; `Layer` memoisation, so a layer passed to two `provide`s
-is built twice; and a typed defect channel.
+**Not implemented**, quoting the package: STM; `Channel`, `Sink`, `GroupBy` and
+`Chunk`, which `./stream.js` explains being without rather than pending; a fiber
+scheduler of its own — this runs on the host's microtask queue and its `sleep` is
+`setTimeout`; tracing, spans, metrics and the logging layer; and a typed defect
+channel.
 
 There is no `Context` module either: `tag`, `provideService` and `provide` are
 the whole surface, and the context they thread is internal.
