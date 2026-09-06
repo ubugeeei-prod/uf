@@ -113,4 +113,9 @@ Now bind them to the workflow, so every release after this one is the
 workflow's and no token exists anywhere:
 
   tools/release/trust-npm.sh
+
+And point 'latest' at them, which publishing on the prerelease tag above does
+not do — it is the tag 'npm install <name>' asks for:
+
+  tools/release/promote-latest.sh
 MESSAGE
