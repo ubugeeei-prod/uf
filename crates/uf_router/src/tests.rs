@@ -19,7 +19,11 @@ fn discovers_root_and_dynamic_routes() {
     assert!(routes[0].has_layout);
     assert_eq!(routes[1].path, "/users/:id");
     assert_eq!(routes[1].params[0].name, "id");
-    assert!(routes[1].has_middleware);
+    assert!(routes[1].has_own_middleware());
+    assert_eq!(
+        routes[1].middleware,
+        vec![root.join("app/users/[id]/_uf.middleware.js")]
+    );
 }
 
 #[test]
@@ -33,7 +37,7 @@ fn generates_router_flow_with_params() {
             kind: RouteParamKind::Single,
         }],
         has_layout: false,
-        has_middleware: false,
+        middleware: Vec::new(),
     };
 
     let source = generate_router_flow(&[route]);
@@ -61,7 +65,7 @@ fn generated_router_types_are_exact() {
             kind: RouteParamKind::Single,
         }],
         has_layout: false,
-        has_middleware: false,
+        middleware: Vec::new(),
     }]);
 
     assert!(
@@ -152,7 +156,7 @@ fn the_generated_router_is_already_formatted() {
             page: Utf8PathBuf::from("app/_uf.page.js"),
             params: Vec::new(),
             has_layout: true,
-            has_middleware: false,
+            middleware: Vec::new(),
         },
         Route {
             path: "/posts/:id".into(),
@@ -163,7 +167,7 @@ fn the_generated_router_is_already_formatted() {
                 kind: RouteParamKind::Single,
             }],
             has_layout: false,
-            has_middleware: false,
+            middleware: Vec::new(),
         },
     ];
 
@@ -187,4 +191,113 @@ fn an_empty_generated_router_is_already_formatted() {
         .expect("the generated router parses");
 
     similar_asserts::assert_eq!(generated, formatted.output);
+}
+
+/// A middleware guards everything below the directory that declares it.
+///
+/// The composition rule layouts already have, and the one
+/// `packages/vite/internal/routes.js` implements for the table the build runs.
+/// Route discovery answered the narrower question — "does *this* directory
+/// declare one" — so `/dashboard/settings` looked unguarded to every caller in
+/// Rust while the build's own router had `app/dashboard/_uf.middleware.js` on
+/// it. `uf build` asks this to decide which prerendered files a guard never
+/// sees, and the narrow answer would have told it none of them.
+#[test]
+fn a_middleware_guards_every_route_beneath_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/dashboard/settings")).unwrap();
+    fs::create_dir_all(root.join("app/about")).unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/about/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/_uf.middleware.js"), "// @flow\n").unwrap();
+    fs::write(
+        root.join("app/dashboard/settings/_uf.page.js"),
+        "// @flow\n",
+    )
+    .unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+    let guarded = |path: &str| {
+        routes
+            .iter()
+            .find(|route| route.path == path)
+            .unwrap_or_else(|| panic!("no route {path} in {routes:#?}"))
+    };
+
+    assert!(!guarded("/").is_guarded());
+    assert!(!guarded("/about").is_guarded());
+    assert!(guarded("/dashboard").has_own_middleware());
+    assert_eq!(
+        guarded("/dashboard/settings").middleware,
+        vec![root.join("app/dashboard/_uf.middleware.js")],
+        "the guard is inherited, and the route below it is the one nobody \
+         would notice was unguarded"
+    );
+    assert!(
+        !guarded("/dashboard/settings").has_own_middleware(),
+        "its own directory declares nothing, which is a different fact"
+    );
+}
+
+/// A guard at the router root guards everything, and a nested one composes
+/// with it outermost first.
+#[test]
+fn guards_compose_outermost_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/admin/users")).unwrap();
+    fs::write(root.join("app/_uf.middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/admin/_uf.middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/admin/users/_uf.page.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(routes[0].path, "/");
+    assert_eq!(
+        routes[0].middleware,
+        vec![root.join("app/_uf.middleware.js")]
+    );
+    assert_eq!(routes[1].path, "/admin/users");
+    assert_eq!(
+        routes[1].middleware,
+        vec![
+            root.join("app/_uf.middleware.js"),
+            root.join("app/admin/_uf.middleware.js"),
+        ]
+    );
+}
+
+/// A prerendered file is named by URL, and the guard that covers it is known
+/// by route, so one has to be matched against the other.
+#[test]
+fn a_route_recognises_the_urls_it_serves() {
+    let route = |path: &str| Route {
+        path: path.into(),
+        directory: Utf8PathBuf::from("app"),
+        page: Utf8PathBuf::from("app/_uf.page.js"),
+        params: Vec::new(),
+        has_layout: false,
+        middleware: Vec::new(),
+    };
+
+    assert!(route("/").matches_url("/"));
+    assert!(!route("/").matches_url("/about"));
+    assert!(route("/about").matches_url("/about"));
+    assert!(route("/about").matches_url("/about/"));
+    assert!(!route("/about").matches_url("/about/us"));
+    assert!(!route("/about").matches_url("/"));
+
+    assert!(route("/posts/:slug").matches_url("/posts/hello-world"));
+    assert!(!route("/posts/:slug").matches_url("/posts"));
+    assert!(!route("/posts/:slug").matches_url("/posts/a/b"));
+    assert!(!route("/posts/:slug").matches_url("/pages/hello-world"));
+
+    // A catch-all takes the rest of the path and needs something to take:
+    // `[...slug]` is not the directory above it.
+    assert!(route("/docs/:slug*").matches_url("/docs/guide/routing"));
+    assert!(route("/docs/:slug*").matches_url("/docs/guide"));
+    assert!(!route("/docs/:slug*").matches_url("/docs"));
 }

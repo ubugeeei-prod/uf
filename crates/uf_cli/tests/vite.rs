@@ -322,6 +322,151 @@ fn a_page_that_throws_fails_its_route_and_not_the_others() {
     );
 }
 
+/// A project with a route that is both guarded and static, built under
+/// `target/` for the reason [`project_with_a_throwing_page`] gives.
+///
+/// `/dashboard/settings` is the interesting one: its own directory declares no
+/// middleware, and `app/dashboard/_uf.middleware.js` guards it all the same.
+fn project_with_a_guarded_page() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/guarded-page");
+    fs::remove_dir_all(&root).ok();
+    for (relative, contents) in [
+        (
+            "package.json",
+            r#"{ "name": "uf-guarded-page", "private": true, "type": "module" }
+"#,
+        ),
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+export default component Home() {
+  return <h1>the home page</h1>;
+}
+"#,
+        ),
+        (
+            "app/dashboard/_uf.middleware.js",
+            r#"// @flow
+export default function middleware(): void {}
+"#,
+        ),
+        (
+            "app/dashboard/_uf.page.js",
+            r#"// @flow
+export default component Dashboard() {
+  return <h1>the dashboard</h1>;
+}
+"#,
+        ),
+        (
+            "app/dashboard/settings/_uf.page.js",
+            r#"// @flow
+export default component Settings() {
+  return <h1>dashboard settings</h1>;
+}
+"#,
+        ),
+    ] {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    }
+    root
+}
+
+/// A route that is guarded *and* prerendered is named by the build.
+///
+/// `dist/dashboard/index.html` is a file. `app/dashboard/_uf.middleware.js` is
+/// code that runs on a server, per request. A host that serves the file
+/// answers without the guard, and the build said nothing about it at all —
+/// which is #260's failure mode, an authorisation check that looks enforced
+/// and is not, one step further down the pipeline and on the artifact that
+/// actually ships. See ubugeeei-prod/uf#342.
+///
+/// It is a warning and not a failure, and the reason is in
+/// `commands/build/guards.rs`: `uf build` writes the server bundle and the
+/// static documents into the same `dist/`, so which of them is deployed — and
+/// therefore whether the guard runs — is not a fact this build has.
+#[test]
+fn a_guarded_route_that_is_prerendered_is_reported() {
+    if !fixture_ready() {
+        return;
+    }
+    let root = project_with_a_guarded_page();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "a guarded page is a warning, not a failure\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    for expected in [
+        "guards",
+        "/dashboard",
+        "/dashboard/settings",
+        "app/dashboard/_uf.middleware.js",
+        "without running the middleware that guards them",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "the build did not report the guarded routes: missing {expected:?} in:\n{stdout}"
+        );
+    }
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join("dist/uf-build-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let reported = manifest["prerenderedUnderMiddleware"].as_array().unwrap();
+    let urls: Vec<&str> = reported
+        .iter()
+        .map(|page| page["url"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        urls,
+        ["/dashboard", "/dashboard/settings"],
+        "the inherited guard is the one that would be missed: {reported:#?}"
+    );
+    assert_eq!(
+        reported[1]["middleware"],
+        serde_json::json!(["app/dashboard/_uf.middleware.js"]),
+        "a route below the guard is guarded by it: {reported:#?}"
+    );
+    assert_eq!(
+        reported[1]["file"],
+        serde_json::json!("dist/dashboard/settings/index.html")
+    );
+
+    // And the home page, which is prerendered and guarded by nothing, is not
+    // in it: a report that named every static document would be a report
+    // nobody reads.
+    assert!(
+        !urls.contains(&"/"),
+        "an unguarded route was reported as guarded: {reported:#?}"
+    );
+}
+
 /// Whether a loopback socket can be bound here.
 ///
 /// The same policy as [`fixture_ready`], for the same reason: a sandbox that

@@ -36,7 +36,75 @@ pub struct Route {
     pub page: Utf8PathBuf,
     pub params: Vec<RouteParam>,
     pub has_layout: bool,
-    pub has_middleware: bool,
+    /// Every `_uf.middleware.js` that runs before this route resolves,
+    /// outermost first.
+    ///
+    /// Inherited down the tree, the way layouts are, because that is what
+    /// `packages/vite/internal/routes.js` puts on the route table the build
+    /// actually runs (`ownMiddleware`, accumulated root-first). This field was
+    /// a `has_middleware: bool` read off `directory`, and the two answer
+    /// different questions: `app/dashboard/_uf.middleware.js` guards
+    /// `/dashboard/settings`, whose own directory declares nothing. Anything
+    /// asking "is this route guarded" — and `uf build` now asks, so it can say
+    /// which prerendered files a guard never sees — got `false` from the
+    /// per-directory form for every route below the one that declared it.
+    ///
+    /// Kept in the `.js` grammar `reserved` documents. The build's router also
+    /// accepts `.jsx`, which this discovery does not, for pages as much as for
+    /// middleware; see ubugeeei-prod/uf#386.
+    pub middleware: Vec<Utf8PathBuf>,
+}
+
+impl Route {
+    /// Whether this route's own directory declares a middleware.
+    ///
+    /// The question `uf inspect --json`'s `hasMiddleware` has always answered.
+    #[must_use]
+    pub fn has_own_middleware(&self) -> bool {
+        self.middleware
+            .last()
+            .is_some_and(|file| file.parent() == Some(self.directory.as_path()))
+    }
+
+    /// Whether any middleware runs before this route resolves.
+    #[must_use]
+    pub fn is_guarded(&self) -> bool {
+        !self.middleware.is_empty()
+    }
+
+    /// Whether `url` — a concrete path, with every parameter already filled
+    /// in — is served by this route.
+    ///
+    /// The prerender names the files it wrote by URL, not by route, so this is
+    /// how a caller gets from `/posts/hello-world` back to `/posts/:slug` and
+    /// the guards above it. A catch-all consumes the rest of the path and
+    /// requires at least one segment to consume, which is what
+    /// `[...slug]` means: `/docs` is not `/docs/[...slug]`.
+    #[must_use]
+    pub fn matches_url(&self, url: &str) -> bool {
+        let mut actual = url
+            .split('?')
+            .next()
+            .unwrap_or(url)
+            .split('/')
+            .filter(|segment| !segment.is_empty());
+        let mut expected = self.path.split('/').filter(|segment| !segment.is_empty());
+
+        while let Some(segment) = expected.next() {
+            if segment.starts_with(':') && segment.ends_with('*') {
+                // The last thing in the path by construction, so whatever is
+                // left of the URL is the catch-all's, and there must be some.
+                return actual.next().is_some() && expected.next().is_none();
+            }
+            let Some(given) = actual.next() else {
+                return false;
+            };
+            if !segment.starts_with(':') && segment != given {
+                return false;
+            }
+        }
+        actual.next().is_none()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,7 +158,7 @@ pub fn discover_routes(
         routes.push(Route {
             path: path.to_compact_string(),
             has_layout: directory.join(RESERVED_LAYOUT).exists(),
-            has_middleware: directory.join(RESERVED_MIDDLEWARE).exists(),
+            middleware: middleware_chain(&app_root, &directory),
             directory,
             page,
             params,
@@ -99,6 +167,32 @@ pub fn discover_routes(
 
     routes.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(routes)
+}
+
+/// Every `_uf.middleware.js` from `app_root` down to `directory`, outermost
+/// first.
+///
+/// Walked upwards and reversed rather than accumulated on the way down,
+/// because `discover_routes` finds pages with `WalkDir` and never sees a
+/// directory as a directory. The result is the same list
+/// `packages/vite/internal/routes.js` builds on its descent, and it has to be:
+/// one of the two decides what runs, and the other decides what `uf build`
+/// says about it.
+fn middleware_chain(app_root: &Utf8Path, directory: &Utf8Path) -> Vec<Utf8PathBuf> {
+    let mut chain = Vec::new();
+    let mut current = Some(directory);
+    while let Some(dir) = current {
+        let file = dir.join(RESERVED_MIDDLEWARE);
+        if file.is_file() {
+            chain.push(file);
+        }
+        if dir == app_root {
+            break;
+        }
+        current = dir.parent();
+    }
+    chain.reverse();
+    chain
 }
 
 pub fn find_reserved_file_violations(

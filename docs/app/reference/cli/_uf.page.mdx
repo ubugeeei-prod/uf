@@ -94,7 +94,12 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 ### uf build
 
 Builds the client and server bundles and prerenders what can be prerendered.
-`--size-report` prints the cost of each chunk. `--compile` writes one more
+`--size-report` prints the cost of each chunk. A route that a
+`_uf.middleware.js` guards and the prerender wrote a document for is listed
+under `guards`, and in `uf-build-manifest.json` as
+`prerenderedUnderMiddleware` — a static host serves that file without running
+the guard, and which half of `dist/` you deploy is the one thing the build
+cannot know. `--compile` writes one more
 thing — a single executable file that serves the whole application — which is
 described under [uf build --compile](#uf-build---compile) below, beside the two
 other ways to serve a build.
