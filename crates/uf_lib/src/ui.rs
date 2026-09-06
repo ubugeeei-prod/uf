@@ -23,11 +23,20 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Title", "Description"],
             UiRuntime::Server,
         ),
+        // Implemented in `packages/ui/alert-dialog.js`: `Dialog` with the three
+        // decisions that module names taken the other way — `alertdialog`
+        // rather than `dialog`, no dismissal from a press outside, and focus on
+        // the least destructive action. `Overlay` beyond the first guess,
+        // because an alert dialog has a backdrop like any other modal, and
+        // `Description` is required rather than optional: the role exists to
+        // announce one, so an alert dialog without it interrupts the reader to
+        // say nothing.
         UiComponent::new(
             "AlertDialog",
             &[
                 "Root",
                 "Trigger",
+                "Overlay",
                 "Body",
                 "Header",
                 "Footer",
@@ -57,9 +66,16 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Header", "Title", "Description", "Body", "Footer"],
             UiRuntime::Server,
         ),
+        // Implemented in `packages/ui/carousel.js`. `Pause` beyond the first
+        // guess, and it is the part the component exists for: WCAG 2.2.2
+        // requires a mechanism to stop anything that moves by itself for more
+        // than five seconds, and the APG puts that control *first* inside the
+        // carousel — so it is a named part rather than something `Root`
+        // conjures, and `Root` raises when an autoplaying carousel has not been
+        // given one.
         UiComponent::new(
             "Carousel",
-            &["Root", "Content", "Item", "Previous", "Next"],
+            &["Root", "Content", "Item", "Pause", "Previous", "Next"],
             UiRuntime::Split,
         ),
         UiComponent::new("Chart", &["Root", "Tooltip", "Legend"], UiRuntime::Split),
@@ -131,10 +147,26 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/drawer.js`, and rendered by `sheet.js`
+        // rather than written a second time: a drawer is a sheet plus a
+        // gesture. `Handle` is that gesture, and it is a `role="slider"` over
+        // the snap points because WCAG 2.1.1 wants every one of them reachable
+        // from the keyboard and WCAG 2.5.7 wants everything a drag achieves
+        // achievable without one. `Title` and `Description` because a drawer is
+        // a dialog and a dialog needs a name.
         UiComponent::new(
             "Drawer",
             &[
-                "Root", "Trigger", "Overlay", "Body", "Header", "Footer", "Close",
+                "Root",
+                "Trigger",
+                "Overlay",
+                "Body",
+                "Handle",
+                "Header",
+                "Footer",
+                "Title",
+                "Description",
+                "Close",
             ],
             UiRuntime::Split,
         ),
@@ -159,6 +191,13 @@ pub fn ui_components() -> Vec<UiComponent> {
         // it before it closes.
         UiComponent::new("HoverCard", &["Root", "Trigger", "Body"], UiRuntime::Client),
         UiComponent::new("Input", &["Root"], UiRuntime::Client),
+        // Implemented in `packages/ui/input-otp.js`, and the parts say the
+        // decision the component is: `Slot` draws a character and is
+        // `aria-hidden`, because there is exactly one real `<input>` underneath
+        // all of them. Six `<input maxlength="1">`es lose
+        // `autocomplete="one-time-code"`, the platform's SMS autofill, the
+        // password manager and the single accessible name, and they lose them
+        // silently.
         UiComponent::new(
             "InputOtp",
             &["Root", "Group", "Slot", "Separator"],
@@ -235,6 +274,13 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["PanelGroup", "Panel", "Handle"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/scroll-area.js`. `Viewport` is the part
+        // that earns the component: a custom scrollbar removes keyboard
+        // scrolling, because a scroll container is focusable in Firefox and not
+        // in Chromium, so the viewport carries `role="region"`, a name and
+        // `tabindex="0"` and then intercepts no key at all. `Scrollbar` is
+        // `aria-hidden` and holds no controls, which is what keeps it clear of
+        // WCAG 2.5.7: nothing here is achievable only by dragging.
         UiComponent::new(
             "ScrollArea",
             &["Root", "Viewport", "Scrollbar"],
@@ -265,16 +311,41 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Client,
         ),
         UiComponent::new("Separator", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/sheet.js`, and deliberately small: a
+        // sheet is a modal dialog attached to an edge, and every modal promise
+        // is `dialog.js`'s. What it adds is the two things a class name cannot
+        // be — `side` as a checked union, and `data-side` as one contract that
+        // `drawer.js` and `sidebar.js` are both defined against, so a drawer
+        // and a sidebar-on-a-phone cannot come to disagree about what "left"
+        // means. `Title` and `Description` beyond the first guess, because a
+        // modal without a name is announced as "dialog".
         UiComponent::new(
             "Sheet",
             &[
-                "Root", "Trigger", "Overlay", "Body", "Header", "Footer", "Close",
+                "Root",
+                "Trigger",
+                "Overlay",
+                "Body",
+                "Header",
+                "Footer",
+                "Title",
+                "Description",
+                "Close",
             ],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/sidebar.js`, and the one of the four
+        // built on `Dialog` that is usually not a dialog: it is part of the
+        // page, nothing behind it is inert, and there is no focus trap — until
+        // the viewport gets narrow, when it becomes a `Sheet` and every one of
+        // those changes. `Trigger` beyond the first guess, because the
+        // `aria-expanded` that says whether the navigation is showing is the
+        // component's to own; `Body` is a named `<nav>` landmark rather than a
+        // `<div>`, and `Item` takes a `label` that stays the accessible name
+        // once the sidebar has collapsed to icons.
         UiComponent::new(
             "Sidebar",
-            &["Root", "Header", "Body", "Footer", "Item"],
+            &["Root", "Trigger", "Header", "Body", "Footer", "Item"],
             UiRuntime::Split,
         ),
         UiComponent::new("Skeleton", &["Root"], UiRuntime::Server),

@@ -31,6 +31,32 @@
 // looks. The page behind is hidden by marking it inert rather than by moving
 // the dialog out of it, which gets the same guarantee without the move.
 //
+// # Three things a caller decides, and why they are props rather than four
+// components
+//
+// A modal dialog is one pattern with three places a *different* modal dialog
+// differs, and each of the three fails silently when it is hard-coded:
+//
+//   * **`role`** — `dialog` or `alertdialog`. The second tells a screen reader
+//     the dialog is interrupting to say something urgent and makes it announce
+//     the description immediately, which is the difference between "dialog,
+//     Delete this project?" and an alert the reader is expected to answer.
+//   * **`dismissOnOutsidePress`** — whether a press beside the dialog closes
+//     it. A confirmation that vanishes when the reader clicks slightly beside
+//     it, losing what they were about to confirm and saying nothing about which
+//     way it went, is the single behaviour an alert dialog exists to prevent.
+//     `Escape` keeps closing it either way: a modal a reader cannot leave from
+//     the keyboard is a trap, and declining an alert is what `Escape` means.
+//   * **`initialFocus`** — where focus lands. "The first thing worth acting on"
+//     is right for a dialog and wrong for a confirmation, where the APG puts
+//     focus on the *least* destructive action: Cancel, not Delete.
+//
+// They are three props on `Dialog.Body` and not a `variant` flag, because a
+// flag is a name for a bundle and the bundles differ: `alert-dialog.js` sets
+// all three, `sheet.js` sets none of them and adds an edge, `sidebar.js` is
+// most often not modal at all. What each of those components adds is written
+// where it lives; what they share is here, once.
+//
 // # Composition
 //
 // The parts are one namespace — `Dialog.Root`, `Dialog.Body`, `Dialog.Title` —
@@ -49,12 +75,26 @@ import {
   useRef,
   useState,
 } from "@uniflowed/react";
+import { useScrollLock } from "@uniflowed/hooks/browser";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { focusable } from "./internal/focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+
+/**
+ * What a screen reader is told the dialog is.
+ *
+ * A union rather than a string, so `role="alertdailog"` is a type error at the
+ * call rather than a dialog announced as a `div` with a name — which is what a
+ * misspelt role produces, silently, in markup that looks correct.
+ *
+ * Two members and not the whole of ARIA: these are the two roles that carry
+ * `aria-modal`, and a `Dialog.Body` that is a `region` or a `complementary` is
+ * a different component rather than this one with another string.
+ */
+export type DialogRole = "dialog" | "alertdialog";
 
 type DialogState = {|
   readonly base: string,
@@ -164,7 +204,13 @@ export component DialogOverlay(...rest: Rest) {
  * which is the half of "modal" that CSS cannot express; `inert` on everything
  * outside is the half the browser enforces.
  */
-export component DialogBody(children: React.Node, ...rest: Rest) {
+export component DialogBody(
+  children: React.Node,
+  dismissOnOutsidePress?: boolean = true,
+  initialFocus?: { current: HTMLElement | null },
+  role?: DialogRole = "dialog",
+  ...rest: Rest
+) {
   const dialog = useDialog("Dialog.Body");
   const bodyRef = useRef<HTMLElement | null>(null);
   // Stable, so the effect below depends on `open` and on nothing else. Keyed on
@@ -173,6 +219,19 @@ export component DialogBody(children: React.Node, ...rest: Rest) {
   // parent that re-rendered stole focus back from whatever the reader had
   // moved it to inside the dialog.
   const close = useStableCallback(() => dialog.setOpen(false));
+  // Asked at the moment of the press rather than named in the dependencies
+  // below, because naming it there re-runs the effect when it changes and
+  // re-running the effect re-takes focus. A caller who flips this on a
+  // breakpoint would otherwise have focus dragged back to the top of the
+  // dialog underneath the reader.
+  const dismissable = useStableCallback(() => dismissOnOutsidePress);
+
+  // The page is held still by `@uniflowed/hooks`' reference-counted lock rather
+  // than by a second one written here. Two implementations of this in one
+  // repository is the duplication "build uf with uf" exists to catch, and the
+  // shared one is the one that also pads out the scrollbar's width — a page
+  // that jumps sideways when a dialog opens is this component's doing.
+  useScrollLock(dialog.open);
 
   useEffect(() => {
     const body = bodyRef.current;
@@ -186,7 +245,6 @@ export component DialogBody(children: React.Node, ...rest: Rest) {
     const opener = trigger ?? (document.activeElement as $FlowFixMe);
 
     const restorePage = concealOutside(body);
-    const releaseScroll = lockScroll(document);
 
     const onOutsidePress = (event: Event) => {
       const target: $FlowFixMe = event.target;
@@ -199,15 +257,28 @@ export component DialogBody(children: React.Node, ...rest: Rest) {
       if (trigger != null && trigger.contains(target)) {
         return;
       }
+      // A confirmation declines to close here, and `Escape` still does. See
+      // the module header: there is a difference between a dialog the reader
+      // dismissed and one that went away while they were reaching for it.
+      if (!dismissable()) {
+        return;
+      }
       close();
     };
     // Capture, so a press is seen even where something below it stops the
     // event — a menu inside the dialog, for instance.
     document.addEventListener("pointerdown", onOutsidePress, true);
 
-    // The first thing worth acting on, and the dialog itself when it holds
-    // nothing focusable, so focus is inside it either way.
-    const target = focusable(body)[0] ?? body;
+    // Where the caller said, then the first thing worth acting on, then the
+    // dialog itself when it holds nothing focusable — so focus is inside it
+    // whichever of the three answers.
+    //
+    // The named element has to still be *in* this dialog: a ref left over from
+    // a previous opening, or one pointing at something the caller renders
+    // elsewhere, would move focus out of a dialog that announces the rest of
+    // the page is unavailable.
+    const named = initialFocus?.current ?? null;
+    const target = named != null && body.contains(named) ? named : (focusable(body)[0] ?? body);
     target.focus();
 
     return () => {
@@ -216,10 +287,9 @@ export component DialogBody(children: React.Node, ...rest: Rest) {
       // the trigger is one of the elements that was made `inert` and an inert
       // element cannot take focus.
       restorePage();
-      releaseScroll();
       opener?.focus?.();
     };
-  }, [dialog.open, dialog.triggerRef, close]);
+  }, [dialog.open, dialog.triggerRef, close, dismissable, initialFocus]);
 
   if (!dialog.open) {
     return null;
@@ -283,7 +353,7 @@ export component DialogBody(children: React.Node, ...rest: Rest) {
       ref={composeRefs(rest.ref, (element) => {
         bodyRef.current = element;
       })}
-      role="dialog"
+      role={role}
       // So the dialog can hold focus itself when it contains nothing focusable,
       // and so the trap has somewhere to put focus that is still inside.
       tabIndex={-1}
@@ -424,39 +494,6 @@ function concealOutside(element: HTMLElement): () => void {
       if (!entry.inert) {
         entry.element.removeAttribute("inert");
       }
-    }
-  };
-}
-
-/**
- * How many dialogs are holding the page still, and what it looked like before.
- *
- * A count rather than each dialog saving and restoring, because two dialogs
- * that open and close in any order but the strictest nesting would otherwise
- * hand the page back a value the other one had already replaced.
- */
-let scrollLocks = 0;
-let overflowBeforeLock: string = "";
-
-/** Stop the page behind the dialog from scrolling, and undo exactly that. */
-function lockScroll(document: Document): () => void {
-  const body: $FlowFixMe = document.body;
-  if (scrollLocks === 0) {
-    overflowBeforeLock = body.style.overflow;
-    body.style.overflow = "hidden";
-  }
-  scrollLocks += 1;
-
-  let released = false;
-  return () => {
-    if (released) {
-      return;
-    }
-    released = true;
-    scrollLocks -= 1;
-    if (scrollLocks === 0) {
-      body.style.overflow = overflowBeforeLock;
-      overflowBeforeLock = "";
     }
   };
 }
