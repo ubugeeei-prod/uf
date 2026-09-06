@@ -22,8 +22,9 @@ on every runtime and deploys anywhere, including as a single executable file.
 
 ### The three ways this fails
 
-Stated as failures because each is easier to notice than its opposite, and
-each already has a check behind it:
+Stated as failures because each is easier to notice than its opposite. Two of
+the three have a check behind them; the third says so, which is the point of
+listing it here rather than trusting anyone to remember:
 
 1. **A declared API that throws.** `packages/*` holds both real libraries and
    declaration modules whose functions call `nativeRuntimeRequired`, and a
@@ -52,7 +53,7 @@ rather than a note:
 | Runs on every runtime | Node and Bun. `HostKind::Deno` loads no Flow; the edge runtimes have no host at all | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
 | Builds a standalone binary | `uf build` emits bundles; there is no `--compile` | [#245](https://github.com/ubugeeei-prod/uf/issues/245) |
 | Inference reaches the end of a program | A type imported by its published name resolves to nothing | [#248](https://github.com/ubugeeei-prod/uf/issues/248) |
-| Everything shipped is real | Ten implemented packages are not on npm; `@uniflowed/tui` is a contract with nothing behind it | [#210](https://github.com/ubugeeei-prod/uf/issues/210), [#247](https://github.com/ubugeeei-prod/uf/issues/247) |
+| Everything implemented reaches a user | Ten implemented packages are on nobody's npm; `@uniflowed/tui` is a contract nobody can run | [#210](https://github.com/ubugeeei-prod/uf/issues/210), [#247](https://github.com/ubugeeei-prod/uf/issues/247) |
 
 The threat model that every one of these must satisfy is in
 [docs/security.md](security.md): each row names a published CVE in an
