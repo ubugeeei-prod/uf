@@ -1,0 +1,37 @@
+# Implemented, and not on npm yet. One per line.
+#
+# A package here has real code behind it and is not in `published-packages.txt`,
+# which is a gap rather than a decision: `@uniflowed/state` is what this project
+# offers instead of Jotai and it resolves to nothing.
+#
+# It is a two-file list rather than one because adding a name to the published
+# list is only half the job, and the other half cannot be done from a checkout.
+# `publish.yml` publishes over OIDC and `npm trust` can only bind a name the
+# registry already has, so a name that has never been published has to be
+# published once, by a person, with an npm session and a 2FA prompt:
+#
+#   npm login
+#   sh tools/release/bootstrap-publish.sh
+#   sh tools/release/trust-npm.sh
+#
+# Until that has happened for a name, putting it in `published-packages.txt`
+# makes the publish job fail *after* the names before it have gone out, which
+# half-sends a release. So it waits here, where `tools/ci/publishable.sh` can
+# see it, rather than being remembered.
+#
+# Move a name to `published-packages.txt` when it is bound. Nothing else needs
+# to change: the closure check reads that file, and this one is only ever a
+# waiting room.
+#
+# See ubugeeei-prod/uf#210.
+
+brand
+cell
+effect
+form
+immer
+mock
+state
+story
+testing
+web
