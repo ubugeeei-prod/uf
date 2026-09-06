@@ -434,7 +434,7 @@ uf_brand() {
     printf '  %s\n\n' "Unified Toolchain for Flow" >&2
   else
     printf '  \033[1m%s\033[0m \033[2m%s\033[0m\n\n' \
-      "Unified Toolchain for Flow" "· one binary for Flow and React" >&2
+      "Unified Toolchain for Flow" "· Build the strongest React development experience with Modern Flow" >&2
   fi
 }
 
