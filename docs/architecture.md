@@ -32,7 +32,7 @@ integrated feature coverage.
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
 - `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
 - `uf_transform`: Flow → JavaScript — official parser, Flow's lowering rules, the official React Compiler, oxc for JSX and code generation
-- `uf_tui`: OpenTUI-compatible native TUI framework contracts
+- `uf_tui`: what `@uniflowed/tui` is — the renderer itself is Flow
 
 These are the crates that survive. `uf` used to ship a Rust crate per library
 surface — `uf_motion`, `uf_orm`, `uf_markdown`, `uf_temporal`, `uf_web` and ten
@@ -454,8 +454,8 @@ Native engines being deepened:
 - React Compiler-safe motion primitives with reduced-motion defaults
 - React hook utilities that preserve render idempotency and cover the practical
   VueUse-style browser/state/async hooks a React app reaches for
-- OpenTUI-aligned terminal UI primitives targeting a faster, richer React Ink
-  replacement with native cell-diff rendering and in-memory tests
+- OpenTUI-aligned terminal UI primitives with cell-diff rendering and in-memory
+  tests, in Flow rather than native — see `packages/tui/index.js`
 - stdlib contracts for OS, net, DNS, path, streams, URL, WebAssembly, glob, TUI,
   cron, S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
 - host-provided event loop and IO capability mapping for Node.js, Deno, and Bun

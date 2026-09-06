@@ -53,20 +53,36 @@ fn includes_react_flow_app_builtins() {
 }
 
 #[test]
-fn tui_contract_targets_opentui_and_react_ink_replacement() {
+fn tui_registry_names_what_the_package_exports() {
     let module = module_by_specifier("@uniflowed/tui").expect("tui module");
     let contract = tui_contract();
 
     assert_eq!(module.kind, NativeModuleKind::Ui);
-    assert!(
-        module
-            .flow_exports
-            .iter()
-            .any(|export| export == "renderTui")
-    );
-    assert!(contract.react_ink_target.replacement_ready);
-    assert!(contract.has_component("FrameBuffer"));
-    assert!(contract.has_component("EmbeddedTerminal"));
+    // `render` and `testRender`, not `renderTui` — and no `contract`. Those
+    // were the names of a declaration that threw; these are the names of the
+    // renderer that replaced it in ubugeeei-prod/uf#247.
+    for export in [
+        "render",
+        "testRender",
+        "Box",
+        "Text",
+        "Input",
+        "useKeyboard",
+    ] {
+        assert!(
+            module.flow_exports.iter().any(|name| name == export),
+            "@uniflowed/tui exports {export}"
+        );
+    }
+    for gone in ["renderTui", "contract", "FrameBuffer"] {
+        assert!(
+            !module.flow_exports.iter().any(|name| name == gone),
+            "@uniflowed/tui no longer exports {gone}"
+        );
+    }
+
+    assert_eq!(contract.components.len(), 3);
+    assert!(!contract.react_ink_target.replacement_ready);
 }
 
 #[test]
