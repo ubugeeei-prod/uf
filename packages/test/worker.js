@@ -54,6 +54,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { reset } from "./internal/registry.js";
+import { resetModuleState } from "./internal/modules.js";
 import { run } from "./internal/run.js";
 
 /** What `uf` sends for one file. */
@@ -139,6 +140,11 @@ function write(event: { readonly [string]: mixed }): void {
 async function runFile(request: Request, generation: number): Promise<void> {
   const started = performance.now();
   reset();
+  // Every module this file stood in for goes back, before the next file can
+  // import one of them and be handed the previous file's stand-in. A worker
+  // serves many files out of one module registry, so this is the difference
+  // between "one file at a time" and "one file's mocks at a time".
+  resetModuleState();
   output.startFile();
 
   try {
