@@ -231,6 +231,7 @@ async function dev() {
       (route) => route.path,
     ),
   });
+  watchSources(server);
 
   const shutdown = async () => {
     await server.close();
@@ -238,6 +239,43 @@ async function dev() {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+/**
+ * Tell the Rust side when a module under the project root changed.
+ *
+ * `uf dev` answers questions Vite does not: whether a module is a Server
+ * Component, and whether a Server Component reaches for something that only
+ * exists in a browser. Those are whole-project answers, so they go stale on
+ * any edit and there is no module to recompute them *for* — which is why this
+ * event carries no path. What it carries is "ask again".
+ *
+ * Vite's watcher is the only watcher. A second one over the same tree, in
+ * Rust, would be a second answer to "did this file change", and two watchers
+ * disagree exactly when an editor writes through a temporary file — which is
+ * every editor, and which is not a thing anybody tests.
+ *
+ * Debounced, because a `git checkout` is one intention and several hundred
+ * `change` events, and unrefed so a pending timer cannot keep this process
+ * alive after the server has closed.
+ */
+function watchSources(server) {
+  let timer = null;
+  const changed = () => {
+    if (timer != null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      emit("source-changed");
+    }, 50);
+    timer.unref?.();
+  };
+  const isSource = (file) =>
+    (file.endsWith(".js") || file.endsWith(".jsx")) && !file.includes("node_modules");
+  for (const event of ["add", "change", "unlink"]) {
+    server.watcher.on(event, (file) => {
+      if (isSource(file)) changed();
+    });
+  }
 }
 
 /**
