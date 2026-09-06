@@ -86,6 +86,12 @@ fn is_array(expression: &Expression) -> bool {
     matches!(**expression, expression::ExpressionInner::Array { .. })
 }
 
+/// Whether `doc` is a template literal whose contents the embedded language
+/// printer wrote. See [`crate::doc::Label::Embed`].
+fn is_embedded(doc: Doc<'_>) -> bool {
+    crate::doc::label_of(doc).is_some_and(|label| label == crate::doc::Label::Embed)
+}
+
 /// Whether a template literal spans more than one line.
 pub fn template_has_newlines(template: &expression::TemplateLiteral<Loc, Loc>) -> bool {
     template
@@ -353,18 +359,30 @@ impl<'a> Printer<'a> {
                 .iter()
                 .map(|argument| self.print_argument(argument, PrintArgs::default()))
                 .collect();
-            let callee = self.print_expression(&call.callee);
-            let targs = self.print_optional_call_type_args(call.targs.as_ref());
-            let separator = self.s(", ");
-            return self.concat([
-                callee,
-                &LINE_SUFFIX_BOUNDARY,
-                optional_token,
-                targs,
-                self.s("("),
-                self.join(separator, printed),
-                self.s(")"),
-            ]);
+            // Unless the one argument is a template whose contents were
+            // reformatted as an embedded language. Then the list is printed
+            // the ordinary way, so the hug `should_group_last` asks for can
+            // happen; keeping the argument as it stands here would pin the
+            // template to the indentation the author left it at, which is
+            // the one thing this feature exists to stop.
+            //
+            // The arguments printed above are thrown away in that case and
+            // printed again below. Prettier does the same, and
+            // `print_argument` memoises, so it costs a hash lookup.
+            if !(is_template_on_own_line && printed.first().copied().is_some_and(is_embedded)) {
+                let callee = self.print_expression(&call.callee);
+                let targs = self.print_optional_call_type_args(call.targs.as_ref());
+                let separator = self.s(", ");
+                return self.concat([
+                    callee,
+                    &LINE_SUFFIX_BOUNDARY,
+                    optional_token,
+                    targs,
+                    self.s("("),
+                    self.join(separator, printed),
+                    self.s(")"),
+                ]);
+            }
         }
 
         // `(a?.b)()` ends its optional chain at the parentheses, so it is
@@ -826,8 +844,17 @@ impl<'a> Printer<'a> {
         &self,
         expressions: &[&'a Expression],
         arguments: &'a [expression::ExpressionOrSpread<Loc, Loc>],
-        _printed: &[Doc<'a>],
+        printed: &[Doc<'a>],
     ) -> bool {
+        // A lone argument whose contents were formatted as an embedded
+        // language hugs the parentheses, however plain the node looks: the
+        // template goes up beside the `(` rather than onto lines of its
+        // own. Prettier reads this off the label its embed printer leaves
+        // on the doc, because nothing in the AST tells a template it
+        // reformatted apart from one it did not.
+        if expressions.len() == 1 && printed.first().copied().is_some_and(is_embedded) {
+            return true;
+        }
         let last_index = expressions.len() - 1;
         let last = expressions[last_index];
         let last_key = argument_node(&arguments[last_index]).key();
