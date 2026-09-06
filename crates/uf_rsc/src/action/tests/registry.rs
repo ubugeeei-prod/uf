@@ -23,6 +23,41 @@ fn a_registered_endpoint_resolves_by_its_id() {
     assert_eq!(registry.resolve(&id).unwrap().export, "refresh");
 }
 
+/// A type annotation does not open an endpoint.
+///
+/// `server-actions.js` reaches every action module with `import typeof`, and a
+/// Client Component may import a name from it to annotate a variable. If the
+/// scanner counted a type import as an edge, that annotation would make every
+/// action in the project callable from the browser — a change in what the
+/// build exposes, caused by a line that is erased before anything runs.
+#[test]
+fn a_type_only_import_does_not_make_an_action_callable() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "server/actions.js",
+        "\"use server\";\nexport async function drop() {}\n",
+    );
+    builder.add_source(
+        "server-actions.js",
+        "import typeof * as Module0 from \"./server/actions.js\";\n",
+    );
+    builder.add_source(
+        "app/Counter.js",
+        "\"use client\";\nimport type { ServerActionName } from \"../server-actions.js\";\n",
+    );
+    builder.add_source("app/page.js", "import C from \"./Counter.js\";\n");
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+    let registry = ServerActionRegistry::from_graph(&graph, &build_id());
+
+    assert_eq!(registry.len(), 1);
+    assert_eq!(
+        registry.actions()[0].exposure,
+        ActionExposure::UnreachableFromClient
+    );
+    assert_eq!(registry.callable_actions().count(), 0);
+}
+
 #[test]
 fn an_unreachable_action_is_never_resolvable() {
     let mut builder = RscGraphBuilder::new();

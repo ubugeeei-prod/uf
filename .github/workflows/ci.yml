@@ -270,6 +270,14 @@ jobs:
       # Every package manifest, not just one: there are 44 of them now, and a
       # manifest that does not parse is a package that cannot be installed.
       - run: ./target/release/uf run manifests
+      # And that `package-lock.json` still describes them. `npm ci` catches
+      # this too, but in every job that installs and with a message about a
+      # package that job has nothing to do with. See ubugeeei-prod/uf#169.
+      - run: ./target/release/uf run lockfile
+      # And that the check itself still catches each way a lock falls behind.
+      # It reads the two files rather than asking npm to regenerate one, so
+      # nothing but these cases says it works.
+      - run: ./target/release/uf run lockfile:test
       # And that the set that goes to npm is closed under its own
       # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
       # release that sends one without the other publishes a package that
@@ -286,6 +294,10 @@ jobs:
       # round trip and blocks a release — it has cost three. Stubs, so this
       # needs no npm session and no network.
       - run: ./target/release/uf run release:trust:test
+      # And the bump that every release starts with. Its mistakes are all in
+      # the second run — resuming a release, or writing the changelog in the
+      # wrong order — so the release that went right does not catch them.
+      - run: ./target/release/uf run release:bump:test
 
   upstream-integrations:
     name: Upstream Integrations

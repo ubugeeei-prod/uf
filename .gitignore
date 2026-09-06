@@ -2,6 +2,8 @@
 /dist/
 /docs/dist/
 /docs/router.js
+/docs/server-actions.js
+/server-actions.js
 node_modules/
 .uf/
 /.wrangler/

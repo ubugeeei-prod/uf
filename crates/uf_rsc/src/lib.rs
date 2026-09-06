@@ -41,6 +41,7 @@ pub mod graph;
 pub mod manifest;
 pub mod project;
 pub mod scan;
+pub mod types;
 
 pub use action::{
     ACTION_ID_HEX_LEN, ActionExposure, ActionId, ActionIdError, BuildId, BuildIdError,
@@ -69,6 +70,10 @@ pub use scan::{
     CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ExportKind, ImportKind, ImportSpecifier,
     MAX_SOURCE_BYTES, ModuleExport, Token, TokenKind, matching_close, matching_open,
     scan_client_api_uses, scan_exports, scan_imports, starts_statement, tokenize,
+};
+pub use types::{
+    SERVER_ACTION_TYPES_FILE_NAME, SERVER_ACTION_TYPES_HEADER, ServerActionType,
+    generate_server_action_types, server_action_types, write_server_action_types,
 };
 
 /// Anything that can go wrong outside the analyses themselves.
