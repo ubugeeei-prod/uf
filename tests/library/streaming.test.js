@@ -34,6 +34,10 @@ import { RouteView, RouterProvider, resolveMatch, routerView } from "@uniflowed/
 import { createRenderer } from "@uniflowed/router/server";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
+// Not a package export: the Web-standard branch of `renderDocument` is
+// unreachable in this process — Node has `renderToPipeableStream` — so it is
+// driven directly, with a renderer of the test's own.
+import { renderWithReadableStream } from "../../packages/router/internal/stream.js";
 import { RESERVED, routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
 
 const roots: Array<string> = [];
@@ -356,6 +360,64 @@ describe("prerendering the same route", () => {
       result.html.startsWith("<!DOCTYPE html>") || result.html.startsWith("<!doctype html>"),
     ).toBe(true);
     expect(result.html).toContain("</html>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The other renderer, which no host in this process has
+// ---------------------------------------------------------------------------
+
+describe("the Web-standard renderer", () => {
+  /**
+   * A `renderToReadableStream` that starts a document and never finishes it.
+   *
+   * `read()` never settles, which is a page whose slowest boundary has not
+   * resolved — the only state in which cancelling means anything. React's own
+   * cannot be used here: this branch is reached only on a host with no
+   * `renderToPipeableStream`, and Node is not one.
+   */
+  function neverFinishing() {
+    const seen: { signal: AbortSignal | null } = { signal: null };
+    const render = async (node, settings) => {
+      seen.signal = settings.signal;
+      return {
+        getReader: () => ({
+          read: () => new Promise(() => {}),
+          releaseLock: () => {},
+        }),
+      };
+    };
+    return { render, seen };
+  }
+
+  const shell = { head: "", open: "<!doctype html><html><body>", close: "</body></html>" };
+
+  it("stops the render when the consumer gives up on it", async () => {
+    // The Node path holds `renderToPipeableStream`'s `abort` and calls it from
+    // exactly here. This one had no handle at all: `releaseLock` detaches the
+    // reader and React goes on rendering into a stream nobody will read again.
+    // A `HEAD` cancels, and so does a browser that navigates away, so on a
+    // worker that is a render burning a metered CPU budget for a request that
+    // ended.
+    const { render, seen } = neverFinishing();
+    const body = await renderWithReadableStream(render, <p>anything</p>, {
+      shell,
+      onError: () => {},
+    });
+
+    await body.stream().cancel();
+
+    expect(seen.signal).toBeTruthy();
+    expect(seen.signal?.aborted).toBe(true);
+  });
+
+  it("leaves the render alone while somebody is still reading", async () => {
+    // The half that makes the above a cancellation rather than a wall: a body
+    // nobody has given up on must not be aborted.
+    const { render, seen } = neverFinishing();
+    await renderWithReadableStream(render, <p>anything</p>, { shell, onError: () => {} });
+
+    expect(seen.signal?.aborted).toBe(false);
   });
 });
 

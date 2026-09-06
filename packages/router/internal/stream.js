@@ -503,13 +503,58 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
     // A Web-standard host: no `pipe`, and the stream itself is what is
     // awaited. `renderToReadableStream`'s promise settles on the shell, which
     // is the same moment `onShellReady` is.
-    ReactDOMServer.renderToReadableStream(node, { onError: options.onError }).then(
-      (stream: ByteSource) => {
-        resolve(bodyOf(assembled(decoded(stream), options.shell)));
-      },
+    renderWithReadableStream(ReactDOMServer.renderToReadableStream, node, options).then(
+      resolve,
       reject,
     );
   });
+}
+
+/**
+ * A `renderToReadableStream`, as this module calls one.
+ *
+ * Written down so [`renderWithReadableStream`] can be driven with something
+ * that is not React's. The branch below only runs on a host that has no
+ * `renderToPipeableStream` — a worker, never a test process — and a branch no
+ * test can reach is exactly how it came to be the one missing the cancellation
+ * its Node twin has had since it was written.
+ */
+type ReadableStreamRenderer = (
+  node: React.Node,
+  settings: {|
+    readonly onError: (error: mixed) => void,
+    readonly signal: AbortSignal,
+  |},
+) => Promise<ByteSource>;
+
+/**
+ * The Web-standard half of [`renderDocument`], with a way to stop the render.
+ *
+ * The Node path holds `renderToPipeableStream`'s own `abort` and calls it when
+ * the consumer gives up. This one has no such handle, so it renders under an
+ * `AbortSignal` and aborts it in the same place — and without that,
+ * `releaseLock` in [`decoded`] merely detaches the reader while React goes on
+ * rendering into a stream nobody will ever read again, for however long the
+ * page's slowest boundary takes.
+ *
+ * That is not the exotic case. A `HEAD` cancels, and so does every browser that
+ * navigates away mid-document; on a worker each one would leave a render
+ * running against whatever CPU budget the host meters. The two paths answer
+ * every other question the same way, and this was the last one where they
+ * disagreed.
+ */
+export function renderWithReadableStream(
+  render: ReadableStreamRenderer,
+  node: React.Node,
+  options: RenderOptions,
+): Promise<DocumentBody> {
+  const controller = new AbortController();
+  return render(node, { onError: options.onError, signal: controller.signal }).then(
+    (stream: ByteSource) =>
+      bodyOf(assembled(decoded(stream), options.shell), () => {
+        controller.abort();
+      }),
+  );
 }
 
 /** A web stream of bytes, as the string chunks the rest of this module speaks. */
