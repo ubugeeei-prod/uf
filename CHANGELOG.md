@@ -1,5 +1,83 @@
 # Changelog
 
+## uf@0.0.0-alpha.7
+
+_2026-09-06_
+
+The release that made the toolchain servable: a build can now be previewed,
+started, and compiled into one file that serves itself — and `uf check` types
+across a package boundary, which is the first hop of everything else.
+
+### Added
+
+- **cli**: a build can be served, by `uf preview` and by `uf start` — Vite's
+  own preview server with uf's handler behind it, and uf's own `node:http`
+  server that imports Vite nowhere (#343)
+- **build**: `uf build --compile` writes one file that serves the application —
+  prerendered documents, hashed assets, route handlers and a fresh render, with
+  Bun's runtime embedded. Producing one needs Bun; running one needs nothing
+  (#356)
+- **tui**: `@uniflowed/tui` renders, and sends only the cells that changed — a
+  React renderer whose host is a terminal, following OpenTUI. 1,920 cells for
+  the first frame at 80×24, and one cell in seven bytes for a keystroke (#334)
+- **check**: Flow declarations for Vite's client API, so `import.meta.glob`,
+  `import.meta.hot` and `import.meta.env` are typed rather than errors (#355)
+- **check**: Flow declarations for the files Vite resolves that are not
+  JavaScript — a stylesheet, a CSS module's class map, `?raw`, `?url`,
+  `?worker` (#379)
+- **effect**: a fiber owns what it forks, plus layers, schedules, sharing and
+  streams. `fork` was `forkDaemon`; a fiber now owns its children in both
+  directions (#332)
+- **ui**: the three roving-focus sets, the disclosure pattern, and arrows that
+  read right to left (#333)
+- **ui**: select, table, slider, toast — the nine components a data-heavy page
+  needs, and the reason a native `<select>` is better than the one shipped
+  (#362)
+
+### Fixed
+
+- **check**: a package resolves through the manifest that publishes it —
+  `value-as-type` 145 → 14, and 489 errors the `any` was covering are now
+  visible (#352)
+- **create**: the first command a reader types is one word. `uf create app
+  my-site` was rejected; a lone argument is the template when it names one and
+  the path when it does not (#369)
+- **router**: the nearest `_uf.not-found.js` answers, not the one at the root,
+  and a page that throws is one route's problem (#354)
+- **vite**: the stylesheet reaches `dist/`, and a React Compiler finding names
+  its file. `TransformService` dropped the `css` field, so uf's default styling
+  system emitted class names and no CSS at all (#380)
+- **vite**: a build that works and complains is a build people stop reading —
+  the deprecated `envFile` spelling is gone (#363)
+- **fmt**: the same file, formatted twice, is the same file (#361)
+- **state**: an abandoned load stops, and a persisted atom is read on mount so
+  a server render hydrates — the read moved out of module evaluation, where it
+  raced the first client render (#344)
+- **form**: the validation rules reach the element, and a form can be switched
+  off. A disabled field behaves like an absent one, including through a
+  resolver (#344)
+- **react-testing**: the queries stop lying to the test — `getByRole` no longer
+  returns hidden elements, `level` and `current` are honoured, and an option
+  the query does not take is refused rather than ignored (#381)
+- **cli**: `main` does not compile, because two pull requests were right apart
+  (#366)
+- **plugin**: a scroll button is not a bundler — `ScrollUpButton` contains
+  `rollup` (#364)
+
+### Documentation
+
+- what uf is for, and the four places it is not that yet (#251)
+- the four pages a stranger reads before they try uf (#311)
+- a tutorial that was actually run, and a guide for every library package
+  (#331)
+
+### Internal
+
+- **ci**: one check that is true only when every other one is. A failing
+  `Toolchain` reported every required check as skipped, and GitHub merges on
+  skipped (#368)
+- three tests that were untrustworthy are deterministic (#382)
+
 ## uf@0.0.0-alpha.6
 
 _2026-09-06_
