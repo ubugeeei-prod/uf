@@ -24,6 +24,8 @@ import {
   within,
 } from "@uniflowed/react-testing";
 
+import { elementIn, valueIn } from "./dom.js";
+
 component Greeting(name: string) {
   return <p>Hello, {name}</p>;
 }
@@ -527,7 +529,7 @@ describe("fireEvent", () => {
       );
     }
     const { container } = render(<Form />);
-    const form: any = container.querySelector("form");
+    const form = elementIn(container, "form");
     expect(fireEvent.submit(form)).toBe(false);
   });
 
@@ -632,9 +634,9 @@ describe("userEvent", () => {
 
   it("clears a control", async () => {
     render(<input defaultValue="something" />);
-    const input: any = screen.getByRole("textbox");
+    const input = screen.getByRole("textbox");
     await userEvent.clear(input);
-    expect(input.value).toBe("");
+    expect(valueIn(input)).toBe("");
   });
 
   it("presses a named key at whatever has focus", async () => {
@@ -671,9 +673,9 @@ describe("userEvent", () => {
         <option value="b">B</option>
       </select>,
     );
-    const select: any = screen.getByRole("combobox");
+    const select = screen.getByRole("combobox");
     await userEvent.selectOptions(select, "b");
-    expect(select.value).toBe("b");
+    expect(valueIn(select)).toBe("b");
   });
 });
 
@@ -726,7 +728,7 @@ describe("element matchers", () => {
     // React leaves it holding a reference to a child of nothing, and its own
     // unmount then fails on a node that is no longer there.
     const { container, unmount } = render(<Greeting name="world" />);
-    const paragraph: any = container.querySelector("p");
+    const paragraph = elementIn(container, "p");
     expect(paragraph).toBeInTheDocument();
     unmount();
     expect(paragraph).not.toBeInTheDocument();
