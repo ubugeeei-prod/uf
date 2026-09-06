@@ -1,0 +1,11 @@
+/* The static route's stylesheet.
+ *
+ * A route that ships no JavaScript still has to look right, and a uf build
+ * takes its stylesheets from the client module graph. Dropping the page from
+ * that graph outright took this file with it — on every page of the site, not
+ * only this one, because the linked stylesheets are the whole graph's. The
+ * page is therefore still imported for its side effects, and this rule is the
+ * side effect that has to survive. */
+.almanac-note {
+  color: #663399;
+}

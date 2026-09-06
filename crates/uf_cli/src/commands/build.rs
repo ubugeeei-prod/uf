@@ -28,7 +28,10 @@ use uf_bundle::{
 };
 use uf_config::{DeployAdapter, load_config};
 use uf_router::{Route, discover_routes, write_router_manifest};
-use uf_rsc::{BuildId, ProjectScanOptions, RscDiagnostic, RscSeverity, analyze_project};
+use uf_rsc::{
+    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscDiagnostic,
+    RscSeverity, analyze_project,
+};
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, PhaseTimer, Status, Table, Tone, Tree,
     format_duration,
@@ -53,6 +56,13 @@ struct ViteBuild {
     pages: Vec<(String, String)>,
     /// Warnings Vite logged, shown after the summary.
     warnings: Vec<String>,
+    /// How the client route table came out of the server-component split.
+    ///
+    /// `(pages kept, routes)`, reported by the plugin that generated the table
+    /// rather than computed here. `None` when the bundler said nothing, which
+    /// is what an older `@uniflowed/vite` does; the summary then omits the row
+    /// rather than printing a number nothing produced.
+    split: Option<(u64, u64)>,
 }
 
 pub(crate) fn build(
@@ -112,6 +122,14 @@ pub(crate) fn build(
         }
     }
 
+    // The bundler's copy of the analysis, and the reason it is written here
+    // rather than beside the one in `dist/` below. `@uniflowed/vite` decides
+    // which routes keep their page module *while it is emitting the bundle*,
+    // and `dist/` does not exist yet — Vite empties it on the way in. So the
+    // same bytes go somewhere the build cannot sweep away, and the path is
+    // handed to the driver as `UF_RSC_MANIFEST`.
+    let rsc_input = uf_rsc::write_manifest(&root.join(RSC_MANIFEST_BUILD_DIR), &rsc.manifest())?;
+
     progress.tick("resolving the JavaScript host");
     let host = resolve_host(&resolved.config)?;
     let package = package_dir(&root)?;
@@ -139,6 +157,7 @@ pub(crate) fn build(
                 String::from("--out-dir"),
                 resolved.config.build.out_dir.to_string(),
             ],
+            &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
         )?;
         let mut report = ViteBuild::default();
         while let Some(event) = driver.next_event()? {
@@ -156,6 +175,7 @@ pub(crate) fn build(
                     );
                     let _ = render_error(ui, &root, &error);
                 }
+                Event::RscSplit { pages, routes } => report.split = Some((pages, routes)),
                 Event::Log { level, message } => match level {
                     crate::commands::vite::LogLevel::Warn => report.warnings.push(message),
                     crate::commands::vite::LogLevel::Error => render_log(ui, level, &message),
@@ -278,6 +298,19 @@ pub(crate) fn build(
     let page_count = vite.pages.len().to_string();
     let module_count = rsc.graph.modules().len().to_string();
     let client_count = rsc.graph.client_boundaries().len().to_string();
+    // "1 of 2", not a percentage and not a bare count: the reader is being told
+    // how much of the route table the browser was handed, and both halves of
+    // that are the fact.
+    //
+    // Only when the split removed something, which is the same rule the guards
+    // table below follows: a row saying `29 of 29` is a row that reports no
+    // finding, on every build of every application whose root layout imports
+    // one client component. The absence of the row means what it meant before
+    // any of this existed — every page went to the browser.
+    let split_count = vite
+        .split
+        .filter(|(pages, routes)| pages < routes)
+        .map(|(pages, routes)| format!("{pages} of {routes}"));
     let action_count = rsc.callable_action_count().to_string();
     let diagnostic_count = rsc.graph.diagnostics().len().to_string();
 
@@ -379,21 +412,33 @@ pub(crate) fn build(
         renderer.blank(out);
         renderer.timings(out, 2, &phases, Some(total));
         renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("engine", "vite"),
-                KeyValue::toned("host", host_name, Tone::Muted),
-                KeyValue::new("entries", &entries),
-                KeyValue::toned("routes", &route_count, Tone::Number),
-                KeyValue::toned("prerendered pages", &page_count, Tone::Number),
-                KeyValue::toned("modules", &module_count, Tone::Number),
-                KeyValue::toned("client components", &client_count, Tone::Number),
-                KeyValue::toned("server actions", &action_count, Tone::Number),
-                KeyValue::toned("rsc diagnostics", &diagnostic_count, Tone::Number),
-            ],
-        );
+        let mut summary_rows = vec![
+            KeyValue::new("engine", "vite"),
+            KeyValue::toned("host", host_name, Tone::Muted),
+            KeyValue::new("entries", &entries),
+            KeyValue::toned("routes", &route_count, Tone::Number),
+            KeyValue::toned("prerendered pages", &page_count, Tone::Number),
+            KeyValue::toned("modules", &module_count, Tone::Number),
+            KeyValue::toned("client components", &client_count, Tone::Number),
+        ];
+        if let Some(split) = &split_count {
+            summary_rows.push(KeyValue::toned(
+                "pages in the client bundle",
+                split,
+                Tone::Number,
+            ));
+        }
+        summary_rows.push(KeyValue::toned(
+            "server actions",
+            &action_count,
+            Tone::Number,
+        ));
+        summary_rows.push(KeyValue::toned(
+            "rsc diagnostics",
+            &diagnostic_count,
+            Tone::Number,
+        ));
+        renderer.key_values(out, 2, &summary_rows);
         renderer.blank(out);
 
         renderer.heading(out, 2, "shipped");

@@ -30,6 +30,7 @@ use uf_config::{FmtConfig, UniflowedConfig, load_config};
 use uf_infra::FxHashMap;
 use uf_lib::NativeModule;
 use uf_router::write_router_manifest;
+use uf_rsc::RSC_MANIFEST_ENV;
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::lint::identifier_span;
@@ -75,8 +76,22 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let _ = write_router_manifest(&root, &resolved.config)?;
 
     let driver_args = driver_args(args.host.as_deref(), args.port);
-    let mut driver = Driver::spawn(&host, &package, &root, "dev", &driver_args)?;
+    // Before the driver, not after: `@uniflowed/vite` reads the analysis to
+    // decide which routes keep a page in the client route table, and it reads
+    // it as it generates that table — which happens on the first request. A
+    // manifest written afterwards would leave the first page load splitting
+    // nothing while every later one split, and a dev server that disagrees with
+    // itself is worse than one that never splits.
     let mut server_components = RscReport::new(&root);
+    server_components.prime();
+    let mut driver = Driver::spawn(
+        &host,
+        &package,
+        &root,
+        "dev",
+        &driver_args,
+        &[(RSC_MANIFEST_ENV, server_components.manifest_path().as_str())],
+    )?;
 
     let host_name = host.name();
     let project = project_label(&root).to_string();
@@ -142,6 +157,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             | Event::Phase { .. }
             | Event::Page { .. }
             | Event::PageFailed { .. }
+            | Event::RscSplit { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}
         }

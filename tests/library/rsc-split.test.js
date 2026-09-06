@@ -1,0 +1,480 @@
+// @flow
+//
+// The server/client split, on both sides of the line it draws.
+//
+// `crates/uf_rsc` has always been able to say which modules a `"use client"`
+// boundary is reachable from, and until now nothing read the answer: the
+// generated route table gave every route a `page: () => import(<file>)`, and
+// `virtual:uf/client` imported that table, so every page in an application was
+// a chunk of the *client* bundle whether or not a browser had anything to do
+// with it. See ubugeeei-prod/uf#252 and ubugeeei-prod/uf#350.
+//
+// Two halves, and the second is the one a file listing cannot show.
+//
+// **The table.** `@uniflowed/vite` generates the browser's copy of
+// `virtual:uf/routes` without the page of any route no boundary reaches, so
+// Rollup has nothing left that pulls the module in. `crates/uf_cli/tests/vite.rs`
+// asserts the consequence on a real build; this asserts the decision, which is
+// where a wrong answer would come from.
+//
+// **The runtime.** A route whose page is not in the bundle is a route this
+// router cannot render, and pretending otherwise is a silent break: a link into
+// it would resolve to nothing and leave the visitor where they were. So
+// `hydrate` declines to mount it, a navigation into it becomes the browser's,
+// and — the half that must not regress — a route that *does* have a client
+// boundary still hydrates and is still interactive.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { act, cleanup, userEvent } from "@uniflowed/react-testing";
+import { afterAll, afterEach, describe, expect, it } from "@uniflowed/test";
+
+// Reached by path rather than by package name, the way `routing.test.js` and
+// `error-boundary.test.js` reach for the same package: `internal/` is the
+// build's own router and its own split, not something a project imports.
+import { installDom } from "../../packages/react-testing/internal/dom.js";
+import { clientRouteFilter, readRscManifest } from "../../packages/vite/internal/rsc.js";
+import { routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
+
+const roots: Array<string> = [];
+
+afterAll(() => {
+  for (const root of roots) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The table
+// ---------------------------------------------------------------------------
+
+/**
+ * A project holding each named file, with `source` when one is given.
+ *
+ * Real files, because `scanRoutes` is `readdirSync` and `statSync`: a fixture
+ * that replaced them would prove the sort order and nothing about which page
+ * the split kept.
+ */
+function project(files: { readonly [string]: string }): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-rsc-split-"));
+  roots.push(root);
+  for (const relative of Object.keys(files)) {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, files[relative]);
+  }
+  return root;
+}
+
+/** One module, as the manifest describes it. */
+function manifestModule(modulePath: string, reaches: boolean) {
+  return {
+    path: modulePath,
+    environment: "server",
+    reachability: "server-only",
+    proximity: reaches ? "reaches-boundary" : "isolated",
+    imports: [],
+    externalImports: [],
+    exports: ["default"],
+  };
+}
+
+/**
+ * Write a manifest into `root` and read it back through the real reader.
+ *
+ * Through the file rather than as an object, because the file is the contract:
+ * `uf build` writes it in Rust and the plugin reads it in JavaScript, and the
+ * version check is part of what is being tested.
+ */
+function manifestIn(root: string, manifest: mixed): mixed {
+  const file = path.join(root, ".uf", "rsc", "uf-rsc-manifest.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  return readRscManifest(file);
+}
+
+/** A project with a static route, an interactive one, and one shared layout. */
+function splitProject(): string {
+  const page = "// @flow\nexport default function Page() {}\n";
+  return project({
+    "app/_uf.layout.js": page,
+    "app/_uf.page.js": page,
+    "app/counter/_uf.page.js": page,
+  });
+}
+
+/** The manifest that project's analysis would produce. */
+function splitManifest(version: number = 2) {
+  return {
+    version,
+    engine: "uf-native",
+    buildFingerprint: "0".repeat(64),
+    modules: [
+      manifestModule("app/_uf.layout.js", false),
+      manifestModule("app/_uf.page.js", false),
+      manifestModule("app/counter/_uf.page.js", true),
+    ],
+    clientBoundaries: [],
+    clientBundleRoots: [],
+    serverActions: [],
+    diagnostics: [],
+  };
+}
+
+describe("the client route table", () => {
+  it("keeps the page of a route that reaches a client boundary", () => {
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const shipsPage = clientRouteFilter(manifestIn(root, splitManifest()), root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(source).toContain("app/counter/_uf.page.js");
+    // The layout too: the browser re-renders the whole matched tree, so a
+    // route that hydrates needs everything above the boundary as well.
+    expect(source).toContain("app/_uf.layout.js");
+  });
+
+  it("drops the page of a route that reaches none, which is the whole point", () => {
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const shipsPage = clientRouteFilter(manifestIn(root, splitManifest()), root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    // The path stays: the router still has to *match* the URL, because that is
+    // what tells a `Link` the destination is a document to fetch rather than a
+    // 404. What goes is the `import()`, which is the only thing in this table
+    // a bundler follows.
+    expect(source).toContain('path: "/"');
+    expect(source).not.toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+  });
+
+  it("still imports a dropped page for its side effects, which is its stylesheet", () => {
+    // The half that was missing the first time this was written. A uf build
+    // links the stylesheets it finds in the *client* graph, so a route removed
+    // from that graph outright loses its rules — from every page of the site,
+    // because the linked sheets are the whole graph's. A bare import with
+    // nothing read from it keeps the stylesheet and leaves the components,
+    // helpers and data as unused exports for the bundler to drop.
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const shipsPage = clientRouteFilter(manifestIn(root, splitManifest()), root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(source).toContain(`import ${JSON.stringify(path.join(root, "app/_uf.page.js"))};`);
+    // Not the layout: `/counter` keeps it, so it is already in the table as a
+    // lazy import, and a second static one would pull it into the entry chunk.
+    expect(source).not.toContain(`import ${JSON.stringify(path.join(root, "app/_uf.layout.js"))};`);
+  });
+
+  it("ships every page when there is no manifest to read", () => {
+    // A project driving Vite itself, with no `uf build` or `uf dev` to write
+    // the analysis. It gets the table it has always had rather than a split
+    // guessed at from nothing.
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+
+    const source = routesModuleSource(table, {
+      shipsPage: clientRouteFilter(readRscManifest(undefined), root, table),
+    });
+
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+  });
+
+  it("ships every page when the manifest is older than the field it needs", () => {
+    // Version 1 published the boundaries and nothing that said which modules
+    // sat above one. Read optimistically it would answer `undefined` for every
+    // module, compare unequal to `"reaches-boundary"`, and drop the whole
+    // application from the browser.
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const shipsPage = clientRouteFilter(manifestIn(root, splitManifest(1)), root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+  });
+
+  it("ships a page the analysis never saw", () => {
+    // `.mdx` is a page and is not `.js`, so it is in no manifest. The honest
+    // reading of a module uf did not analyse is that it might reach a
+    // boundary, and every unknown answers so — which is why this split can
+    // only ever drop a route uf positively decided needs no browser.
+    const root = project({
+      "app/_uf.layout.js": "// @flow\nexport default function Layout() {}\n",
+      "app/_uf.page.mdx": "# home\n",
+    });
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [manifestModule("app/_uf.layout.js", false)],
+    });
+
+    const source = routesModuleSource(table, {
+      shipsPage: clientRouteFilter(manifest, root, table),
+    });
+
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.mdx"))})`);
+  });
+
+  it("generates the whole table by default, which is what the server gets", () => {
+    const root = splitProject();
+
+    const source = routesModuleSource(scanRoutes(path.join(root, "app")));
+
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+    expect(source).toContain(
+      `import(${JSON.stringify(path.join(root, "app/counter/_uf.page.js"))})`,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The runtime
+// ---------------------------------------------------------------------------
+
+/**
+ * `@uniflowed/router`, imported only once a document exists.
+ *
+ * The runtime decides whether it is in a browser once, at module scope —
+ * `const isBrowser = typeof window !== "undefined" && …` — so a static import
+ * at the top of this file would evaluate it in a process that has no DOM yet
+ * and every navigation below would return without doing anything. `installDom`
+ * is idempotent, and the dynamic import is evaluated once, on the first call.
+ */
+async function routerModule() {
+  installDom();
+  return import("@uniflowed/router");
+}
+
+/** The same, for the two entry points that sit either side of a request. */
+async function clientModule() {
+  installDom();
+  return import("@uniflowed/router/client");
+}
+
+async function serverModule() {
+  installDom();
+  return import("@uniflowed/router/server");
+}
+
+/**
+ * The two route tables, built once, with the components that need the router.
+ *
+ * Memoised because `loadOnce` in the runtime caches a module by the identity
+ * of the function that loads it, and because the server render and the
+ * hydration below have to be the same components for the comparison React
+ * makes to mean anything.
+ */
+let built: mixed = null;
+
+async function tables() {
+  if (built != null) {
+    return built;
+  }
+  const { Link } = await routerModule();
+
+  /** A counter with state, standing in for a `"use client"` component. */
+  component Counter() {
+    const [count, setCount] = useState<number>(0);
+    return (
+      <p>
+        <output>{count}</output>
+        <button type="button" onClick={() => setCount(count + 1)}>
+          add one
+        </button>
+      </p>
+    );
+  }
+
+  component CounterPage() {
+    return (
+      <section>
+        <h1>counter</h1>
+        <Counter />
+        <Link to="/">home</Link>
+      </section>
+    );
+  }
+
+  component StaticPage() {
+    return <h1>static, and nothing attaches to it</h1>;
+  }
+
+  const counterPage = { default: CounterPage };
+  const staticPage = { default: StaticPage };
+
+  const home = {
+    path: "/",
+    params: [],
+    mdx: false,
+    file: "app/_uf.page.js",
+    page: () => Promise.resolve(staticPage),
+    layouts: [],
+    loading: [],
+  };
+  const counter = {
+    path: "/counter",
+    params: [],
+    mdx: false,
+    file: "app/counter/_uf.page.js",
+    page: () => Promise.resolve(counterPage),
+    layouts: [],
+    loading: [],
+  };
+
+  built = {
+    // Every route has its page: this is what the server renders from.
+    server: [home, counter],
+    // The browser's copy. `/` kept its path — the router still has to match
+    // the URL — and lost the one property a bundler follows.
+    client: [
+      { path: home.path, params: home.params, mdx: home.mdx, file: home.file, layouts: [] },
+      counter,
+    ],
+  };
+  return built;
+}
+
+/**
+ * Put the document the server would have written into the live DOM, and go to
+ * that URL.
+ *
+ * The markup comes from the real server renderer rather than being written by
+ * hand, because hydration is React comparing what it renders against what the
+ * server sent: markup a test invented would prove that `hydrateRoot` was
+ * called and nothing about whether it matched.
+ */
+async function serve(url: string): Promise<void> {
+  const { createRenderer, ROOT_ID } = await serverModule();
+  const { routerView } = await routerModule();
+  const { server } = await tables();
+  const renderer = createRenderer({
+    App: routerView("./app"),
+    routes: server,
+    notFound: [],
+    errors: [],
+  });
+  const { html } = await renderer.prerender(url, { scripts: [], styles: [], preloads: [] });
+
+  const parsed = new globalThis.DOMParser().parseFromString(html, "text/html");
+  const rendered = parsed.getElementById(ROOT_ID);
+  if (rendered == null) {
+    throw new Error(`the server wrote no #${ROOT_ID}:\n${html}`);
+  }
+  const root = globalThis.document.createElement("div");
+  root.id = ROOT_ID;
+  root.innerHTML = rendered.innerHTML;
+  globalThis.document.body.replaceChildren(root);
+  globalThis.window.history.pushState(null, "", url);
+}
+
+/** Hydrate the current document with the browser's copy of the table. */
+async function hydrateHere(): Promise<void> {
+  const { hydrate } = await clientModule();
+  const { routerView } = await routerModule();
+  const { client } = await tables();
+  await act(async () => {
+    await hydrate({ App: routerView("./app"), routes: client, notFound: [], errors: [] });
+  });
+}
+
+/** What is on the page right now. */
+function ufRoot(): Element | null {
+  return globalThis.document.getElementById("uf-root");
+}
+
+afterEach(() => {
+  // Only once a document exists: the table tests above never install one, and
+  // every hook in this file runs for every test in it.
+  if (globalThis.document == null) {
+    return;
+  }
+  cleanup();
+  globalThis.document.body.replaceChildren();
+});
+
+describe("hydration across the boundary", () => {
+  it("hydrates a route whose page is in the bundle, and it works", async () => {
+    await serve("/counter");
+    expect(ufRoot()?.textContent).toContain("counter");
+
+    await hydrateHere();
+
+    // Interactive, which is the only proof that React attached to the server's
+    // markup rather than beside it.
+    expect(ufRoot()?.querySelector("output")?.textContent).toBe("0");
+    const button = ufRoot()?.querySelector("button");
+    if (button == null) {
+      throw new Error(`no button in:\n${ufRoot()?.innerHTML ?? "(no root)"}`);
+    }
+    await act(async () => {
+      await userEvent.click(button);
+    });
+    expect(ufRoot()?.querySelector("output")?.textContent).toBe("1");
+  });
+
+  it("mounts nothing on a route whose page is not in the bundle", async () => {
+    await serve("/");
+    const served = ufRoot()?.innerHTML ?? "";
+    expect(served).toContain("static, and nothing attaches to it");
+
+    await hydrateHere();
+
+    // Untouched: not blanked by a client render that found no page, and not
+    // replaced by an error boundary either. The document the server wrote is
+    // the whole of this route.
+    expect(ufRoot()?.innerHTML).toBe(served);
+  });
+});
+
+describe("navigating into a route that ships no page", () => {
+  it("hands the URL to the browser instead of rendering nothing", async () => {
+    await serve("/counter");
+    await hydrateHere();
+
+    // Every `Link` renders a real anchor and only takes over a plain left
+    // click, so this is the click a visitor makes. Without the check in
+    // `navigate` it resolves a route with no page, the resolution fails, and
+    // the visitor is left on the page they clicked from — which is the silent
+    // break this test exists for.
+    const assigned: Array<string> = [];
+    const location = globalThis.window.location;
+    const original = location.assign;
+    Object.defineProperty(location, "assign", {
+      configurable: true,
+      writable: true,
+      value: (to: string) => {
+        assigned.push(String(to));
+      },
+    });
+
+    try {
+      const link = ufRoot()?.querySelector('a[href="/"]');
+      if (link == null) {
+        throw new Error(`no link home in:\n${ufRoot()?.innerHTML ?? "(no root)"}`);
+      }
+      await act(async () => {
+        await userEvent.click(link);
+      });
+    } finally {
+      Object.defineProperty(location, "assign", {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
+
+    expect(assigned.length).toBe(1);
+    expect(assigned[0].endsWith("/")).toBe(true);
+    // And what was showing is still showing: a document navigation is the
+    // browser's to perform, so nothing here unmounted anything.
+    expect(ufRoot()?.textContent).toContain("counter");
+  });
+});
