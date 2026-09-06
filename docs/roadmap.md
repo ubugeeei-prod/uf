@@ -99,7 +99,9 @@ in `uf`.
   primitives.
 - Lite Temporal, PWA primitives, and opt-in-only cache controls.
 - React Compiler-safe motion primitives with reduced-motion defaults.
-- OpenTUI-aligned native TUI framework targeting a React Ink replacement.
+- OpenTUI-aligned TUI framework. Flow React on a cell-diff renderer, with
+  flexbox, keyboard and focus. **Done**; mouse, selection and rich content are
+  not, and the comparison against React Ink is still to be measured.
 - shadcn-class UI catalog as typed headless Flow React imports.
 
 ## P2: Native Test Runner
@@ -111,7 +113,9 @@ in `uf`.
   and closing that needs a worker pool that survives between runs.
 - Implement JavaScript execution backend. **Done.**
 - Add React DOM and React Native renderers.
-- Add native terminal renderers and snapshots through `@uniflowed/tui`.
+- Add terminal renderers and snapshots through `@uniflowed/tui`. **Done**: an
+  in-memory renderer runs the same code the terminal one does, and a frame is
+  asserted as cells.
 - Add Testing Library-compatible queries and user events.
 - Add story system, MSW-compatible mocks, Playwright-compatible browser
   automation, and VRT baseline diffing.
