@@ -26,6 +26,7 @@
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "@uniflowed/test";
 
@@ -48,17 +49,47 @@ const published: Array<string> = fs
   .filter((line) => line !== "" && !line.startsWith("#"));
 
 /**
+ * A cache directory of this test's own, removed when the process exits.
+ *
+ * See the comment inside `packedPaths` for why it is not npm's default.
+ */
+const cache: string = (() => {
+  const made = fs.mkdtempSync(path.join(os.tmpdir(), "uf-pack-cache-"));
+  process.on("exit", () => {
+    fs.rmSync(made, { recursive: true, force: true });
+  });
+  return made;
+})();
+
+/**
  * The paths npm would publish for the package in `directory`, as npm sees them.
  *
  * `--dry-run` is what keeps this offline and side-effect free: npm reports the
  * list and writes no tarball.
  */
 const packedPaths = (directory: string): Set<string> => {
-  const stdout = execFileSync("npm", ["pack", "--dry-run", "--json"], {
-    cwd: directory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  let stdout;
+  try {
+    stdout = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+      cwd: directory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      // npm's default cache is `~/.npm`, and it writes there even for a dry
+      // run that fetches nothing. A machine whose cache holds root-owned files
+      // — a real state, and one npm's own error tells you to fix with `sudo` —
+      // then fails this test with `EPERM ... /Users/you/.npm/_cacache`, which
+      // reads as a packaging fault and is not one. A cache of our own removes
+      // the question: it costs a directory and depends on nothing a person did
+      // to their machine before today.
+      env: { ...process.env, npm_config_cache: cache },
+    });
+  } catch (error) {
+    const said = String(error.stderr ?? "").trim();
+    throw new Error(
+      `\`npm pack --dry-run\` failed in ${directory}. This test asks npm what it ` +
+        `would publish, so npm has to be able to run:\n${said || String(error)}`,
+    );
+  }
   const [report] = JSON.parse(stdout);
   return new Set(report.files.map((file) => file.path));
 };
