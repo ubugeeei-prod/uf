@@ -11,7 +11,6 @@
 //! columns count code points instead; [`crate::babel`] recomputes them from
 //! the offsets so every position downstream agrees.
 
-use flow_parser::ParseOptions;
 use flow_parser::estree_translator::{self, Config, OffsetStyle};
 use flow_parser::loc::Loc;
 use flow_parser::offset_utils::{OffsetKind, OffsetTable};
@@ -26,26 +25,16 @@ use crate::TransformError;
 /// scan in uf has an explicit ceiling rather than trusting its input.
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
-/// Parse options aligned with the `uf` project defaults.
+/// The parse options every part of uf uses, re-exported from `uf_flow`.
 ///
-/// Every syntax uf documents is on: components, hooks, enums, pattern
-/// matching, records. Decorators stay off because generated projects never
-/// emit them.
-pub const PARSE_OPTIONS: ParseOptions = ParseOptions {
-    components: true,
-    enums: true,
-    pattern_matching: true,
-    records: true,
-    esproposal_decorators: false,
-    types: true,
-    ambiguous_types: true,
-    enable_types_in_comments: true,
-    use_strict: false,
-    assert_operator: false,
-    module_ref_prefix: None,
-    ambient: false,
-    allow_return_outside_function: false,
-};
+/// This crate used to declare its own literal, equal to `uf_flow`'s member for
+/// member and equal only by coincidence: nothing compared them, and a syntax
+/// the transform accepted and the linter did not would have shown up as a
+/// module that lints clean and fails to load. `uf_flow` owns Flow syntax for
+/// uf, and the options are part of what that means.
+///
+/// `tests/parse_options.rs` is what keeps this a re-export.
+pub use uf_flow::PARSE_OPTIONS;
 
 /// Parse `source` and render it as an ESTree `Program`.
 ///
