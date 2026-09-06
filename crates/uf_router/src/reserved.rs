@@ -11,11 +11,20 @@
 //! read it from here rather than each spelling out the same `matches!`.
 //!
 //! Not every role is the router's. `route` answers a request and `story` names
-//! a rendered state of a component; neither is resolved by
-//! [`ReservedRole::all`], which is the roles a route is built from. They are
-//! here because the *grammar* is the toolchain's rather than the router's: a
-//! second spelling for the same idea is how the scaffold, the router and the
-//! linter drifted apart the first time.
+//! a rendered state of a component; neither is one of
+//! [`ReservedRole::route_parts`], which is the roles a rendered route is built
+//! from. They are here because the *grammar* is the toolchain's rather than the
+//! router's: a second spelling for the same idea is how the scaffold, the
+//! router and the linter drifted apart the first time.
+//!
+//! It drifted again anyway, in the direction this module could not see.
+//! `packages/vite/internal/routes.js` is the router the build actually runs,
+//! it keeps its own `RESERVED` table, and its comment says the two "cannot be
+//! allowed to disagree" — while `_uf.not-found` was in that table and not in
+//! this enum, so `uf lint` rejected the file name uf's own documentation site
+//! uses for its 404 page. `every_name_the_build_router_reserves_is_a_role`
+//! reads that table now, which is the part that was missing: a rule that both
+//! files must agree, enforced by neither, is a comment.
 
 use std::str::FromStr;
 
@@ -28,6 +37,12 @@ pub enum ReservedRole {
     Page,
     /// Runs before a route resolves.
     Middleware,
+    /// Renders a path no route matched.
+    ///
+    /// A page in every way that matters — it is wrapped in the layouts above
+    /// it and rendered like one — except that no path leads to it, which is
+    /// why it is not one of [`route_parts`](ReservedRole::route_parts).
+    NotFound,
     /// Answers a request instead of rendering a page.
     Route,
     /// Names a rendered state of a component, for `@uniflowed/story`.
@@ -42,14 +57,38 @@ impl ReservedRole {
             Self::Layout => "layout",
             Self::Page => "page",
             Self::Middleware => "middleware",
+            Self::NotFound => "not-found",
             Self::Route => "route",
             Self::Story => "story",
         }
     }
 
     /// Every role, in declaration order.
+    ///
+    /// Named to mean the same thing [`ReservedVariant::all`] does, which it did
+    /// not: this returned three of the five roles, because it was written when
+    /// "every role" and "every role a route is built from" were the same set.
+    /// Two `all` in one module meaning two different things is the drift this
+    /// module exists to prevent, one level up.
     #[must_use]
-    pub const fn all() -> [Self; 3] {
+    pub const fn all() -> [Self; 6] {
+        [
+            Self::Layout,
+            Self::Page,
+            Self::Middleware,
+            Self::NotFound,
+            Self::Route,
+            Self::Story,
+        ]
+    }
+
+    /// The roles a rendered route is built from.
+    ///
+    /// A `route` answers a request rather than rendering, a `story` names a
+    /// state of a component, and a `not-found` is reached by no path — so none
+    /// of the three composes a route, though all three are reserved names.
+    #[must_use]
+    pub const fn route_parts() -> [Self; 3] {
         [Self::Layout, Self::Page, Self::Middleware]
     }
 }
@@ -62,6 +101,7 @@ impl FromStr for ReservedRole {
             "layout" => Ok(Self::Layout),
             "page" => Ok(Self::Page),
             "middleware" => Ok(Self::Middleware),
+            "not-found" => Ok(Self::NotFound),
             "route" => Ok(Self::Route),
             "story" => Ok(Self::Story),
             _ => Err(()),
@@ -243,8 +283,25 @@ mod tests {
             ReservedVariant::Native
         );
         assert!(
-            !ReservedRole::all().contains(&ReservedRole::Story),
+            !ReservedRole::route_parts().contains(&ReservedRole::Story),
             "a story is not something a route is built from"
+        );
+    }
+
+    #[test]
+    fn a_not_found_file_is_reserved_without_a_route_leading_to_it() {
+        // The file uf's own documentation site uses for its 404 page.
+        // `packages/vite/internal/routes.js` has reserved this name since the
+        // router was written; this enum did not, so `uf lint` told the site to
+        // rename a file the router resolves. See `tests/reserved_names.rs`.
+        assert_eq!(recognized("_uf.not-found.js").role, ReservedRole::NotFound);
+        assert_eq!(
+            recognized("_uf.not-found.web.js").variant,
+            ReservedVariant::Web
+        );
+        assert!(
+            !ReservedRole::route_parts().contains(&ReservedRole::NotFound),
+            "no path leads to a not-found page, so no route is built from one"
         );
     }
 
