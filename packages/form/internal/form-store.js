@@ -141,8 +141,15 @@ export type ReValidateMode = "onChange" | "onBlur" | "onSubmit";
 export type FieldErrors = { readonly [string]: FieldError, ... };
 export type FieldFlags = { readonly [string]: boolean, ... };
 
-/** Everything a form knows about itself that is not a value. */
-export type FormState = {|
+/**
+ * Everything a form knows about itself that is not a value.
+ *
+ * Generic in the values only because of [`defaultValues`], and with a default
+ * so that `FormState` still means something written on its own — an annotation
+ * that does not care which form it came from gets `FieldValues`, and reads the
+ * defaults as `mixed`, exactly as it would have before.
+ */
+export type FormState<TValues extends FieldValues = FieldValues> = {|
   readonly errors: FieldErrors,
   readonly isDirty: boolean,
   readonly dirtyFields: FieldFlags,
@@ -166,6 +173,34 @@ export type FormState = {|
    * exact.
    */
   readonly disabled: boolean,
+  /**
+   * Whether an asynchronous `defaultValues` is still resolving.
+   *
+   * True from the first render of a form built with a thunk, false for every
+   * other form from its first render — which is the property that matters, and
+   * is why this is not a flag the store learns about in an effect. A loading
+   * form is usable meanwhile: empty, not dirty, and not lying about either.
+   *
+   * There is deliberately no `isReady` beside it. React Hook Form has one
+   * because its form finishes setting itself up after the first render; this
+   * store is built in a `useState` initialiser, so its first snapshot is
+   * already the real one and an `isReady` here would be either `!isLoading`
+   * under a second name or a flag that flipped in an effect — which would cost
+   * every form in the package one render to learn something that was already
+   * true.
+   */
+  readonly isLoading: boolean,
+  /**
+   * What `reset()` with no argument would go back to.
+   *
+   * The form's own copy, not the object that was passed: `useForm` deep-copies
+   * `defaultValues` so that a caller mutating theirs cannot change what the
+   * form resets to, and this is that copy. It moves when `reset(values)`, a
+   * `values` re-seed or a resolved asynchronous default moves it, and its
+   * identity is what the snapshot comparison uses — so reading it costs a form
+   * that never resets nothing at all.
+   */
+  readonly defaultValues: TValues,
 |};
 
 /**
@@ -183,15 +218,65 @@ export type SetValueOptions = {|
   readonly shouldTouch?: boolean,
 |};
 
-/** What `reset` keeps rather than throwing away. */
+/**
+ * What `reset` keeps rather than throwing away.
+ *
+ * Also what a `values` re-seed keeps, and that is the same list on purpose:
+ * `useForm({ values })` is a `reset` the form performs for you when the object
+ * it was given changes identity, so there is one set of rules about what
+ * survives one rather than two.
+ */
 export type ResetOptions = {|
   readonly keepValues?: boolean,
+  /**
+   * Replace the values, except at the paths the user has already edited.
+   *
+   * The option that makes `useForm({ values })` usable on a form somebody is
+   * typing into: a record the server re-sent lands everywhere except the three
+   * fields being worked on. A field kept this way keeps its dirty flag too —
+   * unless the incoming values happen to agree with what was typed, in which
+   * case it is not dirty any more and saying it was would be a form that can
+   * never be clean again.
+   *
+   * A field the new values do *not* contain still keeps the user's edit, for
+   * the same reason: it was theirs, and the point of this flag is that their
+   * work is not what a re-seed is for.
+   */
+  readonly keepDirtyValues?: boolean,
   readonly keepDefaultValues?: boolean,
   readonly keepErrors?: boolean,
   readonly keepDirty?: boolean,
   readonly keepTouched?: boolean,
   readonly keepSubmitCount?: boolean,
   readonly keepIsSubmitted?: boolean,
+  /**
+   * Keep `isSubmitSuccessful`.
+   *
+   * Separate from `keepIsSubmitted` because the two answer different questions
+   * — "has this form been submitted" and "did the last submit work" — and the
+   * form that wants the second is the one that resets itself in `onValid` and
+   * then renders a confirmation. Without this flag that reset is what erases
+   * the thing the confirmation is reading.
+   */
+  readonly keepIsSubmitSuccessful?: boolean,
+  /**
+   * Keep `isValidating`.
+   *
+   * Without it a reset clears the flag, on the grounds that a form which has
+   * just been replaced is not validating the thing it no longer holds. A pass
+   * already in flight still lands — dropping it is [`publish`]'s job and it
+   * drops by sequence number, not by whether a reset happened.
+   */
+  readonly keepIsValidating?: boolean,
+  /**
+   * Keep `isValid` and the per-field verdicts behind it.
+   *
+   * Without it a reset forgets every verdict, which leaves `isValid` false
+   * until something checks again — the same state a form is in before anything
+   * has looked at it. With it, a reset to values that are known good does not
+   * disable a submit button until the next keystroke.
+   */
+  readonly keepIsValid?: boolean,
 |};
 
 /** What an imperative `watch` listener is told. */
@@ -228,8 +313,17 @@ const NO_RULES: ValidationRules = Object.freeze({});
 const NO_FLAGS: FieldFlags = Object.freeze({});
 const NO_ERRORS: FieldErrors = Object.freeze({});
 
+/** What the form starts as: the values, or a thunk that will fetch them. */
+export type DefaultValuesSource<TValues> = TValues | (() => Promise<TValues>);
+
 export type CreateStoreOptions<TValues extends FieldValues, TOutput> = {|
-  readonly defaultValues: TValues,
+  readonly defaultValues: DefaultValuesSource<TValues>,
+  /** The values something outside the form owns. See [`configure`]. */
+  readonly values: TValues | null,
+  /** The errors something outside the form owns — a server's, usually. */
+  readonly errors: FieldErrors | null,
+  /** What a `values` or `errors` re-seed keeps. */
+  readonly resetOptions: ResetOptions | null,
   readonly mode: Mode,
   readonly reValidateMode: ReValidateMode,
   readonly resolver: Resolver<TValues, TOutput> | null,
@@ -295,10 +389,22 @@ export type Control<TValues extends FieldValues, TOutput = TValues> = {|
   ) => (event?: mixed) => Promise<void>,
 
   readonly configure: (options: CreateStoreOptions<TValues, TOutput>) => void,
+  /**
+   * Run an asynchronous `defaultValues`, once.
+   *
+   * Called from an effect rather than from the store's constructor, because
+   * starting a fetch is a side effect and a `useState` initialiser runs during
+   * a render React is allowed to throw away. The store guards it so that Strict
+   * Mode's mount–unmount–mount does not fetch twice.
+   */
+  readonly loadDefaults: () => void,
 
   readonly subscribeFormState: (listener: () => void) => () => void,
-  readonly formState: () => FormState,
-  readonly fieldStateSnapshot: (key: string, names: $ReadOnlyArray<FieldPath> | null) => FormState,
+  readonly formState: () => FormState<TValues>,
+  readonly fieldStateSnapshot: (
+    key: string,
+    names: $ReadOnlyArray<FieldPath> | null,
+  ) => FormState<TValues>,
 
   readonly subscribeWatch: (
     key: string,
@@ -455,6 +561,14 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     renderDisabled = off;
   }
 
+  /**
+   * Push the latest render's options in, and re-seed if an input moved.
+   *
+   * Two of the options are *inputs* rather than settings — `values` and
+   * `errors` are things outside the form that the form has to follow — and
+   * this is where a change in either is noticed. The rest are settings and
+   * simply replace what was there.
+   */
   function configure(next: CreateStoreOptions<TValues, TOutput>): void {
     const was = settings.disabled;
     settings = next;
@@ -469,10 +583,66 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       }
       invalidateFormState();
     }
+    adoptValues(next.values, next.resetOptions);
+    adoptErrors(next.errors);
   }
 
-  let defaultValues: TValues = cloneValues(initial.defaultValues);
-  let values: TValues = cloneValues(initial.defaultValues);
+  /**
+   * Whether the `defaultValues` a form was built with is a thunk.
+   *
+   * Told apart by `typeof`, which is the whole run-time cost of the union in
+   * [`DefaultValuesSource`]: a form's values are an object and a function is
+   * not one, so there is nothing to disambiguate beyond this.
+   */
+  function isThunk(source: DefaultValuesSource<TValues>): boolean {
+    return typeof source === "function";
+  }
+
+  const startsEmpty = isThunk(initial.defaultValues);
+
+  /**
+   * What the form starts as, and what `reset()` goes back to.
+   *
+   * `{}` while an asynchronous default is in flight, which is the honest answer
+   * to "what would a reset go back to" before the answer has arrived — and it
+   * is also what makes the form usable meanwhile rather than absent.
+   */
+  let defaultValues: TValues = startsEmpty
+    ? ({} as $FlowFixMe)
+    : cloneValues(initial.defaultValues as $FlowFixMe);
+
+  // A `values` input is a re-seed the form performs for itself, and the first
+  // one happens here rather than in the first `configure` — the alternative is
+  // to render once with the values absent and once with them there, for values
+  // the first render already had.
+  //
+  // It sets the defaults too, and that is not an extra: a later re-seed is a
+  // `reset(next)`, which moves the defaults unless `keepDefaultValues` says
+  // otherwise, and a first seed that behaved differently from every one after
+  // it would make `reset()` go back to a form that never existed.
+  if (initial.values != null && initial.resetOptions?.keepDefaultValues !== true) {
+    defaultValues = cloneValues(initial.values);
+  }
+
+  /** What the form holds now. */
+  let values: TValues =
+    initial.values != null ? cloneValues(initial.values) : cloneValues(defaultValues);
+
+  /**
+   * The `values` and `errors` objects a re-seed has already been run for.
+   *
+   * Identity, not content: `configure` runs after every render, and a caller
+   * whose `values` come from a query cache hands the same object back until the
+   * record actually changes. Content is compared too, and only when the
+   * identity differs — because a caller who writes `values={{ ...record }}`
+   * inline hands a new object every render, and re-seeding on each of those
+   * would be a render loop rather than a feature.
+   */
+  let seededValues: TValues | null = initial.values;
+  let seededErrors: FieldErrors | null = null;
+
+  /** The paths the last `errors` input put an error at. See [`adoptErrors`]. */
+  let externalErrors: $ReadOnlyArray<FieldPath> = [];
 
   const fields: Map<FieldPath, FieldRecord> = new Map();
   const errors: Map<FieldPath, FieldError> = new Map();
@@ -499,10 +669,38 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   let isValidating = false;
   let isValid = false;
   let submitCount = 0;
+  let isLoading = startsEmpty;
+
+  /**
+   * How many times something has decided what the values are.
+   *
+   * The same discipline the resolver has, applied to values rather than to
+   * errors: an asynchronous default takes this number before it starts, and a
+   * `reset(values)` or a `values` re-seed moves it. A default that resolves
+   * after one of those has happened is answering a question nobody is asking
+   * any more, and dropping it is what stops a slow fetch from undoing the
+   * record the caller has since supplied.
+   *
+   * A bare `reset()` does *not* move it. That resets to the defaults, and the
+   * defaults are precisely what has not arrived yet.
+   */
+  let valuesEpoch = 0;
+  let defaultsRequested = false;
 
   let validationSeq = 0;
   const fieldSeq: Map<FieldPath, number> = new Map();
   let pendingValidations = 0;
+
+  /**
+   * Passes a reset stopped counting towards `isValidating`.
+   *
+   * A promise cannot be cancelled, so a `reset` that clears the flag cannot
+   * clear what is in flight. It disowns it instead: the count moves here, and
+   * [`endValidating`] absorbs exactly that many finishes before it starts
+   * decrementing again — otherwise an old pass finishing would turn the flag
+   * off underneath a *newer* pass that had turned it back on.
+   */
+  let disownedValidations = 0;
   let resolvedOutput: TOutput | null = null;
 
   const formStateListeners: Set<() => void> = new Set();
@@ -521,14 +719,14 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   let nextKey = 0;
 
   let formStateStale = true;
-  let lastFormState: FormState | null = null;
+  let lastFormState: FormState<TValues> | null = null;
   let errorsStale = true;
   let lastErrors: FieldErrors = NO_ERRORS;
   let dirtyStale = true;
   let lastDirty: FieldFlags = NO_FLAGS;
   let touchedStale = true;
   let lastTouched: FieldFlags = NO_FLAGS;
-  const sliceCells: Map<string, FormState> = new Map();
+  const sliceCells: Map<string, FormState<TValues>> = new Map();
 
   // ------------------------------------------------------------------ //
   // Snapshots
@@ -593,13 +791,13 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * a change that leaves all ten of these alone costs one allocation and ten
    * comparisons instead of a render of the form.
    */
-  function formState(): FormState {
+  function formState(): FormState<TValues> {
     const previous = lastFormState;
     if (!formStateStale && previous != null) {
       return previous;
     }
     formStateStale = false;
-    const next: FormState = {
+    const next: FormState<TValues> = {
       errors: errorsSnapshot(),
       isDirty: dirty.size > 0,
       dirtyFields: dirtySnapshot(),
@@ -611,6 +809,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       isValid,
       submitCount,
       disabled: settings.disabled,
+      isLoading,
+      defaultValues,
     };
     if (previous != null && sameFormState(previous, next)) {
       return previous;
@@ -619,7 +819,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     return next;
   }
 
-  function sameFormState(left: FormState, right: FormState): boolean {
+  function sameFormState(left: FormState<TValues>, right: FormState<TValues>): boolean {
     return (
       left.errors === right.errors &&
       left.dirtyFields === right.dirtyFields &&
@@ -631,7 +831,9 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       left.isValidating === right.isValidating &&
       left.isValid === right.isValid &&
       left.submitCount === right.submitCount &&
-      left.disabled === right.disabled
+      left.disabled === right.disabled &&
+      left.isLoading === right.isLoading &&
+      left.defaultValues === right.defaultValues
     );
   }
 
@@ -668,7 +870,10 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * `names` of `null` means the whole form, and returns the shared snapshot
    * rather than a copy of it.
    */
-  function fieldStateSnapshot(key: string, names: $ReadOnlyArray<FieldPath> | null): FormState {
+  function fieldStateSnapshot(
+    key: string,
+    names: $ReadOnlyArray<FieldPath> | null,
+  ): FormState<TValues> {
     const whole = formState();
     if (names == null) {
       return whole;
@@ -676,7 +881,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     const cell = sliceCells.get(key);
     const errorSlice = sliceOf(whole.errors, names);
     const dirtySlice = sliceOf(whole.dirtyFields, names);
-    const next: FormState = {
+    const next: FormState<TValues> = {
       errors: errorSlice,
       // Scoped, like the maps beside them: in a slice, "dirty" means one of
       // *these* fields was changed and "valid" means none of *these* fields has
@@ -694,6 +899,11 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       isValid: Object.keys(errorSlice).length === 0,
       submitCount: whole.submitCount,
       disabled: whole.disabled,
+      // Not about a field either: whether the form's values have arrived, and
+      // what a reset would go back to, are the same answer wherever they are
+      // read from.
+      isLoading: whole.isLoading,
+      defaultValues: whole.defaultValues,
     };
     if (cell != null && sameSlice(cell, next)) {
       return cell;
@@ -723,7 +933,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * slice is rebuilt on every notification: comparing references would report a
    * change every time any field anywhere moved, which is the thing this is for.
    */
-  function sameSlice(left: FormState, right: FormState): boolean {
+  function sameSlice(left: FormState<TValues>, right: FormState<TValues>): boolean {
     return (
       left.isDirty === right.isDirty &&
       left.isSubmitting === right.isSubmitting &&
@@ -733,6 +943,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       left.isValid === right.isValid &&
       left.submitCount === right.submitCount &&
       left.disabled === right.disabled &&
+      left.isLoading === right.isLoading &&
+      left.defaultValues === right.defaultValues &&
       sameShallow(left.errors, right.errors) &&
       sameShallow(left.dirtyFields, right.dirtyFields) &&
       sameShallow(left.touchedFields, right.touchedFields)
@@ -1263,6 +1475,13 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   }
 
   function endValidating(): void {
+    if (disownedValidations > 0) {
+      // A pass a reset stopped counting. It still finishes — a promise cannot
+      // be cancelled — and it must not decrement a counter it is no longer part
+      // of, because the pass that counter is about may have started after it.
+      disownedValidations -= 1;
+      return;
+    }
     pendingValidations = Math.max(0, pendingValidations - 1);
     if (pendingValidations === 0 && isValidating) {
       isValidating = false;
@@ -1579,11 +1798,27 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   // ------------------------------------------------------------------ //
 
   function reset(nextValues?: TValues, resetOptions?: ResetOptions): void {
+    if (nextValues != null) {
+      // Somebody has said what the values are. An asynchronous default that
+      // has not answered yet is answering a stale question — see [`valuesEpoch`].
+      valuesEpoch += 1;
+    }
     if (nextValues != null && resetOptions?.keepDefaultValues !== true) {
       defaultValues = cloneValues(nextValues);
     }
+    const keepDirtyValues = resetOptions?.keepDirtyValues === true;
     if (resetOptions?.keepValues !== true) {
-      values = cloneValues(nextValues ?? defaultValues);
+      // The paths the user has edited, read out of the *old* tree before it is
+      // replaced. Their values are written back on top of the new one, which is
+      // what makes a re-seed land everywhere except where somebody is working.
+      const kept: Array<[FieldPath, mixed]> = keepDirtyValues
+        ? Array.from(dirty, (name) => [name, readAt(values, name)])
+        : [];
+      let next: TValues = cloneValues(nextValues ?? defaultValues);
+      for (const [name, held] of kept) {
+        next = writeAt(next, name, held);
+      }
+      values = next;
       for (const [name, record] of fields) {
         if (record.elements.length > 0) {
           writeElements(record.elements, readAt(values, name));
@@ -1598,7 +1833,18 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       eligible.clear();
       errorsStale = true;
     }
-    if (resetOptions?.keepDirty !== true) {
+    if (keepDirtyValues) {
+      // A field is dirty relative to the defaults, and the defaults have just
+      // moved: a kept edit that now agrees with what arrived is not an edit any
+      // more. Recomputing is the difference between a flag that means something
+      // and a form that can never be clean again.
+      for (const name of Array.from(dirty)) {
+        if (sameValue(readAt(values, name), readAt(defaultValues, name))) {
+          dirty.delete(name);
+          dirtyStale = true;
+        }
+      }
+    } else if (resetOptions?.keepDirty !== true) {
       dirty.clear();
       dirtyStale = true;
     }
@@ -1611,18 +1857,155 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     }
     if (resetOptions?.keepIsSubmitted !== true) {
       isSubmitted = false;
+    }
+    if (resetOptions?.keepIsSubmitSuccessful !== true) {
       isSubmitSuccessful = false;
     }
-    isSubmitting = false;
-    validity.clear();
-    for (const [name, record] of fields) {
-      if (isTrivial(record.rules)) {
-        validity.set(name, true);
-      }
+    if (resetOptions?.keepIsValidating !== true && pendingValidations > 0) {
+      // Disowned rather than zeroed, for the reason [`disownedValidations`]
+      // gives: the passes in flight are about values the form no longer holds,
+      // and they must not decrement a counter a later pass is using.
+      disownedValidations += pendingValidations;
+      pendingValidations = 0;
+      isValidating = false;
     }
-    refreshValidity();
+    isSubmitting = false;
+    if (resetOptions?.keepIsValid !== true) {
+      validity.clear();
+      for (const [name, record] of fields) {
+        if (isTrivial(record.rules)) {
+          validity.set(name, true);
+        }
+      }
+      refreshValidity();
+    }
     invalidateFormState();
     announce("", "reset");
+  }
+
+  // ------------------------------------------------------------------ //
+  // Values and errors that come from outside the form
+  // ------------------------------------------------------------------ //
+
+  /**
+   * Follow a `values` object the caller owns.
+   *
+   * This is what `useForm({ values })` is: the form does the `reset` that would
+   * otherwise be written by hand in a `useEffect`, at the same point in the
+   * commit an effect would have run, and honouring `resetOptions` so that the
+   * caller says what a re-seed keeps rather than discovering it.
+   *
+   * Three things are decided here and are worth saying plainly. A **dirty
+   * field** is replaced like any other unless `keepDirtyValues` is set, in
+   * which case it keeps what the user typed. **Validation state** goes back to
+   * what it is for a fresh form — errors cleared, verdicts forgotten — unless
+   * `keepErrors` or `keepIsValid` says otherwise, because errors were about the
+   * values that are no longer there. And a **field the new values do not
+   * contain** is gone: the tree is replaced rather than merged, so the form
+   * holds what the caller sent and `getValues()` says so. Its control shows
+   * nothing, which is the same thing `reset` to a record without that key has
+   * always done.
+   *
+   * Identity first, content second. `configure` runs after every render and a
+   * caller who writes an object literal inline hands a new one each time; a
+   * re-seed on each of those would notify, render, and arrive back here with
+   * another new object.
+   */
+  function adoptValues(next: TValues | null, resetOptions: ResetOptions | null): void {
+    if (next == null || next === seededValues) {
+      return;
+    }
+    const was = seededValues;
+    seededValues = next;
+    if (was != null && sameValue(was, next)) {
+      return;
+    }
+    reset(next, resetOptions ?? undefined);
+  }
+
+  /**
+   * Follow an `errors` object the caller owns.
+   *
+   * A server that rejects a submit with per-field messages has a map already;
+   * this is where it becomes the form's, without a loop at the call site and
+   * without `setError` being the only door.
+   *
+   * What it replaces is *its own* previous contribution, not the errors
+   * validation produced. Those two have different lifetimes — a server's
+   * message stands until the server is asked again, a rule's until the field
+   * changes — and a map that cleared both would delete an error the user is
+   * currently looking at every time the props happened to change.
+   *
+   * The fields it names become eligible, because a message nobody can see is
+   * not a message, and their verdict becomes `false`, because a form with a
+   * server error is not valid.
+   */
+  function adoptErrors(next: FieldErrors | null): void {
+    if (next == null || next === seededErrors) {
+      return;
+    }
+    const was = seededErrors;
+    seededErrors = next;
+    // Structurally, not by the identity of each entry, and for the reason
+    // [`adoptValues`] compares content at all: `errors={{ email: { … } }}`
+    // written inline is a new map *and* a new `FieldError` on every render, and
+    // re-applying one notifies, which renders, which arrives back here.
+    if (was != null && sameValue(was, next)) {
+      return;
+    }
+    for (const name of externalErrors) {
+      errors.delete(name);
+      validity.delete(name);
+    }
+    const applied: Array<FieldPath> = [];
+    for (const name of Object.keys(next)) {
+      errors.set(name, next[name]);
+      eligible.add(name);
+      validity.set(name, false);
+      applied.push(name);
+    }
+    externalErrors = applied;
+    refreshValidity();
+    invalidateErrors();
+  }
+
+  /**
+   * Run an asynchronous `defaultValues`, once, and land it safely.
+   *
+   * The landing is the interesting half. A default that resolves after the user
+   * has started typing must not take their text away — so it lands with
+   * `keepDirtyValues`, unconditionally rather than through the caller's
+   * `resetOptions`, because there is no form for which "throw away what they
+   * were writing" is the right answer to a fetch finishing late. And a default
+   * that resolves after somebody has said what the values are — a `reset(next)`,
+   * or a `values` re-seed — does not land at all: [`valuesEpoch`] moved, which
+   * is the same stale-answer rule the resolver runs on.
+   *
+   * A form given *both* an asynchronous `defaultValues` and a `values` is a
+   * caller saying two different things, and they are answered separately: the
+   * record is what the form holds, and the fetch is what `reset()` goes back
+   * to. So the resolved default lands on the defaults and leaves the values
+   * where they are, which is what those two options have always meant.
+   */
+  function loadDefaults(): void {
+    if (defaultsRequested || !isThunk(settings.defaultValues)) {
+      return;
+    }
+    defaultsRequested = true;
+    const epoch = valuesEpoch;
+    const thunk: () => Promise<TValues> = settings.defaultValues as $FlowFixMe;
+    Promise.resolve(thunk()).then((resolved) => {
+      isLoading = false;
+      if (epoch !== valuesEpoch) {
+        invalidateFormState();
+        return;
+      }
+      reset(resolved, {
+        keepDirtyValues: true,
+        keepTouched: true,
+        keepValues: seededValues != null,
+      });
+    }, reportAsyncFailure);
   }
 
   // ------------------------------------------------------------------ //
@@ -1943,6 +2326,11 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
 
   // ------------------------------------------------------------------ //
 
+  // Seeded here rather than left to the first `configure`, for the reason
+  // `values` is: an error the caller already had on the first render should be
+  // on screen on the first render, not one commit later.
+  adoptErrors(initial.errors);
+
   return {
     __values: () => values,
     __output: () => values as $FlowFixMe,
@@ -1967,6 +2355,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     primeValidity,
     submitWith,
     configure,
+    loadDefaults,
     subscribeFormState,
     formState,
     fieldStateSnapshot,
