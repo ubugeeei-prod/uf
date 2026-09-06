@@ -26,23 +26,25 @@
 //! | relative, names a source in the batch | that module's signature, as a typed module |
 //! | relative, names a source that cannot contribute a signature | an unchecked module, recorded |
 //! | relative, names nothing in the batch | an unchecked module, recorded |
+//! | bare, published by a `package.json` in the batch | that module's signature, as a typed module |
 //! | bare, declared by Flow's libdefs | that `declare module` block |
 //! | bare, anything else | an unchecked module, recorded |
 //!
-//! A bare specifier is never resolved against the batch, even when a file in it
-//! happens to be called `react.js`: a package name resolves through
-//! `node_modules`, a workspace, or a `declare module`, and guessing at it from
-//! the batch's paths would type an import against a file that is not what the
-//! runtime would load.
+//! A bare specifier is never resolved against the batch's *paths*, even when a
+//! file in it happens to be called `react.js`. It is resolved against the
+//! batch's *manifests*: `@uniflowed/cell` is whatever the `package.json` that
+//! publishes that name says it is, which is the one answer that agrees with
+//! what the runtime loads. See [`super::packages`].
 //!
 //! # What is not resolved
 //!
-//! * **Workspace package specifiers.** `@uniflowed/react` names a package whose
-//!   entry point lives behind a `package.json`'s `exports` map, and a batch of
-//!   `.js` sources does not contain that `package.json`. These stay unchecked
-//!   and stay in [`crate::CheckReport::untyped_modules`].
-//! * **A directory's `package.json` `main`.** For the same reason: `./internal`
-//!   finds `./internal/index.js` and nothing else.
+//! * **A package with no manifest in the batch.** `react` and everything else
+//!   under `node_modules` is not a source `uf check` collects, so it stays
+//!   unchecked unless Flow's own library definitions declare it — and stays in
+//!   [`crate::CheckReport::untyped_modules`] when they do not.
+//! * **A directory's `package.json` `main`.** A *relative* specifier naming a
+//!   directory finds `./internal/index.js` and nothing else; only a specifier
+//!   that names a package goes through that package's manifest.
 //!
 //! Both are stated here and named in the report rather than being approximated.
 //!
@@ -99,6 +101,7 @@ use flow_typing_utils::annotation_inference;
 use flow_typing_utils::type_sig_merge::{self, Exports};
 use flow_utils_concurrency::check_budget::CheckBudget;
 
+use super::packages::{PackageFile, WorkspacePackages};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
 use crate::{CheckLimits, Source};
@@ -137,6 +140,11 @@ pub(super) struct ProjectModules {
     /// Paths and text, owned. See [`Resolver`] for why this is a copy.
     sources: Vec<(CompactString, Box<str>)>,
     index: ModuleIndex,
+    /// The packages the batch's own `package.json` files publish.
+    ///
+    /// Read once per batch rather than per import: a repository has one
+    /// manifest per package and hundreds of files importing them.
+    packages: WorkspacePackages,
     options: Options,
     /// One builtin environment for the whole batch.
     ///
@@ -180,6 +188,7 @@ impl ProjectModules {
     ) -> Self {
         Self {
             index: ModuleIndex::new(sources.iter().map(|source| source.path)),
+            packages: WorkspacePackages::new(sources, &options),
             sources: sources
                 .iter()
                 .map(|source| (source.path.to_compact_string(), Box::from(source.source)))
@@ -253,6 +262,14 @@ impl ProjectModules {
     }
 
     /// What `specifier`, imported from `importer`, resolves to.
+    ///
+    /// A file in the batch outranks a `declare module`, which is upstream's own
+    /// order: `check_service`'s `dep_module_t` only reaches for
+    /// `typed_builtin_module_opt` once the module system has failed to resolve
+    /// the specifier to a file. A workspace package that this project actually
+    /// contains is the module the runtime loads, so it is the module the
+    /// checker must type — a libdef that happened to share its name would be a
+    /// description of something else.
     fn resolve(
         self: &Rc<Self>,
         cx: &Context<'static>,
@@ -268,9 +285,23 @@ impl ProjectModules {
             }
             return self.unchecked(cx, name);
         }
+        if let Some(index) = self.resolve_package(name)
+            && let Some(signature) = self.signature(index)
+        {
+            return ResolvedRequire::TypedModule(self.module_thunk(index, &signature));
+        }
         match typed_builtin_module(cx, specifier) {
             Some(module) => ResolvedRequire::TypedModule(module),
             None => self.unchecked(cx, name),
+        }
+    }
+
+    /// The batch's source for a package specifier, through the manifest that
+    /// publishes it.
+    fn resolve_package(&self, specifier: &str) -> Option<usize> {
+        match self.packages.resolve(specifier)? {
+            PackageFile::Exact(path) => self.index.lookup(&path),
+            PackageFile::Implied(base) => self.index.resolve_file(&base),
         }
     }
 
