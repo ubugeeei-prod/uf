@@ -9,7 +9,10 @@
 // from the middle. A test of "register returns an object with a name" would
 // pass while every one of those was broken.
 
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 
 import * as React from "@uniflowed/react";
 import { StrictMode, useEffect, useState } from "@uniflowed/react";
@@ -369,6 +372,95 @@ describe("watch: one field, not the others", () => {
     // The listener saw every change to `a` and none to `b`, and subscribing
     // this way rendered nothing at all.
     expect(renders).toBe(settled);
+  });
+});
+
+describe("a path given as segments is the same field", () => {
+  // The typed half of the API is a claim about the *checker*, and
+  // `tests/type-tests/field-paths.js` is where that claim is held. What is left
+  // for a running test is the half a type cannot state: that `["items", 0,
+  // "price"]` and `"items.0.price"` reach the same place in the same store —
+  // because a typed accessor that addressed a field the string form could not
+  // would be two forms wearing one name.
+
+  it("reads, writes and subscribes at the same field as the dotted string", async () => {
+    let read: () => mixed = () => null;
+    let readDotted: () => mixed = () => null;
+    component Probe() {
+      const { register, getValues, setValue, control } = useForm({
+        defaultValues: { items: [{ price: 1 }, { price: 2 }], address: { city: "" } },
+      });
+      read = () => getValues("items", 1, "price");
+      readDotted = () => getValues("items.1.price");
+      // The subscription form, in a component that is not the one that owns the
+      // form: `path` where `name` would have been.
+      return (
+        <form>
+          <input aria-label="city" {...register("address.city")} />
+          <button type="button" onClick={() => setValue(["items", 1, "price"], 99)}>
+            Raise
+          </button>
+          <Row control={control} />
+        </form>
+      );
+    }
+    component Row(
+      control: Control<{ items: Array<{ price: number }>, address: { city: string } }>,
+    ) {
+      const price = useWatch({ control, path: ["items", 1, "price"] });
+      const city = useWatch({ control, path: ["address", "city"] });
+      return <output>{`${String(price)}/${String(city)}`}</output>;
+    }
+
+    const { container } = render(<Probe />);
+    const output = elementIn(container, "output");
+    expect(output.textContent).toBe("2/");
+    expect(read()).toBe(2);
+    expect(readDotted()).toBe(2);
+
+    // A write through the segment form is visible to a subscription made
+    // through the segment form, and to a read made through the dotted one.
+    await userEvent.click(screen.getByRole("button", { name: "Raise" }));
+    expect(output.textContent).toBe("99/");
+    expect(read()).toBe(99);
+    expect(readDotted()).toBe(99);
+
+    // And a change made by the user, through the registered dotted name, is
+    // visible to the segment subscription.
+    await userEvent.type(screen.getByLabelText("city"), "Kyoto");
+    expect(output.textContent).toBe("99/Kyoto");
+  });
+
+  it("watches a nested field from the form, and getFieldState answers about it", async () => {
+    let segments: () => FieldState = () => {
+      throw new Error("the probe has not rendered");
+    };
+    let dotted: () => FieldState = segments;
+    component Probe() {
+      const { register, watch, getFieldState } = useForm({
+        defaultValues: { address: { city: "" } },
+      });
+      segments = () => getFieldState("address", "city");
+      dotted = () => getFieldState("address.city");
+      const city = watch("address", "city");
+      return (
+        <form>
+          <input aria-label="city" {...register("address.city")} />
+          <output>{String(city)}</output>
+        </form>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    expect(segments().isDirty).toBe(false);
+    await userEvent.type(screen.getByLabelText("city"), "Osaka");
+    // `watch("address", "city")` re-rendered the form and read the same field
+    // the dotted `register` wrote.
+    expect(elementIn(container, "output").textContent).toBe("Osaka");
+    expect(segments().isDirty).toBe(true);
+    // And the two spellings are one question: the whole `FieldState`, not just
+    // the flag the line above happened to look at.
+    expect(segments()).toEqual(dotted());
   });
 });
 
@@ -820,6 +912,441 @@ describe("reset", () => {
     expect(valueIn(screen.getByLabelText("email"))).toBe("loaded@example.com");
     expect(read()).toEqual({ email: "loaded@example.com" });
   });
+
+  it("keeps the fields the user edited and replaces the rest", async () => {
+    let state: FormState<{ name: string, note: string }> | null = null;
+    let read: () => mixed = () => ({});
+    component Probe() {
+      const { register, reset, getValues, formState } = useForm({
+        defaultValues: { name: "old", note: "old" },
+      });
+      state = formState;
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="name" {...register("name")} />
+          <input aria-label="note" {...register("note")} />
+          <button
+            type="button"
+            onClick={() => reset({ name: "server", note: "server" }, { keepDirtyValues: true })}
+          >
+            Sync
+          </button>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    await userEvent.clear(screen.getByLabelText("name"));
+    await userEvent.type(screen.getByLabelText("name"), "mine");
+    await userEvent.click(screen.getByRole("button", { name: "Sync" }));
+
+    // The field being typed into keeps what was typed. The other one takes what
+    // arrived, and the control shows it.
+    expect(read()).toEqual({ name: "mine", note: "server" });
+    expect(valueIn(screen.getByLabelText("name"))).toBe("mine");
+    expect(valueIn(screen.getByLabelText("note"))).toBe("server");
+    // And the kept field is still dirty, because it still disagrees with what
+    // a reset would now go back to.
+    if (state == null) {
+      throw new Error("the probe has not rendered");
+    }
+    expect(state.dirtyFields).toEqual({ name: true });
+    expect(state.defaultValues).toEqual({ name: "server", note: "server" });
+  });
+
+  it("recomputes which kept fields are still dirty against the values that arrived", async () => {
+    // The other half of `keepDirtyValues`, and the one that decides whether
+    // `isDirty` still means anything after a re-seed. Two edited fields and one
+    // record: the field the record agrees with is not unsaved work any more,
+    // and the field it disagrees with still is.
+    let state: FormState<{ name: string, note: string }> | null = null;
+    let read: () => mixed = () => ({});
+    component Probe() {
+      const { register, reset, getValues, formState } = useForm({
+        defaultValues: { name: "old", note: "old" },
+      });
+      state = formState;
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="name" {...register("name")} />
+          <input aria-label="note" {...register("note")} />
+          <button
+            type="button"
+            onClick={() => reset({ name: "mine", note: "server" }, { keepDirtyValues: true })}
+          >
+            Sync
+          </button>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    await userEvent.clear(screen.getByLabelText("name"));
+    await userEvent.type(screen.getByLabelText("name"), "mine");
+    await userEvent.clear(screen.getByLabelText("note"));
+    await userEvent.type(screen.getByLabelText("note"), "edited");
+    if (state == null) {
+      throw new Error("the probe has not rendered");
+    }
+    expect(state.dirtyFields).toEqual({ name: true, note: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "Sync" }));
+
+    // Both edits survive, because both fields were dirty.
+    expect(read()).toEqual({ name: "mine", note: "edited" });
+    // `name` now says what the record says, so it is not an unsaved change.
+    // `note` still disagrees with it, so it is.
+    expect(state.dirtyFields).toEqual({ note: true });
+    expect(state.isDirty).toBe(true);
+  });
+});
+
+describe("values that come from outside the form", () => {
+  // ubugeeei-prod/uf#294. Everything here is the case the library could not
+  // serve before it: the values are not known when the component first renders,
+  // or they change afterwards.
+
+  it("follows a values object when its identity changes", async () => {
+    let read: () => mixed = () => ({});
+    let state: FormState<{ email: string, name: string }> | null = null;
+    component Probe(record: { email: string, name: string }) {
+      const { register, getValues, formState } = useForm({
+        defaultValues: { email: "", name: "" },
+        values: record,
+      });
+      read = getValues;
+      state = formState;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="name" {...register("name")} />
+        </form>
+      );
+    }
+
+    const first = { email: "a@example.com", name: "Ada" };
+    const { rerender } = render(<Probe record={first} />);
+    // Seeded on the first render, not one commit later: no empty frame.
+    expect(read()).toEqual(first);
+    expect(valueIn(screen.getByLabelText("email"))).toBe("a@example.com");
+    // And the first seed moves the defaults, exactly as every one after it
+    // does — otherwise `reset()` would go back to a form that never existed.
+    if (state == null) {
+      throw new Error("the probe has not rendered");
+    }
+    expect(state.defaultValues).toEqual(first);
+
+    // The same object again is not news, and re-seeding on it would throw away
+    // whatever the user had done since.
+    await userEvent.clear(screen.getByLabelText("name"));
+    await userEvent.type(screen.getByLabelText("name"), "typed");
+    rerender(<Probe record={first} />);
+    expect(read()).toEqual({ email: "a@example.com", name: "typed" });
+
+    // A different record is.
+    const second = { email: "b@example.com", name: "Bea" };
+    rerender(<Probe record={second} />);
+    expect(read()).toEqual(second);
+    expect(valueIn(screen.getByLabelText("name"))).toBe("Bea");
+  });
+
+  it("does not re-seed for an object that is new but says the same thing", async () => {
+    let read: () => mixed = () => ({});
+    component Probe(email: string) {
+      const { register, getValues } = useForm({
+        defaultValues: { email: "", note: "" },
+        // A literal written inline: a different object on every render, which
+        // is what a caller who has not thought about identity will write.
+        values: { email, note: "" },
+      });
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="note" {...register("note")} />
+        </form>
+      );
+    }
+
+    const { rerender } = render(<Probe email="a@example.com" />);
+    await userEvent.type(screen.getByLabelText("note"), "kept");
+    rerender(<Probe email="a@example.com" />);
+    // Nothing about the values changed, so nothing was thrown away.
+    expect(read()).toEqual({ email: "a@example.com", note: "kept" });
+  });
+
+  it("drops a field the new values no longer contain", async () => {
+    let read: () => mixed = () => ({});
+    component Probe(record: { email: string, nickname?: string }) {
+      const { register, getValues } = useForm({ defaultValues: { email: "" }, values: record });
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+        </form>
+      );
+    }
+
+    const { rerender } = render(<Probe record={{ email: "a@example.com", nickname: "ada" }} />);
+    expect(read()).toEqual({ email: "a@example.com", nickname: "ada" });
+
+    // The tree is replaced rather than merged, so a key the caller stopped
+    // sending is a key the form stops holding — and a submit stops sending.
+    rerender(<Probe record={{ email: "a@example.com" }} />);
+    expect(read()).toEqual({ email: "a@example.com" });
+  });
+
+  it("keeps what the user typed when the record is re-sent, with keepDirtyValues", async () => {
+    let read: () => mixed = () => ({});
+    component Probe(record: { email: string, name: string }) {
+      const { register, getValues } = useForm({
+        defaultValues: { email: "", name: "" },
+        values: record,
+        resetOptions: { keepDirtyValues: true },
+      });
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="name" {...register("name")} />
+        </form>
+      );
+    }
+
+    const { rerender } = render(<Probe record={{ email: "a@example.com", name: "Ada" }} />);
+    await userEvent.clear(screen.getByLabelText("name"));
+    await userEvent.type(screen.getByLabelText("name"), "mine");
+
+    rerender(<Probe record={{ email: "b@example.com", name: "Bea" }} />);
+    expect(read()).toEqual({ email: "b@example.com", name: "mine" });
+  });
+
+  it("loads an asynchronous default without a second component or a wrong first render", async () => {
+    let renders = 0;
+    let read: () => mixed = () => ({});
+    let state: FormState<{ email: string }> | null = null;
+    let settleFetch: (values: { email: string }) => void = () => {};
+    const record = new Promise<{ email: string }>((resolve) => {
+      settleFetch = resolve;
+    });
+
+    component Probe() {
+      renders += 1;
+      const { register, getValues, formState } = useForm({ defaultValues: () => record });
+      read = getValues;
+      state = formState;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    if (state == null) {
+      throw new Error("the probe has not rendered");
+    }
+    // The first render is honest rather than absent: empty, not dirty, and
+    // saying so.
+    expect(state.isLoading).toBe(true);
+    expect(state.isDirty).toBe(false);
+    expect(read()).toEqual({});
+    expect(renders).toBe(1);
+
+    await act(async () => {
+      settleFetch({ email: "loaded@example.com" });
+      await record;
+    });
+
+    expect(state.isLoading).toBe(false);
+    expect(read()).toEqual({ email: "loaded@example.com" });
+    expect(valueIn(screen.getByLabelText("email"))).toBe("loaded@example.com");
+    expect(state.defaultValues).toEqual({ email: "loaded@example.com" });
+    // One render for the values arriving, and one only.
+    expect(renders).toBe(2);
+  });
+
+  it("does not overwrite what the user typed while the default was still loading", async () => {
+    let read: () => mixed = () => ({});
+    let settleFetch: (values: { email: string, note: string }) => void = () => {};
+    const record = new Promise<{ email: string, note: string }>((resolve) => {
+      settleFetch = resolve;
+    });
+
+    component Probe() {
+      const { register, getValues } = useForm({ defaultValues: () => record });
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="note" {...register("note")} />
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    await userEvent.type(screen.getByLabelText("note"), "mine");
+
+    await act(async () => {
+      settleFetch({ email: "loaded@example.com", note: "server" });
+      await record;
+    });
+
+    // The fetch is slower than the user, and the user wins the field they were
+    // in. Everything else lands.
+    expect(read()).toEqual({ email: "loaded@example.com", note: "mine" });
+    expect(valueIn(screen.getByLabelText("note"))).toBe("mine");
+    expect(valueIn(screen.getByLabelText("email"))).toBe("loaded@example.com");
+  });
+
+  it("lets a values record stand while a slower default becomes what a reset goes back to", async () => {
+    // Both options at once is a caller saying two different things: here is the
+    // record, and here is what the form should go back to. They are answered
+    // separately rather than the later one winning.
+    let read: () => mixed = () => ({});
+    let state: FormState<{ email: string }> | null = null;
+    let settleFetch: (values: { email: string }) => void = () => {};
+    const original = new Promise<{ email: string }>((resolve) => {
+      settleFetch = resolve;
+    });
+
+    component Probe() {
+      const { register, getValues, formState } = useForm({
+        defaultValues: () => original,
+        values: { email: "draft@example.com" },
+      });
+      read = getValues;
+      state = formState;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    expect(read()).toEqual({ email: "draft@example.com" });
+
+    await act(async () => {
+      settleFetch({ email: "saved@example.com" });
+      await original;
+    });
+
+    if (state == null) {
+      throw new Error("the probe has not rendered");
+    }
+    expect(read()).toEqual({ email: "draft@example.com" });
+    expect(state.defaultValues).toEqual({ email: "saved@example.com" });
+    expect(state.isLoading).toBe(false);
+  });
+
+  it("drops a default that resolves after somebody said what the values are", async () => {
+    let read: () => mixed = () => ({});
+    let settleFetch: (values: { email: string }) => void = () => {};
+    const record = new Promise<{ email: string }>((resolve) => {
+      settleFetch = resolve;
+    });
+
+    component Probe() {
+      const { register, getValues, reset } = useForm({ defaultValues: () => record });
+      read = getValues;
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <button type="button" onClick={() => reset({ email: "chosen@example.com" })}>
+            Choose
+          </button>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    // Empty and loading, not holding the thunk it was handed.
+    expect(read()).toEqual({});
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose" }));
+    await act(async () => {
+      settleFetch({ email: "loaded@example.com" });
+      await record;
+    });
+
+    // The same stale-answer rule the resolver runs on, applied to values: an
+    // answer to a question nobody is asking any more does not land.
+    expect(read()).toEqual({ email: "chosen@example.com" });
+  });
+
+  it("does not re-apply an errors map that is new but says the same thing", async () => {
+    // The same identity-then-content rule `values` follows, and here it is the
+    // difference between a feature and a render loop: an errors map written
+    // inline is a new object *and* a new `FieldError` on every render, and
+    // applying one notifies, which renders, which arrives back at the same
+    // comparison.
+    let renders = 0;
+    component Probe(message: string) {
+      renders += 1;
+      const { register, formState } = useForm({
+        defaultValues: { email: "" },
+        errors: { email: { type: "server", message } },
+      });
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          {formState.errors.email != null && <p role="alert">{formState.errors.email.message}</p>}
+        </form>
+      );
+    }
+
+    const { rerender } = render(<Probe message="Already registered" />);
+    expect(screen.getByRole("alert").textContent).toBe("Already registered");
+    const settled = renders;
+
+    rerender(<Probe message="Already registered" />);
+    // The rerender itself is one render, and the store added none to it.
+    expect(renders).toBe(settled + 1);
+    expect(screen.getByRole("alert").textContent).toBe("Already registered");
+
+    rerender(<Probe message="That address is in use" />);
+    expect(screen.getByRole("alert").textContent).toBe("That address is in use");
+  });
+
+  it("takes a map of errors as an input and clears it on the next successful submit", async () => {
+    const onValid = fn();
+    component Probe(errors: FieldErrors) {
+      const { register, handleSubmit, formState } = useForm({
+        defaultValues: { email: "" },
+        errors,
+      });
+      return (
+        <form onSubmit={handleSubmit(onValid)}>
+          <input aria-label="email" {...register("email")} />
+          {formState.errors.email != null && <p role="alert">{formState.errors.email.message}</p>}
+        </form>
+      );
+    }
+
+    const rejected: FieldErrors = { email: { type: "server", message: "Already registered" } };
+    const { container, rerender } = render(<Probe errors={rejected} />);
+    // On screen from the first render, without a loop at the call site and
+    // without an effect.
+    expect(screen.getByRole("alert").textContent).toBe("Already registered");
+
+    rerender(<Probe errors={{}} />);
+    expect(screen.queryByRole("alert")).toBe(null);
+
+    rerender(<Probe errors={rejected} />);
+    expect(screen.getByRole("alert").textContent).toBe("Already registered");
+
+    // A submit that passes is the form's own verdict about the same field, and
+    // it replaces the server's.
+    await act(async () => {
+      submitForm(container);
+    });
+    await settle();
+    expect(screen.queryByRole("alert")).toBe(null);
+    expect(onValid).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("setValue, setError, clearErrors and trigger", () => {
@@ -934,6 +1461,76 @@ describe("async validation", () => {
 
     await act(() => new Promise((resolve) => setTimeout(resolve, 120)));
     expect(screen.queryByRole("alert")).toBe(null);
+  });
+
+  it("stops reporting isValidating for a pass a reset threw away", async () => {
+    // A promise cannot be cancelled, so a reset that clears `isValidating`
+    // cannot clear what is in flight. It disowns it — and the half that is
+    // easy to get wrong is what happens when the disowned pass finishes
+    // *after* a newer one has started: it must not turn the flag off under it.
+    const settlers: Array<() => void> = [];
+    component Probe() {
+      const { register, reset, formState } = useForm({
+        defaultValues: { name: "" },
+        mode: "onChange",
+      });
+      return (
+        <form>
+          <input
+            aria-label="name"
+            {...register("name", {
+              validate: async () => {
+                await new Promise<void>((resolve) => settlers.push(resolve));
+                return true;
+              },
+            })}
+          />
+          <output>{String(formState.isValidating)}</output>
+          <button type="button" onClick={() => reset()}>
+            Reset
+          </button>
+        </form>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    const output = elementIn(container, "output");
+    const settle = async (at: number) => {
+      await act(async () => {
+        settlers[at]();
+        await Promise.resolve();
+      });
+    };
+
+    // An eager mode primes every field once on mount, so the first pass is
+    // that one. Let it finish before the interesting part begins.
+    expect(settlers.length).toBe(1);
+    await settle(0);
+    await waitFor(() => {
+      expect(output.textContent).toBe("false");
+    });
+
+    await userEvent.type(screen.getByLabelText("name"), "a");
+    expect(output.textContent).toBe("true");
+    expect(settlers.length).toBe(2);
+
+    // The reset drops the flag even though that pass is still running.
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(output.textContent).toBe("false");
+
+    // A third pass starts, and then the disowned one finishes. The flag
+    // belongs to the third now, and the second must not turn it off.
+    await userEvent.type(screen.getByLabelText("name"), "b");
+    expect(output.textContent).toBe("true");
+    expect(settlers.length).toBe(3);
+
+    await settle(1);
+    expect(output.textContent).toBe("true");
+
+    await settle(2);
+    await waitFor(() => {
+      expect(output.textContent).toBe("false");
+    });
   });
 
   it("reports isValidating while an async check is pending", async () => {
@@ -1985,5 +2582,116 @@ describe("React semantics", () => {
     await waitFor(() => {
       expect(screen.getByText("Required")).toBeInTheDocument();
     });
+  });
+});
+
+// What `uf check` says about the promise this package's types make, which is
+// the one promise no amount of rendering can hold it to: that a per-field read
+// comes back as the type that field actually holds, and that a misspelt segment
+// or a wrongly typed write is an error at the call.
+//
+// `tests/type-tests/field-paths.js` is the misuse, written down. It is
+// *supposed* to fail `uf check`, it marks each line that must fail with a
+// `// expect:` comment, and this reads both and compares them — so a change
+// that makes one of them stop being an error fails here, and so does one that
+// makes something else in that file start being one.
+
+// This checkout, found by a file it has rather than by counting `..`, for the
+// reason `ui.test.js` sets out at length: which project `uf test` selected
+// depends on how the command was typed, and two levels above the worker's
+// project is this repository only under one of them.
+const repository: string = (() => {
+  const wanted = path.join("packages", "form", "internal", "field-path.js");
+  const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
+  let directory = from;
+  for (let up = 0; up < 8; up += 1) {
+    if (fs.existsSync(path.join(directory, wanted))) return directory;
+    directory = path.dirname(directory);
+  }
+  throw new Error(`could not find ${wanted} above ${from}`);
+})();
+
+// The binary running this suite: `uf test` puts its own path in `UF_BINARY`, so
+// this checks *this* build rather than whatever `uf` is on PATH.
+const UF: string = (() => {
+  const binary = process.env.UF_BINARY;
+  if (binary == null || binary === "") {
+    throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
+  }
+  return binary;
+})();
+
+// The part of `uf check --json` this reads. A message arrives as spans rather
+// than a string so that a renderer can mark the code inside it, which is why
+// the comparison below joins it back together first.
+type Diagnostic = {
+  primary: { path: string, start: { line: number, column: number } },
+  message: Array<{ kind: string, text: string }>,
+};
+type Report = {
+  typeCheck: { status: string, filesChecked: number, diagnostics: Array<Diagnostic> },
+};
+
+describe("a field path is checked against the shape of the values", () => {
+  const fixture = path.join("tests", "type-tests", "field-paths.js");
+
+  it("reports every misuse, and only the misuses", () => {
+    const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
+    const wanted = new Map<number, string>();
+    source.forEach((line, index) => {
+      const marker = line.match(/^\s*\/\/ expect: (.+)$/);
+      if (marker != null) {
+        // Lines are one-based, and the line that must fail is the next one.
+        wanted.set(index + 2, marker[1]);
+      }
+    });
+    // Without this the test would pass on a fixture somebody had emptied.
+    expect(wanted.size).toBeGreaterThan(10);
+
+    // Both paths in one command, and that is load-bearing: `uf check` builds
+    // its module map from the files it is asked about, so a relative import
+    // that leaves that set resolves to an any-typed value — after which
+    // `TValues` is `any` and every line of the fixture passes.
+    const run = spawnSync(UF, ["check", "tests/type-tests", "packages/form", "--json"], {
+      cwd: repository,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    if (run.stdout === "") {
+      throw new Error(
+        `\`uf check tests/type-tests packages/form --json\` in ${repository} printed ` +
+          `nothing: status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
+      );
+    }
+    const report: Report = JSON.parse(run.stdout);
+    expect(report.typeCheck.status).toBe("checked");
+
+    const reported = new Map<number, string>();
+    for (const diagnostic of report.typeCheck.diagnostics) {
+      if (diagnostic.primary.path.endsWith(fixture)) {
+        reported.set(
+          diagnostic.primary.start.line,
+          diagnostic.message.map((span) => span.text).join(""),
+        );
+      }
+    }
+
+    const missing = [];
+    for (const [line, expected] of wanted) {
+      const said = reported.get(line);
+      if (said == null || !said.includes(expected)) {
+        missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
+      }
+    }
+    // Every marked line is an error, with the message the fixture predicted.
+    expect(missing).toEqual([]);
+
+    // And nothing else in the file is. This is the half that says the typed
+    // reads *work*: every correct segment read, every correct write, and every
+    // dotted string beside them is silent.
+    const unexpected = [...reported.keys()]
+      .filter((line) => !wanted.has(line))
+      .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
+    expect(unexpected).toEqual([]);
   });
 });

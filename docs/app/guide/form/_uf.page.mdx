@@ -67,8 +67,8 @@ field that is showing a message updates as it is fixed.
 `setFocus`, `formState` and `control`.
 
 `formState` carries `errors`, `isDirty`, `dirtyFields`, `touchedFields`,
-`isSubmitting`, `isSubmitted`, `isSubmitSuccessful`, `isValidating`, `isValid`
-and `submitCount`.
+`isSubmitting`, `isSubmitted`, `isSubmitSuccessful`, `isValidating`, `isValid`,
+`submitCount`, `disabled`, `isLoading` and `defaultValues`.
 
 **Errors are flat**, keyed by the string you registered:
 
@@ -77,7 +77,111 @@ formState.errors["profile.city"]; // not formState.errors.profile.city
 ```
 
 Flow has no mapped type over a path, so "the error for `items.0.name`" cannot be
-spelled as a nested shape. A flat map is the version that is true.
+spelled as a nested shape. A flat map is the version that is true. To ask about
+one field *with the checker's help*, use `getFieldState("profile", "city")` —
+which is the next section.
+
+## A field read at its own type
+
+A dotted path is a string, and a string cannot be checked against the shape of
+your values: Flow has no template-literal types. A path given as **segments**
+can be, and is:
+
+```js
+const { getValues, setValue, watch, getFieldState } = useForm({
+  defaultValues: { email: "", address: { city: "", zip: 0 }, items: [{ price: 0 }] },
+});
+
+getValues("address", "city");        // string
+watch("items", 0, "price");          // number
+setValue(["items", 0, "price"], 12); // and 12 has to be a number
+getFieldState("address", "city");    // the path is checked
+
+getValues("address.city");           // still works, still mixed
+```
+
+Nothing is annotated: `TValues` is inferred from `defaultValues` and every read
+is inferred from it. `getValues("address", "country")` is an error naming
+`country`, and `setValue(["items", 0, "price"], "cheap")` is an error naming the
+value's type — which no read could have told you.
+
+Four things bound the claim, and each is a fact rather than a preference:
+
+- **Four segments deep**, which reaches `items.0.tags.0`. A fifth is `mixed`.
+  The recursive form of the type binds its first segment as `unknown` in this
+  checker — filed as [#300](https://github.com/ubugeeei-prod/uf/issues/300) with
+  a reproduction — so the depth is written out and capped.
+- **A first segment that is not a key falls back to the dotted form**, because
+  the dotted form has to keep working. `getValues("addres")` is `mixed` rather
+  than an error at the call, and is caught where the value is used at a type. A
+  *second* segment is caught at the call.
+- **`watch(["a", "b"])` is not a path.** It means the two fields `a` and `b`, as
+  it does in React Hook Form. That is why the readers take segments as
+  arguments; and `setValue`, whose value has to follow the path, takes an array
+  instead, because three string arguments could not be told apart at run time.
+- **`useWatch` takes `path`, not segments.** A hook declaration has one
+  signature, so its typed path is one option and its value is computed by a
+  conditional type. The type is the same; a misspelt segment there is `mixed`
+  rather than a named error.
+
+```js
+const city = useWatch({ control, path: ["address", "city"] }); // string
+```
+
+`tests/type-tests/field-paths.js` holds every line of this to what the checker
+actually prints — including the lines that must *not* be errors.
+
+## Values that arrive later
+
+An edit form usually does not know its values when it first renders. Three
+options cover it, and none of them needs a `useEffect`:
+
+```js
+// The record is fetched. The form renders immediately — empty, not dirty,
+// with formState.isLoading true — and takes the values when they arrive.
+useForm({ defaultValues: () => fetchRecord(id) });
+
+// The record is owned by something else — a query cache, an atom, a row
+// selected in a list — and the form follows it.
+useForm({ values: record, resetOptions: { keepDirtyValues: true } });
+
+// The server rejected the submit and said which fields.
+useForm({ errors: rejection });
+```
+
+`values` re-seeds the form when the object it is given changes, which is the
+`useEffect` calling `reset` you would otherwise write, at the same point in the
+commit and without the render with the old values in it. Compared by identity
+first and content second, so an object literal written inline is not a loop.
+
+A re-seed **is** a `reset`, so `resetOptions` says what survives one — and that
+answers the three questions a re-seed raises:
+
+| | Default | With |
+| --- | --- | --- |
+| A field the user has edited | replaced | kept, by `keepDirtyValues` |
+| Errors and `isValid` | cleared | kept, by `keepErrors` / `keepIsValid` |
+| A field the new values omit | gone — the tree is replaced, not merged | — |
+
+`keepDirtyValues` also recomputes which kept fields are still dirty: a field the
+incoming record agrees with is not unsaved work any more.
+
+An asynchronous `defaultValues` is called once, from an effect on mount, and
+lands carefully. If the user has typed by the time it resolves, their text
+stays and the rest of the record lands around it. If a `reset(values)` or a
+`values` re-seed has happened, it does not land at all — the same stale-answer
+rule the resolver runs on, applied to values.
+
+`defaultValues` is the whole `TValues`, not React Hook Form's `DeepPartial` of
+it: Flow can write `Partial<T>` and not the recursive version without an `any`
+in the middle, and the whole object is the honest requirement anyway, because it
+is what `reset()` goes back to.
+
+There is no `isReady`. React Hook Form has one because its form finishes setting
+itself up after the first render; this store is built in a `useState`
+initialiser, so its first snapshot is already the real one — an `isReady` here
+would be `!isLoading` under another name, or a flag that flipped in an effect
+and cost every form a render to learn something already true.
 
 ## Rules
 
@@ -257,21 +361,22 @@ unvalidated field is how it would stay hidden for the rest of the session.
 | --- | --- | --- |
 | `formState` behind a `Proxy` | A plain object, one render on the dirty transition | A `Proxy` records reads during render, and the React Compiler may skip the render |
 | `errors.profile.city` | `errors["profile.city"]` | Flow has no mapped type over a path |
-| `FieldPath<T>` | `string` paths, `mixed` values | Flow has no template-literal types; a `FieldPath<T>` that is really `string` would be a type pretending to check something |
+| `FieldPath<T>`, a union of dotted strings | Dotted strings are `mixed`; segments are typed, four deep | Flow has no template-literal types, so a dotted path cannot be checked — but a generic bounded by the keys it indexes can |
 | Resolver and rules both run | The resolver replaces the rules for validation | Rules still say how to *read* a control |
 | `useFormContext()` returns `null` outside a provider | It throws | A field with no form renders a control wired to nothing, and looks entirely correct |
 | No accessible-error helper | `register` plus `errorProps` | The attributes are only correct in pairs |
 | `ref(null)` on unmount | A React 19 ref that returns a cleanup | It is the only form that says *which* element left — a radio group is several nodes under one name |
 
-Typed where it can be: `defaultValues`, `getValues()`, `reset()` and
-`handleSubmit`'s callback argument. Untyped where Flow cannot: the path strings
-and the values behind them.
+Typed where it can be: `defaultValues`, `getValues()`, `reset()`,
+`handleSubmit`'s callback argument, and every per-field read and write given as
+segments. Untyped where Flow cannot: the dotted path strings, and the values
+behind them.
 
 ## Not implemented
 
-`defaultValues` as a promise, `shouldUnregister`, `delayError`, form-level
-persistence, `criteriaMode: "all"` — one error per field is structural here —
-and devtools.
+`shouldUnregister`, `delayError`, form-level persistence, `criteriaMode: "all"`
+— one error per field is structural here — `formState.isReady`, for the reason
+above, and devtools.
 
 One limitation is worth reading before a server-rendered form surprises you:
 `register` gives an input a `ref`, and a ref does not run on a server, so

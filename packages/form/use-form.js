@@ -73,7 +73,8 @@ import {
 
 import type { ValidationRules } from "./rules.js";
 import type { Resolver } from "./resolver.js";
-import type { FieldPath, FieldValues } from "./internal/field-path.js";
+import type { FieldPath, FieldSegment, FieldValues } from "./internal/field-path.js";
+import { pathOf } from "./internal/field-path.js";
 import type {
   Control,
   FieldErrors,
@@ -116,8 +117,50 @@ export type UseFormOptions<TValues extends FieldValues, TOutput = TValues> = {|
    *
    * Kept as a deep copy, so a caller who later mutates the object they passed
    * does not change what the form resets to.
+   *
+   * A thunk returning a promise is the other half: an edit form that has to
+   * fetch the record it is editing renders immediately — empty, not dirty, with
+   * `formState.isLoading` true — and takes the values when they arrive, without
+   * an effect, a second component, or a render with the wrong values in it.
+   * Called once, from an effect on mount. If the user has typed something by
+   * the time it resolves, their text stays and the rest of the record lands
+   * around it.
+   *
+   * Not a `DeepPartial` of `TValues`, which is what React Hook Form takes: Flow
+   * can write `Partial<T>` and not the recursive version without an `any` in the
+   * middle of it, and the whole values object is the honest requirement anyway —
+   * it is what `reset()` goes back to.
    */
-  readonly defaultValues?: TValues,
+  readonly defaultValues?: TValues | (() => Promise<TValues>),
+  /**
+   * Values something outside the form owns, which the form follows.
+   *
+   * For a form whose values are not its own: a record refetched by
+   * `@uniflowed/query`, a draft in a `@uniflowed/state` atom, a row selected in
+   * a list beside the form. When the object changes, the form re-seeds itself —
+   * which is the `useEffect` calling `reset` that would otherwise be written by
+   * hand, at the same point in the commit, with the same rules, and without the
+   * render with the old values in it.
+   *
+   * What a re-seed keeps is [`resetOptions`], and `keepDirtyValues` is the one
+   * to reach for on a form somebody is typing into.
+   *
+   * Compared by identity, then by content: an object literal written inline is
+   * a new object on every render, and re-seeding on each of those would be a
+   * loop rather than a feature.
+   */
+  readonly values?: TValues,
+  /**
+   * Errors something outside the form owns — a server's answer, usually.
+   *
+   * `setError` takes one field at a time, so a rejected submit means a loop at
+   * the call site and errors that nothing remembers the origin of. This is the
+   * map as an input: it is applied when it changes, and what it replaces is its
+   * own previous contribution rather than the errors validation produced.
+   */
+  readonly errors?: FieldErrors,
+  /** What a `values` or `errors` re-seed keeps. Defaults to a plain reset. */
+  readonly resetOptions?: ResetOptions,
   readonly mode?: Mode,
   readonly reValidateMode?: ReValidateMode,
   /** A schema, in place of the rules on each `register`. See `resolver.js`. */
@@ -149,15 +192,196 @@ export type UseFormOptions<TValues extends FieldValues, TOutput = TValues> = {|
   readonly disabled?: boolean,
 |};
 
+// ---------------------------------------------------------------------- //
+// Reading a field at its type
+//
+// Every signature below is an intersection whose first four arms are the same
+// four: one per path length, each segment bounded by the keys of what the
+// segment before it landed on. `getValues("address", "city")` is `string`
+// because `FieldSegment<TValues["address"]>` is `"city" | "zip"` and
+// `TValues["address"]["city"]` is what the values say it is.
+//
+// Three things about that are worth knowing before reading them.
+//
+// **The last arm is the dotted form, and it has to be last.** Flow resolves an
+// intersection by trying its arms in order, so `getValues("address.city")` fails
+// the bound on the first four — `"address.city"` is not a key of anything — and
+// lands on `(name: FieldPath) => mixed`, which is exactly what it does today.
+// Nothing that worked before this stops working, and nothing that was `mixed`
+// before is anything but `mixed` now.
+//
+// **A segment that is not a key is caught, and a segment past the fourth is
+// not.** The depth is capped because the recursive form — one arm, matching
+// `[K, ...Rest]` — binds `K` as `unknown` in this checker, which is
+// ubugeeei-prod/uf#300. Four covers `items.0.tags.0`; a fifth segment falls to
+// the dotted arm and is `mixed`.
+//
+// **`setValue` takes its segments as an array and the readers take them as
+// arguments**, and that is forced rather than chosen: the value has to come
+// after the path, so a positional `setValue("address", "city", next)` could not
+// be told from today's `setValue(name, value, options)` at run time — three
+// arguments, all of them possibly strings. An array can be told apart by
+// `Array.isArray`, at the call and in the type.
+// ---------------------------------------------------------------------- //
+
 /**
- * `watch`, in its five shapes.
+ * `getValues`, in its six shapes.
+ *
+ * The four typed arms, then the whole-form read, then the dotted string. The
+ * order is the resolution order and the last two are unchanged by any of this:
+ * `getValues()` is `TValues` and `getValues("items.0.price")` is `mixed`,
+ * exactly as before.
+ */
+export type GetValues<TValues> = (<K1 extends FieldSegment<TValues>>(k1: K1) => TValues[K1]) &
+  (<K1 extends FieldSegment<TValues>, K2 extends FieldSegment<TValues[K1]>>(
+    k1: K1,
+    k2: K2,
+  ) => TValues[K1][K2]) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+  >(
+    k1: K1,
+    k2: K2,
+    k3: K3,
+  ) => TValues[K1][K2][K3]) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+    K4 extends FieldSegment<TValues[K1][K2][K3]>,
+  >(
+    k1: K1,
+    k2: K2,
+    k3: K3,
+    k4: K4,
+  ) => TValues[K1][K2][K3][K4]) &
+  (() => TValues) &
+  ((name: FieldPath) => mixed);
+
+/**
+ * `setValue`, in its five shapes.
+ *
+ * The path is an array here rather than a list of arguments, for the reason
+ * above it: the value follows the path, and three string arguments would be
+ * ambiguous at run time. What the typed arms buy is the *value* as well as the
+ * path — `setValue(["items", 0, "price"], "cheap")` is refused, which is the
+ * half of this that a wrong read cannot tell you about.
+ */
+export type SetValue<TValues> = (<K1 extends FieldSegment<TValues>>(
+  path: [K1],
+  value: TValues[K1],
+  options?: SetValueOptions,
+) => void) &
+  (<K1 extends FieldSegment<TValues>, K2 extends FieldSegment<TValues[K1]>>(
+    path: [K1, K2],
+    value: TValues[K1][K2],
+    options?: SetValueOptions,
+  ) => void) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+  >(
+    path: [K1, K2, K3],
+    value: TValues[K1][K2][K3],
+    options?: SetValueOptions,
+  ) => void) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+    K4 extends FieldSegment<TValues[K1][K2][K3]>,
+  >(
+    path: [K1, K2, K3, K4],
+    value: TValues[K1][K2][K3][K4],
+    options?: SetValueOptions,
+  ) => void) &
+  ((name: FieldPath, value: mixed, options?: SetValueOptions) => void);
+
+/**
+ * `getFieldState`, in its five shapes.
+ *
+ * No value type is involved — a `FieldState` is the same shape whatever the
+ * field holds — so what the typed arms check is the path and nothing else. That
+ * is still the answer to "how do I read the error for a nested field with the
+ * checker's help": the errors stay one flat map keyed by the dotted path, for
+ * the reason `resolver.js` gives, and this is the accessor that will not let you
+ * misspell one.
+ */
+export type GetFieldState<TValues> = (<K1 extends FieldSegment<TValues>>(k1: K1) => FieldState) &
+  (<K1 extends FieldSegment<TValues>, K2 extends FieldSegment<TValues[K1]>>(
+    k1: K1,
+    k2: K2,
+  ) => FieldState) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+  >(
+    k1: K1,
+    k2: K2,
+    k3: K3,
+  ) => FieldState) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+    K4 extends FieldSegment<TValues[K1][K2][K3]>,
+  >(
+    k1: K1,
+    k2: K2,
+    k3: K3,
+    k4: K4,
+  ) => FieldState) &
+  ((name: FieldPath) => FieldState);
+
+/**
+ * `watch`, in its nine shapes.
  *
  * An intersection rather than one signature, so the reactive reads and the
  * imperative subscription are told apart by the checker instead of by a comment
  * — `const email = watch("email")` and `const stop = watch("email", save)` are
  * different enough that inferring `mixed` for both would be no help at all.
+ *
+ * The four typed arms come first, and the two-argument one sits above
+ * `(name, listener)` without disturbing it: a listener is a function and a
+ * segment is not, so the arms are told apart by the checker for the same reason
+ * the run time tells them apart with `typeof`.
+ *
+ * `watch(["a", "b"])` is *not* a path and never becomes one. It means the two
+ * fields `a` and `b`, which is the meaning it has here and in React Hook Form,
+ * and a library that quietly changed it into `a.b` would change what a working
+ * form watched. That is why the readers take segments as arguments: the array
+ * slot in this signature was already spoken for.
  */
-export type Watch<TValues> = (() => TValues) &
+export type Watch<TValues> = (<K1 extends FieldSegment<TValues>>(k1: K1) => TValues[K1]) &
+  (<K1 extends FieldSegment<TValues>, K2 extends FieldSegment<TValues[K1]>>(
+    k1: K1,
+    k2: K2,
+  ) => TValues[K1][K2]) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+  >(
+    k1: K1,
+    k2: K2,
+    k3: K3,
+  ) => TValues[K1][K2][K3]) &
+  (<
+    K1 extends FieldSegment<TValues>,
+    K2 extends FieldSegment<TValues[K1]>,
+    K3 extends FieldSegment<TValues[K1][K2]>,
+    K4 extends FieldSegment<TValues[K1][K2][K3]>,
+  >(
+    k1: K1,
+    k2: K2,
+    k3: K3,
+    k4: K4,
+  ) => TValues[K1][K2][K3][K4]) &
+  (() => TValues) &
   ((name: FieldPath) => mixed) &
   ((names: $ReadOnlyArray<FieldPath>) => $ReadOnlyArray<mixed>) &
   ((listener: WatchListener<TValues>) => () => void) &
@@ -174,9 +398,9 @@ export type UseFormReturn<TValues extends FieldValues, TOutput = TValues> = {|
     onInvalid?: (errors: FieldErrors, event?: mixed) => mixed,
   ) => (event?: mixed) => Promise<void>,
   readonly watch: Watch<TValues>,
-  readonly getValues: (name?: FieldPath) => mixed,
-  readonly setValue: (name: FieldPath, value: mixed, options?: SetValueOptions) => void,
-  readonly getFieldState: (name: FieldPath) => FieldState,
+  readonly getValues: GetValues<TValues>,
+  readonly setValue: SetValue<TValues>,
+  readonly getFieldState: GetFieldState<TValues>,
   readonly reset: (values?: TValues, options?: ResetOptions) => void,
   readonly setError: (
     name: FieldPath,
@@ -186,7 +410,7 @@ export type UseFormReturn<TValues extends FieldValues, TOutput = TValues> = {|
   readonly clearErrors: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
   readonly trigger: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => Promise<boolean>,
   readonly setFocus: (name: FieldPath, options?: {| readonly shouldSelect?: boolean |}) => void,
-  readonly formState: FormState,
+  readonly formState: FormState<TValues>,
   readonly control: Control<TValues, TOutput>,
 |};
 
@@ -211,10 +435,16 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   const shouldFocusError = options?.shouldFocusError ?? true;
   const progressive = options?.progressive ?? false;
   const disabled = options?.disabled ?? false;
+  const values = options?.values ?? null;
+  const inputErrors = options?.errors ?? null;
+  const resetOptions = options?.resetOptions ?? null;
 
   const [instance] = useState(() => {
     const control = createFormStore<TValues, TOutput>({
       defaultValues: (options?.defaultValues ?? EMPTY_DEFAULTS) as $FlowFixMe,
+      values,
+      errors: inputErrors,
+      resetOptions,
       mode,
       reValidateMode,
       resolver,
@@ -242,6 +472,9 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   useEffect(() => {
     control.configure({
       defaultValues: (options?.defaultValues ?? EMPTY_DEFAULTS) as $FlowFixMe,
+      values,
+      errors: inputErrors,
+      resetOptions,
       mode,
       reValidateMode,
       resolver,
@@ -250,6 +483,15 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
       disabled,
     });
   });
+
+  // An asynchronous `defaultValues` starts here rather than in the initialiser
+  // above, and the difference is React's rule rather than taste: an initialiser
+  // runs during a render, and a render can be thrown away — a fetch started in
+  // one is a request nobody asked for. The store makes this idempotent, so
+  // Strict Mode's mount, unmount and mount again is still one request.
+  useEffect(() => {
+    control.loadDefaults();
+  }, [control]);
 
   const formState = useSyncExternalStore(
     control.subscribeFormState,
@@ -297,8 +539,16 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
     [registrar, errors, progressive, disabled],
   );
 
+  // One implementation behind each of the intersections above, which is why
+  // each of these ends in a cast. An intersection of function types is a
+  // *promise about the calls*, and it is kept by the arms being mutually
+  // exclusive at run time — a listener is a function, a segment is not; an array
+  // of names is an array, a segment is not — rather than by a body Flow could
+  // check against nine signatures at once. `watch` was already written this way
+  // for its five; the three below join it for the same reason.
   const watch = useCallback(
-    (first?: mixed, second?: mixed) => {
+    (first?: mixed, ...rest: $ReadOnlyArray<mixed>) => {
+      const second = rest[0];
       if (typeof first === "function") {
         return control.listen(null, first as $FlowFixMe);
       }
@@ -316,7 +566,7 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
         }
         return names.map((name) => control.valueAt(name));
       }
-      const name = String(first);
+      const name = pathOf([String(first), ...rest.map((segment) => String(segment))]);
       control.observe(name);
       return control.valueAt(name);
     },
@@ -324,14 +574,17 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   ) as $FlowFixMe;
 
   const getFieldState = useCallback(
-    (name: FieldPath): FieldState => ({
-      invalid: formState.errors[name] != null,
-      isDirty: formState.dirtyFields[name] === true,
-      isTouched: formState.touchedFields[name] === true,
-      error: formState.errors[name],
-    }),
+    (first: mixed, ...rest: $ReadOnlyArray<mixed>): FieldState => {
+      const name = pathOf([String(first), ...rest.map((segment) => String(segment))]);
+      return {
+        invalid: formState.errors[name] != null,
+        isDirty: formState.dirtyFields[name] === true,
+        isTouched: formState.touchedFields[name] === true,
+        error: formState.errors[name],
+      };
+    },
     [formState],
-  );
+  ) as $FlowFixMe;
 
   const setError = useCallback(
     (
@@ -356,9 +609,28 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   );
 
   const getValues = useCallback(
-    (name?: FieldPath) => (name == null ? control.getValues() : control.valueAt(name)),
+    (first?: mixed, ...rest: $ReadOnlyArray<mixed>) =>
+      first == null
+        ? control.getValues()
+        : control.valueAt(pathOf([String(first), ...rest.map((segment) => String(segment))])),
     [control],
-  );
+  ) as $FlowFixMe;
+
+  // `setValue` is the store's own function everywhere but here, and here it is
+  // wrapped for one line: the array form. `Array.isArray` is the same test the
+  // type makes — a tuple in the first position or a string, never both.
+  const setValue = useCallback(
+    (target: mixed, value: mixed, setValueOptions?: SetValueOptions) => {
+      control.setValue(
+        Array.isArray(target)
+          ? pathOf((target as $ReadOnlyArray<mixed>).map((segment) => String(segment)))
+          : String(target),
+        value,
+        setValueOptions,
+      );
+    },
+    [control],
+  ) as $FlowFixMe;
 
   return useMemo(
     () => ({
@@ -368,7 +640,7 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
       handleSubmit: control.submitWith,
       watch,
       getValues,
-      setValue: control.setValue,
+      setValue,
       getFieldState,
       reset: control.reset,
       setError,
@@ -378,7 +650,18 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
       formState,
       control,
     }),
-    [register, registrar, control, watch, getValues, getFieldState, setError, setFocus, formState],
+    [
+      register,
+      registrar,
+      control,
+      watch,
+      getValues,
+      setValue,
+      getFieldState,
+      setError,
+      setFocus,
+      formState,
+    ],
   );
 }
 
