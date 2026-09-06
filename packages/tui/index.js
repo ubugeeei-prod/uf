@@ -69,21 +69,34 @@
 // Implemented, tested, and true: a component tree, flexbox layout in whole
 // cells, a cell buffer with correct wide-grapheme handling, a diff that emits
 // only changed cells, keyboard input with OpenTUI's key names and propagation
-// rules, declarative focus, terminal capability detection that agrees with the
-// CLI's, and an in-memory renderer that runs the same code the terminal one
-// does.
+// rules, bracketed paste, declarative focus, a scrolling window onto content
+// taller than it, terminal capability and *size* detection that agrees with
+// the CLI's, and an in-memory renderer that runs the same code the terminal
+// one does.
 //
-// Not here: mouse input, text selection, scroll boxes, images, the rich
-// content components, and everything under OpenTUI's "application APIs". They
-// are ubugeeei-prod/uf#314, and they are absent rather than present as
-// functions that throw — because a stub is what this package used to be.
+// Not here: mouse input, text selection, images, the rich content components,
+// and everything under OpenTUI's "application APIs". They are
+// ubugeeei-prod/uf#314, and they are absent rather than present as functions
+// that throw — because a stub is what this package used to be.
 //
 // Also not here, and worth saying because ubugeeei-prod/uf#247 asked for it:
 // uf's own CLI does not draw through this. It cannot — `crates/uf_term` is
 // Rust, this is JavaScript, and there is no way to run a Flow program in this
 // repository outside `uf test`, `uf dev` and `uf build`. ubugeeei-prod/uf#316
 // is that gap, what would close it, and why the two renderers are each right
-// for their own caller in the meantime.
+// for their own caller in the meantime. `tools/bench/tui/startup.js` now
+// measures the number that issue says has to exist first: a Flow entry point
+// that draws one frame costs 149 ms with a warm transform cache and 383 ms
+// with a cold one, against 8 ms for the whole of `uf info` and 58 ms for
+// `node -e 0`. A banner cannot be written this way; a session that already
+// starts Node and then runs for minutes can.
+//
+// What the two renderers must not do is silently disagree about the terminal,
+// and there are three guards rather than a promise. `capability.js` reproduces
+// `crates/uf_term/src/capability.rs`'s colour precedence and its size
+// precedence, `widths.js` holds the same Unicode tables as
+// `crates/uf_term/src/text/tables.rs`, and `tests/library/tui.test.js` reads
+// both Rust files and fails when either side is edited alone.
 //
 // # How the package is laid out
 //
@@ -93,10 +106,11 @@
 // - `cells.js` — what a frame is: the grid, the colours, the continuation cell.
 // - `layout.js` — flexbox, in whole cells.
 // - `diff.js` — two frames, as the bytes that turn one into the other.
-// - `keys.js` — terminal bytes, as key events.
-// - `capability.js` — what this terminal can render, by the CLI's own rules.
+// - `keys.js` — terminal bytes, as key events, and a paste as one of them.
+// - `capability.js` — what this terminal can render and how big it is, by the
+//   CLI's own rules.
 // - `terminal.js` — a real terminal, and the in-memory one tests use.
-// - `components.js` — `Box`, `Text`, `Input`, and the hooks.
+// - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, and the hooks.
 //
 // `internal/` holds the three that a consumer must not be able to reach past:
 // `tree.js` (props become a layout style once, here), `paint.js` (both passes
@@ -112,9 +126,18 @@ export type {
   ColorLevel,
   GlyphSet,
   TerminalEnv,
+  TerminalReport,
+  TerminalSize,
   Tty,
 } from "./capability.js";
-export { borderGlyphs, detectCapabilities, plainCapabilities } from "./capability.js";
+export {
+  FALLBACK_COLUMNS,
+  FALLBACK_ROWS,
+  borderGlyphs,
+  detectCapabilities,
+  detectSize,
+  plainCapabilities,
+} from "./capability.js";
 
 export type { Color, Frame, Rect, Style } from "./cells.js";
 export { Attributes, INHERIT, frameRow, frameText, parseColor } from "./cells.js";
@@ -133,8 +156,8 @@ export type { WrapMode } from "./internal/paint.js";
 
 export type { Update } from "./diff.js";
 
-export type { KeyEvent, KeySource } from "./keys.js";
-export { decodeKeys } from "./keys.js";
+export type { KeyDecoder, KeyEvent, KeySource } from "./keys.js";
+export { createKeyDecoder, decodeKeys } from "./keys.js";
 
 export type { Renderer, Root } from "./internal/host.js";
 
@@ -146,8 +169,17 @@ export type {
   BoxProps,
   ColorValue,
   InputProps,
+  ScrollBoxProps,
   TextProps,
   TextStyleProps,
   TitleAlignment,
 } from "./components.js";
-export { Box, Input, Text, useKeyboard, useRenderer, useTerminalSize } from "./components.js";
+export {
+  Box,
+  Input,
+  ScrollBox,
+  Text,
+  useKeyboard,
+  useRenderer,
+  useTerminalSize,
+} from "./components.js";

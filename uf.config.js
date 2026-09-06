@@ -214,6 +214,34 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // --- Measurement ----------------------------------------------------
+    //
+    // Deliberately not in `ci`, and for two different reasons.
+    //
+    // `bench:tui` needs React Ink, which is a dependency of the benchmark and
+    // of nothing else in this repository — `npm install` inside
+    // `tools/bench/tui` first. Its byte counts are deterministic and *are*
+    // checked in CI, by `tests/library/tui.test.js`, which asserts uf's half of
+    // the table in `docs/app/guide/tui/_uf.page.mdx` against the renderer. What
+    // this task adds is Ink's half and the wall clock, and a wall clock on a
+    // shared build agent is a measurement of the agent.
+    //
+    // `bench:tui:startup` answers the question ubugeeei-prod/uf#316 says has to
+    // be answered before a uf command is written in Flow: what a Flow entry
+    // point on the Capability JS Host costs before it draws anything. Run it
+    // twice — the first run of a new `uf` binary pays for every transform and
+    // the second pays for none.
+    "bench:tui": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/tui/bench.js",
+      dependsOn: ["build"],
+    },
+    "bench:tui:startup": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/tui/startup.js",
+      dependsOn: ["build"],
+    },
+
     // --- Release --------------------------------------------------------
     //
     // Each is a step the release workflow runs, named so it can be run by

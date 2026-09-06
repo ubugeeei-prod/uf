@@ -34,7 +34,7 @@
 import * as React from "@uniflowed/react";
 
 import type { Capabilities, ColorChoice, TerminalEnv } from "./capability.js";
-import { detectCapabilities } from "./capability.js";
+import { FALLBACK_COLUMNS, FALLBACK_ROWS, detectCapabilities, detectSize } from "./capability.js";
 import type { Frame } from "./cells.js";
 import { frameText } from "./cells.js";
 import type { Update } from "./diff.js";
@@ -48,7 +48,7 @@ import {
   renderFrame,
   resize,
 } from "./internal/host.js";
-import { decodeKeys } from "./keys.js";
+import { createKeyDecoder } from "./keys.js";
 
 /** Enter the alternate screen buffer, so the shell's scrollback survives. */
 const ENTER_ALTERNATE = "\u001b[?1049h";
@@ -59,10 +59,18 @@ const HIDE_CURSOR = "\u001b[?25l";
 const SHOW_CURSOR = "\u001b[?25h";
 /** Clear the screen and put the cursor at the top left. */
 const CLEAR = "\u001b[2J\u001b[H";
-
-/** The default terminal, for a stream that will not say how big it is. */
-const FALLBACK_WIDTH = 80;
-const FALLBACK_HEIGHT = 24;
+/**
+ * Ask the terminal to bracket pasted text.
+ *
+ * Without this a paste is indistinguishable from very fast typing, which is
+ * how pasting two lines into a prompt runs the first one: the `\r` between
+ * them is delivered as Enter. With it the text arrives wrapped in `ESC[200~`
+ * and `ESC[201~`, and `keys.js` turns the whole block into one `"paste"`
+ * event. Turned off again on the way out, because a terminal left in this mode
+ * hands the *shell* its own escape sequences around every paste.
+ */
+const ENABLE_PASTE = "\u001b[?2004h";
+const DISABLE_PASTE = "\u001b[?2004l";
 
 /** What `render` gives back. */
 export type Handle = {
@@ -154,8 +162,8 @@ export function testRender(
     readonly capabilities?: Capabilities,
   } = {},
 ): TestHandle {
-  const width = options.width ?? FALLBACK_WIDTH;
-  const height = options.height ?? FALLBACK_HEIGHT;
+  const width = options.width ?? FALLBACK_COLUMNS;
+  const height = options.height ?? FALLBACK_ROWS;
   const capabilities: Capabilities = options.capabilities ?? {
     color: "truecolor",
     glyphs: "unicode",
@@ -165,9 +173,14 @@ export function testRender(
   const root = mount(element, renderer);
   const produced: Array<Update> = [];
 
+  // The same decoder a real terminal driver holds, for the same reason: a
+  // test that delivers a paste in two `press` calls is testing what an
+  // operating system does to a large one.
+  const decoder = createKeyDecoder();
+
   const handle: TestHandle = {
     press(input: string) {
-      for (const key of decodeKeys(input)) {
+      for (const key of decoder.push(input)) {
         pressKey(renderer, key);
       }
     },
@@ -222,11 +235,13 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
   const interactive = capabilities.tty === "interactive";
   const alternateScreen = (options.alternateScreen ?? true) && interactive;
 
-  const renderer = createRenderer(
-    stdout.columns ?? FALLBACK_WIDTH,
-    stdout.rows ?? FALLBACK_HEIGHT,
-    capabilities,
-  );
+  // How big the terminal is, by the same rules `uf`'s own CLI resolves it
+  // with: `COLUMNS`/`LINES` first, then what the stream reports, then 80 by
+  // 24. Reading `stdout.columns` alone was one of the two renderers deciding
+  // the terminal's shape its own way — the thing the other duplications in
+  // this package exist to prevent.
+  const size = detectSize(env, stdout);
+  const renderer = createRenderer(size.columns, size.rows, capabilities);
 
   let stopped = false;
   let scheduled = false;
@@ -257,18 +272,24 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
   };
 
   if (interactive) {
-    stdout.write((alternateScreen ? ENTER_ALTERNATE : "") + HIDE_CURSOR + CLEAR);
+    stdout.write((alternateScreen ? ENTER_ALTERNATE : "") + HIDE_CURSOR + ENABLE_PASTE + CLEAR);
   }
 
+  const decoder = createKeyDecoder();
   const onData = (chunk: string) => {
-    for (const key of decodeKeys(String(chunk))) {
+    for (const key of decoder.push(String(chunk))) {
       pressKey(renderer, key);
     }
     draw();
   };
 
   const onResize = () => {
-    resize(renderer, stdout.columns ?? FALLBACK_WIDTH, stdout.rows ?? FALLBACK_HEIGHT);
+    // Resolved again rather than read off the stream, so that an application
+    // told its size explicitly keeps it. `process.env` is a snapshot taken
+    // when the process started and a shell does not export `COLUMNS` anyway,
+    // so this only pins the size for somebody who set it on purpose.
+    const next = detectSize(env, stdout);
+    resize(renderer, next.columns, next.rows);
     draw();
   };
 
@@ -322,7 +343,7 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
         if (stdin.pause != null) {
           stdin.pause();
         }
-        stdout.write(SHOW_CURSOR + (alternateScreen ? LEAVE_ALTERNATE : "\n"));
+        stdout.write(DISABLE_PASTE + SHOW_CURSOR + (alternateScreen ? LEAVE_ALTERNATE : "\n"));
       } else {
         // Nobody was watching, so nothing has been written yet. The last frame
         // goes out once, as text, which is what a log can carry.

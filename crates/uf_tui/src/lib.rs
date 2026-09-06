@@ -63,9 +63,9 @@ impl Default for TuiFrameworkContract {
             layout: TuiLayoutEngine::FlexboxCells,
             input: TuiInputModel::KeyboardFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
-            // Seven, not twenty-three. Every one of these is exercised by
+            // Eight, not twenty-three. Every one of these is exercised by
             // `tests/library/tui.test.js` against a rendered frame; the other
-            // sixteen variants of `TuiFeature` name parts of OpenTUI that uf
+            // fifteen variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
             features: smallvec::smallvec![
@@ -74,6 +74,7 @@ impl Default for TuiFrameworkContract {
                 TuiFeature::Keyboard,
                 TuiFeature::Focus,
                 TuiFeature::RichText,
+                TuiFeature::Scrollback,
                 TuiFeature::InMemoryTesting,
                 TuiFeature::SnapshotTesting,
             ],
@@ -185,7 +186,12 @@ pub enum TuiFeature {
     Focus,
     /// Text and item selection.
     Selection,
-    /// Scrollback buffers.
+    /// A window onto content taller than it, and a bar saying where.
+    ///
+    /// `ScrollBox`. What is *not* behind this: a terminal's own scrollback
+    /// buffer, and the mouse wheel — there is no mouse input in the package
+    /// at all (ubugeeei-prod/uf#314), so an offset is a prop and scrolling is
+    /// something the application does with it.
     Scrollback,
     /// Key binding and command routing.
     Keymap,
@@ -303,7 +309,7 @@ pub struct ReactInkTarget {
     /// Whether an Ink application could be ported without losing a capability.
     ///
     /// Not yet: Ink has no mouse either, but it does have `<Static>`, a
-    /// spinner ecosystem and a component library uf has three components
+    /// spinner ecosystem and a component library uf has four components
     /// against. See ubugeeei-prod/uf#314.
     pub replacement_ready: bool,
     /// Whether rendering happens in native code rather than in JavaScript.
@@ -348,13 +354,22 @@ pub enum TuiPerformanceTarget {
     /// wrote down. This one is measured, by `tests/library/tui.test.js`: in an
     /// 80×24 terminal, the first frame sends 1,920 cells and changing one
     /// character of a status line then sends **one cell in seven bytes** — a
-    /// cursor move and the character. A renderer that diffs *lines* has to
-    /// resend everything below the change.
+    /// cursor move and the character.
     ///
-    /// The comparison against Ink itself is still worth having, and is
-    /// ubugeeei-prod/uf#315: it needs Ink installed, a workload both libraries
-    /// can render, and the hardware, versions and variance that
-    /// `ubugeeei-redundancy.md` requires of a performance claim.
+    /// It is also now measured *against Ink*, which is ubugeeei-prod/uf#315
+    /// and is `tools/bench/tui/`: one workload written twice, and the numbers
+    /// on `docs/app/guide/tui/_uf.page.mdx` with the hardware, versions and
+    /// variance `ubugeeei-redundancy.md` requires. The short version, and it
+    /// is deliberately not all in uf's favour — on the same 80×24 frame,
+    /// changing one character costs uf 8 bytes, Ink 1,307 by default and 128
+    /// with `incrementalRendering` turned on; the **first** frame costs uf
+    /// 2,102 bytes and Ink 1,122, because cell addressing is not free and this
+    /// renderer pays for it up front. The wall clock does not separate the two
+    /// at this size: both are waiting for React's scheduler.
+    ///
+    /// The name is still the claim, and it is still the narrow one. It says
+    /// what putting a frame on a terminal costs. It does not say "faster than
+    /// Ink", because on one of the four steps it is not.
     WritesOnlyChangedCells,
 }
 
@@ -365,20 +380,33 @@ pub fn contract() -> TuiFrameworkContract {
 
 /// The components `@uniflowed/tui` exports today.
 ///
-/// Three, and the list is short on purpose. `Box` is a flex container that can
+/// Four, and the list is short on purpose. `Box` is a flex container that can
 /// draw a background, a border and two titles; `Text` is styled text that
-/// knows how to wrap; `Input` is a line somebody types into. Everything else
-/// OpenTUI offers is built from those plus state, and it is
+/// knows how to wrap; `Input` is a line somebody types into; `ScrollBox` is a
+/// window onto content taller than itself. Everything else OpenTUI offers is
 /// ubugeeei-prod/uf#314 rather than an entry here — a component named in a
 /// contract and absent from the package is the failure this whole change is
 /// about.
+///
+/// `ScrollBox` is marked as describing a frame rather than needing a keyboard,
+/// and that is not a slip: its offset is a prop, so a server-rendered
+/// description of one at a given row is a picture somebody can produce
+/// anywhere. Binding a key to move that offset is the application's, and needs
+/// `useKeyboard` like anything else.
 fn default_components() -> TuiComponentList {
-    use TuiComponentKind::{Display, Input};
+    use TuiComponentKind::{Display, Input, Scrolling};
 
     smallvec::smallvec![
         TuiComponent::new("Box", &["Root"], Display, TuiFeature::Flexbox, false),
         TuiComponent::new("Text", &["Root"], Display, TuiFeature::RichText, false),
         TuiComponent::new("Input", &["Root"], Input, TuiFeature::Keyboard, true),
+        TuiComponent::new(
+            "ScrollBox",
+            &["Root"],
+            Scrolling,
+            TuiFeature::Scrollback,
+            false,
+        ),
     ]
 }
 

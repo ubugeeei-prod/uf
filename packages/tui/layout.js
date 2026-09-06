@@ -63,8 +63,16 @@ export type AlignItems = "flex-start" | "center" | "flex-end" | "stretch";
 /** Cross-axis alignment of one child, or `"auto"` to follow the parent. */
 export type AlignSelf = "auto" | AlignItems;
 
-/** What happens to content larger than its box. */
-export type Overflow = "visible" | "hidden";
+/**
+ * What happens to content larger than its box.
+ *
+ * `"scroll"` is `"hidden"` plus an offset: the children are stacked at their
+ * own heights, the box shows a window onto them, and `scrollTop` says which
+ * rows. It is the only value that changes how children are *placed* rather
+ * than only what is drawn, which is why the scroll layout is a branch of
+ * {@link layout} rather than a flag the painter reads.
+ */
+export type Overflow = "visible" | "hidden" | "scroll";
 
 /**
  * Everything layout reads off a node.
@@ -101,6 +109,15 @@ export type LayoutStyle = {
   readonly rowGap?: number,
   readonly columnGap?: number,
   readonly overflow?: Overflow,
+  /**
+   * The first content row a scrolling box shows.
+   *
+   * Read only when `overflow` is `"scroll"`, and clamped by layout to the
+   * range the content actually has — so `Number.MAX_SAFE_INTEGER` means "the
+   * bottom" and needs no separate prop, and a caller that has just appended a
+   * line to a log does not have to know how long the log is to follow it.
+   */
+  readonly scrollTop?: number,
 };
 
 /**
@@ -123,6 +140,31 @@ export type LayoutNode = {
   y: number,
   width: number,
   height: number,
+  /**
+   * Whether this node is outside a scrolling ancestor's window.
+   *
+   * Written by layout and read by the painter. Zeroing the geometry would not
+   * be enough: a box zero cells wide draws nothing itself, and the painter
+   * would still walk into its children, whose geometry is whatever the last
+   * frame left there. A skipped subtree has to be skipped as a subtree.
+   */
+  hidden: boolean,
+  /** Rows of content a scrolling box holds. Written by layout. */
+  scrollHeight: number,
+  /** The first row it is actually showing, after clamping. Written by layout. */
+  scrollOffset: number,
+  /**
+   * Where the window is, in frame coordinates: its first row, how many rows it
+   * has, and the column the bar goes in.
+   *
+   * Written by layout because layout is what resolved the padding, and the
+   * painter must not resolve it a second time — a bar drawn against the border
+   * box rather than the content box is a bar over the content on any box with
+   * padding on it.
+   */
+  scrollViewTop: number,
+  scrollViewRows: number,
+  scrollBarColumn: number,
   ...
 };
 
@@ -333,6 +375,7 @@ export function layout(
   node.y = y;
   node.width = width;
   node.height = height;
+  node.hidden = false;
 
   if (node.children.length === 0) {
     return;
@@ -344,6 +387,11 @@ export function layout(
   const contentY = y + insetTop;
   const contentWidth = Math.max(0, width - insetLeft - insetRight);
   const contentHeight = Math.max(0, height - insetTop - insetBottom);
+
+  if (style.overflow === "scroll") {
+    layoutScroll(node, contentX, contentY, contentWidth, contentHeight);
+    return;
+  }
 
   const flexDirection = direction(style);
   const row = isRow(flexDirection);
@@ -486,6 +534,93 @@ export function layout(
 
     cursor = mainStart + mainSizes[index] + mainMarginEnd + between;
   }
+}
+
+/**
+ * Lay a scrolling box's children out, and skip the ones nobody can see.
+ *
+ * A scrolling box is a column, always. `flexDirection`, `justifyContent` and
+ * growth do not apply inside one and are ignored rather than half-honoured: a
+ * child that grew to fill a viewport it is meant to scroll past is a child
+ * whose height depends on where it has been scrolled to. Margins do apply, and
+ * for the opposite reason — they are a fixed number of cells around a child,
+ * so they say the same thing at every offset.
+ *
+ * # What this costs, exactly
+ *
+ * Every child is **measured** — its height at this width — because the total
+ * is what `scrollTop` is clamped against, and a box that guessed its own
+ * content height would let `Number.MAX_SAFE_INTEGER` scroll into empty space.
+ * Measuring one line of text is measuring one line of text.
+ *
+ * Only the children that intersect the window are **laid out**: the rest get
+ * no position, no size, and no walk into their subtrees, and {@link
+ * LayoutNode.hidden} keeps the painter out of them too. So a ten-thousand-line
+ * log costs one measure per line and a screenful of everything else — which is
+ * the property the whole component exists for, and the reason this is not
+ * `overflow: "hidden"` with a margin on top.
+ */
+function layoutScroll(node: LayoutNode, x: number, y: number, width: number, height: number): void {
+  const children = node.children;
+  // What a scrolling box offers a child that has not been given a height:
+  // nothing in particular. That is what scrolling means — a child is as tall as
+  // its content and the window decides how much is seen — and the only thing
+  // this basis is read for is a percentage `minHeight` or `maxHeight` on the
+  // child, which inside a scroll region is a question with no good answer.
+  const unbounded = Number.MAX_SAFE_INTEGER;
+  const gap = gapOf(node.style, false);
+
+  // Margins are part of the stack, exactly as they are in the flex path and
+  // in `intrinsicSize`: a child's outer height is what the next one starts
+  // after and what the scroll range is made of. Leaving them out of any one
+  // of those makes the content shorter than it is drawn, which is a bottom
+  // the offset clamps to too early and a last row nobody can scroll to.
+  const margins = children.map((child) => margin(child.style));
+
+  const heights = new Array<number>(children.length);
+  let content = 0;
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
+    const available = Math.max(0, width - marginLeft - marginRight);
+    const fixed = resolve(child.style.height, height);
+    heights[index] = fixed ?? intrinsicSize(child, available, unbounded).height;
+    content += heights[index] + marginTop + marginBottom + (index > 0 ? gap : 0);
+  }
+
+  const offset = clamp(Math.floor(node.style.scrollTop ?? 0), 0, Math.max(0, content - height));
+  node.scrollHeight = content;
+  node.scrollOffset = offset;
+  node.scrollViewTop = y;
+  node.scrollViewRows = height;
+  // The column immediately right of the content, which is the one `ScrollBox`
+  // reserved by adding one to its right padding.
+  node.scrollBarColumn = x + width;
+
+  let cursor = 0;
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
+    const childHeight = heights[index];
+    const childY = y + cursor + marginTop - offset;
+    cursor += marginTop + childHeight + marginBottom + gap;
+    // The border box, not the outer one: a margin draws nothing, so a child
+    // whose own box has left the window has left it.
+    if (childY + childHeight <= y || childY >= y + height) {
+      hide(child);
+      continue;
+    }
+    const available = Math.max(0, width - marginLeft - marginRight);
+    const childWidth = Math.min(available, resolve(child.style.width, width) ?? available);
+    layout(child, x + marginLeft, childY, childWidth, childHeight);
+  }
+}
+
+/** Take a node and everything under it out of this frame. */
+function hide(node: LayoutNode): void {
+  node.hidden = true;
+  node.width = 0;
+  node.height = 0;
 }
 
 // Not implemented here, on purpose, and tracked rather than discovered:

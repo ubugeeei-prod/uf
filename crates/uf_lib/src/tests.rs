@@ -80,6 +80,7 @@ fn tui_registry_names_what_the_package_exports() {
         "Box",
         "Text",
         "Input",
+        "ScrollBox",
         "useKeyboard",
     ] {
         assert!(
@@ -94,7 +95,7 @@ fn tui_registry_names_what_the_package_exports() {
         );
     }
 
-    assert_eq!(contract.components.len(), 3);
+    assert_eq!(contract.components.len(), 4);
     assert!(!contract.react_ink_target.replacement_ready);
 }
 
