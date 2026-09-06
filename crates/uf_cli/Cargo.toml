@@ -29,6 +29,7 @@ upstream-typecheck = ["dep:uf_check", "uf_check/upstream-typecheck"]
 anyhow.workspace = true
 camino.workspace = true
 clap.workspace = true
+uf_assets = { path = "../uf_assets" }
 uf_bundle = { path = "../uf_bundle" }
 uf_check = { path = "../uf_check", optional = true }
 uf_config = { path = "../uf_config" }
@@ -59,5 +60,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
+image.workspace = true
 similar-asserts.workspace = true
 tempfile.workspace = true

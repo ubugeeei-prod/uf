@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/story",
-  "version": "0.0.0-alpha.8",
+  "version": "0.0.0-alpha.9",
   "description": "Named, rendered states of a component that a person and a test can both reach, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -22,10 +22,10 @@
     "*.js"
   ],
   "dependencies": {
-    "@uniflowed/mock": "0.0.0-alpha.8",
-    "@uniflowed/react": "0.0.0-alpha.8",
-    "@uniflowed/react-testing": "0.0.0-alpha.8",
-    "@uniflowed/test": "0.0.0-alpha.8"
+    "@uniflowed/mock": "0.0.0-alpha.9",
+    "@uniflowed/react": "0.0.0-alpha.9",
+    "@uniflowed/react-testing": "0.0.0-alpha.9",
+    "@uniflowed/test": "0.0.0-alpha.9"
   },
   "peerDependencies": {
     "react": ">=19"

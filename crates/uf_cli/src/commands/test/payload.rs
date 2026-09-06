@@ -3,17 +3,20 @@
 //! One rule: every value is a function of the suite alone, except the
 //! `durationMicros` fields. A caller diffing two runs can therefore ignore
 //! exactly those and expect byte-identical output — which is what the
-//! integration tests assert.
+//! integration tests assert. The `coverage` object, when a run collected any,
+//! obeys the same rule: percentages are formatted to two places rather than
+//! carried as full-precision floats.
 
 use serde_json::{Value, json};
 use uf_test::{
-    FileReport, FileStatus, OutputChunk, SkipReason, TestRecord, TestRunReport, TestStatus,
+    Coverage, FileReport, FileStatus, OutputChunk, SkipReason, TestRecord, TestRunReport,
+    TestStatus,
 };
 
 /// Build the document.
-pub(super) fn test_payload(report: &TestRunReport) -> Value {
+pub(super) fn test_payload(report: &TestRunReport, coverage: Option<&Coverage>) -> Value {
     let summary = &report.summary;
-    json!({
+    let mut document = json!({
         "command": "uf test",
         "files": summary.files,
         "passed": summary.passed,
@@ -35,7 +38,17 @@ pub(super) fn test_payload(report: &TestRunReport) -> Value {
             "line": entry.line,
             "column": entry.column,
         })).collect::<Vec<_>>(),
-    })
+    });
+    // Absent rather than empty when the run did not measure. A `coverage`
+    // object full of zeroes is indistinguishable from a suite that covers
+    // nothing, and a CI check reading this document has to be able to tell
+    // "not measured" from "measured, and bad".
+    if let Some(coverage) = coverage
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(String::from("coverage"), super::coverage::payload(coverage));
+    }
+    document
 }
 
 fn file_payload(file: &FileReport) -> Value {
