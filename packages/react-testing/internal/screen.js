@@ -3,11 +3,29 @@
 // The six forms of every query, generated once.
 //
 // Writing `getByText`, `queryByText`, `findByText`, `getAllByText`,
-// `queryAllByText` and `findAllByText` by hand, for seven queries, is
-// forty-two functions that differ in two decisions: whether finding nothing is
-// an error, and whether to wait. So the two decisions are written once and the
-// forty-two are derived — which also means a new query is one entry rather
-// than six functions.
+// `queryAllByText` and `findAllByText` by hand, for six queries, is thirty-six
+// functions that differ in two decisions: whether finding nothing is an error,
+// and whether to wait. So the two decisions are written once and the thirty-six
+// are derived — which also means a new query is one entry rather than six
+// functions.
+//
+// # The names are written down, and the behaviour is not
+//
+// `Queries` used to be `{ readonly [string]: (matcher: mixed, options?: mixed)
+// => any }`, which is a way of writing "this object has whatever you ask it
+// for, and it is whatever you like". That is a hole in the published type of a
+// package whose entire purpose is testing *typed* components:
+// `screen.getByRole("button").valeu` was not a mistake anybody's checker would
+// find, `screen.getByTest("save")` was not a misspelling, and
+// `await screen.getByText("Save")` — the missing `find`, which is the single
+// most common mistake this library invites — was fine.
+//
+// So the thirty-six names are written out below. Flow has no template literal
+// types, so `getBy${Name}` is not something a type can compute; the names have
+// to be listed for the type to exist at all. What is *not* repeated is any
+// behaviour: `forms` is still the one place the six decisions are made, and the
+// listing below is a naming, six lines per query, which is the part a reader
+// wants to be able to check against the runtime by eye.
 
 import {
   allByDisplayValue,
@@ -18,24 +36,92 @@ import {
   allByText,
   queryFailure,
 } from "./queries.js";
-import type { Matcher, MatcherOptions } from "./queries.js";
-import { documentOf } from "./dom.js";
+import type { Matcher, MatcherOptions, RoleOptions } from "./queries.js";
+import { bodyOf } from "./dom.js";
 import { waitFor } from "./render.js";
 
-/** The queries available on `screen` and on `within(element)`. */
-export type Queries = {
-  readonly [string]: (matcher: mixed, options?: mixed) => any,
-};
+/**
+ * One query's six forms, over whatever that query matches on.
+ *
+ * Generic in the target because `ByRole` does not take a `Matcher` — it takes
+ * a role, which is a string and only a string, and a regular expression over
+ * role names is a query that would silently match nothing. Generic in the
+ * options because `ByRole` is also the only query with more than `exact` to
+ * say.
+ */
+type Forms<TTarget, TOptions> = {|
+  readonly get: (target: TTarget, options?: TOptions) => Element,
+  readonly getAll: (target: TTarget, options?: TOptions) => Array<Element>,
+  readonly query: (target: TTarget, options?: TOptions) => Element | null,
+  readonly queryAll: (target: TTarget, options?: TOptions) => Array<Element>,
+  readonly find: (target: TTarget, options?: TOptions) => Promise<Element>,
+  readonly findAll: (target: TTarget, options?: TOptions) => Promise<Array<Element>>,
+|};
 
-/** Every query, as the one function each needs. */
-const FINDERS = {
-  Text: allByText,
-  Role: allByRole,
-  LabelText: allByLabelText,
-  PlaceholderText: allByPlaceholderText,
-  TestId: allByTestId,
-  DisplayValue: allByDisplayValue,
-};
+/**
+ * The queries available on `screen` and on `within(element)`.
+ *
+ * Read down one column and the four questions of the module comment are the
+ * four return types: `getBy…` is an `Element` because it throws rather than
+ * hand back nothing, `queryBy…` is `Element | null` because its whole purpose
+ * is asking about absence, and the `findBy…` pair are promises because they
+ * wait.
+ */
+export type Queries = {|
+  readonly getByText: (matcher: Matcher, options?: MatcherOptions) => Element,
+  readonly getAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly queryByText: (matcher: Matcher, options?: MatcherOptions) => Element | null,
+  readonly queryAllByText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly findByText: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly findAllByText: (matcher: Matcher, options?: MatcherOptions) => Promise<Array<Element>>,
+
+  readonly getByRole: (role: string, options?: RoleOptions) => Element,
+  readonly getAllByRole: (role: string, options?: RoleOptions) => Array<Element>,
+  readonly queryByRole: (role: string, options?: RoleOptions) => Element | null,
+  readonly queryAllByRole: (role: string, options?: RoleOptions) => Array<Element>,
+  readonly findByRole: (role: string, options?: RoleOptions) => Promise<Element>,
+  readonly findAllByRole: (role: string, options?: RoleOptions) => Promise<Array<Element>>,
+
+  readonly getByLabelText: (matcher: Matcher, options?: MatcherOptions) => Element,
+  readonly getAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly queryByLabelText: (matcher: Matcher, options?: MatcherOptions) => Element | null,
+  readonly queryAllByLabelText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly findByLabelText: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly findAllByLabelText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Promise<Array<Element>>,
+
+  readonly getByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Element,
+  readonly getAllByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly queryByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Element | null,
+  readonly queryAllByPlaceholderText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Array<Element>,
+  readonly findByPlaceholderText: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly findAllByPlaceholderText: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Promise<Array<Element>>,
+
+  readonly getByTestId: (matcher: Matcher, options?: MatcherOptions) => Element,
+  readonly getAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly queryByTestId: (matcher: Matcher, options?: MatcherOptions) => Element | null,
+  readonly queryAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly findByTestId: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly findAllByTestId: (matcher: Matcher, options?: MatcherOptions) => Promise<Array<Element>>,
+
+  readonly getByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Element,
+  readonly getAllByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly queryByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Element | null,
+  readonly queryAllByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Array<Element>,
+  readonly findByDisplayValue: (matcher: Matcher, options?: MatcherOptions) => Promise<Element>,
+  readonly findAllByDisplayValue: (
+    matcher: Matcher,
+    options?: MatcherOptions,
+  ) => Promise<Array<Element>>,
+|};
 
 /**
  * The six forms of one finder, bound to a root.
@@ -43,58 +129,112 @@ const FINDERS = {
  * `getBy` fails when there is not exactly one, and says how many it saw and
  * what the markup looked like, because "found 3 elements" and "found nothing"
  * are different bugs and a test that reports neither wastes the reader's time.
+ *
+ * `TTarget` is bounded by `Matcher` rather than left free because
+ * `queryFailure` has to describe what was asked for, and it describes the
+ * three things a matcher can be. A role is a string, so the bound holds and
+ * the failure message is the same one it always was.
  */
-function forms(name: string, find: Function, root: () => ParentNode): { [string]: Function } {
-  const all = (matcher: Matcher, options?: MatcherOptions) => find(root(), matcher, options);
+function forms<TTarget extends Matcher, TOptions>(
+  name: string,
+  find: (root: Element, target: TTarget, options?: TOptions) => Array<Element>,
+  root: () => Element,
+): Forms<TTarget, TOptions> {
+  const all = (target: TTarget, options?: TOptions) => find(root(), target, options);
 
   return {
-    [`getAllBy${name}`]: (matcher: Matcher, options?: MatcherOptions) => {
-      const found = all(matcher, options);
+    getAll: (target, options) => {
+      const found = all(target, options);
       if (found.length === 0) {
-        throw queryFailure(`getAllBy${name}`, matcher, root(), 0);
+        throw queryFailure(`getAllBy${name}`, target, root(), 0);
       }
       return found;
     },
-    [`queryAllBy${name}`]: all,
-    [`getBy${name}`]: (matcher: Matcher, options?: MatcherOptions) => {
-      const found = all(matcher, options);
+    queryAll: all,
+    get: (target, options) => {
+      const found = all(target, options);
       if (found.length !== 1) {
-        throw queryFailure(`getBy${name}`, matcher, root(), found.length);
+        throw queryFailure(`getBy${name}`, target, root(), found.length);
       }
       return found[0];
     },
-    [`queryBy${name}`]: (matcher: Matcher, options?: MatcherOptions) => {
-      const found = all(matcher, options);
+    query: (target, options) => {
+      const found = all(target, options);
       if (found.length > 1) {
-        throw queryFailure(`queryBy${name}`, matcher, root(), found.length);
+        throw queryFailure(`queryBy${name}`, target, root(), found.length);
       }
       return found[0] ?? null;
     },
-    [`findBy${name}`]: (matcher: Matcher, options?: MatcherOptions) =>
+    find: (target, options) =>
       waitFor(() => {
-        const found = all(matcher, options);
+        const found = all(target, options);
         if (found.length !== 1) {
-          throw queryFailure(`findBy${name}`, matcher, root(), found.length);
+          throw queryFailure(`findBy${name}`, target, root(), found.length);
         }
         return found[0];
       }),
-    [`findAllBy${name}`]: (matcher: Matcher, options?: MatcherOptions) =>
+    findAll: (target, options) =>
       waitFor(() => {
-        const found = all(matcher, options);
+        const found = all(target, options);
         if (found.length === 0) {
-          throw queryFailure(`findAllBy${name}`, matcher, root(), 0);
+          throw queryFailure(`findAllBy${name}`, target, root(), 0);
         }
         return found;
       }),
   };
 }
 
-function queriesFor(root: () => ParentNode): Queries {
-  const queries = {};
-  for (const name of Object.keys(FINDERS)) {
-    Object.assign(queries, forms(name, (FINDERS as any)[name], root));
-  }
-  return queries as any;
+function queriesFor(root: () => Element): Queries {
+  const text = forms("Text", allByText, root);
+  const role = forms("Role", allByRole, root);
+  const labelText = forms("LabelText", allByLabelText, root);
+  const placeholderText = forms("PlaceholderText", allByPlaceholderText, root);
+  const testId = forms("TestId", allByTestId, root);
+  const displayValue = forms("DisplayValue", allByDisplayValue, root);
+
+  return {
+    getByText: text.get,
+    getAllByText: text.getAll,
+    queryByText: text.query,
+    queryAllByText: text.queryAll,
+    findByText: text.find,
+    findAllByText: text.findAll,
+
+    getByRole: role.get,
+    getAllByRole: role.getAll,
+    queryByRole: role.query,
+    queryAllByRole: role.queryAll,
+    findByRole: role.find,
+    findAllByRole: role.findAll,
+
+    getByLabelText: labelText.get,
+    getAllByLabelText: labelText.getAll,
+    queryByLabelText: labelText.query,
+    queryAllByLabelText: labelText.queryAll,
+    findByLabelText: labelText.find,
+    findAllByLabelText: labelText.findAll,
+
+    getByPlaceholderText: placeholderText.get,
+    getAllByPlaceholderText: placeholderText.getAll,
+    queryByPlaceholderText: placeholderText.query,
+    queryAllByPlaceholderText: placeholderText.queryAll,
+    findByPlaceholderText: placeholderText.find,
+    findAllByPlaceholderText: placeholderText.findAll,
+
+    getByTestId: testId.get,
+    getAllByTestId: testId.getAll,
+    queryByTestId: testId.query,
+    queryAllByTestId: testId.queryAll,
+    findByTestId: testId.find,
+    findAllByTestId: testId.findAll,
+
+    getByDisplayValue: displayValue.get,
+    getAllByDisplayValue: displayValue.getAll,
+    queryByDisplayValue: displayValue.query,
+    queryAllByDisplayValue: displayValue.queryAll,
+    findByDisplayValue: displayValue.find,
+    findAllByDisplayValue: displayValue.findAll,
+  };
 }
 
 /**
@@ -105,9 +245,9 @@ function queriesFor(root: () => ParentNode): Queries {
  * not see them would be unable to assert on the components most likely to have
  * a bug.
  */
-export const screen: Queries = queriesFor(() => documentOf().body);
+export const screen: Queries = queriesFor(() => bodyOf());
 
 /** The same queries, restricted to one element's subtree. */
-export function within(element: ParentNode): Queries {
+export function within(element: Element): Queries {
   return queriesFor(() => element);
 }
