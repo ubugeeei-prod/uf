@@ -2,13 +2,18 @@
 //
 // The components a caller writes, and the hooks they reach for.
 //
-// Three components, and the choice of which three is the whole argument of
-// this first release. `Box` is a flex container that can draw a frame around
+// Four components, and the choice of which four is most of the argument of the
+// first two releases. `Box` is a flex container that can draw a frame around
 // itself; `Text` is a run of styled characters that knows how to wrap; `Input`
-// is a line a reader types into. Everything else OpenTUI offers — a select, a
-// scroll box, a table, a diff view — is those three plus state, and shipping
-// them badly is worse than not shipping them, so they are ubugeeei-prod/uf#314
-// rather than stubs that throw.
+// is a line a reader types into; `ScrollBox` is a window onto content taller
+// than it. Everything else OpenTUI offers — a select, a table, a diff view — is
+// those plus state, and shipping them badly is worse than not shipping them, so
+// they are ubugeeei-prod/uf#314 rather than stubs that throw.
+//
+// `ScrollBox` is the exception to "plus state", which is why it is a component
+// here rather than something a caller writes: which children are laid out and
+// painted depends on where the window is, and nothing above the renderer can
+// decide that.
 //
 // # Why these are `component`s and not intrinsic elements
 //
@@ -32,8 +37,9 @@
 // render, reads a ref during render, or depends on a render happening exactly
 // once. `Input` keeps its cursor in state, not in a ref that a render reads;
 // `useTerminalSize` subscribes with `useSyncExternalStore` and returns a
-// snapshot that is stable between resizes. All three are safe under Strict
-// Mode's double invocation and under the React Compiler's memoization.
+// snapshot that is stable between resizes; `ScrollBox` owns no scroll state at
+// all. All four are safe under Strict Mode's double invocation and under the
+// React Compiler's memoization.
 
 import * as React from "@uniflowed/react";
 import {
@@ -165,6 +171,103 @@ export type TextProps = {
  */
 export component Text(children?: React.Node, ...props: TextProps) {
   return React.createElement("uf-text", props, children);
+}
+
+/** Everything a `ScrollBox` accepts beyond its children. */
+export type ScrollBoxProps = {
+  ...BoxProps,
+  /**
+   * The first content row to show.
+   *
+   * Clamped by layout to the range the content actually has, which is what
+   * makes `Number.MAX_SAFE_INTEGER` mean "the bottom" — a log that has just
+   * grown by a line does not have to know how long it is to keep following
+   * it.
+   */
+  readonly scrollTop?: number,
+  /** Whether to draw the bar. On by default; it costs a column. */
+  readonly scrollbar?: boolean,
+  /** The bar's colour. Falls back to `borderColor`. */
+  readonly scrollbarColor?: ColorValue,
+};
+
+/**
+ * A window onto content taller than itself.
+ *
+ * Give it a height — an explicit one, or `flexGrow` inside a parent that has
+ * one. A `ScrollBox` with neither is as tall as its content and scrolls
+ * nothing, which is flexbox behaving correctly and not what anybody meant; and
+ * between a header and a footer those two want `flexShrink={0}`, because a
+ * box asking for ten thousand rows shrinks whatever is allowed to shrink.
+ *
+ * ```js
+ * const [top, setTop] = useState<number>(Number.MAX_SAFE_INTEGER);
+ * useKeyboard((key) => {
+ *   if (key.name === "up") setTop((row) => Math.max(0, row - 1));
+ *   if (key.name === "down") setTop((row) => row + 1);
+ * });
+ * return (
+ *   <ScrollBox height={10} scrollTop={top}>
+ *     {lines.map((line) => <Text key={line.id}>{line.text}</Text>)}
+ *   </ScrollBox>
+ * );
+ * ```
+ *
+ * # Why the offset is the caller's and the keys are not bound
+ *
+ * OpenTUI's rule for focus is that it is a prop rather than something the
+ * library moves for you, and scrolling is the same question one level down:
+ * what an arrow key should do inside a scrolling region is the application's
+ * business — a log follows its tail, a file viewer does not, and a list moves
+ * a selection and lets the box follow *that*. A component that owned the
+ * offset would also have to own "how far is a page", which is the viewport's
+ * height, which it does not know until after layout has run. Clamping in
+ * layout is what lets the caller ask for the bottom without knowing where the
+ * bottom is.
+ *
+ * # What it does not do yet
+ *
+ * No mouse wheel — there is no mouse input in this package at all
+ * (ubugeeei-prod/uf#314) — and no horizontal scrolling: a terminal column is
+ * not a pixel, and content wider than the window is nearly always content that
+ * should have wrapped.
+ */
+export component ScrollBox(
+  children?: React.Node,
+  scrollTop?: number = 0,
+  scrollbar?: boolean = true,
+  scrollbarColor?: ColorValue,
+  ...props: BoxProps
+) {
+  // The bar is drawn in the column the box reserves for it, so wrapped content
+  // never reaches it. Reserving it here rather than in the painter is what
+  // keeps layout and paint agreeing about how wide a row is.
+  //
+  // The caller's own right padding is read through both spellings a `Box`
+  // accepts, and added to rather than replaced: a `ScrollBox` with `padding={1}`
+  // is padded by one and has a bar, not padded by nothing and has a bar.
+  const own = props.style ?? props;
+  const asked =
+    props.paddingRight ??
+    own.paddingRight ??
+    props.paddingX ??
+    own.paddingX ??
+    props.padding ??
+    own.padding ??
+    0;
+  const paddingRight = scrollbar ? asked + 1 : props.paddingRight;
+  return React.createElement(
+    "uf-box",
+    {
+      ...props,
+      paddingRight,
+      overflow: "scroll",
+      scrollTop,
+      scrollbar,
+      scrollbarColor,
+    },
+    children,
+  );
 }
 
 /**
@@ -333,6 +436,19 @@ export component Input(
       }
       if (key.name === "end") {
         setCursor(text.length);
+        return;
+      }
+      // A paste is text somebody had on a clipboard, which is why it is worth
+      // knowing it was a paste: this is one line and the clipboard is not, so
+      // the first line goes in and the rest is dropped rather than pasted as a
+      // series of Enters. Control characters go with it — a pasted `\u0007`
+      // is a bell somebody would otherwise hear every time the frame redrew.
+      if (key.name === "paste") {
+        const first = key.sequence.split(/\r\n|\r|\n/)[0] ?? "";
+        const clean = first.replace(/[\u0000-\u001f\u007f]/g, "");
+        if (clean !== "") {
+          change(text.slice(0, at) + clean + text.slice(at), at + clean.length);
+        }
         return;
       }
       // Anything with text behind it is an insertion. `sequence` rather than

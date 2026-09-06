@@ -1,12 +1,16 @@
-//! What the attached terminal can actually render.
+//! What the attached terminal can actually render, and how big it is.
 //!
 //! Capability is resolved **once**, at start-up, from three inputs: the
 //! `--color` flag, the environment, and whether the stream is a terminal. The
 //! result is a plain `Copy` value that is threaded through every renderer, so
 //! no write path ever re-probes the environment or asks the operating system
 //! whether a file descriptor is a TTY.
+//!
+//! [`TerminalSize`] is resolved the same way and separately, because it costs
+//! more: see [`TerminalSize::detect`].
 
 use std::io::IsTerminal;
+use std::process::{Command, Stdio};
 
 use crate::image::{ImageEnv, ImageProtocol};
 
@@ -114,6 +118,10 @@ pub struct TerminalEnv {
     pub term: Option<String>,
     /// `COLORTERM`; `truecolor`/`24bit` advertise direct colour.
     pub colorterm: Option<String>,
+    /// `COLUMNS`; how wide the terminal is, when something has said so.
+    pub columns: Option<String>,
+    /// `LINES`; how tall the terminal is, when something has said so.
+    pub lines: Option<String>,
     /// The effective locale, from `LC_ALL`, `LC_CTYPE`, or `LANG`.
     pub locale: Option<String>,
 }
@@ -128,6 +136,8 @@ impl TerminalEnv {
             clicolor_force: var("CLICOLOR_FORCE"),
             term: var("TERM"),
             colorterm: var("COLORTERM"),
+            columns: var("COLUMNS"),
+            lines: var("LINES"),
             locale: var("LC_ALL")
                 .or_else(|| var("LC_CTYPE"))
                 .or_else(|| var("LANG")),
@@ -170,10 +180,32 @@ impl TerminalEnv {
         self
     }
 
+    /// Set `COLUMNS`.
+    pub fn with_columns(mut self, value: &str) -> Self {
+        self.columns = Some(value.to_owned());
+        self
+    }
+
+    /// Set `LINES`.
+    pub fn with_lines(mut self, value: &str) -> Self {
+        self.lines = Some(value.to_owned());
+        self
+    }
+
     /// Set the effective locale.
     pub fn with_locale(mut self, value: &str) -> Self {
         self.locale = Some(value.to_owned());
         self
+    }
+
+    /// `COLUMNS`, when it names a usable number of columns.
+    fn declared_columns(&self) -> Option<usize> {
+        positive(self.columns.as_deref())
+    }
+
+    /// `LINES`, when it names a usable number of rows.
+    fn declared_rows(&self) -> Option<usize> {
+        positive(self.lines.as_deref())
     }
 
     fn no_color_requested(&self) -> bool {
@@ -339,6 +371,178 @@ impl Capabilities {
     }
 }
 
+/// How wide a terminal is assumed to be when nothing will say.
+///
+/// The number every terminal has been at least as wide as since VT100s, and
+/// the same one `@uniflowed/tui` falls back to.
+pub const FALLBACK_COLUMNS: usize = 80;
+
+/// How tall a terminal is assumed to be when nothing will say.
+pub const FALLBACK_ROWS: usize = 24;
+
+/// How big the terminal is, in cells.
+///
+/// # Why this is not part of [`Capabilities`]
+///
+/// Colour, glyphs and interactivity are answered by reading environment
+/// variables and one `isatty`, which is free, so every command resolves them
+/// at start-up whether it draws a spinner or not. Size is not free — see
+/// [`TerminalSize::detect`] — and only the handful of commands that redraw a
+/// region in place need it. Folding it into `Capabilities` would put a process
+/// spawn in front of `uf --version`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalSize {
+    columns: usize,
+    rows: usize,
+}
+
+impl Default for TerminalSize {
+    fn default() -> Self {
+        Self::fallback()
+    }
+}
+
+impl TerminalSize {
+    /// A size stated directly.
+    ///
+    /// A zero in either dimension is a terminal that has not finished being
+    /// created — `stty` reports `0 0` inside some CI shells — and is replaced
+    /// by the fallback rather than propagated as a region nothing fits in.
+    pub fn new(columns: usize, rows: usize) -> Self {
+        Self {
+            columns: if columns == 0 {
+                FALLBACK_COLUMNS
+            } else {
+                columns
+            },
+            rows: if rows == 0 { FALLBACK_ROWS } else { rows },
+        }
+    }
+
+    /// The size assumed when nothing will say: 80 by 24.
+    pub const fn fallback() -> Self {
+        Self {
+            columns: FALLBACK_COLUMNS,
+            rows: FALLBACK_ROWS,
+        }
+    }
+
+    /// How many columns wide the terminal is.
+    pub fn columns(self) -> usize {
+        self.columns
+    }
+
+    /// How many rows tall the terminal is.
+    pub fn rows(self) -> usize {
+        self.rows
+    }
+
+    /// Resolve the terminal's size, once.
+    ///
+    /// Precedence, highest first — the same list `@uniflowed/tui`'s
+    /// `detectSize` walks, and `tests/library/tui.test.js` compares the two
+    /// orders rather than believing this sentence:
+    ///
+    /// 1. `COLUMNS` and `LINES`, each on its own, when they parse as a
+    ///    positive number. POSIX makes them the override, and they are what a
+    ///    `watch`, a `script` or a CI wrapper sets when the terminal itself
+    ///    cannot be asked.
+    /// 2. what the terminal reports, for a stream somebody is watching
+    /// 3. 80 by 24
+    ///
+    /// # What "asking the terminal" costs
+    ///
+    /// One `stty size` on `/dev/tty`, which is a process spawn — about a
+    /// millisecond. It is the same trade `prompt::RawMode` made for the same
+    /// reason: `uf_term` has no third-party dependencies, and reading a
+    /// `winsize` out of an `ioctl` needs either `libc` or a hand-written
+    /// struct whose layout differs between macOS and Linux. A spawn is asked
+    /// for once per process, by the one command that redraws a region.
+    ///
+    /// It is also the reason this is not re-asked per frame, and therefore the
+    /// reason a terminal resized *during* an install is not noticed: seeing
+    /// that needs `SIGWINCH`, which needs a signal handler this workspace does
+    /// not have. A region laid out for the terminal as it was is a large
+    /// improvement on one laid out for a terminal nobody measured.
+    pub fn detect(tty: Tty, env: &TerminalEnv) -> Self {
+        let answered = env.declared_columns().is_some() && env.declared_rows().is_some();
+        let reported = match tty {
+            // Nobody is watching, so there is nothing to measure — and paying
+            // a process spawn to discover that would be a spawn in the code
+            // path of every piped command.
+            Tty::Piped => None,
+            // The environment already said both, so the spawn would be for an
+            // answer that loses anyway.
+            Tty::Interactive if answered => None,
+            Tty::Interactive => probe_size(),
+        };
+        detect_size(env, reported)
+    }
+}
+
+/// The size, from what the environment declared and then from what the
+/// terminal reported.
+///
+/// The two dimensions are resolved separately, because `COLUMNS` without
+/// `LINES` is the common shape: a wrapper that cares about width sets one of
+/// them. `reported` is a parameter rather than a probe so that every rule
+/// above it is a pure function of its inputs.
+///
+/// `@uniflowed/tui`'s `detectSize` is this function, chain for chain, and
+/// `tests/library/tui.test.js` compares the two rather than believing this
+/// sentence.
+fn detect_size(env: &TerminalEnv, reported: Option<(usize, usize)>) -> TerminalSize {
+    let columns = env
+        .declared_columns()
+        .or_else(|| reported_columns(reported))
+        .unwrap_or(FALLBACK_COLUMNS);
+    let rows = env
+        .declared_rows()
+        .or_else(|| reported_rows(reported))
+        .unwrap_or(FALLBACK_ROWS);
+    TerminalSize::new(columns, rows)
+}
+
+/// The columns the terminal reported, when it reported a usable number.
+fn reported_columns(reported: Option<(usize, usize)>) -> Option<usize> {
+    reported.map(|(columns, _)| columns).filter(|it| *it > 0)
+}
+
+/// The rows the terminal reported, when it reported a usable number.
+fn reported_rows(reported: Option<(usize, usize)>) -> Option<usize> {
+    reported.map(|(_, rows)| rows).filter(|it| *it > 0)
+}
+
+/// Ask the controlling terminal how big it is.
+///
+/// `/dev/tty` rather than this process's standard input, because the stream a
+/// region is drawn on is not the stream a caller piped something into: `echo y
+/// | uf install` still draws on the terminal the reader is looking at, and
+/// `stty` reads the terminal attached to *its* standard input. On a platform
+/// with no `/dev/tty` this answers `None` and the fallback applies.
+fn probe_size() -> Option<(usize, usize)> {
+    let terminal = std::fs::File::open("/dev/tty").ok()?;
+    let output = Command::new("stty")
+        .arg("size")
+        .stdin(Stdio::from(terminal))
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let reported = String::from_utf8(output.stdout).ok()?;
+    parse_stty_size(&reported)
+}
+
+/// `stty size` prints rows first, then columns, separated by a space.
+fn parse_stty_size(reported: &str) -> Option<(usize, usize)> {
+    let mut parts = reported.split_ascii_whitespace();
+    let rows: usize = parts.next()?.parse().ok()?;
+    let columns: usize = parts.next()?.parse().ok()?;
+    Some((columns, rows))
+}
+
 /// Which inline-image protocol may be used on a stream.
 ///
 /// Separate from [`ImageEnv::protocol`] because that answers what the terminal
@@ -386,6 +590,16 @@ fn var(name: &str) -> Option<String> {
 
 fn non_empty(value: Option<&str>) -> Option<&str> {
     value.filter(|value| !value.is_empty())
+}
+
+/// A variable that names a positive number of cells, or nothing.
+///
+/// `COLUMNS=0` and `COLUMNS=wide` are both a variable saying nothing useful,
+/// and both have to fall through to the next rule rather than produce a
+/// terminal zero columns across.
+fn positive(value: Option<&str>) -> Option<usize> {
+    let parsed: usize = non_empty(value)?.trim().parse().ok()?;
+    (parsed > 0).then_some(parsed)
 }
 
 /// Case-insensitive ASCII substring test that never allocates.

@@ -91,11 +91,147 @@ it cell by cell, and writes the difference. For the application above, in the
 | the first frame | 168 | 239 |
 | pressing the up arrow | 1 | 8 |
 
-Eight bytes: a cursor move, and the digit. A renderer that diffs *lines*
-instead — which is how React Ink works — has to resend every line from the
-change to the bottom of the frame. Both numbers are asserted in
-`tests/library/tui.test.js`; a measured comparison against Ink itself is
-[#315](https://github.com/ubugeeei-prod/uf/issues/315).
+Eight bytes: a cursor move, and the digit. Both numbers are asserted in
+`tests/library/tui.test.js`.
+
+## Measured against React Ink
+
+[React Ink](https://github.com/vadimdemedes/ink) is the library most readers are
+coming from, so the useful thing to publish is a measurement rather than an
+adjective. `tools/bench/tui/` holds one workload written twice — the same 80×24
+frame, the same state container, the same kind of stream — and four changes made
+to it: the first frame, one character of a status line at the *top* of the frame,
+the list underneath it advancing by a row, and every line changing at once.
+
+```sh
+npm install --prefix tools/bench/tui   # Ink, and nothing else in uf depends on it
+uf run bench:tui
+```
+
+**Bytes written to the terminal.** Deterministic: every run of the benchmark
+produces these exactly, and it refuses to report a number that moved.
+
+| | first frame | one character | scroll one row | everything |
+| --- | --- | --- | --- | --- |
+| `@uniflowed/tui` | 2,102 | **8** | **345** | **534** |
+| ink 7.1.1, default | **1,122** | 1,307 | 1,307 | 1,328 |
+| ink 7.1.1, `incrementalRendering` | **1,122** | 128 | 1,224 | 1,283 |
+
+Three things in that table are worth saying out loud.
+
+**uf loses the first frame, and for a reason that is not going away.** Ink writes
+the frame as text and newlines; uf writes cells, each run preceded by an absolute
+cursor position, and pads every row to the full width of the terminal. On an
+empty screen that is nearly twice the bytes. It is the cost of the addressing
+that makes every *later* frame cheap, and a renderer that draws one frame and
+exits should not be this one.
+
+**Ink 7 is much better than "reprints from the change to the bottom", if you ask
+it to be.** `incrementalRendering` is off by default; turning it on takes one
+character of a status line from 1,307 bytes to 128 — Ink moves the cursor up and
+rewrites the changed *line*. uf sends the changed *cell*, which is 8 bytes, so
+the gap is sixteen times rather than a hundred and sixty. Measuring only Ink's
+default would have been choosing the comparison uf wins by more.
+
+**The advantage is smallest exactly where it matters least.** When everything
+changes, cells and lines cost the same order of bytes, and uf's 534 against Ink's
+1,283 is the terminal's own colour resets and cursor moves rather than an
+algorithmic difference.
+
+**Wall clock, from a state update to the write returning.** Medians of 400
+samples per step, with the fastest and slowest of them:
+
+| | first frame | one character | scroll one row | everything |
+| --- | --- | --- | --- | --- |
+| `@uniflowed/tui` | 2.9 ms (1.6 – 27.8) | 2.8 ms (1.4 – 45.5) | 3.0 ms (1.6 – 38.2) | 3.0 ms (1.5 – 17.4) |
+| ink, default | 3.9 ms (2.1 – 67.0) | 3.2 ms (1.5 – 95.9) | 3.3 ms (1.6 – 134.2) | 3.3 ms (1.6 – 78.6) |
+| ink, `incrementalRendering` | 3.9 ms (2.0 – 98.6) | 3.4 ms (1.5 – 48.5) | 3.5 ms (1.5 – 72.5) | 3.4 ms (1.6 – 132.8) |
+
+**This second table does not separate the three.** uf's median came out below
+Ink's in every invocation, by three tenths of a millisecond to about one — but
+running the whole benchmark again on the same machine moved every median by more
+than that, between 1.5 ms and 3.9 ms, and the machine is one other work also
+runs on. What both libraries are actually waiting for at this size is React's
+scheduler, which they share. The byte counts are the measurement; this table is
+here because leaving it out would be choosing which of two numbers to publish
+after seeing both.
+
+**Provenance.** Apple M2 Max, 12 cores, 96 GB, macOS 26.5.1. Node 24.19.0,
+react 19.2.8, react-reconciler 0.33.0, ink 7.1.1, `@uniflowed/tui` at this
+commit. Warm caches; each library is warmed up for three runs that are thrown
+away, and every sample mounts a fresh application. The three configurations are
+measured in one process, one after another, so a busy machine moves all three
+together rather than one of them. Ink's frame limiter is raised
+out of the way (`maxFps`), so its wall-clock figure is its renderer's rather than
+its throttle's; that does not touch its byte counts. Input is out of scope — Ink
+has no equivalent of `Input` to compare against.
+
+uf's four byte counts are asserted against the renderer in
+`tests/library/tui.test.js`, so this half of the table cannot go stale without a
+test failing. Ink's are a recorded measurement: reproduce them with the command
+above.
+
+## More than fits on the screen
+
+`ScrollBox` is a window onto content taller than itself. Give it a height —
+explicitly, or with `flexGrow` inside a parent that has one — and a row offset:
+
+```js
+component Log(lines: $ReadOnlyArray<string>) {
+  const [top, setTop] = useState<number>(Number.MAX_SAFE_INTEGER);
+
+  useKeyboard((key) => {
+    if (key.name === "up") {
+      setTop((row) => Math.max(0, row - 1));
+    }
+    if (key.name === "down") {
+      setTop((row) => row + 1);
+    }
+    if (key.name === "end") {
+      setTop(Number.MAX_SAFE_INTEGER);
+    }
+  });
+
+  return (
+    <ScrollBox height={10} scrollTop={top}>
+      {lines.map((line, index) => (
+        <Text key={String(index)} wrap="none">
+          {line}
+        </Text>
+      ))}
+    </ScrollBox>
+  );
+}
+```
+
+A `ScrollBox` between a header and a footer wants `flexGrow={1}` on it and
+`flexShrink={0}` on them. That is flexbox rather than this component: a
+scrolling box asks for its whole content's height, so a header that is allowed
+to shrink will — exactly as it would in CSS.
+
+`Number.MAX_SAFE_INTEGER` is not a trick. Layout clamps the offset to the range
+the content actually has, so the largest number there is means "the bottom" —
+which is what a log that has just grown by a line needs, and it needs it without
+having to know how long the log is.
+
+The offset is the caller's, and no key is bound to it. That is the same rule
+focus follows, one level down: what an arrow key should do inside a scrolling
+region is the application's question — a log follows its tail, a file viewer
+does not, a list moves a selection and lets the box follow *that*. A component
+that owned the offset would also have to own "how far is a page", which is the
+viewport's height, which nothing knows until layout has run.
+
+**What it costs.** Every child is measured, because the total height is what the
+offset is clamped against. Only the children that intersect the window are laid
+out, walked into, or painted — so ten thousand rows in a twenty-four row terminal
+is one measure per row and a screenful of everything else. `tests/library/tui.test.js`
+renders exactly that and asserts the first frame costs the terminal's 1,920 cells
+rather than the log's, and that changing one visible row afterwards costs one.
+
+There is no mouse wheel, because there is no mouse
+([#314](https://github.com/ubugeeei-prod/uf/issues/314)), and no horizontal
+scrolling: content wider than a terminal is nearly always content that should
+have wrapped.
 
 ## Keyboard, and what has focus
 
@@ -131,6 +267,34 @@ component Login() {
 }
 ```
 
+### Pasting is not typing
+
+A terminal delivers a paste as very fast typing, which is how pasting two lines
+into a prompt runs the first one: the `\r` between them arrives as Enter.
+`@uniflowed/tui` turns on the terminal's bracketed-paste mode, so pasted text
+comes back wrapped and arrives as a single event:
+
+```js
+useKeyboard((key) => {
+  if (key.name === "paste") {
+    setBuffer((text) => text + key.sequence);
+  }
+});
+```
+
+`key.sequence` is the clipboard, verbatim and therefore untrusted: it can hold
+newlines, control bytes and escape sequences of its own, and handing it over as
+text rather than as keys is the whole point. `Input` takes the first line of one
+and drops the control characters, because it is one line and cannot hold either.
+
+A clipboard is as long as it is, and a large one arrives in whatever pieces the
+operating system's reads happen to make — including a piece that ends in the
+middle of a word, or in the middle of the marker itself. The decoder holds the
+partial one back and delivers the paste once, whole.
+
+The mode is turned off again when the application stops: a terminal left in it
+hands the *shell* brackets around every paste.
+
 ## Terminals that cannot do what yours can
 
 Capability is resolved once, before the first frame, from the same inputs and
@@ -152,6 +316,15 @@ that gets sent a screenshot of one of them being wrong.
   addressing and no incremental updates at all — an editor's worth of
   `ESC[12;40H` in a CI log helps nobody. The final frame is written once, as
   plain lines, when the application stops.
+
+How *big* the terminal is comes from the same two sides. `COLUMNS` and `LINES`
+are POSIX's override and are what a `watch`, a `script` or a CI wrapper sets, so
+they are asked first — each on its own, because a wrapper that cares about width
+sets one of them — and what the stream itself reports comes second. `uf`'s own
+CLI resolves it the same way and the same test compares the two chains, which is
+the point again: uf assumed 72 columns for its live regions until this was
+written, and on a narrower terminal every row wrapped and every redraw walked
+down the screen.
 
 Text is measured in grapheme clusters and terminal columns, not in
 `String.length`. `界` occupies two cells, a family emoji occupies two cells and
@@ -197,15 +370,37 @@ behind it, which is the thing this was fixing.
 
 ## What is not here yet
 
-Mouse input, text selection, scroll boxes, images, the rich-content components
-(`Code`, `Markdown`, `Diff`, `TextTable`) and OpenTUI's application APIs —
-clipboard, notifications, audio, animation — are not implemented. They are
+Mouse input, text selection, images, the rich-content components (`Code`,
+`Markdown`, `Diff`, `TextTable`) and OpenTUI's application APIs — clipboard,
+notifications, audio, animation — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
-rather than present as functions that throw: `uf inspect` reports three
-components because there are three.
+rather than present as functions that throw: `uf inspect` reports four
+components because there are four.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not
 have or a way to run a Flow entry point as a command —
 [#316](https://github.com/ubugeeei-prod/uf/issues/316) is that gap and what
-would close it.
+would close it. That issue asks for one number before anything is committed to —
+"a watch-mode UI that costs a Node start-up on every run is worse than the Rust
+one it replaces" — and `tools/bench/tui/startup.js` now measures it:
+
+| | start to a drawn frame |
+| --- | --- |
+| `uf info`, a rendered block from the Rust binary | 8 ms |
+| `node -e 0`, Node with nothing in it | 58 ms |
+| a Flow entry point that draws one frame, warm transform cache | 149 ms |
+| the same, cold cache | 383 ms |
+
+Fastest of forty runs each, on the machine above while it was shared with other
+work; `/usr/bin/true` costs 3 ms through the same harness, so every row includes
+that much process spawn. The minimum is the statistic because contention can
+only make a start-up slower.
+
+That settles half the question and leaves the interesting half open. A banner
+cannot be written this way — the start-up alone is eighteen times the whole of
+`uf info`, and most of it is Node rather than anything uf could make faster. A
+command that already pays for Node and then runs for minutes can: `uf test
+--watch` starts worker processes before it draws anything, so a Flow front end
+would add a sixth of a second once, at the start of a session that lasts as long
+as somebody is editing.

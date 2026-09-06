@@ -48,6 +48,8 @@ export type TerminalEnv = {
   readonly CLICOLOR_FORCE?: string,
   readonly TERM?: string,
   readonly COLORTERM?: string,
+  readonly COLUMNS?: string,
+  readonly LINES?: string,
   readonly LC_ALL?: string,
   readonly LC_CTYPE?: string,
   readonly LANG?: string,
@@ -191,6 +193,93 @@ function detectColor(choice: ColorChoice, tty: Tty, env: TerminalEnv, dumb: bool
  */
 export function plainCapabilities(): Capabilities {
   return { color: "none", glyphs: "ascii", tty: "piped" };
+}
+
+/** How wide a terminal is assumed to be when nothing will say. */
+export const FALLBACK_COLUMNS: number = 80;
+
+/** How tall a terminal is assumed to be when nothing will say. */
+export const FALLBACK_ROWS: number = 24;
+
+/** How big the terminal is, in cells. */
+export type TerminalSize = {
+  readonly columns: number,
+  readonly rows: number,
+};
+
+/**
+ * What the stream said about itself, if anything.
+ *
+ * `process.stdout.columns` is `undefined` on a stream that is not a terminal,
+ * and a stand-in a test wrote may not have the properties at all — so this is
+ * every field optional rather than a size, and the difference between "the
+ * terminal says 80" and "nothing said anything" is kept.
+ */
+export type TerminalReport = {
+  readonly columns?: number,
+  readonly rows?: number,
+  ...
+};
+
+/** `COLUMNS`, when it names a usable number of columns. */
+function declaredColumns(env: TerminalEnv): number | null {
+  return positive(env.COLUMNS);
+}
+
+/** `LINES`, when it names a usable number of rows. */
+function declaredRows(env: TerminalEnv): number | null {
+  return positive(env.LINES);
+}
+
+/** The columns the stream reported, when it reported a usable number. */
+function reportedColumns(reported: TerminalReport): number | null {
+  return usable(reported.columns);
+}
+
+/** The rows the stream reported, when it reported a usable number. */
+function reportedRows(reported: TerminalReport): number | null {
+  return usable(reported.rows);
+}
+
+/**
+ * A variable that names a positive whole number of cells, or nothing.
+ *
+ * `COLUMNS=0` and `COLUMNS=wide` are both a variable saying nothing useful,
+ * and both fall through to the next rule rather than produce a terminal zero
+ * columns across.
+ */
+function positive(value: string | void): number | null {
+  const raw = nonEmpty(value);
+  if (raw == null || !/^\d+$/.test(raw.trim())) {
+    return null;
+  }
+  return usable(Number.parseInt(raw, 10));
+}
+
+const usable = (value: number | void): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+
+/**
+ * Resolve how big the terminal is.
+ *
+ * Precedence, highest first — this list is `crates/uf_term/src/capability.rs`'s
+ * `detect_size`, chain for chain, and `tests/library/tui.test.js` compares the
+ * two rather than believing this sentence:
+ *
+ * 1. `COLUMNS` and `LINES`, each on its own. POSIX makes them the override,
+ *    and they are what a `watch`, a `script` or a CI wrapper sets when the
+ *    stream itself cannot answer.
+ * 2. what the stream reported, which on Node is the terminal's own answer
+ * 3. 80 by 24
+ *
+ * The two dimensions are resolved separately, because `COLUMNS` without
+ * `LINES` is the common shape: a wrapper that cares about width sets one of
+ * them.
+ */
+export function detectSize(env: TerminalEnv, reported: TerminalReport): TerminalSize {
+  const columns = declaredColumns(env) ?? reportedColumns(reported) ?? FALLBACK_COLUMNS;
+  const rows = declaredRows(env) ?? reportedRows(reported) ?? FALLBACK_ROWS;
+  return { columns, rows };
 }
 
 /**

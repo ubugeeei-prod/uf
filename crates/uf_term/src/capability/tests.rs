@@ -312,3 +312,94 @@ fn the_conservative_floor_carries_no_image_protocol() {
         Some(ImageProtocol::ITerm2)
     );
 }
+
+/// `COLUMNS` and `LINES` are the override, and each one stands on its own.
+#[test]
+fn the_environment_is_asked_before_the_terminal_is() {
+    let env = env().with_columns("40").with_lines("12");
+    let size = detect_size(&env, Some((100, 30)));
+
+    assert_eq!((size.columns(), size.rows()), (40, 12));
+}
+
+#[test]
+fn a_half_answered_environment_takes_the_other_half_from_the_terminal() {
+    // `COLUMNS` without `LINES` is the common shape — a wrapper that cares
+    // about width sets one of them — so the two are resolved separately
+    // rather than as a pair that is present or absent.
+    let env = env().with_columns("40");
+    let size = detect_size(&env, Some((100, 30)));
+
+    assert_eq!((size.columns(), size.rows()), (40, 30));
+}
+
+#[test]
+fn the_terminal_answers_when_the_environment_will_not() {
+    let size = detect_size(&env(), Some((132, 43)));
+
+    assert_eq!((size.columns(), size.rows()), (132, 43));
+}
+
+#[test]
+fn a_terminal_the_environment_already_described_is_not_asked() {
+    // The probe is a process spawn. Paying for it to get an answer that the
+    // next line would discard is the kind of cost nobody notices until a
+    // command that runs a hundred times does it.
+    let env = env().with_columns("40").with_lines("12");
+
+    assert_eq!(
+        TerminalSize::detect(Tty::Interactive, &env),
+        TerminalSize::new(40, 12)
+    );
+}
+
+#[test]
+fn a_stream_nobody_is_watching_is_never_measured() {
+    // A piped stream draws no region at all, so paying a process spawn to
+    // find out how wide the window behind it is buys nothing. There is no
+    // observable difference to assert here other than the size it settles on,
+    // so the branch is stated where it lives and asserted by its result.
+    assert_eq!(
+        TerminalSize::detect(Tty::Piped, &env()),
+        TerminalSize::fallback()
+    );
+}
+
+#[test]
+fn a_variable_that_names_no_number_falls_through_to_the_next_rule() {
+    for value in ["", "0", "wide", "-1", "80x24"] {
+        let env = env().with_columns(value);
+        let size = detect_size(&env, Some((132, 43)));
+        assert_eq!(
+            size.columns(),
+            132,
+            "COLUMNS={value:?} says nothing usable and must not win"
+        );
+    }
+}
+
+#[test]
+fn a_terminal_that_reports_nothing_gets_the_fallback() {
+    let size = detect_size(&env(), None);
+
+    assert_eq!(size, TerminalSize::fallback());
+    assert_eq!((size.columns(), size.rows()), (80, 24));
+}
+
+#[test]
+fn a_zero_dimension_is_a_terminal_that_is_not_ready_yet() {
+    // Some CI shells answer `stty size` with `0 0`. A region zero columns wide
+    // is worse than one laid out for eighty.
+    let size = detect_size(&env(), Some((0, 0)));
+
+    assert_eq!((size.columns(), size.rows()), (80, 24));
+}
+
+#[test]
+fn stty_size_reports_rows_before_columns() {
+    assert_eq!(parse_stty_size("43 132\n"), Some((132, 43)));
+    assert_eq!(parse_stty_size("  24   80  "), Some((80, 24)));
+    assert_eq!(parse_stty_size(""), None);
+    assert_eq!(parse_stty_size("43"), None);
+    assert_eq!(parse_stty_size("stty: stdin: Not a typewriter"), None);
+}

@@ -31,9 +31,12 @@ import {
   Box,
   INHERIT,
   Input,
+  ScrollBox,
   Text,
+  createKeyDecoder,
   decodeKeys,
   detectCapabilities,
+  detectSize,
   frameRow,
   parseColor,
   render,
@@ -42,6 +45,8 @@ import {
   useTerminalSize,
 } from "@uniflowed/tui";
 import type { Frame } from "@uniflowed/tui";
+
+import { HEIGHT, START, STEPS, WIDTH, lines } from "../../tools/bench/tui/workload.js";
 
 /** The repository root, for the tests that read Rust source. */
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -323,6 +328,231 @@ describe("layout is flexbox", () => {
   });
 });
 
+describe("a window onto more than fits", () => {
+  /** `count` numbered lines, which is what a log looks like to a renderer. */
+  const log = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      React.createElement(Text, { key: String(index), wrap: "none" }, `line ${index}`),
+    );
+
+  it("shows the rows the offset asks for and none of the others", () => {
+    const handle = testRender(
+      <ScrollBox height={3} width={8} scrollbar={false} scrollTop={2}>
+        {log(6)}
+      </ScrollBox>,
+      { width: 8, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual(["line 2  ", "line 3  ", "line 4  ", "        "]);
+    handle.stop();
+  });
+
+  it("takes the height a parent gives it, so a log fills what is left", () => {
+    // The shape a real application has: a header, a footer, and a scrolling
+    // region that is whatever is between them. The guide says a `ScrollBox`
+    // needs a bounded height "explicitly, or with `flexGrow` inside a parent
+    // that has one", and this is the second half of that sentence.
+    //
+    // The `flexShrink={0}` on the two lines is flexbox rather than this
+    // component: a scrolling box asks for its whole content's height, so a
+    // header that may shrink will shrink, exactly as it would in CSS.
+    const handle = testRender(
+      <Box height={4} width={8}>
+        <Text flexShrink={0} wrap="none">
+          head
+        </Text>
+        <ScrollBox flexGrow={1} scrollbar={false} scrollTop={Number.MAX_SAFE_INTEGER}>
+          {log(9)}
+        </ScrollBox>
+        <Text flexShrink={0} wrap="none">
+          foot
+        </Text>
+      </Box>,
+      { width: 8, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual(["head    ", "line 7  ", "line 8  ", "foot    "]);
+    handle.stop();
+  });
+
+  it("clamps the offset to the content, so the largest number means the end", () => {
+    // A log that has just grown by a line follows its tail by asking for a row
+    // number it cannot know. Clamping in layout is what makes that legal.
+    const handle = testRender(
+      <ScrollBox height={2} width={8} scrollbar={false} scrollTop={Number.MAX_SAFE_INTEGER}>
+        {log(5)}
+      </ScrollBox>,
+      { width: 8, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["line 3  ", "line 4  "]);
+
+    handle.stop();
+  });
+
+  it("never scrolls above the first row", () => {
+    const handle = testRender(
+      <ScrollBox height={2} width={8} scrollbar={false} scrollTop={-40}>
+        {log(5)}
+      </ScrollBox>,
+      { width: 8, height: 2 },
+    );
+    expect(rows(handle.frame())).toEqual(["line 0  ", "line 1  "]);
+    handle.stop();
+  });
+
+  it("cuts a child the window only half reaches", () => {
+    // The first child is two wrapped lines; the window starts on its second.
+    // A child does not know it was cut — the window cuts it — which is what
+    // makes a paragraph scroll the same way a list of one-line rows does.
+    const handle = testRender(
+      <ScrollBox height={2} width={5} scrollbar={false} scrollTop={1}>
+        <Text>a b c d</Text>
+        <Text>zzz</Text>
+      </ScrollBox>,
+      { width: 5, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["c d  ", "zzz  ", "     "]);
+    handle.stop();
+  });
+
+  it("draws a bar whose thumb says where in the content the window is", () => {
+    const top = testRender(
+      <ScrollBox height={4} width={8} scrollTop={0}>
+        {log(16)}
+      </ScrollBox>,
+      { width: 8, height: 4 },
+    );
+    expect(rows(top.frame())).toEqual(["line 0 █", "line 1 │", "line 2 │", "line 3 │"]);
+    top.stop();
+
+    const bottom = testRender(
+      <ScrollBox height={4} width={8} scrollTop={Number.MAX_SAFE_INTEGER}>
+        {log(16)}
+      </ScrollBox>,
+      { width: 8, height: 4 },
+    );
+    expect(rows(bottom.frame())).toEqual(["line 12│", "line 13│", "line 14│", "line 15█"]);
+    bottom.stop();
+  });
+
+  it("keeps the caller's padding and puts the bar beside it", () => {
+    // The bar takes a column of its own. A `ScrollBox` that was padded by one
+    // and given a bar has to end up padded by one *and* have a bar, or every
+    // layout that had a border and a bar loses a column of content to it.
+    const handle = testRender(
+      <ScrollBox height={4} width={10} padding={1} scrollTop={0}>
+        {log(8)}
+      </ScrollBox>,
+      { width: 10, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual(["          ", " line 0 █ ", " line 1 │ ", "          "]);
+    handle.stop();
+  });
+
+  it("draws no bar when everything already fits", () => {
+    // A full-height thumb beside content that does not scroll is a control
+    // that lies about being one.
+    const handle = testRender(
+      <ScrollBox height={4} width={8}>
+        {log(2)}
+      </ScrollBox>,
+      { width: 8, height: 4 },
+    );
+    expect(rows(handle.frame())).toEqual(["line 0  ", "line 1  ", "        ", "        "]);
+    handle.stop();
+  });
+
+  it("puts the bar inside the border, not on it", () => {
+    // The column the bar goes in is the one the box reserved, which is inside
+    // the border and outside the content — so the track and the right-hand
+    // border are two adjacent columns of the same character and are still two
+    // different things.
+    const handle = testRender(
+      <ScrollBox border={true} borderStyle="rounded" height={5} width={10} scrollTop={0}>
+        {log(9)}
+      </ScrollBox>,
+      { width: 10, height: 5 },
+    );
+    expect(rows(handle.frame())).toEqual([
+      "╭────────╮",
+      "│line 0 █│",
+      "│line 1 ││",
+      "│line 2 ││",
+      "╰────────╯",
+    ]);
+    handle.stop();
+  });
+
+  it("draws the bar in the vocabulary the terminal has", () => {
+    const handle = testRender(
+      <ScrollBox height={2} width={8} scrollTop={0}>
+        {log(8)}
+      </ScrollBox>,
+      {
+        width: 8,
+        height: 2,
+        capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
+      },
+    );
+    expect(rows(handle.frame())).toEqual(["line 0 #", "line 1 |"]);
+    handle.stop();
+  });
+
+  it("costs a screenful for ten thousand lines, and one cell to change one", () => {
+    // The claim the component exists for, measured the way the diff's own
+    // claim is. Ten thousand rows in a twenty-four row terminal: the first
+    // frame is the terminal, not the log, and editing a visible row is one
+    // cell — a renderer that painted the whole content and clipped it would
+    // pass neither.
+    component Log() {
+      const [marker, setMarker] = useState<string>("");
+      useKeyboard(() => setMarker("!"));
+      return (
+        <ScrollBox height={24} width={80} scrollbar={false} scrollTop={3_990}>
+          {Array.from({ length: 10_000 }, (_, index) =>
+            React.createElement(
+              Text,
+              { key: String(index), wrap: "none" },
+              index === 4_000 ? `line ${index}${marker}` : `line ${index}`,
+            ),
+          )}
+        </ScrollBox>
+      );
+    }
+
+    const handle = testRender(<Log />, { width: 80, height: 24 });
+    const first = handle.update();
+    expect(first.cells).toBe(80 * 24);
+    expect(frameRow(handle.frame(), 10)).toBe(`line 4000${" ".repeat(71)}`);
+
+    handle.press("x");
+    const second = handle.update();
+    expect(second.cells).toBe(1);
+    expect(frameRow(handle.frame(), 10)).toBe(`line 4000!${" ".repeat(70)}`);
+    handle.stop();
+  });
+
+  it("does not paint what the window does not reach", () => {
+    // The other half of the same property, and the one a clipping renderer
+    // would fail: a child outside the window is not merely invisible, it is
+    // never walked into. The box under it would otherwise be drawn at last
+    // frame's coordinates.
+    const handle = testRender(
+      <ScrollBox height={1} width={9} scrollbar={false} scrollTop={0}>
+        <Text>visible</Text>
+        <Box backgroundColor="#ff0000" height={1}>
+          <Text>hidden</Text>
+        </Box>
+      </ScrollBox>,
+      { width: 9, height: 2 },
+    );
+    const frame = handle.frame();
+    expect(rows(frame)).toEqual(["visible  ", "         "]);
+    for (let x = 0; x < 9; x += 1) {
+      expect(cell(frame, x, 1).bg).toBe(INHERIT);
+    }
+    handle.stop();
+  });
+});
+
 describe("the diff writes only what changed", () => {
   /** An application whose one character changes when a key is pressed. */
   component Counter() {
@@ -436,6 +666,90 @@ describe("input reaches what has focus", () => {
   it("decodes a burst as several keys, because fast typing arrives as one chunk", () => {
     expect(decodeKeys("abc").map((key) => key.sequence)).toEqual(["a", "b", "c"]);
     expect(decodeKeys("a\u001b[Db").map((key) => key.name)).toEqual(["a", "left", "b"]);
+  });
+
+  it("delivers a paste as one block of text rather than as fast typing", () => {
+    // Without this the `\r` between two pasted lines is Enter, which is how
+    // pasting a two-line command into a prompt runs the first line.
+    const keys = decodeKeys("\u001b[200~echo one\r\necho two\u001b[201~");
+
+    expect(keys.map((key) => key.name)).toEqual(["paste"]);
+    expect(keys[0].sequence).toBe("echo one\r\necho two");
+    // Verbatim, including what an escape sequence in a clipboard looks like:
+    // the point of knowing it was a paste is that none of it is interpreted.
+    expect(decodeKeys("\u001b[200~\u001b[Ax\u001b[201~")[0].sequence).toBe("\u001b[Ax");
+  });
+
+  it("keeps the keys around a paste, and an empty paste is still an event", () => {
+    expect(decodeKeys("a\u001b[200~b\u001b[201~c").map((key) => key.sequence)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(decodeKeys("\u001b[200~\u001b[201~").map((key) => [key.name, key.sequence])).toEqual([
+      ["paste", ""],
+    ]);
+  });
+
+  it("waits for the rest of a paste the operating system split in two", () => {
+    // A clipboard is as long as it is, and a large paste arrives in whatever
+    // pieces the read gives — including one that ends in the middle of a word.
+    const decoder = createKeyDecoder();
+
+    expect(decoder.push("\u001b[200~alpha ")).toEqual([]);
+    expect(decoder.push("beta")).toEqual([]);
+    const finished = decoder.push("\u001b[201~!");
+    expect(finished.map((key) => [key.name, key.sequence])).toEqual([
+      ["paste", "alpha beta"],
+      ["!", "!"],
+    ]);
+    expect(decoder.flush()).toEqual([]);
+  });
+
+  it("waits when a chunk stops part-way through the paste marker itself", () => {
+    // The marker is six bytes and a read can end anywhere. Decoding
+    // `ESC [ 2 0 0` on its own produces Alt-and-a-bracket followed by three
+    // digits, and then the paste's first line runs as a command.
+    const decoder = createKeyDecoder();
+
+    expect(decoder.push("\u001b[2")).toEqual([]);
+    expect(decoder.push("00~text\u001b[201~").map((key) => [key.name, key.sequence])).toEqual([
+      ["paste", "text"],
+    ]);
+
+    // A lone escape is still the Escape key, though: holding it back would
+    // mean Escape never fires until the next keystroke.
+    expect(decoder.push("\u001b").map((key) => key.name)).toEqual(["escape"]);
+  });
+
+  it("gives back the bytes when a held marker turns out not to be one", () => {
+    const decoder = createKeyDecoder();
+    decoder.push("\u001b[2");
+
+    expect(decoder.flush().map((key) => key.name)).toEqual(["[", "2"]);
+    expect(decoder.flush()).toEqual([]);
+  });
+
+  it("gives back a paste that never ended rather than swallowing it", () => {
+    const decoder = createKeyDecoder();
+    decoder.push("\u001b[200~half");
+
+    expect(decoder.flush().map((key) => key.sequence)).toEqual(["half"]);
+    expect(decoder.flush()).toEqual([]);
+  });
+
+  it("puts one line of a paste into an input, and no control characters", () => {
+    const handle = testRender(<Input focused={true} defaultValue="" />, {
+      width: 12,
+      height: 1,
+    });
+    handle.press("\u001b[200~one\u0007two\nthree\u001b[201~");
+
+    // The bell is gone and the second line with it: an `Input` is one line and
+    // cannot hold either, and a component that pasted them anyway would ring
+    // the terminal on every redraw.
+    expect(frameRow(handle.frame(), 0)).toBe("onetwo      ");
+    handle.stop();
   });
 
   it("reports a capital as shift, since that is all a terminal says", () => {
@@ -697,6 +1011,29 @@ describe("what the terminal can take", () => {
     // A typo leaves the interface readable instead of stopping the program.
     expect(parseColor("chartreuse")).toBe(INHERIT);
   });
+
+  it("takes the terminal's size from the variables first and the stream second", () => {
+    // `COLUMNS` is POSIX's override and is what a `watch`, a `script` or a CI
+    // wrapper sets when the stream itself cannot answer. Reading only
+    // `stdout.columns` meant this package and the uf CLI could size the same
+    // window differently.
+    const stream = { columns: 100, rows: 30 };
+
+    expect(detectSize(env({ COLUMNS: "40", LINES: "12" }), stream)).toEqual({
+      columns: 40,
+      rows: 12,
+    });
+    // Half an answer is still an answer for the half it covers.
+    expect(detectSize(env({ COLUMNS: "40" }), stream)).toEqual({ columns: 40, rows: 30 });
+    expect(detectSize(env({}), stream)).toEqual({ columns: 100, rows: 30 });
+    // A stream that will not say how big it is, which is every stream that is
+    // not a terminal.
+    expect(detectSize(env({}), {})).toEqual({ columns: 80, rows: 24 });
+
+    for (const value of ["", "0", "wide", "-1", "80x24"]) {
+      expect(detectSize(env({ COLUMNS: value }), stream).columns).toBe(100);
+    }
+  });
 });
 
 describe("the width tables match the CLI's", () => {
@@ -930,6 +1267,48 @@ describe("the capability precedence matches the CLI's", () => {
     );
     expect([...jsNames].sort()).toEqual([...rustNames].sort());
   });
+
+  it("resolves how big the terminal is from the same inputs, in the same order", () => {
+    // The other thing two renderers can disagree about, and the one that had
+    // no guard at all: the CLI assumed seventy-two columns and this package
+    // read `stdout.columns`, so on a forty-column window one of them drew a
+    // frame the terminal wrapped. Both now walk the same chain, and this
+    // reads that chain out of each file rather than out of the prose above it.
+    const snakeToCamel = (name) => name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    const rustChain = [
+      ...body(rust(), "fn detect_size(").matchAll(
+        /\.(declared_\w+)\(\)|\b(reported_\w+)\(|\b(FALLBACK_\w+)\b/g,
+      ),
+    ].map((match) => snakeToCamel(match[1] ?? match[2] ?? match[3]));
+    const jsChain = [
+      ...body(js(), "function detectSize(").matchAll(
+        /\b(declared[A-Z]\w*|reported[A-Z]\w*)\(|\b(FALLBACK_\w+)\b/g,
+      ),
+    ].map((match) => match[1] ?? match[2]);
+
+    // Spelled out, so a failure says which rule moved rather than only that
+    // one did. Columns and rows are resolved separately on both sides: a
+    // wrapper that cares about width sets `COLUMNS` and not `LINES`.
+    expect(rustChain).toEqual([
+      "declaredColumns",
+      "reportedColumns",
+      "FALLBACK_COLUMNS",
+      "declaredRows",
+      "reportedRows",
+      "FALLBACK_ROWS",
+    ]);
+    expect(jsChain).toEqual(rustChain);
+  });
+
+  it("reads the size out of the same two variables", () => {
+    // The chain above compares the order of the rules; this compares what the
+    // first rule in it actually looks at. A side that renamed its helper and
+    // kept the shape would pass one and fail the other.
+    expect(rustHelpers(rust()).declared_columns).toEqual(["COLUMNS"]);
+    expect(rustHelpers(rust()).declared_rows).toEqual(["LINES"]);
+    expect(jsHelpers(js()).declaredColumns).toEqual(["COLUMNS"]);
+    expect(jsHelpers(js()).declaredRows).toEqual(["LINES"]);
+  });
 });
 
 describe("the manual is not a screenshot", () => {
@@ -1005,6 +1384,126 @@ describe("the manual is not a screenshot", () => {
   });
 });
 
+describe("the guide's comparison against React Ink", () => {
+  // `tools/bench/tui/` renders this workload through `@uniflowed/tui` and
+  // through Ink, and the guide prints both columns. Ink's half is a recorded
+  // measurement — Ink is a dependency of the benchmark and not of this
+  // repository — but uf's half is this renderer, so it is asserted here rather
+  // than trusted, the same way the small table further up the page is.
+  //
+  // The workload is imported rather than copied. A benchmark and a test that
+  // disagree about what was rendered are two numbers about two different
+  // things, and the number in the guide would be whichever of them was written
+  // down.
+
+  /** A stand-in terminal that counts bytes the way the benchmark's does. */
+  const sink = () => {
+    const encoder = new TextEncoder();
+    let bytes = 0;
+    return {
+      columns: 8,
+      rows: 2,
+      isTTY: true,
+      write(chunk: string) {
+        bytes += encoder.encode(chunk).length;
+        return true;
+      },
+      on() {},
+      off() {},
+      take(): number {
+        const taken = bytes;
+        bytes = 0;
+        return taken;
+      },
+    };
+  };
+
+  /** A stdin that delivers exactly the keys a test types at it. */
+  const keyboard = () => {
+    let listener: ((chunk: string) => mixed) | null = null;
+    return {
+      isTTY: true,
+      setRawMode() {},
+      setEncoding() {},
+      resume() {},
+      pause() {},
+      on(event: string, next: (chunk: string) => mixed) {
+        if (event === "data") {
+          listener = next;
+        }
+      },
+      off() {
+        listener = null;
+      },
+      type(bytes: string) {
+        if (listener == null) {
+          throw new Error("nothing is listening for input");
+        }
+        listener(bytes);
+      },
+    };
+  };
+
+  /**
+   * The benchmark's application, stepped by a key rather than by a store.
+   *
+   * The benchmark drives both libraries through `useSyncExternalStore` so that
+   * one line is the "state update" both stopwatches start on. A key press is
+   * the same commit through the same renderer and is synchronous, which is
+   * what a test wants — and the bytes are a function of the frames, not of
+   * what moved between them.
+   */
+  component Bench() {
+    const [step, setStep] = useState<number>(-1);
+    useKeyboard(() => setStep((index) => index + 1));
+    const state = step < 0 ? START : STEPS[step].to;
+    return React.createElement(
+      Box,
+      { flexDirection: "column" },
+      ...lines(state).map((line, index) =>
+        React.createElement(Text, { key: String(index), wrap: "none" }, line),
+      ),
+    );
+  }
+
+  /** The guide's row for uf, as numbers. */
+  const published = (): Array<number> => {
+    const page = fs.readFileSync(path.join(REPO, "docs/app/guide/tui/_uf.page.mdx"), "utf8");
+    const row = page.match(/\n\| `@uniflowed\/tui` \|([^\n]*)\|\n/);
+    expect(row).not.toBe(null);
+    return (row?.[1] ?? "")
+      .split("|")
+      .map((cell) => cell.replaceAll(/[^\d]/g, ""))
+      .filter((cell) => cell !== "")
+      .map(Number);
+  };
+
+  it("costs what the guide says, step for step", () => {
+    const stdout = sink();
+    const stdin = keyboard();
+    const app = render(<Bench />, {
+      stdout,
+      stdin,
+      color: "never",
+      env: { COLUMNS: String(WIDTH), LINES: String(HEIGHT) },
+      alternateScreen: false,
+    });
+
+    const measured = [stdout.take()];
+    for (const _step of STEPS) {
+      stdin.type("x");
+      measured.push(stdout.take());
+    }
+    app.stop();
+
+    // The frame is 80×24 and addressed cell by cell, so the first one is the
+    // expensive one — and then one character of a status line at the *top* of
+    // the frame costs eight bytes, which is the whole claim.
+    expect(measured).toEqual([2102, 8, 345, 534]);
+    expect(published()).toEqual(measured);
+  });
+});
+
 describe("a real terminal, or something that is not one", () => {
   /** A stand-in for `process.stdout` that keeps what was written to it. */
   const output = (options: { isTTY: boolean }) => {
@@ -1068,6 +1567,7 @@ describe("a real terminal, or something that is not one", () => {
     const opened = stdout.text();
     expect(opened).toContain("\u001b[?1049h"); // the alternate screen
     expect(opened).toContain("\u001b[?25l"); // and no cursor of the terminal's own
+    expect(opened).toContain("\u001b[?2004h"); // and pasted text, bracketed
     expect(opened).toContain("hi");
     // Raw mode, because a menu needs the keystroke rather than the line.
     expect(stdin.modes).toEqual([true]);
@@ -1076,6 +1576,8 @@ describe("a real terminal, or something that is not one", () => {
     const closed = stdout.text().slice(opened.length);
     expect(closed).toContain("\u001b[?25h");
     expect(closed).toContain("\u001b[?1049l");
+    // A terminal left in bracketed paste mode hands the *shell* the brackets.
+    expect(closed).toContain("\u001b[?2004l");
     expect(stdin.modes).toEqual([true, false]);
   });
 
@@ -1100,6 +1602,23 @@ describe("a real terminal, or something that is not one", () => {
     expect(written).toContain("up");
     expect(app.text().split("\n")[0]).toBe("up      ");
 
+    app.stop();
+  });
+
+  it("lays out for the size the environment declares, not the stream's guess", () => {
+    // The stand-in stream says eight columns; `COLUMNS` says four. A terminal
+    // multiplexer, a `watch`, and a CI wrapper all set the variable and leave
+    // the stream saying whatever it said before — so believing the stream
+    // alone draws a frame four columns wider than the window, and every line
+    // of it wraps.
+    const stdout = output({ isTTY: true });
+    const app = render(<Text wrap="none">abcdefghijkl</Text>, {
+      stdin: input(),
+      stdout,
+      env: { COLUMNS: "4", LINES: "1" },
+    });
+
+    expect(app.text()).toBe("abcd");
     app.stop();
   });
 
