@@ -12,8 +12,9 @@
 //! Two readings were possible — every export, or the names an editor should
 //! suggest — and the data settled it rather than taste. Twenty-nine of the
 //! forty-four entries already matched their package exactly, including the four
-//! largest: `@uniflowed/validator` at 73 names, `@uniflowed/effect` at 71,
-//! `@uniflowed/hooks` at 52, `@uniflowed/state` at 24. A hand-curated list does
+//! largest: `@uniflowed/effect` at 71 names — 91 since #325 to #329 —
+//! `@uniflowed/validator` at 73, `@uniflowed/hooks` at 52, `@uniflowed/state`
+//! at 24. A hand-curated list does
 //! not come out exact for seventy-three names by accident. The fifteen that
 //! disagreed were drift, and `the_registry_names_exactly_what_each_package_exports`
 //! is what stops them drifting again.
@@ -341,8 +342,10 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "layerMerge",
                 "layerProvide",
                 "layerProvideMerge",
+                "managedRuntime",
                 "fork",
                 "forkDaemon",
+                "forkScoped",
                 "join",
                 "interrupt",
                 "ref",
@@ -362,6 +365,18 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "semaphore",
                 "withPermit",
                 "withPermits",
+                "queue",
+                "queueOffer",
+                "queueTake",
+                "queueTakeAll",
+                "queueTakeUpTo",
+                "queueSize",
+                "queueShutdown",
+                "queueIsShutdown",
+                "pubSub",
+                "pubSubSubscribe",
+                "pubSubPublish",
+                "pubSubShutdown",
                 "sleep",
                 "delay",
                 "runSync",
@@ -369,6 +384,12 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "runPromise",
                 "runPromiseExit",
                 "runFork",
+                "runtimeRunSync",
+                "runtimeRunSyncExit",
+                "runtimeRunPromise",
+                "runtimeRunPromiseExit",
+                "runtimeRunFork",
+                "runtimeDispose",
             ],
         ),
         NativeModule::new(

@@ -104,6 +104,40 @@ nothing at all until the process will not exit.
 A daemon is detached from its parent, not from its own children — otherwise one
 `forkDaemon` would detach a whole subtree.
 
+`forkScoped` is the third lifetime, and the one a request handler usually means:
+outlive this fiber, die with this *request*. The child is tied to the enclosing
+`Scope` rather than to a fiber, so a background refresh finishes its own work and
+stops when the scope closes.
+
+```js
+await runPromise(
+  scoped(
+    effect(function* () {
+      // Not stopped when this generator returns, and not left running for ever.
+      yield* forkScoped(refreshCache);
+      return yield* handle(request);
+    }),
+  ),
+);
+```
+
+| | the child is interrupted when |
+| --- | --- |
+| `fork` | the fiber that forked it is |
+| `forkDaemon` | never |
+| `forkScoped` | the enclosing `Scope` closes |
+
+The scope's finalizer interrupts the child and *waits* for it to stop, so a
+`scoped` block has not returned until what it started has finished and released.
+The child gets a scope of its own for its own resources: finalizers run newest
+first, so registering them on the enclosing scope would release them before the
+finalizer that stops the child — a resource closed under a fiber still using it.
+
+Effect's fourth fork, `forkIn`, is deliberately absent. It needs a `Scope` that
+is a *value*, and `Scope` here is a phantom that is never constructed, which is
+what makes `scoped` the only thing that can close one. A `forkScoped` inside a
+nested `scoped` says the same thing with the nesting visible in the code.
+
 `all`, `race` and `timeout` open child fibers under the same rule, which is why
 a failing `all` stops its siblings before it returns and a `timeout` stops the
 effect it timed out on.
@@ -203,8 +237,62 @@ overtake a waiting large one. Asking for more permits than the semaphore has is
 a defect rather than a wait, because nothing will ever release enough and a
 permanent hang is the least debuggable way to say so.
 
-`Queue` and `PubSub` are the same mechanism with a buffer in front, and are not
-here yet. STM is deliberately not planned: it needs a transaction log and a
+### Queue
+
+The same mechanism with a buffer in front, and the one the rest was waiting on:
+`all` collects into an array, so a producer that outruns its consumer grows one
+with no seam to put a limit in.
+
+```js
+const work = yield* queue(64);               // bounded: the producer waits
+const readings = yield* queue(1, "sliding"); // the newest reading, never a wait
+```
+
+| Strategy | A full queue |
+| --- | --- |
+| `bounded` | makes the producer wait — the only one that is back pressure |
+| `dropping` | throws away the value being offered, and `queueOffer` answers `false` |
+| `sliding` | throws away the oldest value waiting, and keeps the new one |
+
+`queueOffer`, `queueTake`, `queueTakeAll`, `queueTakeUpTo`, `queueSize`,
+`queueShutdown` and `queueIsShutdown`. Both ends are served strictly from the
+head, so a later taker cannot overtake a waiting one.
+
+A fiber blocked in either direction can be interrupted out of it, and an
+interrupted taker leaves the value it was waiting for *for the next taker* — it
+is out of the queue of takers before anything can hand it one, so a cancelled
+request does not eat a piece of work nobody then does.
+
+Every operation but `queueShutdown` and `queueIsShutdown` reports an
+**interruption** on a queue that has been shut down, waiting or not. A shutdown
+is a decision somebody took, which is what `interrupt` already means and what
+`fail` does not.
+
+`queueOffer` and `queueTake` have synchronous kernels, unlike `deferredAwait`:
+taking from a queue with something in it is reading a buffer, not waiting for a
+value nobody has produced. One that would wait fails the way any other
+asynchronous effect does under `runSync` — and it is not a race it might have
+won, because under `runSync` nothing else is running to fill the queue.
+
+### PubSub
+
+The same buffer, with several subscribers. A subscription *is* a `Queue`, so
+`queueTake` and `queueTakeAll` are already the operations a subscriber needs.
+
+```js
+const topic = yield* pubSub(16);
+const listener = yield* pubSubSubscribe(topic); // needs a Scope
+yield* pubSubPublish(topic, tick);
+```
+
+`pubSubSubscribe` requires a `Scope`, and it is not decoration: a subscription
+nothing unsubscribes is a buffer a publisher keeps filling and nobody drains,
+which with `bounded` stops the publisher for ever. A subscriber sees what is
+published after it subscribed and nothing before it, because its buffer is its
+own and starts empty. With `bounded`, the publisher waits for the slowest
+subscriber.
+
+STM is deliberately not planned: it needs a transaction log and a
 retry-on-conflict scheduler, which is larger than everything above put together,
 and its uses can be written with a serialised `Ref` at a cost worth measuring
 before it is paid.
@@ -269,8 +357,36 @@ keyed by layer identity, so a layer reached twice is built once — a pool is
 opened once, and a config file read once gives one answer.
 
 The memo lives for one build and not for the process, so a layer handed to two
-`provide`s is built twice. Building once for a whole application is what
-Effect-TS calls a `ManagedRuntime`, and there is not one here yet.
+`provide`s is built twice. That is right for what `provide` is — one build, one
+scope, closed when the effect ends — and wrong for what an application wants,
+which is `managedRuntime`.
+
+### One build for an application
+
+```js
+const runtime = await runPromise(managedRuntime(appLayer));
+// …one connection pool, many requests…
+await runtimeRunPromise(runtime, handle(request));
+await runPromise(runtimeDispose(runtime));
+```
+
+Effect-TS calls this `ManagedRuntime.make`. The build is the same one pass with
+the same memo; the difference is entirely in who closes the scope and when.
+`runtimeRunPromise`, `runtimeRunPromiseExit`, `runtimeRunSync`,
+`runtimeRunSyncExit` and `runtimeRunFork` mirror the five runners, each with a
+root fiber of its own so two effects running against one runtime do not own each
+other.
+
+This is the one effect in the package that deliberately leaves something open
+when it returns, which is why `dispose` is a named function rather than a
+finalizer somebody might not have registered. It is idempotent, and every run
+against a disposed runtime is a defect: the services are gone, so asking for one
+is a bug in the shutdown order rather than a condition to recover from.
+
+`Runtime<R>` is invariant in `R`, unlike `Effect` and `Layer`. With a covariant
+one the checker could satisfy a run by widening *both* sides to a union
+containing a service the runtime does not have; pinned to what the layer
+produced, the effect has to be a subtype of it.
 
 A memoised layer keeps the services it was first built with, so the same layer
 under two different `layerProvide`s in one graph gets one of the two outers.
@@ -299,42 +415,92 @@ own resources.
 
 ## Retrying
 
-A `Schedule` is data — arithmetic over an attempt count, importable on its own
-from `@uniflowed/effect/schedule` and testable with no runtime at all.
+A `Schedule<In>` is a state machine written as data: `scheduleStep` takes a state
+and an input and answers with a decision — continue, with an output and a delay,
+or stop. One type drives both `retry`, whose input is the error, and `repeat`,
+whose input is the value. It is importable on its own from
+`@uniflowed/effect/schedule` and testable with no runtime at all.
 
-| Schedule | Waits |
-| --- | --- |
-| `{ kind: "recurs", times }` | Not at all, `times` more attempts |
-| `{ kind: "spaced", millis }` | A fixed gap, for ever |
-| `{ kind: "exponential", baseMillis, factorPercent? }` | Doubling by default |
-| `{ kind: "fibonacci", baseMillis }` | More gently than doubling |
-| `{ kind: "upTo", millis }` | Once, then stops |
-| `{ kind: "intersect", left, right }` | While both would, the longer wait |
-| `{ kind: "union", left, right }` | While either would, the shorter wait |
-| `{ kind: "maxDelay", schedule, millis }` | The inner schedule, capped |
-| `{ kind: "jittered", schedule, minPercent?, maxPercent? }` | The inner schedule, spread |
+| Schedule | Waits | Outputs |
+| --- | --- | --- |
+| `{ kind: "recurs", times }` | Not at all, `times` more attempts | the count |
+| `{ kind: "spaced", millis }` | A fixed *gap*, for ever | the count |
+| `{ kind: "fixed", millis }` | A fixed *period*, for ever | the count |
+| `{ kind: "windowed", millis }` | Until the next window boundary | the count |
+| `{ kind: "exponential", baseMillis, factorPercent? }` | Doubling by default | the delay |
+| `{ kind: "fibonacci", baseMillis }` | More gently than doubling | the delay |
+| `{ kind: "upTo", millis }` | Once, then stops | the delay |
+| `{ kind: "elapsed" }` | Not at all, for ever | how long it has been |
+| `{ kind: "count" }` | Not at all, for ever | the count |
+| `{ kind: "recurUpTo", millis }` | Not at all, until `millis` have passed | how long it has been |
+| `{ kind: "intersect", left, right }` | While both would, the longer wait | the winner's |
+| `{ kind: "union", left, right }` | While either would, the shorter wait | the winner's |
+| `{ kind: "maxDelay", schedule, millis }` | The inner schedule, capped | the inner's |
+| `{ kind: "jittered", schedule, minPercent?, maxPercent? }` | The inner schedule, spread | the inner's |
+| `{ kind: "compose", first, second }` | While both would, the longer wait | the second's |
+| `{ kind: "whileInput", schedule, predicate }` | While the predicate holds of the input | the inner's |
+| `{ kind: "untilInput", schedule, predicate }` | Until it does | the inner's |
+| `{ kind: "whileOutput", schedule, predicate }` | While it holds of the inner's number | the inner's |
+| `{ kind: "untilOutput", schedule, predicate }` | Until it does | the inner's |
+
+`fixed` is a *period* and `spaced` is a *gap*: a poll that took 400ms of a
+one-second period waits 600ms, where a one-second gap would run it every 1.4
+seconds. `windowed` is the same period aligned to boundaries from the start, so
+an attempt that overran one window waits for the next boundary rather than
+starting immediately.
 
 Reach for `jittered` on anything a crowd of clients runs. Without it, every
 client that failed at the same moment retries at the same moment, for ever, and
 `maxDelay` does not help — it caps the wait, it does not spread it. The default
 range is 80% to 120% of what the inner schedule said.
 
-The random factor is an argument to `scheduleDelay`, not something the module
-reads, which is what keeps a policy testable across its whole range without a
-seed:
+### Time and randomness are arguments, not imports
+
+`scheduleStep` is handed the clock and the random factor rather than reading
+either, which is what keeps a policy a pure function and testable across its
+whole behaviour without a clock to stub, a sleep to flake or a seed to hope
+about:
 
 ```js
 const backoff = { kind: "jittered", schedule: { kind: "exponential", baseMillis: 100 } };
-scheduleDelay(backoff, 0, 0); // 80  — the bottom of the range
-scheduleDelay(backoff, 0, 1); // 120 — the top
-scheduleDelay(backoff, 0); //    100 — the midpoint, when nobody asks
+const start = scheduleStart(0);
+scheduleStep(backoff, start, error, 0, 0); // delayMillis 80  — the bottom of the range
+scheduleStep(backoff, start, error, 0, 1); // delayMillis 120 — the top
+scheduleStep(backoff, start, error, 0); //    delayMillis 100 — the midpoint
 ```
+
+`retry` and `repeat` read `Date.now()` once per decision and pass it in.
+
+### Why the output is a number
+
+Effect's type is `Schedule<Out, In, R>`. `R` is deliberately absent — a schedule
+that needs a service forces the runtime dependency back into the module — and
+`Out` is absent because Flow cannot check it.
+
+A schedule here is a literal, and a union arm cannot constrain a type parameter
+it does not mention: with an `Out` parameter, `{ kind: "recurs", times: 2 }`
+would inhabit `Schedule<string, In>` as happily as `Schedule<number, In>` and
+`repeat` would promise a string where the run time has a number. A phantom field
+has to be optional for the literal to stay writable, and an optional phantom
+constrains nothing.
+
+`In` has no such problem, and the difference is variance rather than luck: `In`
+is contravariant, so an arm that ignores its input genuinely *is* usable at any
+input type. The parameter that can be checked is there and the one that cannot
+is not.
+
+The loss is real — `Schedule.map` over an output type is not expressible — and
+it buys one thing back: `compose` has to name the type between two schedules,
+and can only because the output type is fixed. Effect's `mapInput` is absent for
+exactly the reason that would have made `compose` absent too: it needs a type
+variable for the intermediate input, and a union arm cannot bind one.
 
 ### Which failures are worth another attempt
 
-A schedule says *when*, never *whether*. `retry` takes an optional third
-argument for the second question, because a 429 is worth retrying and a 400 is
-not and both are typed failures:
+A `Schedule<E>` can read the error, so `whileInput` says this inside a policy —
+one a config file could name. `retry` also takes an optional third argument for
+the condition the *call site* knows, and both have to allow an attempt for one
+to happen:
 
 ```js
 retry(request, backoff, { while: (error) => error.kind !== "forbidden" });
@@ -363,6 +529,19 @@ const fiber = runFork(poll);
 await runPromise(interrupt(fiber));
 ```
 
+The value is the schedule's *input*, so "poll until the job reports finished" is
+a schedule rather than a loop:
+
+```js
+await runPromise(
+  repeat(pollJob, {
+    kind: "untilInput",
+    schedule: { kind: "spaced", millis: 1000 },
+    predicate: (job) => job.finished,
+  }),
+);
+```
+
 A failure ends the repetition and is the result — an effect that failed produced
 no value to repeat from, and swallowing it to keep polling would hide the outage
 the poll exists to notice. `retry` is what tolerates a blip; the two compose.
@@ -370,9 +549,11 @@ the poll exists to notice. `retry` is what tolerates a blip; the two compose.
 Interruption is checked before each wait and after it, so a fiber polling once a
 minute stops when it is cancelled rather than at the top of the next minute.
 
-Effect's `repeat` returns the schedule's output. This one returns the effect's
-last value, because this `Schedule` is arithmetic over an attempt count and has
-no output channel to return.
+`repeat` gives back the schedule's output — the number of repetitions, the
+elapsed time, whichever number its last decision reached — which is what
+Effect's does. The effect's own last value is one `tap` or one `Ref` away, and
+was never the interesting half: a poll that ran eleven times wants to say
+eleven.
 
 ## Streams
 
@@ -402,12 +583,16 @@ equivalent in a language with no `Chunk` and no reason to grow a lookalike.
 | `streamFromEffect(effect)` | One element |
 | `streamPaginate(cursor, page)` | A page at a time, until a page says there is no next |
 | `streamFromReadableStream(open)` | A web `ReadableStream` — `Response.body` on every host uf targets |
+| `streamFromQueue(queue, { chunkSize? })` | A `Queue`, until it is shut down |
 
 | Transforms | |
 | --- | --- |
 | `streamMap`, `streamFilter`, `streamTap` | Per element |
 | `streamTake(n)` | The first `n`, then stop pulling |
 | `streamMapEffect(body, { concurrency? })` | Per element, effectfully, in order |
+| `streamBuffer(capacity)` | Let the source run ahead, up to a bound |
+| `streamMerge(left, right, { capacity? })` | Both sources at once, in whatever order they arrive |
+| `streamZip(left, right)` | Pairs, ending with the shorter side |
 | `streamEnsuring(finalizer)` | Run something when a traversal ends |
 
 | Runners | |
@@ -420,6 +605,27 @@ equivalent in a language with no `Chunk` and no reason to grow a lookalike.
 
 Every runner produces an ordinary `Effect`, so a stream ends where the rest of
 the package begins.
+
+`streamToReadableStream(stream, make)` is the other boundary: the half
+`@uniflowed/server` needs, because streaming SSR and RSC produce a
+`ReadableStream`.
+
+```js
+const body = streamToReadableStream(page, (source) => new ReadableStream(source));
+```
+
+Three decisions, none of them about the body of the function. Each host pull
+runs on its own fiber started with `runFork`, whose handle `cancel` reaches — a
+`ReadableStream`'s `pull` is a callback the *host* calls, so there is no fiber to
+inherit. A typed failure crosses as its own value, because `E` is the type the
+consumer named; a defect and an interruption cross as an `Error`, because
+neither has a value anybody named. And the host's constructor is reached by
+being handed it, which is the same avoidance `streamFromReadableStream` makes by
+taking `open`, for the same reason: this module cannot name a global that four
+hosts declare in four places.
+
+A consumer that cancels stops the pull it interrupted and closes the traversal,
+so a `ReadableStream` abandoned halfway releases what its source opened.
 
 ### The guarantees that matter
 
@@ -439,6 +645,16 @@ was. There is no `"unbounded"`, unlike `all` and `forEach`: a stream has no
 length, so unbounded would mean buffering the whole of it, which is the thing a
 stream exists to avoid.
 
+`streamBuffer` and `streamMerge` are the only two combinators that own a fiber,
+because letting a source run ahead of its consumer and running two sources at
+once cannot be done by pulling. Both use a fiber per source and a bounded
+`Queue`, so the faster side stops at the bound rather than growing an array. The
+end of a source is a value in the queue and not a shutdown — a shutdown discards
+what is still buffered — and anything else does shut it down, which wakes a
+consumer waiting for a batch nobody will produce. What went wrong then lives on
+the fiber, and `join` puts it back on the stream's error channel with its cause
+intact.
+
 ### Why it is a separate module and the runtime is not
 
 `index.js` argues that the runtime cannot be split, because moving a combinator
@@ -456,18 +672,21 @@ a `Sink` as the dual of a source. That is a real cost and the right one to pay
 before porting a primitive nothing yet needs — the runners are the nearest
 honest shape.
 
-`streamToReadableStream`, `merge`, `zip`, `buffer` and `fromQueue`. The last
-four want a bounded queue with back pressure, and there is no `Queue` yet.
+A list of transforms, which is a different kind of absence: `streamFlatMap`,
+`streamScan`, `streamMapAccum`, `streamTakeWhile`, `streamDrop`,
+`streamGrouped`, `streamAcquireRelease`, `streamRetry` over a `Schedule`,
+`streamTimeout`, `streamInterruptWhen`, `streamThrottle`, `streamDebounce` and
+`streamRechunk`. None of them changes the type or needs a decision, which is why
+they can wait: adding them later costs nothing that adding them now would save.
 
 ## What is not here
 
-`Queue`, `Hub` and STM; `Channel`, `Sink`, `GroupBy` and `Chunk`; `forkScoped`
-and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
-Effect's input and output combinators (`whileInput`, `fixed`, `cron`,
-`compose`) are defined over; a fiber scheduler of its own — this runs on the host's microtask
-queue and its `sleep` is `setTimeout`; tracing, spans and metrics; a typed
-defect channel; and a heterogeneous `all`, which in Effect-TS keeps a tuple's
-element types and here takes and returns one array type.
+STM; `Channel`, `Sink`, `GroupBy` and `Chunk`; `forkIn`, and a schedule's `Out`
+as a type parameter, both for the reasons above; `cron` schedules; a fiber
+scheduler of its own — this runs on the host's microtask queue and its `sleep`
+is `setTimeout`; tracing, spans and metrics; a typed defect channel; and a
+heterogeneous `all`, which in Effect-TS keeps a tuple's element types and here
+takes and returns one array type.
 
 Effect-TS is built on a higher-kinded encoding. Flow has no higher-kinded types
 — a type parameter cannot itself take type arguments — so there is no `pipe`
