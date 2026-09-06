@@ -166,6 +166,55 @@ fn a_guard_with_no_comment_in_front_of_it_stays_where_it_was() {
 }
 
 #[test]
+fn a_lone_parameter_stays_flat_whether_or_not_its_object_was_already_open() {
+    // A single parameter keeps its own group when the return type is going to
+    // break, so the return type absorbs the break and the parameter list stays
+    // on one line. Prettier decides that by asking whether the printed return
+    // type contains a break, and that question is not stable here: an object
+    // type prints expanded whenever the author wrote a newline after its `{`,
+    // so a run that expands one for width alone *creates* that newline and the
+    // next run answers differently.
+    //
+    // `packages/effect/stream.js` found it, at the narrow configuration
+    // `configurations()` checks: `streamPaginate`'s one parameter broke on the
+    // first run and not on the second. The decision is made from the syntax
+    // now, which both runs agree about.
+    let mut config = FmtConfig::default();
+    config.line_width = 40;
+    config.indent_width = 4;
+    let flat = concat!(
+        "// @flow\n",
+        "declare function paginate<A, S, E, R>(\n",
+        "  page: (cursor: S) => Effect<{ readonly items: Array<A>, readonly next: ?S }, E, R>,\n",
+        "): Stream<A, E, R>;\n",
+    );
+
+    let once = format_source(flat, &config).expect("formats").output;
+    let twice = format_source(&once, &config).expect("reformats").output;
+    similar_asserts::assert_eq!(once, twice);
+
+    // And the shape it settles on is the one that keeps the parameter whole.
+    assert!(
+        once.contains("page: (cursor: S) => Effect<"),
+        "the lone parameter stays on its line:\n{once}"
+    );
+
+    // The same source with the object already open must reach the same place,
+    // which is the half that was failing.
+    let open = concat!(
+        "// @flow\n",
+        "declare function paginate<A, S, E, R>(\n",
+        "  page: (cursor: S) => Effect<{\n",
+        "    readonly items: Array<A>,\n",
+        "    readonly next: ?S,\n",
+        "  }, E, R>,\n",
+        "): Stream<A, E, R>;\n",
+    );
+    let from_open = format_source(open, &config).expect("formats").output;
+    similar_asserts::assert_eq!(once, from_open);
+}
+
+#[test]
 fn shipped_sources_keep_their_tree_and_comments() {
     for (label, source) in shipped_sources().into_iter().chain(template_sources()) {
         let output = format_source(&source, &FmtConfig::default())
