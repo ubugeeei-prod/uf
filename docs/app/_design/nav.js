@@ -120,6 +120,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Effects",
         blurb: "Failures in the type, and what Flow costs against Effect-TS.",
       },
+      {
+        href: "/guide/tui",
+        title: "Terminal UI",
+        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
+      },
     ],
   },
   {

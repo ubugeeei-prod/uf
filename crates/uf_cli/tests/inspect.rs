@@ -67,21 +67,21 @@ fn inspect_reports_zero_config_defaults() {
         serde_json::json!("auto")
     );
     assert_eq!(value["tui"]["standard"], serde_json::json!("open-tui"));
-    assert_eq!(
-        value["tui"]["renderer"],
-        serde_json::json!("cell-diff-native")
-    );
+    assert_eq!(value["tui"]["renderer"], serde_json::json!("cell-diff"));
+    // Not `faster-than-react-ink`: that was never measured against React Ink,
+    // and `uf inspect` is where somebody would read it and believe it. See
+    // ubugeeei-prod/uf#247.
     assert_eq!(
         value["tui"]["reactInkTarget"]["performanceTarget"],
-        serde_json::json!("faster-than-react-ink")
+        serde_json::json!("writes-only-changed-cells")
     );
-    assert!(
-        value["tui"]["components"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|component| component["name"] == "EmbeddedTerminal")
-    );
+    let components: Vec<&str> = value["tui"]["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|component| component["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(components, ["Box", "Text", "Input"]);
     assert!(
         value["stdModules"]
             .as_array()
