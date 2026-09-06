@@ -964,7 +964,7 @@ fn explain_says_which_commands_it_knows() {
     assert!(stderr.contains("does not describe"), "{stderr}");
     // Listing them beats making the reader guess.
     assert!(
-        stderr.contains("dev, build, doc, test, fmt, lint, check"),
+        stderr.contains("dev, build, preview, start, doc, test, fmt, lint, check"),
         "{stderr}"
     );
     assert!(stderr.contains("install, upgrade"), "{stderr}");

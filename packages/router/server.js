@@ -17,6 +17,7 @@ import {
   type RouteTable,
   RedirectError,
   installRoutes,
+  resolveFailure,
   resolveMatch,
 } from "./internal/runtime.js";
 
@@ -32,6 +33,19 @@ export type RenderResult = {|
   readonly status: number,
   readonly html: string,
   readonly headers?: { readonly [string]: string },
+  /**
+   * The exception this render fell back to its error boundary for.
+   *
+   * The document is still a document — the boundary rendered — and this is how
+   * the caller learns that it is an error page rather than the page it asked
+   * for. `uf build` fails the route it names; `uf dev` reports it in the
+   * terminal. Without it, containment would mean a build that quietly wrote a
+   * directory of error pages and exited 0.
+   *
+   * `forbidden()` and `unauthorized()` do not set it: those are answers an
+   * application chose, and a build that prerendered one has not failed.
+   */
+  readonly error?: mixed,
 |};
 
 /**
@@ -54,8 +68,13 @@ export function createRenderer(options: {|
   readonly App: React.ComponentType<AppProps>,
   readonly routes: RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
+  readonly errors: RouteTable["errors"],
 |}): (url: string, assets: RenderAssets) => Promise<RenderResult> {
-  const table: RouteTable = { routes: options.routes, notFound: options.notFound };
+  const table: RouteTable = {
+    routes: options.routes,
+    notFound: options.notFound,
+    errors: options.errors,
+  };
   installRoutes(table);
   const { App } = options;
 
@@ -64,15 +83,49 @@ export function createRenderer(options: {|
     try {
       resolved = await resolveMatch(table, url);
     } catch (error) {
+      // A redirect is the only thing `resolveMatch` lets out, because a
+      // redirect is a response rather than a page.
       if (error instanceof RedirectError) {
         return redirectDocument(error);
       }
       throw error;
     }
 
-    const markup = renderToString(<App url={url} initial={resolved} />);
+    let markup: string;
+    try {
+      markup = renderToString(<App url={url} initial={resolved} />);
+    } catch (error) {
+      // The server's half of the error boundary. React does not run class
+      // boundaries in `renderToString` — Fizz has no `getDerivedStateFromError`
+      // step outside a Suspense boundary — so `RouteView`'s boundary is the
+      // browser's containment and this is the server's. Without it one
+      // component that throws is the whole response, and during `uf build` the
+      // whole build. See ubugeeei-prod/uf#257.
+      if (error instanceof RedirectError) {
+        return redirectDocument(error);
+      }
+      resolved = await resolveFailure(table, url, error);
+      // Deliberately not caught again: this render is the boundary's own
+      // component, and a boundary that throws has nothing left to answer with.
+      // It reaches `uf dev`'s overlay and fails `uf build`'s route, which is
+      // where somebody can fix it.
+      markup = renderToString(<App url={url} initial={resolved} />);
+    }
+
     const html = assemble(markup, resolved, assets);
-    return { status: resolved.status, html };
+    return { status: resolved.status, html, error: renderFailure(resolved) };
+  };
+}
+
+/** The exception a resolved route fell back to its error boundary for. */
+function renderFailure(resolved: ResolvedRoute): mixed {
+  if (resolved.error == null) {
+    return undefined;
+  }
+  return match (resolved.error) {
+    {kind: "thrown", error: const error} => error,
+    {kind: "unauthorized"} => undefined,
+    {kind: "forbidden"} => undefined,
   };
 }
 

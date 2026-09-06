@@ -1,5 +1,21 @@
 #![deny(missing_docs)]
-//! Native OpenTUI-compatible terminal UI contracts for `@uniflowed/tui`.
+//! What `@uniflowed/tui` is, as the toolchain describes it.
+//!
+//! This crate holds no renderer. `@uniflowed/tui` is Flow-typed JavaScript on
+//! React's own reconciler — the argument for that, and against a Rust core
+//! with a binding, is in `packages/tui/index.js` where the code it decided
+//! about lives. What is here is the description `uf inspect` prints and
+//! `uf_lib`'s registry publishes: which standard the package follows, how it
+//! renders, and — the part this crate exists to keep honest — exactly which
+//! of OpenTUI's features and components it implements today.
+//!
+//! It said something else until ubugeeei-prod/uf#247. `engine` was
+//! `"uf-native-open-tui-compatible"`, `renderer` was `"cell-diff-native"`, the
+//! feature list named all twenty-three of OpenTUI's capabilities and the
+//! component list all twenty-seven of its components, and the package behind
+//! all of it was a hundred and ninety-four lines of Flow types over a function
+//! that threw. A contract that describes an implementation nobody wrote is
+//! worse than no contract, because a reader believes it.
 
 use compact_str::{CompactString, ToCompactString};
 use serde::{Deserialize, Serialize};
@@ -41,36 +57,25 @@ pub struct TuiFrameworkContract {
 impl Default for TuiFrameworkContract {
     fn default() -> Self {
         Self {
-            engine: TuiEngine::UfNativeOpenTuiCompatible,
+            engine: TuiEngine::FlowReactOpenTuiCompatible,
             standard: TuiStandard::OpenTui,
-            renderer: TuiRenderer::CellDiffNative,
-            layout: TuiLayoutEngine::FlexboxYogaCompatible,
-            input: TuiInputModel::KeyboardMouseFocusSelection,
+            renderer: TuiRenderer::CellDiff,
+            layout: TuiLayoutEngine::FlexboxCells,
+            input: TuiInputModel::KeyboardFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
+            // Seven, not twenty-three. Every one of these is exercised by
+            // `tests/library/tui.test.js` against a rendered frame; the other
+            // sixteen variants of `TuiFeature` name parts of OpenTUI that uf
+            // does not implement yet, and listing them here is how a reader
+            // ends up importing a component that does not exist.
             features: smallvec::smallvec![
                 TuiFeature::Flexbox,
                 TuiFeature::CellDiff,
                 TuiFeature::Keyboard,
-                TuiFeature::Mouse,
                 TuiFeature::Focus,
-                TuiFeature::Selection,
-                TuiFeature::Scrollback,
-                TuiFeature::Keymap,
+                TuiFeature::RichText,
                 TuiFeature::InMemoryTesting,
                 TuiFeature::SnapshotTesting,
-                TuiFeature::TerminalAutomation,
-                TuiFeature::RichText,
-                TuiFeature::CodeHighlight,
-                TuiFeature::Markdown,
-                TuiFeature::Images,
-                TuiFeature::Audio,
-                TuiFeature::ThreeD,
-                TuiFeature::Ssh,
-                TuiFeature::QrCode,
-                TuiFeature::EmbeddedTerminal,
-                TuiFeature::Clipboard,
-                TuiFeature::Notifications,
-                TuiFeature::Animations,
             ],
             components: default_components(),
             react_ink_target: ReactInkTarget::default(),
@@ -99,12 +104,12 @@ impl TuiFrameworkContract {
     }
 }
 
-/// Native TUI engine.
+/// What renders a terminal UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiEngine {
-    /// uf native renderer following OpenTUI-compatible semantics.
-    UfNativeOpenTuiCompatible,
+    /// Flow-typed JavaScript on React's reconciler, following OpenTUI.
+    FlowReactOpenTuiCompatible,
 }
 
 /// Terminal UI compatibility standard.
@@ -119,27 +124,39 @@ pub enum TuiStandard {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiRenderer {
-    /// Native framebuffer renderer that writes only changed cells.
-    CellDiffNative,
+    /// A cell buffer, diffed against the last frame; only changed cells are sent.
+    CellDiff,
 }
 
 /// TUI layout engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiLayoutEngine {
-    /// Yoga-compatible flexbox layout.
-    FlexboxYogaCompatible,
+    /// Flexbox in whole cells, with OpenTUI's defaults and not Yoga's whole surface.
+    ///
+    /// It was `"flexbox-yoga-compatible"`, which claimed more than is true:
+    /// `flexWrap`, `position: absolute` and `auto` margins are not implemented
+    /// (ubugeeei-prod/uf#314), and a terminal resolves whole columns where Yoga
+    /// resolves fractional pixels. What *is* compatible is the part a caller
+    /// writes: the property names, and the defaults — a `flexDirection` that
+    /// starts at `column`, an `alignItems` that starts at `stretch`, and a
+    /// `flexShrink` that starts at zero for a numeric dimension.
+    FlexboxCells,
 }
 
 /// TUI input model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiInputModel {
-    /// Keyboard, mouse, focus, and selection events use one typed model.
-    KeyboardMouseFocusSelection,
+    /// Keyboard events, routed to one declaratively focused node.
+    ///
+    /// Mouse reporting and text selection are OpenTUI's other two input
+    /// sources and are not implemented; they are ubugeeei-prod/uf#314. This
+    /// value used to say they were.
+    KeyboardFocus,
 }
 
-/// TUI runtime binding.
+/// How the framework reaches an application's code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiRuntimeBinding {
@@ -147,7 +164,12 @@ pub enum TuiRuntimeBinding {
     FlowReact,
 }
 
-/// TUI capability exposed by the default framework.
+/// One of OpenTUI's capabilities.
+///
+/// The variants are OpenTUI's whole vocabulary, because a contract has to be
+/// able to *say* "mouse" in order to say uf does not implement it. What uf
+/// implements is the list in `TuiFrameworkContract::default`, and those two
+/// being different lengths is the point rather than an oversight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiFeature {
@@ -269,43 +291,71 @@ impl TuiComponent {
     }
 }
 
-/// React Ink replacement target.
+/// Where `@uniflowed/tui` stands next to React Ink.
+///
+/// Ink is the library a reader is coming from, so the useful thing to publish
+/// is the gap rather than the ambition. Three of these five were `true` before
+/// anything was implemented; they are what they are now, and each one becomes
+/// true by somebody making it true.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReactInkTarget {
-    /// Whether the API is intended to replace React Ink for uf applications.
+    /// Whether an Ink application could be ported without losing a capability.
+    ///
+    /// Not yet: Ink has no mouse either, but it does have `<Static>`, a
+    /// spinner ecosystem and a component library uf has three components
+    /// against. See ubugeeei-prod/uf#314.
     pub replacement_ready: bool,
-    /// Whether rendering happens in native code instead of JavaScript text diffing.
+    /// Whether rendering happens in native code rather than in JavaScript.
+    ///
+    /// It does not, and deliberately — `packages/tui/index.js` argues it out.
+    /// The field stays because "is this native" is a question a reader of a
+    /// toolchain asks, and a missing answer reads as yes.
     pub native_renderer: bool,
-    /// Whether component props are meant to be generated as exact Flow types.
+    /// Whether component props are exact Flow types rather than a loose bag.
     pub typed_components: bool,
-    /// Whether graphics, media, SSH, QR, and embedded terminal use cases are in scope.
+    /// Whether images, audio, 3D, SSH and embedded terminals are in scope.
+    ///
+    /// In scope, not implemented. Nothing in the package draws a picture.
     pub rich_media: bool,
     /// Whether tests can render without a host terminal.
     pub in_memory_tests: bool,
-    /// Performance target for the renderer.
+    /// What the renderer's performance claim is.
     pub performance_target: TuiPerformanceTarget,
 }
 
 impl Default for ReactInkTarget {
     fn default() -> Self {
         Self {
-            replacement_ready: true,
-            native_renderer: true,
+            replacement_ready: false,
+            native_renderer: false,
             typed_components: true,
-            rich_media: true,
+            rich_media: false,
             in_memory_tests: true,
-            performance_target: TuiPerformanceTarget::FasterThanReactInk,
+            performance_target: TuiPerformanceTarget::WritesOnlyChangedCells,
         }
     }
 }
 
-/// TUI performance target.
+/// What the renderer's performance claim actually is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiPerformanceTarget {
-    /// Target better throughput and latency than React Ink for large terminal UIs.
-    FasterThanReactInk,
+    /// Putting a frame on the terminal costs the cells that changed, and no more.
+    ///
+    /// This replaces `"faster-than-react-ink"`, which was never measured
+    /// against React Ink and so was not a claim, it was an ambition someone
+    /// wrote down. This one is measured, by `tests/library/tui.test.js`: in an
+    /// 80×24 terminal, the first frame sends 1,920 cells and changing one
+    /// character of a status line then sends **one cell in seven bytes** — a
+    /// cursor move and the character. A renderer that diffs *lines* has to
+    /// resend everything below the change.
+    ///
+    /// The comparison against Ink itself is still worth having, and is
+    /// ubugeeei-prod/uf#315: it needs Ink installed, a workload both libraries
+    /// can render, and the hardware, versions and variance that
+    /// `ubugeeei-redundancy.md` requires of a performance claim.
+    WritesOnlyChangedCells,
 }
 
 /// Return the default OpenTUI-compatible TUI framework contract.
@@ -313,160 +363,22 @@ pub fn contract() -> TuiFrameworkContract {
     TuiFrameworkContract::default()
 }
 
+/// The components `@uniflowed/tui` exports today.
+///
+/// Three, and the list is short on purpose. `Box` is a flex container that can
+/// draw a background, a border and two titles; `Text` is styled text that
+/// knows how to wrap; `Input` is a line somebody types into. Everything else
+/// OpenTUI offers is built from those plus state, and it is
+/// ubugeeei-prod/uf#314 rather than an entry here — a component named in a
+/// contract and absent from the package is the failure this whole change is
+/// about.
 fn default_components() -> TuiComponentList {
-    use TuiComponentKind::{
-        Application, Display, Graphics, Input, Integration, RichContent, Scrolling, Selection,
-        Testing,
-    };
+    use TuiComponentKind::{Display, Input};
 
     smallvec::smallvec![
         TuiComponent::new("Box", &["Root"], Display, TuiFeature::Flexbox, false),
         TuiComponent::new("Text", &["Root"], Display, TuiFeature::RichText, false),
         TuiComponent::new("Input", &["Root"], Input, TuiFeature::Keyboard, true),
-        TuiComponent::new("Textarea", &["Root"], Input, TuiFeature::Keyboard, true),
-        TuiComponent::new(
-            "Select",
-            &["Root", "Item", "Group", "Empty"],
-            Selection,
-            TuiFeature::Selection,
-            true,
-        ),
-        TuiComponent::new(
-            "TabSelect",
-            &["Root", "Tab", "Panel"],
-            Selection,
-            TuiFeature::Selection,
-            true,
-        ),
-        TuiComponent::new(
-            "Slider",
-            &["Root", "Track", "Thumb"],
-            Input,
-            TuiFeature::Mouse,
-            true
-        ),
-        TuiComponent::new(
-            "ScrollBox",
-            &["Root", "Viewport", "Content"],
-            Scrolling,
-            TuiFeature::Scrollback,
-            true,
-        ),
-        TuiComponent::new(
-            "ScrollBar",
-            &["Root", "Thumb"],
-            Scrolling,
-            TuiFeature::Scrollback,
-            true
-        ),
-        TuiComponent::new(
-            "Code",
-            &["Root"],
-            RichContent,
-            TuiFeature::CodeHighlight,
-            false
-        ),
-        TuiComponent::new(
-            "Markdown",
-            &["Root"],
-            RichContent,
-            TuiFeature::Markdown,
-            false
-        ),
-        TuiComponent::new(
-            "LineNumbers",
-            &["Root"],
-            RichContent,
-            TuiFeature::CodeHighlight,
-            false
-        ),
-        TuiComponent::new(
-            "Diff",
-            &["Root", "Hunk", "Line"],
-            RichContent,
-            TuiFeature::CodeHighlight,
-            false
-        ),
-        TuiComponent::new(
-            "TextTable",
-            &["Root", "Row", "Cell"],
-            RichContent,
-            TuiFeature::RichText,
-            false
-        ),
-        TuiComponent::new(
-            "AsciiFont",
-            &["Root"],
-            Graphics,
-            TuiFeature::RichText,
-            false
-        ),
-        TuiComponent::new(
-            "FrameBuffer",
-            &["Root", "Layer"],
-            Graphics,
-            TuiFeature::Images,
-            false
-        ),
-        TuiComponent::new("Image", &["Root"], Graphics, TuiFeature::Images, false),
-        TuiComponent::new("QrCode", &["Root"], Graphics, TuiFeature::QrCode, false),
-        TuiComponent::new(
-            "EmbeddedTerminal",
-            &["Root", "Session"],
-            Integration,
-            TuiFeature::EmbeddedTerminal,
-            true,
-        ),
-        TuiComponent::new(
-            "Clipboard",
-            &["Root"],
-            Application,
-            TuiFeature::Clipboard,
-            true
-        ),
-        TuiComponent::new(
-            "Notification",
-            &["Root"],
-            Application,
-            TuiFeature::Notifications,
-            true,
-        ),
-        TuiComponent::new(
-            "Audio",
-            &["Root", "Stream"],
-            Application,
-            TuiFeature::Audio,
-            true
-        ),
-        TuiComponent::new(
-            "Timeline",
-            &["Root", "Track"],
-            Application,
-            TuiFeature::Animations,
-            true
-        ),
-        TuiComponent::new(
-            "Keymap",
-            &["Root", "Binding"],
-            Application,
-            TuiFeature::Keymap,
-            true
-        ),
-        TuiComponent::new(
-            "SshHost",
-            &["Root", "Session"],
-            Integration,
-            TuiFeature::Ssh,
-            true
-        ),
-        TuiComponent::new("ThreeCanvas", &["Root"], Graphics, TuiFeature::ThreeD, true),
-        TuiComponent::new(
-            "TestRenderer",
-            &["Root"],
-            Testing,
-            TuiFeature::InMemoryTesting,
-            false
-        ),
     ]
 }
 

@@ -45,8 +45,8 @@ table, and the config handed to Vite. `--json` for the machine-readable form.
 ### uf explain COMMAND
 
 Says what a command will do and **which provider does each part** — `dev`,
-`build`, `doc`, `test`, `fmt`, `lint` or `check`. `--json` for the machine-readable
-form.
+`build`, `preview`, `start`, `doc`, `test`, `fmt`, `lint` or `check`. `--json`
+for the machine-readable form.
 
 ```
 uf dev
@@ -89,6 +89,41 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 
 Builds the client and server bundles and prerenders what can be prerendered.
 `--size-report` prints the cost of each chunk.
+
+### uf preview
+
+Serves the build through Vite's own preview server, on 4173. It is the step
+between `uf build` and deploying: the one place you find out that what worked
+in `uf dev` also works bundled, minified, hashed and served from `dist/`.
+
+It serves the *whole* build, not only the files. Vite's preview server is a
+static file server, and a uf application is more than static files — a route
+handler answers a `POST`, and a route with parameters and no
+`generateStaticParams` was never prerendered — so uf's request handler is
+mounted behind Vite's, and both are answered. Anything you set under `vite.preview`
+in `uf.config.js` — `proxy`, `https`, `headers`, `cors` — is in effect, because
+this is Vite's server.
+
+`--port PORT` binds that port or fails, the same rule `uf dev` follows.
+`--host HOST` needs a non-empty `dev.allowedHosts`, because Vite validates a
+preview's `Host` header against it and a preview bound to a routable address
+with nothing allowed would refuse every request.
+
+### uf start
+
+Serves the same build through uf's own server, with **no bundler in the
+process**. This is what a deployment runs: a host serving a built application
+should not need the tool that built it.
+
+It answers exactly what `uf preview` answers — one request handler, two front
+doors — so a route that works when you check it works when you deploy it.
+Static files from `dist/` first, then route handlers, then a render for
+anything the build did not prerender.
+
+Binds `0.0.0.0:3000`, and reads `HOST` and `PORT` from the environment, which
+is how a container or a process manager says which socket to take. `--host` and
+`--port` override both, and the port you name is the port it binds or it does
+not start.
 
 ### uf doc
 

@@ -117,6 +117,17 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
             match event {
                 Event::Phase { name } => progress.tick(&format!("vite: {name}")),
                 Event::Page { url, file, .. } => report.pages.push((url, file)),
+                // Reported as it happens and not fatal here: the driver keeps
+                // going and ends the build itself, so the reader sees every
+                // route that failed rather than the first one.
+                Event::PageFailed { url, error } => {
+                    render_log(
+                        ui,
+                        crate::commands::vite::LogLevel::Error,
+                        &format!("{url} failed to render"),
+                    );
+                    let _ = render_error(ui, &root, &error);
+                }
                 Event::Log { level, message } => match level {
                     crate::commands::vite::LogLevel::Warn => report.warnings.push(message),
                     crate::commands::vite::LogLevel::Error => render_log(ui, level, &message),
