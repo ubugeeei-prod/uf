@@ -134,18 +134,27 @@ export type RouteRecord = {|
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
-/** The not-found page, when the app declares one. */
-export type NotFoundRecord = {|
+/**
+ * One not-found boundary: the page for a path under `path` that matched
+ * nothing.
+ *
+ * `_uf.not-found.js` is a segment file, so `path` is the route path of the
+ * directory that declares it and `layouts` are the layouts in scope *there* —
+ * which is what the boundary renders inside. A project with one at the router
+ * root has one of these; a project whose manual answers its own 404 has two.
+ */
+export type NotFoundBoundary = {|
+  readonly path: string,
   readonly mdx: boolean,
   readonly file: string,
   readonly page: () => Promise<PageModule>,
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
-/** A route table plus the not-found page. */
+/** A route table plus the not-found boundaries declared under it. */
 export type RouteTable = {|
   readonly routes: $ReadOnlyArray<RouteRecord>,
-  readonly notFound: ?NotFoundRecord,
+  readonly notFound: $ReadOnlyArray<NotFoundBoundary>,
 |};
 
 /** A URL matched against the table. */
@@ -289,6 +298,59 @@ export function matchRoute(routes: $ReadOnlyArray<RouteRecord>, pathname: string
   return best;
 }
 
+/**
+ * Whether a boundary declared at `segments` is at or above `parts`.
+ *
+ * The same segment kinds as [`matchSegments`], stopping when the boundary's
+ * own segments run out instead of requiring the path to: `/guide` covers
+ * `/guide/nope`, and `/guide` covers `/guide` itself.
+ */
+function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>): boolean {
+  let index = 0;
+  for (const segment of segments) {
+    const next = match (segment) {
+      {kind: "static", value: const value} => parts[index] === value ? index + 1 : -1,
+      {kind: "param"} => index < parts.length ? index + 1 : -1,
+      {kind: "catchAll"} => parts.length,
+    };
+    if (next === -1) {
+      return false;
+    }
+    index = next;
+  }
+  return true;
+}
+
+/**
+ * The nearest boundary above `pathname`, or `null` when none covers it.
+ *
+ * The same rule layouts already follow: nearest means the longest path that
+ * covers the URL. It is decided here rather than by the table's order — the
+ * table is sorted by path so the generated module is stable, and a resolver
+ * that read "nearest" as "first" would silently depend on that sort. Two
+ * boundaries can share a path (a route group's directory does not appear in
+ * the URL), and then the first in the table wins.
+ */
+function nearestBoundary<TBoundary: { readonly path: string, ... }>(
+  boundaries: $ReadOnlyArray<TBoundary>,
+  pathname: string,
+): ?TBoundary {
+  const parts = pathname.split("/").filter((part) => part !== "");
+  let best: ?TBoundary = null;
+  let bestDepth = -1;
+  for (const boundary of boundaries) {
+    const segments = compile(boundary.path);
+    if (!covers(segments, parts)) {
+      continue;
+    }
+    if (segments.length > bestDepth) {
+      best = boundary;
+      bestDepth = segments.length;
+    }
+  }
+  return best;
+}
+
 /** Split a URL into its pathname and search string. */
 export function splitUrl(url: string): {| readonly pathname: string, readonly search: string |} {
   const hash = url.indexOf("#");
@@ -392,13 +454,25 @@ export async function resolveMatch(
   };
 }
 
+/**
+ * The not-found page for `pathname`, inside the layouts above the boundary
+ * that answers it.
+ *
+ * The layouts are the *boundary's*, not the ones the URL had already matched.
+ * Taking the matched route's layouts was the other candidate and it is wrong
+ * in both directions: for an unmatched URL there is no matched route to take
+ * them from, and for `notFound()` thrown from a page they would keep the
+ * layouts *below* the boundary — so `app/guide/[slug]/_uf.layout.js` would
+ * wrap a 404 that `app/guide/_uf.not-found.js` answered, which is the layout
+ * of the page that just said it does not exist.
+ */
 async function resolveNotFound(
   table: RouteTable,
   pathname: string,
   search: string,
   searchParams: SearchParams,
 ): Promise<ResolvedRoute> {
-  const record = table.notFound;
+  const record = nearestBoundary(table.notFound, pathname);
   if (record == null) {
     return {
       pathname,

@@ -336,7 +336,17 @@ async function build() {
       bytes: Buffer.byteLength(result.html),
     });
   }
-  if (server.notFound != null) {
+  // One `404.html`, from the boundary at the router root: a static host serves
+  // a single error document for the whole site, so the nested boundaries a
+  // project declares are the server's and the client's to render, not
+  // something this loop can write a file for.
+  //
+  // The condition is "there is a root boundary", not "there is any boundary",
+  // because `/__uf_not_found__` is a path at the root: a project whose only
+  // `_uf.not-found.js` is in `app/guide/` would otherwise get a `404.html`
+  // rendered from the framework's bare default, which is worse than the file
+  // it used to write, which was none.
+  if (server.notFound.some((boundary) => boundary.path === "/")) {
     const result = await server.render("/__uf_not_found__", assets);
     const file = path.join(outDir, "404.html");
     writeFileSync(file, result.html);

@@ -13,7 +13,7 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Four names are reserved. Everything else in `app/` is an ordinary module.
+Five names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
@@ -65,6 +65,26 @@ rather than copying it.
 
 A layout does not re-render when navigating between pages that share it, so
 scroll position and state in a sidebar survive navigation.
+
+## Not found nests too
+
+`_uf.not-found.js` is a segment file like `_uf.layout.js`: any directory may
+declare one, and a path that matches nothing gets the nearest one above it,
+inside that directory's layouts.
+
+```
+app/_uf.not-found.js            →  answers /anything
+app/guide/_uf.not-found.js      →  answers /guide/anything
+```
+
+This site has both. `/guide/nope` renders `app/guide/_uf.not-found.js` with the
+manual's sidebar and prose column still around it, so a reader who followed a
+stale link keeps the table of contents. `/reference/nope` has no boundary of its
+own and falls back to the root one, which is the same nearest-ancestor rule
+layouts already follow.
+
+`notFound()` thrown from a loader lands on the same boundary — the nearest one
+above the path being rendered, not the root one.
 
 ## Loading data
 

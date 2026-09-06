@@ -350,6 +350,37 @@ fn assert_page(server: &mut DevServer, port: u16, said: &Mutex<String>, body: &s
         missing.starts_with("HTTP/1.1 404"),
         "an unrouted path must be a 404:\n{missing}"
     );
+
+    // A missing page *inside* the manual is answered by the manual's own
+    // boundary, inside the manual's layout. `_uf.not-found.js` was read at the
+    // router root only, so this used to be the site's root 404 with the
+    // sidebar and the prose column gone. See ubugeeei-prod/uf#263.
+    let in_guide = get(server, port, "/guide/definitely-not-a-page/", said);
+    assert!(
+        in_guide.starts_with("HTTP/1.1 404"),
+        "a missing guide page must be a 404:\n{in_guide}"
+    );
+    assert!(
+        in_guide.contains("There is no such page in the manual."),
+        "`app/guide/_uf.not-found.js` did not answer a path under /guide:\n{in_guide}"
+    );
+    assert!(
+        in_guide.contains("class=\"manual\""),
+        "the guide's 404 rendered outside `app/guide/_uf.layout.js`:\n{in_guide}"
+    );
+
+    // And the nearest-ancestor rule the other way: `/reference` declares no
+    // boundary of its own, so it falls back to the site's root one — which is
+    // what worked before and has to keep working.
+    let in_reference = get(server, port, "/reference/definitely-not-a-page/", said);
+    assert!(
+        in_reference.starts_with("HTTP/1.1 404"),
+        "a missing reference page must be a 404:\n{in_reference}"
+    );
+    assert!(
+        in_reference.contains("There is no page here."),
+        "/reference has no boundary, so the root one answers it:\n{in_reference}"
+    );
 }
 
 /// One request to a server that has already answered once, with the server's
