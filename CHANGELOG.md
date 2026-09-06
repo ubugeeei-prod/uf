@@ -22,6 +22,7 @@ walked down the screen.
 
 ### Added
 
+- **test**: coverage in the author's Flow lines, with thresholds and a reporter CI can read (#456)
 - **assets, web, vite**: Image and Font get the pipeline they were markup for (#454)
 - **tui, term**: a scroll box, a real terminal size, and React Ink measured (#449)
 - **ui**: an overlay that flips and slides, and the three components on it (#421)
