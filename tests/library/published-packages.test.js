@@ -73,19 +73,84 @@ const exportTargets = (node: mixed, into: Array<string>): Array<string> => {
 };
 
 /**
+ * `source` with its comments replaced by spaces, and everything else — the
+ * string, template and regular-expression literals included — left where it
+ * was.
+ *
+ * Scanning raw source for import specifiers reads the ones inside comments
+ * too, and a package whose comment shows `await import("./client.js")` as an
+ * example was reported as publishing a file it does not have. Deleting the
+ * comments first is the whole fix, and doing it correctly means knowing when a
+ * `/` opens one: inside a string it does not, and after a value a `/` is
+ * division rather than the start of a regular expression whose body could
+ * contain `//`.
+ *
+ * Comments become spaces rather than nothing so that every offset, and so
+ * every line, is the one the file has.
+ */
+const withoutComments = (source: string): string => {
+  const out = source.split("");
+  const blank = (from: number, to: number) => {
+    for (let at = from; at < to; at += 1) if (out[at] !== "\n") out[at] = " ";
+  };
+  // The last thing that could end a value. A `/` after one is division; a `/`
+  // anywhere else opens a regular expression.
+  let afterValue = false;
+  let at = 0;
+  while (at < source.length) {
+    const char = source[at];
+    if (char === "/" && source[at + 1] === "/") {
+      let end = source.indexOf("\n", at);
+      if (end === -1) end = source.length;
+      blank(at, end);
+      at = end;
+    } else if (char === "/" && source[at + 1] === "*") {
+      const end = source.indexOf("*/", at + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      blank(at, stop);
+      at = stop;
+    } else if (char === '"' || char === "'" || char === "`") {
+      at += 1;
+      while (at < source.length && source[at] !== char) {
+        at += source[at] === "\\" ? 2 : 1;
+      }
+      at += 1;
+      afterValue = true;
+    } else if (char === "/" && !afterValue) {
+      at += 1;
+      let inClass = false;
+      while (at < source.length && (inClass || source[at] !== "/")) {
+        if (source[at] === "\\") at += 1;
+        else if (source[at] === "[") inClass = true;
+        else if (source[at] === "]") inClass = false;
+        at += 1;
+      }
+      at += 1;
+      afterValue = true;
+    } else {
+      if (!/\s/.test(char)) afterValue = /[\w$)\].]/.test(char);
+      at += 1;
+    }
+  }
+  return out.join("");
+};
+
+/**
  * The relative specifiers `source` imports.
  *
- * A regular expression, not a parser, because the packages are ordinary ESM
- * and the question is only which relative paths appear in an import position.
- * `the scan finds the imports it is looking for` below holds it to that: a
- * pattern that quietly stopped matching would make every assertion here pass
- * over nothing, which is the one way this test could rot without failing.
+ * A regular expression over the comment-free source, not a parser, because
+ * the packages are ordinary ESM and the question is only which relative paths
+ * appear in an import position. `the scan reads code and not prose` below
+ * holds it to that: a pattern that quietly stopped matching would make every
+ * assertion here pass over nothing, which is the one way this test could rot
+ * without failing.
  */
 const relativeImports = (source: string): Array<string> => {
   const pattern = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'](\.[^"']*)["']/g;
+  const code = withoutComments(source);
   const found = [];
   let match;
-  while ((match = pattern.exec(source)) !== null) found.push(match[1]);
+  while ((match = pattern.exec(code)) !== null) found.push(match[1]);
   return found;
 };
 
@@ -114,6 +179,36 @@ describe("what the published packages pack", () => {
     expect(
       relativeImports(`import x from "./a.js";\nconst y = await import('../b/c.js');`),
     ).toEqual(["./a.js", "../b/c.js"]);
+  });
+
+  it("the scan reads code and not prose", () => {
+    // The other half of the same guard, and the one that was missing: a
+    // package documenting `import("./client.js")` in a comment was reported
+    // as publishing a file it does not have.
+    expect(relativeImports(`// see await import("./doc.js")\nimport a from "./real.js";`)).toEqual([
+      "./real.js",
+    ]);
+    expect(
+      relativeImports(`/* import x from "./block.js"; */\nimport a from "./real.js";`),
+    ).toEqual(["./real.js"]);
+
+    // And the two places a `/` is not the start of a comment. Blanking either
+    // would eat the import that follows it.
+    expect(relativeImports(`const u = "https://x//y";\nimport a from "./real.js";`)).toEqual([
+      "./real.js",
+    ]);
+    expect(relativeImports(`const r = /a\\/\\/b/;\nimport a from "./real.js";`)).toEqual([
+      "./real.js",
+    ]);
+    expect(relativeImports('const t = `//${x}`;\nimport a from "./real.js";')).toEqual([
+      "./real.js",
+    ]);
+
+    // Division, so the `/` is not a regular expression that would swallow the
+    // rest of the line.
+    expect(relativeImports(`const n = a / b / c;\nimport a from "./real.js";`)).toEqual([
+      "./real.js",
+    ]);
   });
 
   // One `npm pack` per package, read by both assertions. The packages are
