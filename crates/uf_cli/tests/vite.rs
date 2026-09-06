@@ -160,6 +160,124 @@ fn build_renders_the_docs_site_through_vite() {
     assert!(root.join("router.js").exists());
 }
 
+/// A project with one page that throws, built under `target/`.
+///
+/// Under `target/` on purpose rather than in a `tests/fixtures` directory:
+/// `@uniflowed/*`, `react` and `react-dom` are resolved by walking up to the
+/// workspace's `node_modules`, so the project has to be inside the repository
+/// — and everything inside it that is not `target/` is linted, formatted and
+/// scanned for tests by uf's own tasks, which would report this page's
+/// deliberate throw as this repository's defect.
+fn project_with_a_throwing_page() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/throwing-page");
+    fs::remove_dir_all(&root).ok();
+    for (relative, contents) in [
+        (
+            "package.json",
+            r#"{ "name": "uf-throwing-page", "private": true, "type": "module" }
+"#,
+        ),
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+export default component Home() {
+  return <h1>the home page rendered</h1>;
+}
+"#,
+        ),
+        (
+            "app/fine/_uf.page.js",
+            r#"// @flow
+export default component Fine() {
+  return <h1>this page is fine</h1>;
+}
+"#,
+        ),
+        (
+            "app/broken/_uf.page.js",
+            r#"// @flow
+export default component Broken() {
+  throw new Error("this page throws on purpose");
+}
+"#,
+        ),
+    ] {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    }
+    root
+}
+
+/// A page that throws fails its own route, and nothing else.
+///
+/// Three assertions because they are one behaviour: the build fails, it says
+/// which URL threw, and the routes that did render are still written. Before
+/// this the prerender loop had no `try` — the first page to throw rejected out
+/// of the driver, the message named the exception rather than the route, and
+/// no page after it was written. See ubugeeei-prod/uf#257.
+#[test]
+fn a_page_that_throws_fails_its_route_and_not_the_others() {
+    if !fixture_ready() {
+        return;
+    }
+    let root = project_with_a_throwing_page();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let said = format!("{stdout}{stderr}");
+    assert!(
+        !output.status.success(),
+        "a route that throws must fail the build:\n{said}"
+    );
+    assert!(
+        said.contains("/broken"),
+        "the build must name the route that threw:\n{said}"
+    );
+    assert!(
+        said.contains("this page throws on purpose"),
+        "the build must say why the route failed:\n{said}"
+    );
+
+    // The other routes are still written: one broken page is one broken page.
+    let dist = root.join("dist");
+    assert!(
+        dist.join("index.html").is_file(),
+        "the home page was not written:\n{said}"
+    );
+    assert!(
+        dist.join("fine/index.html").is_file(),
+        "a route after the broken one was not written:\n{said}"
+    );
+    // And the broken one is not: an error page in `dist/` is a build that
+    // shipped its own failure.
+    assert!(
+        !dist.join("broken/index.html").exists(),
+        "the route that threw was written anyway:\n{said}"
+    );
+}
+
 /// Whether a loopback socket can be bound here.
 ///
 /// The same policy as [`fixture_ready`], for the same reason: a sandbox that

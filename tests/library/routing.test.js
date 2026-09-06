@@ -158,7 +158,7 @@ const guideNotFound = {
 describe("resolving an unmatched path", () => {
   it("takes the nearest boundary above it", async () => {
     const resolved = await resolveMatch(
-      { routes: [], notFound: [rootNotFound, guideNotFound] },
+      { routes: [], notFound: [rootNotFound, guideNotFound], errors: [] },
       "/guide/nope",
     );
 
@@ -168,7 +168,7 @@ describe("resolving an unmatched path", () => {
 
   it("wraps it in that boundary's layouts", async () => {
     const resolved = await resolveMatch(
-      { routes: [], notFound: [rootNotFound, guideNotFound] },
+      { routes: [], notFound: [rootNotFound, guideNotFound], errors: [] },
       "/guide/nope",
     );
 
@@ -181,7 +181,7 @@ describe("resolving an unmatched path", () => {
     // This is what worked before the change and has to keep working:
     // `/reference` has no boundary of its own on uf's own site.
     const resolved = await resolveMatch(
-      { routes: [], notFound: [rootNotFound, guideNotFound] },
+      { routes: [], notFound: [rootNotFound, guideNotFound], errors: [] },
       "/reference/nope",
     );
 
@@ -192,13 +192,19 @@ describe("resolving an unmatched path", () => {
   it("answers the boundary's own path with it", async () => {
     // `/guide` covers `/guide`, not only what is under it — a directory with a
     // boundary and no page is a 404 the boundary answers.
-    const resolved = await resolveMatch({ routes: [], notFound: [guideNotFound] }, "/guide");
+    const resolved = await resolveMatch(
+      { routes: [], notFound: [guideNotFound], errors: [] },
+      "/guide",
+    );
 
     expect(resolved.metadata.title).toBe("guide 404");
   });
 
   it("does not use a boundary the path is not under", async () => {
-    const resolved = await resolveMatch({ routes: [], notFound: [guideNotFound] }, "/nope");
+    const resolved = await resolveMatch(
+      { routes: [], notFound: [guideNotFound], errors: [] },
+      "/nope",
+    );
 
     // Nothing covers `/nope`, so the framework's default answers rather than
     // the manual's 404 telling a visitor to the home page to read the manual.
@@ -215,7 +221,7 @@ describe("resolving an unmatched path", () => {
       page: () => Promise.resolve({ metadata: { title: "no such section" } }),
       layouts: [],
     };
-    const table = { routes: [], notFound: [rootNotFound, perPost] };
+    const table = { routes: [], notFound: [rootNotFound, perPost], errors: [] };
 
     expect((await resolveMatch(table, "/posts/hello/nope")).metadata.title).toBe("no such section");
     expect((await resolveMatch(table, "/posts")).metadata.title).toBe("site 404");
@@ -237,7 +243,7 @@ describe("notFound() thrown from a page", () => {
     };
 
     const resolved = await resolveMatch(
-      { routes: [slugPage], notFound: [rootNotFound, guideNotFound] },
+      { routes: [slugPage], notFound: [rootNotFound, guideNotFound], errors: [] },
       "/guide/missing",
     );
 

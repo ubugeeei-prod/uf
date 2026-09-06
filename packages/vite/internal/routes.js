@@ -23,6 +23,7 @@ export const RESERVED = Object.freeze({
   page: "_uf.page",
   middleware: "_uf.middleware",
   notFound: "_uf.not-found",
+  error: "_uf.error",
   route: "_uf.route",
 });
 
@@ -73,6 +74,22 @@ const MAX_DEPTH = 32;
  */
 
 /**
+ * One error boundary — what renders in place of the subtree under `path` when
+ * something in it throws.
+ *
+ * The same nearest-ancestor shape as a not-found boundary, and deliberately
+ * not the same extensions: an error module is handed an error and a `reset`,
+ * which is a component's contract. `.mdx` compiles to a component that takes
+ * no such thing, so a `_uf.error.mdx` would be a file the router loads and can
+ * never hand its arguments to.
+ *
+ * @typedef {object} ErrorBoundary
+ * @property {string} path route path of the directory that declares it
+ * @property {string} module absolute path of the error module
+ * @property {ReadonlyArray<string>} layouts absolute paths, root first
+ */
+
+/**
  * Scan `appRoot` for routes.
  *
  * Returns routes sorted by path, which is the order `uf_router` uses too.
@@ -80,13 +97,14 @@ const MAX_DEPTH = 32;
  * library project has no router root, and that is not a mistake.
  *
  * @param {string} appRoot absolute path of the router root (`app/`)
- * @returns {{routes: Route[], handlers: Handler[], notFound: NotFoundBoundary[]}}
+ * @returns {{routes: Route[], handlers: Handler[], notFound: NotFoundBoundary[], errors: ErrorBoundary[]}}
  */
 export function scanRoutes(appRoot) {
   const routes = [];
   const handlers = [];
   const notFound = [];
-  if (!isDirectory(appRoot)) return { routes, handlers, notFound };
+  const errors = [];
+  if (!isDirectory(appRoot)) return { routes, handlers, notFound, errors };
 
   const walk = (directory, segments, layouts, middleware, depth) => {
     if (depth > MAX_DEPTH) return;
@@ -135,6 +153,17 @@ export function scanRoutes(appRoot) {
       });
     }
 
+    // `errors` is the boundaries a project declares, not failures that
+    // happened: one entry per directory holding an `_uf.error.js`.
+    const ownError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS);
+    if (ownError) {
+      errors.push({
+        path: routeFromSegments(segments).path,
+        module: ownError,
+        layouts: nextLayouts,
+      });
+    }
+
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       // A leading dot or underscore is private to the author: `_components/`
@@ -166,7 +195,8 @@ export function scanRoutes(appRoot) {
   // than one section's idea of it. Letting each group own a boundary needs the
   // parallel-route trees uf does not have yet; see ubugeeei-prod/uf#267.
   notFound.sort(byPath);
-  return { routes, handlers, notFound };
+  errors.sort(byPath);
+  return { routes, handlers, notFound, errors };
 }
 
 function isDirectory(candidate) {
@@ -232,7 +262,7 @@ export const VIRTUAL = Object.freeze({
  * Layouts are deduplicated into one table so a layout shared by fifty routes
  * is one dynamic import, not fifty.
  *
- * @param {{routes: Route[], handlers?: Handler[], notFound?: NotFoundBoundary[]}} table
+ * @param {{routes: Route[], handlers?: Handler[], notFound?: NotFoundBoundary[], errors?: ErrorBoundary[]}} table
  */
 export function routesModuleSource(table) {
   const layoutIds = new Map();
@@ -273,6 +303,19 @@ export function routesModuleSource(table) {
   }`,
   );
 
+  // An error boundary is loaded with the route it guards rather than when it
+  // is needed: React decides to render a boundary's fallback synchronously,
+  // during the render that threw, so a module that still has to be imported is
+  // a module that is not there when the only chance to use it arrives.
+  const errorEntries = (table.errors ?? []).map(
+    (boundary) => `  {
+    path: ${JSON.stringify(boundary.path)},
+    file: ${JSON.stringify(boundary.module)},
+    module: () => import(${JSON.stringify(boundary.module)}),
+    layouts: [${boundary.layouts.map(layoutId).join(", ")}],
+  }`,
+  );
+
   // Handlers are a separate table because nothing on the client wants them:
   // a route handler answers a request, so shipping its module to the browser
   // would ship server code to the page.
@@ -295,6 +338,9 @@ ${handlerEntries.join(",\n")}
 export const notFound = [
 ${notFoundEntries.join(",\n")}
 ];
+export const errors = [
+${errorEntries.join(",\n")}
+];
 export default routes;
 `;
 }
@@ -308,9 +354,9 @@ export default routes;
  */
 export function clientModuleSource(appEntry) {
   return `import { hydrate } from "@uniflowed/router/client";
-import { routes, notFound } from ${JSON.stringify(VIRTUAL.routes)};
+import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-hydrate({ App, routes, notFound });
+hydrate({ App, routes, notFound, errors });
 `;
 }
 
@@ -319,10 +365,10 @@ hydrate({ App, routes, notFound });
  */
 export function serverModuleSource(appEntry) {
   return `import { createDispatcher, createRenderer } from "@uniflowed/router/server";
-import { routes, handlers, notFound } from ${JSON.stringify(VIRTUAL.routes)};
+import { routes, handlers, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-export { routes, handlers, notFound };
-export const render = createRenderer({ App, routes, notFound });
+export { routes, handlers, notFound, errors };
+export const render = createRenderer({ App, routes, notFound, errors });
 export const dispatch = createDispatcher({ handlers });
 `;
 }
