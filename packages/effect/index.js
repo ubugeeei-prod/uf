@@ -90,26 +90,31 @@
 // interruption, with `catchAll`, `catchTag`, `orElse`, `either` and `orDie`;
 // `retry` over a `Schedule`; `timeout`; `acquireRelease` with `scoped`, and
 // `ensuring`, both of which release on success, failure, defect and
-// interruption; `all` and `forEach` with a concurrency limit and a synchronous
+// interruption and both of which keep a synchronous program synchronous; `all` and `forEach` with a concurrency limit and a synchronous
 // form when every element has one, `race`, and
 // `fork`/`forkDaemon`/`join`/`interrupt` over fibers whose lifetimes nest;
-// `Tag` and `Layer` for services.
+// `Tag` and `Layer` for services, with `layerProvide` feeding one layer into
+// another, `layerScoped` for a layer that acquires something, and one
+// memoised build per `provide`, so a layer reached twice in one graph is
+// built once and `runSync` still answers for a program that uses one.
 //
 // **Experimental.** Requirement subtraction, for the reason above: `provide`,
 // `provideService` and `scoped` state the service they remove and let Flow
 // solve for the rest, which is weaker than Effect-TS's `Exclude`. `catchTag`
 // reads a `kind` (or `tag`) string off the error at run time and does not
 // narrow `E` for the recovery function, because Flow cannot narrow a type
-// variable by a string compared at run time.
+// variable by a string compared at run time. `layerProvide` and `layerScoped`
+// subtract requirements the same way and carry the same caveat.
 //
 // **Not implemented.** `Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM;
 // streams; a fiber scheduler of its own (this runs on the host's microtask
 // queue and its `sleep` is `setTimeout`); tracing, spans, metrics and the
-// logging layer; `Layer` memoisation and dependency resolution, so a layer
-// passed to two `provide`s is built twice; a typed defect channel; a
-// heterogeneous `all`, which in Effect-TS keeps a tuple's element types and
-// here takes and returns one array type; and Effect's `"inherit"` concurrency,
-// because no enclosing limit is tracked to inherit.
+// logging layer; a `Runtime` or `ManagedRuntime` that builds a layer once and
+// runs many effects against it, so a layer handed to two `provide`s is still
+// built twice — the memo lives for one build and not for the process; a typed
+// defect channel; a heterogeneous `all`, which in Effect-TS keeps a tuple's
+// element types and here takes and returns one array type; and Effect's
+// `"inherit"` concurrency, because no enclosing limit is tracked to inherit.
 //
 // # Why the runtime is one file
 //
@@ -205,7 +210,43 @@ type FiberCarrier<out A, out E> = {
   readonly __fiber: FiberState,
 };
 
-type LayerKernel<out E> = (Context) => Promise<Exit<$ReadOnlyMap<string, mixed>, E>>;
+/**
+ * How one layer builds its services.
+ *
+ * The same two-kernel shape as `EffectKernel`, for the same reason. `build` is
+ * the general form and every layer has one; `buildSync` is present on the
+ * layers whose services can be produced without yielding to the event loop,
+ * and `provide` has a synchronous kernel because of it. Before this, every
+ * layer was a `Promise` by construction, so "use a layer" and "use `runSync`"
+ * were mutually exclusive — including in a test, which is where `runSync`
+ * earns its keep.
+ *
+ * Both take the memo for the build they belong to. A layer graph is a graph
+ * and not a tree — `Database` and `Logger` both wanting `Config` is the
+ * ordinary shape — so a builder that does not remember what it has already
+ * built walks the graph once per path and opens two connection pools.
+ */
+type LayerKernel<out E> = {
+  readonly build: (Context, LayerMemo) => Promise<Exit<$ReadOnlyMap<string, mixed>, E>>,
+  readonly buildSync?: (Context, LayerMemo) => Exit<$ReadOnlyMap<string, mixed>, E>,
+};
+
+/**
+ * What one build pass has already built, keyed by layer identity.
+ *
+ * Successes only, and that is not a shortcut: a failed build ends the pass, so
+ * nothing can ask for a second layer after one has failed. Holding the
+ * services rather than the `Exit` is also what keeps the memo's value type
+ * free of `E` — a `Map<Layer<…>, Exit<…, E>>` holding layers with different
+ * error types cannot be read back at the type it was written at, and that
+ * would have cost this file a fifth suppression to buy nothing.
+ *
+ * The memo lives for one `provide` and is keyed by the layer object, so a
+ * layer that appears twice in one graph is built once and a layer handed to
+ * two `provide`s is built twice. The second half is a real limit; see
+ * Readiness.
+ */
+type LayerMemo = Map<Layer<mixed, mixed, mixed>, $ReadOnlyMap<string, mixed>>;
 
 type LayerCarrier<out Out, out E, out In> = {
   readonly __kind: "Layer",
@@ -357,6 +398,21 @@ function withService<Service>(
 ): Context {
   const services = new Map(parent.services);
   services.set(readTag(serviceTag), service);
+  return { services, scope: parent.scope, fiber: parent.fiber };
+}
+
+/**
+ * A context with a built layer's services added to it.
+ *
+ * The fiber comes through unchanged, and that is load-bearing rather than
+ * tidy: every interruption check reads `runContext.fiber`, so a context
+ * assembled without it makes anything underneath a layer uninterruptible.
+ */
+function withServices(parent: Context, added: $ReadOnlyMap<string, mixed>): Context {
+  const services = new Map(parent.services);
+  for (const [key, value] of added) {
+    services.set(key, value);
+  }
   return { services, scope: parent.scope, fiber: parent.fiber };
 }
 
@@ -604,6 +660,67 @@ function makeLayer<Out, E, In>(kernel: LayerKernel<E>): Layer<Out, E, In> {
 
 function readLayer<Out, E, In>(layer: Layer<Out, E, In>): LayerKernel<E> {
   return layer.__layer;
+}
+
+/**
+ * Build a layer once per pass.
+ *
+ * The memo is consulted here rather than inside a layer's own kernel because
+ * a kernel has no name for the carrier it belongs to, and identity is the key.
+ * Every composite — `layerMerge`, `layerProvide` — reaches its children
+ * through this rather than through `readLayer`, which is what makes a diamond
+ * build its shared node once.
+ *
+ * A memoised layer keeps the services it was first built with. Handing the
+ * same layer to two different `layerProvide`s in one graph therefore gives it
+ * one of the two outers rather than each in turn; that is Effect's rule too,
+ * and the answer is two layers rather than one used twice.
+ */
+function buildLayer<Out, E, In>(
+  layer: Layer<Out, E, In>,
+  runContext: Context,
+  memo: LayerMemo,
+): Promise<Exit<$ReadOnlyMap<string, mixed>, E>> {
+  const alreadyBuilt = memo.get(layer);
+  if (alreadyBuilt != null) {
+    const settled: Exit<$ReadOnlyMap<string, mixed>, E> = success(alreadyBuilt);
+    return Promise.resolve(settled);
+  }
+  return readLayer(layer)
+    .build(runContext, memo)
+    .then((built) => {
+      if (built.kind === "success") {
+        memo.set(layer, built.value);
+      }
+      return built;
+    });
+}
+
+/**
+ * Build a layer once per pass, without yielding to the event loop.
+ *
+ * A layer with no synchronous kernel ends the run the same way an effect with
+ * none does, and by the same route: a defect naming what was asked for, rather
+ * than a promise nobody is awaiting.
+ */
+function buildLayerSync<Out, E, In>(
+  layer: Layer<Out, E, In>,
+  runContext: Context,
+  memo: LayerMemo,
+): Exit<$ReadOnlyMap<string, mixed>, E> {
+  const alreadyBuilt = memo.get(layer);
+  if (alreadyBuilt != null) {
+    return success(alreadyBuilt);
+  }
+  const buildSync = readLayer(layer).buildSync;
+  if (buildSync == null) {
+    return failure(dieCause("layer is asynchronous"));
+  }
+  const built = buildSync(runContext, memo);
+  if (built.kind === "success") {
+    memo.set(layer, built.value);
+  }
+  return built;
 }
 
 function success<A, E>(value: A): Exit<A, E> {
@@ -1519,6 +1636,23 @@ export function acquireRelease<A, E, R>(
       scope.finalizers.push(() => release(resource));
       return success(resource);
     },
+    // Acquiring is not inherently asynchronous — a file handle, a prepared
+    // statement, an object taken out of a pool — and there is no reason a
+    // program made of synchronous steps should lose `runSync` for using a
+    // resource. `ensuring` already had this arm for the same reason.
+    runSync: (runContext) => {
+      const scope = runContext.scope;
+      if (scope == null) {
+        return defect("acquireRelease needs a Scope; wrap the effect in scoped()");
+      }
+      const settled = runSyncKernel(acquire, runContext);
+      if (settled.kind === "failure") {
+        return failure(settled.cause);
+      }
+      const resource = settled.value;
+      scope.finalizers.push(() => release(resource));
+      return success(resource);
+    },
   });
 }
 
@@ -1540,20 +1674,68 @@ export function scoped<A, E, R>(self: Effect<A, E, R | Scope>): Effect<A, E, R> 
       const scopedContext = withScope(runContext);
       const state = scopedContext.scope;
       const settled = await runKernel(self, scopedContext);
-      const finalizers = state == null ? [] : state.finalizers;
-      let broken: ?Cause<mixed> = null;
-      for (let index = finalizers.length - 1; index >= 0; index -= 1) {
-        const released = await runKernel(finalizers[index](), detachedContext(runContext));
-        if (released.kind === "failure" && broken == null) {
-          broken = released.cause;
-        }
+      const broken = state == null ? null : await closeScope(state, runContext);
+      if (settled.kind === "success" && broken != null) {
+        return releaseDefect(broken);
       }
+      return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
+    },
+    // The other half of `acquireRelease`'s synchronous arm. Without it a scope
+    // could be opened without waiting and never closed without waiting, which
+    // is an asymmetry with no argument behind it.
+    runSync: (runContext) => {
+      const scopedContext = withScope(runContext);
+      const state = scopedContext.scope;
+      const settled = runSyncKernel(self, scopedContext);
+      const broken = state == null ? null : closeScopeSync(state, runContext);
       if (settled.kind === "success" && broken != null) {
         return releaseDefect(broken);
       }
       return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
     },
   });
+}
+
+/**
+ * Run a scope's finalizers, newest first, and report the first that failed.
+ *
+ * Detached, because a scope closing *because* its fiber was interrupted still
+ * has to release what it took, and a finalizer running under the interrupted
+ * fiber would stop at its own first checkpoint.
+ *
+ * Shared by `scoped` and `provide`: a layer that acquires a resource has the
+ * same lifetime problem as an effect that does, and it would be a poor answer
+ * to solve it twice slightly differently.
+ */
+async function closeScope(state: ScopeState, runContext: Context): Promise<?Cause<mixed>> {
+  const finalizers = state.finalizers;
+  let broken: ?Cause<mixed> = null;
+  for (let index = finalizers.length - 1; index >= 0; index -= 1) {
+    const released = await runKernel(finalizers[index](), detachedContext(runContext));
+    if (released.kind === "failure" && broken == null) {
+      broken = released.cause;
+    }
+  }
+  return broken;
+}
+
+/**
+ * The same, for a run that has promised not to yield to the event loop.
+ *
+ * A finalizer with no synchronous kernel fails the way any other asynchronous
+ * effect does under `runSync`, and that failure is reported rather than
+ * swallowed: a release that did not happen is exactly the news this returns.
+ */
+function closeScopeSync(state: ScopeState, runContext: Context): ?Cause<mixed> {
+  const finalizers = state.finalizers;
+  let broken: ?Cause<mixed> = null;
+  for (let index = finalizers.length - 1; index >= 0; index -= 1) {
+    const released = runSyncKernel(finalizers[index](), detachedContext(runContext));
+    if (released.kind === "failure" && broken == null) {
+      broken = released.cause;
+    }
+  }
+  return broken;
 }
 
 /**
@@ -1611,6 +1793,17 @@ export function provideService<A, E, R, Service>(
  *
  * The layer's own failure joins the effect's error channel, because a service
  * that could not be built is a way the whole thing can fail.
+ *
+ * One build pass, with one memo, so a layer reached twice in the graph is
+ * built once. The pass also gets a scope of its own — separate from the body's
+ * — which is what a `layerScoped` resource is released at: the layer that
+ * opened a connection pool has somewhere to close it, and it closes after the
+ * body that was using it has finished, however it finished.
+ *
+ * That scope is deliberately not the body's. Handing the body a scope here
+ * would silently discharge the `Scope` an `acquireRelease` inside it requires,
+ * and the requirement channel would go on saying otherwise; `scoped` is still
+ * the only thing that answers for an effect's own resources.
  */
 export function provide<A, E, R, Out, LayerError, In>(
   self: Effect<A, E, R | Out>,
@@ -1618,23 +1811,48 @@ export function provide<A, E, R, Out, LayerError, In>(
 ): Effect<A, E | LayerError, R | In> {
   return makeEffect({
     run: async (runContext) => {
-      const built = await readLayer(layer)(runContext);
+      const layerScope: ScopeState = { finalizers: [] };
+      const buildContext = {
+        services: runContext.services,
+        scope: layerScope,
+        fiber: runContext.fiber,
+      };
+      const built = await buildLayer(layer, buildContext, new Map());
       if (built.kind === "failure") {
+        // A merge whose left side acquired and whose right side failed has
+        // something to give back, and the build's own failure is the more
+        // useful half of the news, so it survives the release.
+        await closeScope(layerScope, runContext);
         return failure(built.cause);
       }
-      const services = new Map(runContext.services);
-      for (const [key, value] of built.value) {
-        services.set(key, value);
+      const settled = await runKernel(self, withServices(runContext, built.value));
+      const broken = await closeScope(layerScope, runContext);
+      if (settled.kind === "success" && broken != null) {
+        return releaseDefect(broken);
       }
-      // The fiber has to come through with the services. Every interruption
-      // check reads `runContext.fiber`, so a context assembled without it makes
-      // anything that can be interrupted throw instead — which nothing noticed
-      // while no effect under a layer ever checked.
-      const settled = await runKernel(self, {
-        services,
-        scope: runContext.scope,
+      return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
+    },
+    // Nothing about a layer is inherently asynchronous: `layerSucceed` holds a
+    // value that is already built, and a `layerEffect` over a `sync` has an
+    // answer to give. This is the arm that was missing, and without it
+    // `runSync` and `provide` could not appear in the same program.
+    runSync: (runContext) => {
+      const layerScope: ScopeState = { finalizers: [] };
+      const buildContext = {
+        services: runContext.services,
+        scope: layerScope,
         fiber: runContext.fiber,
-      });
+      };
+      const built = buildLayerSync(layer, buildContext, new Map());
+      if (built.kind === "failure") {
+        closeScopeSync(layerScope, runContext);
+        return failure(built.cause);
+      }
+      const settled = runSyncKernel(self, withServices(runContext, built.value));
+      const broken = closeScopeSync(layerScope, runContext);
+      if (settled.kind === "success" && broken != null) {
+        return releaseDefect(broken);
+      }
       return settled.kind === "success" ? success(settled.value) : failure(settled.cause);
     },
   });
@@ -1644,7 +1862,10 @@ export function provide<A, E, R, Out, LayerError, In>(
 export function layerSucceed<Service>(serviceTag: Tag<Service>, service: Service): Layer<Service> {
   const built: $ReadOnlyMap<string, mixed> = new Map([[readTag(serviceTag), service]]);
   const settled: Exit<$ReadOnlyMap<string, mixed>, empty> = success(built);
-  return makeLayer(() => Promise.resolve(settled));
+  return makeLayer({
+    build: () => Promise.resolve(settled),
+    buildSync: () => settled,
+  });
 }
 
 /** A layer that builds its service with an effect, which may itself fail. */
@@ -1652,12 +1873,43 @@ export function layerEffect<Service, E, R>(
   serviceTag: Tag<Service>,
   build: Effect<Service, E, R>,
 ): Layer<Service, E, R> {
-  return makeLayer(async (runContext) => {
-    const settled = await runKernel(build, runContext);
-    if (settled.kind === "failure") {
-      return failure(settled.cause);
-    }
-    return success(new Map([[readTag(serviceTag), settled.value]]));
+  const identifier = readTag(serviceTag);
+  const collect = (settled: Exit<Service, E>): Exit<$ReadOnlyMap<string, mixed>, E> =>
+    settled.kind === "failure"
+      ? failure(settled.cause)
+      : success(new Map([[identifier, settled.value]]));
+  return makeLayer({
+    build: async (runContext) => collect(await runKernel(build, runContext)),
+    buildSync: (runContext) => collect(runSyncKernel(build, runContext)),
+  });
+}
+
+/**
+ * A layer that acquires something, released when the `provide` using it ends.
+ *
+ * The difference from `layerEffect` is entirely in the type, and that is the
+ * point rather than an admission: `provide` gives every build a scope, so a
+ * `layerEffect` over an `acquireRelease` would already release — but its
+ * `Scope` requirement would sit in the layer's `In` for ever, and a `Layer`
+ * has no `scoped` of its own to discharge it with. This is that discharge, in
+ * the same shape and with the same caveat `scoped` carries: the service being
+ * removed is stated and Flow solves for the rest.
+ *
+ * The resource outlives the build and dies with the `provide`, which is the
+ * whole reason a pool belongs in a layer rather than in the body.
+ */
+export function layerScoped<Service, E, R>(
+  serviceTag: Tag<Service>,
+  build: Effect<Service, E, R | Scope>,
+): Layer<Service, E, R> {
+  const identifier = readTag(serviceTag);
+  const collect = (settled: Exit<Service, E>): Exit<$ReadOnlyMap<string, mixed>, E> =>
+    settled.kind === "failure"
+      ? failure(settled.cause)
+      : success(new Map([[identifier, settled.value]]));
+  return makeLayer({
+    build: async (runContext) => collect(await runKernel(build, runContext)),
+    buildSync: (runContext) => collect(runSyncKernel(build, runContext)),
   });
 }
 
@@ -1666,21 +1918,119 @@ export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
   left: Layer<Out1, E1, In1>,
   right: Layer<Out2, E2, In2>,
 ): Layer<Out1 | Out2, E1 | E2, In1 | In2> {
-  return makeLayer(async (runContext) => {
-    const leftBuilt = await readLayer(left)(runContext);
-    if (leftBuilt.kind === "failure") {
-      return failure(leftBuilt.cause);
-    }
-    const rightBuilt = await readLayer(right)(runContext);
-    if (rightBuilt.kind === "failure") {
-      return failure(rightBuilt.cause);
-    }
-    const merged = new Map(leftBuilt.value);
-    for (const [key, value] of rightBuilt.value) {
-      merged.set(key, value);
-    }
-    return success(merged);
+  return makeLayer({
+    build: async (runContext, memo) => {
+      const leftBuilt = await buildLayer(left, runContext, memo);
+      if (leftBuilt.kind === "failure") {
+        return failure(leftBuilt.cause);
+      }
+      const rightBuilt = await buildLayer(right, runContext, memo);
+      if (rightBuilt.kind === "failure") {
+        return failure(rightBuilt.cause);
+      }
+      return success(mergedServices(leftBuilt.value, rightBuilt.value));
+    },
+    buildSync: (runContext, memo) => {
+      const leftBuilt = buildLayerSync(left, runContext, memo);
+      if (leftBuilt.kind === "failure") {
+        return failure(leftBuilt.cause);
+      }
+      const rightBuilt = buildLayerSync(right, runContext, memo);
+      if (rightBuilt.kind === "failure") {
+        return failure(rightBuilt.cause);
+      }
+      return success(mergedServices(leftBuilt.value, rightBuilt.value));
+    },
   });
+}
+
+/**
+ * Build `inner` with `outer`'s services in scope, discharging what it needed.
+ *
+ * This is what makes a layer's `In` mean something. Before it, `In` was
+ * carried through every signature and could never be satisfied: a
+ * `Layer<Database, ConfigError, Config>` could only be used by an effect that
+ * still required `Config`, so the requirement was a label rather than a debt
+ * anything could pay.
+ *
+ * The same requirement-subtraction caveat as `provide`, in the same words:
+ * Flow has no type-level set difference, so the discharged service is stated
+ * — `inner` is typed as needing `In1 | Out2` — and the checker solves for
+ * `In1`. That works when `Out2` is a distinct member of the union and silently
+ * leaves it in `In1` when it is not. See Readiness.
+ *
+ * `outer` is built first and through the pass's memo, so a `Config` that two
+ * layers both provide into is built once.
+ */
+export function layerProvide<Out, E1, In1, Out2, E2, In2>(
+  inner: Layer<Out, E1, In1 | Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out, E1 | E2, In1 | In2> {
+  return makeLayer({
+    build: async (runContext, memo) => {
+      const outerBuilt = await buildLayer(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = await buildLayer(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure" ? failure(innerBuilt.cause) : success(innerBuilt.value);
+    },
+    buildSync: (runContext, memo) => {
+      const outerBuilt = buildLayerSync(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = buildLayerSync(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure" ? failure(innerBuilt.cause) : success(innerBuilt.value);
+    },
+  });
+}
+
+/**
+ * `layerProvide`, keeping the outer layer's services in the result.
+ *
+ * For the ordinary case where `Config` is wanted by the application as well as
+ * by the `Database` it was built for. Free, because the merge is the one line
+ * that differs.
+ */
+export function layerProvideMerge<Out, E1, In1, Out2, E2, In2>(
+  inner: Layer<Out, E1, In1 | Out2>,
+  outer: Layer<Out2, E2, In2>,
+): Layer<Out | Out2, E1 | E2, In1 | In2> {
+  return makeLayer({
+    build: async (runContext, memo) => {
+      const outerBuilt = await buildLayer(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = await buildLayer(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure"
+        ? failure(innerBuilt.cause)
+        : success(mergedServices(outerBuilt.value, innerBuilt.value));
+    },
+    buildSync: (runContext, memo) => {
+      const outerBuilt = buildLayerSync(outer, runContext, memo);
+      if (outerBuilt.kind === "failure") {
+        return failure(outerBuilt.cause);
+      }
+      const innerBuilt = buildLayerSync(inner, withServices(runContext, outerBuilt.value), memo);
+      return innerBuilt.kind === "failure"
+        ? failure(innerBuilt.cause)
+        : success(mergedServices(outerBuilt.value, innerBuilt.value));
+    },
+  });
+}
+
+/** Two built layers' services in one map, the second winning a collision. */
+function mergedServices(
+  first: $ReadOnlyMap<string, mixed>,
+  second: $ReadOnlyMap<string, mixed>,
+): $ReadOnlyMap<string, mixed> {
+  const merged = new Map(first);
+  for (const [key, value] of second) {
+    merged.set(key, value);
+  }
+  return merged;
 }
 
 /**

@@ -32,6 +32,9 @@ import {
   join,
   layerEffect,
   layerMerge,
+  layerProvide,
+  layerProvideMerge,
+  layerScoped,
   layerSucceed,
   map,
   mapError,
@@ -484,6 +487,50 @@ describe("resources", () => {
     const result = await runPromise(exit(program));
     expect(result.kind).toBe("failure");
     expect(events).toEqual(["acquire", "release"]);
+  });
+
+  it("keeps a synchronous program synchronous through a scope", () => {
+    // Acquiring is not inherently asynchronous, and a program made of
+    // synchronous steps should not lose `runSync` for using a resource.
+    const events = [];
+    const program = scoped(
+      flatMap(
+        acquireRelease(
+          sync(() => {
+            events.push("acquire");
+            return "handle";
+          }),
+          () =>
+            sync(() => {
+              events.push("release");
+            }),
+        ),
+        (handle) => sync(() => `used ${handle}`),
+      ),
+    );
+
+    expect(runSync(program)).toBe("used handle");
+    expect(events).toEqual(["acquire", "release"]);
+  });
+
+  it("reports a finaliser that cannot run synchronously rather than skipping it", () => {
+    // A release that did not happen is the news this returns; a silent skip is
+    // the failure `acquireRelease` exists to prevent.
+    const program = scoped(
+      andThen(
+        acquireRelease(
+          sync(() => "handle"),
+          () => sleep(1),
+        ),
+        succeed("body"),
+      ),
+    );
+
+    const result = runSyncExit(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
   });
 
   it("runs an ensuring finaliser on both paths", async () => {
@@ -1367,6 +1414,183 @@ describe("layers", () => {
     }
   });
 
+  it("builds a layer reached twice in one graph exactly once", async () => {
+    // The diamond: `Database` and `Logger` both want `Config`. Built once per
+    // path, a layer that opens a connection pool opens two, and a layer that
+    // reads a config file may get two different answers.
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const Logger = tag("Logger");
+
+    let builds = 0;
+    const configLayer = layerEffect(
+      Config,
+      sync(() => {
+        builds += 1;
+        return { url: "postgres://" };
+      }),
+    );
+    const databaseLayer = layerProvide(
+      layerEffect(
+        Database,
+        effect(function* () {
+          const config = yield* Config;
+          return { at: config.url };
+        }),
+      ),
+      configLayer,
+    );
+    const loggerLayer = layerProvide(
+      layerEffect(
+        Logger,
+        effect(function* () {
+          const config = yield* Config;
+          return { about: config.url };
+        }),
+      ),
+      configLayer,
+    );
+
+    const program = effect(function* () {
+      const database = yield* Database;
+      const logger = yield* Logger;
+      return `${database.at}|${logger.about}`;
+    });
+
+    await expect(
+      runPromise(provide(program, layerMerge(databaseLayer, loggerLayer))),
+    ).resolves.toBe("postgres://|postgres://");
+    expect(builds).toBe(1);
+  });
+
+  it("builds a layer again for the next provide", async () => {
+    // The honest other half: the memo lives for one build, not for the
+    // process. Building once for a whole application is a `Runtime`, and there
+    // is not one yet.
+    const Config = tag("Config");
+    let builds = 0;
+    const configLayer = layerEffect(
+      Config,
+      sync(() => {
+        builds += 1;
+        return { url: "postgres://" };
+      }),
+    );
+
+    await runPromise(provide(succeed(1), configLayer));
+    await runPromise(provide(succeed(2), configLayer));
+    expect(builds).toBe(2);
+  });
+
+  it("answers synchronously when the layer and the body both can", () => {
+    // Nothing here is asynchronous, and until `provide` had a synchronous
+    // kernel this died with "effect is asynchronous" — which made "use a
+    // layer" and "use runSync" mutually exclusive, including in a test.
+    const Clock = tag("Clock");
+    expect(runSync(provide(succeed(1), layerSucceed(Clock, { now: () => 1 })))).toBe(1);
+
+    const reading = effect(function* () {
+      const clock = yield* Clock;
+      return clock.now();
+    });
+    expect(
+      runSync(
+        provide(
+          reading,
+          layerEffect(
+            Clock,
+            sync(() => ({ now: () => 7 })),
+          ),
+        ),
+      ),
+    ).toBe(7);
+  });
+
+  it("refuses synchronously when the layer needs to wait", () => {
+    const Clock = tag("Clock");
+    const result = runSyncExit(
+      provide(
+        succeed(1),
+        layerEffect(
+          Clock,
+          promise(() => Promise.resolve({ now: () => 1 })),
+        ),
+      ),
+    );
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("feeds one layer into another with layerProvide", async () => {
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const configLayer = layerSucceed(Config, { url: "postgres://" });
+    const databaseLayer = layerProvide(
+      layerEffect(
+        Database,
+        effect(function* () {
+          const config = yield* Config;
+          return { at: config.url };
+        }),
+      ),
+      configLayer,
+    );
+
+    const program = effect(function* () {
+      const database = yield* Database;
+      return database.at;
+    });
+
+    // `Config` is discharged: the program is run with the database layer alone
+    // and never sees the service the layer needed.
+    await expect(runPromise(provide(program, databaseLayer))).resolves.toBe("postgres://");
+  });
+
+  it("keeps the outer services with layerProvideMerge", async () => {
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const configLayer = layerSucceed(Config, { url: "postgres://" });
+    const databaseLayer = layerProvideMerge(
+      layerEffect(
+        Database,
+        effect(function* () {
+          const config = yield* Config;
+          return { at: config.url };
+        }),
+      ),
+      configLayer,
+    );
+
+    const program = effect(function* () {
+      const database = yield* Database;
+      const config = yield* Config;
+      return `${database.at}|${config.url}`;
+    });
+
+    await expect(runPromise(provide(program, databaseLayer))).resolves.toBe(
+      "postgres://|postgres://",
+    );
+  });
+
+  it("carries an inner layer's failure out of layerProvide", async () => {
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const databaseLayer = layerProvide(
+      layerEffect(Database, fail({ kind: "NoDatabase" })),
+      layerSucceed(Config, { url: "postgres://" }),
+    );
+
+    const result = await runPromiseExit(provide(succeed(1), databaseLayer));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("NoDatabase");
+    } else {
+      throw new Error("expected the inner layer's failure");
+    }
+  });
+
   it("keeps interruption working underneath a layer", async () => {
     const Config = tag("Config");
     const program = provide(sleep(400), layerSucceed(Config, { value: 1 }));
@@ -1383,5 +1607,108 @@ describe("layers", () => {
     if (outcome.kind === "failure") {
       expect(outcome.cause.kind).toBe("interrupt");
     }
+  });
+});
+
+describe("a layer that acquires something", () => {
+  /** A pool layer that records every open and close. */
+  const pooling = (events: Array<string>) => {
+    const Pool = tag("Pool");
+    return {
+      Pool,
+      layer: layerScoped(
+        Pool,
+        acquireRelease(
+          sync(() => {
+            events.push("open");
+            return { query: () => "row" };
+          }),
+          () => sync(() => events.push("close")),
+        ),
+      ),
+    };
+  };
+
+  it("releases when the body succeeds", async () => {
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      const handle = yield* pool.Pool;
+      events.push(handle.query());
+      return "done";
+    });
+
+    await expect(runPromise(provide(program, pool.layer))).resolves.toBe("done");
+    expect(events).toEqual(["open", "row", "close"]);
+  });
+
+  it("releases when the body fails", async () => {
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      yield* pool.Pool;
+      return yield* fail("body");
+    });
+
+    const result = await runPromiseExit(provide(program, pool.layer));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("body");
+    } else {
+      throw new Error("expected the body's failure to survive the release");
+    }
+    expect(events).toEqual(["open", "close"]);
+  });
+
+  it("releases when the fiber is interrupted", async () => {
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      yield* pool.Pool;
+      yield* sleep(400);
+    });
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(provide(program, pool.layer));
+        yield* sleep(10);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+    expect(events).toEqual(["open", "close"]);
+  });
+
+  it("releases synchronously when everything in the program can", () => {
+    // A scoped layer does not force the program asynchronous either: the
+    // finalizers close on the synchronous path too.
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      const handle = yield* pool.Pool;
+      return handle.query();
+    });
+
+    expect(runSync(provide(program, pool.layer))).toBe("row");
+    expect(events).toEqual(["open", "close"]);
+  });
+
+  it("keeps the pool open for the whole body rather than for the build", async () => {
+    // The resource has to outlive the build that acquired it — a layer that
+    // closed its pool when the build finished would hand the body a closed
+    // one, which is the failure a scope on the layer exists to prevent.
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      const handle = yield* pool.Pool;
+      yield* sleep(5);
+      return handle.query();
+    });
+
+    await expect(runPromise(provide(program, pool.layer))).resolves.toBe("row");
+    expect(events).toEqual(["open", "close"]);
   });
 });

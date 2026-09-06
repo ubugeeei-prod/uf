@@ -142,7 +142,69 @@ Requirement subtraction is the experimental part. Flow has no type-level set
 difference, so `provide` is typed as
 `(Effect<A, E, R | Out>, Layer<Out, …>) => Effect<A, E, R>` and the checker
 solves for `R`. That works when the provided service is a distinct member of the
-union, and silently leaves it in `R` when it is not.
+union, and silently leaves it in `R` when it is not. `layerProvide` and
+`layerScoped` subtract the same way and carry the same caveat.
+
+### Layers compose
+
+| | |
+| --- | --- |
+| `layerSucceed(tag, service)` | A service already in hand |
+| `layerEffect(tag, build)` | Built by an effect, which may fail |
+| `layerScoped(tag, build)` | Built by an effect that acquires something |
+| `layerMerge(left, right)` | Both layers' services, side by side |
+| `layerProvide(inner, outer)` | `outer` feeds `inner`, discharging what it needed |
+| `layerProvideMerge(inner, outer)` | The same, keeping `outer`'s services too |
+
+`layerProvide` is what makes a layer's `In` mean something. Without it, a
+`Layer<Database, ConfigError, Config>` could only be used by an effect that
+still required `Config`, so the requirement was a label rather than a debt
+anything could pay.
+
+```js
+const configLayer = layerEffect(Config, readConfigFile);
+const databaseLayer = layerProvide(layerEffect(Database, openPool), configLayer);
+const loggerLayer = layerProvide(layerEffect(Logger, openLog), configLayer);
+
+// Config is read once, not twice.
+await runPromise(provide(program, layerMerge(databaseLayer, loggerLayer)));
+```
+
+### One build per provide
+
+A layer graph is a graph, not a tree: `Database` and `Logger` both wanting
+`Config` is the ordinary shape. One `provide` is one build pass with one memo
+keyed by layer identity, so a layer reached twice is built once — a pool is
+opened once, and a config file read once gives one answer.
+
+The memo lives for one build and not for the process, so a layer handed to two
+`provide`s is built twice. Building once for a whole application is what
+Effect-TS calls a `ManagedRuntime`, and there is not one here yet.
+
+A memoised layer keeps the services it was first built with, so the same layer
+under two different `layerProvide`s in one graph gets one of the two outers.
+The answer is two layers rather than one used twice.
+
+### Layers do not force a program asynchronous
+
+`provide` has a synchronous kernel, so `runSync` still answers for a program
+that uses a layer — which matters most in a test, where `runSync` earns its
+keep. A layer whose build genuinely has to wait fails the same way any other
+asynchronous effect does under `runSync`: a defect saying so, rather than a
+promise nobody is awaiting.
+
+### A layer that acquires something
+
+`layerScoped` builds its service with an effect that may `acquireRelease`. The
+resource is released when the `provide` using it ends — on success, on failure,
+and on interruption — rather than when the build finishes, which is the whole
+reason a connection pool belongs in a layer.
+
+That scope is the layer's, not the body's. `provide` deliberately does not hand
+the body a scope: doing so would silently discharge the `Scope` an
+`acquireRelease` inside the body requires while the requirement channel went on
+saying otherwise. `scoped` is still the only thing that answers for an effect's
+own resources.
 
 ## Retrying
 
