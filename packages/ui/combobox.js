@@ -64,6 +64,7 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
@@ -134,7 +135,7 @@ export component ComboboxRoot(
   open?: boolean,
   defaultOpen?: boolean = false,
   onOpenChange?: (open: boolean) => void,
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const base = useId();
   const [chosen, setChosen] = useControlled(value, defaultValue, onValueChange);
@@ -203,7 +204,7 @@ export component ComboboxRoot(
  * because the list names it, and naming a label that is not rendered is worse
  * than leaving the list unnamed.
  */
-export component ComboboxLabel(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component ComboboxLabel(children: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Label");
   const register = combobox.registerLabel;
   useEffect(() => {
@@ -219,7 +220,7 @@ export component ComboboxLabel(children: React.Node, ...rest: { readonly [string
 }
 
 /** The text field, and every key the pattern defines. */
-export component ComboboxInput(...rest: { readonly [string]: mixed }) {
+export component ComboboxInput(...rest: Rest) {
   const combobox = useCombobox("Combobox.Input");
   const passed = withoutComposed(rest, ["onChange", "onKeyDown", "ref"]);
 
@@ -337,10 +338,7 @@ export component ComboboxInput(...rest: { readonly [string]: mixed }) {
  * the count the live region announces, and the invariant that
  * `aria-activedescendant` never names an option that has left the list.
  */
-export component ComboboxList(
-  children: renders* ComboboxOption,
-  ...rest: { readonly [string]: mixed }
-) {
+export component ComboboxList(children: renders* ComboboxOption, ...rest: Rest) {
   const combobox = useCombobox("Combobox.List");
   const { activeId, count, listRef, inputRef, pendingActive, setActiveId, setCount } = combobox;
   const close = useStableCallback(() => {
@@ -444,7 +442,7 @@ export component ComboboxOption(
   children: React.Node,
   label?: string,
   disabled?: boolean = false,
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const combobox = useCombobox("Combobox.Option");
   const id = useId();
@@ -495,7 +493,7 @@ export component ComboboxOption(
  * contain options: an "no matches" row inside one is announced as an option a
  * reader can choose, and choosing it does nothing.
  */
-export component ComboboxEmpty(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component ComboboxEmpty(children: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Empty");
   if (!combobox.open || combobox.count > 0) {
     return null;
@@ -514,7 +512,7 @@ export component ComboboxEmpty(children: React.Node, ...rest: { readonly [string
  * `children` overrides the wording — the default is English and a real
  * application has a translation table.
  */
-export component ComboboxStatus(children?: React.Node, ...rest: { readonly [string]: mixed }) {
+export component ComboboxStatus(children?: React.Node, ...rest: Rest) {
   const combobox = useCombobox("Combobox.Status");
   const message = children ?? defaultAnnouncement(combobox.open, combobox.count);
 

@@ -10,6 +10,13 @@
 // or the shape of the tree. Every assertion is either "a reader is told X" or
 // "this key does Y", because those are the two promises this package makes and
 // the two things a refactor must not be allowed to break quietly.
+//
+// The one exception is the last block, which runs `uf check` over the package.
+// The type of the props a caller may spread is part of what this package
+// promises too, and it is not a promise any amount of rendering can check.
+
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
@@ -1555,5 +1562,118 @@ describe("caller props never disable the component", () => {
     );
     // Focus goes to the first stop a reader can actually reach.
     expect(screen.getByRole("button", { name: "real" })).toHaveFocus();
+  });
+
+  it("carries the attributes a caller styles and finds the element by", () => {
+    // The other half of narrowing `Rest`: the names a caller actually spreads
+    // are open-ended — a class, an id, `data-*` for a test or a stylesheet,
+    // `aria-*` the component does not set itself — and all of them still have
+    // to arrive. This is why `Rest` kept its indexer instead of becoming a
+    // written-out list of element props.
+    render(
+      <Switch
+        aria-describedby="hint"
+        className="knob"
+        data-testid="notifications"
+        id="notify"
+        title="Notifications"
+      />,
+    );
+    const control = screen.getByTestId("notifications");
+    expect(control.getAttribute("class")).toBe("knob");
+    expect(control.getAttribute("id")).toBe("notify");
+    expect(control.getAttribute("title")).toBe("Notifications");
+    expect(control.getAttribute("aria-describedby")).toBe("hint");
+    // And the component's own semantics are still on top of them.
+    expect(control.getAttribute("role")).toBe("switch");
+  });
+
+  it("hands the field's control attributes to a render function that spreads them", () => {
+    // `Field.Control` passes props the other way — the field gives them to the
+    // caller to spread onto whatever element they render — so it is typed with
+    // the same `Rest`, and a consumer's `<input {...props} />` has to keep
+    // working.
+    render(
+      <Field.Root>
+        <Field.Label>Name</Field.Label>
+        <Field.Control render={(props) => <input {...props} className="control" />} />
+      </Field.Root>,
+    );
+    const control = screen.getByLabelText("Name");
+    expect(control.getAttribute("class")).toBe("control");
+    expect(control.getAttribute("id")).not.toBe(null);
+  });
+});
+
+describe("the props a part spreads onto its element", () => {
+  // A type is a promise the same way a role is, and this is the only test here
+  // that can hold one to it.
+  //
+  // Every part takes `...rest: Rest` and spreads it onto an intrinsic. `Rest`
+  // — `packages/ui/internal/merge-props.js` — names `key` out of its indexer,
+  // because React's `key` is `string | number` and an indexer answers `mixed`
+  // for every name. Widen it back to a bare `{ readonly [string]: mixed }` and
+  // `uf check` reports "Cannot create button element because in property key"
+  // once for every element the package renders: thirty-two of them, which is
+  // what #206 was.
+  //
+  // Scoped to that one family on purpose. `packages/ui` still reports
+  // `value-as-type` errors for `React.Node` and `React.Context`, because
+  // nothing resolves a module for `@uniflowed/react` and the import is typed
+  // `any` — a different bug, with a different fix, and not one this test
+  // should start failing over.
+
+  // The repository, two levels up from the project this worker runs in.
+  // `uf test` names that project in `UF_PROJECT_ROOT` and starts the worker
+  // there, so it is `tests/library` whichever directory the command was typed
+  // in. `import.meta.url` would say it more directly, and
+  // `fileURLToPath(import.meta.url)` is itself one of the type errors
+  // `uf check` reports against this suite today — see `story.test.js` — which
+  // is a poor thing for a test about type errors to add another of.
+  const repository = path.resolve(process.env.UF_PROJECT_ROOT ?? process.cwd(), "..", "..");
+
+  // The binary running this suite, the way `lsp.test.js` names it: `uf test`
+  // puts its own path in `UF_BINARY`, so this checks *this* build rather than
+  // whatever `uf` is on PATH.
+  const UF: string = (() => {
+    const binary = process.env.UF_BINARY;
+    if (binary == null || binary === "") {
+      throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
+    }
+    return binary;
+  })();
+
+  // The part of `uf check --json` this reads. A message arrives as spans
+  // rather than a string so that a renderer can mark the code inside it, which
+  // is why the filter below joins it back together first.
+  type Diagnostic = {
+    primary: { path: string, start: { line: number, column: number } },
+    message: Array<{ kind: string, text: string }>,
+  };
+  type Report = {
+    typeCheck: { status: string, filesChecked: number, diagnostics: Array<Diagnostic> },
+  };
+
+  it("does not make React's key mixed", () => {
+    const run = spawnSync(UF, ["check", "packages/ui", "--json"], {
+      cwd: repository,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    // A non-zero status is expected: the package still has the `value-as-type`
+    // errors above. The answer is on stdout either way.
+    const report: Report = JSON.parse(run.stdout);
+    // Without this the test would pass just as happily on a run that checked
+    // nothing at all.
+    expect(report.typeCheck.status).toBe("checked");
+    expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
+
+    const keyed = report.typeCheck.diagnostics
+      .map((diagnostic) => ({
+        at: `${diagnostic.primary.path}:${String(diagnostic.primary.start.line)}`,
+        said: diagnostic.message.map((span) => span.text).join(""),
+      }))
+      .filter((diagnostic) => diagnostic.said.includes("in property key"));
+    expect(keyed).toEqual([]);
   });
 });
