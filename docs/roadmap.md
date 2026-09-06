@@ -51,7 +51,7 @@ rather than a note:
 | Claim | Today | |
 | --- | --- | --- |
 | Runs on every runtime | Node and Bun. `HostKind::Deno` loads no Flow; the edge runtimes have no host at all | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
-| Builds a standalone binary | `uf build` emits bundles; there is no `--compile` | [#245](https://github.com/ubugeeei-prod/uf/issues/245) |
+| Builds a standalone binary | `uf build --compile` writes one, and needs Bun on PATH to do it; cross-compiling to another platform does not exist | [#310](https://github.com/ubugeeei-prod/uf/issues/310) |
 | Deploys anywhere | `uf build --adapter node` writes a directory that runs on a bare JavaScript runtime; the other six adapters are names in a config struct | [#391](https://github.com/ubugeeei-prod/uf/issues/391) |
 | Inference reaches the end of a program | A type imported by its published name resolves to nothing | [#248](https://github.com/ubugeeei-prod/uf/issues/248) |
 | Everything implemented reaches a user | Ten implemented packages are on nobody's npm; `@uniflowed/tui` is a contract nobody can run | [#210](https://github.com/ubugeeei-prod/uf/issues/210), [#247](https://github.com/ubugeeei-prod/uf/issues/247) |
