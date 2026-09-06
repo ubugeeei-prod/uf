@@ -85,8 +85,18 @@
 // - `toast.js` — the live region that was watching before there was anything
 //   to announce, and the countdown that stops.
 // - `field.js` — the label, description, error and `aria-invalid` wiring.
-// - `switch.js` and `checkbox.js` — the two two-state controls, apart because
-//   the third state and the `Enter` key genuinely differ between them.
+// - `switch.js`, `checkbox.js` and `toggle.js` — the three two-state controls,
+//   apart because a reader is told something different by each, and because the
+//   third state and the `Enter` key genuinely differ between them.
+// - `radio-group.js` — one answer out of several, and the tab stop an
+//   unanswered group would otherwise not have.
+// - `toggle-group.js` — a row of toggle buttons as one control, whose `single`
+//   mode is a radio group and is rendered by `radio-group.js` rather than
+//   written a second time.
+// - `collapsible.js`, `accordion.js` and `navigation-menu.js` — the disclosure
+//   pattern on its own, stacked, and applied to a site's navigation. The third
+//   of those exists as much to prevent `role="menu"` from being used for a list
+//   of links as to provide anything.
 // - `slider.js`, `resizable.js` and `progress.js` — the three that report a
 //   number in a range. A window splitter is a slider wearing a separator's
 //   role, which is why it is beside one rather than with the layout.
@@ -98,18 +108,28 @@
 // is by primitive because that is the unit a reader looks for, the unit a
 // bundler drops, and the unit the WAI-ARIA practices are written in.
 //
-// `internal/` holds five modules and nothing else, each a rule the primitives
+// `internal/` holds six modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
 // last), `controlled-state.js` (what "controlled" means here),
 // `roving-focus.js` (how a set of items is found and moved between),
-// `form-value.js` (what a `<form>` submits for a control the browser has never
-// heard of), and `range.js` (the arithmetic that keeps `aria-valuemin`,
-// `aria-valuemax` and `aria-valuenow` true about each other). Each says in its own header why it is unreachable rather than
+// `disclosure.js` (how a button says whether a region is showing, and how a
+// closed region stays findable), `form-value.js` (what a `<form>` submits for a
+// control the browser has never heard of), and `range.js` (the arithmetic that
+// keeps `aria-valuemin`, `aria-valuemax` and `aria-valuenow` true about each
+// other). Each says in its own header why it is unreachable rather than
 // exported. There is no `internal/props.js`-shaped bag of helpers: a module
 // that cannot say what it is about does not belong in this package.
 
+import {
+  AccordionContent,
+  AccordionHeader,
+  AccordionItem,
+  AccordionRoot,
+  AccordionTrigger,
+} from "./accordion.js";
 import { Checkbox } from "./checkbox.js";
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "./collapsible.js";
 import {
   ComboboxEmpty,
   ComboboxInput,
@@ -143,6 +163,14 @@ import {
   MenuTrigger,
 } from "./menu.js";
 import {
+  NavigationMenuBody,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuRoot,
+  NavigationMenuTrigger,
+} from "./navigation-menu.js";
+import {
   PaginationContent,
   PaginationItem,
   PaginationNext,
@@ -150,6 +178,7 @@ import {
   PaginationRoot,
 } from "./pagination.js";
 import { Progress } from "./progress.js";
+import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
 import {
   SelectGroup,
@@ -189,12 +218,16 @@ import {
   toast,
   updateToast,
 } from "./toast.js";
+import { Toggle } from "./toggle.js";
+import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
 
+export type { AccordionType } from "./accordion.js";
 export type { ActivationMode } from "./tabs.js";
 export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
+export type { ToggleGroupType } from "./toggle-group.js";
 
-export { Checkbox, Progress, Switch };
+export { Checkbox, Progress, Switch, Toggle };
 
 /**
  * Queueing a notification, from anywhere.
@@ -247,6 +280,114 @@ export const Tabs = {
   List: TabsList,
   Tab: TabsTab,
   Panel: TabsPanel,
+};
+
+/**
+ * A button and the region it shows, with the three attributes that say so.
+ *
+ * The content stays in the document while it is closed, so the browser's
+ * find-in-page can still reach the text in it.
+ *
+ *   <Collapsible.Root>
+ *     <Collapsible.Trigger>Details</Collapsible.Trigger>
+ *     <Collapsible.Content>…</Collapsible.Content>
+ *   </Collapsible.Root>
+ */
+export const Collapsible = {
+  Root: CollapsibleRoot,
+  Trigger: CollapsibleTrigger,
+  Content: CollapsibleContent,
+};
+
+/**
+ * A stack of disclosures that know about each other.
+ *
+ * `Accordion.Header` takes the heading `level`, because which heading an
+ * accordion's sections are depends on where the accordion sits. Each panel is a
+ * region named after the header that opens it.
+ *
+ *   <Accordion.Root type="single">
+ *     <Accordion.Item value="shipping">
+ *       <Accordion.Header level={3}>
+ *         <Accordion.Trigger>Shipping</Accordion.Trigger>
+ *       </Accordion.Header>
+ *       <Accordion.Content>…</Accordion.Content>
+ *     </Accordion.Item>
+ *   </Accordion.Root>
+ */
+export const Accordion = {
+  Root: AccordionRoot,
+  Item: AccordionItem,
+  Header: AccordionHeader,
+  Trigger: AccordionTrigger,
+  Content: AccordionContent,
+};
+
+/**
+ * Site navigation: a list of links behind buttons, and not a `menu`.
+ *
+ *   <NavigationMenu.Root aria-label="Main">
+ *     <NavigationMenu.List>
+ *       <NavigationMenu.Item value="docs">
+ *         <NavigationMenu.Trigger>Docs</NavigationMenu.Trigger>
+ *         <NavigationMenu.Body>
+ *           <NavigationMenu.Link href="/guide">Guide</NavigationMenu.Link>
+ *         </NavigationMenu.Body>
+ *       </NavigationMenu.Item>
+ *     </NavigationMenu.List>
+ *   </NavigationMenu.Root>
+ */
+export const NavigationMenu = {
+  Root: NavigationMenuRoot,
+  List: NavigationMenuList,
+  Item: NavigationMenuItem,
+  Trigger: NavigationMenuTrigger,
+  Body: NavigationMenuBody,
+  Link: NavigationMenuLink,
+};
+
+/**
+ * One answer out of several, with the arrow keys that check as they move.
+ *
+ * `Tab` reaches the chosen answer, or the first one while there is none, and
+ * leaves the whole group in one press. `name` puts the answer where a form can
+ * submit it.
+ *
+ *   <Field.Root>
+ *     <Field.Label>Plan</Field.Label>
+ *     <Field.Control
+ *       render={(props) => (
+ *         <RadioGroup.Root {...props} defaultValue="free" name="plan">
+ *           <RadioGroup.Item value="free">
+ *             Free <RadioGroup.Indicator>●</RadioGroup.Indicator>
+ *           </RadioGroup.Item>
+ *           <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+ *         </RadioGroup.Root>
+ *       )}
+ *     />
+ *   </Field.Root>
+ */
+export const RadioGroup = {
+  Root: RadioGroupRoot,
+  Item: RadioGroupItem,
+  Indicator: RadioGroupIndicator,
+};
+
+/**
+ * A row of toggle buttons that behaves as one control.
+ *
+ * `type="multiple"` is a group of toggle buttons, any number of them pressed.
+ * `type="single"` is a radio group drawn as segments, and is rendered by
+ * `RadioGroup` rather than written a second time.
+ *
+ *   <ToggleGroup.Root aria-label="Formatting" type="multiple">
+ *     <ToggleGroup.Item value="bold">B</ToggleGroup.Item>
+ *     <ToggleGroup.Item value="italic">I</ToggleGroup.Item>
+ *   </ToggleGroup.Root>
+ */
+export const ToggleGroup = {
+  Root: ToggleGroupRoot,
+  Item: ToggleGroupItem,
 };
 
 /**

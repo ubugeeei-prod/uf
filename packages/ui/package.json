@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/ui",
-  "version": "0.0.0-alpha.5",
+  "version": "0.0.0-alpha.6",
   "description": "Headless, accessible React components whose composition Flow checks, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -12,29 +12,35 @@
   },
   "exports": {
     ".": "./index.js",
+    "./accordion": "./accordion.js",
     "./checkbox": "./checkbox.js",
+    "./collapsible": "./collapsible.js",
     "./combobox": "./combobox.js",
     "./dialog": "./dialog.js",
     "./field": "./field.js",
     "./menu": "./menu.js",
+    "./navigation-menu": "./navigation-menu.js",
     "./pagination": "./pagination.js",
     "./progress": "./progress.js",
+    "./radio-group": "./radio-group.js",
     "./resizable": "./resizable.js",
     "./select": "./select.js",
     "./slider": "./slider.js",
     "./switch": "./switch.js",
     "./table": "./table.js",
     "./tabs": "./tabs.js",
-    "./toast": "./toast.js"
+    "./toast": "./toast.js",
+    "./toggle": "./toggle.js",
+    "./toggle-group": "./toggle-group.js"
   },
   "files": [
     "*.js",
     "internal"
   ],
   "dependencies": {
-    "@uniflowed/hooks": "0.0.0-alpha.5",
-    "@uniflowed/react": "0.0.0-alpha.5",
-    "@uniflowed/state": "0.0.0-alpha.5"
+    "@uniflowed/hooks": "0.0.0-alpha.6",
+    "@uniflowed/react": "0.0.0-alpha.6",
+    "@uniflowed/state": "0.0.0-alpha.6"
   },
   "peerDependencies": {
     "react": ">=19"
