@@ -46,6 +46,13 @@ app/posts/[slug]/_uf.page.js      →  /posts/anything
 app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
 ```
 
+"The rest" is the whole rest, so a spread is the last routing directory on the
+way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
+reach — `[...path]` has already taken every segment, and there is none left to
+be `edit` — so `uf build` and `uf dev` refuse it by name rather than serving a
+route that never answers. A `(group)` below a spread is fine: it is not a
+segment.
+
 Parameters arrive as props:
 
 ```js
