@@ -16,7 +16,7 @@ use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::json;
 use uf_config::env_files;
-use uf_config::{ResolvedConfig, load_config};
+use uf_config::{DeployAdapter, ResolvedConfig, load_config};
 use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
 use uf_term::KeyValue;
 
@@ -667,9 +667,13 @@ fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
         Some(adapter) => Stage {
             name: "adapter",
             provider: format!("uf ({})", adapter.as_str()),
+            // The entry that is actually written, not `server.js` for all of
+            // them: `uf explain` describing a file the build does not produce
+            // is the thing this stage exists to stop.
             detail: format!(
-                ".uf/deploy/{}: handler.js, server.js and a copy of {}",
+                ".uf/deploy/{}: {} and a copy of {}",
                 adapter.as_str(),
+                adapter_entries(adapter),
                 resolved.config.build.out_dir
             ),
         },
@@ -682,6 +686,22 @@ fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
                 resolved.config.build.out_dir
             ),
         },
+    }
+}
+
+/// The files an adapter writes beside its copy of the output directory.
+///
+/// `handler.js` is in every one of them, which is the seam; what changes is
+/// the entry wrapped around it and the platform file, if any, beside it.
+fn adapter_entries(adapter: DeployAdapter) -> &'static str {
+    match adapter {
+        DeployAdapter::Node => "handler.js, server.js",
+        DeployAdapter::Container => "handler.js, server.js, Dockerfile",
+        DeployAdapter::Edge => "handler.js, worker.js, wrangler.json",
+        DeployAdapter::Serverless => "handler.js, lambda.js",
+        // `uf build` refuses these, so this is what `uf explain build` says
+        // about a project that has configured one: the same "nothing", named.
+        DeployAdapter::Bun | DeployAdapter::Deno | DeployAdapter::Static => "nothing yet",
     }
 }
 

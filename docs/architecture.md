@@ -99,6 +99,29 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
   process-global and panic on first use if unset, and
   `flow_parsing::docblock_parser::Docblock` is private, so the context metadata
   has to be computed where the docblock is parsed rather than carried around.
+- **The port cannot be told which goal symbol it is reading.** ECMAScript has
+  two, *Script* and *Module*, and `await` is reserved in only one of them: at
+  the top level of a module `await x` is an operator, which is ES2022 and what
+  Node runs. The port pins `ParserEnvFlags::allow_await` to `false`,
+  `ParseOptions` has no member for it, and `with_allow_await` is `pub(crate)`;
+  its own `flow_parser_wasm` says as much where it maps Hermes' `source_type`.
+
+  `uf_flow::module` supplies the missing goal on uf's side of the boundary,
+  without a second grammar. `await` and `void ` are both five bytes and both a
+  *UnaryExpression*, so the port is asked about the same file with one traded
+  for the other — every other byte, line and column unmoved — the tree it hands
+  back says which of them it read as an operator at the module's top level, and
+  the operator is put back where the author wrote it. Which `await` is an
+  operator and which is a property name is never guessed: `{ await() {} }` and
+  `await (x)` are the same two tokens, so the parser decides and the ones it
+  did not take are offered back un-traded.
+
+  `uf fmt`, `uf lint`, `uf check` and the transform all go through that one
+  function, so one file gets one reading. A file with no `import`, `export` or
+  `import.meta` is a script — Babel's `sourceType: "unambiguous"` rule, and the
+  only rule every caller can evaluate, since `uf fmt` is handed source text
+  with no path beside it — and `await` outside an `async` function in one is
+  still refused, as it is inside a function that is not `async`.
 
 `flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
@@ -337,8 +360,19 @@ Non-Flow files (JSON, JSONC, CSS, TypeScript) go to the formatter named by
 `fmt.nonFlow.formatter`, as a subprocess: `uf fmt` collects them, hands them
 to that command, and reports what it did. The default is Biome, resolved
 from the project's `node_modules/.bin` before `PATH` so a project gets the
-version it installed. `"none"` turns it off, and a formatter that is not
-installed is an error that names it rather than a silent skip.
+version it installed. `"none"` turns it off.
+
+A formatter that is not installed is never a silent skip: it is named, once,
+with the files nobody looked at listed under it. Whether it ends the run
+depends on who chose it. A project that wrote `fmt.nonFlow.formatter` down
+stated a requirement, and an unmet requirement is an error. uf's default is a
+suggestion, and a suggestion that is not installed is a warning: the exit code
+goes on answering the question `uf fmt --check` is asked in CI, which is
+whether the files uf can format are formatted. Until that split existed, the
+first `uf fmt` in a project uf had just scaffolded exited 1 over a JSON file
+nothing was wrong with, because uf's own default and uf's own scaffold
+disagreed — see ubugeeei-prod/uf#441. A project that wants CI to insist on the
+non-Flow half says so by naming the formatter.
 
 Not linked in, because linking Biome would make uf's release depend on
 Biome's — red line 5. Running the binary a project already has means the
@@ -513,8 +547,10 @@ Native engines being deepened:
   cron, S3, SigV4, worker/lambda functions, UUID, and ZIP utilities
 - host-provided event loop and IO capability mapping for Node.js, Deno, and Bun
 - deferred WinterTC-aligned Flow runtime backed by Hermes
-- deploy-anywhere adapters for Node.js, Deno, Bun, edge, serverless, static, and
-  container targets in a Nitro-like model
+- deploy-anywhere adapters in a Nitro-like model: `node`, `container`, `edge`
+  (Cloudflare Workers) and `serverless` (AWS Lambda) are written against one
+  `@uniflowed/server/fetch` handler and none has been deployed to a real
+  platform; Deno, Bun and static are not written
 
 ## Testing
 

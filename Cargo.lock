@@ -3451,6 +3451,7 @@ dependencies = [
  "smallvec",
  "tempfile",
  "thiserror",
+ "uf_flow",
 ]
 
 [[package]]

@@ -38,7 +38,11 @@
 - [x] Actually run Biome for `.json`, `.jsonc`, `.css` and `.ts`. `uf fmt`
       collects the non-Flow files and hands them to the command named by
       `fmt.nonFlow.formatter`, resolved from `node_modules/.bin` before
-      `PATH`.
+      `PATH`. A formatter that is not installed is named, with the files it
+      left alone, and only ends the run when the project named it: uf's
+      default is a suggestion, and the first `uf fmt` after `uf create` and
+      `uf install` used to exit 1 over the lockfile `uf install` had just
+      written.
 - [x] Default formatter settings to double quotes and semicolons.
 - [x] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
       `uf_project`'s tests now walk 5,000 sources past 20,000 ignored ones
@@ -119,7 +123,9 @@
 - [ ] Implement Vite-backed server entry generation and RSC streaming adapters.
 - [ ] Map host-provided IO capabilities for Node.js, Deno, and Bun.
 - [x] Support a deploy-anywhere adapter for Node.js: `uf build --adapter node` writes a directory that runs on a host with a JavaScript runtime and nothing else.
-- [ ] Support the other six deploy targets — Deno, Bun, edge, serverless, static and container — against the same `@uniflowed/server/fetch` handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
+- [x] Support the edge, serverless and container deploy targets against the same `@uniflowed/server/fetch` handler: Cloudflare Workers with a `wrangler.json`, AWS Lambda payload format 2.0, and `node` with a `Dockerfile` ([#391](https://github.com/ubugeeei-prod/uf/issues/391)). None has been deployed to a real platform.
+- [ ] Support the Deno and Bun deploy targets, once a benchmark shows a native server beating `node:http` under the same handler ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
+- [ ] Support the static deploy target, which has to refuse a project whose routes a static host cannot serve rather than drop them ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - [ ] Assume React 19, Suspense, `use`, and Async React.
 - [ ] Bundle GraphQL Relay primitives.
 - [ ] Provide explicit fetch clients without global fetch override.

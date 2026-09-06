@@ -112,24 +112,36 @@
 //   role, which is why it is beside one rather than with the layout.
 // - `table.js` and `pagination.js` — the sort that is announced, the selection
 //   that can be mixed, and the rows a page is not showing.
+// - `popover.js`, `tooltip.js` and `hover-card.js` — the three anchored
+//   overlays, which are one component seen from three distances: one you
+//   click, one you hover, and one you hover and then read. They are three
+//   modules because what a reader is told differs in every one — a popover is
+//   a dialog that is not modal, a tooltip describes its trigger and may never
+//   take focus, a hover card is neither and holds links — and because a flag
+//   selecting between them would be one flag every behaviour had to read.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
 // is by primitive because that is the unit a reader looks for, the unit a
 // bundler drops, and the unit the WAI-ARIA practices are written in.
 //
-// `internal/` holds six modules and nothing else, each a rule the primitives
+// `internal/` holds nine modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
 // last), `controlled-state.js` (what "controlled" means here),
 // `roving-focus.js` (how a set of items is found and moved between),
 // `disclosure.js` (how a button says whether a region is showing, and how a
 // closed region stays findable), `form-value.js` (what a `<form>` submits for a
-// control the browser has never heard of), and `range.js` (the arithmetic that
+// control the browser has never heard of), `range.js` (the arithmetic that
 // keeps `aria-valuemin`, `aria-valuemax` and `aria-valuenow` true about each
-// other). Each says in its own header why it is unreachable rather than
-// exported. There is no `internal/props.js`-shaped bag of helpers: a module
-// that cannot say what it is about does not belong in this package.
+// other), `anchor.js` (where an overlay goes, and what it does when it does not
+// fit where it was asked to go), `focus.js` (which elements a reader can reach,
+// which a focus trap and a popover want opposite things from), and
+// `hover-intent.js` (what WCAG requires of content shown on hover or focus,
+// which is three clauses and one mechanism). Each says in its own header why it
+// is unreachable rather than exported. There is no `internal/props.js`-shaped
+// bag of helpers: a module that cannot say what it is about does not belong in
+// this package.
 
 import {
   AccordionContent,
@@ -161,6 +173,7 @@ import {
   DialogTrigger,
 } from "./dialog.js";
 import { FieldControl, FieldDescription, FieldError, FieldLabel, FieldRoot } from "./field.js";
+import { HoverCardBody, HoverCardRoot, HoverCardTrigger } from "./hover-card.js";
 import {
   MenuBody,
   MenuGroup,
@@ -187,6 +200,7 @@ import {
   PaginationPrevious,
   PaginationRoot,
 } from "./pagination.js";
+import { PopoverBody, PopoverRoot, PopoverTrigger } from "./popover.js";
 import { Progress } from "./progress.js";
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
@@ -230,9 +244,14 @@ import {
 } from "./toast.js";
 import { Toggle } from "./toggle.js";
 import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
+import { TooltipBody, TooltipProvider, TooltipRoot, TooltipTrigger } from "./tooltip.js";
 
 export type { AccordionType } from "./accordion.js";
 export type { ActivationMode } from "./tabs.js";
+// Where an anchored overlay opens, for a caller who holds one in a variable or
+// a prop of their own. Unions rather than strings, so `side="botom"` is a type
+// error at the call rather than an overlay that quietly opens somewhere else.
+export type { Align, Side } from "./popover.js";
 export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 export type { ToggleGroupType } from "./toggle-group.js";
@@ -524,6 +543,81 @@ export const Select = {
   Group: SelectGroup,
   GroupLabel: SelectGroupLabel,
   Separator: SelectSeparator,
+};
+
+/**
+ * A dialog that is not modal, anchored to the button that opened it.
+ *
+ * Focus moves in, `Escape` closes it and gives focus back, and `Tab` *leaves* —
+ * the page behind a popover is still there, still scrollable and still
+ * tabbable, which is every way in which it is not a `Dialog`.
+ *
+ *   <Popover.Root>
+ *     <Popover.Trigger>Filters</Popover.Trigger>
+ *     <Popover.Body align="start" side="bottom" sideOffset={8}>
+ *       <label>
+ *         Only mine <input type="checkbox" />
+ *       </label>
+ *     </Popover.Body>
+ *   </Popover.Root>
+ *
+ * `Popover.Body` reports where it ended up as `data-side` and `data-align`, and
+ * writes the trigger's width and the room it had as custom properties, so a
+ * stylesheet can point an arrow and cap a height without measuring anything.
+ */
+export const Popover = {
+  Root: PopoverRoot,
+  Trigger: PopoverTrigger,
+  Body: PopoverBody,
+};
+
+/**
+ * A phrase about a control, on hover and on focus, that WCAG would accept.
+ *
+ * Dismissible with `Escape`, hoverable — the pointer can travel onto it —  and
+ * never focusable. It does not open on touch, deliberately, so the trigger must
+ * carry its own name for a reader holding a phone.
+ *
+ *   <Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
+ *     <Tooltip.Root>
+ *       <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+ *       <Tooltip.Body>Bold (⌘B)</Tooltip.Body>
+ *     </Tooltip.Root>
+ *     <Tooltip.Root>
+ *       <Tooltip.Trigger aria-label="Italic">I</Tooltip.Trigger>
+ *       <Tooltip.Body>Italic (⌘I)</Tooltip.Body>
+ *     </Tooltip.Root>
+ *   </Tooltip.Provider>
+ *
+ * `Tooltip.Provider` is what makes the second icon in that toolbar answer at
+ * once instead of making the reader wait the delay again. A tooltip outside one
+ * is a complete tooltip with a delay of its own.
+ */
+export const Tooltip = {
+  Provider: TooltipProvider,
+  Root: TooltipRoot,
+  Trigger: TooltipTrigger,
+  Body: TooltipBody,
+};
+
+/**
+ * The preview a name expands into: hovered, focused, and full of links.
+ *
+ * Not a tooltip — its contents are reachable, by pointer and by `Tab` — and not
+ * a dialog, because nothing about it is modal.
+ *
+ *   <HoverCard.Root>
+ *     <HoverCard.Trigger render={(props) => <a href="/ada" {...props}>@ada</a>} />
+ *     <HoverCard.Body>
+ *       <p>Ada Lovelace</p>
+ *       <a href="/ada/notes">Notes</a>
+ *     </HoverCard.Body>
+ *   </HoverCard.Root>
+ */
+export const HoverCard = {
+  Root: HoverCardRoot,
+  Trigger: HoverCardTrigger,
+  Body: HoverCardBody,
 };
 
 /**

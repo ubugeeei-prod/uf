@@ -110,12 +110,7 @@ fn refuses(source: &str) -> Option<ParseFailure> {
 fn parse_for_diagnostics(source: &str) -> Vec<ParseDiagnostic> {
     let parsed = catch_unwind(AssertUnwindSafe(|| {
         let (_program, errors): (_, Vec<(Loc, ParseError)>) =
-            flow_parser::parse_program_without_file(
-                false,
-                None,
-                Some(crate::parse::PARSE_OPTIONS),
-                Ok(source),
-            );
+            crate::module::parse(source, &crate::parse::PARSE_OPTIONS, None);
         errors
             .iter()
             .map(|error| crate::diagnostic_from_error(source, error))

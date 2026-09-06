@@ -172,7 +172,7 @@ export type UniflowedConfig = {
       readonly printer?: "uf-rust",
     },
     readonly nonFlow?: {
-      readonly formatter?: "biome",
+      readonly formatter?: "biome" | "prettier" | "none",
     },
     readonly quotes?: "single" | "double",
     readonly semicolons?: boolean,
