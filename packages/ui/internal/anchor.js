@@ -435,6 +435,18 @@ export hook useAnchor(request: AnchorRequest): Anchored {
     const overlay = overlayRef.current;
     const view = overlay?.ownerDocument?.defaultView;
     if (!open || anchor == null || overlay == null || view == null) {
+      // Forget the measurement when the overlay closes. It is only read while
+      // `open`, but a body that stays mounted across a close — `PopoverBody`
+      // does — reopens in a commit where `open` is already `true`, and would
+      // report the *previous* opening's side until `reflow` corrects it from
+      // an effect, which runs after paint. That is one frame of an arrow
+      // drawn from `data-side` pointing the wrong way, after a reopen that
+      // follows a flip.
+      if (!open) {
+        setSettled((current) =>
+          current.side === side && current.align === align ? current : { align, side },
+        );
+      }
       return;
     }
     reflow();

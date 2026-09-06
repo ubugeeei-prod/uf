@@ -725,7 +725,7 @@ All three take the same placement props:
 `side` is a union of `"top" | "right" | "bottom" | "left"` and `align` is
 `"start" | "center" | "end"`. Misspelling one is a type error at the call rather
 than an overlay that quietly opens somewhere else, and
-`packages/ui/type-tests/anchoring.js` is that promise written down as the code
+`tests/type-tests/anchoring.js` is that promise written down as the code
 that must fail to check.
 
 When there is no room, the overlay does two things, and needing both is why it

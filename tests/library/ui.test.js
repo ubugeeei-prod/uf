@@ -66,7 +66,7 @@ import {
 // weaker copy of it. The arithmetic is still the one thing in this package a
 // test can hold to an exact number, so it is reached where it lives.
 import type { Align, Placement, Rect, Side } from "../../packages/ui/internal/anchor.js";
-import { placeOverlay } from "../../packages/ui/internal/anchor.js";
+import { placeOverlay, useAnchor } from "../../packages/ui/internal/anchor.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -2500,6 +2500,84 @@ describe("an anchored overlay follows its trigger", () => {
     expect(body.style.top).toBe("500px");
   });
 
+  it("does not report the last opening's side on the first frame of the next one", async () => {
+    // Read during render rather than after the effects have run, because the
+    // gap this is about is exactly one commit wide: `PopoverBody` returns
+    // `null` while it is closed but stays mounted, so its `useAnchor` state
+    // survives, and the commit that reopens it already has `open === true`.
+    // The measurement is taken from an effect, which runs after paint — so a
+    // stylesheet drawing an arrow from `data-side` draws it from whatever that
+    // commit said. `render` + `act` flushes the effect before any assertion on
+    // the DOM could see it, which is why this reads the hook.
+    const sides: Array<{| readonly open: boolean, readonly side: Side |}> = [];
+
+    component Probe(open: boolean) {
+      const anchorRef = React.useRef<HTMLElement | null>(null);
+      const overlayRef = React.useRef<HTMLElement | null>(null);
+      const anchored = useAnchor({
+        align: "center",
+        alignOffset: 0,
+        anchorRef,
+        avoidCollisions: true,
+        collisionPadding: 0,
+        open,
+        overlayRef,
+        side: "bottom",
+        sideOffset: 0,
+      });
+      sides.push({ open, side: anchored.side });
+      return (
+        <div>
+          <span ref={anchorRef}>trigger</span>
+          {open ? <div ref={overlayRef} data-side={anchored.side} /> : null}
+        </div>
+      );
+    }
+
+    component Host() {
+      const [open, setOpen] = useState<boolean>(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen((was) => !was)}>
+            Toggle
+          </button>
+          <Probe open={open} />
+        </div>
+      );
+    }
+
+    render(<Host />);
+    const toggle = screen.getByRole("button", { name: "Toggle" });
+
+    // Open with no room below, so it flips and `settled` remembers "top".
+    await act(async () => {
+      await userEvent.click(toggle);
+    });
+    const overlay = document.querySelector("[data-side]");
+    if (overlay == null) {
+      throw new Error("no overlay");
+    }
+    measure(screen.getByText("trigger"), { height: 40, left: 100, top: 700, width: 80 });
+    measure(overlay as $FlowFixMe, { height: 200, left: 0, top: 0, width: 120 });
+    fireEvent.scroll(document);
+    expect(sides[sides.length - 1].side).toBe("top");
+
+    await act(async () => {
+      await userEvent.click(toggle);
+    });
+
+    // Room below now. The assertion is on every render of the second opening,
+    // including the first, before any effect has measured anything.
+    measure(screen.getByText("trigger"), { height: 40, left: 100, top: 100, width: 80 });
+    const before = sides.length;
+    await act(async () => {
+      await userEvent.click(toggle);
+    });
+    const reopened = sides.slice(before).filter((frame) => frame.open);
+    expect(reopened.length).toBeGreaterThan(0);
+    expect(reopened.map((frame) => frame.side)).toEqual(reopened.map(() => "bottom"));
+  });
+
   it("slides along the trigger rather than off the side of the page", async () => {
     render(<Example />);
     const trigger = screen.getByRole("button", { name: "Filters" });
@@ -2989,6 +3067,50 @@ describe("HoverCard", () => {
       </div>
     );
   }
+
+  it("does not pull focus back when a caller changes closeDelay", async () => {
+    // The focus return used to live in the cleanup of the effect that attaches
+    // the card's listeners, and that effect lists `closeDelay` — a caller's
+    // prop. So a caller changing it while the card was open, with the reader's
+    // focus on a link inside, ran the cleanup and dragged focus back to the
+    // trigger. The card was not closing; nothing about the reader's position
+    // had changed.
+    component Changing(closeDelay: number) {
+      return (
+        <div>
+          <HoverCard.Root closeDelay={closeDelay}>
+            <HoverCard.Trigger
+              render={(props) => (
+                <a href="/ada" {...props}>
+                  @ada
+                </a>
+              )}
+            />
+            <HoverCard.Body>
+              <a href="/ada/notes">Notes</a>
+            </HoverCard.Body>
+          </HoverCard.Root>
+        </div>
+      );
+    }
+
+    const view = render(<Changing closeDelay={300} />);
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    act(() => {
+      trigger.focus();
+    });
+    const notes = screen.getByRole("link", { name: "Notes" });
+    act(() => {
+      fireEvent.focusIn(notes);
+      notes.focus();
+    });
+    expect(document.activeElement).toBe(notes);
+
+    view.rerender(<Changing closeDelay={900} />);
+
+    expect(screen.getByRole("link", { name: "Notes" })).toBeInTheDocument();
+    expect(document.activeElement).toBe(notes);
+  });
 
   it("opens on hover after a wait, and on focus at once", () => {
     uft.useFakeTimers();

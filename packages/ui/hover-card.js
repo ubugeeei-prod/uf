@@ -277,17 +277,41 @@ export component HoverCardBody(
       body.removeEventListener("pointerleave", go);
       body.removeEventListener("focusin", arrived);
       body.removeEventListener("focusout", gone);
-      // Only when the card is being taken away from under the reader's focus,
-      // which is what `Escape` does: focus was on a link that no longer exists,
-      // and leaving it on `<body>` sends the reader back to the top of the
-      // page. A card that closed because the pointer left, with focus
-      // somewhere else entirely, has no business moving it.
+    };
+  }, [open, intent, closeDelay, triggerRef]);
+
+  // Focus goes back to the trigger when the card *closes* under the reader's
+  // focus, which is what `Escape` does: focus was on a link that no longer
+  // exists, and leaving it on `<body>` sends the reader back to the top of the
+  // page. A card that closed because the pointer left, with focus somewhere
+  // else entirely, has no business moving it.
+  //
+  // Its own effect, keyed on `open` alone. It used to live in the cleanup of
+  // the listener effect above, which runs whenever any of that effect's
+  // dependencies change — and `closeDelay` is a caller's prop. A caller
+  // changing it while the card was open with focus inside pulled focus off the
+  // link the reader was on, and the effect then re-attached with `held` reset.
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    if (held.current) {
+      held.current = false;
+      triggerRef.current?.focus?.();
+    }
+  }, [open, triggerRef]);
+
+  // And on unmount, which the effect above cannot see: a card removed while
+  // the reader is inside it leaves focus on a node that is gone.
+  useEffect(
+    () => () => {
       if (held.current) {
         held.current = false;
         triggerRef.current?.focus?.();
       }
-    };
-  }, [open, intent, closeDelay, triggerRef]);
+    },
+    [triggerRef],
+  );
 
   if (!open) {
     return null;
