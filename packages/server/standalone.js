@@ -71,6 +71,11 @@ type NodeResponse = {
   setHeader(name: string, value: string): mixed,
   write(chunk: Uint8Array | string): mixed,
   end(chunk?: Uint8Array | string): mixed,
+  // Required rather than optional, because the one case it exists for is the
+  // one where nothing else will do: a render that fails after the shell has
+  // gone out cannot be answered with a status, and dropping the socket is the
+  // only way left to tell the client the document it received is not whole.
+  destroy(error?: mixed): mixed,
   ...
 };
 
@@ -110,7 +115,10 @@ export type StandaloneApp = {|
   ) => Promise<{|
     readonly status: number,
     readonly headers?: { readonly [string]: string },
-    readonly pipe: (destination: NodeResponse) => void,
+    // A promise, and not `void`: `DocumentBody.pipe` resolves on the last byte
+    // and rejects when the render fails after the shell. Typing it away was
+    // how the rejection below came to be dropped.
+    readonly pipe: (destination: NodeResponse) => Promise<void>,
     readonly stream: () => ReadableStream<Uint8Array>,
   |}>,
   readonly dispatch: (request: Request) => Promise<Response | null>,
@@ -378,7 +386,26 @@ export function createHandler(
       response.end();
       return;
     }
-    rendered.pipe(response);
+    // Awaited, because `pipe` rejects: React hands a post-shell failure to the
+    // destination's `destroy(error)`, `ChunkQueue.fail` records it, and the
+    // generator `pipe` is iterating rethrows it. Called and dropped, that
+    // rejection escapes this handler — `serve`'s `handle(…).catch` has already
+    // resolved — and lands on the process, where `--unhandled-rejections=throw`
+    // is the default and a binary someone started with `./app` exits in the
+    // middle of a request that was otherwise recoverable.
+    //
+    // It cannot become a 500. The shell went out with its status and headers
+    // long before this, and `pipe`'s own `finally` has already called `end()`.
+    // What is left is to say so where a supervisor looks, and to drop the
+    // socket: a chunked response that is closed cleanly is a client being told
+    // a truncated document is the whole document, which is the failure this
+    // pull request is named after.
+    try {
+      await rendered.pipe(response);
+    } catch (error) {
+      process.stderr.write(`uf: ${String(error?.stack ?? error)}\n`);
+      response.destroy(error);
+    }
   };
 }
 

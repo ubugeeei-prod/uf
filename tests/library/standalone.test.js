@@ -59,7 +59,10 @@ function rendered(status: number, html: string) {
   let cancelled = false;
   return {
     status,
-    pipe: (destination) => {
+    // `async`, because the router's is: `DocumentBody.pipe` resolves on the
+    // last byte rather than on the first, and a fake that resolved
+    // synchronously would hide a caller that never waited for either.
+    pipe: async (destination) => {
       destination.write(Buffer.from(html, "utf8"));
       destination.end();
     },
@@ -125,6 +128,13 @@ function recorder() {
       if (chunk != null) {
         chunks.push(Buffer.from(chunk));
       }
+    },
+    // A real `ServerResponse` has one, and the handler needs it: a render that
+    // fails after the shell has no status left to answer with.
+    destroyed: (null: mixed),
+    destroy(error) {
+      this.destroyed = error ?? true;
+      return this;
     },
     body(): string {
       return Buffer.concat(chunks).toString("utf8");
@@ -288,6 +298,88 @@ describe("HEAD", () => {
     const { response } = await request("HEAD", "/guide/dynamic");
     expect(response.statusCode).toBe(200);
     expect(response.body()).toBe("");
+  });
+});
+
+describe("a render that fails after the shell", () => {
+  /**
+   * A render whose shell is out and whose body then throws.
+   *
+   * Which is what `DocumentBody.pipe` does: React hands a post-shell failure
+   * to the destination's `destroy(error)`, `ChunkQueue.fail` records it, and
+   * the generator being iterated rethrows it — so the promise `pipe` returned
+   * rejects *after* the status and the first bytes have gone out. The
+   * rejection is deferred by a turn on purpose: a handler that did not await
+   * would have returned before it happened, which is exactly the bug.
+   */
+  function failingRender(error: Error) {
+    return {
+      status: 200,
+      pipe: async (destination) => {
+        destination.write(Buffer.from("<!doctype html><p>the shell", "utf8"));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        destination.end();
+        throw error;
+      },
+      stream: () => ({ cancel: async () => {} }),
+    };
+  }
+
+  /** One request whose render fails, with whatever reached stderr. */
+  async function failing(error: Error) {
+    const said = [];
+    const write = process.stderr.write;
+    // eslint-disable-next-line no-undef
+    (process.stderr: $FlowFixMe).write = (chunk) => {
+      said.push(String(chunk));
+      return true;
+    };
+    const response = recorder();
+    try {
+      const handle = createHandler({
+        app: {
+          render: async () => failingRender(error),
+          runMiddleware: async () => null,
+          dispatch: async () => null,
+        },
+        assets,
+        document,
+      });
+      await handle({ method: "GET", url: "/late", headers: { host: "example.test" } }, response);
+    } finally {
+      // eslint-disable-next-line no-undef
+      (process.stderr: $FlowFixMe).write = write;
+    }
+    return { response, said: said.join("") };
+  }
+
+  it("waits for the body, so the failure does not escape the handler", async () => {
+    // `rendered.pipe(response)` was called and dropped. The promise it returns
+    // rejects on a post-shell failure, and a rejection nobody is holding is an
+    // unhandled rejection — which under Node's default
+    // `--unhandled-rejections=throw` takes the whole binary down, in the
+    // middle of a request the server had otherwise survived. `serve`'s
+    // `handle(…).catch` cannot help: it had already resolved.
+    const { response } = await failing(new Error("the boundary threw late"));
+    expect(response.destroyed).toBeTruthy();
+  });
+
+  it("says so where a supervisor looks", async () => {
+    // The only trace a page that failed after its first byte leaves anywhere.
+    // There is no framework above this server and no log drain beside it.
+    const { said } = await failing(new Error("the boundary threw late"));
+    expect(said).toContain("the boundary threw late");
+  });
+
+  it("drops the socket rather than closing a truncated document cleanly", async () => {
+    // The shell went out with a 200 on it, so there is no status left to
+    // answer with. Ending the chunked response normally would tell the client
+    // that the half-document it received is the whole document, which is the
+    // silent success this pull request exists to stop.
+    const { response } = await failing(new Error("the boundary threw late"));
+    expect(response.statusCode).toBe(200);
+    expect(response.body()).toBe("<!doctype html><p>the shell");
+    expect(String(response.destroyed)).toContain("the boundary threw late");
   });
 });
 
