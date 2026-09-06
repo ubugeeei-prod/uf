@@ -101,6 +101,7 @@ use flow_typing_utils::annotation_inference;
 use flow_typing_utils::type_sig_merge::{self, Exports};
 use flow_utils_concurrency::check_budget::CheckBudget;
 
+use super::assets;
 use super::packages::{PackageFile, WorkspacePackages};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
@@ -282,6 +283,18 @@ impl ProjectModules {
                 && let Some(signature) = self.signature(index)
             {
                 return ResolvedRequire::TypedModule(self.module_thunk(index, &signature));
+            }
+            // A stylesheet, an icon, a `?raw`. Nothing here is ever in the
+            // batch — `uf check` is handed Flow sources and manifests — so a
+            // relative specifier that resolved to no file is where Vite's
+            // non-JavaScript imports arrive, and `libdefs/vite-assets.js` is
+            // what they are. Everything else stays `unchecked`, so a typo in a
+            // relative import is still reported.
+            if let Some(declared) = assets::declared_module_for(name) {
+                let declared = Userland::from_smol_str(FlowSmolStr::new(declared));
+                if let Some(module) = typed_builtin_module(cx, &declared) {
+                    return ResolvedRequire::TypedModule(module);
+                }
             }
             return self.unchecked(cx, name);
         }

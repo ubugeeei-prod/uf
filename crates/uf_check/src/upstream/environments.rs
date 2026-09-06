@@ -64,4 +64,11 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
         "vite-client.js",
         include_str!("../../libdefs/vite-client.js"),
     ),
+    // The other half of what Vite resolves: a stylesheet, an icon, a `?raw`.
+    // Flow has no wildcard module name, so each *shape* is declared under a
+    // name of its own and `ProjectModules::resolve` maps a specifier onto one.
+    (
+        "vite-assets.js",
+        include_str!("../../libdefs/vite-assets.js"),
+    ),
 ];
