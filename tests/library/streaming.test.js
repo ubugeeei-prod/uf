@@ -236,6 +236,43 @@ describe("the `<Suspense>` in the tree", () => {
 
     expect(resolved.loading).toEqual([]);
   });
+
+  it("renders no boundary either, so the page is waited for rather than dropped", async () => {
+    // The half the assertion above cannot make. `resolved.loading` is what the
+    // route *declares*, and an unconditional `<Suspense fallback={null}>` in
+    // `RouteView` would leave that empty list exactly as it is while replacing
+    // a suspended page with an empty tree. The document would go out complete,
+    // with a hole where the page was, and nothing would say so — which is the
+    // shape of failure this whole pull request is named after.
+    //
+    // Driven through the renderer rather than through `render()`, because in a
+    // client root a tree with no boundary and a tree with a `null` fallback
+    // both paint nothing and the difference is not in the DOM. On a server it
+    // is exactly visible: with no boundary React holds the shell until the page
+    // resolves, and with one it sends the shell immediately and patches the
+    // content in afterwards with `$RC(`.
+    const waited = deferred();
+    const table = suspendingTable(waited.promise, { loading: false });
+    const renderer = createRenderer({ App: routerView("./app"), ...table });
+
+    let settled = false;
+    setTimeout(() => {
+      settled = true;
+      waited.resolve();
+    }, 60);
+    const result = await renderer.render("/slow", assets);
+
+    // The claim, in one line: the shell could not leave before the page did.
+    // A boundary — declared or inserted "just in case" — would have let it out
+    // while this was still false.
+    expect(settled).toBe(true);
+
+    const document = await result.text();
+    expect(document).toContain("the page is here");
+    expect(document).toContain("the layout is here");
+    // No boundary was patched in behind the reader's back.
+    expect(document).not.toContain("$RC(");
+  });
 });
 
 // ---------------------------------------------------------------------------
