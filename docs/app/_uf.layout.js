@@ -26,7 +26,7 @@ const VERSION = "0.0.0-alpha";
 export const metadata: {| readonly title: string, readonly description: string |} = {
   title: "uf — Unified Toolchain for Flow",
   description:
-    "One binary that runs, builds, tests, formats and lints Flow and React. No Babel, no plugin list, no second config file.",
+    "The best React experience for Flow: run, build, test, format and lint from one command, without Babel or plugin assembly.",
 };
 
 /**
