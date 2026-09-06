@@ -1,0 +1,209 @@
+---
+title: "Migrating to uf · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Migrating to uf
+
+<div className="lede">
+From `create-react-app`, from Vite + React, or from Next.js: what survives, what
+you rewrite, what you lose, and roughly what it costs. There is no `uf migrate`
+command and there is not going to be a false number here either — nobody has
+moved a large application to uf yet, because the packages are not on npm
+([#210](https://github.com/ubugeeei-prod/uf/issues/210)).
+</div>
+
+## Three questions that mean "not yet"
+
+Answer these before you read the rest. Each one is a wall, not a speed bump.
+
+**Does your application render per request in production?** `uf build`
+prerenders every static route and stops. There is no `uf start`, no
+`uf preview`, and the server bundle is written outside `dist/` — so SSR, route
+handlers and every deployment adapter work under `uf dev` and disappear at build
+time ([#250](https://github.com/ubugeeei-prod/uf/issues/250)). If your answer is
+yes, stop here and read [uf compared](/guide/compare) instead.
+
+**Do you have TypeScript you cannot convert?** uf transforms `.js`, `.jsx`,
+`.mjs` and `.cjs` in your project and nothing else. A `.ts` file is handed to
+Biome for formatting and is invisible to everything else uf does. Migration
+means converting the whole application, not adding uf beside `tsc`.
+
+**Do you depend on typed packages?** Every dependency without a Flow
+[libdef](https://flow.org/en/docs/libdefs/) is `any`. Count them now: that
+number, not the file count, is what decides whether this is worth doing.
+[Flow and TypeScript](/guide/typescript) is the long version.
+
+## What every migration has in common
+
+### Files you delete
+
+| You have | uf replaces it with |
+| --- | --- |
+| `babel.config.js`, `@babel/preset-flow`, the syntax plugins | nothing — Flow reaches JavaScript inside the binary |
+| `tsconfig.json` | nothing — the type system is Flow |
+| `.prettierrc` | `fmt` in `uf.config.js` |
+| `.eslintrc` | `lint` in `uf.config.js`, alongside Flow's own lints |
+| `jest.config.js`, `vitest.config.ts` | `test` in `uf.config.js` |
+| `vite.config.ts` | `uf.config.js`, with a `vite` key for everything uf has no opinion about |
+| `scripts` in `package.json` | `tasks` in `uf.config.js` — `uf install` **refuses** a manifest that declares scripts |
+| `index.html` | the root layout: a `component` that renders `<html>` |
+
+`uf create app react my-app` in a scratch directory is the fastest way to see
+the shape you are aiming at — nine files, and
+[Your first project](/guide/project) walks through them.
+
+### What stays exactly as it is
+
+- **`public/`.** Served from the root, copied into the build untouched.
+- **CSS.** Plain imports, `.module.css`, and the preprocessors Vite supports.
+- **Vite plugins.** `plugins` in `uf.config.js` is a list of ordinary Vite
+  plugins, appended to uf's own.
+- **React itself.** React 19, the same hooks, the same rendering model. uf
+  compiles `component` and `hook` declarations to plain functions and hands
+  them to the official React Compiler.
+
+### Converting the types
+
+Rename `.ts` and `.tsx` to `.js`, put `// @flow` on the first line, then work
+through the constructs. Most of them are a one-line change:
+
+| TypeScript | Flow |
+| --- | --- |
+| `interface Props { … }` | a `type` alias — and Flow's object types are exact by default |
+| `function C({a, b}: Props)` | `component C(a: A, b: B)` — the parameter list is the props |
+| `React.FC<Props>` | `component` |
+| a custom hook | `hook useThing(…)` — the rules of hooks become type errors |
+| `unknown` | `mixed` |
+| `readonly x: T` | `+x: T` (Flow also accepts `readonly`) |
+| `x as T` | `(x: T)`, or a documented `$FlowFixMe` |
+| a `.d.ts` you wrote | a libdef, or Flow types in the source |
+| `switch` with a `default: never` | [`match`](https://flow.org/en/docs/match/), which is exhaustive by construction |
+
+Two things that will surprise you. **`uf check` resolves no modules yet**: every
+import is `any` and the report names them, so a converted file can look clean
+and still be wrong across a boundary
+([#248](https://github.com/ubugeeei-prod/uf/issues/248)). And **top-level
+`await` does not parse**, so a module using it cannot be checked, formatted,
+transformed or built ([#204](https://github.com/ubugeeei-prod/uf/issues/204)).
+
+## From `create-react-app`
+
+The best-supported path, because CRA applications are usually a client-rendered
+bundle and that is what uf builds.
+
+1. `uf create app react ../my-app-uf`, then copy `src/` into it.
+2. Delete `react-scripts`. Its `scripts` block goes with it — `uf install`
+   refuses a manifest that declares one.
+3. Move the contents of `public/index.html` into `app/_uf.layout.js`. The
+   `<div id="root">` goes away: uf renders the whole document.
+4. Turn each screen into a route directory under `app/`. uf's file-system
+   router is the routing uf builds against; `app.router.enabled: false` makes
+   the project a library rather than an application, so it is not a way to keep
+   React Router.
+5. Convert the types, if the project had any.
+6. `uf fmt`, then `uf lint`, then `uf check`, then `uf test`.
+
+**What you lose.** Jest — `uf test` has the API but no snapshots, no coverage
+and no module mocking ([#280](https://github.com/ubugeeei-prod/uf/issues/280),
+[#283](https://github.com/ubugeeei-prod/uf/issues/283)), so a suite that leans
+on any of the three does not come across. `REACT_APP_*` environment variables
+do not arrive either, because uf turns Vite's `.env` loading off
+([#259](https://github.com/ubugeeei-prod/uf/issues/259)); `vite: { envDir: "." }`
+turns it back on and the prefix becomes `VITE_`.
+
+**Cost.** The route and entry work is a day's shape regardless of size; the
+long pole is the test suite, in proportion to how much of it uses snapshots.
+
+## From Vite + React
+
+The mechanics are smaller — you are already on the same bundler — and the
+language change is the whole job.
+
+1. `vite.config.ts` becomes `uf.config.js`. Options uf owns (`dev.port`,
+   `build.outDir`) have names; everything else goes under the `vite` key
+   unchanged, including `resolve.alias` and `server.warmup`.
+2. `index.html` becomes `app/_uf.layout.js`. Vite runs in `appType: "custom"`
+   under uf: there is no HTML entry to fall back to, and the document comes from
+   the layout.
+3. Your entry module becomes `app.js` plus a page under `app/`.
+4. Convert the types.
+5. Replace Vitest with `uf test` — the `describe`/`it`/`expect` surface is the
+   same, and `expect` has 25 matchers, `.not`, `.resolves`, `.rejects` and
+   `fn()`.
+
+**What you lose.**
+
+- **`vite preview`.** uf has no equivalent
+  ([#255](https://github.com/ubugeeei-prod/uf/issues/255)).
+- **`vite/client`'s types.** `import.meta.glob`, `import.meta.hot` and asset
+  imports are type errors or `any` under `uf check` — five errors in a five-line
+  file ([#264](https://github.com/ubugeeei-prod/uf/issues/264)). The code still
+  runs; the checker cannot see it.
+- **Choosing your Vite version.** uf depends on `vite: "^8.2.2"`.
+
+**Cost.** A day for the configuration and the entry, then the type conversion,
+which is the part that scales with the codebase.
+
+## From Next.js
+
+Read [What uf does not do](/guide/scope) first, then this.
+
+**A Next.js application that needs a server cannot move to uf today.** Server
+Components are analysed and never executed, so every page module ships to the
+browser ([#252](https://github.com/ubugeeei-prod/uf/issues/252)); server actions
+have a registry and no dispatcher; nothing streams
+([#254](https://github.com/ubugeeei-prod/uf/issues/254)); there is no
+revalidation ([#277](https://github.com/ubugeeei-prod/uf/issues/277)); and
+`middleware.ts` has an exact counterpart in uf that is discovered, reported by
+`uf inspect --json`, and never called
+([#260](https://github.com/ubugeeei-prod/uf/issues/260)).
+
+What can move is an application you could already build with
+`output: 'export'` — static pages, client-side data fetching, no per-request
+rendering.
+
+The conventions line up more closely than the capabilities do:
+
+| Next.js | uf |
+| --- | --- |
+| `app/page.tsx` | `app/_uf.page.js` |
+| `app/layout.tsx` | `app/_uf.layout.js` |
+| `app/[slug]/page.tsx` | `app/[slug]/_uf.page.js` |
+| `app/[...rest]/` | `app/[...rest]/` |
+| `app/(group)/` | `app/(group)/` |
+| `app/api/x/route.ts` | `app/api/x/_uf.route.js` — `Request` in, `Response` out, **`uf dev` only** |
+| `not-found.tsx` | `_uf.not-found.js`, read at the router root only ([#263](https://github.com/ubugeeei-prod/uf/issues/263)) |
+| `middleware.ts` | `_uf.middleware.js`, never called |
+| `generateStaticParams` | `generateStaticParams` |
+| `export const metadata` | `metadata` on a page or layout, merged along the path with the page last |
+| `next/link` | `Link` from `@uniflowed/router`, prefetching on intent |
+| `next/image` | `Image` from `@uniflowed/web` — layout-stable markup, no pipeline ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
+| `loading.tsx`, `error.tsx` | neither exists yet ([#257](https://github.com/ubugeeei-prod/uf/issues/257)) |
+
+**Cost.** For a statically exportable site, the same as the Vite path plus the
+route renaming. For anything else, it is not a cost — it is a blocker, and the
+issues above are where to watch for it to lift.
+
+## Estimating your own migration
+
+There is no measured migration to quote, so here is the arithmetic instead. The
+job is three numbers you can count today:
+
+1. **Modules to convert.** Mechanical, and mostly the table above.
+2. **Dependencies with no Flow libdef.** Each one is `any` at the boundary, and
+   this is the number that decides whether the type system pays you back.
+3. **Tests using snapshots, coverage or module mocks.** These have no
+   destination yet.
+
+And one number you can produce: convert a single leaf directory, run
+`uf check`, and read the count. That is the real conversion rate for your
+codebase, and it beats any figure this page could assert.
+
+## Where to go next
+
+[Your first project](/guide/project) is the shape you are converting into.
+[What uf does not do](/guide/scope) is the list of walls, kept current with
+issue numbers. If the answer turns out to be "not yet", that is a supported
+answer — it is why the list exists.

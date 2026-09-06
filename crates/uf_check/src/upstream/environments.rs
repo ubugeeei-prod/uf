@@ -54,4 +54,14 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
     environment!("webassembly.js"),
     environment!("intl.js"),
     environment!("node.js"),
+    // uf's own, and the only one not from the submodule. Vite ships its client
+    // types as TypeScript and Flow's `core.js` types `import.meta` as
+    // `{ [string]: unknown, url?: string, ... }`, so `import.meta.env`,
+    // `.hot` and `.glob` were type errors in every uf project. Last in the
+    // list because a later definition shadows an earlier one, which is how it
+    // replaces `core.js`'s `Import$Meta`.
+    (
+        "vite-client.js",
+        include_str!("../../libdefs/vite-client.js"),
+    ),
 ];

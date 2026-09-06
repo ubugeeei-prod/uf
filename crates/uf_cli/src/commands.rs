@@ -18,6 +18,7 @@ pub(crate) mod lint;
 pub(crate) mod pm;
 pub(crate) mod prepare;
 pub(crate) mod release;
+pub(crate) mod serve;
 pub(crate) mod task;
 pub(crate) mod test;
 pub(crate) mod transform;

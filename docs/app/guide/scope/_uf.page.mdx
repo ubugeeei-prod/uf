@@ -1,0 +1,161 @@
+---
+title: "What uf does not do · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# What uf does not do
+
+<div className="lede">
+A boundary you discover on a Thursday afternoon is a limitation. The same
+boundary, read before you start, is a promise about what the tool will never do
+to you. This page is both lists: what uf refuses to do on purpose, and what it
+does not do yet — the second list with issue numbers, because a gap without one
+is a wish.
+</div>
+
+## The refusals
+
+### It will never grow an `eject`
+
+There is no `uf eject`, and there will not be a `uf config --write` or a
+"print the effective Vite config so you can copy it" flag either, because that
+becomes one in practice. `create-react-app` put a cliff between *zero config*
+and *fully customisable*, with a one-way door at the bottom of it; uf replaces
+the door with a continuum:
+
+```
+convention  →  configuration  →  provider replacement  →  raw provider API
+```
+
+Each step is smaller than the one before, and none of them locks. A project
+that needs one Vite plugin adds one Vite plugin, and does not inherit a build
+system. The reasoning, and the audit of where uf does not yet live up to it, is
+[Architecture](/guide/architecture).
+
+### It does not own the bundler, and will not fork it
+
+The dev server and the production build are Vite — `packages/vite/package.json`
+depends on `vite: "^8.2.2"`, and uf drives it over a JSON protocol. If uf needs
+behaviour Vite does not have, the answer is a plugin or an upstream change,
+never a fork. That is the first red line and it is first for a reason: a
+vendored, patched Vite would be uf's forever.
+
+The consequence you can use: **anything Vite can do, a uf project can do,
+without waiting for a uf release.** The `vite` key in `uf.config.js` is merged
+over what uf generates and uf does not read it.
+
+### It does not type-check your code
+
+Flow does. `uf check` runs Flow's own inference and reports what Flow says.
+uf reimplementing type inference would produce a second opinion about your
+program, which is the exact failure this toolchain exists to remove.
+
+### It does not invent a name for something Flow already names
+
+A file says it is plain JavaScript with `@noflow`. uf will not add a
+`check.exclude` list, because that would be a second answer to a question that
+already has one, in a place a reader is not looking.
+
+### It will not run npm lifecycle scripts
+
+`uf install` refuses a manifest that declares `scripts` before it fetches
+anything:
+
+<figure className="terminal">
+
+```
+error: package manifest /…/my-site/package.json declares scripts;
+       use uf tasks in uf.config.js
+```
+
+</figure>
+
+Install-time scripts are a remote-code-execution path on a machine that just
+cloned a repository, and the threat model is written down in
+[`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
+Project automation lives in `uf.config.js` tasks instead, which is also why a
+generated project has no npm scripts.
+
+### It will not bind a routable address quietly
+
+`uf dev --host` refuses to start while `dev.allowedHosts` is empty, before any
+process is spawned. A dev server on `0.0.0.0` with no allow-list is a file
+server for your source tree, and uf never writes `*` on your behalf.
+
+### It will not format what it cannot reproduce
+
+`uf fmt` formats the GraphQL inside a tagged template, and **leaves a template
+alone, byte for byte, when it cannot match Prettier exactly** — a `#` comment
+in the document, a string holding a control character, more than 128 levels of
+nesting. Of the 1,138 `graphql` templates in Relay's test suite it reproduces
+Prettier on 1,092 and declines 46, every one of them for a comment. Approximately
+right is not a thing a formatter may be; [Formatting and
+linting](/guide/format) has the rest.
+
+### It is not framework-agnostic, and does not want to be
+
+uf is Flow and React. A project's `.js`, `.jsx`, `.mjs` and `.cjs` files are
+uf's to transform; a third-party dependency under `node_modules` is not, except
+`@uniflowed/*`, which ship Flow source. A TypeScript file in your application is
+not a Flow module — the formatter will hand it to Biome, and nothing else in uf
+will read it.
+
+### It will not share a process between two test files
+
+`uf test` gives each worker one file at a time. Two files sharing a process
+share globals, and a suite that passes alone and fails beside another is the
+worst failure a runner can produce. It costs real time: uf spawns a worker per
+core and each one loads the test API before it can do anything, which is where
+the gap to `bun test` comes from. It is not a trade uf intends to make back by
+removing the isolation. [Testing](/guide/testing) has the measurements.
+
+### It will not answer "who did that?" with silence
+
+`uf inspect --json` prints the resolved configuration and the route table.
+`uf explain <command>` names the provider for every stage of `dev`, `build`,
+`test`, `fmt`, `lint` and `check` — which binary runs it and what it does. A
+stage that cannot be explained is a stage that should not exist.
+
+## What it does not do yet
+
+Everything above is a decision. Everything below is unfinished, and each row
+links to the issue that tracks it. If you need one of these, uf is not ready
+for you — that is a better thing to learn here than three days in.
+
+| What is missing | Where it actually stands | Issue |
+| --- | --- | --- |
+| **A production server.** `uf build` prerenders and stops: no `uf start`, no `uf preview`, and the server bundle is written to `.uf/build/server/` rather than `dist/`. SSR, route handlers and every deploy adapter exist only under `uf dev` | The driver already implements a `preview()` that nothing reaches | [#250](https://github.com/ubugeeei-prod/uf/issues/250), [#255](https://github.com/ubugeeei-prod/uf/issues/255) |
+| **React Server Components.** `"use client"` and `"use server"` are scanned, graphed and manifested; nothing downstream reads the result | Every page module ships to the browser, and no server action is callable | [#252](https://github.com/ubugeeei-prod/uf/issues/252), [#281](https://github.com/ubugeeei-prod/uf/issues/281) |
+| **Streaming and loading boundaries.** The renderer is `renderToString` | Synchronous SSR; no Suspense boundary streams | [#254](https://github.com/ubugeeei-prod/uf/issues/254) |
+| **An error boundary.** A component that throws takes the response with it; there is no `_uf.error.js` | — | [#257](https://github.com/ubugeeei-prod/uf/issues/257) |
+| **Middleware.** `_uf.middleware.js` is a reserved name, discovered by the router, reported by `uf inspect --json` — and never called | Every part except the call | [#260](https://github.com/ubugeeei-prod/uf/issues/260) |
+| **`.env` files.** `env.files` and `env.active` have no reader, `uf env use` writes a file nothing reads, and the Vite driver sets `envDir: false` | A project can turn Vite's own loader back on with `vite: { envDir: "." }` | [#259](https://github.com/ubugeeei-prod/uf/issues/259) |
+| **Caching and revalidation.** `rendering.cache` is four booleans copied into a manifest | There is no cache | [#277](https://github.com/ubugeeei-prod/uf/issues/277) |
+| **Deno, and every edge runtime.** Node.js and Bun load Flow; `HostKind::Deno` loads none, and Cloudflare Workers, Vercel Edge and Deno Deploy have no host at all | One and a half of the three named hosts | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
+| **Task caching.** `uf run` is `sh -c`, one task at a time: no input hashing, no parallel dependencies, no workspace filter | The roadmap's "cached, dependency-aware task execution" is not what happens today | [#272](https://github.com/ubugeeei-prod/uf/issues/272) |
+| **Test coverage, and a reporter CI can read.** No coverage, no snapshots, no module mocking — seven of the mocking bindings raise `UnsupportedError` | `uf test --json` exists; nothing emits LCOV or JUnit | [#280](https://github.com/ubugeeei-prod/uf/issues/280), [#283](https://github.com/ubugeeei-prod/uf/issues/283) |
+| **`uf lint --fix`.** The fix catalogue exists and only an editor can reach it | `uf prepare` can tell you a file is misformatted and cannot format it | [#290](https://github.com/ubugeeei-prod/uf/issues/290) |
+| **An image and font pipeline.** `Image` and `Font` are the markup and none of the pipeline: no resizing, no formats, no `srcset` | They prevent layout shift and double downloads, which is what they claim | [#273](https://github.com/ubugeeei-prod/uf/issues/273) |
+| **Packages on npm.** Nothing under `@uniflowed/*` is published | They resolve through this repository's workspace, which is how this site imports them | [#210](https://github.com/ubugeeei-prod/uf/issues/210) |
+
+The uncomfortable summary: **uf builds a static site today.** Everything that
+needs a server at run time works while `uf dev` is running and disappears at
+`uf build`.
+
+## How to tell a refusal from a gap
+
+A refusal has a reason, written down in
+[`docs/red-lines.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md),
+and no issue will ever close it. A gap has an issue number and an owner.
+
+If you hit a boundary that has neither — no reason on this page and no issue to
+link — that is a defect in this page, and worth
+[reporting](https://github.com/ubugeeei-prod/uf/issues) as one.
+
+## Where to go next
+
+[uf compared](/guide/compare) puts the two lists above beside Next.js, Vite,
+Bun and `create-react-app`. [Migrating to uf](/guide/migrate) is what moving
+actually involves. [Architecture](/guide/architecture) is the audit uf keeps
+against its own rules.

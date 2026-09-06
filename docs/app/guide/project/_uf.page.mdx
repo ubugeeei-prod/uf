@@ -8,25 +8,36 @@ title: "Your first project · uf"
 
 <div className="lede">
 From an empty directory to a built site, with every file explained. There are
-five of them.
+nine of them, and three are a demonstration you delete.
 </div>
 
 ## Scaffold
 
-<div className="command"><code>uf create app my-site</code></div>
+<div className="command"><code>uf create app react my-site</code></div>
+
+`react` is the template and `my-site` is the directory. Both are positional, and
+the template is not optional today even though `react` is the only one — a bare
+`uf create app my-site` is rejected, because `my-site` is read as the template.
 
 `uf create` writes a project and nothing else — no `node_modules`, no lockfile,
 no git history. What it writes is:
 
 ```
 my-site/
-  uf.config.js      the only config file
-  app.js            the application entry
+  uf.config.js         the only config file
+  app.js               the application entry
   app/
-    _uf.layout.js   the document: <html>, <head>, <body>
-    _uf.page.js     the page at "/"
-  package.json      dependencies, and nothing else
+    _uf.layout.js      the document: <html>, <head>, <body>
+    _uf.page.js        the page at "/"
+    Counter.js         a client component, as a demonstration
+    useCounter.js      a hook declaration, as a demonstration
+    _uf.page.test.js   a test, as a demonstration
+  package.json         dependencies, and nothing else
+  .gitignore           the generated files, which are not yours to commit
 ```
+
+The three marked as a demonstration are there to be read once and deleted. What
+is left after that is the five files this page explains.
 
 There is no `vite.config.ts`, no `babel.config.js`, no `.eslintrc`, no
 `tsconfig.json` and no `vitest.config.ts`. That is the point of the exercise.
@@ -46,11 +57,21 @@ through `component` declarations.
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
-  app: {
-    router: { entry: "app.js", root: "app" },
+  tasks: {
+    dev: { command: "uf dev" },
+    build: { command: "uf build" },
+    check: { command: "uf check" },
+    lint: { command: "uf lint" },
+    fmt: { command: "uf fmt" },
+    test: { command: "uf test" },
   },
 });
 ```
+
+Nothing in it describes the application: `app/` is the route root and `app.js`
+is the entry because those are the defaults. The `tasks` block is there so
+`uf run build` and your pipeline say the same thing, and
+`app: { router: { entry, root } }` is where you would say otherwise.
 
 `defineConfig` is a typed identity function: it exists so Flow checks the object
 against the config schema at the place you write it, rather than at the place uf
@@ -63,32 +84,41 @@ A layout renders the document. It is a `component`, and it receives the page as
 
 ```js
 // @flow
-import * as React from "@uniflowed/react";
+import { Suspense } from "@uniflowed/react";
 
-export component Layout(children: React.Node) {
+export component Layout(children: mixed) {
   return (
     <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <title>my site</title>
-      </head>
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={null}>{children}</Suspense>
+      </body>
     </html>
   );
 }
 ```
 
-A page is the default export of `_uf.page.js`:
+A page is `_uf.page.js`, exported as `Page`:
 
 ```js
 // @flow
-export default component Home() {
+export component Page() {
   return <h1>Hello</h1>;
 }
 ```
 
-Both are Flow, both use `component` syntax, and neither needs a plugin declared
-anywhere. [Routing](/guide/routing) covers nesting, parameters and loaders.
+The router takes `module.default ?? module.Page`, so a default export works too
+— but `uf check` warns on a default-exported component, on the grounds that a
+route wired by name is easier to find than one wired by position.
+
+`children: mixed` rather than `React.Node` is not a style choice: `uf check`
+does not yet resolve a type imported by a package name, so `React.Node` from
+`@uniflowed/react` is an any-typed value and using it as an annotation is an
+error. That is [issue #248](https://github.com/ubugeeei-prod/uf/issues/248).
+
+Both files are Flow, both use `component` syntax, and neither needs a plugin
+declared anywhere. [Routing](/guide/routing) covers nesting, parameters and
+loaders, and [the tutorial](/guide/tutorial) builds all of it into one
+application.
 
 ## Build it
 

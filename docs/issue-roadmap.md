@@ -155,7 +155,7 @@
 - [x] Start `@uniflowed/web` for web primitives and route/head/cookie hooks.
 - [x] Start `@uniflowed/markdown` with an ox-content wasm-backed contract.
 - [x] Start `@uniflowed/motion` with React Compiler-safe motion contracts.
-- [x] Start `@uniflowed/tui` as an OpenTUI-aligned native TUI framework.
+- [x] Start `@uniflowed/tui` as an OpenTUI-aligned TUI framework.
 - [x] Start `@uniflowed/temporal` as a lite Temporal contract.
 - [x] Start `@uniflowed/pwa` with opt-in cache defaults.
 - [ ] Implement `@uniflowed/orm`.
@@ -165,7 +165,10 @@
       deliberately absent; the Readiness section in `packages/stylex/index.js`
       says why.
 - [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library that can replace shadcn for Flow React apps.
-- [ ] Implement native terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
+- [x] Implement terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
+      Flow React on React's own reconciler rather than a native binding;
+      `packages/tui/index.js` argues that out. Mouse, selection, scrolling and
+      rich content are ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.

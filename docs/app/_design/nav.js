@@ -36,9 +36,24 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "What Flow says about React that nothing else can, and what it costs.",
       },
       {
+        href: "/guide/typescript",
+        title: "Flow and TypeScript",
+        blurb: "The rows TypeScript wins, the four Flow wins, and why uf is possible.",
+      },
+      {
         href: "/guide/architecture",
         title: "Architecture",
         blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
+      },
+      {
+        href: "/guide/scope",
+        title: "What uf does not do",
+        blurb: "The refusals, and the gaps — the second list with issue numbers.",
+      },
+      {
+        href: "/guide/compare",
+        title: "uf compared",
+        blurb: "Against Next.js, Vite, Bun and CRA, including the rows uf loses.",
       },
       {
         href: "/guide/vite-plus",
@@ -54,6 +69,16 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/project",
         title: "Your first project",
         blurb: "From an empty directory to a built site.",
+      },
+      {
+        href: "/guide/tutorial",
+        title: "Build a reading list",
+        blurb: "One application end to end: routes, data, state, a form, tests, the build.",
+      },
+      {
+        href: "/guide/migrate",
+        title: "Migrating to uf",
+        blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
       },
     ],
   },
@@ -73,7 +98,32 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/styling",
         title: "Styling and content",
-        blurb: "CSS, Markdown and MDX, all on by default.",
+        blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
+      },
+      {
+        href: "/guide/ui",
+        title: "Headless components",
+        blurb: "Seven primitives: the keyboard, the ARIA, and no styles at all.",
+      },
+      {
+        href: "/guide/state",
+        title: "State",
+        blurb: "Atoms, a store, and where this parts company with Jotai.",
+      },
+      {
+        href: "/guide/form",
+        title: "Forms",
+        blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
+      },
+      {
+        href: "/guide/effect",
+        title: "Effects",
+        blurb: "Failures in the type, and what Flow costs against Effect-TS.",
+      },
+      {
+        href: "/guide/tui",
+        title: "Terminal UI",
+        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
       },
     ],
   },
