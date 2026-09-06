@@ -50,9 +50,27 @@
 // Where a component has to learn something the DOM knows — how many options a
 // caller filtered down to, which item the arrow key should move to — it reads
 // the document in an effect or an event handler and, if a render depends on
-// the answer, puts it in state. It is deliberately *not* `useSyncExternalStore`:
-// that is for a store whose value a render reads, and reading layout during a
-// render is the thing it exists to prevent.
+// the answer, puts it in state. That is deliberately *not*
+// `useSyncExternalStore`: the DOM is not a store whose value a render may
+// read, and reading layout during a render is the thing that API exists to
+// prevent.
+//
+// One component does use it, and it is the case the API is actually for.
+// `toast("Saved")` is called from an event handler or a `catch`, so the queue
+// of notifications lives outside React — a store at module scope in
+// `toast.js`, read through `useSyncExternalStore` with the cached immutable
+// snapshots and the consistent server snapshot that requires. A queue is a
+// store; the DOM is not.
+//
+// That store should be an atom in `@uniflowed/state`, and was one. It is
+// written out by hand in `toast.js` because `@uniflowed/ui` is published to
+// npm and `@uniflowed/state` is not: its name has never been bound, and
+// binding it takes a person with an `npm login` session and a 2FA prompt —
+// ubugeeei-prod/uf#210. A published package whose dependency is missing
+// installs as nothing, `ETARGET` on the first thing a user types, so this
+// package cannot declare that dependency until the name exists. The queue
+// moves back to `@uniflowed/state` when #210 binds it. The local store is the
+// shippable design, not the better one.
 //
 // # Server and client
 //
@@ -71,7 +89,11 @@
 // - `menu.js` — the arrow keys, typeahead, submenus and `Escape` stacking.
 // - `combobox.js` — `aria-activedescendant` over a filtered list, and the
 //   count a screen reader is told.
+// - `select.js` — the other half of the combobox pattern: the select-only one,
+//   with typeahead, option groups and a value a form can submit.
 // - `tabs.js` — the roving `tabindex`, and automatic versus manual activation.
+// - `toast.js` — the live region that was watching before there was anything
+//   to announce, and the countdown that stops.
 // - `field.js` — the label, description, error and `aria-invalid` wiring.
 // - `switch.js`, `checkbox.js` and `toggle.js` — the three two-state controls,
 //   apart because a reader is told something different by each, and because the
@@ -85,22 +107,29 @@
 //   pattern on its own, stacked, and applied to a site's navigation. The third
 //   of those exists as much to prevent `role="menu"` from being used for a list
 //   of links as to provide anything.
+// - `slider.js`, `resizable.js` and `progress.js` — the three that report a
+//   number in a range. A window splitter is a slider wearing a separator's
+//   role, which is why it is beside one rather than with the layout.
+// - `table.js` and `pagination.js` — the sort that is announced, the selection
+//   that can be mixed, and the rows a page is not showing.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
 // is by primitive because that is the unit a reader looks for, the unit a
 // bundler drops, and the unit the WAI-ARIA practices are written in.
 //
-// `internal/` holds four modules and nothing else, each a rule the primitives
+// `internal/` holds six modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
 // last), `controlled-state.js` (what "controlled" means here),
-// `roving-focus.js` (how a set of items is found and moved between), and
+// `roving-focus.js` (how a set of items is found and moved between),
 // `disclosure.js` (how a button says whether a region is showing, and how a
-// closed region stays findable). Each says in its own header why it is
-// unreachable rather than exported. There is no `internal/props.js`-shaped bag
-// of helpers: a module that cannot say what it is about does not belong in this
-// package.
+// closed region stays findable), `form-value.js` (what a `<form>` submits for a
+// control the browser has never heard of), and `range.js` (the arithmetic that
+// keeps `aria-valuemin`, `aria-valuemax` and `aria-valuenow` true about each
+// other). Each says in its own header why it is unreachable rather than
+// exported. There is no `internal/props.js`-shaped bag of helpers: a module
+// that cannot say what it is about does not belong in this package.
 
 import {
   AccordionContent,
@@ -151,17 +180,77 @@ import {
   NavigationMenuRoot,
   NavigationMenuTrigger,
 } from "./navigation-menu.js";
+import {
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationRoot,
+} from "./pagination.js";
+import { Progress } from "./progress.js";
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
+import {
+  SelectGroup,
+  SelectGroupLabel,
+  SelectLabel,
+  SelectList,
+  SelectOption,
+  SelectRoot,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "./select.js";
+import { SliderRange, SliderRoot, SliderThumb, SliderTrack } from "./slider.js";
 import { Switch } from "./switch.js";
+import {
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRoot,
+  TableRow,
+  TableRowHeader,
+  TableRowSelect,
+  TableSelectAll,
+} from "./table.js";
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
+import {
+  ToastAction,
+  ToastClose,
+  ToastDescription,
+  ToastRegion,
+  ToastRoot,
+  ToastTitle,
+  dismissAllToasts,
+  dismissToast,
+  toast,
+  updateToast,
+} from "./toast.js";
 import { Toggle } from "./toggle.js";
 import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
 
 export type { AccordionType } from "./accordion.js";
 export type { ActivationMode } from "./tabs.js";
+export type { Sort } from "./table.js";
+export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 export type { ToggleGroupType } from "./toggle-group.js";
 
-export { Checkbox, Switch, Toggle };
+export { Checkbox, Progress, Switch, Toggle };
+
+/**
+ * Queueing a notification, from anywhere.
+ *
+ * Functions rather than a hook, because the places a notification comes from —
+ * an event handler, a `catch`, a Server Action's error path — do not have a
+ * component to hold state in. `Toast.Region` is what displays them.
+ *
+ *     const id = toast("Uploading…", { duration: null });
+ *     updateToast(id, { content: "Uploaded", duration: 4000 });
+ *     toast("Could not save", { urgency: "assertive" });
+ */
+export { dismissAllToasts, dismissToast, toast, updateToast };
 
 /**
  * An accessible form field.
@@ -397,4 +486,167 @@ export const Combobox = {
   Option: ComboboxOption,
   Empty: ComboboxEmpty,
   Status: ComboboxStatus,
+};
+
+/**
+ * The other half of the combobox pattern: a button, a list, and no typing.
+ *
+ * Use a native `<select>` when a native `<select>` will do — `select.js` says
+ * so first and means it. This is for the popup a `<select>` cannot draw.
+ *
+ *   <Select.Root defaultValue="GB" name="country">
+ *     <Select.Label>Country</Select.Label>
+ *     <Select.Trigger>
+ *       <Select.Value placeholder="Choose one" />
+ *     </Select.Trigger>
+ *     <Select.List>
+ *       <Select.Group>
+ *         <Select.GroupLabel>Europe</Select.GroupLabel>
+ *         <Select.Option value="GB">United Kingdom</Select.Option>
+ *         <Select.Option value="FR">France</Select.Option>
+ *       </Select.Group>
+ *       <Select.Separator />
+ *       <Select.Option value="JP">Japan</Select.Option>
+ *     </Select.List>
+ *   </Select.Root>
+ *
+ * `Select.Label` names the field and `Select.GroupLabel` names a group of
+ * options. shadcn has one `SelectLabel` and it is the second of those; a select
+ * needs both, so they are two parts here.
+ */
+export const Select = {
+  Root: SelectRoot,
+  Label: SelectLabel,
+  Trigger: SelectTrigger,
+  Value: SelectValue,
+  List: SelectList,
+  Option: SelectOption,
+  Group: SelectGroup,
+  GroupLabel: SelectGroupLabel,
+  Separator: SelectSeparator,
+};
+
+/**
+ * Notifications, in a live region that was watching before them.
+ *
+ * Render `Toast.Region` once, in the layout; `toast()` from anywhere.
+ *
+ *   <Toast.Region>
+ *     {(each) => (
+ *       <Toast.Root>
+ *         <Toast.Title>{each.content}</Toast.Title>
+ *         <Toast.Action onClick={undo}>Undo</Toast.Action>
+ *         <Toast.Close />
+ *       </Toast.Root>
+ *     )}
+ *   </Toast.Region>
+ */
+export const Toast = {
+  Region: ToastRegion,
+  Root: ToastRoot,
+  Title: ToastTitle,
+  Description: ToastDescription,
+  Action: ToastAction,
+  Close: ToastClose,
+};
+
+/**
+ * A value in a range, with `role="slider"` on the thumb where it belongs.
+ *
+ * One thumb or two; a range is the same component with a second one, each
+ * bounded by its neighbour and each needing its own name.
+ *
+ *   <Slider.Root defaultValue={[20, 60]} valueText={(each) => `£${each}`}>
+ *     <Slider.Track>
+ *       <Slider.Range />
+ *     </Slider.Track>
+ *     <Slider.Thumb aria-label="Minimum" index={0} />
+ *     <Slider.Thumb aria-label="Maximum" index={1} />
+ *   </Slider.Root>
+ */
+export const Slider = {
+  Root: SliderRoot,
+  Track: SliderTrack,
+  Range: SliderRange,
+  Thumb: SliderThumb,
+};
+
+/**
+ * Two panes and the splitter between them, operable from the keyboard.
+ *
+ *   <Resizable.PanelGroup defaultValue={30}>
+ *     <Resizable.Panel primary>Files</Resizable.Panel>
+ *     <Resizable.Handle label="Resize the file list" />
+ *     <Resizable.Panel>Editor</Resizable.Panel>
+ *   </Resizable.PanelGroup>
+ */
+export const Resizable = {
+  PanelGroup: ResizablePanelGroup,
+  Panel: ResizablePanel,
+  Handle: ResizableHandle,
+};
+
+/**
+ * A table, with the four things about one nobody gets right by hand.
+ *
+ * A real `<table>`, deliberately not a `role="grid"` — `table.js` says why —
+ * and its own live region, so a re-sort is something a reader is told about
+ * rather than something that happens silently behind them.
+ *
+ *   <Table.Root onSortChange={setSort} rowCount={500} rowOffset={90} sort={sort}>
+ *     <Table.Caption>People</Table.Caption>
+ *     <Table.Header>
+ *       <Table.Row>
+ *         <Table.Head>
+ *           <Table.SelectAll checked={all} onCheckedChange={setAll} />
+ *         </Table.Head>
+ *         <Table.Head column="name">Name</Table.Head>
+ *       </Table.Row>
+ *     </Table.Header>
+ *     <Table.Body>
+ *       {page.map((person, at) => (
+ *         <Table.Row index={at} key={person.id}>
+ *           <Table.Cell>
+ *             <Table.RowSelect
+ *               checked={chosen.has(person.id)}
+ *               label={`Select ${person.name}`}
+ *               onCheckedChange={(on) => choose(person.id, on)}
+ *             />
+ *           </Table.Cell>
+ *           <Table.RowHeader>{person.name}</Table.RowHeader>
+ *         </Table.Row>
+ *       ))}
+ *     </Table.Body>
+ *   </Table.Root>
+ */
+export const Table = {
+  Root: TableRoot,
+  Caption: TableCaption,
+  Header: TableHeader,
+  Body: TableBody,
+  Row: TableRow,
+  Head: TableHead,
+  RowHeader: TableRowHeader,
+  Cell: TableCell,
+  SelectAll: TableSelectAll,
+  RowSelect: TableRowSelect,
+};
+
+/**
+ * The navigation a paginated table needs, and the sentence that says it moved.
+ *
+ *   <Pagination.Root page={4} pageCount={25}>
+ *     <Pagination.Content>
+ *       <Pagination.Previous disabled={page === 1} href={hrefFor(page - 1)}>‹</Pagination.Previous>
+ *       <Pagination.Item current href={hrefFor(4)}>4</Pagination.Item>
+ *       <Pagination.Next href={hrefFor(page + 1)}>›</Pagination.Next>
+ *     </Pagination.Content>
+ *   </Pagination.Root>
+ */
+export const Pagination = {
+  Root: PaginationRoot,
+  Content: PaginationContent,
+  Item: PaginationItem,
+  Previous: PaginationPrevious,
+  Next: PaginationNext,
 };
