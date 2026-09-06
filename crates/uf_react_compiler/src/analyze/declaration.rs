@@ -8,8 +8,8 @@
 
 use uf_rsc::TokenKind;
 
+use crate::convention::is_hook_name;
 use crate::scope::ScopeKind;
-use crate::scope::is_hook_name;
 use crate::syntax::{
     ParamList, alias_root, parameter_list, parameters, return_type_body, statement_end,
 };
@@ -38,9 +38,16 @@ impl<'a> Walk<'a> {
     }
 
     /// `function f() {}`, and the `useX` naming convention that makes one a hook.
+    ///
+    /// The convention is read only in a module that has something to do with
+    /// React. `@uniflowed/test`'s `useFakeTimers` is the counter-example the
+    /// rule was written against: it is the name Jest, Vitest and Sinon all use,
+    /// it writes module state on purpose, and there is no React in the file.
     pub(super) fn declare_function(&mut self, index: usize) {
         let kind = match self.ident(index + 1) {
-            Some(name) if is_hook_name(name) => ScopeKind::UseFunction,
+            Some(name) if self.use_names_are_hooks() && is_hook_name(name) => {
+                ScopeKind::UseFunction
+            }
             _ => ScopeKind::Function,
         };
         self.stack.expect(kind);
@@ -93,7 +100,7 @@ impl<'a> Walk<'a> {
                 let mut names = ParamList::new();
                 if let Some(name) = self.ident(at) {
                     names.push(name.into());
-                    if is_hook_name(name) {
+                    if self.use_names_are_hooks() && is_hook_name(name) {
                         self.stack.expect(ScopeKind::UseFunction);
                     }
                 }
