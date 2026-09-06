@@ -24,9 +24,16 @@ the release manifest, and puts it on your `PATH`. It works under `sh`, `bash`
 and `zsh`. Read it before you run it — it is short, and it is served from
 `https://setup.uniflowed.dev/install.sh` if you would rather fetch it first.
 
-On Windows, PowerShell:
+### On Windows
 
-<div className="command"><code>irm https://setup.uniflowed.dev/install.ps1 | iex</code></div>
+There is no Windows build yet. The release workflow produces four artifacts,
+all of them macOS and Linux, so `irm https://setup.uniflowed.dev/install.ps1 |
+iex` resolves — deliberately, so the URL says something useful — and then
+prints an error telling you the same thing.
+
+Two paths that do work: run uf under **WSL2**, where the Linux install above
+applies unchanged; or build it from source with `cargo install`, below, which
+needs no artifact.
 
 ## From source
 
@@ -50,7 +57,7 @@ the rest to a host:
 | --- | --- | --- | --- |
 | Node.js | yes | yes | The default. Flow modules load through `module.register()`. |
 | Bun | yes | yes | Flow modules load through a `--preload` plugin. |
-| Deno | yes | not yet | No Flow loader; `uf test` refuses it with a message rather than failing later on a syntax error. |
+| Deno | not yet | not yet | No Flow loader on any path. `packages/vite/driver.js` registers Node's hooks and Bun is started with `--preload`; Deno gets neither, so the first Flow module a command imports fails to parse. `uf test` refuses it up front with a message rather than failing later on a syntax error. See [#246](https://github.com/ubugeeei-prod/uf/issues/246). |
 
 uf detects what is available and picks one. To pin a project to a host:
 

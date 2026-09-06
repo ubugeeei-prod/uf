@@ -121,6 +121,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Failures in the type, and what Flow costs against Effect-TS.",
       },
       {
+        href: "/guide/state",
+        title: "State",
+        blurb: "Atoms are declarations; a store holds the values; React reads them safely.",
+      },
+      {
         href: "/guide/tui",
         title: "Terminal UI",
         blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
@@ -174,6 +179,11 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/reference/ui",
         title: "Components",
         blurb: "The headless primitives, their parts, and the keys each one owns.",
+      },
+      {
+        href: "/reference/effect",
+        title: "Effects",
+        blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
       },
     ],
   },

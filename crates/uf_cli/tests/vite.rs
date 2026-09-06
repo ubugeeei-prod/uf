@@ -599,6 +599,329 @@ fn a_not_found_boundary_that_throws_fails_the_build_and_writes_no_file() {
     );
 }
 
+/// A project whose only page is a Server Component, built under `target/` for
+/// the reason [`project_with_a_throwing_page`] gives.
+///
+/// It starts clean on purpose: the thing being tested is that a violation
+/// appearing while the dev server runs is *reported*, and a project that was
+/// already wrong at start-up would prove only that the analysis runs once.
+fn project_with_a_clean_server_component() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/rsc-dev");
+    fs::remove_dir_all(&root).ok();
+    for (relative, contents) in [
+        (
+            "package.json",
+            r#"{ "name": "uf-rsc-dev", "private": true, "type": "module" }
+"#,
+        ),
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+import { greeting } from "./greeting.js";
+
+export default component Home() {
+  return <h1>{greeting()}</h1>;
+}
+"#,
+        ),
+        ("app/greeting.js", CLEAN_HELPER),
+    ] {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    }
+    root
+}
+
+/// A helper a Server Component imports, with nothing client-only in it.
+const CLEAN_HELPER: &str = r#"// @flow
+export function greeting(): string {
+  return "hello from the server";
+}
+"#;
+
+/// The same helper, reaching for a browser global. `_uf.page.js` is a server
+/// entry and this module is reachable from it, so the graph says the server
+/// runs `localStorage` — which it does not have.
+const HELPER_THAT_TOUCHES_THE_BROWSER: &str = r#"// @flow
+export function greeting(): string {
+  return localStorage.getItem("greeting") ?? "hello";
+}
+"#;
+
+/// `uf dev` runs the server-component analysis, and runs it again when a
+/// module changes.
+///
+/// It ran it never. `uf build` counted the violations and `uf lint`'s
+/// `server/*` rules are per-file scans that cannot see reachability, so the
+/// only place a contract violation was visible was CI — after a push, about
+/// code that worked when it was written, because nothing is split yet and
+/// every module still runs in both places. See ubugeeei-prod/uf#347.
+///
+/// Both halves are asserted because both are the issue: a graph computed once
+/// at start-up is a complete answer that is wrong the moment a file changes,
+/// which is why this edits a file the server is already watching.
+#[test]
+fn dev_reports_a_contract_violation_when_one_appears() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let root = project_with_a_clean_server_component();
+    let helper = root.join("app/greeting.js");
+    let mut refused = Vec::new();
+
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut server =
+                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
+            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: {}",
+                    server.evidence(&said)
+                ));
+                drop(server);
+                return false;
+            }
+
+            // A clean project says nothing. Asserted after the server has
+            // answered a request, which is well after the start-up analysis.
+            assert!(
+                !said_contains(&said, "server components"),
+                "a project with no violations must not report any:\n{}",
+                server_said(&said)
+            );
+
+            fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
+            let reported = wait_for_said(
+                &said,
+                "rsc/client-only-api-in-server",
+                Duration::from_secs(30),
+            );
+            assert!(
+                reported,
+                "the dev server did not report the violation that appeared:\n{}",
+                server.evidence(&said)
+            );
+            let text = server_said(&said);
+            assert!(
+                text.contains("app/greeting.js"),
+                "the report must name the module:\n{text}"
+            );
+            assert!(
+                text.contains("localStorage"),
+                "the report must name the API:\n{text}"
+            );
+
+            // And it goes away again: a report that only ever accumulates is a
+            // report nobody can use to tell whether they fixed it.
+            fs::write(&helper, CLEAN_HELPER).unwrap();
+            let cleared = wait_for_said(
+                &said,
+                "the server-component contract holds",
+                Duration::from_secs(30),
+            );
+            assert!(
+                cleared,
+                "the dev server never said the violation was gone:\n{}",
+                server.evidence(&said)
+            );
+            true
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Whether the server has said `needle` yet, waiting up to `budget` for it.
+fn wait_for_said(said: &Mutex<String>, needle: &str, budget: Duration) -> bool {
+    let deadline = Instant::now() + budget;
+    while Instant::now() < deadline {
+        if said_contains(said, needle) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+fn said_contains(said: &Mutex<String>, needle: &str) -> bool {
+    said.lock().is_ok_and(|said| said.contains(needle))
+}
+
+/// A project with a route that is both guarded and static, built under
+/// `target/` for the reason [`project_with_a_throwing_page`] gives.
+///
+/// `/dashboard/settings` is the interesting one: its own directory declares no
+/// middleware, and `app/dashboard/_uf.middleware.js` guards it all the same.
+fn project_with_a_guarded_page() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/guarded-page");
+    fs::remove_dir_all(&root).ok();
+    for (relative, contents) in [
+        (
+            "package.json",
+            r#"{ "name": "uf-guarded-page", "private": true, "type": "module" }
+"#,
+        ),
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+export default component Home() {
+  return <h1>the home page</h1>;
+}
+"#,
+        ),
+        (
+            "app/dashboard/_uf.middleware.js",
+            r#"// @flow
+export default function middleware(): void {}
+"#,
+        ),
+        (
+            "app/dashboard/_uf.page.js",
+            r#"// @flow
+export default component Dashboard() {
+  return <h1>the dashboard</h1>;
+}
+"#,
+        ),
+        (
+            "app/dashboard/settings/_uf.page.js",
+            r#"// @flow
+export default component Settings() {
+  return <h1>dashboard settings</h1>;
+}
+"#,
+        ),
+    ] {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    }
+    root
+}
+
+/// A route that is guarded *and* prerendered is named by the build.
+///
+/// `dist/dashboard/index.html` is a file. `app/dashboard/_uf.middleware.js` is
+/// code that runs on a server, per request. A host that serves the file
+/// answers without the guard, and the build said nothing about it at all —
+/// which is #260's failure mode, an authorisation check that looks enforced
+/// and is not, one step further down the pipeline and on the artifact that
+/// actually ships. See ubugeeei-prod/uf#342.
+///
+/// It is a warning and not a failure, and the reason is in
+/// `commands/build/guards.rs`: `uf build` writes the server bundle and the
+/// static documents into the same `dist/`, so which of them is deployed — and
+/// therefore whether the guard runs — is not a fact this build has.
+#[test]
+fn a_guarded_route_that_is_prerendered_is_reported() {
+    if !fixture_ready() {
+        return;
+    }
+    let root = project_with_a_guarded_page();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "a guarded page is a warning, not a failure\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    for expected in [
+        "guards",
+        "/dashboard",
+        "/dashboard/settings",
+        "app/dashboard/_uf.middleware.js",
+        "without running the middleware that guards them",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "the build did not report the guarded routes: missing {expected:?} in:\n{stdout}"
+        );
+    }
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join("dist/uf-build-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let reported = manifest["prerenderedUnderMiddleware"].as_array().unwrap();
+    let urls: Vec<&str> = reported
+        .iter()
+        .map(|page| page["url"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        urls,
+        ["/dashboard", "/dashboard/settings"],
+        "the inherited guard is the one that would be missed: {reported:#?}"
+    );
+    assert_eq!(
+        reported[1]["middleware"],
+        serde_json::json!(["app/dashboard/_uf.middleware.js"]),
+        "a route below the guard is guarded by it: {reported:#?}"
+    );
+    assert_eq!(
+        reported[1]["file"],
+        serde_json::json!("dist/dashboard/settings/index.html")
+    );
+
+    // And the home page, which is prerendered and guarded by nothing, is not
+    // in it: a report that named every static document would be a report
+    // nobody reads.
+    assert!(
+        !urls.contains(&"/"),
+        "an unguarded route was reported as guarded: {reported:#?}"
+    );
+}
+
 /// Whether a loopback socket can be bound here.
 ///
 /// The same policy as [`fixture_ready`], for the same reason: a sandbox that

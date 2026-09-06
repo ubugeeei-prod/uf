@@ -578,6 +578,82 @@ fn a_relative_specifier_that_names_nothing_in_the_batch_is_unchecked_and_recorde
 }
 
 #[test]
+fn a_vite_asset_is_typed_rather_than_recorded_as_untyped() {
+    require_checker!();
+
+    // The other half of ubugeeei-prod/uf#264. A component that imports a
+    // stylesheet and an icon is the ordinary case, and both were `any` with a
+    // line in "these imports are typed as any". Flow has no wildcard module
+    // name, so each shape is declared in `libdefs/vite-assets.js` and
+    // `ProjectModules::resolve` maps a specifier onto one.
+    let report = batch(&[Source::new(
+        "app.js",
+        concat!(
+            "// @flow\n",
+            "import url from \"./logo.svg?url\";\n",
+            "import source from \"./readme.md?raw\";\n",
+            "import styles from \"./a.module.css\";\n",
+            // Not named `Worker`: the import would shadow the global class
+            // and `: Worker` would then be a value used as a type, which is a
+            // different error and not the one this fixture is about.
+            "import Search from \"./w.js?worker\";\n",
+            "import png from \"./a.png\";\n",
+            "import sheet from \"./plain.css\";\n",
+            "const shown: string = `${url} ${source} ${png} ${sheet}`;\n",
+            "const className: string | void = styles.button;\n",
+            "const worker: Worker = new Search({ name: \"one\" });\n",
+            "export default { shown, className, worker };\n",
+        ),
+    )]);
+
+    assert_clean(&report);
+    assert!(
+        report.untyped_modules.is_empty(),
+        "an asset is typed now, so nothing is left to report: {:?}",
+        report.untyped_modules
+    );
+}
+
+#[test]
+fn a_vite_asset_is_typed_precisely_enough_to_be_wrong_about() {
+    require_checker!();
+
+    // A declaration that made every asset `any` would pass the test above and
+    // be worthless, so each line here must be an error — and the codes say
+    // which promise is being kept, not merely that something failed.
+    let report = batch(&[Source::new(
+        "app.js",
+        concat!(
+            "// @flow\n",
+            "import url from \"./logo.svg?url\";\n",
+            "import styles from \"./a.module.css\";\n",
+            "import Search from \"./w.js?worker\";\n",
+            // A URL is a string, not a number.
+            "const n: number = url;\n",
+            // A class map is not a string, and a class it does not have may be
+            // missing, so it is not a bare string either.
+            "const whole: string = styles;\n",
+            "const one: string = styles.button;\n",
+            // `?worker` gives a constructor, and Vite baked the URL in.
+            "const instance: Worker = Search;\n",
+            "const made = new Search(\"./w.js\");\n",
+            "export default { n, whole, one, instance, made };\n",
+        ),
+    )]);
+
+    let found = codes(&report);
+    assert!(
+        found.contains(&"incompatible-type"),
+        "expected an `incompatible-type` among {found:?}"
+    );
+    assert!(
+        found.len() >= 5,
+        "every line of the fixture must be wrong; got {found:?}"
+    );
+    assert!(report.untyped_modules.is_empty());
+}
+
+#[test]
 fn a_specifier_that_climbs_out_of_the_project_is_unchecked_and_recorded() {
     require_checker!();
 

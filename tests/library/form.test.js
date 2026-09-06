@@ -12,7 +12,7 @@
 import { createRequire } from "node:module";
 
 import * as React from "@uniflowed/react";
-import { StrictMode, useState } from "@uniflowed/react";
+import { StrictMode, useEffect, useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import { email, minLength, object, pipe, string, transform } from "@uniflowed/validator";
@@ -676,6 +676,45 @@ describe("accessibility", () => {
     expect(control.getAttribute("aria-describedby")).toBe(message.getAttribute("id"));
   });
 
+  it("announces a required field before it has been checked", () => {
+    // `aria-invalid` says a field is wrong after it has been checked.
+    // `aria-required` says it is required before the user gets there, which is
+    // the announcement that prevents the error rather than reporting it.
+    render(<Probe />);
+    expect(screen.getByLabelText("email")).toHaveAttribute("aria-required", "true");
+  });
+
+  it("does not announce a field that is not required", () => {
+    component Optional() {
+      const { register } = useForm({ defaultValues: { nickname: "" } });
+      return (
+        <form>
+          <input aria-label="nickname" {...register("nickname", { maxLength: 20 })} />
+        </form>
+      );
+    }
+    render(<Optional />);
+    expect(screen.getByLabelText("nickname")).not.toHaveAttribute("aria-required");
+  });
+
+  it("drops aria-required when the native attribute is there to say it", () => {
+    // Exactly one of the two, never both: `required` already announces the
+    // field, and a second attribute saying the same thing is noise of the kind
+    // `aria-invalid="false"` would be.
+    component Progressive() {
+      const { register } = useForm({ defaultValues: { email: "" }, progressive: true });
+      return (
+        <form>
+          <input aria-label="email" {...register("email", { required: "We need an email" })} />
+        </form>
+      );
+    }
+    render(<Progressive />);
+    const control = screen.getByLabelText("email");
+    expect(control).toHaveAttribute("required");
+    expect(control).not.toHaveAttribute("aria-required");
+  });
+
   it("gives two copies of the same form different ids", async () => {
     const { container } = render(
       <div>
@@ -1326,6 +1365,293 @@ describe("useController and Controller", () => {
   });
 });
 
+describe("disabled", () => {
+  it("puts the attribute on the control the render that switched it off", async () => {
+    // Not one render later. A form disabled while it saves has to *be*
+    // disabled while it saves, and the store learns the flag from an effect —
+    // so `register` is handed it directly instead.
+    component Probe() {
+      const [saving, setSaving] = useState(false);
+      const { register } = useForm({ defaultValues: { email: "" }, disabled: saving });
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <button type="button" onClick={() => setSaving(true)}>
+            Save
+          </button>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    expect(screen.getByLabelText("email")).not.toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByLabelText("email")).toBeDisabled();
+  });
+
+  it("switches off one field without switching off the form", () => {
+    component Probe() {
+      const { register } = useForm({ defaultValues: { email: "", code: "" } });
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="code" {...register("code", { disabled: true })} />
+        </form>
+      );
+    }
+    render(<Probe />);
+    expect(screen.getByLabelText("email")).not.toBeDisabled();
+    expect(screen.getByLabelText("code")).toBeDisabled();
+  });
+
+  it("leaves a disabled field out of the values a submit hands over", async () => {
+    // The rule that makes `disabled` mean something: a value the user was never
+    // shown must not be sent as though they had agreed to it. `getValues()`
+    // still answers with it, because that question is "what does the form
+    // hold".
+    const onValid = fn();
+    let read: () => mixed = () => null;
+    component Probe() {
+      const { register, handleSubmit, getValues } = useForm({
+        defaultValues: { email: "a@b.com", code: "secret" },
+      });
+      read = getValues;
+      return (
+        <form onSubmit={handleSubmit(onValid)}>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="code" {...register("code", { disabled: true })} />
+        </form>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    submitForm(container);
+    await waitFor(() => {
+      expect(onValid).toHaveBeenCalled();
+    });
+    expect(onValid.mock.calls[0].args[0]).toEqual({ email: "a@b.com" });
+    expect(read()).toEqual({ email: "a@b.com", code: "secret" });
+  });
+
+  it("does not validate a disabled field, and validates it again once it is back", async () => {
+    component Probe(off: boolean) {
+      const { register, trigger, formState } = useForm({ defaultValues: { code: "" } });
+      return (
+        <form>
+          <input aria-label="code" {...register("code", { required: "Required", disabled: off })} />
+          <button
+            type="button"
+            onClick={() => {
+              void trigger();
+            }}
+          >
+            Check the form
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void trigger("code");
+            }}
+          >
+            Check the field
+          </button>
+          <output>{formState.errors.code?.message ?? "no error"}</output>
+        </form>
+      );
+    }
+
+    const view = render(<Probe off={true} />);
+    await userEvent.click(screen.getByRole("button", { name: "Check the form" }));
+    // A field the user cannot answer must not be able to stop them submitting.
+    expect(screen.getByText("no error")).toBeInTheDocument();
+
+    // Named directly rather than reached through `trigger()`, which is the
+    // path that does not go past `liveNames`.
+    await userEvent.click(screen.getByRole("button", { name: "Check the field" }));
+    expect(screen.getByText("no error")).toBeInTheDocument();
+
+    view.rerender(<Probe off={false} />);
+    await userEvent.click(screen.getByRole("button", { name: "Check the form" }));
+    await waitFor(() => {
+      expect(screen.getByText("Required")).toBeInTheDocument();
+    });
+  });
+
+  it("forgets the error a field earned before it was switched off", async () => {
+    // Otherwise nothing would ever re-check it and `handleSubmit` — which
+    // refuses while any error stands — would be blocked forever.
+    const onValid = fn();
+    component Probe(off: boolean) {
+      const { register, handleSubmit } = useForm({ defaultValues: { code: "" } });
+      return (
+        <form onSubmit={handleSubmit(onValid)}>
+          <input aria-label="code" {...register("code", { required: "Required", disabled: off })} />
+        </form>
+      );
+    }
+
+    const view = render(<Probe off={false} />);
+    submitForm(view.container);
+    await waitFor(() => {
+      expect(screen.getByLabelText("code")).toHaveAttribute("aria-invalid", "true");
+    });
+
+    view.rerender(<Probe off={true} />);
+    submitForm(view.container);
+    await waitFor(() => {
+      expect(onValid).toHaveBeenCalled();
+    });
+  });
+
+  it("does not let a programmatic write to a disabled field make the form dirty", async () => {
+    component Probe() {
+      const { register, setValue, formState } = useForm({ defaultValues: { code: "start" } });
+      return (
+        <form>
+          <input aria-label="code" {...register("code", { disabled: true })} />
+          <button
+            type="button"
+            onClick={() => {
+              setValue("code", "changed", { shouldDirty: true });
+            }}
+          >
+            Fill it in
+          </button>
+          <output>{`dirty: ${String(formState.isDirty)}`}</output>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    await userEvent.click(screen.getByRole("button", { name: "Fill it in" }));
+    // A write to a field the user cannot reach is not the user changing it.
+    expect(screen.getByText("dirty: false")).toBeInTheDocument();
+  });
+
+  it("reports the form's own flag in formState, not a summary of its fields", () => {
+    component Probe(off: boolean) {
+      const { register, formState } = useForm({ defaultValues: { code: "" }, disabled: off });
+      return (
+        <form>
+          <input aria-label="code" {...register("code", { disabled: true })} />
+          <output>{`form: ${String(formState.disabled)}`}</output>
+        </form>
+      );
+    }
+
+    const view = render(<Probe off={false} />);
+    // One disabled field is not a disabled form.
+    expect(screen.getByText("form: false")).toBeInTheDocument();
+    view.rerender(<Probe off={true} />);
+    // The store is told from an effect, which `rerender` has already flushed.
+    expect(screen.getByText("form: true")).toBeInTheDocument();
+  });
+
+  it("keeps a disabled field out of the values a resolver hands back", async () => {
+    // A resolver's output is a type of its own, not a subset of the form's
+    // values — that is what `Resolver<TIn, TOut>` is generic in both for. So
+    // pruning the input is not enough to keep a disabled field out of the
+    // submission: a schema with a default for the field that went missing puts
+    // it straight back, and `handleSubmit` hands the resolver's answer to
+    // `onValid` verbatim.
+    const onValid = fn();
+    const withADefault = (values: any) => ({
+      values: { ...values, code: "filled in by the schema" },
+      errors: {},
+    });
+    component Probe() {
+      const { register, handleSubmit } = useForm({
+        defaultValues: { email: "a@b.com", code: "never shown" },
+        resolver: withADefault as any,
+      });
+      return (
+        <form onSubmit={handleSubmit(onValid)}>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="code" {...register("code", { disabled: true })} />
+        </form>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    submitForm(container);
+    await waitFor(() => {
+      expect(onValid).toHaveBeenCalled();
+    });
+    expect(onValid.mock.calls[0].args[0]).toEqual({ email: "a@b.com" });
+  });
+
+  it("tells a controlled field the form was switched off in the commit that switched it", async () => {
+    // The same claim the `register` test at the top of this describe makes,
+    // for the hook that cannot be handed the flag: a form disabled while it
+    // saves has to reach a controlled field on the render that disabled it.
+    //
+    // Not one commit later, and — before this was a subscription — not ever:
+    // `control.isDisabled(name)` called in a render body is a call whose
+    // function and arguments the React Compiler can see never change, so it
+    // cached the first render's answer and the field stayed enabled for good.
+    const commits = [];
+    component Probe() {
+      const [saving, setSaving] = useState(false);
+      const { control } = useForm({ defaultValues: { colour: "red" }, disabled: saving });
+      const { field } = useController({ control, name: "colour" });
+      const off = field.disabled;
+      useEffect(() => {
+        commits.push(`saving=${String(saving)} disabled=${String(off)}`);
+      });
+      return (
+        <form>
+          <output>{`colour: ${String(off)}`}</output>
+          <button type="button" onClick={() => setSaving(true)}>
+            Save
+          </button>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    expect(screen.getByText("colour: false")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("colour: true")).toBeInTheDocument();
+    // And no commit in between drew an enabled field into a form being saved.
+    expect(commits).not.toContain("saving=true disabled=false");
+  });
+
+  it("tells a controlled field it is switched off", () => {
+    component Probe() {
+      const { control } = useForm({ defaultValues: { colour: "red", size: "M" } });
+      const colour = useController({ control, name: "colour", disabled: true });
+      const size = useController({ control, name: "size" });
+      return (
+        <form>
+          <output>{`colour: ${String(colour.field.disabled)}`}</output>
+          <output>{`size: ${String(size.field.disabled)}`}</output>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    expect(screen.getByText("colour: true")).toBeInTheDocument();
+    expect(screen.getByText("size: false")).toBeInTheDocument();
+  });
+
+  it("leaves a disabled controlled field out of the submitted values", async () => {
+    const onValid = fn();
+    component Probe() {
+      const { control, handleSubmit } = useForm({ defaultValues: { colour: "red", size: "M" } });
+      useController({ control, name: "colour", disabled: true });
+      useController({ control, name: "size" });
+      return <form onSubmit={handleSubmit(onValid)} />;
+    }
+
+    const { container } = render(<Probe />);
+    submitForm(container);
+    await waitFor(() => {
+      expect(onValid).toHaveBeenCalled();
+    });
+    expect(onValid.mock.calls[0].args[0]).toEqual({ size: "M" });
+  });
+});
+
 describe("server rendering", () => {
   // Loaded the way `@uniflowed/react-testing` loads `react-dom/client`: through
   // a synchronous require, so a test file that never renders on the server does
@@ -1368,6 +1694,70 @@ describe("server rendering", () => {
     // alone puts nothing in the HTML. The documented way to server-render a
     // value is the next test: put it in the markup, and the store adopts it.
     expect(markup).not.toContain("someone@example.com");
+  });
+
+  it("carries no constraints into the markup unless it was asked to", () => {
+    // The default, and the reason `progressive` exists as a flag: emitting
+    // `pattern` gives the browser a second opinion about the same regular
+    // expression, and a form should not acquire that without asking.
+    const markup = String(server.renderToStaticMarkup(<Probe />));
+    expect(markup).not.toContain('required=""');
+    expect(markup).not.toContain("pattern=");
+    // What it does carry is the announcement, which enforces nothing.
+    expect(markup).toContain('aria-required="true"');
+  });
+
+  it("carries a progressive form's constraints into the markup, unhydrated", () => {
+    // The claim this exists for: a page a user submits before the JavaScript
+    // arrives is refused by the browser rather than accepted by the server.
+    component Constrained() {
+      const { register } = useForm({
+        defaultValues: { email: "", age: "", nickname: "" },
+        progressive: true,
+      });
+      return (
+        <form>
+          <input
+            aria-label="email"
+            {...register("email", { required: "Required", pattern: /.+@.+/ })}
+          />
+          <input aria-label="age" {...register("age", { min: 18, max: 120 })} />
+          <input
+            aria-label="nickname"
+            {...register("nickname", {
+              minLength: 2,
+              maxLength: { value: 20, message: "Too long" },
+            })}
+          />
+        </form>
+      );
+    }
+
+    // HTML attribute names are case-insensitive, so React's `minLength` is the
+    // `minlength` attribute as far as a browser parsing this is concerned.
+    const markup = String(server.renderToStaticMarkup(<Constrained />));
+    expect(markup).toContain('required=""');
+    expect(markup).toContain('pattern=".+@.+"');
+    expect(markup).toContain('min="18"');
+    expect(markup).toContain('max="120"');
+    expect(markup).toContain('minLength="2"');
+    expect(markup).toContain('maxLength="20"');
+    // Enforced by the browser, so the ARIA copy of the same fact is not sent.
+    expect(markup).not.toContain("aria-required");
+  });
+
+  it("carries a disabled field into the markup either way", () => {
+    // Not progressive enhancement: a form that is switched off has to render
+    // switched off, whether or not the browser is being asked to validate it.
+    component Off() {
+      const { register } = useForm({ defaultValues: { email: "" }, disabled: true });
+      return (
+        <form>
+          <input aria-label="email" {...register("email")} />
+        </form>
+      );
+    }
+    expect(String(server.renderToStaticMarkup(<Off />))).toContain("disabled=");
   });
 
   it("adopts the value the server put in the markup once it mounts", async () => {

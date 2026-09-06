@@ -60,7 +60,7 @@
 // mutable object, and the callbacks handed to React have an identity that does
 // not change — see `internal/store.js` for why each of those matters.
 
-import type { Cell, Unsubscribe } from "@uniflowed/cell";
+import type { Cell, LoadContext, Unsubscribe } from "@uniflowed/cell";
 import * as React from "@uniflowed/react";
 import { useSyncExternalStore } from "@uniflowed/react";
 
@@ -72,7 +72,7 @@ import type {
   SetAction,
 } from "./internal/atom.js";
 import { defineAction, defineAsync, definePrimitive, defineSelector } from "./internal/atom.js";
-import type { Reset, StorageAdapter } from "./internal/composed.js";
+import type { Reset, StorageAdapter, StorageOptions } from "./internal/composed.js";
 import {
   atomWithDefault as composeWithDefault,
   atomWithStorage as composeWithStorage,
@@ -82,7 +82,14 @@ import type { StoreInstance } from "./internal/store.js";
 import { bindCell, createStore as createStoreInstance, defaultStore } from "./internal/store.js";
 import { StoreScope, useStoreInstance } from "./internal/provider.js";
 
-export type { AtomFamily, Reset, StorageAdapter } from "./internal/composed.js";
+export type {
+  AtomFamily,
+  JSONStorageOptions,
+  Reset,
+  StorageAdapter,
+  StorageOptions,
+  StringStorage,
+} from "./internal/composed.js";
 export type {
   AtomMount,
   AtomOptions,
@@ -90,9 +97,9 @@ export type {
   PrimitiveOptions,
   SetAction,
 } from "./internal/atom.js";
-export type { Cell, Unsubscribe };
+export type { Cell, LoadContext, Unsubscribe };
 
-export { atomFamily, RESET } from "./internal/composed.js";
+export { atomFamily, createJSONStorage, RESET } from "./internal/composed.js";
 export { batch } from "@uniflowed/cell";
 
 /**
@@ -124,6 +131,18 @@ export opaque type Atom<T>: WritableAtom<T, SetAction<T>> = AtomRecord<T, SetAct
 
 /** An atom that is only ever written: an action. */
 export opaque type WriteOnlyAtom<A>: WritableAtom<null, A> = AtomRecord<null, A>;
+
+/**
+ * An atom whose value arrives from a promise: what [`asyncAtom`] returns.
+ *
+ * Nominally distinct from `ReadonlyAtom<Loadable<T>>` even though the two are
+ * the same record, and the distinction earns its place at exactly one call
+ * site: [`refresh`] can only mean something for an atom that has a load to
+ * run, and a `selector` that happens to return a `Loadable` — a cache lookup
+ * projected into one, say — has nothing to refresh. Without the name that
+ * mistake is a runtime error; with it, Flow says so at the call site.
+ */
+export opaque type AsyncAtom<T>: ReadonlyAtom<Loadable<T>> = AtomRecord<Loadable<T>, empty>;
 
 /** Reading another atom, inside a read or a write. */
 export type Getter = <V>(target: ReadonlyAtom<V>) => V;
@@ -229,12 +248,53 @@ export function action<A>(
  * when `userId` changes, and — this is the part that is hard to get right by
  * hand — the load already in flight for the previous id is discarded rather
  * than allowed to win a race and deliver the wrong user.
+ *
+ * Discarded, and also stopped. The load's second argument carries an
+ * `AbortSignal`, aborted when a newer load supersedes this one, when
+ * [`refresh`] asks for another, and when the atom loses its last subscriber:
+ *
+ * ```
+ * const user = asyncAtom((get, { signal }) =>
+ *   fetch(`/users/${get(userId)}`, { signal }).then((response) => response.json()),
+ * );
+ * ```
+ *
+ * A load that ignores the signal is still correct — whether a result is
+ * adopted is decided by the store either way — but on a search box that
+ * reloads per keystroke, ignoring it is one live request per keystroke.
+ *
+ * An aborted load's rejection is not the atom's error: it never becomes
+ * `{ state: "hasError" }`, because it is the answer to a question the atom
+ * stopped asking.
  */
 export function asyncAtom<T>(
-  load: (get: Getter) => Promise<T>,
+  load: (get: Getter, context: LoadContext) => Promise<T>,
   options?: AtomOptions<Loadable<T>>,
-): ReadonlyAtom<Loadable<T>> {
+): AsyncAtom<T> {
   return defineAsync(load, options);
+}
+
+/**
+ * Load an asynchronous atom again, with the dependencies it already has.
+ *
+ * The ordinary case after a mutation, and behind the Retry button on the error
+ * state [`Loadable`] exists to make renderable. An `asyncAtom` otherwise
+ * reloads only when something it read changes, and writing a dependency the
+ * value it already holds is correctly dropped by the equality cutoff — so
+ * without this there is no way to say "ask again" at all.
+ *
+ * A free function rather than a write, which is the choice Jotai makes with
+ * `atomWithRefresh`. Two reasons, and the second is the one that decided it:
+ * `WritableAtom<T, A>` promises that `A` is the argument type, and an atom
+ * that is suddenly writable with no argument muddies that; and a free function
+ * works from a route handler, an event handler and a test, none of which have
+ * a component to hold a setter.
+ *
+ * The atom passes through `{ state: "loading" }` on the way, so a list that
+ * shows a spinner while it refetches gets one without asking.
+ */
+export function refresh<T>(target: AsyncAtom<T>, store?: Store): void {
+  (store ?? defaultStore()).reload(target);
 }
 
 /**
@@ -248,13 +308,31 @@ export function atomWithDefault<T>(
   return composeWithDefault(getDefault, options);
 }
 
-/** An atom mirrored into a key-value store on every write. */
+/**
+ * An atom mirrored into a key-value store on every write, and read back from
+ * it when a store mounts it.
+ *
+ * ```
+ * const theme = atomWithStorage("theme", "light", createJSONStorage(() => localStorage));
+ * ```
+ *
+ * The read happens on mount rather than when the atom is declared, and that is
+ * the whole difference between a persisted preference that survives hydration
+ * and one that does not: a server renders `initial`, so the first client
+ * render has to be `initial` too, and the stored value arrives immediately
+ * after commit. `options.getOnInit` is for an application with no server
+ * render to agree with.
+ *
+ * Writing [`RESET`] removes the key rather than storing the initial value,
+ * which is the difference between "back to the default" and "persisting the
+ * default forever".
+ */
 export function atomWithStorage<T>(
   key: string,
   initial: T,
-  storage?: StorageAdapter,
-  options?: AtomOptions<T>,
-): Atom<T> {
+  storage?: StorageAdapter<T>,
+  options?: StorageOptions<T>,
+): WritableAtom<T, SetAction<T> | Reset> {
   return composeWithStorage(key, initial, storage, options);
 }
 

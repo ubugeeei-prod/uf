@@ -47,6 +47,13 @@ app/posts/[slug]/_uf.page.js      →  /posts/anything
 app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
 ```
 
+"The rest" is the whole rest, so a spread is the last routing directory on the
+way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
+reach — `[...path]` has already taken every segment, and there is none left to
+be `edit` — so `uf build` and `uf dev` refuse it by name rather than serving a
+route that never answers. A `(group)` below a spread is fine: it is not a
+segment.
+
 Parameters arrive as props:
 
 ```js
@@ -302,6 +309,13 @@ A handler takes a `Request` and returns a `Response` — the platform's own
 types, not a framework's wrapper. That is what runs unchanged on Node.js, Bun,
 Deno and a Cloudflare Worker, which is the whole point of treating the host as
 a capability rather than a target.
+
+**A handler needs something serving.** `uf dev`, `uf preview`, `uf start` and a
+binary from `uf build --compile` all dispatch to it; a `dist/` handed to a
+plain static file server does not, because there is nothing there to run. That
+is the one thing to know before designing an application around handlers, and
+it is why `uf preview` exists: it is where you find out that what answered in
+development also answers from the build.
 
 One export per method: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
 `OPTIONS`. Anything else a module exports is a helper, not a method — a

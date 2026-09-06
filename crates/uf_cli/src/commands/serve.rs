@@ -214,9 +214,13 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             // `_` so that the next event added to the driver comes back here
             // as a compile error instead of as silence — which is exactly how
             // `main` stopped compiling once, see #366 and #367.
+            // Neither server watches: `uf preview` and `uf start` serve a
+            // build, so a module changing under them changes nothing they are
+            // showing.
             Event::ConfigLoaded { .. }
             | Event::Phase { .. }
             | Event::Page { .. }
+            | Event::SourceChanged
             | Event::Done { .. }
             | Event::Config { .. } => {}
         }

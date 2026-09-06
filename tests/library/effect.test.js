@@ -17,6 +17,11 @@ import {
   as,
   catchAll,
   catchTag,
+  deferred,
+  deferredAwait,
+  deferredFail,
+  deferredIsDone,
+  deferredSucceed,
   die,
   effect,
   either,
@@ -27,10 +32,14 @@ import {
   flatMap,
   forEach,
   fork,
+  forkDaemon,
   interrupt,
   join,
   layerEffect,
   layerMerge,
+  layerProvide,
+  layerProvideMerge,
+  layerScoped,
   layerSucceed,
   map,
   mapError,
@@ -41,6 +50,16 @@ import {
   provide,
   provideService,
   race,
+  ref,
+  refGet,
+  refGetAndSet,
+  refGetAndUpdate,
+  refModify,
+  refSet,
+  refUpdate,
+  refUpdateAndGet,
+  refUpdateEffect,
+  repeat,
   retry,
   runFork,
   runPromise,
@@ -48,6 +67,7 @@ import {
   runSync,
   runSyncExit,
   scoped,
+  semaphore,
   sleep,
   succeed,
   suspend,
@@ -57,9 +77,29 @@ import {
   tapError,
   timeout,
   tryPromise,
+  withPermit,
+  withPermits,
   zip,
 } from "@uniflowed/effect";
 import { scheduleDelay } from "@uniflowed/effect/schedule";
+import {
+  streamEnsuring,
+  streamFilter,
+  streamFromArray,
+  streamFromEffect,
+  streamFromIterator,
+  streamFromReadableStream,
+  streamMap,
+  streamMapEffect,
+  streamPaginate,
+  streamRunCollect,
+  streamRunDrain,
+  streamRunFold,
+  streamRunForEach,
+  streamRunHead,
+  streamTake,
+  streamTap,
+} from "@uniflowed/effect/stream";
 
 describe("succeed and fail", () => {
   it("runs a pure success synchronously", () => {
@@ -485,6 +525,50 @@ describe("resources", () => {
     expect(events).toEqual(["acquire", "release"]);
   });
 
+  it("keeps a synchronous program synchronous through a scope", () => {
+    // Acquiring is not inherently asynchronous, and a program made of
+    // synchronous steps should not lose `runSync` for using a resource.
+    const events = [];
+    const program = scoped(
+      flatMap(
+        acquireRelease(
+          sync(() => {
+            events.push("acquire");
+            return "handle";
+          }),
+          () =>
+            sync(() => {
+              events.push("release");
+            }),
+        ),
+        (handle) => sync(() => `used ${handle}`),
+      ),
+    );
+
+    expect(runSync(program)).toBe("used handle");
+    expect(events).toEqual(["acquire", "release"]);
+  });
+
+  it("reports a finaliser that cannot run synchronously rather than skipping it", () => {
+    // A release that did not happen is the news this returns; a silent skip is
+    // the failure `acquireRelease` exists to prevent.
+    const program = scoped(
+      andThen(
+        acquireRelease(
+          sync(() => "handle"),
+          () => sleep(1),
+        ),
+        succeed("body"),
+      ),
+    );
+
+    const result = runSyncExit(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
   it("runs an ensuring finaliser on both paths", async () => {
     const events = [];
     const finalise = () =>
@@ -857,6 +941,152 @@ describe("resource release under interruption", () => {
   });
 });
 
+describe("what a forked fiber's parent owns", () => {
+  /** Ticks every twenty milliseconds, five times, and says how far it got. */
+  const ticker = () => {
+    let ticks = 0;
+    return {
+      count: () => ticks,
+      effect: effect(function* () {
+        for (let index = 0; index < 5; index += 1) {
+          yield* sleep(20);
+          ticks += 1;
+        }
+        return ticks;
+      }),
+    };
+  };
+
+  it("interrupts a forked child when the fiber that forked it is interrupted", async () => {
+    // The reproduction from #258. `fork` was `detachedContext`, so the parent
+    // was gone at thirty milliseconds and the child ran to completion at a
+    // hundred — reported by nobody, because the only handle to it was the one
+    // the parent dropped.
+    const child = ticker();
+    const parent = effect(function* () {
+      yield* fork(child.effect);
+      yield* sleep(1000);
+    });
+
+    const fiber = runFork(parent);
+    await runPromise(sleep(30));
+    await runPromise(interrupt(fiber));
+    const atInterrupt = child.count();
+    await runPromise(sleep(150));
+
+    expect(atInterrupt).toBeLessThan(5);
+    expect(child.count()).toBe(atInterrupt);
+  });
+
+  it("leaves a forkDaemon child running when its parent is interrupted", async () => {
+    // The behaviour `fork` used to have, under the name that says what it is.
+    const child = ticker();
+    const parent = effect(function* () {
+      yield* forkDaemon(child.effect);
+      yield* sleep(1000);
+    });
+
+    const fiber = runFork(parent);
+    await runPromise(sleep(30));
+    await runPromise(interrupt(fiber));
+    const atInterrupt = child.count();
+    await runPromise(sleep(150));
+
+    expect(atInterrupt).toBeLessThan(5);
+    expect(child.count()).toBe(5);
+  });
+
+  it("interrupts a child that has not reached its first checkpoint yet", async () => {
+    // `childContext` promises that a child born to an interrupted parent
+    // starts interrupted. This is the earliest moment that promise can be
+    // asked for: the fork has happened but the child has not run a step.
+    const events = [];
+    const program = effect(function* () {
+      yield* fork(
+        effect(function* () {
+          yield* sleep(20);
+          events.push("child ran");
+        }),
+      );
+      yield* sleep(400);
+    });
+
+    const fiber = runFork(program);
+    await runPromise(interrupt(fiber));
+    await runPromise(sleep(80));
+
+    expect(events).toEqual([]);
+  });
+
+  it("stops a forked child when the fiber that forked it simply ends", async () => {
+    // Not an interruption: the parent returned. A child that outlived a
+    // finished parent would be unreachable from any handle, which is the same
+    // leak by a quieter route.
+    const events = [];
+    const child = ensuring(sleep(400), () => sync(() => events.push("child stopped")));
+
+    await runPromise(
+      effect(function* () {
+        yield* fork(child);
+        yield* sleep(10);
+        return "parent finished";
+      }),
+    );
+    await runPromise(sleep(40));
+
+    expect(events).toEqual(["child stopped"]);
+  });
+
+  it("still ends a daemon's own children when the daemon ends", async () => {
+    // A daemon is detached from its parent, not from its children. If the
+    // escape were inherited, one `forkDaemon` would detach a whole subtree.
+    const events = [];
+    const grandchild = ensuring(sleep(400), () => sync(() => events.push("grandchild stopped")));
+
+    await runPromise(
+      effect(function* () {
+        yield* forkDaemon(
+          effect(function* () {
+            yield* fork(grandchild);
+            yield* sleep(10);
+          }),
+        );
+        yield* sleep(80);
+      }),
+    );
+
+    expect(events).toEqual(["grandchild stopped"]);
+  });
+
+  it("does not interrupt the fiber that forked it when the child is interrupted", async () => {
+    // The link is one-way on purpose: a child is cancellable on its own, which
+    // is the whole reason to hold a handle to it.
+    const settled = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(sleep(400));
+        yield* interrupt(fiber);
+        yield* sleep(5);
+        return "parent finished";
+      }),
+    );
+
+    expect(settled).toBe("parent finished");
+  });
+
+  it("keeps a joined child's value when the parent ends right after it", async () => {
+    // Ending a fiber must not reach a child that has already settled and left
+    // the tree, or every `fork`-then-`join` would race its own bookkeeping.
+    const settled = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(as(sleep(5), "child value"));
+        return yield* join(fiber);
+      }),
+    );
+
+    expect(settled).toBe("child value");
+  });
+});
+
 describe("what a concurrent failure does to its siblings", () => {
   it("stops a sibling that would otherwise never finish", async () => {
     // Deterministic rather than timed: if `all` did not interrupt its
@@ -1080,6 +1310,95 @@ describe("retry counts", () => {
     expect(flaky.attempts()).toBe(2);
   });
 
+  it("stops at the first failure the predicate rules out", async () => {
+    // `isRetriable` draws the line the runtime knows: a defect is a bug, an
+    // interruption is a decision. It cannot draw the line the application
+    // knows — a 429 is worth another attempt and a 400 is not, and both are
+    // typed failures.
+    let attempts = 0;
+    const forbidden = suspend(() => {
+      attempts += 1;
+      return fail({ kind: "forbidden" });
+    });
+
+    await runPromiseExit(
+      retry(
+        forbidden,
+        { kind: "recurs", times: 3 },
+        { while: (error) => error.kind === "timeout" },
+      ),
+    );
+    expect(attempts).toBe(1);
+  });
+
+  it("keeps retrying the failure the predicate allows", async () => {
+    let attempts = 0;
+    const timingOut = suspend(() => {
+      attempts += 1;
+      return fail({ kind: "timeout" });
+    });
+
+    await runPromiseExit(
+      retry(
+        timingOut,
+        { kind: "recurs", times: 3 },
+        { while: (error) => error.kind === "timeout" },
+      ),
+    );
+    expect(attempts).toBe(4);
+  });
+
+  it("stops once until is satisfied", async () => {
+    let attempts = 0;
+    const failing = suspend(() => {
+      attempts += 1;
+      return fail({ kind: attempts >= 2 ? "forbidden" : "timeout" });
+    });
+
+    await runPromiseExit(
+      retry(
+        failing,
+        { kind: "recurs", times: 5 },
+        { until: (error) => error.kind === "forbidden" },
+      ),
+    );
+    // One attempt, one retry that failed with `forbidden`, and no more.
+    expect(attempts).toBe(2);
+  });
+
+  it("keeps the failure the predicate refused rather than replacing it", async () => {
+    const result = await runPromiseExit(
+      retry(fail({ kind: "forbidden" }), { kind: "recurs", times: 3 }, { while: () => false }),
+    );
+
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("forbidden");
+    } else {
+      throw new Error("expected the original typed failure");
+    }
+  });
+
+  it("turns a predicate that throws into a defect", async () => {
+    // A predicate is a caller's code; a bug in it is a bug, not one more
+    // attempt and not a silent stop.
+    const result = await runPromiseExit(
+      retry(
+        fail("no"),
+        { kind: "recurs", times: 3 },
+        {
+          while: () => {
+            throw new Error("bad predicate");
+          },
+        },
+      ),
+    );
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
   it("does not retry after the fiber has been interrupted", async () => {
     let attempts = 0;
     const always = effect(function* () {
@@ -1152,6 +1471,52 @@ describe("schedules", () => {
     expect(scheduleDelay(schedule, 1)).toBe(40);
   });
 
+  it("spreads a wait over a range, and the midpoint leaves it alone", () => {
+    const schedule = { kind: "jittered", schedule: { kind: "spaced", millis: 100 } };
+    // The factor is an argument, so the whole range is testable without a seed
+    // and without hoping about `Math.random`.
+    expect(scheduleDelay(schedule, 0, 0)).toBe(80);
+    expect(scheduleDelay(schedule, 0, 0.5)).toBe(100);
+    expect(scheduleDelay(schedule, 0, 1)).toBe(120);
+    // Two arguments means the midpoint, so a jittered schedule stays as
+    // deterministic as every other arm when nobody asks for a factor.
+    expect(scheduleDelay(schedule, 0)).toBe(100);
+  });
+
+  it("honours a jitter range given as percentages", () => {
+    const schedule = {
+      kind: "jittered",
+      schedule: { kind: "spaced", millis: 200 },
+      minPercent: 50,
+      maxPercent: 150,
+    };
+    expect(scheduleDelay(schedule, 0, 0)).toBe(100);
+    expect(scheduleDelay(schedule, 0, 1)).toBe(300);
+  });
+
+  it("jitters the schedule it wraps rather than replacing it", () => {
+    // A jittered exponential still grows.
+    const schedule = { kind: "jittered", schedule: { kind: "exponential", baseMillis: 10 } };
+    expect(scheduleDelay(schedule, 0, 1)).toBe(12);
+    expect(scheduleDelay(schedule, 3, 1)).toBe(96);
+  });
+
+  it("does not revive a schedule that has stopped by jittering it", () => {
+    // Jitter is about *when*, and `null` is not a when.
+    expect(scheduleDelay({ kind: "jittered", schedule: { kind: "upTo", millis: 5 } }, 1, 1)).toBe(
+      null,
+    );
+    expect(scheduleDelay({ kind: "jittered", schedule: { kind: "recurs", times: 1 } }, 1, 1)).toBe(
+      null,
+    );
+  });
+
+  it("clamps a factor outside the unit interval rather than escaping the range", () => {
+    const schedule = { kind: "jittered", schedule: { kind: "spaced", millis: 100 } };
+    expect(scheduleDelay(schedule, 0, -1)).toBe(80);
+    expect(scheduleDelay(schedule, 0, 4)).toBe(120);
+  });
+
   it("caps a delay without reviving a schedule that has stopped", () => {
     expect(
       scheduleDelay(
@@ -1162,6 +1527,384 @@ describe("schedules", () => {
     expect(
       scheduleDelay({ kind: "maxDelay", schedule: { kind: "upTo", millis: 5 }, millis: 100 }, 1),
     ).toBe(null);
+  });
+});
+
+describe("repeat", () => {
+  it("runs again while the schedule says to, and the first run is not a repeat", async () => {
+    let runs = 0;
+    const counting = sync(() => {
+      runs += 1;
+      return runs;
+    });
+
+    await expect(runPromise(repeat(counting, { kind: "recurs", times: 2 }))).resolves.toBe(3);
+    expect(runs).toBe(3);
+  });
+
+  it("gives back the effect's last value", async () => {
+    const values: Array<number> = [];
+    const collecting = sync(() => {
+      values.push(values.length);
+      return `run ${values.length}`;
+    });
+
+    await expect(runPromise(repeat(collecting, { kind: "upTo", millis: 1 }))).resolves.toBe(
+      "run 2",
+    );
+  });
+
+  it("ends on a failure and reports it rather than polling through it", async () => {
+    // Swallowing the failure to keep polling would hide the outage the poll
+    // exists to notice.
+    let runs = 0;
+    const failsThird = suspend(() => {
+      runs += 1;
+      return runs === 3 ? fail("down") : succeed(runs);
+    });
+
+    const result = await runPromiseExit(repeat(failsThird, { kind: "recurs", times: 10 }));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("down");
+    } else {
+      throw new Error("expected the failure that ended the repetition");
+    }
+    expect(runs).toBe(3);
+  });
+
+  it("stops when the fiber is interrupted rather than at the end of the schedule", async () => {
+    // A `spaced` schedule never stops on its own, so nothing but the
+    // interruption can end this.
+    let runs = 0;
+    const polling = effect(function* () {
+      runs += 1;
+      yield* sleep(5);
+      return runs;
+    });
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(repeat(polling, { kind: "spaced", millis: 5 }));
+        yield* sleep(40);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+
+    const seen = runs;
+    await runPromise(sleep(60));
+    expect(runs).toBe(seen);
+  });
+
+  it("composes with retry: tolerate a blip, stop on a real failure", async () => {
+    let attempts = 0;
+    const flaky = suspend(() => {
+      attempts += 1;
+      // One blip in the middle of a poll, recovered by the retry; then a
+      // failure that stays failed, which no number of retries will settle.
+      if (attempts === 2) {
+        return fail("blip");
+      }
+      if (attempts >= 5) {
+        return fail("down");
+      }
+      return succeed(attempts);
+    });
+
+    const result = await runPromiseExit(
+      repeat(retry(flaky, { kind: "recurs", times: 1 }), { kind: "recurs", times: 5 }),
+    );
+
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      // The blip was retried away; the second failure survived its one retry
+      // and ended the repetition.
+      expect(result.cause.error).toBe("down");
+    } else {
+      throw new Error("expected the failure that outlasted its retry");
+    }
+  });
+});
+
+describe("what two fibers can share", () => {
+  it("lands on the right total when four fibers count into one ref", async () => {
+    // A closure over a `let` would land on the right number too, and it would
+    // not be interruption-aware and would not survive an `await` between the
+    // read and the write. This is the shape that does.
+    const program = effect(function* () {
+      const counter = yield* ref(0);
+      yield* forEach(
+        [1, 2, 3, 4, 5, 6, 7, 8],
+        (item) =>
+          effect(function* () {
+            yield* sleep(1);
+            yield* refUpdate(counter, (total) => total + item);
+          }),
+        { concurrency: 4 },
+      );
+      return yield* refGet(counter);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(36);
+  });
+
+  it("answers synchronously, so a program with a ref keeps runSync", () => {
+    const program = effect(function* () {
+      const held = yield* ref("first");
+      const previous = yield* refGetAndSet(held, "second");
+      yield* refUpdate(held, (value) => `${value}!`);
+      return `${previous} then ${yield* refGet(held)}`;
+    });
+
+    expect(runSync(program)).toBe("first then second!");
+  });
+
+  it("reads, computes and writes without letting another fiber in", async () => {
+    // `refModify` cannot yield, so the increment either happens whole or not
+    // at all. Two hundred fibers racing on it land exactly on two hundred.
+    const program = effect(function* () {
+      const counter = yield* ref(0);
+      const items = Array.from({ length: 200 }, (unused, index) => index);
+      yield* forEach(items, () => refModify(counter, (total) => [total, total + 1]), {
+        concurrency: "unbounded",
+      });
+      return yield* refGet(counter);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(200);
+  });
+
+  it("leaves the ref alone when the transform throws", () => {
+    const program = effect(function* () {
+      const held = yield* ref("kept");
+      const outcome = yield* exit(
+        refUpdate(held, () => {
+          throw new Error("bad transform");
+        }),
+      );
+      return { outcome, value: yield* refGet(held) };
+    });
+
+    const settled = runSync(program);
+    expect(settled.outcome.kind).toBe("failure");
+    if (settled.outcome.kind === "failure") {
+      expect(settled.outcome.cause.kind).toBe("die");
+    }
+    // Half of a read-modify-write is worse than none of it.
+    expect(settled.value).toBe("kept");
+  });
+
+  it("gives every operation the value it names", () => {
+    const program = effect(function* () {
+      const held = yield* ref(1);
+      const updated = yield* refUpdateAndGet(held, (value) => value + 1);
+      const before = yield* refGetAndUpdate(held, (value) => value * 10);
+      const after = yield* refGet(held);
+      yield* refSet(held, 0);
+      const modified = yield* refModify(held, (value) => [`was ${value}`, value + 5]);
+      return [updated, before, after, modified, yield* refGet(held)];
+    });
+
+    expect(runSync(program)).toEqual([2, 2, 20, "was 0", 5]);
+  });
+
+  it("hands a deferred's value to everyone waiting for it", async () => {
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const first = yield* fork(deferredAwait(handshake));
+      const second = yield* fork(deferredAwait(handshake));
+      yield* sleep(5);
+      const won = yield* deferredSucceed(handshake, "ready");
+      const again = yield* deferredSucceed(handshake, "ignored");
+      return [yield* join(first), yield* join(second), won, again];
+    });
+
+    await expect(runPromise(program)).resolves.toEqual(["ready", "ready", true, false]);
+  });
+
+  it("puts a deferred's failure in the error channel of whoever waited", async () => {
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const waiting = yield* fork(deferredAwait(handshake));
+      yield* deferredFail(handshake, { kind: "unavailable" });
+      return yield* exit(join(waiting));
+    });
+
+    const result = await runPromise(program);
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("unavailable");
+    } else {
+      throw new Error("expected the deferred's typed failure");
+    }
+  });
+
+  it("answers a deferred that is already done without waiting", async () => {
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const before = yield* deferredIsDone(handshake);
+      yield* deferredSucceed(handshake, 7);
+      const after = yield* deferredIsDone(handshake);
+      return [before, after, yield* deferredAwait(handshake)];
+    });
+
+    await expect(runPromise(program)).resolves.toEqual([false, true, 7]);
+  });
+
+  it("stops a fiber blocked on a deferred rather than hanging", async () => {
+    // Nothing will ever complete this one. A hand-written promise would make
+    // the fiber uninterruptible, which is the bug the waker protocol exists
+    // to prevent — the same one `never` is written the way it is to avoid.
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const waiting = yield* fork(deferredAwait(handshake));
+      yield* sleep(5);
+      return yield* interrupt(waiting);
+    });
+
+    const result = await runPromise(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("interrupt");
+    }
+  });
+
+  it("limits concurrency across two independent call sites", async () => {
+    // `all`'s concurrency bounds one call. Two `forEach`es against the same
+    // rate-limited host need one budget between them, and this is it.
+    let inFlight = 0;
+    let peak = 0;
+    const program = effect(function* () {
+      const budget = yield* semaphore(2);
+      const request = (item: number) =>
+        withPermit(
+          budget,
+          effect(function* () {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            yield* sleep(5);
+            inFlight -= 1;
+            return item;
+          }),
+        );
+
+      return yield* all(
+        [
+          forEach([1, 2, 3], request, { concurrency: "unbounded" }),
+          forEach([4, 5, 6], request, { concurrency: "unbounded" }),
+        ],
+        { concurrency: "unbounded" },
+      );
+    });
+
+    await expect(runPromise(program)).resolves.toEqual([
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+    expect(peak).toBe(2);
+  });
+
+  it("gives a permit back when the fiber holding it is interrupted", async () => {
+    // A permit that leaks on cancellation is a budget that shrinks every time
+    // somebody cancels a request, until nothing can run at all.
+    const program = effect(function* () {
+      const budget = yield* semaphore(1);
+      const holder = yield* fork(withPermit(budget, sleep(400)));
+      yield* sleep(10);
+      yield* interrupt(holder);
+      // If the permit had leaked, this would never finish.
+      return yield* withPermit(budget, succeed("took it"));
+    });
+
+    await expect(runPromise(timeout(program, 300))).resolves.toBe("took it");
+  });
+
+  it("gives a permit back when the body fails", async () => {
+    const program = effect(function* () {
+      const budget = yield* semaphore(1);
+      yield* exit(withPermit(budget, fail("body")));
+      return yield* withPermit(budget, succeed("took it"));
+    });
+
+    await expect(runPromise(timeout(program, 300))).resolves.toBe("took it");
+  });
+
+  it("serves the queue in the order it was asked in", async () => {
+    // A later small request that happens to fit must not overtake a waiting
+    // large one, or the widest caller can be starved for ever.
+    const order = [];
+    const program = effect(function* () {
+      const budget = yield* semaphore(2);
+      // Holds one of two, so one permit stays free the whole time.
+      const holder = yield* fork(
+        withPermit(
+          budget,
+          effect(function* () {
+            yield* sleep(20);
+            order.push("holder");
+          }),
+        ),
+      );
+      yield* sleep(5);
+      // Wants both, so it has to wait for the holder.
+      const wide = yield* fork(
+        withPermits(
+          budget,
+          2,
+          sync(() => order.push("wide")),
+        ),
+      );
+      yield* sleep(5);
+      // Would fit right now — the free permit is there — and must not take it.
+      const narrow = yield* fork(
+        withPermit(
+          budget,
+          sync(() => order.push("narrow")),
+        ),
+      );
+      yield* join(holder);
+      yield* join(wide);
+      yield* join(narrow);
+      return order;
+    });
+
+    await expect(runPromise(program)).resolves.toEqual(["holder", "wide", "narrow"]);
+  });
+
+  it("refuses more permits than the semaphore has rather than waiting for ever", async () => {
+    const program = effect(function* () {
+      const budget = yield* semaphore(2);
+      return yield* exit(withPermits(budget, 3, succeed("never")));
+    });
+
+    const result = await runPromise(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("serialises an effectful update so the second write does not lose the first", async () => {
+    // Two fibers read, both await, both write. Without the lock the second
+    // write is computed from a value the first has already replaced.
+    const program = effect(function* () {
+      const held = yield* ref(0);
+      const lock = yield* semaphore(1);
+      const increment = () =>
+        refUpdateEffect(held, lock, (value) =>
+          effect(function* () {
+            yield* sleep(5);
+            return value + 1;
+          }),
+        );
+
+      yield* all([increment(), increment(), increment()], { concurrency: "unbounded" });
+      return yield* refGet(held);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(3);
   });
 });
 
@@ -1220,6 +1963,183 @@ describe("layers", () => {
     }
   });
 
+  it("builds a layer reached twice in one graph exactly once", async () => {
+    // The diamond: `Database` and `Logger` both want `Config`. Built once per
+    // path, a layer that opens a connection pool opens two, and a layer that
+    // reads a config file may get two different answers.
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const Logger = tag("Logger");
+
+    let builds = 0;
+    const configLayer = layerEffect(
+      Config,
+      sync(() => {
+        builds += 1;
+        return { url: "postgres://" };
+      }),
+    );
+    const databaseLayer = layerProvide(
+      layerEffect(
+        Database,
+        effect(function* () {
+          const config = yield* Config;
+          return { at: config.url };
+        }),
+      ),
+      configLayer,
+    );
+    const loggerLayer = layerProvide(
+      layerEffect(
+        Logger,
+        effect(function* () {
+          const config = yield* Config;
+          return { about: config.url };
+        }),
+      ),
+      configLayer,
+    );
+
+    const program = effect(function* () {
+      const database = yield* Database;
+      const logger = yield* Logger;
+      return `${database.at}|${logger.about}`;
+    });
+
+    await expect(
+      runPromise(provide(program, layerMerge(databaseLayer, loggerLayer))),
+    ).resolves.toBe("postgres://|postgres://");
+    expect(builds).toBe(1);
+  });
+
+  it("builds a layer again for the next provide", async () => {
+    // The honest other half: the memo lives for one build, not for the
+    // process. Building once for a whole application is a `Runtime`, and there
+    // is not one yet.
+    const Config = tag("Config");
+    let builds = 0;
+    const configLayer = layerEffect(
+      Config,
+      sync(() => {
+        builds += 1;
+        return { url: "postgres://" };
+      }),
+    );
+
+    await runPromise(provide(succeed(1), configLayer));
+    await runPromise(provide(succeed(2), configLayer));
+    expect(builds).toBe(2);
+  });
+
+  it("answers synchronously when the layer and the body both can", () => {
+    // Nothing here is asynchronous, and until `provide` had a synchronous
+    // kernel this died with "effect is asynchronous" — which made "use a
+    // layer" and "use runSync" mutually exclusive, including in a test.
+    const Clock = tag("Clock");
+    expect(runSync(provide(succeed(1), layerSucceed(Clock, { now: () => 1 })))).toBe(1);
+
+    const reading = effect(function* () {
+      const clock = yield* Clock;
+      return clock.now();
+    });
+    expect(
+      runSync(
+        provide(
+          reading,
+          layerEffect(
+            Clock,
+            sync(() => ({ now: () => 7 })),
+          ),
+        ),
+      ),
+    ).toBe(7);
+  });
+
+  it("refuses synchronously when the layer needs to wait", () => {
+    const Clock = tag("Clock");
+    const result = runSyncExit(
+      provide(
+        succeed(1),
+        layerEffect(
+          Clock,
+          promise(() => Promise.resolve({ now: () => 1 })),
+        ),
+      ),
+    );
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("feeds one layer into another with layerProvide", async () => {
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const configLayer = layerSucceed(Config, { url: "postgres://" });
+    const databaseLayer = layerProvide(
+      layerEffect(
+        Database,
+        effect(function* () {
+          const config = yield* Config;
+          return { at: config.url };
+        }),
+      ),
+      configLayer,
+    );
+
+    const program = effect(function* () {
+      const database = yield* Database;
+      return database.at;
+    });
+
+    // `Config` is discharged: the program is run with the database layer alone
+    // and never sees the service the layer needed.
+    await expect(runPromise(provide(program, databaseLayer))).resolves.toBe("postgres://");
+  });
+
+  it("keeps the outer services with layerProvideMerge", async () => {
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const configLayer = layerSucceed(Config, { url: "postgres://" });
+    const databaseLayer = layerProvideMerge(
+      layerEffect(
+        Database,
+        effect(function* () {
+          const config = yield* Config;
+          return { at: config.url };
+        }),
+      ),
+      configLayer,
+    );
+
+    const program = effect(function* () {
+      const database = yield* Database;
+      const config = yield* Config;
+      return `${database.at}|${config.url}`;
+    });
+
+    await expect(runPromise(provide(program, databaseLayer))).resolves.toBe(
+      "postgres://|postgres://",
+    );
+  });
+
+  it("carries an inner layer's failure out of layerProvide", async () => {
+    const Config = tag("Config");
+    const Database = tag("Database");
+    const databaseLayer = layerProvide(
+      layerEffect(Database, fail({ kind: "NoDatabase" })),
+      layerSucceed(Config, { url: "postgres://" }),
+    );
+
+    const result = await runPromiseExit(provide(succeed(1), databaseLayer));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("NoDatabase");
+    } else {
+      throw new Error("expected the inner layer's failure");
+    }
+  });
+
   it("keeps interruption working underneath a layer", async () => {
     const Config = tag("Config");
     const program = provide(sleep(400), layerSucceed(Config, { value: 1 }));
@@ -1236,5 +2156,350 @@ describe("layers", () => {
     if (outcome.kind === "failure") {
       expect(outcome.cause.kind).toBe("interrupt");
     }
+  });
+});
+
+describe("a layer that acquires something", () => {
+  /** A pool layer that records every open and close. */
+  const pooling = (events: Array<string>) => {
+    const Pool = tag("Pool");
+    return {
+      Pool,
+      layer: layerScoped(
+        Pool,
+        acquireRelease(
+          sync(() => {
+            events.push("open");
+            return { query: () => "row" };
+          }),
+          () => sync(() => events.push("close")),
+        ),
+      ),
+    };
+  };
+
+  it("releases when the body succeeds", async () => {
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      const handle = yield* pool.Pool;
+      events.push(handle.query());
+      return "done";
+    });
+
+    await expect(runPromise(provide(program, pool.layer))).resolves.toBe("done");
+    expect(events).toEqual(["open", "row", "close"]);
+  });
+
+  it("releases when the body fails", async () => {
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      yield* pool.Pool;
+      return yield* fail("body");
+    });
+
+    const result = await runPromiseExit(provide(program, pool.layer));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("body");
+    } else {
+      throw new Error("expected the body's failure to survive the release");
+    }
+    expect(events).toEqual(["open", "close"]);
+  });
+
+  it("releases when the fiber is interrupted", async () => {
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      yield* pool.Pool;
+      yield* sleep(400);
+    });
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(provide(program, pool.layer));
+        yield* sleep(10);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+    expect(events).toEqual(["open", "close"]);
+  });
+
+  it("releases synchronously when everything in the program can", () => {
+    // A scoped layer does not force the program asynchronous either: the
+    // finalizers close on the synchronous path too.
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      const handle = yield* pool.Pool;
+      return handle.query();
+    });
+
+    expect(runSync(provide(program, pool.layer))).toBe("row");
+    expect(events).toEqual(["open", "close"]);
+  });
+
+  it("keeps the pool open for the whole body rather than for the build", async () => {
+    // The resource has to outlive the build that acquired it — a layer that
+    // closed its pool when the build finished would hand the body a closed
+    // one, which is the failure a scope on the layer exists to prevent.
+    const events: Array<string> = [];
+    const pool = pooling(events);
+    const program = effect(function* () {
+      const handle = yield* pool.Pool;
+      yield* sleep(5);
+      return handle.query();
+    });
+
+    await expect(runPromise(provide(program, pool.layer))).resolves.toBe("row");
+    expect(events).toEqual(["open", "close"]);
+  });
+});
+
+describe("streams", () => {
+  it("collects what a source produces, in order", async () => {
+    const collected = await runPromise(
+      streamRunCollect(streamMap(streamFromArray([1, 2, 3, 4]), (value) => value * 2)),
+    );
+    expect(collected).toEqual([2, 4, 6, 8]);
+  });
+
+  it("keeps take honest whatever the batching was", async () => {
+    // The batch size is a throughput knob and nothing else depends on it.
+    const wide = streamFromArray([1, 2, 3, 4, 5], { chunkSize: 4 });
+    const narrow = streamFromArray([1, 2, 3, 4, 5], { chunkSize: 1 });
+    await expect(runPromise(streamRunCollect(streamTake(wide, 3)))).resolves.toEqual([1, 2, 3]);
+    await expect(runPromise(streamRunCollect(streamTake(narrow, 3)))).resolves.toEqual([1, 2, 3]);
+  });
+
+  it("does not treat an emptied batch as the end", async () => {
+    // A filter that rejects everything in one batch returns `[]`, and only
+    // `null` ends a traversal.
+    const evens = streamFilter(
+      streamFromArray([1, 3, 5, 2, 7, 4], { chunkSize: 3 }),
+      (value) => value % 2 === 0,
+    );
+    await expect(runPromise(streamRunCollect(evens))).resolves.toEqual([2, 4]);
+  });
+
+  it("takes three from an infinite source and releases what it opened", async () => {
+    const events = [];
+    const counting = function* () {
+      for (let value = 0; ; value += 1) {
+        yield value;
+      }
+    };
+    const source = streamEnsuring(streamFromIterator(counting, { chunkSize: 1 }), () =>
+      sync(() => events.push("closed")),
+    );
+
+    await expect(runPromise(streamRunCollect(streamTake(source, 3)))).resolves.toEqual([0, 1, 2]);
+    // The traversal ended without draining the source, and the finalizer still
+    // ran — the guarantee `acquireRelease` gives, for a stream.
+    expect(events).toEqual(["closed"]);
+  });
+
+  it("reports a failure mid-stream and not the elements before it", async () => {
+    const failing = streamMapEffect(streamFromArray([1, 2, 3, 4]), (value) =>
+      value === 3 ? fail({ kind: "row", value }) : succeed(value),
+    );
+
+    const result = await runPromiseExit(streamRunCollect(failing));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toEqual({ kind: "row", value: 3 });
+    } else {
+      throw new Error("expected the failing row's typed error");
+    }
+  });
+
+  it("keeps a defect a defect", async () => {
+    const broken = streamMap(streamFromArray([1, 2, 3]), (value) => {
+      if (value === 2) {
+        throw new Error("bad transform");
+      }
+      return value;
+    });
+
+    const result = await runPromiseExit(streamRunCollect(broken));
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("closes the source when the failure came from a step", async () => {
+    const events = [];
+    const source = streamEnsuring(streamFromArray([1, 2, 3]), () =>
+      sync(() => events.push("closed")),
+    );
+
+    await runPromiseExit(streamRunCollect(streamMapEffect(source, () => fail("no"))));
+    expect(events).toEqual(["closed"]);
+  });
+
+  it("stops pulling when the fiber draining it is interrupted, and closes", async () => {
+    const events = [];
+    let pulled = 0;
+    const slow = function* () {
+      for (let value = 0; ; value += 1) {
+        pulled += 1;
+        yield value;
+      }
+    };
+    const source = streamEnsuring(streamFromIterator(slow, { chunkSize: 1 }), () =>
+      sync(() => events.push("closed")),
+    );
+    const draining = streamRunForEach(source, () => sleep(5));
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(draining);
+        yield* sleep(30);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+    expect(events).toEqual(["closed"]);
+
+    const seen = pulled;
+    await runPromise(sleep(40));
+    expect(pulled).toBe(seen);
+  });
+
+  it("preserves order under a concurrency limit, and honours the limit", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    // One element per batch, so the window has to be filled across batch
+    // boundaries for the limit to mean anything at all.
+    const source = streamFromArray([1, 2, 3, 4, 5, 6], { chunkSize: 1 });
+    const mapped = streamMapEffect(
+      source,
+      (value: number) =>
+        effect(function* () {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          yield* sleep(5);
+          inFlight -= 1;
+          return value * 10;
+        }),
+      { concurrency: 3 },
+    );
+
+    await expect(runPromise(streamRunCollect(mapped))).resolves.toEqual([10, 20, 30, 40, 50, 60]);
+    expect(peak).toBe(3);
+  });
+
+  it("walks a paginated source until a page says there is no next one", async () => {
+    const pages: Map<string, { items: Array<number>, next: string | null }> = new Map([
+      ["first", { items: [1, 2], next: "second" }],
+      ["second", { items: [3], next: "third" }],
+      ["third", { items: [4, 5], next: null }],
+    ]);
+    const walked: Array<string> = [];
+    const source = streamPaginate("first", (cursor: string) =>
+      sync(() => {
+        walked.push(cursor);
+        const page = pages.get(cursor);
+        if (page == null) {
+          throw new Error(`no page ${cursor}`);
+        }
+        return page;
+      }),
+    );
+
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2, 3, 4, 5]);
+    expect(walked).toEqual(["first", "second", "third"]);
+  });
+
+  it("does not ask a paginated source for a page it will not use", async () => {
+    let requested = 0;
+    const source = streamPaginate(0, (cursor: number) =>
+      sync(() => {
+        requested += 1;
+        return { items: [cursor], next: cursor + 1 };
+      }),
+    );
+
+    await expect(runPromise(streamRunCollect(streamTake(source, 2)))).resolves.toEqual([0, 1]);
+    expect(requested).toBe(2);
+  });
+
+  it("folds, drains and reads a head without collecting the rest", async () => {
+    const source = streamFromArray([1, 2, 3, 4]);
+    await expect(runPromise(streamRunFold(source, 0, (total, item) => total + item))).resolves.toBe(
+      10,
+    );
+    await expect(runPromise(streamRunDrain(source))).resolves.toBe(undefined);
+    await expect(runPromise(streamRunHead(source))).resolves.toBe(1);
+    await expect(runPromise(streamRunHead(streamFromArray([])))).resolves.toBe(null);
+  });
+
+  it("traverses the same stream twice, from the start each time", async () => {
+    // `open` per traversal is what makes this true; an iterator handed over as
+    // a value would leave the second traversal empty.
+    const source = streamFromIterator(function* () {
+      yield 1;
+      yield 2;
+    });
+
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2]);
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2]);
+  });
+
+  it("reads a web ReadableStream and cancels it when it stops early", async () => {
+    // Structural, so this is the same shape `Response.body` has on Node, Deno,
+    // Bun and an edge runtime — and a double can stand in for all four.
+    let cancelled = 0;
+    const chunks = ["a", "b", "c", "d"];
+    const readable = () => {
+      let index = 0;
+      return {
+        getReader: () => ({
+          read: () =>
+            Promise.resolve(
+              index >= chunks.length ? { done: true } : { done: false, value: chunks[index++] },
+            ),
+          cancel: () => {
+            cancelled += 1;
+            return Promise.resolve();
+          },
+        }),
+      };
+    };
+
+    await expect(runPromise(streamRunCollect(streamFromReadableStream(readable)))).resolves.toEqual(
+      ["a", "b", "c", "d"],
+    );
+
+    await expect(
+      runPromise(streamRunCollect(streamTake(streamFromReadableStream(readable), 2))),
+    ).resolves.toEqual(["a", "b"]);
+    // Stopping early closes the connection rather than reading to the end.
+    expect(cancelled).toBe(2);
+  });
+
+  it("makes a stream from an effect, and one element out of it", async () => {
+    await expect(runPromise(streamRunCollect(streamFromEffect(succeed(7))))).resolves.toEqual([7]);
+
+    const result = await runPromiseExit(streamRunCollect(streamFromEffect(fail("no"))));
+    expect(result.kind).toBe("failure");
+  });
+
+  it("looks at every element without changing it", async () => {
+    const seen = [];
+    const source = streamTap(streamFromArray([1, 2, 3]), (value) => sync(() => seen.push(value)));
+
+    await expect(runPromise(streamRunCollect(source))).resolves.toEqual([1, 2, 3]);
+    expect(seen).toEqual([1, 2, 3]);
   });
 });

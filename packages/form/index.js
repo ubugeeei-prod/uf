@@ -26,6 +26,12 @@
 //     );
 //   }
 //
+// `useForm({ disabled: formState.isSubmitting })` is the other half of that
+// last line, and it is worth knowing about before it is needed: disabling the
+// button stops a second submit, and disabling the *form* stops the keystrokes
+// that would otherwise land in the store after the request had already read
+// it.
+//
 // # This is built on React's rules, not around them
 //
 // The store is reached through `useSyncExternalStore` — the API that exists for
@@ -100,20 +106,45 @@
 // re-validation; the seven built-in rules with `deps`; resolvers, synchronous
 // and asynchronous, with stale results discarded; `useFieldArray` with stable
 // keys and index remapping of errors, dirty and touched flags; `reset` with its
-// keep options; accessible error wiring; narrow subscriptions.
+// keep options; accessible error wiring; narrow subscriptions;
+// `useForm({ disabled })` and `register(name, { disabled })`; and
+// `useForm({ progressive })`.
 //
-// Not implemented: `defaultValues` as a promise, `shouldUnregister`,
-// `delayError`, and form-level persistence. `isValid` in `onSubmit` mode
-// reflects the most recent submit rather than a validation nobody asked for —
-// see `internal/form-store.js`.
+// Not implemented: `defaultValues` as a promise, `values`, `errors` as an
+// input, `shouldUnregister`, `delayError`, and form-level persistence.
+// `isValid` in `onSubmit` mode reflects the most recent submit rather than a
+// validation nobody asked for — see `internal/form-store.js`.
 //
-// One limitation worth stating rather than discovering. `register` gives an
-// input a `ref`, and a ref does not run on a server, so `defaultValues` alone
-// puts no value into server-rendered HTML: the value is written into the
-// control when it mounts. A page that must show its values before hydration
-// should put them in the markup — `<input defaultValue={record.email}
-// {...register("email")} />` — and the store adopts what the control already
-// shows for any field it has no value for. Both halves are covered by
+// `shouldUseNativeValidation` is **declined** rather than pending, and the
+// reason is that it and this package's accessibility wiring cannot both be in
+// charge. It hands the messages to the browser through `setCustomValidity`,
+// which shows them in a bubble that cannot be styled, cannot be placed, is
+// dismissed by the next interaction, and is announced instead of — not
+// alongside — the `role="alert"` element `errorProps` wires up. What it was
+// mostly wanted for is a form the browser enforces before hydration, and
+// `progressive` gives that without moving the messages anywhere.
+//
+// # What the server render carries
+//
+// `register` gives an input a `ref`, and a ref does not run on a server, so
+// `defaultValues` alone puts no value into server-rendered HTML: the value is
+// written into the control when it mounts. A page that must show its values
+// before hydration should put them in the markup — `<input
+// defaultValue={record.email} {...register("email")} />` — and the store adopts
+// what the control already shows for any field it has no value for.
+//
+// The *constraints* do reach the markup, and only with `progressive`. A
+// `progressive` form's HTML carries `required`, `min`, `max`, `minlength`,
+// `maxlength` and `pattern`, so a submit before the JavaScript arrives is
+// refused by the browser rather than accepted by the server. Without it the
+// markup carries `aria-required` on a required field — which announces the
+// constraint but enforces nothing — and the form is unvalidated until it
+// hydrates. `disabled` reaches the markup either way.
+//
+// What no server render carries is the rest of validation: `validate`
+// functions, resolvers, and every message this package would show. Those need
+// the JavaScript, and a form whose correctness matters must also be checked on
+// the server it posts to. Every half of this is covered by
 // `tests/library/form.test.js`.
 
 export type { FieldPath, FieldValues } from "./internal/field-path.js";
@@ -128,8 +159,8 @@ export type {
   SetValueOptions,
   WatchInfo,
 } from "./internal/form-store.js";
-export type { ErrorProps, FieldProps } from "./internal/register.js";
-export type { FieldError, Rule, Validate, ValidationRules } from "./rules.js";
+export type { ErrorProps, FieldProps, RegisterContext } from "./internal/register.js";
+export type { FieldConstraints, FieldError, Rule, Validate, ValidationRules } from "./rules.js";
 export type { Resolver, ResolverErrors, ResolverResult } from "./resolver.js";
 export type {
   FieldState,
@@ -151,6 +182,6 @@ export { FormProvider, useForm, useFormContext } from "./use-form.js";
 export { useFormState, useWatch } from "./watch.js";
 export { useFieldArray } from "./field-array.js";
 export { Controller, useController } from "./controller.js";
-export { runRules, whenSettled } from "./rules.js";
+export { constraintsOf, isRequired, runRules, whenSettled } from "./rules.js";
 export { collectErrors, errorsOf, runResolver } from "./resolver.js";
 export { errorsFromIssues, validatorResolver } from "./validator.js";

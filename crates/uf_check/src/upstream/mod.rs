@@ -21,6 +21,7 @@
     reason = "the upstream Flow port's own API is Rc- and Arc-based"
 )]
 
+mod assets;
 mod builtins;
 mod convert;
 mod environments;

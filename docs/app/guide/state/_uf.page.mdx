@@ -176,6 +176,32 @@ you render.
 const name = unwrap(user, "…");
 ```
 
+### Asking again
+
+An `asyncAtom` otherwise reloads only when something it read changes, and
+writing a dependency the value it already holds is dropped by the equality
+cutoff — correctly, and it leaves "fetch that again" with no expression at all.
+That is the ordinary case after a mutation, and it is the Retry button on the
+error state `Loadable` exists to make renderable:
+
+```js
+import { refresh } from "@uniflowed/state";
+
+await save(draft);
+refresh(user); // or refresh(user, store)
+```
+
+The atom passes through `{ state: "loading" }` on the way, so a list that shows
+a spinner while it refetches gets one without asking. `refresh` is a free
+function rather than a write, unlike Jotai's `atomWithRefresh`: `WritableAtom<T,
+A>` promises that `A` is the argument type, and an atom that is suddenly
+writable with no argument muddies that — and a free function works from a route
+handler and a test, neither of which has a component to hold a setter.
+
+Only an `asyncAtom` can be refreshed, and Flow enforces it: `refresh` takes the
+`AsyncAtom<T>` that `asyncAtom` returns, so a `selector` that happens to produce
+a `Loadable` is rejected at the call site rather than at run time.
+
 ## What a write does
 
 Every write is batched. An `action` that sets three atoms wakes each subscriber
@@ -192,6 +218,93 @@ A subscriber of a selector over both is called once. And `get` inside a *write*
 is untracked — a write is not a computation, and an atom that recomputed because
 a handler happened to look at something would be very hard to explain.
 
+## Persisted state
+
+`atomWithStorage` mirrors an atom into a key-value store:
+
+```js
+import { RESET, atomWithStorage, createJSONStorage } from "@uniflowed/state";
+
+const theme = atomWithStorage("theme", "light", createJSONStorage(() => localStorage));
+```
+
+The thunk is what makes that line safe in a file a server imports, and the
+reason is more specific than "the storage might be missing": on a runtime
+without Web Storage the identifier `localStorage` is not defined, so evaluating
+it throws a `ReferenceError` rather than producing `undefined`. It is called
+inside a `try` every time, so a module naming a storage the runtime does not
+have still imports, and every operation on it becomes a no-op returning the
+initial value. Node has Web Storage from 22 and only behind a flag, Deno has it
+for a page it can name an origin for, Bun has it since 1.2, and an edge runtime
+has neither it nor a `window`. A browser with site data blocked throws on the
+property itself, and Safari in a private window throws on a write once its
+quota is reached — both degrade to an atom that is simply not persisted.
+
+### The stored value is read on mount
+
+This is the part that decides whether a server-rendered page hydrates. The
+server has no storage, so it renders `initial`. If the browser reads
+`localStorage` while the module is being evaluated, the first client render is
+the stored value against markup that says `initial` — a hydration mismatch that
+nothing in the React binding can undo, because the value was already wrong
+before a hook was called.
+
+So the read happens in the atom's `onMount`, which React runs after commit. The
+first client render is `initial`, exactly like the server's; the stored value
+arrives on the render immediately after. It is also per store, so two requests
+rendering concurrently in one process do not share one read.
+
+The cost is worth naming: an atom nothing has mounted reads `initial` even when
+storage holds something else, so a route handler that only reads sees the
+default. `{ getOnInit: true }` is for that caller and for the application that
+has no server render to agree with — it moves the read to first use rather than
+to mount, which is still per store and still never at import.
+
+### RESET removes the key
+
+```js
+write(theme, RESET);
+```
+
+Setting an atom back to `initial` stores `initial`; `RESET` removes the key, so
+"clear my preferences" leaves nothing behind for the next schema change to find.
+
+### Other storages
+
+A `StorageAdapter<T>` is typed in the value, not in strings: a cookie jar, a
+React Native `AsyncStorage` and an in-memory map in a test do not agree on a
+serialisation. `createJSONStorage` is the one that does, over anything with
+`getItem`, `setItem` and `removeItem`.
+
+Its optional `subscribe` is how another tab reaches this one — `createJSONStorage`
+wires it to the browser's `storage` event, and an outside write updates every
+mounted store and no unmounted one. It deliberately does not announce writes
+made in this process: two stores in one process are two stores, and keeping them
+in step would undo the isolation they exist for.
+
+Reading storage is also the one unchecked step in the package. `JSON.parse`
+answers `any`, and what comes back was written by an older version of the
+application, by another tab, or by someone editing their own `localStorage`.
+The default trusts it, because persistence is a cache and a cache that refuses
+to start is worse than one that is occasionally stale. The `revive` option is
+how a caller who minds closes it:
+
+```js
+createJSONStorage(() => localStorage, { revive: (raw) => themeSchema.parse(raw) });
+```
+
+A `revive` that throws is a value that will not parse, which falls back to
+`initial` like any other unreadable key.
+
+Asynchronous storage — a value that has to be awaited — is **not** implemented,
+and the reason is the same as the one that ruled out Suspense above. Jotai's
+async storage makes the atom's value `T | Promise<T>` and leans on Suspense to
+render it; without Suspense the honest shape is an atom whose value is a
+`Loadable<T>`, which is a different type and therefore a different constructor
+rather than an option on this one. Until that constructor exists — ubugeeei-prod/uf#317 — an
+atom persisted to something asynchronous is written as an `asyncAtom` reading
+it and an `action` writing it.
+
 ## Coming from Jotai
 
 | Jotai | Here | Why |
@@ -200,12 +313,13 @@ a handler happened to look at something would be very hard to explain.
 | Async atoms suspend | Async atoms are `Loadable` values | A `useSyncExternalStore` reader cannot suspend safely |
 | Its own dependency graph | `@uniflowed/cell`'s | Two implementations of dependency tracking is one too many, and the copy is the one that rots |
 | `atomWithStorage` defaults to `localStorage` | No storage unless you pass an adapter | The same module has to be safe on a server |
+| `atomWithRefresh` makes the atom writable | `refresh(atom, store?)`, a free function | `WritableAtom<T, A>` promises `A` is the argument, and a refresh has none — and a free function works from a route handler |
 | `atomFamily(create, areEqual?)` | `atomFamily(create)` plus `remove` and `size` | Keys are compared by identity; a comparator invites a family keyed by a fresh object every render |
 | `debugLabel`, devtools | A `label` for diagnostics only | Never load-bearing |
 
 Not implemented: `useHydrateAtoms`, `useAtomCallback`, `useResetAtom`,
 `useReducerAtom`, `selectAtom`, `splitAtom`, `atomWithReducer`,
-`atomWithReset`, `atomWithObservable`, `atomWithRefresh`, `freezeAtom`, and
+`atomWithReset`, `atomWithObservable`, `freezeAtom`, and
 Jotai's `loadable` utility. Some of those are one composition away from what is
 here; none of them is pretended at.
 

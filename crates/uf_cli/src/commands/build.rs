@@ -41,6 +41,8 @@ use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log
 use crate::support::{plural, problem_summary, project_label, relative_to, write_json_file};
 use crate::ui::Ui;
 
+mod guards;
+
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
 
@@ -164,8 +166,12 @@ pub(crate) fn build(
                     let _ = driver.finish("uf build");
                     return Err(failure);
                 }
+                // A build has no watcher, so `SourceChanged` never reaches
+                // it; it is in the match because the driver's channel is one
+                // vocabulary and every reader has to know the whole of it.
                 Event::ConfigLoaded { .. }
                 | Event::Listening { .. }
+                | Event::SourceChanged
                 | Event::Done { .. }
                 | Event::Config { .. } => {}
             }
@@ -173,6 +179,12 @@ pub(crate) fn build(
         driver.finish("the Vite build")?;
         Ok(report)
     })?;
+
+    // Which of the documents Vite just wrote are under a `_uf.middleware.js`.
+    // Answerable only here, because the pages are what the prerender produced
+    // rather than what the route table said it might; the reason it is a
+    // report and not a refusal is argued in [`guards`].
+    let unguarded = guards::unguarded_pages(&resolved.root, &routes, &vite.pages);
 
     // Written after Vite so `emptyOutDir` cannot sweep them away, and so the
     // manifest describes the build that actually happened.
@@ -190,6 +202,15 @@ pub(crate) fn build(
             "params": route.params.iter().map(|param| param.name.as_str()).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "pages": vite.pages.iter().map(|(url, file)| json!({ "url": url, "file": file })).collect::<Vec<_>>(),
+        // The same list the summary warns about, as data: which deployment of
+        // `dist/` is happening is a fact the build does not have, and a deploy
+        // step that does have it needs somewhere to read this from that is not
+        // a terminal.
+        "prerenderedUnderMiddleware": unguarded.iter().map(|page| json!({
+            "url": page.url,
+            "file": page.file,
+            "middleware": page.middleware,
+        })).collect::<Vec<_>>(),
         "runtime": {
             "default": resolved.config.app.runtime.default,
             "capabilityJsHost": &resolved.config.app.runtime.capability_js_host,
@@ -305,6 +326,30 @@ pub(crate) fn build(
         Vec::new()
     };
     let warnings = vite.warnings.clone();
+    let guarded_rows: Vec<(String, String, String)> = unguarded
+        .iter()
+        .map(|page| {
+            (
+                page.url.clone(),
+                page.file.clone(),
+                page.middleware.join(", "),
+            )
+        })
+        .collect();
+    let guarded_summary = format!(
+        "{} prerendered to {} a host serves without running the middleware that guards {}",
+        plural(guarded_rows.len(), "route"),
+        if guarded_rows.len() == 1 {
+            "a document"
+        } else {
+            "documents"
+        },
+        if guarded_rows.len() == 1 {
+            "it"
+        } else {
+            "them"
+        },
+    );
     let host_name = host.name();
     let adapter_summary = deployed.as_ref().map(|deployed| {
         let directory = relative_to(&resolved.root, &deployed.directory);
@@ -421,8 +466,30 @@ pub(crate) fn build(
             &Tree::from_paths(&project, output_paths.iter().copied()),
         );
         renderer.blank(out);
+
+        if !guarded_rows.is_empty() {
+            renderer.heading(out, 2, "guards");
+            let mut table = Table::new(vec![
+                Column::left("route"),
+                Column::left("document"),
+                Column::left("middleware"),
+            ]);
+            for (url, file, middleware) in &guarded_rows {
+                table.push(vec![
+                    Cell::toned(url, Tone::Accent),
+                    Cell::toned(file, Tone::Path),
+                    Cell::toned(middleware, Tone::Path),
+                ]);
+            }
+            renderer.table(out, 4, &table);
+            renderer.blank(out);
+        }
+
         for warning in &warnings {
             renderer.status(out, Status::Warn, warning);
+        }
+        if !guarded_rows.is_empty() {
+            renderer.status(out, Status::Warn, &guarded_summary);
         }
         renderer.status(out, Status::Success, &summary);
     });

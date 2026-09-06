@@ -82,17 +82,50 @@ fn install_has_a_one_letter_alias() {
         String::from_utf8_lossy(&short.stderr)
     );
 
-    // Compared line by line, skipping the one that carries a duration: two
-    // runs of the same command differ by a few milliseconds and that is not a
-    // difference between the alias and the command.
-    let lines = |output: &[u8]| {
-        String::from_utf8_lossy(output)
-            .lines()
-            .filter(|line| !line.contains("ms"))
-            .map(str::to_owned)
+    // Compared over uf's own rendering, and not over the package manager's.
+    //
+    // `uf install` prints its card and banner, hands the terminal to npm —
+    // whose stdout is this same inherited pipe — and prints the key-values and
+    // the verdict when it comes back. npm's lines are not evidence about the
+    // alias, and they are not the same twice: the first of these two runs
+    // populates what the second finds already there, so one says
+    // `up to date in 186ms` and the other says nothing at all.
+    //
+    // Dropping every line containing `ms` was an attempt at the same idea, and
+    // npm defeated it twice. It filtered by the substring rather than by the
+    // shape, so `up to date in 1s` — what npm prints when the install took a
+    // second, which is exactly the run that differs from its warm twin —
+    // survived and failed the comparison. That is #321 and #341, the same
+    // failure filed by two people. Widening the filter to match `1s` too would
+    // still be guessing at which of a child process's lines to ignore; naming
+    // the block uf rendered says what the test is for.
+    let rendered = |output: &[u8]| {
+        let text = String::from_utf8_lossy(output).into_owned();
+        let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
+        let banner = lines
+            .iter()
+            .position(|line| line.starts_with("uf install"))
+            .unwrap_or_else(|| panic!("`uf install` renders a banner, got:\n{text}"));
+        let table = lines
+            .iter()
+            .position(|line| line.trim_start().starts_with("manager "))
+            .unwrap_or_else(|| panic!("`uf install` names the manager it ran, got:\n{text}"));
+        assert!(
+            banner < table,
+            "the banner comes before the key-values, got:\n{text}"
+        );
+        // The product card, the banner and its rule; then the key-values and
+        // the verdict. What is skipped between them is npm's, and only npm's:
+        // uf renders nothing while the manager owns the terminal, which is
+        // what the blank lines around the call in `commands::pm::install` are
+        // for.
+        lines[..=banner + 1]
+            .iter()
+            .chain(&lines[table..])
+            .cloned()
             .collect::<Vec<_>>()
     };
-    assert_eq!(lines(&short.stdout), lines(&long.stdout));
+    assert_eq!(rendered(&short.stdout), rendered(&long.stdout));
     assert!(
         String::from_utf8_lossy(&short.stdout).contains("uf install"),
         "`uf i` should report itself as `uf install`"

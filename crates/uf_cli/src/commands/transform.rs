@@ -17,10 +17,16 @@
 //! Reply, one per line, in order:
 //!
 //! ```json
-//! {"id": "…", "code": "…", "map": "…", "diagnostics": []}   // transformed
-//! {"id": "…"}                                               // not uf's to transform
-//! {"id": "…", "error": "…", "line": 3, "column": 8}         // could not be transformed
+//! {"id": "…", "code": "…", "map": "…", "css": "…", "diagnostics": []}  // transformed
+//! {"id": "…"}                                                          // not uf's to transform
+//! {"id": "…", "error": "…", "line": 3, "column": 8}                    // could not be transformed
 //! ```
+//!
+//! Every optional field is absent when it has no value, and a host has to read
+//! all of them. `css` is the field that was here and undocumented while the
+//! Vite plugin's shim copied the three above it and dropped this one, which is
+//! how a StyleX application came to ship class names and no stylesheet
+//! (ubugeeei-prod/uf#306).
 //!
 //! A request is a line so the reader never has to guess where one ends; the
 //! code is JSON-escaped, so a newline in the source cannot end a request.

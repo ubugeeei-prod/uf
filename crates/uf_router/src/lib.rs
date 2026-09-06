@@ -36,7 +36,118 @@ pub struct Route {
     pub page: Utf8PathBuf,
     pub params: Vec<RouteParam>,
     pub has_layout: bool,
-    pub has_middleware: bool,
+    /// Every `_uf.middleware.js` that runs before this route resolves,
+    /// outermost first.
+    ///
+    /// Inherited down the tree, the way layouts are, because that is what
+    /// `packages/vite/internal/routes.js` puts on the route table the build
+    /// actually runs (`ownMiddleware`, accumulated root-first). This field was
+    /// a `has_middleware: bool` read off `directory`, and the two answer
+    /// different questions: `app/dashboard/_uf.middleware.js` guards
+    /// `/dashboard/settings`, whose own directory declares nothing. Anything
+    /// asking "is this route guarded" — and `uf build` now asks, so it can say
+    /// which prerendered files a guard never sees — got `false` from the
+    /// per-directory form for every route below the one that declared it.
+    ///
+    /// Kept in the `.js` grammar `reserved` documents. The build's router also
+    /// accepts `.jsx`, which this discovery does not, for pages as much as for
+    /// middleware; see ubugeeei-prod/uf#386.
+    pub middleware: Vec<Utf8PathBuf>,
+}
+
+impl Route {
+    /// Whether this route's own directory declares a middleware.
+    ///
+    /// The question `uf inspect --json`'s `hasMiddleware` has always answered.
+    #[must_use]
+    pub fn has_own_middleware(&self) -> bool {
+        self.middleware
+            .last()
+            .is_some_and(|file| file.parent() == Some(self.directory.as_path()))
+    }
+
+    /// Whether any middleware runs before this route resolves.
+    #[must_use]
+    pub fn is_guarded(&self) -> bool {
+        !self.middleware.is_empty()
+    }
+
+    /// Whether `url` — a concrete path, with every parameter already filled
+    /// in — is served by this route.
+    ///
+    /// The prerender names the files it wrote by URL, not by route, so this is
+    /// how a caller gets from `/posts/hello-world` back to `/posts/:slug` and
+    /// the guards above it. A catch-all consumes the rest of the path and
+    /// requires at least one segment to consume, which is what
+    /// `[...slug]` means: `/docs` is not `/docs/[...slug]`.
+    #[must_use]
+    pub fn matches_url(&self, url: &str) -> bool {
+        let mut actual = url
+            .split('?')
+            .next()
+            .unwrap_or(url)
+            .split('/')
+            .filter(|segment| !segment.is_empty());
+        let mut expected = self.path.split('/').filter(|segment| !segment.is_empty());
+
+        while let Some(segment) = expected.next() {
+            if segment.starts_with(':') && segment.ends_with('*') {
+                // The last thing in the path, so whatever is left of the URL
+                // is the catch-all's, and there must be some. That it is last
+                // is [`discover_routes`]'s doing: it refuses a `[...param]`
+                // with a routing directory below it, because a catch-all takes
+                // every remaining segment and leaves nothing for what follows.
+                // `expected.next().is_none()` is what says so here rather than
+                // assuming it, since `Route` is a public struct anyone can
+                // fill in by hand.
+                return actual.next().is_some() && expected.next().is_none();
+            }
+            let Some(given) = actual.next() else {
+                return false;
+            };
+            if !segment.starts_with(':') && segment != given {
+                return false;
+            }
+        }
+        actual.next().is_none()
+    }
+
+    /// How specific this route is, for ranking two that both serve a URL.
+    ///
+    /// A static segment outranks a parameter, which outranks a catch-all, and
+    /// a longer path outranks a shorter one — three, two and one per segment.
+    ///
+    /// `packages/router/internal/runtime.js`'s `specificity` is the source of
+    /// truth for these numbers, and this is a copy of it. Only one of the two
+    /// decides which route answers a request, and it is that one: it runs in
+    /// the server and in the browser, and this crate runs in neither. What
+    /// this copy is for is `uf build` saying *which* route a prerendered
+    /// document belongs to, which is a claim about what the runtime will do
+    /// and is worth nothing if the two disagree.
+    ///
+    /// Counting literal segments was the earlier approximation and is not the
+    /// same function: `/posts/:a/:b/edit` and `/posts/archive/:z*` both have
+    /// two literals and both serve `/posts/archive/foo/edit`, and the runtime
+    /// answers with the first. Naming the second in a warning describes a
+    /// request that never happens.
+    ///
+    /// Two routes can still tie — `app/(marketing)/posts/new` and
+    /// `app/posts/new` are one path twice — and the runtime breaks that tie by
+    /// route-table order, which is not this crate's ordering. A tie is a
+    /// genuinely ambiguous project rather than a disagreement between the two
+    /// rankings, and it is left alone here.
+    #[must_use]
+    pub fn specificity(&self) -> usize {
+        self.path
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .map(|segment| match segment.as_bytes() {
+                [b':', .., b'*'] => 1,
+                [b':', ..] => 2,
+                _ => 3,
+            })
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +171,35 @@ pub enum RouterError {
     },
     #[error("path is not UTF-8: {0}")]
     NonUtf8(String),
+    /// A `[...param]` directory with a routing directory below it.
+    ///
+    /// Refused rather than served, because there is nothing to serve. A
+    /// catch-all takes every segment of the URL that is left, so a segment
+    /// after it has nothing to match against: `packages/router/internal/
+    /// runtime.js`'s `matchSegments` compares `parts[parts.length]` — which is
+    /// `undefined` — against the following segment and gives up, and
+    /// [`Route::matches_url`] returns `false` for every URL. Both routers
+    /// already agreed the page was unreachable; discovery was the only place
+    /// that did not say so, and it produced a route that looked live in
+    /// `uf inspect`, in the generated `RoutePath`, and in the guard report
+    /// `uf build` writes — where a prerendered document under it was simply
+    /// left out.
+    #[error(
+        "{page}: `{catch_all}` is a catch-all and `{following}` is below it, so no URL can reach \
+         this page — a catch-all takes every segment of the path that is left, and there is \
+         nothing after it to match `{following}` with. Move the page so `{catch_all}` is the last \
+         routing directory in it, or make `{catch_all}` a `[{parameter}]`."
+    )]
+    NonTerminalCatchAll {
+        /// The `_uf.page.js` that cannot be reached.
+        page: Utf8PathBuf,
+        /// The catch-all directory, as it is written on disk.
+        catch_all: String,
+        /// The first routing directory below it.
+        following: String,
+        /// The catch-all's parameter name, for the suggested spelling.
+        parameter: String,
+    },
 }
 
 pub fn discover_routes(
@@ -85,12 +225,26 @@ pub fn discover_routes(
             .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
         let directory = page.parent().unwrap_or(&app_root).to_path_buf();
         let relative = directory.strip_prefix(&app_root).unwrap_or(&directory);
+        // Before the path is built, because the path is where the evidence
+        // goes missing: `/docs/:slug*/edit` reads like a route, and only the
+        // directory names say which `[...param]` the author wrote.
+        if let Some((catch_all, following)) = non_terminal_catch_all(relative) {
+            return Err(RouterError::NonTerminalCatchAll {
+                parameter: catch_all
+                    .trim_start_matches("[...")
+                    .trim_end_matches(']')
+                    .to_string(),
+                page,
+                catch_all,
+                following,
+            });
+        }
         let (path, params) = route_path_and_params(relative);
 
         routes.push(Route {
             path: path.to_compact_string(),
             has_layout: directory.join(RESERVED_LAYOUT).exists(),
-            has_middleware: directory.join(RESERVED_MIDDLEWARE).exists(),
+            middleware: middleware_chain(&app_root, &directory),
             directory,
             page,
             params,
@@ -99,6 +253,32 @@ pub fn discover_routes(
 
     routes.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(routes)
+}
+
+/// Every `_uf.middleware.js` from `app_root` down to `directory`, outermost
+/// first.
+///
+/// Walked upwards and reversed rather than accumulated on the way down,
+/// because `discover_routes` finds pages with `WalkDir` and never sees a
+/// directory as a directory. The result is the same list
+/// `packages/vite/internal/routes.js` builds on its descent, and it has to be:
+/// one of the two decides what runs, and the other decides what `uf build`
+/// says about it.
+fn middleware_chain(app_root: &Utf8Path, directory: &Utf8Path) -> Vec<Utf8PathBuf> {
+    let mut chain = Vec::new();
+    let mut current = Some(directory);
+    while let Some(dir) = current {
+        let file = dir.join(RESERVED_MIDDLEWARE);
+        if file.is_file() {
+            chain.push(file);
+        }
+        if dir == app_root {
+            break;
+        }
+        current = dir.parent();
+    }
+    chain.reverse();
+    chain
 }
 
 pub fn find_reserved_file_violations(
@@ -190,6 +370,32 @@ pub fn write_router_manifest(
         source,
     })?;
     Ok(Some(manifest))
+}
+
+/// The first `[...param]` in `relative` that has a routing directory below it,
+/// with that directory, if there is one.
+///
+/// A `(group)` is not a routing directory — it contributes no segment to the
+/// path — so `app/files/[...path]/(internal)/` leaves the catch-all last and
+/// is fine.
+fn non_terminal_catch_all(relative: &Utf8Path) -> Option<(String, String)> {
+    let mut catch_all: Option<&str> = None;
+    for segment in relative
+        .as_str()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+    {
+        if segment.starts_with('(') && segment.ends_with(')') {
+            continue;
+        }
+        if let Some(found) = catch_all {
+            return Some((found.to_string(), segment.to_string()));
+        }
+        if segment.starts_with("[...") && segment.ends_with(']') {
+            catch_all = Some(segment);
+        }
+    }
+    None
 }
 
 fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
