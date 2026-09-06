@@ -350,6 +350,93 @@ fn the_corpus_keeps_its_tree_and_comments() {
     }
 }
 
+/// Top-level `await` is a module's, and the printer's guarantees hold over it.
+///
+/// ubugeeei-prod/uf#204. These get their own test rather than a `CORPUS`
+/// entry, for the reason `CORPUS` documents: adding one there reshuffles
+/// which mutation every other entry gets in `no_mutated_input_panics`.
+///
+/// The layout question a top-level `await` raises is the one the fixture
+/// `top_level_await` pins against Prettier; what is pinned here is that the
+/// answer does not move between passes or between configurations, which is
+/// where this repository has been bitten before.
+#[test]
+fn a_module_that_awaits_at_its_top_level_is_idempotent_under_every_configuration() {
+    for config in configurations() {
+        for source in AWAITING_MODULES {
+            let once = format_source(source, &config)
+                .unwrap_or_else(|error| panic!("{source:?} formats: {error}"))
+                .output;
+            let twice = format_source(&once, &config)
+                .unwrap_or_else(|error| panic!("{source:?} reformats: {error}"))
+                .output;
+            similar_asserts::assert_eq!(once, twice, "not idempotent for {source:?}");
+        }
+    }
+}
+
+#[test]
+fn a_module_that_awaits_at_its_top_level_keeps_its_tree_and_comments() {
+    for source in AWAITING_MODULES {
+        let output = format_source(source, &FmtConfig::default())
+            .unwrap_or_else(|error| panic!("{source:?} formats: {error}"))
+            .output;
+        similar_asserts::assert_eq!(
+            support::structure(source),
+            support::structure(&output),
+            "{source:?} changed the program"
+        );
+        assert_eq!(
+            support::comment_multiset(source),
+            support::comment_multiset(&output),
+            "{source:?} changed a comment"
+        );
+    }
+}
+
+/// Modules whose `await` stands outside any function.
+///
+/// Every one of them says it is a module — that is what `import` and `export`
+/// are doing here, and without one the same lines are a script in which
+/// `await` is an ordinary identifier.
+const AWAITING_MODULES: &[&str] = &[
+    "export const value = await load();\n",
+    "import { load } from \"./io.js\";\nawait load();\n",
+    "import { load } from \"./io.js\";\nconst port = (await load()).port;\n",
+    "import { load } from \"./io.js\";\nconst merged = { ...(await load()) };\n",
+    "import { stream } from \"./io.js\";\nfor await (const row of stream()) {\n  send(row);\n}\n",
+    "export const value = await /* soon */ load();\n",
+    "export const both = [await load(), await load()];\n",
+    "export const nested = await (await load()).next();\n",
+    "import { load } from \"./io.js\";\nif (ready) {\n  await load();\n}\n",
+    "export async function reload() {\n  return await load();\n}\nexport const first = await reload();\n",
+];
+
+/// `await` outside an `async` function is still an error where the language
+/// still says it is: in a script, and inside a function that is not `async`.
+///
+/// The other half of ubugeeei-prod/uf#204. A formatter that accepted these
+/// would be printing its own guess at what the author meant.
+#[test]
+fn await_outside_an_async_function_is_still_refused() {
+    for source in [
+        // A script: no `import`, no `export`, so `await` is an identifier.
+        "const value = await load();\n",
+        "await load();\n",
+        // A module, but not its top level.
+        "export function read() {\n  return await load();\n}\n",
+        "export const read = () => await load();\n",
+        "export class Reader {\n  read() {\n    return await load();\n  }\n}\n",
+    ] {
+        let error = format_source(source, &FmtConfig::default())
+            .expect_err(&format!("{source:?} must be refused"));
+        assert!(
+            matches!(error, FormatError::Flow(_)),
+            "{source:?} gave {error:?}"
+        );
+    }
+}
+
 /// Invalid syntax is an error, never a rewrite: the caller leaves the file
 /// alone rather than saving the parser's guess at what was meant.
 #[test]

@@ -7,18 +7,22 @@
 //! grammar uf documents, which is what happened while a QuickJS-hosted build of
 //! Flow's JavaScript parser stood in for it on stable toolchains.
 //!
-//! Three things sit beside that boundary, and all of them are here rather than
+//! Four things sit beside that boundary, and all of them are here rather than
 //! in the crates that use them because this is the crate that owns Flow syntax:
 //!
 //! * [`scan`] is the byte-level token scanner — one scanner for uf source, used
 //!   by the eraser below and by anything else that rewrites a module;
 //! * [`strip`] erases Flow types, which is what turns a `// @flow` module into
 //!   the JavaScript a browser runs;
+//! * [`module`] reads a module as a module, which is the one thing the port
+//!   cannot be asked and the one place ECMAScript's two goal symbols differ
+//!   in a way uf's users notice: top-level `await`;
 //! * [`explain`] is what uf says about the one failure the parser describes
 //!   badly, because it is describing a construct it does not implement rather
 //!   than a mistake.
 
 pub mod explain;
+pub mod module;
 pub mod parse;
 pub mod scan;
 pub mod strip;

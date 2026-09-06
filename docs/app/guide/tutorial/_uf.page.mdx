@@ -26,13 +26,12 @@ installs a plugin, writes a second config, or configures a transform.
 
 ## Before you start
 
-The `@uniflowed/*` packages are **not on npm yet**, so `uf install` in a fresh
-project cannot fetch them; see
+The `@uniflowed/*` packages a scaffolded project depends on **are** on npm, as
+prereleases under the `alpha` tag; see
 [publishing status](/reference/packages). This application was written and run
-inside uf's own repository, where the packages resolve through the npm
-workspace. Everything else here — the commands, the code, the output — is what
-a published toolchain gives you, and the day the packages land, the only step
-that changes is the one that installs them.
+inside uf's own repository, where every package resolves through the npm
+workspace instead — which is the only difference between this transcript and
+the same commands in a fresh project.
 
 You need [uf installed](/guide/install) and a JavaScript host. The transcripts
 below are `uf 0.0.0-alpha.5` on Node v25.8.1.
