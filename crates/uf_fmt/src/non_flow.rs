@@ -31,13 +31,18 @@ mod tests;
 /// Why a non-Flow file could not be formatted.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum NonFlowError {
-    /// The formatter's binary is not on `PATH`.
+    /// The formatter the *project* named is not on `PATH`.
     ///
     /// Its own message is "No such file or directory", which sends a reader
     /// looking for the *source* file rather than the formatter.
+    ///
+    /// This is an error only because `fmt.nonFlow.formatter` says so in the
+    /// project's own `uf.config.js`. The same binary missing when uf picked it
+    /// is [`NonFlowOutcome::Skipped`] — see the note there.
     #[error(
-        "{formatter} is not installed, so {count} non-Flow files were left alone. \
-         Install it, or set `fmt.nonFlow.formatter` to \"none\" in uf.config.js."
+        "uf.config.js asks for {formatter}, which is not installed, so {} skipped. \
+         Install it, or set `fmt.nonFlow.formatter` to \"none\".",
+        files_were(*count)
     )]
     NotInstalled {
         /// The command uf tried to run.
@@ -53,6 +58,82 @@ pub enum NonFlowError {
         /// What it said, trimmed to something a terminal can hold.
         detail: CompactString,
     },
+}
+
+/// What a run over the non-Flow files produced.
+///
+/// Three answers rather than two, because "uf could not look at these" is not
+/// the same answer as "these are formatted" *or* as "these are not". Folding
+/// it into either one is what made `uf fmt` fail in a project uf had just
+/// scaffolded: nothing installs the default formatter there, so the first
+/// `uf fmt` a reader ever ran exited 1 over the lockfile `uf install` had
+/// written a moment earlier — a file uf produced itself, that nothing was
+/// wrong with. See ubugeeei-prod/uf#441.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NonFlowOutcome {
+    /// Everything handed over is formatted, or there was nothing to hand over.
+    Formatted,
+    /// Under `check`, the formatter reported that something needs formatting.
+    Unformatted,
+    /// The formatter uf chose is not installed, so these files are exactly as
+    /// they were and nothing is known about them.
+    ///
+    /// A warning rather than an error, and the distinction is where the choice
+    /// came from rather than what happened. uf's default is a convenience: a
+    /// project that never mentioned a formatter did not ask for one, and
+    /// failing its `uf fmt` over a tool it never named reports uf's own
+    /// default as the project's mistake. A project that wrote
+    /// `fmt.nonFlow.formatter` down stated a requirement, and an unmet
+    /// requirement is [`NonFlowError::NotInstalled`].
+    ///
+    /// The exit code then means what it can honestly mean: every file uf was
+    /// able to format is formatted. `uf fmt --check` in CI still fails on an
+    /// unformatted Flow file, and a project that wants CI to insist on the
+    /// non-Flow half says so by naming the formatter.
+    Skipped {
+        /// The command that is not installed.
+        formatter: CompactString,
+        /// The files nobody looked at, so the reader can see which.
+        paths: Vec<String>,
+    },
+}
+
+impl NonFlowOutcome {
+    /// Whether every file handed over came back formatted.
+    ///
+    /// Skipping is not formatted and not unformatted, and a caller asking this
+    /// question wants "is there anything to report", so a skip answers `false`
+    /// and reports itself separately.
+    #[must_use]
+    pub const fn is_formatted(&self) -> bool {
+        matches!(self, Self::Formatted)
+    }
+}
+
+/// "1 non-Flow file was" / "2 non-Flow files were".
+///
+/// The count and its verb agree. "1 non-Flow files were left alone" was the
+/// first sentence a new project ever saw from uf, and a tool that cannot count
+/// to one is a tool a reader stops trusting about the rest of the sentence.
+fn files_were(count: usize) -> String {
+    if count == 1 {
+        "1 non-Flow file was".to_string()
+    } else {
+        format!("{count} non-Flow files were")
+    }
+}
+
+/// What to print when the formatter uf chose is not installed.
+///
+/// Says which files, in the caller's own list, and both ways out: install it,
+/// or say that this project does not want one.
+#[must_use]
+pub fn skipped_message(formatter: &str, count: usize) -> String {
+    format!(
+        "{formatter} is not installed, so {} skipped. Install it, or set \
+         `fmt.nonFlow.formatter` to \"none\" in uf.config.js.",
+        files_were(count)
+    )
 }
 
 /// How many bytes of a formatter's complaint are worth repeating.
@@ -134,31 +215,34 @@ pub fn invocation(
     })
 }
 
-/// Run `formatter` over `paths`, from `root`.
+/// Run the configured formatter over `paths`, from `root`.
 ///
-/// Returns `Ok(false)` when the formatter reported that something is not
-/// formatted — which is only meaningful under `check`, and is a verdict rather
-/// than a failure. `Ok(true)` means everything it was given is formatted.
+/// Which formatter, and whether the project named it, are one decision and are
+/// both read from `config` — they used to arrive separately, and a caller that
+/// passed one from the config and the other from somewhere else would decide
+/// "the project asked for this" about a formatter the project never chose.
 ///
-/// Formatting nothing is success without running anything: a project with no
-/// JSON should not need a formatter installed to run `uf fmt`.
+/// Formatting nothing is [`NonFlowOutcome::Formatted`] without running
+/// anything: a project with no JSON should not need a formatter installed to
+/// run `uf fmt`.
 ///
 /// # Errors
 ///
-/// [`NonFlowError::NotInstalled`] when the binary is not on `PATH`, and
-/// [`NonFlowError::Failed`] when it ran and failed for any other reason.
+/// [`NonFlowError::NotInstalled`] when the binary the project named is not on
+/// `PATH` — when uf named it instead, that is
+/// [`NonFlowOutcome::Skipped`] and not an error — and
+/// [`NonFlowError::Failed`] when the formatter ran and failed.
 pub fn run(
-    formatter: NonFlowFormatter,
     root: &Utf8Path,
     paths: &[String],
     check: bool,
     config: &FmtConfig,
-) -> Result<bool, NonFlowError> {
-    let Some(invocation) = invocation(formatter, check, config) else {
-        return Ok(true);
+) -> Result<NonFlowOutcome, NonFlowError> {
+    let Some(invocation) = invocation(config.non_flow.formatter, check, config) else {
+        return Ok(NonFlowOutcome::Formatted);
     };
     if paths.is_empty() {
-        return Ok(true);
+        return Ok(NonFlowOutcome::Formatted);
     }
 
     let output = Command::new(program_path(root, &invocation.program).as_str())
@@ -171,9 +255,17 @@ pub fn run(
     let output = match output {
         Ok(output) => output,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(NonFlowError::NotInstalled {
+            // The one place the decision is made: a tool the project asked for
+            // is a requirement, and a tool uf suggested is a suggestion.
+            if config.non_flow.chosen_by_project {
+                return Err(NonFlowError::NotInstalled {
+                    formatter: invocation.program,
+                    count: paths.len(),
+                });
+            }
+            return Ok(NonFlowOutcome::Skipped {
                 formatter: invocation.program,
-                count: paths.len(),
+                paths: paths.to_vec(),
             });
         }
         Err(error) => {
@@ -185,14 +277,14 @@ pub fn run(
     };
 
     if output.status.success() {
-        return Ok(true);
+        return Ok(NonFlowOutcome::Formatted);
     }
 
     // Under `check`, a non-zero exit is the formatter saying a file is not
     // formatted — the answer uf asked for, not an error. Anything else is a
     // failure, and the two are told apart by whether uf asked a question.
     if check {
-        return Ok(false);
+        return Ok(NonFlowOutcome::Unformatted);
     }
 
     Err(NonFlowError::Failed {

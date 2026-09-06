@@ -16,8 +16,9 @@ ones, in one pass, with one report.
 
 <div className="command"><code>uf fmt</code></div>
 
-Formats every Flow, JavaScript, JSON, Markdown and CSS file in the project.
-`--check` exits non-zero instead of writing, which is what CI should run.
+Formats every Flow, JavaScript, JSON, CSS and TypeScript file in the project —
+Markdown is not among them. `--check` exits non-zero instead of writing, which
+is what CI should run.
 
 Flow files go through the official Flow parser and a printer written for it, so
 `component`, `hook`, `renders`, `match` and enums are formatted as first-class
@@ -70,9 +71,17 @@ GraphQL is the only embedded language uf reads. `css`, `html`, `sql` and
 `markdown` templates go out exactly as written, where Prettier would format
 them.
 
-Files uf has no opinion about are handed to Biome, which is also Rust and also
-fast, so a repository with a `README.md` and a `package.json` in it does not
-need a second formatter installed.
+Files uf has no opinion about — JSON, CSS, TypeScript — are handed to Biome,
+which is also Rust and also fast. uf runs the binary your project has rather
+than shipping one, so Biome is a formatter you install; `fmt.nonFlow.formatter`
+names a different one, or `"none"`.
+
+When it is not installed, `uf fmt` says so and names the files it left alone,
+and that is a warning rather than a failure: uf picked Biome, you did not, and
+the exit code answers for the files uf can format itself. Write
+`fmt.nonFlow.formatter` in `uf.config.js` and the answer changes — a formatter
+you asked for by name and do not have fails the run, which is what a CI job
+that checks the JSON as well wants.
 
 Measured on a 133 kB Flow and JSX file:
 

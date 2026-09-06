@@ -38,7 +38,11 @@
 - [x] Actually run Biome for `.json`, `.jsonc`, `.css` and `.ts`. `uf fmt`
       collects the non-Flow files and hands them to the command named by
       `fmt.nonFlow.formatter`, resolved from `node_modules/.bin` before
-      `PATH`.
+      `PATH`. A formatter that is not installed is named, with the files it
+      left alone, and only ends the run when the project named it: uf's
+      default is a suggestion, and the first `uf fmt` after `uf create` and
+      `uf install` used to exit 1 over the lockfile `uf install` had just
+      written.
 - [x] Default formatter settings to double quotes and semicolons.
 - [x] Add large-project file discovery tests with ignored directories and non-UTF8 guardrails.
       `uf_project`'s tests now walk 5,000 sources past 20,000 ignored ones

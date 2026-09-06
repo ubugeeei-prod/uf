@@ -3,7 +3,7 @@ use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
 
@@ -282,18 +282,57 @@ pub enum FlowFormatPrinter {
     UfRust,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct NonFlowFormatConfig {
     pub formatter: NonFlowFormatter,
+    /// Whether the project named that formatter, or uf did.
+    ///
+    /// Not a setting: nothing in `uf.config.js` writes it, and it is skipped
+    /// on the way out so `uf inspect --json` keeps answering "which formatter
+    /// will run" with one field. It records where the answer came from, which
+    /// is a different question and the one that decides whether a missing
+    /// binary is a warning or an error. uf's default is a convenience and must
+    /// never fail a project that did not ask for it; `fmt.nonFlow.formatter`
+    /// written out by hand is a requirement the project stated, and a stated
+    /// requirement that is not met is an error. See ubugeeei-prod/uf#441.
+    #[serde(skip)]
+    pub chosen_by_project: bool,
 }
 
 impl Default for NonFlowFormatConfig {
     fn default() -> Self {
         Self {
             formatter: NonFlowFormatter::Biome,
+            chosen_by_project: false,
         }
+    }
+}
+
+/// Read by hand rather than derived, because the derive cannot tell "the
+/// project wrote `biome`" from "the project wrote nothing and got uf's
+/// default" — `#[serde(default)]` fills the field in either way and the two
+/// are indistinguishable afterwards. Reading the key as an `Option` keeps that
+/// difference, and collapsing it here means every reader still sees a plain
+/// `NonFlowFormatter` rather than an option it has to unwrap.
+impl<'de> Deserialize<'de> for NonFlowFormatConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Fields {
+            #[serde(default)]
+            formatter: Option<NonFlowFormatter>,
+        }
+
+        let fields = Fields::deserialize(deserializer)?;
+        Ok(Self {
+            formatter: fields.formatter.unwrap_or_default(),
+            chosen_by_project: fields.formatter.is_some(),
+        })
     }
 }
 

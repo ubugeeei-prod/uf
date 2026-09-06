@@ -419,6 +419,12 @@ Runs uf's rules and Flow's built-in lints. `--json` for the report.
 Formats the project. `--check` reports what would change and exits non-zero
 instead of writing.
 
+JSON, CSS and TypeScript go to `fmt.nonFlow.formatter` — Biome by default —
+which uf runs rather than ships. A formatter uf chose and the project does not
+have is reported, with the files it left alone, and does not change the exit
+code; one the project named in `uf.config.js` is an error, because the project
+asked for it.
+
 ### uf test [PATH...]
 
 Runs the test suite. A PATH argument keeps only files whose path contains it.
