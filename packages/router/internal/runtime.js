@@ -1183,7 +1183,23 @@ export type AppProps = {|
   readonly initial: ResolvedRoute,
 |};
 
-const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
+/**
+ * Whether there is a document to navigate.
+ *
+ * Asked every time rather than answered once at module scope, and the
+ * difference is not a style preference. The answer is a constant inside a
+ * browser bundle and inside a server process; it is *not* a constant inside a
+ * test runner, where a DOM is installed on the first render and one worker
+ * serves many files out of one module registry. Latched, the first file in a
+ * worker to import this module decided for every file after it whether a
+ * `Link` navigates or silently does nothing — and a server-rendering test
+ * imports it before any document exists. See ubugeeei-prod/uf#445.
+ *
+ * The cost is a `typeof` per navigation, which is a navigation.
+ */
+function isBrowser(): boolean {
+  return typeof window !== "undefined" && typeof document !== "undefined";
+}
 
 /**
  * Provides the current route to the tree and performs navigation.
@@ -1198,7 +1214,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
   const [pending, setPending] = useState<boolean>(false);
 
   const navigate = useCallback(async (to: string, options?: NavigateOptions): Promise<void> => {
-    if (!isBrowser) {
+    if (!isBrowser()) {
       return;
     }
     const target = new URL(to, window.location.href);
@@ -1244,7 +1260,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
   }, []);
 
   useEffect(() => {
-    if (!isBrowser) {
+    if (!isBrowser()) {
       return undefined;
     }
     const onPopState = () => {
@@ -1274,7 +1290,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
       push: (to, options) => navigate(to, options),
       replace: (to) => navigate(to, { replace: true }),
       prefetch: async (to) => {
-        if (!isBrowser) {
+        if (!isBrowser()) {
           return;
         }
         const target = new URL(to, window.location.href);
@@ -1289,7 +1305,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
         ]);
       },
       refresh: async () => {
-        if (!isBrowser) {
+        if (!isBrowser()) {
           return;
         }
         const nextResolved = await resolveMatch(
@@ -1301,12 +1317,12 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
         });
       },
       back: () => {
-        if (isBrowser) {
+        if (isBrowser()) {
           window.history.back();
         }
       },
       forward: () => {
-        if (isBrowser) {
+        if (isBrowser()) {
           window.history.forward();
         }
       },
