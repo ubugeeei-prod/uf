@@ -110,3 +110,45 @@ fn a_hook_the_check_cannot_classify_is_reported_as_a_warning() {
     assert_eq!(diagnostics[0].severity(), uf_rsc::RscSeverity::Warn);
     assert!(diagnostics[0].to_string().contains("useRoute"));
 }
+
+/// A scan failure sits in the middle of the ordinary recovery sequence, and it
+/// must not swallow the line that says the violation is gone.
+///
+/// A violation is on screen; the next save leaves a file the scan cannot read,
+/// which is what a half-written file looks like from here; the save after that
+/// fixes both. What the reader sees at the end is the old violation, and the
+/// only thing that replaces it is `Cleared`. Remembering what was *rendered*
+/// separately from the last successful scan is what makes that possible: the
+/// failure is entitled to forget the scan, so that the next success is drawn in
+/// full, and not entitled to forget the screen.
+#[test]
+fn a_violation_fixed_across_a_failed_scan_is_still_cleared() {
+    let (_dir, root) = project(TOUCHES_THE_BROWSER);
+    let mut report = RscReport::new(&root);
+    assert_eq!(rules(&report.refresh()), ["rsc/client-only-api-in-server"]);
+
+    std::fs::write(root.join("app/half-written.js"), [0xff, 0xfe, 0x00]).unwrap();
+    let update = report.refresh();
+    assert!(matches!(update, RscUpdate::Failed(_)), "{update:?}");
+
+    std::fs::remove_file(root.join("app/half-written.js")).unwrap();
+    std::fs::write(root.join("app/greeting.js"), CLEAN).unwrap();
+    assert_eq!(report.refresh(), RscUpdate::Cleared);
+    assert_eq!(report.refresh(), RscUpdate::Unchanged);
+}
+
+/// And a project that was clean before the failure still says nothing after
+/// it: `Cleared` replaces a violation on screen, and there was none.
+#[test]
+fn a_clean_project_across_a_failed_scan_stays_quiet() {
+    let (_dir, root) = project(CLEAN);
+    let mut report = RscReport::new(&root);
+    assert_eq!(report.refresh(), RscUpdate::Unchanged);
+
+    std::fs::write(root.join("app/half-written.js"), [0xff, 0xfe, 0x00]).unwrap();
+    let update = report.refresh();
+    assert!(matches!(update, RscUpdate::Failed(_)), "{update:?}");
+
+    std::fs::remove_file(root.join("app/half-written.js")).unwrap();
+    assert_eq!(report.refresh(), RscUpdate::Unchanged);
+}

@@ -64,9 +64,20 @@ pub(crate) struct RscReport {
     root: Utf8PathBuf,
     build_id: BuildId,
     options: ProjectScanOptions,
-    /// The diagnostics last rendered. `None` before the first scan and after a
-    /// failed one, so the next success is always rendered in full.
+    /// The diagnostics the last successful scan found. `None` before the first
+    /// scan and after a failed one, so the next success is always rendered in
+    /// full.
     last: Option<Vec<RscDiagnostic>>,
+    /// Whether a violation is on the reader's screen.
+    ///
+    /// Not derivable from `last`, which is why it is kept. `last` is what the
+    /// last *scan* found and is cleared by a failure so the next success
+    /// redraws; this is what the last *render* put on the terminal, and a
+    /// failure does not take it off. Without the two apart, the sequence
+    /// report → failed scan → clean project answered [`RscUpdate::Unchanged`]
+    /// — leaving the violation on screen with nothing to say it was fixed, at
+    /// exactly the moment the reader fixed it.
+    displayed: bool,
     /// The last scan failure, so an unreadable file is reported once rather
     /// than on every save until it is fixed.
     last_error: Option<String>,
@@ -80,6 +91,7 @@ impl RscReport {
             build_id: BuildId::from_env_or_generate(),
             options: ProjectScanOptions::default(),
             last: None,
+            displayed: false,
             last_error: None,
         }
     }
@@ -98,6 +110,11 @@ impl RscReport {
             // stop: the file being edited is very often the unreadable one.
             Err(error) => {
                 let message = format!("the server-component analysis could not run: {error}");
+                // The scan is forgotten and the screen is not. A failure says
+                // nothing about whether the violations it cannot recompute are
+                // still true, so the next success redraws them in full; but it
+                // also does not erase the ones already printed, and the reader
+                // is still owed the line that says they are gone.
                 self.last = None;
                 if self.last_error.as_ref() == Some(&message) {
                     return RscUpdate::Unchanged;
@@ -112,18 +129,19 @@ impl RscReport {
         if self.last.as_ref() == Some(&diagnostics) {
             return RscUpdate::Unchanged;
         }
-        let was_reporting = self.last.as_ref().is_some_and(|last| !last.is_empty());
         self.last = Some(diagnostics.clone());
 
         if diagnostics.is_empty() {
-            // Only worth a line when it replaces one. "Still fine" on every
-            // keystroke is the noise that makes a terminal stop being read.
-            return if was_reporting {
+            // Only worth a line when it replaces one that is still on screen.
+            // "Still fine" on every keystroke is the noise that makes a
+            // terminal stop being read.
+            return if std::mem::take(&mut self.displayed) {
                 RscUpdate::Cleared
             } else {
                 RscUpdate::Unchanged
             };
         }
+        self.displayed = true;
         RscUpdate::Reported(diagnostics)
     }
 }
