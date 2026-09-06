@@ -7,7 +7,7 @@
 // the three reset verbs, which are easy to conflate, and `spyOn`'s restore,
 // which has to put an inherited method back without leaving a copy behind.
 
-import { describe, expect, it, uft } from "@uniflowed/test";
+import { UnsupportedError, describe, expect, it, uft } from "@uniflowed/test";
 
 describe("uft.fn", () => {
   it("records the calls and what they returned", () => {
@@ -237,20 +237,17 @@ describe("uft.waitFor", () => {
   });
 });
 
-describe("what is deliberately missing", () => {
-  it("says what uft.mock would take rather than doing nothing", () => {
-    // A binding that silently did nothing would be worse than not having it: a
-    // test would pass while mocking nothing at all.
-    for (const binding of ["mock", "unmock", "importActual", "importMock", "resetModules"]) {
-      expect(() => (uft: $FlowFixMe)[binding]()).toThrow();
-    }
+describe("a binding this host cannot give", () => {
+  // The seven module-mocking bindings used to be here, throwing: interception
+  // belongs to the loader, and uf had not wired it. It is wired now
+  // (`module-mock.test.js`), and what is left of that arrangement is the error
+  // itself, which a host without synchronous module hooks still raises.
+  it("names the binding and what it would take", () => {
+    const error = new UnsupportedError("mock", "this host has no synchronous module hooks");
 
-    let message = "";
-    try {
-      uft.mock("./somewhere.js");
-    } catch (error) {
-      message = String(error);
-    }
-    expect(message).toContain("loader");
+    expect(error.name).toBe("UnsupportedError");
+    expect(error.binding).toBe("mock");
+    expect(String(error)).toContain("uft.mock");
+    expect(String(error)).toContain("this host has no synchronous module hooks");
   });
 });

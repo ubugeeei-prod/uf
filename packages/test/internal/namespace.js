@@ -18,38 +18,34 @@
 // name — two very different things one dot apart. `uft` is three characters,
 // belongs to nothing else, and is what a reader types a hundred times a file.
 //
-// What is *not* here is as deliberate. `uft.mock` intercepts a module before it
-// is imported, which needs the loader rather than the runner, and uf's loader is
-// `@uniflowed/host` — so it is a real piece of work rather than a wrapper, and
-// it is not pretended at here. A missing binding throws with what it would take;
-// a binding that silently did nothing would be worse than not having it.
+// `uft.mock` and the six names beside it intercept a module before it is
+// imported, which is the loader's job rather than the runner's: by the time the
+// runner sees an `import`, the module has been fetched, linked and evaluated.
+// So the mechanism is `@uniflowed/host`'s (`module-mocks.js`) and the API is
+// `./modules.js`'s, and this file only names them. A host that cannot provide
+// synchronous module hooks gets an `UnsupportedError` that says which host it
+// is and what to do instead — never a binding that silently does nothing.
 
+import {
+  importActual as importActualModule,
+  importMock as importMockModule,
+  mock as mockModule,
+  resetModules as resetModulesNow,
+  unmock as unmockModule,
+} from "./modules.js";
 import { clearAllMocks, fn, resetAllMocks, restoreAllMocks, spyOn } from "./spy.js";
 import * as timers from "./timers.js";
+import { UnsupportedError } from "./unsupported.js";
+
+// Declared in `./unsupported.js` rather than here, because `./modules.js` needs
+// it too and a class both halves of a pair reach for is a third module.
+export { UnsupportedError } from "./unsupported.js";
 
 /** Environment variables `stubEnv` replaced, and what they were. */
 const stubbedEnv: Map<string, string | void> = new Map();
 
 /** Globals `stubGlobal` replaced, and what they were. */
 const stubbedGlobals: Map<string, { readonly owned: boolean, readonly value: mixed }> = new Map();
-
-/**
- * Raised for a `uft` namespace binding that is not implemented.
- *
- * Names what the binding needs rather than only that it is missing: `uft.mock`
- * is absent because module interception belongs to the loader, and a reader who
- * knows that can decide whether to wait or to restructure the test.
- */
-export class UnsupportedError extends Error {
-  /** The binding that was called. */
-  binding: string;
-
-  constructor(binding: string, reason: string) {
-    super(`uft.${binding} is not implemented yet: ${reason}`);
-    this.name = "UnsupportedError";
-    this.binding = binding;
-  }
-}
 
 /**
  * Read the process environment, whichever host this is.
@@ -190,17 +186,54 @@ export function mocked<T>(value: T): $FlowFixMe {
   return value;
 }
 
-/** Not implemented, and specific about what it would take. */
-function unsupported(binding: string, reason: string): () => empty {
-  return () => {
-    throw new UnsupportedError(binding, reason);
-  };
-}
+/**
+ * The `uft` namespace's type.
+ *
+ * Written out member by member rather than left as one `$FlowFixMe`, because
+ * the module-mocking half of it is the half a type can genuinely check: a
+ * factory that hands back the wrong shape for the module it is standing in for
+ * is an error at the call site, and that only works if `uft` has a type at all.
+ * The members that were already typed loosely keep the types they have —
+ * `typeof` reads them from their definitions, so this list cannot drift from
+ * them.
+ */
+export type Uft = {
+  readonly fn: typeof fn,
+  readonly spyOn: typeof spyOn,
+  readonly mocked: typeof mocked,
 
-/** The reason every module-interception binding is absent. */
-const NEEDS_LOADER =
-  "intercepting a module before it is imported belongs to the loader " +
-  "(`@uniflowed/host`), not to the runner, and uf has not wired it yet";
+  readonly clearAllMocks: typeof clearAllMocks,
+  readonly resetAllMocks: typeof resetAllMocks,
+  readonly restoreAllMocks: typeof restoreAllMocks,
+
+  readonly stubEnv: typeof stubEnv,
+  readonly unstubAllEnvs: typeof unstubAllEnvs,
+  readonly stubGlobal: typeof stubGlobal,
+  readonly unstubAllGlobals: typeof unstubAllGlobals,
+
+  readonly waitFor: typeof waitFor,
+  readonly waitUntil: typeof waitUntil,
+
+  readonly useFakeTimers: typeof timers.useFakeTimers,
+  readonly useRealTimers: typeof timers.useRealTimers,
+  readonly isFakeTimers: typeof timers.isFaked,
+  readonly advanceTimersByTime: typeof timers.advanceTimersByTime,
+  readonly advanceTimersByTimeAsync: typeof timers.advanceTimersByTimeAsync,
+  readonly advanceTimersToNextTimer: typeof timers.advanceTimersToNextTimer,
+  readonly runAllTimers: typeof timers.runAllTimers,
+  readonly runOnlyPendingTimers: typeof timers.runOnlyPendingTimers,
+  readonly getTimerCount: typeof timers.getTimerCount,
+  readonly setSystemTime: typeof timers.setSystemTime,
+  readonly getMockedSystemTime: typeof timers.getMockedSystemTime,
+
+  readonly mock: typeof mockModule,
+  readonly doMock: typeof mockModule,
+  readonly unmock: typeof unmockModule,
+  readonly doUnmock: typeof unmockModule,
+  readonly importActual: typeof importActualModule,
+  readonly importMock: typeof importMockModule,
+  readonly resetModules: typeof resetModulesNow,
+};
 
 /**
  * The `uft` namespace.
@@ -209,7 +242,7 @@ const NEEDS_LOADER =
  * per-instance, and freezing it means a test cannot leave a monkey-patch behind
  * for the next one.
  */
-export const uft: $FlowFixMe = Object.freeze({
+export const uft: Uft = Object.freeze({
   fn,
   spyOn,
   mocked,
@@ -240,12 +273,15 @@ export const uft: $FlowFixMe = Object.freeze({
   setSystemTime: timers.setSystemTime,
   getMockedSystemTime: timers.getMockedSystemTime,
 
-  // Module interception. Absent rather than faked; see `NEEDS_LOADER`.
-  mock: unsupported("mock", NEEDS_LOADER),
-  doMock: unsupported("doMock", NEEDS_LOADER),
-  unmock: unsupported("unmock", NEEDS_LOADER),
-  doUnmock: unsupported("doUnmock", NEEDS_LOADER),
-  importActual: unsupported("importActual", NEEDS_LOADER),
-  importMock: unsupported("importMock", NEEDS_LOADER),
-  resetModules: unsupported("resetModules", NEEDS_LOADER),
+  // Module interception. `doMock` is `mock` and `doUnmock` is `unmock`, under
+  // the names Vitest gives the un-hoisted forms: there is one form here,
+  // because uf hoists neither, and a `doMock` that was a different function
+  // would be claiming a difference that does not exist.
+  mock: mockModule,
+  doMock: mockModule,
+  unmock: unmockModule,
+  doUnmock: unmockModule,
+  importActual: importActualModule,
+  importMock: importMockModule,
+  resetModules: resetModulesNow,
 });
