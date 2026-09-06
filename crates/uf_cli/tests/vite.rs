@@ -1562,24 +1562,41 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
     //    `id` is the command's own, because the fixture keeps a resolved
     //    promise per id and a second request for the same one would answer
     //    without waiting; see `app/slow/[id]/_uf.page.js`.
-    let slow = timed_get(port, &format!("/slow/{command}"));
+    //
+    //    It is the command with every non-alphanumeric character replaced
+    //    rather than the command itself, because `command` is a label as much
+    //    as a key and one caller passes a whole command *line*: `build
+    //    --adapter node`. Interpolated into the target that spells
+    //    `GET /slow/build --adapter node HTTP/1.1`, which is not a request
+    //    line at all — a target may not contain a space — so Node's parser
+    //    refuses it and its default `clientError` handler answers a bare
+    //    `400 Bad Request`, before `nodeListener` or any other uf code runs.
+    //    That looked for a long time like a streaming failure in the adapter
+    //    and was never anything but these bytes. Substituting keeps the only
+    //    property the id needs, which is being different for each server;
+    //    `preview` and `start` are unchanged by it.
+    let slow_id: String = command
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let slow = timed_get(port, &format!("/slow/{slow_id}"));
     assert!(
         slow.text.starts_with("HTTP/1.1 200"),
         "{}",
-        context("did not render the suspending route", &slow.text)
+        context("did not render the suspending route", &slow.evidence())
     );
     let shell = slow.first_at("slow: waiting").unwrap_or_else(|| {
         panic!(
             "{}",
-            context("never sent the `_uf.loading.js` fallback", &slow.text)
+            context("never sent the `_uf.loading.js` fallback", &slow.evidence())
         )
     });
     let page = slow
-        .first_at(&format!("slow: {command}"))
+        .first_at(&format!("slow: {slow_id}"))
         .unwrap_or_else(|| {
             panic!(
                 "{}",
-                context("the suspended page never arrived", &slow.text)
+                context("the suspended page never arrived", &slow.evidence())
             )
         });
     assert!(
@@ -1593,7 +1610,7 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
                 page.as_millis(),
                 SUSPENDING_ROUTE_DELAY.as_millis()
             ),
-            &slow.text
+            &slow.evidence()
         )
     );
 }
@@ -1617,6 +1634,11 @@ const STREAMING_MARGIN: Duration = Duration::from_millis(200);
 /// decide what a chunk is: the kernel decides, and the assertion is about a gap
 /// far larger than any packetization difference.
 struct TimedResponse {
+    /// The literal bytes written to the socket.
+    ///
+    /// Kept because the failure this struct is most likely to report is one
+    /// where they are the whole answer; see [`TimedResponse::evidence`].
+    request: String,
     text: String,
     reads: Vec<(Duration, usize)>,
 }
@@ -1630,6 +1652,100 @@ impl TimedResponse {
             .find(|(_, received)| *received >= end)
             .map(|(at, _)| *at)
     }
+
+    /// What was sent, what came back, and on what connection.
+    ///
+    /// A bare `400 Bad Request` from this probe cost a long search through the
+    /// streaming renderer, because the failure said only "did not render the
+    /// suspending route" and printed a response with no body to say otherwise.
+    /// Three facts end that search, and all three are here: the request as it
+    /// actually went on the wire, since a request *target* with a space in it
+    /// is not a request line and Node answers those itself; the whole
+    /// response rather than the part an assertion looked at; and that this
+    /// connection carried nothing before this request, which rules out the
+    /// other way a bare `400` with `Connection: close` happens — a response
+    /// whose framing left a reused connection out of sync.
+    fn evidence(&self) -> String {
+        let mut evidence = format!(
+            "the request, as it went on the wire:\n{}\n\nthe whole response:\n{}\n\n\
+             the connection was opened for this request alone and nothing was written to it \
+             first, so a desynchronised reused connection is not what this is.",
+            indent(&visible(&self.request)),
+            indent(if self.text.is_empty() {
+                "<nothing: the server closed without writing a byte>"
+            } else {
+                self.text.as_str()
+            }),
+        );
+        // Node's `http.Server` writes exactly this, from its default
+        // `clientError` handler, when the parser rejects the bytes before a
+        // request object exists. `nodeListener` never runs — which is why the
+        // body is empty and the server's stderr says nothing — and no uf code
+        // can produce it, because uf answers a handler that threw with a 500
+        // and a body.
+        if self
+            .text
+            .starts_with("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
+        {
+            evidence.push_str(
+                "\n\nthat response is byte for byte Node's own `clientError` reply, which \
+                 means its parser refused the request above before any uf code ran. Read the \
+                 request line first: a target containing a space is the usual reason.",
+            );
+        }
+        evidence
+    }
+}
+
+/// The diagnosis a bare `400` has to carry, checked without a socket.
+///
+/// This is the failure that cost the search: the response to the suspending
+/// route was a `400` with no body, and the message printed that and nothing
+/// else — so the search went to the streaming renderer and the adapter, and
+/// the answer was in the request line all along.
+///
+/// The evidence is assembled from data rather than read off a connection, so
+/// this runs on a machine that cannot bind one. That is deliberate: the
+/// machine where the original failure could not be reproduced at all is
+/// exactly the machine where the message explaining it has to be readable.
+#[test]
+fn a_bare_400_says_it_is_node_refusing_the_request_line() {
+    let refused = TimedResponse {
+        request: "GET /slow/build --adapter node HTTP/1.1\r\nHost: 127.0.0.1:46335\r\n\
+                  Accept: text/html\r\nConnection: close\r\n\r\n"
+            .to_owned(),
+        text: "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n".to_owned(),
+        reads: Vec::new(),
+    };
+    let evidence = refused.evidence();
+    assert!(
+        evidence.contains("GET /slow/build --adapter node HTTP/1.1"),
+        "the request line is the answer, so it has to be in the message:\n{evidence}"
+    );
+    assert!(
+        evidence.contains("clientError"),
+        "a bare 400 is Node's own, and the message has to say so rather than leave it to be \
+         rediscovered:\n{evidence}"
+    );
+    assert!(
+        evidence.contains("reused connection"),
+        "the other way a bare 400 with `Connection: close` happens has to be ruled out in the \
+         message:\n{evidence}"
+    );
+}
+
+/// CRLF made visible, so a request line can be read for what it is.
+fn visible(raw: &str) -> String {
+    raw.replace('\r', "\\r").replace('\n', "\\n\n")
+}
+
+/// Two spaces in front of every line, so a quoted document is not read as the
+/// failure message's own words.
+fn indent(text: &str) -> String {
+    text.lines()
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// One request, read incrementally, timed from the moment it was sent.
@@ -1642,12 +1758,13 @@ fn timed_get(port: u16, path: &str) -> TimedResponse {
     stream
         .set_read_timeout(Some(Duration::from_secs(60)))
         .unwrap();
-    write!(
-        stream,
+    // Built before it is written, and kept, because it is the first thing a
+    // reader of a failure here needs; see `TimedResponse::evidence`.
+    let request = format!(
         "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\n\
          Connection: close\r\n\r\n"
-    )
-    .unwrap();
+    );
+    stream.write_all(request.as_bytes()).unwrap();
 
     let started = Instant::now();
     let mut bytes = Vec::new();
@@ -1664,6 +1781,7 @@ fn timed_get(port: u16, path: &str) -> TimedResponse {
         }
     }
     TimedResponse {
+        request,
         text: String::from_utf8_lossy(&bytes).into_owned(),
         reads,
     }
