@@ -29,6 +29,47 @@ width is 100 rather than Prettier's 80; `fmt.lineWidth` changes it.
 That claim is checked rather than asserted: every fixture in `uf_fmt`'s suite
 is compared byte for byte against Prettier's own output for the same input.
 
+### GraphQL in a tagged template
+
+`uf fmt` formats the GraphQL inside a template tagged `graphql`, `gql` or
+`graphql.experimental`, a template passed to `graphql(…)`, and one written
+behind a `/* GraphQL */` comment — and re-indents it to the code around it,
+which is the part you notice:
+
+```js
+const fragment = graphql`
+        fragment UserFragment on User {
+          username
+        }
+      `;
+```
+
+becomes
+
+```js
+const fragment = graphql`
+  fragment UserFragment on User {
+    username
+  }
+`;
+```
+
+A template with `${…}` in it works when each run of text between the holes is
+a complete document on its own — a trailing `${Fragment}` is the usual case —
+and is left alone when it is not. That is Prettier's rule, not uf's.
+
+**A template uf will not reprint, it does not touch.** It comes back exactly
+as you wrote it rather than approximately right, and there are four reasons
+for that to happen: the document holds a `#` comment, it holds a string with
+a control character in it, it is not GraphQL, or it nests more than 128 deep.
+The comment case is the one you are likely to meet — uf does not yet
+reproduce where Prettier puts a GraphQL comment, and moving a comment to the
+wrong line is worse than leaving the query alone.
+
+GraphQL is the only embedded language uf reads. `css`, `html`, `sql` and
+`markdown` templates go out exactly as written, where Prettier would format
+them.
+
 Files uf has no opinion about are handed to Biome, which is also Rust and also
 fast, so a repository with a `README.md` and a `package.json` in it does not
 need a second formatter installed.
