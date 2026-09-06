@@ -106,6 +106,32 @@ Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
 alongside uf's rules rather than in a separate `.flowconfig` section, because a
 project should have one place where "this is an error here" is written down.
 
+### Fixing what it finds
+
+<div className="command"><code>uf lint --fix</code></div>
+
+Applies every fix uf is willing to make without asking, writes the files, and
+reports how many it applied and what it left. It is the same catalogue the
+language server offers in an editor, reached from a terminal, a git hook or CI
+rather than only from a lightbulb menu.
+
+Two tiers, and the difference is real. `--fix` applies only the fixes where the
+program afterwards means what it meant before — `bool` becomes `boolean`, and
+nothing has been decided on your behalf. `--fix-unsafe` also applies the ones
+whose correctness rests on something the rule could not check: `export let
+count = 0` becomes `export const count = 0`, which still parses and still
+formats, and throws at run time if anything reassigns the binding. Read that
+diff before you commit it.
+
+Most of uf's 53 rules have no fix at all, which is deliberate. `flow/unclear-type`
+could turn `any` into `mixed`, an opaque type, or a generated router type
+depending on what you meant; three answers is none, and guessing at one is
+worse than leaving the finding where you can see it.
+
+What is written parses, `uf fmt --check` still passes, and running it twice is
+running it once. The [CLI reference](/reference/cli) spells out each of those
+and what the exit status means.
+
 `uf fmt`, `uf lint` and `uf check` all take paths, the way `uf test` does:
 
 <div className="command"><code>uf lint packages/ui</code></div>

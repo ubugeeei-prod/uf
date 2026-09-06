@@ -32,7 +32,7 @@ fn diagnostic(index: usize, severity: Severity) -> Diagnostic {
 
 #[test]
 fn the_payload_keeps_the_shape_uf_lint_emits() {
-    let value = payload(&lint_report(1, 1), &TypeCheck::Unavailable);
+    let value = payload(&lint_report(1, 1), &TypeCheck::Unavailable, None);
 
     assert_eq!(value["command"], json!("uf check"));
     assert_eq!(value["filesChecked"], json!(2));
@@ -44,7 +44,7 @@ fn the_payload_keeps_the_shape_uf_lint_emits() {
 
 #[test]
 fn the_payload_names_the_checker_backend_and_its_status() {
-    let value = payload(&lint_report(0, 0), &TypeCheck::Unavailable);
+    let value = payload(&lint_report(0, 0), &TypeCheck::Unavailable, None);
 
     assert_eq!(value["typeCheck"]["status"], json!("unavailable"));
     #[cfg(feature = "upstream-typecheck")]
@@ -63,7 +63,7 @@ fn a_checker_failure_is_reported_without_losing_the_lint_counts() {
         limit: 4,
     });
 
-    let value = payload(&lint_report(2, 0), &types);
+    let value = payload(&lint_report(2, 0), &types, None);
 
     assert_eq!(value["errors"], json!(2));
     assert_eq!(value["typeCheck"]["status"], json!("failed"));
@@ -118,5 +118,5 @@ fn a_build_with_a_checker_reports_it_and_one_without_says_so() {
 
 #[cfg(feature = "upstream-typecheck")]
 fn value_of(types: &TypeCheck) -> Value {
-    payload(&lint_report(0, 0), types)["typeCheck"].clone()
+    payload(&lint_report(0, 0), types, None)["typeCheck"].clone()
 }

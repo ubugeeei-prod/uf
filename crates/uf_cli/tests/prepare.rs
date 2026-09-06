@@ -34,6 +34,15 @@ const LINTS_BADLY: &str =
 /// A file that lints clean and is not formatted.
 const FORMATS_BADLY: &str = "// @flow\n\nexport const spaced: number =    1;\n";
 
+/// A file with one lint error uf can fix without being asked, and one it will
+/// not fix without being asked.
+///
+/// `flow/deprecated-type` has a safe fix; `flow/non-const-var-export` has only
+/// an unsafe one, and a commit hook is the last place that should arrive
+/// unasked-for.
+const FIXES_ITSELF: &str =
+    "// @flow\n\nexport type Flag = bool;\n\nexport let count: number = 0;\n";
+
 /// A file with nothing wrong with it.
 const CLEAN: &str = "// @flow\n\nexport const answer: number = 42;\n";
 
@@ -394,4 +403,77 @@ fn with_a_server_action(root: &Path) {
         ),
     )
     .expect("a page that reaches the actions");
+}
+
+/// `--fix` formats the staged files instead of only saying they need it, and
+/// then fails so the commit stops with the diff still to be staged.
+#[test]
+fn fix_formats_the_staged_files_and_stops_the_commit_anyway() {
+    let dir = a_repository();
+    fs::write(dir.path().join("ugly.js"), FORMATS_BADLY).expect("an unformatted file");
+    git(dir.path(), &["add", "ugly.js"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+
+    assert_eq!(code, FOUND_A_PROBLEM, "{stdout}{stderr}");
+    assert!(stderr.contains("run-format-check"), "{stderr}");
+    assert!(stderr.contains("stage them, and commit again"), "{stderr}");
+    let formatted = fs::read_to_string(dir.path().join("ugly.js")).expect("the file is there");
+    assert_eq!(
+        formatted, "// @flow\n\nexport const spaced: number = 1;\n",
+        "the format step did not write"
+    );
+
+    // Staging what it wrote is all that was left to do, and the same command
+    // passes: nothing about the file was wrong, only unstaged.
+    git(dir.path(), &["add", "ugly.js"]);
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+    assert_eq!(code, SUCCESS, "{stdout}{stderr}");
+}
+
+/// The lint step writes what it safely can, and leaves what it cannot.
+#[test]
+fn fix_applies_the_safe_lint_fixes_and_not_the_unsafe_ones() {
+    let dir = a_repository();
+    fs::write(dir.path().join("mixed.js"), FIXES_ITSELF).expect("a fixable file");
+    git(dir.path(), &["add", "mixed.js"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+
+    assert_eq!(code, FOUND_A_PROBLEM, "{stdout}{stderr}");
+    let fixed = fs::read_to_string(dir.path().join("mixed.js")).expect("the file is there");
+    assert!(fixed.contains("Flag = boolean"), "{fixed}");
+    assert!(
+        fixed.contains("export let count"),
+        "a commit hook applied an unsafe fix\n{fixed}"
+    );
+    assert_eq!(status_of(&record(dir.path()), "run-lint"), "failed");
+}
+
+/// Without the flag nothing is written, which is what every existing hook gets.
+#[test]
+fn a_run_without_fix_writes_nothing_it_used_to_only_report() {
+    let dir = a_repository();
+    fs::write(dir.path().join("ugly.js"), FORMATS_BADLY).expect("an unformatted file");
+    git(dir.path(), &["add", "ugly.js"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+
+    assert_eq!(code, FOUND_A_PROBLEM, "{stdout}{stderr}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("ugly.js")).expect("the file is there"),
+        FORMATS_BADLY
+    );
+}
+
+/// A clean commit is unchanged by the flag: `--fix` with nothing to fix passes.
+#[test]
+fn fix_over_a_clean_commit_passes() {
+    let dir = a_repository();
+    fs::write(dir.path().join("clean.js"), CLEAN).expect("a clean file");
+    git(dir.path(), &["add", "clean.js"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--fix"]);
+
+    assert_eq!(code, SUCCESS, "{stdout}{stderr}");
 }

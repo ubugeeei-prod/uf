@@ -2180,6 +2180,44 @@ fn lsp_fixes_every_occurrence_in_the_file_at_once() {
     );
 }
 
+/// An unsafe fix is offered to a person and withheld from `codeActionsOnSave`.
+///
+/// The two halves of the same decision. Clicking a lightbulb is somebody
+/// asking for the edit, so the quick fix is there — but not marked preferred,
+/// which is what "apply the obvious fix" binds to. `source.fixAll` is the
+/// unattended path an editor runs on every save, and an edit that can change
+/// what the program does must not arrive with a keystroke.
+#[test]
+fn an_unsafe_fix_is_a_quick_fix_but_never_part_of_fix_all() {
+    let source = "// @flow\ntype A = bool;\nexport let count: A = true;\n";
+    let messages = lsp_session(&[
+        did_open("file:///a.js", source),
+        code_action(2, "file:///a.js", 2, 7, None),
+        code_action(3, "file:///a.js", 1, 9, Some("source.fixAll")),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let actions = answer(&messages, 2)["result"].as_array().unwrap();
+    let quick_fix = actions
+        .iter()
+        .find(|action| action["title"] == "Replace `let` with `const`")
+        .unwrap_or_else(|| panic!("no quick fix in {actions:#?}"));
+    assert_eq!(
+        quick_fix["isPreferred"], false,
+        "an unsafe fix must not be the preferred one: {quick_fix:#?}"
+    );
+
+    let fix_all = answer(&messages, 3)["result"].as_array().unwrap();
+    let edits = fix_all[0]["edit"]["changes"]["file:///a.js"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        apply(source, edits),
+        "// @flow\ntype A = boolean;\nexport let count: A = true;\n",
+        "fix-all wrote the unsafe fix"
+    );
+}
+
 /// A rule whose right answer depends on what the author meant gets no action.
 ///
 /// `flow/unclear-type` could "fix" `any` to `mixed`, to an opaque type, or to
