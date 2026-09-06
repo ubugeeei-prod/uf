@@ -8,10 +8,20 @@
 //!
 //! They skip — loudly — where Node or the installed workspace is missing, so a
 //! checkout that never ran `npm ci` still passes `cargo test`.
+//!
+//! One test drives [`uf_test::Worker`] rather than the `uf` binary, because
+//! what it asserts is a promise the worker protocol makes and the protocol is
+//! only observable on the wire — see
+//! `a_worker_that_answers_for_a_finished_file_does_not_disturb_the_running_one`.
+//! It still needs a real host, which is why it lives here and not in `uf_test`.
 
 mod support;
 
 use std::path::Path;
+use std::time::Duration;
+
+use camino::Utf8PathBuf;
+use uf_test::{FileStatus, HostCommand, HostKind, TestStatus, Worker};
 
 use support::{Project, assert_plain, host_ready, uf};
 
@@ -352,6 +362,275 @@ it("still runs after it", () => {
             .unwrap()
             .contains("timed out"),
         "{failing}"
+    );
+}
+
+/// Two files on one worker, the second releasing a callback the first left
+/// behind.
+///
+/// The issue writes the reproduction as `setTimeout(…, 50)` and lets the next
+/// file happen to be running fifty milliseconds later. That reproduces the bug
+/// and makes a poor test: what has to be shown is that the line arrived *after*
+/// its file had been reported, and a sleep shows that only while the machine is
+/// idle. So the second file hands the first one a switch, through a module
+/// neither of them is: both import `switch.js` without the cache-busting query
+/// the worker puts on a test file, so both get the one instance the worker's
+/// registry holds. The callback is still detached — scheduled by a case that
+/// returned long before it fires — but it cannot run until the second file has
+/// started, and the second file cannot finish until it has.
+///
+/// The first file is deliberately the longer of the two, because the schedule
+/// is longest-expected-first and a cold file's expectation is its size: this is
+/// what puts it ahead of the second rather than the tie-break on path.
+const STRAGGLER: [(&str, &str); 3] = [
+    (
+        "src/switch.js",
+        r#"// @flow
+let release: () => void = () => {};
+export const begun: Promise<void> = new Promise((resolve) => {
+  release = resolve;
+});
+export function begin(): void {
+  release();
+}
+
+let settle: () => void = () => {};
+export const printed: Promise<void> = new Promise((resolve) => {
+  settle = resolve;
+});
+export function donePrinting(): void {
+  settle();
+}
+"#,
+    ),
+    (
+        "src/a-leaves-a-callback.test.js",
+        r#"// @flow
+// This file is padded to be the longer of the two, so that the schedule —
+// longest expected first, and a cold file is expected to cost what its size
+// suggests — runs it before the file that releases its callback. Without that
+// the order would rest on the tie-break, which is alphabetical and would
+// happen to agree; resting on a coincidence is not the same as being ordered.
+import { expect, it } from "@uniflowed/test";
+import { begun, donePrinting } from "./switch.js";
+
+it("schedules something it does not wait for", () => {
+  begun.then(() => {
+    setTimeout(() => {
+      console.log("from the previous file");
+      donePrinting();
+    }, 0);
+  });
+  expect(true).toBe(true);
+});
+"#,
+    ),
+    (
+        "src/b-runs-after-it.test.js",
+        r#"// @flow
+import { expect, it } from "@uniflowed/test";
+import { begin, printed } from "./switch.js";
+
+it("is running when it fires", async () => {
+  begin();
+  await printed;
+  expect(true).toBe(true);
+});
+"#,
+    ),
+];
+
+/// One file's report out of the `--json` document.
+fn file_report<'a>(document: &'a serde_json::Value, file: &str) -> &'a serde_json::Value {
+    document["fileReports"]
+        .as_array()
+        .expect("the document lists its files")
+        .iter()
+        .find(|report| report["file"] == file)
+        .unwrap_or_else(|| panic!("{file} is missing from {document}"))
+}
+
+#[test]
+fn a_line_printed_after_its_file_finished_is_not_reported_under_the_next_one() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&STRAGGLER);
+
+    // One worker, so the second file is served by the process the first one
+    // left its callback running in. That is the only condition the bug needs.
+    let document = json(project.path(), &["-j", "1"]);
+
+    assert_eq!(document["passed"], 2, "{document}");
+    assert_eq!(document["failed"], 0, "{document}");
+    assert_eq!(document["files"], 2, "src/switch.js declares no tests");
+
+    let printed_under_a_case_of_the_second = document["tests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|test| test["file"] == "src/b-runs-after-it.test.js")
+        .any(|test| {
+            serde_json::to_string(&test["output"])
+                .unwrap()
+                .contains("from the previous file")
+        });
+    assert!(
+        !printed_under_a_case_of_the_second,
+        "a line the previous file printed was reported under a case of this one: {document}"
+    );
+
+    // The runner's own notes and what the file printed are both `output`, so
+    // they are told apart the way a reader tells them apart: by the prefix.
+    let second = file_report(&document, "src/b-runs-after-it.test.js");
+    let chunks = second["output"]
+        .as_array()
+        .expect("a file report lists its output");
+    let (notes, printed): (Vec<_>, Vec<_>) = chunks.iter().partition(|chunk| {
+        chunk["text"]
+            .as_str()
+            .is_some_and(|text| text.starts_with("[uf] "))
+    });
+    assert!(
+        !printed
+            .iter()
+            .any(|chunk| chunk["text"] == "from the previous file\n"),
+        "a line the previous file printed became this file's own: {document}"
+    );
+
+    // Dropped, but not silently: the note names the file the line came from,
+    // which is where a reader chasing the message has to look. It cannot be
+    // put in that file's report — that report was streamed to the terminal
+    // when the file finished, before this line existed.
+    let [note] = notes.as_slice() else {
+        panic!("the drop is noted exactly once: {document}");
+    };
+    let text = note["text"].as_str().unwrap();
+    assert!(text.contains("src/a-leaves-a-callback.test.js"), "{text}");
+    assert!(text.contains("from the previous file"), "{text}");
+    assert_eq!(note["stream"], "stderr", "{text}");
+
+    // And the file it came from does not gain it either. Saying so here is the
+    // point: the line is genuinely lost from the report, and the note is what
+    // is offered in its place.
+    let first = file_report(&document, "src/a-leaves-a-callback.test.js");
+    assert!(
+        !serde_json::to_string(first)
+            .unwrap()
+            .contains("from the previous file"),
+        "{first}"
+    );
+}
+
+/// A worker that answers from a script instead of running anything.
+///
+/// The three kinds of late event are not equally easy to provoke from a test
+/// file. A stray `console.log` is; a case that reports after its file has ended
+/// is not, and an abandoned promise ends the worker as it goes, so watching for
+/// the report it produced is watching for a write that races a `process.exit`.
+/// None of that is what is being tested. What is being tested is what `uf` does
+/// with each kind, so each kind is a line in a script here — which is also the
+/// only way to write "and the second file was reported correctly *anyway*" as
+/// an assertion rather than a hope.
+///
+/// It speaks the same protocol as `packages/test/worker.js` and nothing else:
+/// a request per line in, one event per line out, each event stamped with the
+/// generation it belongs to.
+const CANNED_WORKER: &str = r#"import { createInterface } from "node:readline";
+
+const write = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
+let served = 0;
+
+createInterface({ input: process.stdin }).on("line", (line) => {
+  if (line.trim() === "") {
+    return;
+  }
+  const now = JSON.parse(line).generation;
+  served += 1;
+  if (served === 1) {
+    write({ event: "test", name: "the first file's case", status: "passed", generation: now });
+    write({ event: "file", status: "completed", generation: now });
+    return;
+  }
+  // Everything the first file had left running, arriving in the middle of the
+  // second: a line it printed, a case that only now reported, and a promise it
+  // abandoned, which is a *file* result and would otherwise end this file.
+  const before = now - 1;
+  write({
+    event: "output",
+    stream: "stdout",
+    test: "the first file's case",
+    text: "from the previous file\n",
+    generation: before,
+  });
+  write({
+    event: "test",
+    name: "the first file's case",
+    status: "failed",
+    message: "resolved after its file had gone",
+    generation: before,
+  });
+  write({
+    event: "file",
+    status: "run-failed",
+    message: "unhandled rejection: left behind",
+    generation: before,
+  });
+  write({ event: "output", stream: "stdout", test: "the second file's case", text: "mine\n", generation: now });
+  write({ event: "test", name: "the second file's case", status: "passed", generation: now });
+  write({ event: "file", status: "completed", generation: now });
+});
+
+process.stdin.on("close", () => process.exit(0));
+"#;
+
+#[test]
+fn a_worker_that_answers_for_a_finished_file_does_not_disturb_the_running_one() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[("canned-worker.js", CANNED_WORKER)]);
+    let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf()).unwrap();
+    let command = HostCommand::new(
+        HostKind::Node,
+        Utf8PathBuf::from("node"),
+        root.join("canned-worker.js"),
+        root,
+    );
+    let mut worker = Worker::spawn(&command).expect("node starts");
+
+    let budget = Duration::from_secs(5);
+    let first = worker.run_file("/first.test.js", "first.test.js", None, budget, budget);
+    let second = worker.run_file("/second.test.js", "second.test.js", None, budget, budget);
+    worker.kill();
+
+    assert_eq!(first.status, FileStatus::Completed);
+    assert_eq!(first.records.len(), 1, "{first:?}");
+
+    // The `file` event from the first file did not end the second, which is the
+    // damage worth measuring: accepting it would have cut the report here and
+    // stamped this file `run-failed` with a message from code it does not
+    // contain, and the case below would never have been reported at all.
+    assert_eq!(second.status, FileStatus::Completed, "{second:?}");
+    let [record] = second.records.as_slice() else {
+        panic!("only this file's own case is a record of it: {second:?}");
+    };
+    assert_eq!(record.name, "the second file's case");
+    assert_eq!(record.status, TestStatus::Passed);
+    assert_eq!(record.output[0].text, "mine\n");
+
+    // One note for the three dropped events, quoting the first of them, and
+    // naming the file they came from rather than the number.
+    let [note] = second.output.as_slice() else {
+        panic!("the drops are one note, before nothing else: {second:?}");
+    };
+    assert!(
+        note.text.contains("3 events arrived from `first.test.js`"),
+        "{note:?}"
+    );
+    assert!(
+        note.text.contains("output \"from the previous file\""),
+        "{note:?}"
     );
 }
 

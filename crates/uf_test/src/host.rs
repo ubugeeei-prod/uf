@@ -8,7 +8,7 @@
 //! the host's Flow loader so the module is transformed by the same
 //! `uf transform` a build uses.
 //!
-//! Three properties the design is built around:
+//! Four properties the design is built around:
 //!
 //! * **One file at a time per worker.** Two files sharing a process share
 //!   globals and module state, and a suite that passes alone but fails beside
@@ -22,7 +22,15 @@
 //! * **A dead worker is a reported file, not a lost run.** Whatever happens to
 //!   one process — a crash, a `process.exit`, a stream that stops — the file
 //!   is named with what went wrong and the run continues on a fresh worker.
+//! * **Every event says which file it belongs to.** "One file at a time" bounds
+//!   what the worker *starts*, not what a finished file left running: a
+//!   `setTimeout` nobody waited for still fires, and its events land in the
+//!   middle of the next file's. Each request carries a generation number, every
+//!   event is stamped with the generation it was written under, and an event
+//!   stamped with a request this worker has already finished is dropped with a
+//!   note instead of being handed to the file running now.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
@@ -169,6 +177,21 @@ struct Request<'a> {
     filter: Option<&'a str>,
     /// Per-case budget in milliseconds.
     timeout_ms: u64,
+    /// Which request this is, counting from one within this worker.
+    ///
+    /// The worker stamps it on every event it writes while serving this
+    /// request — including from a callback the file left behind, which is the
+    /// whole point — and [`Worker::run_file`] refuses an event stamped with any
+    /// other. It is the same number the worker already used to bust its import
+    /// cache; making it part of the protocol is what lets the two sides agree
+    /// on which file an event came from.
+    ///
+    /// Assigned here rather than counted in the worker because the side that
+    /// has to check a number should be the side that chose it. The worker
+    /// counts the requests it serves too, so the two agree by construction, and
+    /// its count is only ever used as a fallback for a host too old to send
+    /// this field.
+    generation: u64,
 }
 
 /// One line the worker wrote.
@@ -182,6 +205,37 @@ enum Event {
     /// Something printed. A test's `console.log` arrives here rather than as a
     /// raw line, which is what stops it from being read as a malformed event.
     Output(OutputEvent),
+}
+
+impl Event {
+    /// Which request the worker was serving when it wrote this.
+    const fn generation(&self) -> u64 {
+        match self {
+            Self::Test(event) => event.generation,
+            Self::File(event) => event.generation,
+            Self::Output(event) => event.generation,
+        }
+    }
+
+    /// How a note names this event, when it arrived too late to be reported.
+    ///
+    /// Everything quoted here was chosen by the worker, so everything quoted
+    /// here goes through [`excerpt`]: a note about untrusted output must not
+    /// itself be a way to write a screen's worth of it.
+    fn describe(&self) -> String {
+        match self {
+            Self::Test(event) => format!("the case \"{}\"", excerpt(&event.name)),
+            Self::File(event) => match &event.message {
+                Some(message) => format!(
+                    "the file result \"{}\": {}",
+                    excerpt(&event.status),
+                    excerpt(message)
+                ),
+                None => format!("the file result \"{}\"", excerpt(&event.status)),
+            },
+            Self::Output(event) => format!("output \"{}\"", excerpt(&event.text)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +261,9 @@ struct TestEvent {
     received: Option<String>,
     #[serde(default)]
     site: Option<Site>,
+    /// The request this was written under. See [`Request::generation`].
+    #[serde(default)]
+    generation: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -223,6 +280,9 @@ struct FileEvent {
     message: Option<String>,
     #[serde(default)]
     stack: Option<String>,
+    /// The request this was written under. See [`Request::generation`].
+    #[serde(default)]
+    generation: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -237,6 +297,152 @@ struct OutputEvent {
     test: Option<String>,
     #[serde(default)]
     text: String,
+    /// The request this was written under. See [`Request::generation`].
+    #[serde(default)]
+    generation: u64,
+}
+
+/// Whether `stamp` names a request other than the one being served.
+///
+/// Zero is not a request. It is what an event carries when nothing said which
+/// one it belonged to: a worker older than this field, or a host whose
+/// asynchronous storage did not reach the callback that wrote it — Deno 1.31
+/// does not carry a store through `setTimeout`, and Bun does not carry one into
+/// its unhandled-rejection hook. An unstamped event is taken as the file being
+/// served, which is exactly what every event was taken as before generations
+/// existed.
+///
+/// Treating a missing stamp as stale was the first answer and it was wrong
+/// twice over. A `file` event is how a file *ends*, so dropping an unstamped
+/// one leaves the host waiting for a reply that has already been given, until a
+/// deadline sixty times the per-case budget; and an event that names no request
+/// is not evidence that it came from another one, so refusing it would trade a
+/// wrong attribution for a hang.
+const fn is_stale(stamp: u64, serving: u64) -> bool {
+    stamp != 0 && stamp != serving
+}
+
+/// Most finished requests one file's notes will name.
+///
+/// Everything read from a worker is untrusted, and a generation is a number the
+/// worker chose. Without a cap, a stream of events each claiming a different
+/// one would grow the ledger without limit from inside a test. Eight covers the
+/// shape this exists for — a file or two whose timers outlived them — and the
+/// rest are counted rather than named.
+const MAX_STALE_REQUESTS_NAMED: usize = 8;
+
+/// Longest excerpt a note quotes from an event it dropped.
+const MAX_STALE_EXCERPT_CHARS: usize = 80;
+
+/// A short, single-line rendering of text the worker chose.
+///
+/// Only the first line, because a note is one line and the interesting part of
+/// a `console.log` is its beginning. Control characters are left as they are:
+/// the renderer escapes them on the way to a terminal, and doing it twice would
+/// show a reader `\\n` where the test wrote a newline.
+fn excerpt(text: &str) -> String {
+    let line = text.lines().next().unwrap_or("").trim();
+    let mut kept: String = line.chars().take(MAX_STALE_EXCERPT_CHARS).collect();
+    if kept.chars().count() < line.chars().count() {
+        kept.push('…');
+    }
+    kept
+}
+
+/// What one finished request sent after it finished.
+#[derive(Debug)]
+struct StaleTally {
+    /// How many of its events were dropped.
+    count: usize,
+    /// [`Event::describe`] of the first, which is the one worth quoting: it is
+    /// the earliest thing the file did after it was supposed to be over.
+    first: String,
+}
+
+/// Events the worker wrote for a request that had already finished.
+///
+/// They are dropped — see [`Worker::run_file`] for why each kind cannot go
+/// anywhere else — and this ledger is what stops the dropping from being
+/// silent. It is a tally rather than a note per event because one abandoned
+/// `setInterval` produces thousands, and a file whose report is mostly an
+/// apology about another file is not a report.
+#[derive(Debug, Default)]
+struct StaleEvents {
+    /// Tallies by the generation that sent them, in order.
+    named: BTreeMap<u64, StaleTally>,
+    /// Events from requests beyond [`MAX_STALE_REQUESTS_NAMED`].
+    beyond: usize,
+}
+
+impl StaleEvents {
+    /// Record one dropped event.
+    fn record(&mut self, generation: u64, description: String) {
+        if let Some(tally) = self.named.get_mut(&generation) {
+            tally.count += 1;
+        } else if self.named.len() < MAX_STALE_REQUESTS_NAMED {
+            self.named.insert(
+                generation,
+                StaleTally {
+                    count: 1,
+                    first: description,
+                },
+            );
+        } else {
+            self.beyond += 1;
+        }
+    }
+
+    /// The notes to put in the report, given the files this worker has served.
+    ///
+    /// Deliberately outside [`MAX_OUTPUT_BYTES_PER_FILE`]: a budget on what a
+    /// test may print must not be able to silence the explanation of why
+    /// something is missing from the report. What it costs is bounded by
+    /// [`MAX_STALE_REQUESTS_NAMED`] notes of [`MAX_STALE_EXCERPT_CHARS`] each.
+    fn notes(&self, served: &[String]) -> Vec<OutputChunk> {
+        let mut notes = Vec::new();
+        for (generation, tally) in &self.named {
+            // A generation the worker invented names no file, and a generation
+            // is one-based, so both ends of the lookup can fail.
+            let origin = generation
+                .checked_sub(1)
+                .and_then(|at| usize::try_from(at).ok())
+                .and_then(|at| served.get(at))
+                .map_or_else(
+                    || format!("a request this worker never served ({generation})"),
+                    |file| format!("`{file}`"),
+                );
+            // "That run of it" rather than "that file": a retry re-runs the
+            // same path, so the file a straggler came from can be the file
+            // being reported, one attempt earlier.
+            let text = if tally.count == 1 {
+                format!(
+                    "[uf] one event arrived from {origin} after that run of it had finished, and \
+                     was dropped rather than reported here: {}\n",
+                    tally.first
+                )
+            } else {
+                format!(
+                    "[uf] {} events arrived from {origin} after that run of it had finished, and \
+                     were dropped rather than reported here; the first was {}\n",
+                    tally.count, tally.first
+                )
+            };
+            notes.push(OutputChunk {
+                stream: OutputStream::Stderr,
+                text,
+            });
+        }
+        if self.beyond > 0 {
+            notes.push(OutputChunk {
+                stream: OutputStream::Stderr,
+                text: format!(
+                    "[uf] and {} more from further runs this worker had already finished\n",
+                    self.beyond
+                ),
+            });
+        }
+        notes
+    }
 }
 
 /// What one file produced.
@@ -324,6 +530,23 @@ impl PendingOutput {
     }
 }
 
+/// One file's output: the notes about what was refused, then what it printed.
+///
+/// The notes come first, out of the order things happened in, because the
+/// terminal draws only the first twenty lines of this section (`uf_cli`'s
+/// `OUTPUT_LINES_SHOWN`) and a note saying why something is missing from the
+/// report must not be what a chatty file pushes out of view. `--json` carries
+/// both either way.
+fn file_output(
+    pending: &mut PendingOutput,
+    stale: &StaleEvents,
+    served: &[String],
+) -> Vec<OutputChunk> {
+    let mut output = stale.notes(served);
+    output.append(&mut pending.drain());
+    output
+}
+
 /// A worker process, and the thread reading its output.
 ///
 /// The reader is a thread because a blocking read cannot be given a deadline;
@@ -334,6 +557,13 @@ pub struct Worker {
     stdin: ChildStdin,
     events: Receiver<String>,
     reader: Option<JoinHandle<()>>,
+    /// Every file this worker has been asked to run, in the order it was asked.
+    ///
+    /// The index is the request's generation minus one, which is how a note
+    /// about an event that arrived too late can name the file it came from
+    /// rather than only the number. One short path per file the worker ran,
+    /// against a source text per file the run already holds.
+    served: Vec<String>,
 }
 
 /// Why a worker could not be started.
@@ -412,6 +642,7 @@ impl Worker {
             stdin,
             events,
             reader: Some(reader),
+            served: Vec::new(),
         })
     }
 
@@ -420,6 +651,37 @@ impl Worker {
     /// `deadline` bounds the whole file. Passing it kills the worker, which is
     /// why the caller must replace it afterwards — [`FileOutcome`] carrying a
     /// [`FileStatus::TimedOut`] means this worker is gone.
+    ///
+    /// # Events from a file that has already finished
+    ///
+    /// A worker's events are one stream, and a file's code can outlive the
+    /// file: a `setTimeout` nobody awaited fires while the *next* file is
+    /// running, and everything it does arrives here. Each event carries the
+    /// generation of the request it was written under, and one from any other
+    /// request is dropped and tallied in [`StaleEvents`] rather than reported.
+    ///
+    /// All three kinds are dropped, and the reason is the same for all three
+    /// even though the damage is not. The file an event belongs to has already
+    /// been returned from this method and handed to the observer — the report
+    /// is streamed, a file is drawn as it finishes — so "attribute it to the
+    /// file it came from" is not on the table by the time the event is read.
+    /// That leaves reporting it under the wrong file, or not at all:
+    ///
+    /// * A `test` event would add a case to a file that does not declare it,
+    ///   counted in that file's totals and stamped with that file's path by
+    ///   [`record_of`], turning one file red for something another file did.
+    /// * An `output` event would be filed under whichever case of *this* file
+    ///   shares the name it carries, and the same case name in two files is
+    ///   ordinary — `describe("adds")` is not a unique identifier. Failing to
+    ///   match is no better: the chunk becomes this file's own printing.
+    /// * A `file` event is the worst of the three, because it is how a file
+    ///   *ends*: accepting one would cut this file's report short and stamp it
+    ///   with another file's status. The worker's unhandled-rejection handler
+    ///   is exactly this shape — it writes a `file` event and exits — so a
+    ///   promise the previous file abandoned used to fail the next one with a
+    ///   message from code it does not contain. Dropped, this file keeps
+    ///   running; if the worker then exits under it, it is reported as a worker
+    ///   that died, which is what happened.
     pub fn run_file(
         &mut self,
         file: &str,
@@ -428,10 +690,16 @@ impl Worker {
         case_timeout: Duration,
         deadline: Duration,
     ) -> FileOutcome {
+        // Pushed before the request is sent, so the generation is the file's
+        // place in this worker's history whether or not the send succeeds. A
+        // send that fails ends the worker anyway.
+        self.served.push(relative.to_string());
+        let generation = u64::try_from(self.served.len()).unwrap_or(u64::MAX);
         let request = Request {
             file,
             filter,
             timeout_ms: case_timeout.as_millis().min(u128::from(u64::MAX)) as u64,
+            generation,
         };
         let mut line = match serde_json::to_string(&request) {
             Ok(line) => line,
@@ -454,6 +722,7 @@ impl Worker {
         // file that hung after printing is the case where the printing is most
         // of the evidence there is.
         let mut pending = PendingOutput::default();
+        let mut stale = StaleEvents::default();
         loop {
             let remaining = deadline.checked_sub(started.elapsed());
             let Some(remaining) = remaining else {
@@ -463,11 +732,14 @@ impl Worker {
                         budget_micros: u64::try_from(deadline.as_micros()).unwrap_or(u64::MAX),
                     },
                     records,
-                    output: pending.drain(),
+                    output: file_output(&mut pending, &stale, &self.served),
                 };
             };
             match self.events.recv_timeout(remaining) {
                 Ok(line) => match serde_json::from_str::<Event>(&line) {
+                    Ok(event) if is_stale(event.generation(), generation) => {
+                        stale.record(event.generation(), event.describe());
+                    }
                     Ok(Event::Test(event)) => {
                         let mut record = record_of(relative, event);
                         record.output = pending.take(&record.name);
@@ -478,7 +750,7 @@ impl Worker {
                         return FileOutcome {
                             status: file_status(event),
                             records,
-                            output: pending.drain(),
+                            output: file_output(&mut pending, &stale, &self.served),
                         };
                     }
                     Err(error) => {
@@ -488,7 +760,7 @@ impl Worker {
                                 message: format!("unreadable worker output: {error}: {line}"),
                             },
                             records,
-                            output: pending.drain(),
+                            output: file_output(&mut pending, &stale, &self.served),
                         };
                     }
                 },
@@ -499,7 +771,7 @@ impl Worker {
                             budget_micros: u64::try_from(deadline.as_micros()).unwrap_or(u64::MAX),
                         },
                         records,
-                        output: pending.drain(),
+                        output: file_output(&mut pending, &stale, &self.served),
                     };
                 }
                 // The reader ended, which means the process did: it exited or
@@ -512,7 +784,7 @@ impl Worker {
                     return FileOutcome {
                         status: FileStatus::HostFailed { message: how },
                         records,
-                        output: pending.drain(),
+                        output: file_output(&mut pending, &stale, &self.served),
                     };
                 }
             }
@@ -679,6 +951,7 @@ mod tests {
                     line: 4,
                     column: 12,
                 }),
+                generation: 1,
             },
         );
 
@@ -796,6 +1069,7 @@ mod tests {
                 stream: String::from("stdout"),
                 test: None,
                 text: "x".repeat(4096),
+                generation: 1,
             });
         }
 
@@ -810,6 +1084,7 @@ mod tests {
             stream: String::from("stdout"),
             test: None,
             text: "x".repeat(MAX_OUTPUT_BYTES_PER_FILE - 1),
+            generation: 1,
         });
         // Two bytes of one character, with one byte of room: neither byte is
         // kept, because half of a character is not a character.
@@ -817,6 +1092,7 @@ mod tests {
             stream: String::from("stdout"),
             test: None,
             text: String::from("é"),
+            generation: 1,
         });
 
         let chunks = pending.drain();
@@ -835,16 +1111,167 @@ mod tests {
             stream: String::from("stdout"),
             test: None,
             text: "x".repeat(MAX_OUTPUT_BYTES_PER_FILE - 1),
+            generation: 1,
         });
         for _ in 0..10_000 {
             pending.push(OutputEvent {
                 stream: String::from("stdout"),
                 test: None,
                 text: String::from("é"),
+                generation: 1,
             });
         }
 
         assert_eq!(pending.drain().len(), 1);
+    }
+
+    #[test]
+    fn every_kind_of_event_says_which_request_it_came_from() {
+        // The stamp is what makes the stream self-describing, so all three
+        // kinds have to carry it — not only `output`, which is the kind the
+        // issue was reported against.
+        for line in [
+            r#"{"event":"test","name":"a > b","status":"passed","generation":4}"#,
+            r#"{"event":"file","status":"completed","generation":4}"#,
+            r#"{"event":"output","stream":"stdout","text":"hi\n","generation":4}"#,
+        ] {
+            let event = serde_json::from_str::<Event>(line).expect("an event must parse");
+            assert_eq!(event.generation(), 4, "in {line}");
+        }
+    }
+
+    #[test]
+    fn an_event_from_a_request_that_has_finished_is_stale() {
+        assert!(is_stale(1, 2), "the file before this one");
+        assert!(!is_stale(2, 2), "the file being served");
+        // A worker cannot be ahead of the host, so this is a worker saying
+        // something impossible; it is still not this file's, which is the only
+        // question being asked.
+        assert!(is_stale(9, 2), "a request that has not been sent");
+    }
+
+    #[test]
+    fn an_event_that_names_no_request_is_the_file_being_served() {
+        // Not stale, deliberately. `0` is what an unstamped event carries — a
+        // worker older than the field, or a host whose storage did not reach
+        // the callback — and dropping a `file` event on that basis would leave
+        // the run waiting for an answer it had already been given.
+        assert!(!is_stale(0, 1));
+        assert!(!is_stale(0, 7));
+    }
+
+    #[test]
+    fn a_dropped_event_is_counted_and_named_after_the_file_it_came_from() {
+        let served = vec![String::from("src/a.test.js"), String::from("src/b.test.js")];
+        let mut stale = StaleEvents::default();
+        for text in ["from the previous file\n", "and again\n"] {
+            let line = output_line(Some("a > b"), text.trim_end());
+            let event = serde_json::from_str::<Event>(&line).expect("an event must parse");
+            stale.record(1, event.describe());
+        }
+
+        let notes = stale.notes(&served);
+        assert_eq!(notes.len(), 1, "one note per originating request");
+        assert_eq!(notes[0].stream, OutputStream::Stderr);
+        let text = &notes[0].text;
+        assert!(
+            text.starts_with("[uf] 2 events arrived from `src/a.test.js`"),
+            "{text}"
+        );
+        // The first is quoted, because it is the earliest thing the file did
+        // after it was supposed to be over; the second is only counted.
+        assert!(text.contains("from the previous file"), "{text}");
+        assert!(!text.contains("and again"), "{text}");
+        assert!(text.ends_with('\n'), "a note is one line: {text}");
+    }
+
+    #[test]
+    fn a_note_names_the_kind_of_event_it_dropped() {
+        let served = vec![String::from("src/a.test.js")];
+        for (line, expected) in [
+            (
+                r#"{"event":"test","name":"a > b","status":"failed","generation":1}"#,
+                "the case \"a > b\"",
+            ),
+            (
+                r#"{"event":"file","status":"run-failed","message":"unhandled rejection: boom","generation":1}"#,
+                "the file result \"run-failed\": unhandled rejection: boom",
+            ),
+        ] {
+            let event = serde_json::from_str::<Event>(line).expect("an event must parse");
+            let mut stale = StaleEvents::default();
+            stale.record(1, event.describe());
+            let notes = stale.notes(&served);
+            assert!(notes[0].text.contains(expected), "{}", notes[0].text);
+        }
+    }
+
+    #[test]
+    fn a_note_quotes_a_bounded_amount_of_what_a_test_wrote() {
+        // The note is the runner's own line about untrusted text, so the
+        // untrusted text must not be able to become the line. Both bounds are
+        // exercised: one long write, and one that spans many lines.
+        let long = "x".repeat(4096);
+        assert_eq!(excerpt(&long).chars().count(), MAX_STALE_EXCERPT_CHARS + 1);
+        assert!(excerpt(&long).ends_with('…'));
+        assert_eq!(excerpt("first\nsecond\nthird\n"), "first");
+        assert_eq!(excerpt(""), "");
+    }
+
+    #[test]
+    fn the_number_of_requests_a_note_names_is_bounded() {
+        // A generation is a number the worker chose, so a test that writes one
+        // event per invented generation would otherwise grow this ledger for
+        // as long as the file it is running beside lasts.
+        let mut stale = StaleEvents::default();
+        for generation in 100..10_000u64 {
+            stale.record(generation, String::from("output \"x\""));
+        }
+
+        let notes = stale.notes(&[]);
+        assert_eq!(notes.len(), MAX_STALE_REQUESTS_NAMED + 1, "and one summary");
+        // A generation this worker never served names no file, and says so
+        // rather than pointing at whichever file happens to be at that index.
+        assert!(
+            notes[0]
+                .text
+                .contains("a request this worker never served (100)"),
+            "{}",
+            notes[0].text
+        );
+        assert!(
+            notes[MAX_STALE_REQUESTS_NAMED]
+                .text
+                .contains("and 9892 more from further runs"),
+            "{}",
+            notes[MAX_STALE_REQUESTS_NAMED].text
+        );
+    }
+
+    #[test]
+    fn the_notes_come_before_what_the_file_printed() {
+        // The terminal draws only the first lines of the output section, so a
+        // note explaining what is missing from the report has to be above the
+        // printing rather than after it.
+        let mut pending = PendingOutput::default();
+        let Ok(Event::Output(event)) = serde_json::from_str::<Event>(&output_line(None, "hello"))
+        else {
+            panic!("an output line must parse as an output event");
+        };
+        pending.push(event);
+        let mut stale = StaleEvents::default();
+        stale.record(1, String::from("output \"gone\""));
+
+        let output = file_output(&mut pending, &stale, &[String::from("src/a.test.js")]);
+        assert_eq!(output.len(), 2);
+        assert!(output[0].text.starts_with("[uf] "), "{}", output[0].text);
+        assert_eq!(output[1].text, "hello\n");
+    }
+
+    #[test]
+    fn a_file_that_dropped_nothing_says_nothing() {
+        let mut pending = PendingOutput::default();
+        assert!(file_output(&mut pending, &StaleEvents::default(), &[]).is_empty());
     }
 
     #[test]
@@ -868,6 +1295,7 @@ mod tests {
                     expected: None,
                     received: None,
                     site: None,
+                    generation: 1,
                 },
             );
             assert_eq!(record.status, TestStatus::Skipped { reason: expected });
