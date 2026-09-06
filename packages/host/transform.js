@@ -229,9 +229,12 @@ export class TransformService {
   /**
    * Transform one module.
    *
-   * Resolves to `{ code, map, diagnostics }`, or to `null` when the module is
-   * not uf's to transform (see `isFlowModule`). Rejects with a
+   * Resolves to `{ code, map, css, diagnostics }`, or to `null` when the
+   * module is not uf's to transform (see `isFlowModule`). Rejects with a
    * `TransformError` carrying the position when the source is not valid Flow.
+   *
+   * `css` is the stylesheet the module's StyleX rules declare, and `null` when
+   * it declares none.
    *
    * @param {string} id absolute path, used for the map and for errors
    * @param {string} code the Flow source
@@ -251,9 +254,20 @@ export class TransformService {
             resolve(null);
             return;
           }
+          // Named field by field rather than passed through, so a host reads
+          // the protocol rather than whatever `uf transform` happens to send —
+          // which means every field the protocol grows has to be added here,
+          // and one was not. `css` arrived with the StyleX compiler and this
+          // object did not mention it, so `out.css` was `undefined` in every
+          // host: the Vite plugin's `if (out.css != null)` never ran, no module
+          // ever imported its own stylesheet, and an application styled with
+          // `stylex.create` shipped class names and no CSS. The transform was
+          // right the whole time; the shim in front of it was returning three
+          // quarters of the answer. See ubugeeei-prod/uf#306.
           resolve({
             code: reply.code,
             map: reply.map ?? null,
+            css: reply.css ?? null,
             diagnostics: reply.diagnostics ?? [],
           });
         },
@@ -300,8 +314,8 @@ export function sharedService(root) {
 /**
  * Transform one Flow module through the shared service.
  *
- * Returns `{ code, map, diagnostics }`; a module that is not uf's to transform
- * comes back as `null`.
+ * Returns `{ code, map, css, diagnostics }`; a module that is not uf's to
+ * transform comes back as `null`.
  */
 export function transformFlow(code, filename, options = {}) {
   return sharedService(options.root).transform(filename, code, options);
