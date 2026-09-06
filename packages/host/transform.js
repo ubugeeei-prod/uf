@@ -80,6 +80,13 @@ export function ufBinary() {
  * to learn that it does not need it, which is what asking the running
  * `uf transform` to introduce itself would have cost.
  *
+ * The same test is applied to a path as to a bare name: a regular file with
+ * the execute bit. Size and mtime do not move when a binary loses that bit, so
+ * without the test a chmod produced the same identity as before, a warm cache
+ * went on serving, and a cold one failed to start `uf` — the answer depending
+ * on how warm the cache was, which is the class of bug this key exists to
+ * remove.
+ *
  * `null` means the question could not be answered. It is not an invitation to
  * hash the rest anyway: a key that leaves the compiler out is one key for
  * every build of it, which is the whole defect.
@@ -92,10 +99,13 @@ export function ufBinaryIdentity(command = ufBinary()) {
   if (binary == null) return null;
   try {
     const stats = statSync(binary);
+    if (!stats.isFile()) return null;
+    accessSync(binary, constants.X_OK);
     return `${binary}\0${stats.size}\0${stats.mtimeMs}`;
   } catch {
-    // Named a binary that is not there. The caller gets `null` and stops
-    // trusting the cache, which is right: nothing can be compiled either.
+    // Named a binary that is not there, or is not one. The caller gets `null`
+    // and stops trusting the cache, which is right: nothing can be compiled
+    // either.
     return null;
   }
 }
@@ -118,6 +128,10 @@ export function ufBinaryIdentity(command = ufBinary()) {
  * platform and never takes this path at all.
  */
 function resolveExecutable(command) {
+  // A path is taken as given — `spawn` will execute exactly it — and
+  // `ufBinaryIdentity` applies the file-and-executable test to the result
+  // either way, so a path that is a directory or is not executable is no more
+  // trusted than a bare name that resolves to one.
   if (path.basename(command) !== command) return command;
   for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
     if (directory === "") continue;
@@ -159,6 +173,7 @@ export class TransformError extends Error {
 export class TransformService {
   #child;
   #pending = [];
+  #identity;
   #failure = null;
 
   /**
@@ -169,6 +184,14 @@ export class TransformService {
   constructor(options = {}) {
     const command = options.command ?? ufBinary();
     const root = options.root ?? process.cwd();
+    // Read before the spawn and kept: this is the identity of the build that
+    // answers every request this service ever serves, because a child goes on
+    // executing the binary it started from however many times that file is
+    // rewritten underneath it. Anything written to disk from an answer of
+    // this service belongs under *this* identity — a caller that stat'd the
+    // binary earlier and wrote under that would file build B's output under
+    // build A's name, which is the original defect with a smaller window.
+    this.#identity = ufBinaryIdentity(command);
     this.#child = spawn(command, ["--cwd", root, "transform"], {
       stdio: ["pipe", "pipe", "inherit"],
     });
@@ -237,6 +260,21 @@ export class TransformService {
       });
       this.#child.stdin.write(`${JSON.stringify({ id, code, options })}\n`);
     });
+  }
+
+  /**
+   * The build of `uf` this service's child is executing, or `null` when that
+   * could not be established.
+   *
+   * Read once, before the spawn, and never again: the child goes on executing
+   * the binary it started from however many times that file is rewritten
+   * underneath it. Anything kept from an answer of this service belongs under
+   * this identity and not under whatever the file says now.
+   *
+   * @returns {string | null}
+   */
+  get identity() {
+    return this.#identity;
   }
 
   /** Stop the process. Outstanding requests are rejected. */

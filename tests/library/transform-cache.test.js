@@ -78,9 +78,40 @@ const project = (): string => {
   return root;
 };
 
-/** Run `body` against a fresh project, and take the project away afterwards. */
-const inAProject = (body: (root: string) => void): void => {
+/**
+ * The same two modules, with an entry that rebuilds `uf` before it imports the
+ * other one.
+ *
+ * The rebuild has to land *between* the loader being installed and the first
+ * module the compiler is actually asked about, and that is a window a test
+ * cannot open from outside the process. So the entry opens it: on the warm run
+ * it comes out of the cache without the compiler being started at all, and
+ * what it then does is replace the binary and reach for a module that is not
+ * cached under the new one.
+ *
+ * `import(...).then` rather than a top-level `await`, which uf cannot yet
+ * parse — see ubugeeei-prod/uf#204.
+ */
+const projectThatRebuilds = (): string => {
   const root = project();
+  fs.writeFileSync(
+    path.join(root, "main.js"),
+    'import fs from "node:fs";\n' +
+      "const next = process.env.UF_NEXT_BUILD;\n" +
+      "if (next != null && fs.existsSync(next)) {\n" +
+      "  fs.writeFileSync(process.env.UF_BINARY, fs.readFileSync(next));\n" +
+      "  fs.chmodSync(process.env.UF_BINARY, 0o755);\n" +
+      "  const when = new Date(Number(process.env.UF_NEXT_WHEN));\n" +
+      "  fs.utimesSync(process.env.UF_BINARY, when, when);\n" +
+      "}\n" +
+      'import("./thing.js").then((m) => process.stdout.write(m.compiledBy));\n',
+  );
+  return root;
+};
+
+/** Run `body` against a fresh project, and take the project away afterwards. */
+const inAProject = (body: (root: string) => void, make?: () => string): void => {
+  const root = (make ?? project)();
   try {
     body(root);
   } finally {
@@ -204,6 +235,50 @@ describe("the transform cache", () => {
 
       expect(orphaned.status).not.toBe(0);
       expect(orphaned.stdout).not.toContain("first-build");
+    });
+  });
+
+  it("does not serve a build's entries to the build that replaced it mid-run", () => {
+    inAProject((root) => {
+      const binary = buildUf(root, "first-build", FIRST);
+      const next = path.join(root, "uf.next");
+      const env = { UF_BINARY: binary, UF_NEXT_BUILD: next, UF_NEXT_WHEN: String(SECOND) };
+
+      // Cold, then warm: the second run serves both modules from disk and
+      // starts no compiler, which is what leaves the window open below.
+      expect(run(root, env).stdout).toBe("first-build");
+      expect(run(root, env).stderr).not.toContain("compiled ");
+
+      // Now the entry — itself a cache hit — replaces `uf` and only then
+      // reaches for the module the compiler would be asked about. The binary
+      // was one build when the hooks were installed and is another by the time
+      // anything is compiled, and the run that reads the key once at
+      // installation serves the old build's output while the new build is what
+      // would run: the defect this key exists to remove, with a smaller
+      // window.
+      fs.writeFileSync(next, compiler("second-build"));
+      const across = run(root, env);
+
+      expect(across.stdout).toBe("second-build");
+      expect(across.stderr).toContain("compiled ");
+    }, projectThatRebuilds);
+  });
+
+  it("does not serve what it cached through a binary that can no longer run", () => {
+    inAProject((root) => {
+      const binary = buildUf(root, "first-build", FIRST);
+      expect(run(root, { UF_BINARY: binary }).stdout).toBe("first-build");
+
+      // Size and modification time do not move when a file loses its execute
+      // bit, so a key built from those alone was the same key as before: the
+      // warm run went on serving and a cold one could not start `uf` at all.
+      // Whether the command worked then depended on how warm the cache was,
+      // which is the class of answer this key exists to remove.
+      fs.chmodSync(binary, 0o644);
+      const unusable = run(root, { UF_BINARY: binary });
+
+      expect(unusable.status).not.toBe(0);
+      expect(unusable.stdout).not.toContain("first-build");
     });
   });
 

@@ -29,7 +29,7 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isFlowModule, transformFlow, ufBinaryIdentity } from "../transform.js";
+import { isFlowModule, sharedService, transformFlow, ufBinaryIdentity } from "../transform.js";
 
 /**
  * Write `contents` to `target` so a concurrent reader never sees half of it.
@@ -63,7 +63,7 @@ function writeAtomically(target, contents) {
  * Bumped whenever *this file's* framing of the output changes, to retire old
  * entries.
  *
- * Not the compiler's version, which is `binaryIdentity` below and which nobody
+ * Not the compiler's version, which is `ufBinaryIdentity` and which nobody
  * has to remember. What is left for this to cover is what the loader adds
  * around a transform — the appended source map, the module format it forces —
  * and that is all it should ever be bumped for.
@@ -74,26 +74,12 @@ let cacheDirectory = null;
 let root = null;
 
 /**
- * Which build of `uf` this process transforms through, or `null` when that
- * could not be established.
- *
- * Read once, when the hooks are installed, rather than per module. The
- * `uf transform` process this loader talks to is spawned once and goes on
- * executing the binary it was started from, so a rebuild part way through a
- * run does not change who is answering; re-reading this per module would name
- * the new binary while the old one compiled the module, which is the same lie
- * pointing the other way.
- */
-let binaryIdentity = null;
-
-/**
  * Called once by `register()` with `{ root }`; the cache lives under it and
  * the transform service is started there so it reads the right config.
  */
 export async function initialize(data) {
   root = data?.root ?? process.cwd();
   cacheDirectory = path.join(root, ".uf", "cache", "transform");
-  binaryIdentity = ufBinaryIdentity();
 }
 
 /**
@@ -114,23 +100,22 @@ export async function load(url, context, nextLoad) {
 }
 
 /**
- * The file this module's compiled form belongs in, or `null` when it must not
- * be cached at all.
+ * The file this module's compiled form belongs in under `identity`, or `null`
+ * when it must not be cached at all.
  *
  * `null` when there is no cache directory, and — the case worth spelling out —
- * when `ufBinaryIdentity()` could not say which build of `uf` is about to
- * compile this. That has to be a miss in both directions: nothing is read and
- * nothing is written. Hashing the rest anyway would give every build of `uf`
- * one key again, and writing under it would leave an entry for the next run to
- * trust. A host that cannot name its compiler compiles everything, every time,
- * which is slower and is never wrong.
+ * when the caller has no identity to give: nothing is read and nothing is
+ * written. Hashing the rest anyway would give every build of `uf` one key
+ * again, and writing under it would leave an entry for the next run to trust.
+ * A host that cannot name its compiler compiles everything, every time, which
+ * is slower and is never wrong.
  */
-function cacheEntryFor(source, filename) {
-  if (cacheDirectory == null || binaryIdentity == null) return null;
+function cacheEntryFor(identity, source, filename) {
+  if (cacheDirectory == null || identity == null) return null;
   const key = createHash("sha256")
     .update(CACHE_VERSION)
     .update("\0")
-    .update(binaryIdentity)
+    .update(identity)
     .update("\0")
     .update(filename)
     .update("\0")
@@ -139,8 +124,31 @@ function cacheEntryFor(source, filename) {
   return path.join(cacheDirectory, `${key}.mjs`);
 }
 
+/**
+ * The compiled form of one module, from disk if some build already produced
+ * it and from `uf` otherwise.
+ *
+ * The two keys are computed from two different identities on purpose.
+ *
+ * The **read** is keyed by the binary as it is *now*, stat'd per module rather
+ * than once when the hooks were installed. A rebuild between installing them
+ * and loading the first Flow module would otherwise serve the old build's
+ * output while the new one is what would run — the same staleness this key
+ * exists to remove, with a smaller window. A stat is a microsecond and a
+ * fully warm run still spawns nothing, which is the property that decided the
+ * key's shape in the first place.
+ *
+ * The **write** is keyed by the binary the compiler process is actually
+ * executing, which `sharedService` read before it spawned and which cannot
+ * change afterwards. Keying the write by the file's current state would file
+ * this build's output under the next build's name if the rebuild landed while
+ * the module was being compiled — the same lie pointing the other way.
+ *
+ * They are usually the same string. When they are not, a rebuild happened
+ * during this run, and each half is right about its own half.
+ */
 async function cachedTransform(source, filename) {
-  const entry = cacheEntryFor(source, filename);
+  const entry = cacheEntryFor(ufBinaryIdentity(), source, filename);
 
   if (entry) {
     try {
@@ -156,8 +164,9 @@ async function cachedTransform(source, filename) {
     ? `${out.code}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(out.map).toString("base64")}\n`
     : out.code;
 
-  if (entry) {
-    writeAtomically(entry, output);
+  const written = cacheEntryFor(sharedService(root).identity, source, filename);
+  if (written) {
+    writeAtomically(written, output);
   }
   return output;
 }
