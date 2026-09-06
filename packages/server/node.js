@@ -116,9 +116,16 @@ export type NodeResponse = {
   statusMessage: string,
   headersSent: boolean,
   setHeader(name: string, value: string): mixed,
-  write(chunk: Uint8Array | string): mixed,
+  write(chunk: Uint8Array | string): boolean,
   end(chunk?: Uint8Array | string): mixed,
   destroy(error?: mixed): mixed,
+  // `send` paces itself against the socket and stops when the client hangs
+  // up, so it needs the events as well as the writes. `write` returns a
+  // `boolean` for the same reason — `mixed` would have made the back-pressure
+  // check unwritable, which is one way this was lost.
+  on(event: string, listener: () => mixed): mixed,
+  once(event: string, listener: () => mixed): mixed,
+  off(event: string, listener: () => mixed): mixed,
   ...
 };
 
@@ -173,13 +180,63 @@ export async function send(outgoing: NodeResponse, result: Response): Promise<vo
   }
   // Streamed rather than buffered, so a handler returning a large or
   // open-ended body is not read into memory first.
+  //
+  // Which was only half true while this loop read as fast as the body would
+  // give: `write` answers `false` when the kernel buffer is full and the rest
+  // is being held in *this process's* memory, and a reader that ignores that
+  // turns a slow client into a heap the size of everything it has not
+  // acknowledged. Streaming in shape and buffering in fact — the same failure
+  // `ChunkQueue` exists to avoid a layer up, in the renderer.
   const reader = result.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done === true) break;
-    if (value != null) outgoing.write(value);
+  // And a client that hangs up is the other half. Nothing written after that
+  // goes anywhere, and the producer behind the body — a render, a proxied
+  // upstream, an event stream — keeps producing for a reader that is never
+  // coming back. `cancel()` is what tells it to stop; `releaseLock()` would
+  // only detach this end.
+  let open = true;
+  const onClose = () => {
+    open = false;
+  };
+  outgoing.on("close", onClose);
+  try {
+    while (open) {
+      const { done, value } = await reader.read();
+      if (done === true || !open) break;
+      if (value != null && outgoing.write(value) === false) {
+        await writable(outgoing);
+      }
+    }
+  } finally {
+    outgoing.off("close", onClose);
   }
-  outgoing.end();
+  if (open) {
+    outgoing.end();
+    return;
+  }
+  // Best effort, and the only place in this function where a rejection is
+  // dropped: the connection is already gone, so there is nobody left to report
+  // to and no response left to fail.
+  await reader.cancel().catch(() => {});
+}
+
+/**
+ * Resolve once `outgoing` can take more — or once it cannot ever again.
+ *
+ * `drain` alone would be a deadlock waiting to happen: a client that hangs up
+ * while the buffer is full emits `close` and never `drain`, and a writer
+ * waiting only for the latter waits for the life of the process, holding the
+ * body's producer open with it.
+ */
+function writable(outgoing: NodeResponse): Promise<void> {
+  return new Promise((resolve) => {
+    const settle = () => {
+      outgoing.off("drain", settle);
+      outgoing.off("close", settle);
+      resolve();
+    };
+    outgoing.once("drain", settle);
+    outgoing.once("close", settle);
+  });
 }
 
 /**

@@ -52,6 +52,8 @@
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 
+import { send } from "./node.js";
+
 /**
  * The pieces of a Node request and response this module touches.
  *
@@ -377,13 +379,13 @@ export function createHandler(
         // true of all of them and is ubugeeei-prod/uf#342.
         const guarded = await app.runMiddleware(asRequest);
         if (guarded != null) {
-          await send(response, method, guarded);
+          await sendUnlessHead(response, method, guarded);
           return;
         }
 
         const handled = await app.dispatch(asRequest);
         if (handled != null) {
-          await send(response, method, handled);
+          await sendUnlessHead(response, method, handled);
           return;
         }
 
@@ -521,78 +523,40 @@ function toRequest(incoming: NodeRequest, url: URL): Request {
   return new Request(url, init);
 }
 
-/** Write a `Response` to a Node response. */
-async function send(outgoing: NodeResponse, method: string, result: Response): Promise<void> {
-  outgoing.statusCode = result.status;
-  for (const [name, value] of result.headers) {
-    outgoing.setHeader(name, value);
-  }
-  if (result.body == null || method === "HEAD") {
-    outgoing.end();
-    return;
-  }
-  // Streamed rather than buffered, so a handler returning a large or
-  // open-ended body is not read into memory first — and paced by what the
-  // socket will take, or it is only streamed in shape. `write` answers `false`
-  // when the kernel buffer is full and the remainder is being held in this
-  // process, so a loop that read on regardless turned a slow client into a heap
-  // the size of everything it had not acknowledged.
-  //
-  // The same loop as `@uniflowed/vite`'s `internal/http.js`, and the same
-  // comments, because this is the third copy of "write a `Response` to a Node
-  // response" and the three have to answer alike: a binary that buffered where
-  // `uf start` paced would be the one deployment target whose memory profile
-  // nobody had measured. The code is not shared for the reason at the top of
-  // this file — importing `@uniflowed/vite` into the artefact a deployment runs
-  // is the property `uf start` exists to establish.
-  const reader = result.body.getReader();
-  // A client that hangs up is the other half: nothing written after that goes
-  // anywhere, and the producer behind the body keeps producing for a reader
-  // that is never coming back.
-  let open = true;
-  const onClose = () => {
-    open = false;
-  };
-  outgoing.on("close", onClose);
-  try {
-    while (open) {
-      const { done, value } = await reader.read();
-      if (done === true || !open) break;
-      if (outgoing.write(value) === false) {
-        await writable(outgoing);
-      }
+/** `send`, except that a `HEAD` gets the status and the headers and no body. */
+async function sendUnlessHead(
+  outgoing: NodeResponse,
+  method: string,
+  result: Response,
+): Promise<void> {
+  if (method === "HEAD") {
+    outgoing.statusCode = result.status;
+    for (const [name, value] of result.headers) {
+      outgoing.setHeader(name, value);
     }
-  } finally {
-    outgoing.off("close", onClose);
-  }
-  if (open) {
     outgoing.end();
     return;
   }
-  // Best effort: the connection is already gone, so there is nobody left to
-  // report a failed cancellation to and no response left to fail.
-  await reader.cancel().catch(() => {});
+  await send(outgoing, result);
 }
 
 /**
- * Resolve once `outgoing` can take more — or once it cannot ever again.
+ * Write a `Response` to a Node response, minding the socket.
  *
- * `drain` alone would be a deadlock waiting to happen: a client that hangs up
- * while the buffer is full emits `close` and never `drain`, and a writer
- * waiting only for the latter waits for the life of the process, holding the
- * body's producer open with it.
+ * `send` was written a third time here, with a comment saying the three copies
+ * had to answer alike because "a binary that buffered where `uf start` paced
+ * would be the one deployment target whose memory profile nobody had
+ * measured". They did not stay alike — ubugeeei-prod/uf#400 is the copy in
+ * `@uniflowed/server`'s `node.js` losing the pacing while this one kept it.
+ *
+ * The reason not to share was that importing `@uniflowed/vite` into the
+ * artefact a deployment runs is the property `uf start` exists to establish.
+ * That reason is gone: the loop lives in `@uniflowed/server` now, which is the
+ * package this file is *in*.
+ *
+ * `HEAD` stays here, at the call site, because it is a decision about a
+ * request rather than about writing a body.
  */
-function writable(outgoing: NodeResponse): Promise<void> {
-  return new Promise((resolve) => {
-    const settle = () => {
-      outgoing.off("drain", settle);
-      outgoing.off("close", settle);
-      resolve();
-    };
-    outgoing.once("drain", settle);
-    outgoing.once("close", settle);
-  });
-}
 
 /** Write one embedded file, with the length a client needs to reuse a socket. */
 function sendBytes(

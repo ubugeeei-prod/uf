@@ -26,8 +26,12 @@ import {
   createApplicationHandler,
   createServeHandler,
   createStaticHandler,
-  send,
 } from "../../packages/vite/internal/serve.js";
+// `send` moved to the package a deployment links, and this import did not
+// follow it — so this whole file stopped loading, and twenty-three assertions
+// about the two handlers stopped being made while `uf test` printed
+// "0 failed" above its own "could not run 1 file". See ubugeeei-prod/uf#400.
+import { send } from "@uniflowed/server/node";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
