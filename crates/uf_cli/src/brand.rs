@@ -6,7 +6,8 @@ use uf_term::{
 };
 
 pub(crate) const HEADLINE: &str = "Unified Toolchain for Flow";
-pub(crate) const TAGLINE: &str = "All-in-one toolchain for Flow and React.";
+pub(crate) const TAGLINE: &str =
+    "Build the strongest React development experience with Modern Flow.";
 pub(crate) const DOCS_URL: &str = "https://docs.uniflowed.dev";
 pub(crate) const CURL_INSTALL: &str = "curl -fsSL https://setup.uniflowed.dev | sh";
 pub(crate) const NIX_RUN: &str = "nix run github:ubugeeei-prod/uf#uf -- --version";

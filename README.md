@@ -4,7 +4,7 @@
 
 # uf
 
-**The best React experience, typed by Flow.**
+**Build the strongest React development experience with Modern Flow.**
 
 [Documentation](https://docs.uniflowed.dev) ·
 [Install](https://docs.uniflowed.dev/guide/install) ·
