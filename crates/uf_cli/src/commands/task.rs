@@ -402,6 +402,14 @@ pub(crate) fn exec_package(
 /// fetching anything. A scoped name is linked under its bare binary name —
 /// `@scope/thing` installs `thing` — which is why the last segment is what is
 /// looked up.
+///
+/// One name, and on Windows that is the wrong number. A package manager writes
+/// three files there — `<name>` for Git Bash, `<name>.cmd`, `<name>.ps1` — and
+/// this finds the first, which Windows cannot execute. It is
+/// ubugeeei-prod/uf#390 rather than a fix here: uf publishes no Windows
+/// artifact (#309) and CI has no Windows runner, so a `#[cfg(windows)]` branch
+/// added now would compile nowhere, run nowhere, and read as a solved problem
+/// to the first person who built for it.
 fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
     let name = package.rsplit('/').next().unwrap_or(package);
     // Nothing good comes of joining a caller's string onto a path when it can

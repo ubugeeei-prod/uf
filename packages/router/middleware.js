@@ -120,13 +120,18 @@ export function createMiddlewareRunner(options: {|
       }
     }
 
-    // Draining here is right when the chain answered — the response is in
-    // hand, which is what `after()` means — and early when it did not, because
-    // the handler or the render that continues establishes a context of its
-    // own. Threading one context through middleware, dispatch and render is
-    // the structural fix and is a larger change than this one; running the
-    // callback early is at least a thing that happens, which losing it
-    // silently would not be.
+    // Early in both outcomes, and known to be. `after()` says "once the
+    // response has been sent", and here the response has at best been decided:
+    // the caller is several lines from writing a byte of it, and when the chain
+    // declined there is no response at all yet — the handler or the render that
+    // continues has not run, and establishes a context of its own besides.
+    //
+    // The structural fix is to move the context to whoever owns the request,
+    // which is the host: four of them, three router modules, and a semantic
+    // question about what "sent" means for a streamed body on a host that may
+    // not outlive the response. That is ubugeeei-prod/uf#389, with the design
+    // written out. Running the callback early is at least a thing that happens,
+    // which losing it silently would not be, and this is the trade until then.
     await drainDeferred(context);
     return answer;
   };
