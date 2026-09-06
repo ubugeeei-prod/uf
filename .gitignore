@@ -24,6 +24,14 @@ node_modules/
 *.tmp
 /docs/public/
 
+# The Flow that `module-mock.test.js` hands to `uf check`: a module, a correct
+# mock of it, and a deliberately wrong one. Written in place rather than in a
+# temporary directory, for the reason the served application above is — it
+# imports `@uniflowed/test` by path, and `uf check` only checks files the
+# project scan found. The test removes it before it writes and again when it is
+# done; this covers the run that was killed in between.
+/tests/library/.uf-module-mock-types/
+
 # The formatter corpus: ~1 GB of third-party Flow, checked out by
 # `tools/corpus/sync.sh` from `tools/corpus/repos.txt`. The four entries that
 # are still submodules are tracked and unaffected by this. See #137.
