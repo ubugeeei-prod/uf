@@ -101,6 +101,10 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
                 local,
                 network,
                 routes,
+                // `uf dev` dispatches handlers through the same table it
+                // renders pages from, so there is nothing to report that the
+                // route count does not already cover.
+                handlers: _,
             } => {
                 let route_count = plural(routes.len(), "route");
                 ui.render(|renderer, out| {
