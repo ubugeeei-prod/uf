@@ -1,0 +1,218 @@
+---
+title: "State · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# State
+
+<div className="lede">
+`@uniflowed/state` is atoms: a value declared at module scope, read and written
+from anywhere, with no provider to mount. If you know Jotai you know the shape
+— and four things are deliberately different, starting with the fact that
+there are four constructors instead of one.
+</div>
+
+## Four constructors, not one overload
+
+Jotai spells every kind of atom `atom(...)` and works out which was meant from
+the arguments. That resolves at the call site in TypeScript; in Flow the honest
+version is an intersection of function types the checker handles poorly, and it
+is ambiguous at run time anyway — `atom(f)` cannot tell a derived atom from a
+primitive one holding a function.
+
+So the four kinds have four names:
+
+```js
+import { action, atom, selector, writableSelector } from "@uniflowed/state";
+
+const count = atom(1);
+
+const doubled = selector<number>((get) => get(count) * 2);
+
+const bounded = writableSelector<number, number>(
+  (get) => get(count),
+  (get, set, next) => set(count, Math.max(0, next)),
+);
+
+const increment = action<number>((get, set, by) => set(count, get(count) + by));
+```
+
+In Jotai's terms those are `atom(value)`, `atom(read)`, `atom(read, write)` and
+`atom(null, write)`. Each returns exactly one type here, so what a binding can
+do is in its type: `selector` gives a `ReadonlyAtom`, and writing to one is both
+a type error and a run-time error naming the atom.
+
+Nothing above allocates. An atom is a description; a store is what holds values,
+and an atom that no store has touched costs nothing.
+
+## Without React
+
+```js
+import { createStore, read, subscribe, write } from "@uniflowed/state";
+
+const store = createStore();
+const stop = subscribe(count, () => console.log(read(count, store)), store);
+
+write(count, 1, store);
+write(count, 2, store);
+stop();
+```
+
+`read`, `write` and `subscribe` take an optional store and use a lazily created
+default one when you leave it out — which is why the constructors above are
+already usable in a test, a loader or a script. `getDefaultStore()` names it if
+you need it.
+
+A store is deliberately small: `get`, `set` and `sub` are all an application
+needs, and everything else in this package is built from them.
+
+## In React
+
+```js
+"use client";
+// @flow
+import { useAtomValue, useSetAtom } from "@uniflowed/state";
+
+component Controls() {
+  const bump = useSetAtom(count);
+  return (
+    <button type="button" onClick={() => bump((n) => n + 1)}>
+      add
+    </button>
+  );
+}
+
+component Total() {
+  const shown = useAtomValue(doubled);
+  return <output>{shown}</output>;
+}
+```
+
+`useAtomValue` subscribes, `useSetAtom` does not — a component that only writes
+never re-renders when the value changes — and `useAtom` is the pair, for when
+you want both. The setter's identity is cached per store and atom, so it is
+stable across every component that asks for it, not merely within one.
+
+The subscription is `useSyncExternalStore`, and that is a rule rather than a
+detail. Nothing here mutates anything a render can observe, no hook hands back a
+live mutable object, and the snapshot a render reads is taken without becoming a
+dependency of whatever else was computing. The server snapshot is the same
+function as the client's, so hydration compares like with like.
+
+`Provider` gives a subtree its own store, which is what a server rendering per
+request needs — module-scope state is per-process, and one visitor's store must
+not be another's. A tree with no provider gets the default store rather than an
+error.
+
+## Derived, composed, and the escape hatches
+
+**A family** is atoms by key, memoised:
+
+```js
+const byId = atomFamily((id: string) => atom(`article ${id}`));
+
+byId("a") === byId("a"); // the same atom
+byId.remove("a"); // and it is gone
+byId.size(); // 0
+```
+
+**A default that can be taken back:**
+
+```js
+const override = atomWithDefault<number>((get) => get(base));
+
+write(override, 99); // now 99
+write(override, RESET); // back to following `base`
+```
+
+`RESET` is an opaque symbol rather than a string or `undefined`, so an atom
+whose values are strings cannot accidentally hold the one that means "reset".
+
+**Persistence** is in the write, not in a subscription, so it does not depend on
+the atom being mounted anywhere:
+
+```js
+const theme = atomWithStorage("theme", "light", storage);
+```
+
+The third argument is a `{ getItem, setItem, removeItem }` adapter. Leave it out
+and you get a plain atom — nothing reaches for `localStorage` on its own, which
+is what makes the same module safe on a server. Stored data that cannot be read
+falls back to the initial value rather than throwing.
+
+## Async atoms are values, not suspense
+
+This is the difference that will catch a Jotai reader out.
+
+```js
+const user = asyncAtom<string>(async (get) => fetchUser(get(userId)));
+```
+
+`user`'s value is a `Loadable` — `{ state: "loading" }`,
+`{ state: "hasData", data }` or `{ state: "hasError", error }` — and a component
+renders it:
+
+```js
+component Name() {
+  const loadable = useAtomValue(user);
+  return match (loadable.state) {
+    "loading" => <p>…</p>,
+    "hasError" => <p>could not load</p>,
+    "hasData" => <p>{loadable.data}</p>,
+  };
+}
+```
+
+Jotai's async atom suspends. This one cannot, and says why rather than pretending
+the choice was aesthetic: Suspense is not available to a `useSyncExternalStore`
+reader without throwing a promise from inside a snapshot, which is neither
+supported nor safe under concurrent rendering. So the loading state is a value
+you render.
+
+`unwrap(user, fallback)` is the shortcut when you do not want the three cases:
+
+```js
+const name = unwrap(user, "…");
+```
+
+## What a write does
+
+Every write is batched. An `action` that sets three atoms wakes each subscriber
+once, not three times:
+
+```js
+const bump = action<void>((get, set) => {
+  set(first, get(first) + 1);
+  set(second, get(second) + 1);
+});
+```
+
+A subscriber of a selector over both is called once. And `get` inside a *write*
+is untracked — a write is not a computation, and an atom that recomputed because
+a handler happened to look at something would be very hard to explain.
+
+## Coming from Jotai
+
+| Jotai | Here | Why |
+| --- | --- | --- |
+| `atom(value \| read \| read+write)` | `atom`, `selector`, `writableSelector`, `action` | Flow resolves an overload set worse than TypeScript, and `atom(f)` is ambiguous at run time |
+| Async atoms suspend | Async atoms are `Loadable` values | A `useSyncExternalStore` reader cannot suspend safely |
+| Its own dependency graph | `@uniflowed/cell`'s | Two implementations of dependency tracking is one too many, and the copy is the one that rots |
+| `atomWithStorage` defaults to `localStorage` | No storage unless you pass an adapter | The same module has to be safe on a server |
+| `atomFamily(create, areEqual?)` | `atomFamily(create)` plus `remove` and `size` | Keys are compared by identity; a comparator invites a family keyed by a fresh object every render |
+| `debugLabel`, devtools | A `label` for diagnostics only | Never load-bearing |
+
+Not implemented: `useHydrateAtoms`, `useAtomCallback`, `useResetAtom`,
+`useReducerAtom`, `selectAtom`, `splitAtom`, `atomWithReducer`,
+`atomWithReset`, `atomWithObservable`, `atomWithRefresh`, `freezeAtom`, and
+Jotai's `loadable` utility. Some of those are one composition away from what is
+here; none of them is pretended at.
+
+There is one thing with no Jotai analogue: `useCell` reads a
+[`@uniflowed/cell`](/reference/packages) cell directly, for the layer below this
+one.
+
+Every snippet on this page was run before it was published, and
+`tests/library/state.test.js` is where the behaviour above is pinned —
+`uf test#library state.test.js`.

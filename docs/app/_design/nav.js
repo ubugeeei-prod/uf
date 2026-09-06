@@ -105,6 +105,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Headless components",
         blurb: "Seven primitives: the keyboard, the ARIA, and no styles at all.",
       },
+      {
+        href: "/guide/state",
+        title: "State",
+        blurb: "Atoms, a store, and where this parts company with Jotai.",
+      },
     ],
   },
   {
