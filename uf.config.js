@@ -294,6 +294,13 @@ export default defineConfig({
     // shell reads as command substitution. It had been correct for weeks —
     // under bash, which is `/bin/sh` on a laptop, where dash is `/bin/sh` on
     // the runner. `sh -n` reads and does not run, so this costs milliseconds.
+    // And that the installer's banner fits an eighty-column terminal. The two
+    // lines `curl … | sh` prints before it does anything are the first uf
+    // anybody sees, and they shared one line until the tagline grew to
+    // ninety-six columns with its indent — wrapping mid-sentence onto a second
+    // line with no indent. The installer cannot ask how wide the terminal is,
+    // so the width is a property of the text and is checked here.
+    "install:banner": "tools/ci/install-banner-fits.sh",
     "scripts:parse": "tools/ci/scripts-parse.sh",
     "scripts:parse:test": "tools/ci/test-scripts-parse.sh",
     lockfile: "tools/ci/lockfile-in-sync.sh",
@@ -336,6 +343,7 @@ export default defineConfig({
         "manifests",
         "lockfile",
         "lockfile:test",
+        "install:banner",
         "scripts:parse",
         "scripts:parse:test",
         "release:closure",
