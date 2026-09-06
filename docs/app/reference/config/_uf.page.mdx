@@ -34,7 +34,7 @@ which is the fastest way to answer "what is it actually using".
 | `build` | The production build: entries, output, budgets, source maps |
 | `dev` | The dev server: host, port, file access, allowed hosts |
 | `docs` | The documentation build, if the project has one |
-| `env` | Which env files are loaded and which environment is active |
+| `env` | The `.env` files, the default mode, and the pinned toolchain |
 | `fmt` | `uf fmt` |
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test` |
@@ -96,6 +96,20 @@ your source tree; the reasoning is in
 
 Budgets are unset on purpose: failing a build nobody asked uf to police is worse
 than reporting the size and moving on.
+
+## env
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `active` | `""` | The mode when nothing else says. Empty means the command decides: `development` for `uf dev`, `production` for `uf build`, `uf preview` and `uf start`, `test` for `uf test` |
+| `files` | `[]` | The `.env` files to read, instead of the cascade. Empty means `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`, in that order, the later file winning |
+| `toolchain` | `{}` | The runtimes and package managers this project pins, by exact version — `{ node: "24.14.0" }` |
+
+`--mode` beats `active`, and so does the profile `uf env use` wrote. A variable
+already set in the environment beats every file. Only a name starting with
+`VITE_` — or Vite's own `envPrefix`, if the project sets one — reaches browser
+code; everything else is the server's. [Environments](/guide/env) is the whole
+of it.
 
 ## fmt
 

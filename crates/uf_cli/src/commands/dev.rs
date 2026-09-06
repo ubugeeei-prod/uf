@@ -34,7 +34,7 @@ use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
-use crate::support::{plural, project_label};
+use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
 use fix::{FORMATTED_AWAY, Fix};
@@ -47,6 +47,8 @@ pub(crate) struct DevArgs {
     pub(crate) host: Option<String>,
     /// Listen on this port instead of `dev.port`.
     pub(crate) port: Option<u16>,
+    /// Run in this mode instead of `development`.
+    pub(crate) mode: Option<String>,
 }
 
 /// Start the dev server and render its events until it exits.
@@ -74,28 +76,35 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let package = package_dir(&root)?;
     let _ = write_router_manifest(&root, &resolved.config)?;
 
+    let env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
     let driver_args = driver_args(args.host.as_deref(), args.port);
-    let mut driver = Driver::spawn(&host, &package, &root, "dev", &driver_args)?;
+    let mut driver = Driver::spawn(&host, &package, &root, "dev", &driver_args, &env)?;
     let mut server_components = RscReport::new(&root);
 
     let host_name = host.name();
     let project = project_label(&root).to_string();
+    // The mode is on the banner because it is the thing that decides which
+    // `.env` files were read, and a person looking at a value they did not
+    // expect should not have to reason about which of four files won.
+    let mode = env.mode().to_owned();
+    let env_files = env_file_list(&root, &env);
     ui.render(|renderer, out| {
         renderer.banner(out, "uf dev", Some(&project));
         renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("engine", "vite"),
-                KeyValue::toned("host", host_name, Tone::Muted),
-                KeyValue::toned(
-                    "transform",
-                    "uf transform (official Flow parser, React Compiler, oxc)",
-                    Tone::Muted,
-                ),
-            ],
-        );
+        let mut rows = vec![
+            KeyValue::new("engine", "vite"),
+            KeyValue::toned("host", host_name, Tone::Muted),
+            KeyValue::new("mode", &mode),
+            KeyValue::toned(
+                "transform",
+                "uf transform (official Flow parser, React Compiler, oxc)",
+                Tone::Muted,
+            ),
+        ];
+        if let Some(files) = &env_files {
+            rows.push(KeyValue::toned("env files", files, Tone::Path));
+        }
+        renderer.key_values(out, 2, &rows);
     });
 
     while let Some(event) = driver.next_event()? {

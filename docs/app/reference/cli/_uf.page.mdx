@@ -91,6 +91,10 @@ behaviour unless `dev.strictPort` says otherwise; it is a preference the project
 wrote down once, not an instruction you just gave. `--host HOST` binds a
 routable address, which requires a non-empty `dev.allowedHosts`.
 
+`--mode MODE` runs in that mode instead of `development`, which is what chooses
+`.env.<mode>` and what the browser reads as `import.meta.env.MODE`; see
+[Environments](/guide/env).
+
 It also runs the server-component analysis, and runs it again whenever a module
 changes, so a Server Component that reaches for `useEffect` or `localStorage`
 is named where it was written rather than in a build days later. It is a report
@@ -106,6 +110,11 @@ under `guards`, and in `uf-build-manifest.json` as
 `prerenderedUnderMiddleware` — a static host serves that file without running
 the guard, and which half of `dist/` you deploy is the one thing the build
 cannot know.
+
+`--mode MODE` builds in that mode instead of `production`: it chooses
+`.env.<mode>` out of the cascade and is what `import.meta.env.MODE` reads, so
+`uf build --mode staging` is how one project produces a staging bundle. See
+[Environments](/guide/env).
 
 Two flags write something you can take away with you: `--adapter TARGET`
 writes a directory that runs on a host with a JavaScript runtime and nothing
@@ -154,7 +163,8 @@ this is Vite's server.
 `--port PORT` binds that port or fails, the same rule `uf dev` follows.
 `--host HOST` needs a non-empty `dev.allowedHosts`, because Vite validates a
 preview's `Host` header against it and a preview bound to a routable address
-with nothing allowed would refuse every request.
+with nothing allowed would refuse every request. `--mode MODE` chooses the
+`.env` files, `production` by default.
 
 ### uf start
 
@@ -171,6 +181,12 @@ Binds `0.0.0.0:3000`, and reads `HOST` and `PORT` from the environment, which
 is how a container or a process manager says which socket to take. `--host` and
 `--port` override both, and the port you name is the port it binds or it does
 not start.
+
+The `.env` files are read when the server starts, in `production` mode unless
+`--mode` says another, so a value the server reads through `process.env` can be
+changed without rebuilding. A variable already set in the environment — which is
+how a container or a secret manager provides one — always wins over a file. See
+[Environments](/guide/env).
 
 ### uf build --adapter TARGET
 
@@ -244,7 +260,9 @@ writing.
 ### uf run SCRIPT [ARGS...]
 
 Runs a script from `uf.config.js` through the task runner, forwarding
-everything after the script name.
+everything after the script name. The task's shell has the project's `.env`
+values in it, as every command uf runs does; `--mode MODE`, before the script
+name, chooses which files those came from.
 
 ### uf exec PACKAGE [ARGS...]
 
@@ -291,6 +309,7 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 | `--watch-interval MS` | How often `--watch` looks for changes |
 | `--list` | Print what would run without running it |
 | `--json` | The whole report on stdout, machine-readable |
+| `--mode MODE` | Run in that mode instead of `test`, which chooses `.env.<mode>` |
 
 ### uf prepare
 
@@ -355,11 +374,12 @@ use, and why.
 
 ### uf env use PROFILE
 
-Records the profile name, and **nothing reads it yet**. `.env` files are not
-loaded by uf at all today: the Vite driver sets `envDir: false`, so neither the
-profile nor the files it would select reach a build. A project that needs them
-turns Vite's own loader back on with `vite: { envDir: "." }`. See
-[#259](https://github.com/ubugeeei-prod/uf/issues/259).
+Records the profile every later command runs in, in `.uniflowed/profile`. `uf
+env use staging` makes `.env.staging` and `.env.staging.local` the mode files
+for `uf dev`, `uf build`, `uf test` and the rest, until you change it or pass
+`--mode`. The name becomes the end of a file name, so it may hold letters,
+digits, `_`, `-` and `.`; `local` is refused, because `.env.local` is already
+the file that overrides every mode. See [Environments](/guide/env).
 
 ### uf env install
 

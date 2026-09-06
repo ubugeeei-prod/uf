@@ -2282,3 +2282,294 @@ fn compile_refuses_a_native_addon_and_names_it() {
         String::from_utf8_lossy(&plain.stderr)
     );
 }
+
+/// A project whose configuration comes from `.env` files, on both sides of the
+/// client boundary.
+///
+/// The page reads two variables through `import.meta.env` — one behind the
+/// client prefix and one not — and a route handler reads a third through
+/// `process.env`, which is what server code does. Three files, so that which
+/// value arrives says which mode the command ran in.
+///
+/// `UF_SECRET_TOKEN` is the one that matters. It is read by a *page*, which is
+/// code that ships to the browser, and its value must not be in `dist/`
+/// anywhere: the prefix is the whole boundary between a build-time value and a
+/// credential in a public bundle.
+fn project_reading_the_environment() -> Project {
+    let mut files = minimal_app();
+    files.push((
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
+         const server =\n  \
+         typeof process === \"undefined\" ? \"no server here\" : \
+         String(process.env.UF_SERVER_VALUE);\n\n\
+         export component Page() {\n  \
+         return (\n    \
+         <main>\n      \
+         <p>greeting: {String(import.meta.env.VITE_GREETING)}</p>\n      \
+         <p>secret: {String(import.meta.env.UF_SECRET_TOKEN)}</p>\n      \
+         <p>server: {server}</p>\n    \
+         </main>\n  \
+         );\n\
+         }\n",
+    ));
+    files.push((
+        "app/api/env/_uf.route.js",
+        "// @flow\n\n\
+         export function GET(): Response {\n  \
+         return Response.json({ server: String(process.env.UF_SERVER_VALUE) });\n\
+         }\n",
+    ));
+    files.push((
+        ".env",
+        "VITE_GREETING=from .env\n\
+         UF_SERVER_VALUE=from .env\n\
+         UF_SECRET_TOKEN=this-must-not-be-in-the-bundle\n",
+    ));
+    files.push((
+        ".env.development",
+        "VITE_GREETING=greeting for development\nUF_SERVER_VALUE=server value for development\n",
+    ));
+    files.push((
+        ".env.production",
+        "VITE_GREETING=greeting for production\nUF_SERVER_VALUE=server value for production\n",
+    ));
+    // The page reads `import.meta.env`, and the router entry has to be the same
+    // one every other fixture here uses.
+    let project = Project::new(&files);
+    project
+}
+
+/// Every `.js` the browser downloads from a build, as one string.
+fn client_assets(dist: &Path) -> String {
+    let mut source = String::new();
+    let assets = dist.join("assets");
+    let entries = fs::read_dir(&assets)
+        .unwrap_or_else(|error| panic!("the build wrote no {}: {error}", assets.display()));
+    for entry in entries {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|extension| extension == "js") {
+            source.push_str(&fs::read_to_string(&path).unwrap());
+        }
+    }
+    assert!(!source.is_empty(), "the build wrote no client JavaScript");
+    source
+}
+
+/// The build reads `.env`, and only the prefixed half reaches the browser.
+///
+/// This is the half of ubugeeei-prod/uf#259 that is a security property rather
+/// than a convenience: everything in the cascade is available to server code,
+/// and a name without the client prefix must be absent from what ships. The
+/// negative assertion is the point — a build that inlined the whole environment
+/// would pass every other test in this file.
+#[test]
+fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = project_reading_the_environment();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dist = project.path().join("dist");
+    let index = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    // `production`, because that is `uf build`'s mode — so `.env.production`
+    // won over `.env`, and the value a dev server would have used is nowhere.
+    assert!(
+        index.contains("greeting for production"),
+        "the build did not read `.env.production`:\n{index}"
+    );
+    assert!(
+        !index.contains("greeting for development"),
+        "the build read the development file:\n{index}"
+    );
+    // A page reading a name without the prefix gets nothing. `undefined` and
+    // not the value, with React's own comment separator in between.
+    assert!(
+        index.contains("undefined</p>"),
+        "a variable without the client prefix must not reach the page:\n{index}"
+    );
+
+    // The server half of the same page: `process.env` is read by the module
+    // that renders it, and the prerender ran on a process uf had given the
+    // whole environment to. This is the half a route handler and a loader use.
+    assert!(
+        index.contains("server value for production"),
+        "server code must read every variable through `process.env`:\n{index}"
+    );
+
+    let client = client_assets(&dist);
+    assert!(
+        client.contains("greeting for production"),
+        "a prefixed variable is substituted into the browser bundle, and was not"
+    );
+    // And the value that page read on the server is *not* in what ships, even
+    // though the module that reads it does: only a prefixed name is
+    // substituted, everything else stays a lookup that finds nothing in a
+    // browser.
+    assert!(
+        !client.contains("server value for production"),
+        "a variable without the client prefix was inlined into the browser bundle"
+    );
+    // The assertion this test exists for.
+    for file in walk_files(&dist) {
+        let bytes = fs::read(&file).unwrap();
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("this-must-not-be-in-the-bundle"),
+            "a variable without the client prefix reached {}",
+            file.display()
+        );
+    }
+}
+
+/// Every file under `directory`, however deep.
+fn walk_files(directory: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in fs::read_dir(&next).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+/// Start `uf <args>` in `root`, wait for `/`, and ask it what it read.
+///
+/// The retries are [`PORT_ATTEMPTS`]' — the port is chosen by binding zero and
+/// letting it go, so anything on the machine can take it in between, and a
+/// typed port is a strict one, so losing that race is a server that never
+/// starts rather than one on a port nobody asked about.
+fn serve_and_ask(
+    root: &Path,
+    args: &[&str],
+    check: impl Fn(&mut Server, u16, &Mutex<String>, &str),
+) {
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let port_text = port.to_string();
+        let mut with_port: Vec<&str> = args.to_vec();
+        with_port.extend(["--port", &port_text]);
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &with_port, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                check(&mut server, port, &said, &body);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            // Inside the scope: the drain threads end when the pipes close.
+            drop(server);
+            false
+        });
+        if served {
+            return;
+        }
+    }
+    panic!(
+        "`uf {}` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        args.join(" "),
+        refused.join("\n\n")
+    );
+}
+
+/// The dev server and `uf start` read the same files the build did, each in its
+/// own mode.
+///
+/// Both halves in one test and one build, because the defect in
+/// ubugeeei-prod/uf#259 is precisely that two commands can disagree: `uf dev`
+/// must serve the development value and `uf start` the production one, from the
+/// same project, without either being told anything the other was not. The
+/// route handler is the server half — `process.env` in code that never reaches
+/// a browser — and the page is the client half.
+///
+/// `uf start` is asked *after* the file it reads has been rewritten, which is
+/// what says the loading happens when the server starts rather than when the
+/// bundle was built. A deployment that had to rebuild to change a database URL
+/// would not be a deployment.
+#[test]
+fn the_dev_server_and_the_production_server_each_read_their_own_mode() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let project = project_reading_the_environment();
+    let root = project.path().to_path_buf();
+
+    // The dev server first, on the source: `development` is its mode, so
+    // `.env.development` is the file that wins.
+    serve_and_ask(&root, &["dev"], |server, port, said, body| {
+        assert!(
+            body.contains("greeting for development"),
+            "`uf dev` must read `.env.development`:\n{body}"
+        );
+        assert!(
+            body.contains("undefined</p>"),
+            "`uf dev` must not hand a page a variable without the client prefix:\n{body}"
+        );
+        assert!(
+            !body.contains("this-must-not-be-in-the-bundle"),
+            "`uf dev` served a variable that has no client prefix:\n{body}"
+        );
+        let api = get(server, port, "/api/env", said);
+        assert!(
+            api.contains("server value for development"),
+            "a route handler must read the environment through `process.env`:\n{api}"
+        );
+    });
+
+    let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    // Rewritten after the build and before the server: what `uf start` answers
+    // has to come from the file it read on the way up.
+    fs::write(
+        root.join(".env.production"),
+        "VITE_GREETING=greeting for production\nUF_SERVER_VALUE=changed after the build\n",
+    )
+    .unwrap();
+
+    // `uf start` binds every interface by default, which is right for a
+    // production server and wrong for a test on somebody's laptop.
+    serve_and_ask(
+        &root,
+        &["start", "--host", "127.0.0.1"],
+        |server, port, said, body| {
+            assert!(
+                body.contains("greeting for production"),
+                "`uf start` must serve the production build:\n{body}"
+            );
+            let api = get(server, port, "/api/env", said);
+            assert!(
+                api.contains("changed after the build"),
+                "`uf start` must read `.env.production` when it starts, not at build time:\n{api}"
+            );
+        },
+    );
+}

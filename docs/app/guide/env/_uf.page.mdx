@@ -7,10 +7,11 @@ title: "Environments · uf"
 # Environments
 
 <div className="lede">
-A repository says which Node, which Bun, which pnpm it is built with, and `uf
-env` puts exactly those in front of it — out of a store shared by every
-repository on the machine, with nothing installed globally and `PATH` left
-alone.
+Two questions with one answer here: which Node, Bun or pnpm this repository is
+built with — pinned in `uf.config.js`, installed into a store shared by every
+repository on the machine — and where the values in `process.env` and
+`import.meta.env` come from, which is the `.env` cascade at the bottom of this
+page.
 </div>
 
 ## Declaring one
@@ -106,9 +107,198 @@ the same pass that notices it is gone.
 
 says what would go and removes nothing, which is the version to run first.
 
-## What it does not do
+## What the toolchain half does not do
 
 It does not manage the uf binary itself — that is `uf use` and `uf upgrade`. It
 does not read `.nvmrc`, `.tool-versions` or `package.json`'s `engines` field:
 `uf.config.js` is the one place a uf project writes down what it needs, and a
 second source of truth for the same question is the problem, not the feature.
+
+## Environment variables
+
+Everything above is about tools. This is about values: a URL, a feature flag, a
+database password — the things that differ between your laptop, CI and
+production, and that must not be committed as code.
+
+<div className="command"><code>.env</code></div>
+
+```
+# Anything the browser may see starts with VITE_.
+VITE_API_URL=https://api.example.com
+
+# Anything else is the server's alone.
+DATABASE_URL=postgres://localhost/app
+```
+
+<div className="command"><code>app/_uf.page.js</code></div>
+
+```js
+// @flow
+import * as React from "@uniflowed/react";
+
+export component Page() {
+  // Substituted at build time, and it is in the bundle the browser downloads.
+  return <a href={String(import.meta.env.VITE_API_URL)}>the API</a>;
+}
+```
+
+Server code — a route handler, a loader, a component that only ever renders on
+the server — reads every variable through `process.env` instead, including the
+ones with no prefix.
+
+`uf dev`, `uf build`, `uf preview`, `uf start`, `uf test`, `uf run` and `uf exec`
+all read the same files the same way. A value that reaches the dev server and
+not the build is a bug, not a setting.
+
+### Which files, and in what order
+
+A command runs in a **mode**, and the mode picks two of the four files:
+
+| File | When it is read | Commit it? |
+| --- | --- | --- |
+| `.env` | always | yes |
+| `.env.local` | always | no — this is your machine's |
+| `.env.<mode>` | in that mode | yes |
+| `.env.<mode>.local` | in that mode | no |
+
+They are read **in that order, and the last one to set a name wins**. So
+`.env.production` beats `.env`, and `.env.production.local` beats both. A file
+that is not there is skipped, which is why `.env.local` can be in
+`.gitignore` and nothing breaks on a machine that has never had one.
+
+Add the two `.local` names to `.gitignore` yourself; uf does not write it for
+you. Vite's dev server refuses to serve `.env` and `.env.*` over HTTP whatever
+else is configured — see
+[`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
+
+### The mode
+
+`development` for `uf dev`, `production` for `uf build`, `uf preview` and `uf
+start`, `test` for `uf test`, `development` for `uf run` and `uf exec`. It is
+also what the browser reads as `import.meta.env.MODE`.
+
+Four ways to say otherwise, and they are tried in this order:
+
+1. `--mode <name>` on the command: `uf build --mode staging` reads
+   `.env.staging` and builds with `import.meta.env.MODE === "staging"`.
+2. The profile `uf env use <name>` recorded, in `.uniflowed/profile`. It is a
+   local choice — put it in `.gitignore` — and it lasts until you change it.
+3. `env.active` in `uf.config.js`, for a project whose default mode is not one
+   of the usual ones.
+4. The command's own default, above.
+
+A mode becomes the end of a file name, so it may hold letters, digits, `_`, `-`
+and `.` and nothing else. `local` is refused, because `.env.local` is already
+the file that overrides every mode.
+
+<div className="command"><code>uf env use staging</code></div>
+
+```
+✓ mode staging: `.env`, `.env.local`, `.env.staging` and `.env.staging.local`, in .uniflowed/profile
+```
+
+### The environment always wins
+
+A variable that is already set when uf starts is never overwritten by a file:
+
+<div className="command"><code>DATABASE_URL=postgres://prod/app uf build</code></div>
+
+uses that one, whatever `.env.production` says. That is what makes a `.env` file
+a default rather than a policy, and it is why a CI secret, a container's
+environment and a `docker run -e` all keep working with no configuration at all.
+
+`uf inspect` prints the mode, the files that were read and how many variables
+came out of them — names only, never values, because that output ends up in
+issues.
+
+### What reaches the browser
+
+**Only a name that starts with `VITE_`.** That value is substituted into the
+JavaScript the browser downloads, so it is public: anyone who opens the site can
+read it. Everything else is available to server code through `process.env` and
+is never written into a client bundle, even if a module that ships to the
+browser asks for it — `import.meta.env.DATABASE_URL` in client code is
+`undefined`, not the password.
+
+That boundary is Vite's, uf does not widen it, and there is a test that a value
+without the prefix is absent from every file in `dist/`
+(`crates/uf_cli/tests/vite.rs`). A project that prefers another prefix sets
+Vite's own option, `vite: { envPrefix: "PUBLIC_" }`, and uf honours it; an empty
+prefix is refused, because it would put every variable in the bundle.
+
+The rule to hold on to: **if it is a secret, it must not start with the
+prefix.**
+
+### The file format
+
+One `NAME=value` a line, and:
+
+```
+# A comment. Blank lines are ignored.
+export ALSO_FINE=yes          # `export ` is allowed, and ignored
+
+QUOTED="  spaces are kept  "  # a trailing comment needs a space in front
+LITERAL='no $expansion, no \n escapes, exactly as written'
+MULTILINE="first line
+second line"
+
+ESCAPES="a tab\there and a newline\nthere"
+HASH=pass#word                # no space in front, so it is part of the value
+
+HOST=example.com
+API_URL=https://${HOST}/api   # or $HOST, without the braces
+PRICE=costs \$5               # a literal dollar
+```
+
+* A name starts with a letter or `_` and continues with letters, digits or `_`.
+* Double quotes understand `\n`, `\r`, `\t`, `\\`, `\"`, `\'` and `\$`; a
+  backslash before anything else is a backslash, so a Windows path survives.
+* Single quotes are exactly as written: no escapes, no expansion.
+* Both may span lines.
+* `$NAME` and `${NAME}` expand to something **already defined** — earlier in
+  this file, in a file earlier in the cascade, or in the environment. The
+  environment's value is the one that expands, since that is the value the name
+  will have.
+
+A file that does not parse **stops the command**, and the message names the file,
+the line and what to do:
+
+```
+error: failed to load the environment files for mode development
+  caused by: /app/.env:2: `${HSOT}` is not defined; define it earlier, set it in
+  the environment, or write `\${HSOT}` for a literal dollar
+```
+
+An undefined expansion is an error rather than an empty string, and that is a
+decision: `https://$HSOT/api` silently becoming `https:///api` is a typo that
+reaches production and fails somewhere else entirely.
+
+### Naming the files yourself
+
+<div className="command"><code>uf.config.js</code></div>
+
+```js
+// @flow
+export default {
+  env: {
+    files: ["config/shared.env", "config/local.env"],
+  },
+};
+```
+
+Replaces the cascade entirely: those files, in that order, later winning,
+relative to the project root, and no `.env` anything. Empty by default, which is
+what selects the four files above.
+
+### What the variables half does not do
+
+* **It does not watch.** A `.env` file you edit while `uf dev` is running is
+  read the next time you start it. Restart the command.
+* **It does not travel to a deployment.** `uf build --adapter node` writes a
+  directory that a host runs with plain `node server.js`, and that process is
+  not uf: it reads its environment from the host, which is where a deployment's
+  secrets belong anyway. The values a *build* needed are already in the bundle;
+  the ones the server needs are the host's to provide.
+* **It is not a secret store.** A `.env` file is a file on a disk. uf refuses to
+  serve one over HTTP and refuses to put an unprefixed one in a bundle, and
+  neither of those makes it encrypted.

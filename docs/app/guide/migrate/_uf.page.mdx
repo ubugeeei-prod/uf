@@ -110,10 +110,10 @@ bundle and that is what uf builds.
 **What you lose.** Jest — `uf test` has the API but no snapshots, no coverage
 and no module mocking ([#280](https://github.com/ubugeeei-prod/uf/issues/280),
 [#283](https://github.com/ubugeeei-prod/uf/issues/283)), so a suite that leans
-on any of the three does not come across. `REACT_APP_*` environment variables
-do not arrive either, because uf turns Vite's `.env` loading off
-([#259](https://github.com/ubugeeei-prod/uf/issues/259)); `vite: { envDir: "." }`
-turns it back on and the prefix becomes `VITE_`.
+on any of the three does not come across. `REACT_APP_*` environment
+variables need renaming: uf reads the same `.env` cascade, but the prefix that
+reaches the browser is `VITE_` — see [Environments](/guide/env), and
+`vite: { envPrefix: "REACT_APP_" }` if you would rather not rename them.
 
 **Cost.** The route and entry work is a day's shape regardless of size; the
 long pole is the test suite, in proportion to how much of it uses snapshots.

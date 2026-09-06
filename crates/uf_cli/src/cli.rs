@@ -82,6 +82,10 @@ pub(crate) enum Commands {
         /// Print the emitted bundle's size, by chunk.
         #[arg(long)]
         size_report: bool,
+        /// Run in this mode, which chooses `.env.<mode>` and is what
+        /// `import.meta.env.MODE` reads.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
         /// Also write the application as one executable file, next to the
         /// build. Needs Bun on PATH; the file itself needs nothing.
         #[arg(long)]
@@ -135,6 +139,10 @@ pub(crate) enum Commands {
         /// Listen on this port instead of `dev.port`.
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
+        /// Run in this mode, which chooses `.env.<mode>` and is what
+        /// `import.meta.env.MODE` reads.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
     },
     /// Generate API documentation from exported Flow source.
     ///
@@ -244,6 +252,10 @@ pub(crate) enum Commands {
         /// Listen on this port instead of 4173.
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
+        /// Run in this mode, which chooses `.env.<mode>` and is what
+        /// `import.meta.env.MODE` reads.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
     },
     /// Publish the project's packages to the registry.
     Publish,
@@ -255,6 +267,10 @@ pub(crate) enum Commands {
     },
     /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
+        /// Run in this mode, which chooses `.env.<mode>` and is what
+        /// `import.meta.env.MODE` reads.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
         /// The task to run, as named under `tasks` in `uf.config.js`.
         /// Omit it to see what this project defines.
         script: Option<String>,
@@ -275,12 +291,21 @@ pub(crate) enum Commands {
         /// Listen on this port instead of 3000. Also read from `PORT`.
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
+        /// Run in this mode, which chooses `.env.<mode>` and is what
+        /// `import.meta.env.MODE` reads.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
     },
     /// Run the project's tests.
     Test {
         /// List what would run instead of running it.
         #[arg(long)]
         list: bool,
+        /// Run in this mode, which chooses `.env.<mode>` and is what
+        /// `import.meta.env.MODE` reads.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
+
         /// Re-run the affected tests whenever a source file changes.
         #[arg(long)]
         watch: bool,
@@ -488,6 +513,7 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
+                mode: None,
                 compile: false,
                 adapter: None
             }
@@ -500,6 +526,7 @@ mod tests {
         assert!(Commands::Lsp.owns_stdout());
         assert!(
             Commands::Run {
+                mode: None,
                 script: Some("build".to_string()),
                 args: Vec::new(),
             }
@@ -507,6 +534,7 @@ mod tests {
         );
         assert!(
             !Commands::Run {
+                mode: None,
                 script: None,
                 args: Vec::new(),
             }
@@ -516,6 +544,7 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
+                mode: None,
                 compile: false,
                 adapter: None
             }

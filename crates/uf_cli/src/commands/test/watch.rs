@@ -22,6 +22,7 @@
 use anyhow::Result;
 use camino::Utf8Path;
 use uf_config::UniflowedConfig;
+use uf_config::env_files::ProjectEnv;
 use uf_project::{ProjectFile, scan_source_files};
 use uf_term::{PhaseTimer, Status};
 use uf_test::{ImportGraph, TestFilter, Watcher};
@@ -45,6 +46,7 @@ pub(super) fn watch(
     ui: &mut Ui,
     root: &Utf8Path,
     config: UniflowedConfig,
+    env: &ProjectEnv,
     args: TestArgs,
 ) -> Result<()> {
     // The one-shot `uf test` has already refused to start on a file it could
@@ -54,7 +56,10 @@ pub(super) fn watch(
     let mut files = scan_source_files(root, &config)?.files;
     // Resolved once: a watch session that lost its host between runs would be
     // reporting a different failure than the one the user is editing towards.
-    let host = super::test_host(root, &config)?;
+    // Resolved once, with the environment the session started with: a watch
+    // that reloaded `.env` mid-session would change what the suite means
+    // between two runs of the same file.
+    let host = super::test_host(root, &config, env)?;
     let mut graph = build_graph(&files);
     let filter = args.filter();
 

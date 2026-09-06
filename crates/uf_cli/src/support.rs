@@ -4,10 +4,61 @@ use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
+use uf_config::ResolvedConfig;
+use uf_config::env_files::{self, ProjectEnv};
+
+/// The mode a dev server, a watch, or anything else a person leaves running
+/// takes when nothing says otherwise.
+pub(crate) const DEVELOPMENT: &str = "development";
+
+/// The mode a build and the servers that serve one take.
+pub(crate) const PRODUCTION: &str = "production";
+
+/// The mode `uf test` takes, so `.env.test` is a file that means something.
+pub(crate) const TEST: &str = "test";
 
 /// The last path segment, which is what a reader calls the project.
 pub(crate) fn project_label(root: &Utf8Path) -> &str {
     root.file_name().unwrap_or_else(|| root.as_str())
+}
+
+/// The environment this command runs with: the mode, and the values the
+/// project's `.env` files defined for it.
+///
+/// Every command that runs the project's code calls this, with the mode it
+/// defaults to when nothing was typed and no profile is set. See
+/// [`uf_config::env_files`] for the cascade, the precedence and the client
+/// prefix.
+pub(crate) fn project_env(
+    resolved: &ResolvedConfig,
+    requested_mode: Option<&str>,
+    default_mode: &str,
+) -> Result<ProjectEnv> {
+    let mode = env_files::resolve_mode(
+        &resolved.root,
+        &resolved.config,
+        requested_mode,
+        default_mode,
+    )?;
+    env_files::load(&resolved.root, &resolved.config, &mode)
+        .with_context(|| format!("failed to load the environment files for mode {mode}"))
+}
+
+/// The environment files a run read, or `None` when it read none.
+///
+/// Names, never values: this goes on a banner, and a banner ends up in a CI
+/// log, a screen share and a bug report.
+pub(crate) fn env_file_list(root: &Utf8Path, env: &ProjectEnv) -> Option<String> {
+    if env.files().is_empty() {
+        return None;
+    }
+    Some(
+        env.files()
+            .iter()
+            .map(|file| relative_to(root, file))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }
 
 /// A path rendered relative to the project root when it lives inside it.

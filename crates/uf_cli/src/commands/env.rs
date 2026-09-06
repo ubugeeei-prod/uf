@@ -4,7 +4,8 @@ use std::fs;
 
 use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
-use uf_config::load_config;
+use uf_config::env_files::{self, PROFILE_FILE};
+use uf_config::{discover_root, load_config};
 use uf_term::{Align, KeyValue, Status, Tone, push_padded, push_spaces};
 
 use crate::cli::EnvCommand;
@@ -242,13 +243,36 @@ fn gc(ui: &mut Ui, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// Record the profile every later command reads as its mode.
+///
+/// `.uniflowed/profile`, not `.uniflowed/env`. That path is the directory `uf
+/// env install` links this project's toolchain into, so the two halves of `uf
+/// env` used to claim one name: whichever ran second failed with `Is a
+/// directory (os error 21)` or left a file where `bin/` had to go. See
+/// ubugeeei-prod/uf#259.
+///
+/// The name is checked before anything is written, because it becomes the end
+/// of a file name — `.env.<profile>` — and a profile that could climb out of
+/// the project would be a profile that reads somebody else's file.
 fn use_environment(cwd: &Utf8Path, ui: &mut Ui, name: &str) -> Result<()> {
-    let dir = cwd.join(".uniflowed");
-    fs::create_dir_all(&dir).with_context(|| format!("failed to create {dir}"))?;
-    fs::write(dir.join("env"), format!("{name}\n"))
-        .with_context(|| "failed to write .uniflowed/env")?;
+    // The project root rather than the working directory: `uf dev` reads this
+    // from the root, so `uf env use` run one directory down has to write it
+    // there or the two would disagree about a file with one name.
+    let root = discover_root(cwd);
+    env_files::check_mode(name)?;
 
-    let message = format!("active environment: {name}");
+    let path = root.join(PROFILE_FILE);
+    let dir = path.parent().unwrap_or(&root).to_path_buf();
+    fs::create_dir_all(&dir).with_context(|| format!("failed to create {dir}"))?;
+    fs::write(&path, format!("{name}\n")).with_context(|| format!("failed to write {path}"))?;
+
+    // What it selects, not only what was recorded: "active environment:
+    // staging" was true of a file nothing read, and the reader's next question
+    // is which files this now means.
+    let message = format!(
+        "mode {name}: `.env`, `.env.local`, `.env.{name}` and `.env.{name}.local`, in {}",
+        env_files::PROFILE_FILE
+    );
     ui.render(|renderer, out| renderer.status(out, Status::Success, &message));
     Ok(())
 }
@@ -300,16 +324,66 @@ fn doctor(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// A project root inside `dir`.
+    ///
+    /// The marker file matters: root discovery walks up until it finds one, and
+    /// a temporary directory with nothing in it would resolve to whatever
+    /// happens to be above the system temp directory.
+    fn project(dir: &tempfile::TempDir) -> camino::Utf8PathBuf {
+        let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(root.join("package.json"), "{}\n").unwrap();
+        root
+    }
+
     #[test]
     fn writing_the_active_environment_creates_the_state_file() {
         let dir = tempfile::tempdir().unwrap();
-        let root = camino::Utf8Path::from_path(dir.path()).unwrap();
+        let root = project(&dir);
         let mut ui = Ui::new(uf_term::ColorChoice::Never, crate::ui::OutputMode::Json);
 
-        use_environment(root, &mut ui, "staging").unwrap();
+        use_environment(&root, &mut ui, "staging").unwrap();
 
-        let written = fs::read_to_string(root.join(".uniflowed/env")).unwrap();
+        let written = fs::read_to_string(root.join(PROFILE_FILE)).unwrap();
         assert_eq!(written, "staging\n");
+    }
+
+    /// The two halves of `uf env` no longer collide.
+    ///
+    /// `uf env install` links this project's toolchain into
+    /// `.uniflowed/env/bin`, and `uf env use` used to write a *file* at
+    /// `.uniflowed/env`. Whichever ran second lost: with the directory there
+    /// first, this failed with `Is a directory`.
+    #[test]
+    fn the_profile_does_not_collide_with_the_toolchain_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        fs::create_dir_all(root.join(uf_env::project::ENV_DIR).join("bin")).unwrap();
+        let mut ui = Ui::new(uf_term::ColorChoice::Never, crate::ui::OutputMode::Json);
+
+        use_environment(&root, &mut ui, "staging").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(PROFILE_FILE)).unwrap(),
+            "staging\n"
+        );
+        assert!(
+            root.join(uf_env::project::ENV_DIR).join("bin").is_dir(),
+            "`uf env install`'s directory must survive `uf env use`"
+        );
+    }
+
+    /// A profile becomes a file name, so a name that could climb out of the
+    /// project is refused before anything is written.
+    #[test]
+    fn a_profile_that_could_not_be_a_file_name_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        let mut ui = Ui::new(uf_term::ColorChoice::Never, crate::ui::OutputMode::Json);
+
+        let error = use_environment(&root, &mut ui, "../../etc").unwrap_err();
+
+        assert!(error.to_string().contains("is not a mode"), "{error}");
+        assert!(!root.join(PROFILE_FILE).exists());
     }
 
     #[test]
