@@ -1,0 +1,180 @@
+---
+title: "uf compared · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# uf compared
+
+<div className="lede">
+Against the four things people actually arrive from. The rows uf loses are in
+the same tables as the rows it wins, because a comparison that only lists
+strengths tells you nothing you could not have guessed from the home page.
+</div>
+
+## The one-screen version
+
+| | `create-react-app` | Vite + React | Next.js | Bun | uf |
+| --- | --- | --- | --- | --- | --- |
+| Status | [deprecated by React](https://react.dev/blog/2025/02/14/sunsetting-create-react-app) (Feb 2025) | maintained | maintained | maintained | `0.0.0-alpha`, not on npm |
+| Language | TypeScript or JS | TypeScript or JS | TypeScript or JS | TypeScript or JS | **Flow** |
+| `component` / `hook` / `renders` / `match` | Babel preset | Babel preset | Babel preset | no | **native** |
+| Dev server and build | webpack | Vite | Turbopack (or webpack) | `bun build` | **Vite 8** |
+| Test runner | Jest | you add one | you add one | `bun test` | `uf test` |
+| Formatter | you add one | you add one | you add one | none | in the binary |
+| Linter | ESLint, wired in | you add one | ESLint, wired in | none | in the binary |
+| Type checker | `tsc` | `tsc` | `tsc` | `tsc` | `uf check` (Flow) |
+| Production server | — | — | `next start` | `Bun.serve`, you write it | **none yet** |
+| Config files | none, then all of them after `eject` | one per tool | one per tool | one per tool | **`uf.config.js`, and only it** |
+
+Two rows in that table decide most of the question. If you write TypeScript,
+the syntax row is worth nothing to you and every other row is a downgrade. If
+you need the production-server row, uf cannot serve you at all yet.
+
+## Read the losses first
+
+| What uf loses | To | By how much |
+| --- | --- | --- |
+| Test throughput | `bun test` | 0.20 s against **0.06 s** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
+| A deployable application | Next.js | `uf build` prerenders and stops; SSR, route handlers and every adapter exist only under `uf dev` ([#250](https://github.com/ubugeeei-prod/uf/issues/250)) |
+| Server Components | Next.js | the analysis is complete and nothing reads it — every page module ships to the browser ([#252](https://github.com/ubugeeei-prod/uf/issues/252)) |
+| The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
+| Being installable | everything | `@uniflowed/*` is not on npm ([#210](https://github.com/ubugeeei-prod/uf/issues/210)) |
+| Runtime coverage | Bun, Next.js | Node.js and Bun load Flow; Deno is a name in an enum and edge runtimes have no host ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
+| Being three years old | all four | pre-release, no stability guarantee, interfaces move without warning |
+
+[What uf does not do](/guide/scope) is the complete version of that list,
+sorted into refusals and gaps.
+
+## Against `create-react-app`
+
+CRA is the honest ancestor: an all-in-one tool that hid a build behind one
+dependency. React
+[deprecated it in February 2025](https://react.dev/blog/2025/02/14/sunsetting-create-react-app)
+and recommends a framework or a build tool instead.
+
+**What uf takes from it:** the shape. One command, no configuration to copy,
+a project that runs before you have made a single decision.
+
+**What uf takes from its failure:** everything in
+[`docs/red-lines.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md).
+CRA's three failures were an `eject` cliff with a one-way door, a single
+package serialising every upgrade in the ecosystem, and solving the build and
+stopping. uf answers the first with a continuum and no `eject`, the second by
+owning orchestration rather than implementation, and the third by being a
+framework as well — which is the one of the three uf has not finished.
+
+**What CRA still has that uf does not:** a decade of tutorials that assume it,
+and the fact that it runs on stable, published, installable software.
+
+## Against Vite + React
+
+This is the closest comparison and the least adversarial one, because **uf's
+dev server and build are Vite** — `packages/vite/package.json` depends on
+`vite: "^8.2.2"` and uf drives it over a JSON protocol. Bundling performance is
+not a row: it is the same bundler.
+
+**What uf adds.** Flow's React syntax with no Babel anywhere in the pipeline;
+one config file instead of a `vite.config.ts` plus a test config plus a
+formatter config plus a linter config; and a test runner, formatter, linter and
+type checker that read the same syntax tree the build does.
+
+**What plain Vite keeps that uf gives up.**
+
+- **TypeScript**, and with it every typed package on npm.
+- **`vite preview`.** uf has no equivalent; the driver implements one and
+  nothing reaches it ([#255](https://github.com/ubugeeei-prod/uf/issues/255)).
+- **`vite/client`'s types.** `import.meta.glob`, `import.meta.hot` and asset
+  imports are type errors or `any` under `uf check`
+  ([#264](https://github.com/ubugeeei-prod/uf/issues/264)).
+- **`.env` files**, which uf turns off in the Vite config it generates
+  ([#259](https://github.com/ubugeeei-prod/uf/issues/259)) — reachable again
+  with `vite: { envFile: true }`.
+- **Any Vite version you like.** uf pins the line it tests against.
+
+What does *not* change is the escape hatch: the `vite` key in `uf.config.js` is
+merged over what uf generates, and `plugins` is a list of ordinary Vite plugins.
+
+## Against Next.js
+
+The largest gap, and the one worth being blunt about.
+
+`next build` produces a running application: `next start` serves it,
+[`output: 'standalone'`](https://nextjs.org/docs/app/api-reference/config/next-config-js/output)
+writes a self-contained `server.js`, and `output: 'export'` is the *opt-in* for
+the fully static case. In uf, the static case is the only case.
+
+| Capability | Next.js | uf today |
+| --- | --- | --- |
+| File-system routing, nested layouts | yes | yes ([Routing](/guide/routing)) |
+| Data loading before render | yes | `loader` exports |
+| Route handlers | yes | written, dispatched **only under `uf dev`** ([#250](https://github.com/ubugeeei-prod/uf/issues/250)) |
+| Server Components, server actions | yes | analysed, never executed ([#252](https://github.com/ubugeeei-prod/uf/issues/252)) |
+| Streaming, Suspense boundaries | yes | `renderToString`, so no ([#254](https://github.com/ubugeeei-prod/uf/issues/254)) |
+| ISR, caching, revalidation | yes | four booleans in a manifest ([#277](https://github.com/ubugeeei-prod/uf/issues/277)) |
+| Middleware | yes | reserved, discovered, never called ([#260](https://github.com/ubugeeei-prod/uf/issues/260)) |
+| Image optimisation | yes | markup only: no resizing, no formats, no `srcset` ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
+| Error boundaries | yes | none ([#257](https://github.com/ubugeeei-prod/uf/issues/257)) |
+| Deployment adapters | many | none |
+
+**What uf has that Next.js does not.** Flow's React syntax, checked by Flow's
+own inference. A formatter and a linter and a test runner in the same binary,
+reading the same tree — Next.js is a framework and expects you to bring those.
+And a framework that does not own a server, which is a feature exactly when you
+did not want one.
+
+**If you are building an application that renders per request, use Next.js.**
+uf will tell you this again on [What uf does not do](/guide/scope) rather than
+letting you find it out at deploy time.
+
+## Against Bun
+
+Bun and uf overlap less than the feature lists suggest: Bun is a runtime that
+brings a package manager, a bundler and a test runner; uf is a toolchain that
+runs *on* a runtime — Bun included.
+
+**Where Bun wins, measured.** `bun test` runs the same suite in 0.06 s against
+`uf test`'s 0.20 s warm and 0.30 s cold, on 50 files, 1,000 tests and 2,000
+assertions, best of five on an 8-core M-series Mac. That is about three times
+faster, and the reason is structural: Bun runs everything in one process with
+the runner written into the engine, while uf spawns a worker per core, gives
+each worker one file at a time, and pays the start-up. `bun test` also ships
+snapshots, coverage and a
+[JUnit reporter](https://bun.com/docs/cli/test); `uf test` has none of those
+([#280](https://github.com/ubugeeei-prod/uf/issues/280)).
+
+**Where uf wins the same comparison.** `uf test` is about nine times faster
+than `vitest run` on that suite (1.96 s), it runs on Node.js as well as Bun,
+and it runs Flow — `bun test` has no `component` or `hook` syntax at all.
+
+**Package management.** `uf install` does not implement one: it detects the
+project's package manager and runs it, refusing a manifest that declares npm
+scripts. `uf_pm`'s operation table names ten commands and the CLI ships one —
+no `uf add`, no `uf remove`, no frozen install for CI
+([#287](https://github.com/ubugeeei-prod/uf/issues/287)). Bun's installer is a
+finished product; uf's is a policy in front of yours.
+
+## And Vite+
+
+Vite+ is the toolchain uf will be compared to most often, and it has its own
+page: [uf and Vite+](/guide/vite-plus). The short version is that they answer
+different questions — Vite+ unifies the TypeScript toolchain, uf makes Flow's
+React syntax usable — and Vite+ has a company and a support contract, which uf
+does not.
+
+## So which one
+
+- **Writing TypeScript, shipping to production this quarter:** Next.js if you
+  need a server, Vite if you do not. uf is not competing for this.
+- **Writing TypeScript, unhappy about the number of config files:** Vite+.
+- **Writing Flow, or wanting to:** uf, and there is currently nothing else —
+  which is the whole reason it exists.
+- **Building a static site, curious, willing to be early:** uf builds this one.
+  `uf build` prerenders every page of this documentation, and the output is
+  what you are reading.
+
+## Where to go next
+
+[Migrating to uf](/guide/migrate) is the honest cost of moving from any of the
+above. [Flow and TypeScript](/guide/typescript) is the language decision, which
+is the one that actually matters.
