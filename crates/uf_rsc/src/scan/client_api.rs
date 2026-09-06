@@ -3,7 +3,9 @@
 //! A Server Component that calls `useState` or touches `window` fails at render
 //! time, so the graph needs the call sites to report them before the app runs.
 //! Declaration sites are skipped: a module that defines its own `useState` is
-//! not reaching for React's.
+//! not reaching for React's, and that includes the method form — `useState() {}`
+//! in a class body or an object literal writes a function rather than calling
+//! one.
 //!
 //! The match is by name, and the name is the whole of what it knows. That is
 //! sound in the direction it claims — the two lists are React's own APIs and
@@ -15,7 +17,7 @@
 use compact_str::CompactString;
 use uf_infra::LineIndex;
 
-use super::lexer::{Token, TokenKind};
+use super::lexer::{Token, TokenKind, matching_close};
 use super::{
     CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ClientApiUseList, HookCall, HookCallList,
     clamp_u32,
@@ -79,11 +81,79 @@ fn is_declaration_site(source: &str, tokens: &[Token], position: usize) -> bool 
         return false;
     };
     let token = &tokens[previous];
-    token.kind == TokenKind::Ident
+    if token.kind == TokenKind::Ident
         && matches!(
             token.text(source),
             "function" | "hook" | "component" | "class" | "const" | "let" | "var" | "import"
         )
+    {
+        return true;
+    }
+    is_method_definition(source, tokens, position)
+}
+
+/// Whether the identifier at `position` names a method being defined.
+///
+/// `useRoute() {}` in an object literal, a class body or a Flow object type
+/// declares a function; it does not run one. Every check in this module claims
+/// to have found a *use* — a hook that runs where the server runs, a browser
+/// global touched during a render — and a warning on the line that writes the
+/// hook is a warning about a line that does nothing. That is worse than no
+/// warning: a rule which fires where the reader can see it is wrong is a rule
+/// they learn to skip, including the times it is right.
+///
+/// Recognised by two facts, because neither is enough on its own:
+///
+/// * The name sits where a member goes — after the brace opening the body,
+///   after the comma or the closing brace of the previous member, after
+///   `static`, `async`, `get` or `set`, or after a generator's `*`. Alone this
+///   catches calls, since `{`, `}`, `,` and `;` precede ordinary expressions
+///   too: `f(a, useRoute())` and `{ useRoute(); }` are both calls.
+/// * The parameter list is followed by the body — `{`, or `:` and a Flow
+///   return type first. Alone this catches nothing useful, but together the
+///   pair is tight: `if (useRoute())` and `f(a, useRoute())` close into a `)`,
+///   and the `:` of `cond ? useRoute() : x` is reached from a `?`, which is
+///   not a member position.
+fn is_method_definition(source: &str, tokens: &[Token], position: usize) -> bool {
+    if !tokens
+        .get(position + 1)
+        .is_some_and(|next| next.is_punct(b'('))
+    {
+        return false;
+    }
+    let Some(previous) = position.checked_sub(1) else {
+        return false;
+    };
+    if !is_member_position(source, tokens, previous) {
+        return false;
+    }
+    let Some(close) = matching_close(tokens, position + 1, b'(', b')') else {
+        return false;
+    };
+    tokens
+        .get(close + 1)
+        .is_some_and(|next| next.is_punct(b'{') || next.is_punct(b':'))
+}
+
+/// Whether a member name can follow the token at `at`.
+fn is_member_position(source: &str, tokens: &[Token], at: usize) -> bool {
+    let token = &tokens[at];
+    if token.is_punct(b'|') {
+        // The `|` of Flow's `{| … |}` belongs to the brace that opens the
+        // object type, so a member follows it. A `|` anywhere else is an
+        // operator and what follows it is an expression — `a | useRoute()`.
+        return at
+            .checked_sub(1)
+            .is_some_and(|before| tokens[before].is_punct(b'{'));
+    }
+    if token.kind == TokenKind::Ident {
+        return matches!(token.text(source), "static" | "async" | "get" | "set");
+    }
+    token.is_punct(b'{')
+        || token.is_punct(b'}')
+        || token.is_punct(b',')
+        || token.is_punct(b';')
+        || token.is_punct(b'*')
 }
 
 /// Calls to hooks the name lists do not know.
@@ -116,8 +186,10 @@ pub(crate) fn hook_calls_from_tokens(
             continue;
         }
         // The same exclusions the API match makes, for the same reasons: a
-        // declaration is not a use, `theme.useRoute` is somebody's method, and
-        // an identifier that is not called is not a hook being run here.
+        // declaration is not a use — including `useRoute() {}`, which defines
+        // the hook rather than running it — `theme.useRoute` is somebody's
+        // method, and an identifier that is not called is not a hook being run
+        // here.
         if is_declaration_site(source, tokens, position) {
             continue;
         }
