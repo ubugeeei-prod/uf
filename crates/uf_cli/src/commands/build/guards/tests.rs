@@ -182,3 +182,68 @@ fn a_more_specific_unguarded_route_is_not_reported() {
         "{found:#?}"
     );
 }
+
+/// Two routes can have the same number of literal segments and still not be
+/// equally specific. `/posts/archive/:z*` and `/posts/:a/:b/edit` both serve
+/// `/posts/archive/foo/edit` and both have two literal segments; the router
+/// answers with the parameter route, because a parameter outranks a catch-all.
+/// Counting literals cannot see that, so it named the archive middleware for a
+/// document the archive middleware never guards.
+#[test]
+fn a_parameter_outranks_a_catch_all_at_the_same_literal_count() {
+    let routes = vec![
+        route(
+            "/posts/:a/:b/edit",
+            "app/posts/[a]/[b]/edit",
+            &["app/posts"],
+        ),
+        route(
+            "/posts/archive/:z*",
+            "app/posts/archive/[...z]",
+            &["app/posts", "app/posts/archive"],
+        ),
+    ];
+    let pages = vec![page(
+        "/posts/archive/foo/edit",
+        "dist/posts/archive/foo/edit/index.html",
+    )];
+
+    let found = found(&routes, &pages);
+
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(
+        found[0].middleware,
+        ["app/posts/_uf.middleware.js"],
+        "{found:#?}"
+    );
+}
+
+/// And the same disagreement can lose the warning altogether: when the
+/// catch-all is the unguarded route, picking it says the document is served
+/// exactly as intended, and the guard on the route that actually answers goes
+/// unmentioned.
+#[test]
+fn a_catch_all_does_not_hide_the_guard_on_the_route_that_answers() {
+    let routes = vec![
+        route(
+            "/posts/:a/:b/edit",
+            "app/posts/[a]/[b]/edit",
+            &["app/posts/[a]"],
+        ),
+        route(
+            "/posts/archive/:z*",
+            "app/(legacy)/posts/archive/[...z]",
+            &[],
+        ),
+    ];
+    let pages = vec![page(
+        "/posts/archive/foo/edit",
+        "dist/posts/archive/foo/edit/index.html",
+    )];
+
+    let found = found(&routes, &pages);
+
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].url, "/posts/archive/foo/edit");
+    assert_eq!(found[0].middleware, ["app/posts/[a]/_uf.middleware.js"]);
+}

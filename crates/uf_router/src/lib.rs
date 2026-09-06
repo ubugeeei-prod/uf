@@ -105,6 +105,43 @@ impl Route {
         }
         actual.next().is_none()
     }
+
+    /// How specific this route is, for ranking two that both serve a URL.
+    ///
+    /// A static segment outranks a parameter, which outranks a catch-all, and
+    /// a longer path outranks a shorter one — three, two and one per segment.
+    ///
+    /// `packages/router/internal/runtime.js`'s `specificity` is the source of
+    /// truth for these numbers, and this is a copy of it. Only one of the two
+    /// decides which route answers a request, and it is that one: it runs in
+    /// the server and in the browser, and this crate runs in neither. What
+    /// this copy is for is `uf build` saying *which* route a prerendered
+    /// document belongs to, which is a claim about what the runtime will do
+    /// and is worth nothing if the two disagree.
+    ///
+    /// Counting literal segments was the earlier approximation and is not the
+    /// same function: `/posts/:a/:b/edit` and `/posts/archive/:z*` both have
+    /// two literals and both serve `/posts/archive/foo/edit`, and the runtime
+    /// answers with the first. Naming the second in a warning describes a
+    /// request that never happens.
+    ///
+    /// Two routes can still tie — `app/(marketing)/posts/new` and
+    /// `app/posts/new` are one path twice — and the runtime breaks that tie by
+    /// route-table order, which is not this crate's ordering. A tie is a
+    /// genuinely ambiguous project rather than a disagreement between the two
+    /// rankings, and it is left alone here.
+    #[must_use]
+    pub fn specificity(&self) -> usize {
+        self.path
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .map(|segment| match segment.as_bytes() {
+                [b':', .., b'*'] => 1,
+                [b':', ..] => 2,
+                _ => 3,
+            })
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -301,3 +301,33 @@ fn a_route_recognises_the_urls_it_serves() {
     assert!(route("/docs/:slug*").matches_url("/docs/guide"));
     assert!(!route("/docs/:slug*").matches_url("/docs"));
 }
+
+/// The ranking that decides which of two matching routes answers, checked
+/// against the numbers in `packages/router/internal/runtime.js`'s
+/// `specificity` — three for a static segment, two for a parameter, one for a
+/// catch-all. That function is the source of truth; this is the copy, and a
+/// copy that has drifted is worse than no copy, because `uf build` reports
+/// guards in terms of it.
+#[test]
+fn route_specificity_scores_the_way_the_runtime_does() {
+    let route = |path: &str| Route {
+        path: path.into(),
+        directory: Utf8PathBuf::from("app"),
+        page: Utf8PathBuf::from("app/_uf.page.js"),
+        params: Vec::new(),
+        has_layout: false,
+        middleware: Vec::new(),
+    };
+
+    assert_eq!(route("/").specificity(), 0);
+    assert_eq!(route("/about").specificity(), 3);
+    assert_eq!(route("/posts/:slug").specificity(), 5);
+    assert_eq!(route("/docs/:slug*").specificity(), 4);
+
+    // The pair literal-counting could not tell apart: two literals each, and
+    // the parameter route is the more specific one.
+    assert!(route("/posts/:a/:b/edit").specificity() > route("/posts/archive/:z*").specificity());
+
+    // A longer path outranks a shorter one that also matches.
+    assert!(route("/docs/:a/:b").specificity() > route("/docs/:slug*").specificity());
+}

@@ -85,10 +85,19 @@ pub(crate) fn unguarded_pages(
         // nothing from `app/posts/_uf.middleware.js`. Searching the guarded
         // routes alone would have named the guard that does not apply, which
         // is a report about a file that is served exactly as intended.
+        //
+        // "Most specific" is `Route::specificity`, which copies the numbers
+        // out of `packages/router/internal/runtime.js`'s `specificity`. That
+        // function is the source of truth: it is the one that picks the route
+        // for a real request, and this warning is a claim about what it will
+        // pick. Counting literal segments was the earlier answer and is a
+        // different one — `/posts/:a/:b/edit` and `/posts/archive/:z*` have
+        // two literals each and the runtime prefers the first — so it named
+        // the guards of a route that never answers.
         let Some(route) = routes
             .iter()
             .filter(|route| route.matches_url(url))
-            .max_by_key(|route| literal_segments(&route.path))
+            .max_by_key(|route| route.specificity())
         else {
             continue;
         };
@@ -107,13 +116,6 @@ pub(crate) fn unguarded_pages(
     }
     found.sort_by(|a, b| a.url.cmp(&b.url));
     found
-}
-
-/// How many segments of a route path are literal, which is how specific it is.
-fn literal_segments(path: &str) -> usize {
-    path.split('/')
-        .filter(|segment| !segment.is_empty() && !segment.starts_with(':'))
-        .count()
 }
 
 #[cfg(test)]
