@@ -45,26 +45,38 @@
 // `useFormState`, which lets a component that only wants one field's error
 // subscribe to that instead of to all of it.
 //
-// # The two writes that happen during render, and why they are safe
+// # The three writes that happen during render, and why they are safe
 //
 // `register(name, rules)` runs in the render body and records the field's rules
 // here. `watch(name)` runs in the render body and adds `name` to the set of
-// paths the owning component observes. Both write to an object that existed
-// before the render — normally exactly the thing not to do.
+// paths the owning component observes. `useForm` runs [`noteDisabled`] in its
+// render body and leaves this render's `disabled` here. All three write to an
+// object that existed before the render — normally exactly the thing not to do.
 //
 // They are safe for three specific reasons, and would not be if any one of them
 // stopped holding:
 //
-//  - Neither is part of a snapshot a component has already rendered. Rules are
+//  - None is part of a snapshot a component has already rendered. Rules are
 //    read by validation, which runs in event handlers and effects. The observed
 //    set decides which paths a *future* notification wakes; it never changes a
 //    value a render already produced.
-//  - Both are idempotent. Strict Mode renders twice and a concurrent render can
-//    be thrown away; running either again records the same rules and adds a
-//    string that is already in the set.
+//  - All three are idempotent. Strict Mode renders twice and a concurrent
+//    render can be thrown away; running any of them again records the same
+//    rules, adds a string that is already in the set, and stores the same flag.
 //  - A render the React Compiler skips is a render whose inputs did not change,
-//    so the rules it would have recorded are already recorded and the paths it
-//    would have observed are already observed. Skipping it is correct.
+//    so the rules it would have recorded are already recorded, the paths it
+//    would have observed are already observed, and the flag it would have left
+//    is the flag already there. Skipping it is correct.
+//
+// The third needs one more sentence than the other two, because a controlled
+// field *does* read it during render — through `useSyncExternalStore`, which is
+// the only way a live read survives the React Compiler; see `controller.js`.
+// The first reason still holds, and the ordering is why: `useForm` writes it
+// before anything below it renders, so every field in a pass is answered from
+// one value, and a pass React throws away is followed by one that writes again
+// before its fields ask. What the *snapshot* `formState.disabled` reports is
+// still `settings.disabled`, which only [`configure`] moves, and only from an
+// effect.
 //
 // # Why the owning form's watch subscription is a counter
 //
@@ -249,6 +261,14 @@ export type Control<TValues extends FieldValues, TOutput = TValues> = {|
   readonly reset: (values?: TValues, options?: ResetOptions) => void,
 
   readonly rulesFor: (name: FieldPath, rules: ValidationRules) => void,
+  /**
+   * Tell the store what this render says about `useForm({ disabled })`.
+   *
+   * Called from `useForm`'s render body, before anything below it renders, so
+   * that a field asking [`isDisabled`] during the same pass is answered with
+   * the form the user is looking at rather than the one the last effect saw.
+   */
+  readonly noteDisabled: (off: boolean) => void,
   /** Whether this field is switched off, by its own flag or the form's. */
   readonly isDisabled: (name: FieldPath) => boolean,
   readonly attach: (name: FieldPath, element: mixed) => void,
@@ -412,6 +432,28 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * cause and after every render that could have changed them.
    */
   let settings: CreateStoreOptions<TValues, TOutput> = initial;
+
+  /**
+   * The form's own `disabled`, as of the render now happening.
+   *
+   * [`configure`] is an effect, which is soon enough for an event and one
+   * commit too late for anything a render has to draw. `register` answers that
+   * by taking the flag from `useForm`'s current render and never asking the
+   * store; a hook holding only a `control` has nowhere to be handed it from, so
+   * the render leaves it here instead and [`isDisabled`] reads it.
+   *
+   * Separate from `settings.disabled` rather than replacing it, because the two
+   * are answers to different questions. This is "what is true of the form being
+   * rendered right now", which is what decides an attribute and what a submit
+   * carries; `formState.disabled` is a snapshot, and a snapshot that moved
+   * during a render would be a snapshot a component had already rendered from.
+   */
+  let renderDisabled: boolean = initial.disabled;
+
+  /** The third of the writes that happen during render; see the module docs. */
+  function noteDisabled(off: boolean): void {
+    renderDisabled = off;
+  }
 
   function configure(next: CreateStoreOptions<TValues, TOutput>): void {
     const was = settings.disabled;
@@ -1020,9 +1062,16 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * `disabled` mean something — a field the user cannot answer must not be able
    * to stop them submitting, and a value they were never shown must not be sent
    * as though they had agreed to it.
+   *
+   * The form's half is [`renderDisabled`] and not `settings.disabled`, so this
+   * answers for the form as it is being rendered rather than as it was one
+   * commit ago. Everything downstream inherits that: `liveNames`,
+   * `activeValues` and `updateDirty` all ask this, so a form switched off while
+   * it saves stops validating, dirtying and submitting that field on the render
+   * that switched it off — the same instant `register` stops drawing it.
    */
   function isDisabled(name: FieldPath): boolean {
-    return settings.disabled || fields.get(name)?.disabled === true;
+    return renderDisabled || fields.get(name)?.disabled === true;
   }
 
   /** Forget what was decided about a field whose disabled state just changed. */
@@ -1877,6 +1926,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     setValue,
     reset,
     rulesFor,
+    noteDisabled,
     isDisabled,
     attach,
     detach,

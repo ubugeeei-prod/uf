@@ -12,7 +12,7 @@
 import { createRequire } from "node:module";
 
 import * as React from "@uniflowed/react";
-import { StrictMode, useState } from "@uniflowed/react";
+import { StrictMode, useEffect, useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import { email, minLength, object, pipe, string, transform } from "@uniflowed/validator";
@@ -1545,6 +1545,42 @@ describe("disabled", () => {
     view.rerender(<Probe off={true} />);
     // The store is told from an effect, which `rerender` has already flushed.
     expect(screen.getByText("form: true")).toBeInTheDocument();
+  });
+
+  it("tells a controlled field the form was switched off in the commit that switched it", async () => {
+    // The same claim the `register` test at the top of this describe makes,
+    // for the hook that cannot be handed the flag: a form disabled while it
+    // saves has to reach a controlled field on the render that disabled it.
+    //
+    // Not one commit later, and — before this was a subscription — not ever:
+    // `control.isDisabled(name)` called in a render body is a call whose
+    // function and arguments the React Compiler can see never change, so it
+    // cached the first render's answer and the field stayed enabled for good.
+    const commits = [];
+    component Probe() {
+      const [saving, setSaving] = useState(false);
+      const { control } = useForm({ defaultValues: { colour: "red" }, disabled: saving });
+      const { field } = useController({ control, name: "colour" });
+      const off = field.disabled;
+      useEffect(() => {
+        commits.push(`saving=${String(saving)} disabled=${String(off)}`);
+      });
+      return (
+        <form>
+          <output>{`colour: ${String(off)}`}</output>
+          <button type="button" onClick={() => setSaving(true)}>
+            Save
+          </button>
+        </form>
+      );
+    }
+
+    render(<Probe />);
+    expect(screen.getByText("colour: false")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("colour: true")).toBeInTheDocument();
+    // And no commit in between drew an enabled field into a form being saved.
+    expect(commits).not.toContain("saving=true disabled=false");
   });
 
   it("tells a controlled field it is switched off", () => {

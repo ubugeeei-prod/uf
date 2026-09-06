@@ -44,7 +44,7 @@
 // value it already holds over anything an element reports.
 
 import * as React from "@uniflowed/react";
-import { useCallback, useMemo } from "@uniflowed/react";
+import { useCallback, useMemo, useSyncExternalStore } from "@uniflowed/react";
 
 import type { ValidationRules } from "./rules.js";
 import type { FieldPath, FieldValues } from "./internal/field-path.js";
@@ -65,11 +65,11 @@ export type ControlledField = {|
    * an `input`. It is here rather than left to the caller because the field
    * does not know about `useForm({ disabled })` and this does.
    *
-   * Its own option is current, because it is recorded during this render. The
-   * form's is the store's copy, which an effect brings up to date one commit
-   * after `useForm` was given it — `register` is handed the flag directly and a
-   * hook holding only a `control` has nowhere to be handed it from. A component
-   * that must not lag should take the form's flag as a prop and pass it here.
+   * Both halves are current: this field's own option because it is recorded
+   * during this render, and the form's because `useForm` leaves it in the store
+   * during its own — which is earlier in the same pass. So a form switched off
+   * while it saves reaches a controlled field in the commit that switched it
+   * off, exactly as it reaches `register`, and neither has to be told twice.
    */
   readonly disabled: boolean,
 |};
@@ -125,7 +125,23 @@ export hook useController<TValues extends FieldValues, TOutput>(
   // The same write `register` makes, for the same reason: rules are not part of
   // any snapshot, and recording them again records the same thing.
   control.rulesFor(name, rules);
-  const disabled = control.isDisabled(name);
+
+  // Read through a subscription rather than called, and both halves of that
+  // matter.
+  //
+  // Called — `const disabled = control.isDisabled(name)` — it is a call whose
+  // function and arguments the React Compiler can see never change, so the
+  // compiler is entitled to cache its result and does: the field would report
+  // the answer from its first render for the rest of its life, and a form
+  // switched off later would never reach it at all. `useForm` has the same
+  // hazard with `watch` and answers it the same way, by making the read
+  // something the compiler cannot hold on to. A hook call is that.
+  //
+  // Subscribed, it also wakes: `configure` invalidates the form state when the
+  // flag moves, which is what re-renders a controlled field whose form was
+  // switched off from somewhere other than its own parent's render.
+  const isDisabled = useCallback(() => control.isDisabled(name), [control, name]);
+  const disabled = useSyncExternalStore(control.subscribeFormState, isDisabled, isDisabled);
 
   const value = useWatch({ control, name, defaultValue: options.defaultValue });
   const state = useFormState({ control, name });

@@ -226,6 +226,15 @@ export hook useForm<TValues extends FieldValues, TOutput = TValues>(
   });
   const control = instance.control;
 
+  // `disabled` is left in the store here, during render, because the effect
+  // below is one commit too late for it: a form switched off while it saves has
+  // to be switched off in the commit that switched it on. `register` is handed
+  // it directly and needs nothing from the store; `useController` holds a
+  // `control` and nothing else, so this is where it gets to find out. The store
+  // says why this is safe to write during a render, alongside the two writes
+  // `register` and `watch` already make.
+  control.noteDisabled(disabled);
+
   // The options the store was built from are the first render's. Anything that
   // can change between renders — a resolver closed over a prop, a context that
   // carries the signed-in user — is pushed in after each render, which is
