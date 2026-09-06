@@ -77,7 +77,12 @@ what it is doing is a black box — see [Architecture](/guide/architecture).
 
 ### uf dev
 
-Starts the dev server. `--port PORT` overrides `dev.port`. `--host HOST` binds a
+Starts the dev server. `--port PORT` overrides `dev.port`, and fails if that
+port is taken rather than moving to the next free one — a port you typed is the
+port you meant, and a server listening one along is a server your bookmark, your
+proxy rule and your container mapping cannot reach. `dev.port` keeps the moving
+behaviour unless `dev.strictPort` says otherwise; it is a preference the project
+wrote down once, not an instruction you just gave. `--host HOST` binds a
 routable address, which requires a non-empty `dev.allowedHosts`.
 
 ### uf build

@@ -72,15 +72,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let package = package_dir(&root)?;
     let _ = write_router_manifest(&root, &resolved.config)?;
 
-    let mut driver_args = Vec::new();
-    if let Some(bind) = &args.host {
-        driver_args.push(String::from("--host"));
-        driver_args.push(bind.clone());
-    }
-    if let Some(port) = args.port {
-        driver_args.push(String::from("--port"));
-        driver_args.push(port.to_string());
-    }
+    let driver_args = driver_args(args.host.as_deref(), args.port);
     let mut driver = Driver::spawn(&host, &package, &root, "dev", &driver_args)?;
 
     let host_name = host.name();
@@ -1031,9 +1023,57 @@ fn changed_document(message: &Value) -> Option<(String, String)> {
     Some((uri, text))
 }
 
+/// What `uf dev` tells the driver, from what was typed.
+///
+/// `--port` carries `--strict-port` with it. Vite's default is to move to the
+/// next free port, which is right for `dev.port` — a preference the project
+/// wrote down once — and wrong for an argument somebody just typed: the
+/// bookmark, the proxy rule and the container mapping all name the number that
+/// was asked for, and a server quietly listening one along is a server nobody
+/// can reach. Failing says which port is taken; moving says nothing until
+/// something else breaks, somewhere else.
+///
+/// `dev.strictPort` still decides the case where the port came from the
+/// config, and the driver reads it there.
+fn driver_args(host: Option<&str>, port: Option<u16>) -> Vec<String> {
+    let mut driver_args = Vec::new();
+    if let Some(bind) = host {
+        driver_args.push(String::from("--host"));
+        driver_args.push(bind.to_owned());
+    }
+    if let Some(port) = port {
+        driver_args.push(String::from("--port"));
+        driver_args.push(port.to_string());
+        driver_args.push(String::from("--strict-port"));
+    }
+    driver_args
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_port_that_was_typed_is_the_port_the_server_binds() {
+        // Without `--strict-port`, Vite takes the next free one and says so in
+        // a banner nobody is reading, and the request that was going to prove
+        // the server works goes to whatever else is on that port. The test
+        // that found this had a dev server up on a port it was not asking
+        // about; see ubugeeei-prod/uf#234.
+        assert_eq!(
+            driver_args(None, Some(5173)),
+            ["--port", "5173", "--strict-port"]
+        );
+    }
+
+    #[test]
+    fn a_port_that_was_not_typed_leaves_the_choice_to_the_config() {
+        // `dev.port` and `dev.strictPort` are the project's preference, and the
+        // driver reads both. Sending `--strict-port` here would override a
+        // `false` nobody asked to change.
+        assert!(driver_args(None, None).is_empty());
+        assert_eq!(driver_args(Some("0.0.0.0"), None), ["--host", "0.0.0.0"]);
+    }
 
     /// The parsed body of a frame, for the tests that only care about that.
     fn body_of(frame: Option<Frame>) -> Value {
