@@ -17,7 +17,7 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
 use uf_config::load_config;
@@ -29,11 +29,13 @@ use uf_test::{
     WatchOptions, load_timings, save_timings,
 };
 
+use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::vite::{installed_package, resolve_host};
 
 use crate::support::{TEST, plural, project_env, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
 
+mod coverage;
 mod payload;
 mod render;
 mod watch;
@@ -67,6 +69,16 @@ pub(crate) struct TestArgs {
     pub(crate) threads: Option<usize>,
     /// How often watch mode looks for changes, in milliseconds.
     pub(crate) watch_interval: Option<u64>,
+    /// Measure which Flow lines the suite executed.
+    pub(crate) coverage: bool,
+    /// Which coverage reports to write, overriding the project's config.
+    pub(crate) coverage_reporters: Vec<CoverageReporterArg>,
+    /// Where coverage reports go, overriding the project's config.
+    pub(crate) coverage_dir: Option<String>,
+    /// A machine-readable shape for the run's results.
+    pub(crate) reporter: Option<ResultReporterArg>,
+    /// Where `reporter` writes.
+    pub(crate) reporter_outfile: Option<String>,
     /// Only run files whose path contains one of these patterns.
     pub(crate) paths: Vec<String>,
 }
@@ -113,6 +125,17 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     if args.watch && args.json {
         bail!("--watch and --json cannot be combined: watch mode reports once per change");
     }
+    // A coverage report is a statement about a whole suite, and watch mode does
+    // not run one: it runs whatever the last edit invalidated. Reporting "68%"
+    // after re-running three files would be a number about three files wearing
+    // the project's name, and a threshold checked against it would fail a
+    // developer's loop for a reason that has nothing to do with their edit.
+    if args.watch && args.coverage {
+        bail!(
+            "--watch and --coverage cannot be combined: watch mode re-runs only the files an \
+             edit affected, so its coverage would not be the project's"
+        );
+    }
 
     let resolved = load_config(cwd)?;
     let root = resolved.root.clone();
@@ -156,19 +179,72 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return watch::watch(ui, &root, resolved.config, &env, args);
     }
 
-    let host =
+    let mut host =
         test_host(&root, &resolved.config, &env)?.with_snapshot_updates(args.update_snapshots);
+
+    // Every JavaScript file the project has, before discovery narrows it to the
+    // ones that declare tests: a file no test imports never becomes a script,
+    // so measuring alone cannot see it and the coverage report has to be told.
+    //
+    // JavaScript only. A `package.json` or a stylesheet is a project file that
+    // is never executed, so "the suite never loaded it" is true of every one of
+    // them and says nothing.
+    let project_paths: Vec<String> = files
+        .iter()
+        .filter(|file| file.kind == uf_project::SourceKind::JavaScript)
+        .map(|file| file.relative_path.clone())
+        .collect();
+
+    let settings = &resolved.config.test.coverage;
+    let raw = if args.coverage || settings.enabled {
+        if !host.can_collect_coverage() {
+            bail!(
+                "`uf test --coverage` needs Node.js: coverage is V8's own count, written out \
+                 through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
+                 loader attaches. {} provides neither, and reporting zeroes would be worse than \
+                 saying so.",
+                host.kind.program()
+            );
+        }
+        let raw = coverage::RawCoverage::create(&root)?;
+        host = host.with_coverage_dir(raw.directory().to_path_buf());
+        Some(raw)
+    } else {
+        None
+    };
+
     let files = test_bearing(files);
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
     let report = timer.measure("run", || {
         run_once(ui, &root, &host, &files, &args, timings.clone())
     })?;
+
+    let collected = match &raw {
+        Some(raw) => Some(timer.measure("coverage", || {
+            coverage::collect(
+                &root,
+                settings,
+                raw,
+                &coverage::directory_for(&root, settings, args.coverage_dir.as_deref()),
+                &args.coverage_reporters,
+                &project_paths,
+            )
+        })?),
+        None => None,
+    };
     let duration = timer.total();
+
+    if let Some(ResultReporterArg::Junit) = args.reporter {
+        write_results_report(&root, &args, &report)?;
+    }
 
     let recorded = record_timings(&root, timings, &report, &files);
     if args.json {
-        ui.json(&test_payload(&report))?;
+        ui.json(&test_payload(
+            &report,
+            collected.as_ref().map(|(coverage, _)| coverage),
+        ))?;
     } else {
         render_report(
             ui,
@@ -181,10 +257,43 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             &host,
             timing_note.as_deref(),
             recorded.as_deref(),
+            collected.as_ref().map(|(_, section)| section),
         );
     }
 
-    finish(&report)
+    finish(
+        &report,
+        collected
+            .as_ref()
+            .map_or(&[][..], |(_, section)| &section.violations),
+    )
+}
+
+/// Write the run's results in the shape a CI system already parses.
+///
+/// An outfile rather than stdout, and `--reporter` requires one. `uf test
+/// --json` already owns stdout for a machine, and putting a second document
+/// there would mean deciding which of the two a caller meant; a CI system, on
+/// the other hand, is configured with a *path* — `junit.xml`, collected after
+/// the step — so the file is what it wants anyway.
+fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport) -> Result<()> {
+    let Some(outfile) = args.reporter_outfile.as_deref() else {
+        bail!("--reporter needs --reporter-outfile");
+    };
+    let path = Utf8Path::new(outfile);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    if let Some(parent) = path.parent()
+        && !parent.as_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).with_context(|| format!("could not create {parent}"))?;
+    }
+    std::fs::write(&path, uf_test::junit(report))
+        .with_context(|| format!("could not write {path}"))?;
+    Ok(())
 }
 
 /// The host `uf test` runs its workers on.
@@ -377,10 +486,26 @@ pub(crate) fn runner_plan() -> NativeTestRunnerPlan {
 }
 
 /// Turn a report into the command's exit status.
-fn finish(report: &TestRunReport) -> Result<()> {
+///
+/// A coverage threshold fails the run exactly as a failing test does, and it is
+/// checked *after* the tests: a suite that is red has a reason to be red
+/// already, and adding "and coverage is 61%" to it would bury the failure that
+/// caused the number.
+fn finish(report: &TestRunReport, violations: &[uf_test::ThresholdViolation]) -> Result<()> {
     let summary = &report.summary;
     if summary.is_success() {
-        return Ok(());
+        if violations.is_empty() {
+            return Ok(());
+        }
+        let mut message = format!(
+            "uf test did not reach {}",
+            plural(violations.len(), "coverage threshold")
+        );
+        for violation in violations {
+            message.push_str("\n  ");
+            message.push_str(&violation.describe());
+        }
+        bail!(message);
     }
     if summary.failed > 0 {
         bail!("uf test failed with {}", plural(summary.failed, "failure"));

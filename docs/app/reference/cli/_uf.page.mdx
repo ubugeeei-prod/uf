@@ -440,6 +440,15 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 | `--list` | Print what would run without running it |
 | `--json` | The whole report on stdout, machine-readable |
 | `--mode MODE` | Run in that mode instead of `test`, which chooses `.env.<mode>` |
+| `--coverage` | Measure which Flow lines the suite executed. Node only |
+| `--coverage-reporter FORMAT` | `text`, `lcov` or `cobertura`; repeat for more than one. Overrides `test.coverage.reporters` |
+| `--coverage-dir DIR` | Where the reports go, overriding `test.coverage.directory` |
+| `--reporter junit` | Write the results as JUnit XML. Needs `--reporter-outfile` |
+| `--reporter-outfile FILE` | Where `--reporter` writes |
+
+Coverage is reported against the Flow source, mapped back through the
+transform's own source map, and a threshold in `uf.config.js` that is not
+reached fails the run. `--watch` and `--coverage` cannot be combined.
 
 ### uf prepare
 

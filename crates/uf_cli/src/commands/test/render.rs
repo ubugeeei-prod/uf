@@ -19,6 +19,7 @@ use uf_test::{
     TestStatus, discover_tests, merge_plans,
 };
 
+use super::coverage::CoverageSection;
 use super::{SLOWEST_SHOWN, TestArgs, runner_plan, timings_label};
 use crate::support::{plural, project_label};
 use crate::ui::{Ui, widest};
@@ -131,6 +132,7 @@ pub(super) fn render_report(
     host: &uf_test::HostCommand,
     timing_note: Option<&str>,
     record_note: Option<&str>,
+    coverage: Option<&CoverageSection>,
 ) {
     let label = project_label(root).to_string();
     let runtime = host.kind.program().to_string();
@@ -150,6 +152,7 @@ pub(super) fn render_report(
         )
     });
     let slowest = slowest_rows(report);
+    let coverage_rows = coverage.map(coverage_block);
     let file_problems = file_problems(report);
     let unsupported_declarations: Vec<String> = report
         .plan
@@ -225,6 +228,48 @@ pub(super) fn render_report(
                 ]);
             }
             renderer.table(out, 2, &table);
+        }
+
+        if let Some(coverage) = &coverage_rows {
+            renderer.blank(out);
+            renderer.heading(out, 2, "coverage");
+            if coverage.show_table {
+                let mut table = Table::new(vec![
+                    Column::left("file"),
+                    Column::right("lines"),
+                    Column::right("functions"),
+                    Column::right("branches"),
+                    Column::left("uncovered"),
+                ]);
+                for row in &coverage.rows {
+                    table.push(vec![
+                        Cell::toned(&row.file, Tone::Path),
+                        Cell::toned(&row.lines, tone_for(row.lines_meets)),
+                        Cell::toned(&row.functions, tone_for(row.functions_meets)),
+                        Cell::toned(&row.branches, tone_for(row.branches_meets)),
+                        Cell::toned(&row.uncovered, Tone::Muted),
+                    ]);
+                }
+                renderer.table(out, 2, &table);
+            }
+            renderer.blank(out);
+            renderer.key_values(
+                out,
+                2,
+                &[
+                    KeyValue::toned("lines", &coverage.total_lines, Tone::Number),
+                    KeyValue::toned("functions", &coverage.total_functions, Tone::Number),
+                    KeyValue::toned("branches", &coverage.total_branches, Tone::Number),
+                ],
+            );
+            for note in &coverage.notes {
+                push_spaces(out, 2);
+                renderer.status(out, Status::Info, note);
+            }
+            for violation in &coverage.violations {
+                push_spaces(out, 2);
+                renderer.status(out, Status::Error, violation);
+            }
         }
 
         renderer.blank(out);
@@ -523,4 +568,149 @@ fn file_problems(report: &TestRunReport) -> Vec<String> {
         .filter(|file| file.status != FileStatus::Completed)
         .map(|file| format!("{} {}", file.file, file.status.describe()))
         .collect()
+}
+
+/// One row of the coverage table, already turned into text.
+///
+/// Rendered ahead of the closure that draws it because the closure borrows the
+/// renderer and cannot allocate a percentage while it holds it.
+struct CoverageLine {
+    file: String,
+    lines: String,
+    functions: String,
+    branches: String,
+    uncovered: String,
+    lines_meets: bool,
+    functions_meets: bool,
+    branches_meets: bool,
+}
+
+/// The whole coverage section, ready to draw.
+struct CoverageBlock {
+    rows: Vec<CoverageLine>,
+    total_lines: String,
+    total_functions: String,
+    total_branches: String,
+    notes: Vec<String>,
+    violations: Vec<String>,
+    show_table: bool,
+}
+
+/// Turn the collected coverage into the block the report draws.
+///
+/// A per-file ratio is coloured against the *per-file* threshold when the
+/// project set one, and against nothing when it did not: a green number the
+/// project never asked for is a number that means "somebody decided this was
+/// enough", and nobody did.
+fn coverage_block(section: &CoverageSection) -> CoverageBlock {
+    let failing: std::collections::BTreeSet<(String, uf_test::Metric)> = section
+        .violations
+        .iter()
+        .filter_map(|violation| {
+            violation
+                .file
+                .as_ref()
+                .map(|file| (file.clone(), violation.metric))
+        })
+        .collect();
+    let meets = |file: &str, metric: uf_test::Metric| !failing.contains(&(file.to_owned(), metric));
+
+    let rows = section
+        .rows
+        .iter()
+        .map(|row| CoverageLine {
+            file: row.file.clone(),
+            lines: ratio_text(row.lines),
+            functions: ratio_text(row.functions),
+            branches: ratio_text(row.branches),
+            uncovered: row.uncovered.clone(),
+            lines_meets: meets(&row.file, uf_test::Metric::Lines),
+            functions_meets: meets(&row.file, uf_test::Metric::Functions),
+            branches_meets: meets(&row.file, uf_test::Metric::Branches),
+        })
+        .collect();
+
+    let mut notes = Vec::new();
+    if !section.never_loaded.is_empty() {
+        // Named as a count and not folded into the percentage: a file no test
+        // imports has no measured line to divide by, so counting it either way
+        // would be an invention. The count is the honest form of it.
+        notes.push(format!(
+            "{} no test loaded, so nothing above is about {}: {}",
+            plural(section.never_loaded.len(), "project file"),
+            if section.never_loaded.len() == 1 {
+                "it"
+            } else {
+                "them"
+            },
+            preview(&section.never_loaded),
+        ));
+    }
+    if !section.unmapped.is_empty() {
+        // Named, because this is the report admitting what it could not see.
+        // A `@noflow` module the loader passes through untouched has no author
+        // position for a count to belong to, and silently leaving it out is how
+        // a coverage number starts describing a smaller program than the one
+        // that ran.
+        notes.push(format!(
+            "{} ran with no source map back to Flow and {} left out: {}",
+            plural(section.unmapped.len(), "module"),
+            if section.unmapped.len() == 1 {
+                "was"
+            } else {
+                "were"
+            },
+            preview(&section.unmapped),
+        ));
+    }
+    for path in &section.written {
+        notes.push(format!("wrote {path}"));
+    }
+
+    CoverageBlock {
+        rows,
+        total_lines: ratio_text(section.totals.lines),
+        total_functions: ratio_text(section.totals.functions),
+        total_branches: ratio_text(section.totals.branches),
+        notes,
+        violations: section
+            .violations
+            .iter()
+            .map(uf_test::ThresholdViolation::describe)
+            .collect(),
+        show_table: section.show_table,
+    }
+}
+
+/// The first few of a list, with the rest counted.
+fn preview(paths: &[String]) -> String {
+    const SHOWN: usize = 3;
+    let head = paths
+        .iter()
+        .take(SHOWN)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    match paths.len().saturating_sub(SHOWN) {
+        0 => head,
+        more => format!("{head}, and {more} more"),
+    }
+}
+
+fn ratio_text(ratio: uf_test::Ratio) -> String {
+    format!(
+        "{:.2}% ({}/{})",
+        ratio.percent(),
+        ratio.covered,
+        ratio.total
+    )
+}
+
+/// Red only for a per-file threshold the project set and this file missed.
+///
+/// Not green for the ones it met: a colour that says "enough" is a judgement,
+/// and the only place that judgement exists is a threshold somebody wrote down.
+/// A project with none gets numbers and no verdict.
+const fn tone_for(meets: bool) -> Tone {
+    if meets { Tone::Plain } else { Tone::Bad }
 }

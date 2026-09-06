@@ -1,4 +1,8 @@
 /target/
+# Written by `uf test --coverage`, at the root of whichever project was
+# measured; `lcov.info` is what CI uploads and nothing in the repository reads
+# it back. Unanchored, because `tests/library` is a project of its own.
+coverage/
 /dist/
 /docs/dist/
 /docs/router.js

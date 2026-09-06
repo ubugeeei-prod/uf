@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/host",
-  "version": "0.0.0-alpha.8",
+  "version": "0.0.0-alpha.9",
   "description": "Running Flow on a Capability JS Host, with no bundler in the way.",
   "type": "module",
   "license": "MIT",
@@ -11,6 +11,7 @@
     "directory": "packages/host"
   },
   "exports": {
+    "./assets": "./assets.js",
     "./bun-preload": "./bun-preload.js",
     "./internal/node-hooks.js": "./internal/node-hooks.js",
     "./module-mocks": "./module-mocks.js",
@@ -20,6 +21,7 @@
   },
   "files": [
     "register.js",
+    "assets.js",
     "bun-preload.js",
     "module-mocks.js",
     "transform.js",

@@ -101,6 +101,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
       },
       {
+        href: "/guide/assets",
+        title: "Images and fonts",
+        blurb: "Resized, re-encoded and self-hosted at build time — and what that stops short of.",
+      },
+      {
         href: "/guide/ui",
         title: "Headless components",
         blurb: "Seven primitives: the keyboard, the ARIA, and no styles at all.",
