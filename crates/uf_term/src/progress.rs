@@ -26,7 +26,7 @@
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
-use crate::capability::{Capabilities, ColorLevel, GlyphSet};
+use crate::capability::{Capabilities, ColorLevel, GlyphSet, TerminalEnv, TerminalSize, Tty};
 use crate::style::Style;
 use crate::text::{push_truncated, push_usize};
 
@@ -41,13 +41,18 @@ const ASCII_FRAMES: [&str; 4] = ["-", "\\", "|", "/"];
 /// The default redraw interval.
 pub const DEFAULT_TICK: Duration = Duration::from_millis(80);
 
-/// The widest a [`Live`] region draws before its rows are cut.
+/// The widest a [`Live`] region draws, however wide the terminal is.
 ///
-/// The same 72 columns `Renderer::banner` clamps a rule to. A row wider than
-/// the terminal wraps onto a second physical line, which makes every "cursor
-/// up" that follows land one line short and turns the region into a smear —
-/// so the bound is not cosmetic here the way it is for a banner. 72 is the
-/// figure the rest of uf already assumes a terminal has.
+/// The same 72 columns `Renderer::banner` clamps a rule to: a ladder is easier
+/// to read at 72 than stretched across a 200-column window, so this is a
+/// ceiling and stays one.
+///
+/// It used to be the whole answer, which was the bug. A row wider than the
+/// terminal wraps onto a second physical line, and then every "cursor up" that
+/// follows lands one line short and the region smears down the screen — so on
+/// any terminal narrower than 72 columns the display was not merely cramped,
+/// it was destroyed. [`Live::stderr`] now takes the smaller of this and
+/// [`TerminalSize::detect`].
 pub const LIVE_WIDTH: usize = 72;
 
 /// A single-line progress reporter.
@@ -374,8 +379,20 @@ impl<W: Write> Drop for Live<W> {
 
 impl Live<io::Stderr> {
     /// A region on stderr, so that progress never pollutes piped stdout.
+    ///
+    /// The one constructor that resolves the terminal's size, because it is
+    /// the one that knows the sink is a terminal rather than a `Vec<u8>` a
+    /// test is reading. [`Live::new`] stays a pure function of its arguments
+    /// so that a byte-level test does not depend on the window it runs in.
     pub fn stderr(capabilities: Capabilities) -> Self {
-        Self::new(capabilities, io::stderr())
+        let region = Self::new(capabilities, io::stderr());
+        if !region.enabled {
+            // Nothing will be drawn, so nothing needs measuring, and a spawn
+            // in a CI log's code path is a spawn for no reason at all.
+            return region;
+        }
+        let size = TerminalSize::detect(Tty::Interactive, &TerminalEnv::from_process());
+        region.with_width(LIVE_WIDTH.min(size.columns()))
     }
 }
 

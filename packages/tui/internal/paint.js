@@ -151,6 +151,12 @@ export function wrapModeOf(node: TuiNode): WrapMode {
  * placed off the bottom of an 80×24 terminal fails to corrupt the frame.
  */
 export function paint(node: TuiNode, frame: Frame, capabilities: Capabilities, clip: Rect): void {
+  // A scrolling ancestor decided this subtree is not on screen. Its geometry
+  // is deliberately not up to date, so walking into it would draw the last
+  // frame's positions on top of this one's.
+  if (node.hidden) {
+    return;
+  }
   switch (node.type) {
     case "root":
       for (const child of node.children) {
@@ -187,19 +193,75 @@ function paintBox(node: TuiNode, frame: Frame, capabilities: Capabilities, clip:
 
   // `overflow: "hidden"` clips children to what is inside the border and
   // padding. `"visible"` — the default — lets them draw over the border,
-  // which is how a badge sits on a box's top edge.
-  const childClip =
-    node.style.overflow === "hidden"
-      ? intersect(clip, {
-          x: node.x + node.borderWidth,
-          y: node.y + node.borderWidth,
-          width: Math.max(0, node.width - node.borderWidth * 2),
-          height: Math.max(0, node.height - node.borderWidth * 2),
-        })
-      : clip;
+  // which is how a badge sits on a box's top edge. `"scroll"` clips like
+  // `"hidden"`: a row half in the window has to be half drawn.
+  const clipped = node.style.overflow === "hidden" || node.style.overflow === "scroll";
+  const childClip = clipped
+    ? intersect(clip, {
+        x: node.x + node.borderWidth,
+        y: node.y + node.borderWidth,
+        width: Math.max(0, node.width - node.borderWidth * 2),
+        height: Math.max(0, node.height - node.borderWidth * 2),
+      })
+    : clip;
 
   for (const child of node.children) {
     paint(child, frame, capabilities, childClip);
+  }
+
+  if (node.style.overflow === "scroll" && node.props.scrollbar === true) {
+    // `childClip` rather than `clip`: the bar belongs to this box and must be
+    // cut by the same rectangle its rows are.
+    paintScrollbar(node, frame, capabilities, childClip, style);
+  }
+}
+
+/**
+ * The bar down the right-hand edge of a scrolling box.
+ *
+ * It goes in the column `ScrollBox` reserved for it by adding one to the box's
+ * right padding, which is why wrapped content never reaches it — and why
+ * turning the bar off gives that column back to the content instead of leaving
+ * a gap. Text with `wrap="none"` can still run into the column, since padding
+ * is not a clip anywhere in this renderer; the bar is drawn after the children
+ * and wins.
+ *
+ * Nothing is drawn when everything fits. The bar is only reached when there is
+ * more content than window, and a thumb is then always at least one row and
+ * never the whole bar — a full-height thumb would say "all of it is showing",
+ * which is the one thing that is not true here.
+ */
+function paintScrollbar(
+  node: TuiNode,
+  frame: Frame,
+  capabilities: Capabilities,
+  clip: Rect,
+  style: Style,
+): void {
+  const top = node.scrollViewTop;
+  const viewport = node.scrollViewRows;
+  const column = node.scrollBarColumn;
+  if (viewport <= 0 || node.scrollHeight <= viewport) {
+    return;
+  }
+
+  const ascii = capabilities.glyphs === "ascii";
+  const trackGlyph = ascii ? "|" : "│";
+  const thumbGlyph = ascii ? "#" : "█";
+  const trackStyle: Style = {
+    fg: parseColor(readColor(node.props, ["scrollbarColor", "borderColor"])),
+    bg: style.bg,
+    attributes: 0,
+  };
+
+  const thumb = Math.max(1, Math.round((viewport / node.scrollHeight) * viewport));
+  const travel = viewport - thumb;
+  const scrolled = node.scrollHeight - viewport;
+  const start = scrolled === 0 ? 0 : Math.round((node.scrollOffset / scrolled) * travel);
+
+  for (let row = 0; row < viewport; row += 1) {
+    const glyph = row >= start && row < start + thumb ? thumbGlyph : trackGlyph;
+    writeGrapheme(frame, column, top + row, glyph, 1, trackStyle, clip);
   }
 }
 

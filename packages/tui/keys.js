@@ -48,7 +48,15 @@ export type KeySource = "raw" | "escape";
  * difference between typing `a` and typing `^[[A`.
  */
 export type KeyEvent = {
-  /** The canonical name: `"a"`, `"space"`, `"return"`, `"escape"`, `"up"`. */
+  /**
+   * The canonical name: `"a"`, `"space"`, `"return"`, `"escape"`, `"up"`.
+   *
+   * `"paste"` is the one name that is not a key. A terminal in bracketed
+   * paste mode wraps pasted text in `ESC[200~` and `ESC[201~` so that an
+   * application can tell it from typing, and the whole point of knowing is to
+   * treat it as *text* — so it arrives as one event carrying all of it rather
+   * than as the burst of key presses it would otherwise look like.
+   */
   readonly name: string,
   /** The text this key stands for, empty for keys that stand for none. */
   readonly sequence: string,
@@ -72,6 +80,10 @@ export type KeyEvent = {
 };
 
 const ESC = "\u001b";
+
+/** What a terminal in bracketed paste mode puts around pasted text. */
+const PASTE_START = "\u001b[200~";
+const PASTE_END = "\u001b[201~";
 
 /** The `CSI …` final bytes that name a key on their own. */
 const CSI_FINAL: { [string]: string } = {
@@ -157,21 +169,138 @@ function modifiers(parameter: string | void): { ctrl: boolean, shift: boolean, m
 }
 
 /**
+ * One pasted block, as the event a handler sees.
+ *
+ * The payload is whatever was on the clipboard, given back verbatim and
+ * therefore **untrusted**: it can hold newlines, control bytes and escape
+ * sequences of its own. Handing it over as text rather than as keys is the
+ * entire purpose of bracketed paste — a terminal without it delivers a pasted
+ * `\r` as Enter, which is how pasting a two-line command into a prompt runs
+ * the first line. What a component does with the text is its own decision;
+ * `Input` takes the first line and drops the control characters, because it is
+ * one line of text and cannot hold either.
+ */
+function pasteEvent(text: string, raw: string): KeyEvent {
+  return event({ name: "paste", sequence: text, raw, source: "escape" });
+}
+
+/**
+ * A decoder that survives a paste arriving in pieces.
+ *
+ * {@link decodeKeys} is a pure function of one chunk, which is right for every
+ * key: a terminal delivers an escape sequence in a single read. A paste is the
+ * exception — it is as long as the clipboard, and the operating system splits
+ * a large one across reads wherever it likes, including in the middle of a
+ * word and including between the text and its terminator. So a driver reading
+ * a real stream holds one of these across chunks, and the text that arrives
+ * is the text that was pasted rather than the first sixty-four kilobytes of it
+ * followed by a burst of keys.
+ */
+export type KeyDecoder = {
+  /** Decode one chunk, holding back a paste that has not ended yet. */
+  push(chunk: string): Array<KeyEvent>,
+  /** Give up on an unterminated paste and emit what arrived. */
+  flush(): Array<KeyEvent>,
+};
+
+/**
+ * Whether `input` from `start` could still become a paste introducer.
+ *
+ * Two bytes at least, so a lone `ESC` is still the Escape key: holding that
+ * back would mean Escape never fires until the next keystroke, which is worse
+ * than the ambiguity it would solve. From `ESC[` on there is nothing else it
+ * could be that this decoder would get right anyway — an unfinished CSI at the
+ * end of a chunk decodes today as Alt and a bracket.
+ */
+function beginsPaste(input: string, start: number): boolean {
+  const rest = input.length - start;
+  return rest >= 2 && rest < PASTE_START.length && PASTE_START.startsWith(input.slice(start));
+}
+
+/** A decoder with somewhere to keep a half-arrived paste. */
+export function createKeyDecoder(): KeyDecoder {
+  let pending: string | null = null;
+  /** A chunk that ended part-way through `ESC[200~`. */
+  let introducer = "";
+
+  const decoder: KeyDecoder = {
+    push(chunk: string): Array<KeyEvent> {
+      const events: Array<KeyEvent> = [];
+      let input = introducer + chunk;
+      introducer = "";
+      if (pending != null) {
+        const end = input.indexOf(PASTE_END);
+        if (end < 0) {
+          pending += input;
+          return events;
+        }
+        const text = pending + input.slice(0, end);
+        pending = null;
+        events.push(pasteEvent(text, PASTE_START + text + PASTE_END));
+        input = input.slice(end + PASTE_END.length);
+      }
+
+      let index = 0;
+      while (index < input.length) {
+        if (beginsPaste(input, index)) {
+          introducer = input.slice(index);
+          return events;
+        }
+        if (input.startsWith(PASTE_START, index)) {
+          const from = index + PASTE_START.length;
+          const end = input.indexOf(PASTE_END, from);
+          if (end < 0) {
+            pending = input.slice(from);
+            return events;
+          }
+          const text = input.slice(from, end);
+          events.push(pasteEvent(text, PASTE_START + text + PASTE_END));
+          index = end + PASTE_END.length;
+          continue;
+        }
+        index += decodeOne(input, index, events);
+      }
+      return events;
+    },
+    flush(): Array<KeyEvent> {
+      if (introducer !== "") {
+        // Not a paste after all: no more input is coming, so the bytes are
+        // whatever they decode to on their own.
+        const held = introducer;
+        introducer = "";
+        const events: Array<KeyEvent> = [];
+        let index = 0;
+        while (index < held.length) {
+          index += decodeOne(held, index, events);
+        }
+        return events;
+      }
+      if (pending == null) {
+        return [];
+      }
+      const text = pending;
+      pending = null;
+      return [pasteEvent(text, PASTE_START + text)];
+    },
+  };
+  return decoder;
+}
+
+/**
  * Every key event in a chunk of terminal input.
  *
  * A chunk is not a key. Holding a key down, pasting, or simply typing fast
  * delivers several at once, and a decoder that returns the first and drops the
  * rest loses characters under exactly the conditions — fast typing — where
  * losing them is most obvious.
+ *
+ * One chunk, decoded completely: a paste this chunk begins and does not end is
+ * emitted anyway, because there is no later chunk for a pure function to wait
+ * for. A driver reading a stream wants {@link createKeyDecoder} instead.
  */
 export function decodeKeys(input: string): Array<KeyEvent> {
-  const events: Array<KeyEvent> = [];
-  let index = 0;
-  while (index < input.length) {
-    const consumed = decodeOne(input, index, events);
-    index += consumed;
-  }
-  return events;
+  const decoder = createKeyDecoder();
+  return [...decoder.push(input), ...decoder.flush()];
 }
 
 function decodeOne(input: string, start: number, events: Array<KeyEvent>): number {
