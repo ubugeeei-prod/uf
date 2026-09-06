@@ -58,20 +58,23 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
     let environment = inspected_env(&resolved);
     let env_mode = environment
         .as_ref()
-        .map_or_else(|| String::from("unknown"), |env| env.mode().to_owned());
-    let env_files = environment.as_ref().map_or_else(String::new, |env| {
-        env.files()
-            .iter()
-            .map(|file| relative_to(&resolved.root, file))
-            .collect::<Vec<_>>()
-            .join(", ")
-    });
+        .map_or_else(|_| String::new(), |env| env.mode().to_owned());
+    let env_files = environment.as_ref().map_or_else(
+        |_| String::new(),
+        |env| {
+            env.files()
+                .iter()
+                .map(|file| relative_to(&resolved.root, file))
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+    );
     let env_variables = environment
         .as_ref()
-        .map_or_else(|| String::from("0"), |env| env.values().len().to_string());
+        .map_or_else(|_| String::new(), |env| env.values().len().to_string());
     let env_client = environment
         .as_ref()
-        .map_or_else(String::new, |env| env.client_prefixes().join(", "));
+        .map_or_else(|_| String::new(), |env| env.client_prefixes().join(", "));
     let lint_unavailable = uf_lint::rules()
         .iter()
         .filter(|descriptor| !descriptor.requirement.is_available())
@@ -154,26 +157,39 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
         renderer.blank(out);
 
         renderer.heading(out, 2, "environment");
-        renderer.key_values(
-            out,
-            4,
-            &[
-                KeyValue::new("mode", &env_mode),
-                KeyValue::toned(
-                    "files",
-                    if env_files.is_empty() {
-                        "none found"
-                    } else {
-                        &env_files
-                    },
-                    Tone::Path,
-                ),
-                // A count and never the values: `uf inspect` is pasted into
-                // issues.
-                KeyValue::toned("variables", &env_variables, Tone::Number),
-                KeyValue::new("client prefix", &env_client),
-            ],
-        );
+        match &environment {
+            Ok(_) => renderer.key_values(
+                out,
+                4,
+                &[
+                    KeyValue::new("mode", &env_mode),
+                    KeyValue::toned(
+                        "files",
+                        if env_files.is_empty() {
+                            "none found"
+                        } else {
+                            &env_files
+                        },
+                        Tone::Path,
+                    ),
+                    // A count and never the values: `uf inspect` is pasted into
+                    // issues.
+                    KeyValue::toned("variables", &env_variables, Tone::Number),
+                    KeyValue::new("client prefix", &env_client),
+                ],
+            ),
+            // Two lines and no third: printing `mode`, `files` and `variables`
+            // beside a failure would be reporting a reading that was never
+            // taken. The reason is the whole of what this command knows.
+            Err(reason) => renderer.key_values(
+                out,
+                4,
+                &[
+                    KeyValue::new("files", "could not be read"),
+                    KeyValue::new("reason", reason),
+                ],
+            ),
+        }
         renderer.blank(out);
 
         renderer.heading(out, 2, "catalogue");
@@ -247,13 +263,22 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         "config": resolved,
         // Names, never values. `uf inspect --json` is what a person pastes into
         // an issue, and half of what is in a `.env` file is a credential.
-        "env": environment.as_ref().map(|env| json!({
-            "mode": env.mode(),
-            "files": env.files().iter().map(|file| relative_to(&resolved.root, file)).collect::<Vec<_>>(),
-            "variables": env.values().keys().collect::<Vec<_>>(),
-            "clientVisible": env.values().keys().filter(|name| env.is_client_visible(name)).collect::<Vec<_>>(),
-            "clientPrefix": env.client_prefixes(),
-        })),
+        //
+        // And `error` rather than `null` when it could not be read: a reader
+        // that gets `null` has to guess whether this project has no `.env`
+        // files or has one that does not parse, and those are opposite answers
+        // to the question they are asking. The message names a file and a line
+        // and never a value; see `EnvFileError`.
+        "env": match &environment {
+            Ok(env) => json!({
+                "mode": env.mode(),
+                "files": env.files().iter().map(|file| relative_to(&resolved.root, file)).collect::<Vec<_>>(),
+                "variables": env.values().keys().collect::<Vec<_>>(),
+                "clientVisible": env.values().keys().filter(|name| env.is_client_visible(name)).collect::<Vec<_>>(),
+                "clientPrefix": env.client_prefixes(),
+            }),
+            Err(reason) => json!({ "error": reason }),
+        },
         "plugins": pipeline.report(),
         "routes": routes,
         "nativeModules": builtin_modules(),
@@ -303,10 +328,16 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
 ///
 /// A `.env` file that does not parse is not `uf inspect`'s to refuse: this
 /// command is what a person runs to find out what is wrong, and failing it on
-/// the file they are asking about would leave them nothing to read. The section
-/// says the environment could not be read and the command that uses it says
-/// why.
-fn inspected_env(resolved: &ResolvedConfig) -> Option<ProjectEnv> {
-    let mode = env_files::resolve_mode(&resolved.root, &resolved.config, None, DEVELOPMENT).ok()?;
-    env_files::load(&resolved.root, &resolved.config, &mode).ok()
+/// the file they are asking about would leave them nothing to read.
+///
+/// So the failure is carried rather than dropped. `.ok()` used to throw it
+/// away, and the section then printed `mode unknown`, `files none found` and
+/// `variables 0` — which is what a project with no `.env` files at all looks
+/// like, so the one command that exists to say what is wrong said nothing was.
+/// The reason is a file, a line and a message; `EnvFileError` never puts a
+/// value in one.
+fn inspected_env(resolved: &ResolvedConfig) -> Result<ProjectEnv, String> {
+    let mode = env_files::resolve_mode(&resolved.root, &resolved.config, None, DEVELOPMENT)
+        .map_err(|error| error.to_string())?;
+    env_files::load(&resolved.root, &resolved.config, &mode).map_err(|error| error.to_string())
 }

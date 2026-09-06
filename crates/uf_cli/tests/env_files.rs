@@ -366,3 +366,148 @@ fn the_test_runner_sees_the_environment() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// `uf inspect` says why it could not read the environment.
+///
+/// The failure used to be dropped, and the section then printed `mode
+/// unknown`, `files none found` and `variables 0` — which is exactly what a
+/// project with no `.env` files at all looks like. The one command a person
+/// runs *because* a file is wrong reported nothing wrong with it, in text and
+/// as `env: null` in JSON.
+///
+/// Still a success, and still no values: the reason names a file and a line.
+#[test]
+fn inspect_says_why_the_environment_could_not_be_read() {
+    let dir = project(&[(".env", "GREETING\nSECRET_TOKEN=hunter2\n")]);
+
+    let stdout = run(dir.path(), &["inspect"]);
+    assert!(stdout.contains("could not be read"), "{stdout}");
+    assert!(
+        stdout.contains(".env:1"),
+        "the reason must name the file and the line:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("hunter2"),
+        "a value must never be printed:\n{stdout}"
+    );
+
+    let json = run(dir.path(), &["inspect", "--json"]);
+    let payload: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let reason = payload["env"]["error"]
+        .as_str()
+        .unwrap_or_else(|| panic!("`env` must carry the reason rather than being null:\n{json}"));
+    assert!(reason.contains(".env:1"), "{reason}");
+    assert!(
+        !json.contains("hunter2"),
+        "a value must never reach the JSON either"
+    );
+}
+
+/// A task's own `env` is not one of the values uf read from a file, and the
+/// process it starts is told which is which.
+///
+/// `UF_ENV_INJECTED` is how one uf process tells the next one which of the
+/// variables it is handing over came from a file: the next uf lets its own
+/// files overrule those and nothing else. A task's `env` block is not a file
+/// value — it is the configuration writing `NAME=… uf build` — so naming it in
+/// the marker let `.env.production` win over the task inside a nested
+/// `uf build`, reversing the one override the task was written to make.
+#[test]
+fn a_task_env_value_is_not_handed_on_as_a_file_value() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\n\
+         export default defineConfig({\n  \
+         tasks: {\n    \
+         show: {\n      \
+         command: 'echo \"GREETING=[$GREETING]\"; echo \"API_URL=[$API_URL]\"; \
+         echo \"INJECTED=[$UF_ENV_INJECTED]\"',\n      \
+         env: { GREETING: \"from the task\" },\n    \
+         },\n  \
+         },\n});\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join(".env"),
+        "GREETING=from .env\nAPI_URL=https://example.test\n",
+    )
+    .unwrap();
+
+    let stdout = run(dir.path(), &["run", "show"]);
+
+    assert!(stdout.contains("GREETING=[from the task]"), "{stdout}");
+    assert!(
+        stdout.contains("API_URL=[https://example.test]"),
+        "a name the task did not override is still the file's:\n{stdout}"
+    );
+
+    let injected = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("INJECTED=["))
+        .and_then(|line| line.strip_suffix(']'))
+        .unwrap_or_else(|| panic!("the task printed no marker:\n{stdout}"));
+    assert!(
+        !injected.contains("GREETING"),
+        "the task's own value must not be handed on as a file value: {injected:?}"
+    );
+    assert!(
+        injected.contains("API_URL"),
+        "a value that did come from a file must still be named: {injected:?}"
+    );
+}
+
+/// One of uf's own packages resolves its own environment, so `uf exec` must not
+/// resolve one for it first.
+///
+/// `uf exec @uniflowed/test` runs `uf test`, whose mode is `test` — a suite
+/// that reaches for the development database is a suite that can destroy one.
+/// Loading the `development` cascade above the dispatch meant a
+/// `.env.development` that does not parse stopped a command that was never
+/// going to read it.
+#[test]
+fn a_virtual_package_is_not_stopped_by_the_development_cascade() {
+    let dir = project(&[
+        (".env.development", "GREETING\n"),
+        (".env.test", "GREETING=from .env.test\n"),
+    ]);
+
+    let stdout = run(dir.path(), &["exec", "@uniflowed/test", "--list"]);
+
+    assert_plain(&stdout);
+}
+
+/// `uf explain` describes the cascade a command will look for, and names the
+/// prefix *this* project publishes with.
+///
+/// Two claims, both about wording that could mislead the person who ran it.
+/// The file list is the cascade and not a reading of the disk — nothing here
+/// opens a file — so a reader hunting an unset variable must not take a name
+/// in it as a file that was found. And a project that configured
+/// `vite: { envPrefix: … }` has to be told its own prefix: hearing `VITE_`
+/// would tell it that a value already in its browser bundle is server-only.
+#[test]
+fn explain_describes_the_cascade_and_this_projects_client_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\n\
+         export default defineConfig({ vite: { envPrefix: \"PUBLIC_\" } });\n",
+    )
+    .unwrap();
+
+    let stdout = run(dir.path(), &["explain", "dev"]);
+
+    assert!(
+        stdout.contains("looks for") && stdout.contains(".env.development"),
+        "the stage must say the cascade is what it looks for:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("PUBLIC_ reaches the client"),
+        "the stage must name this project's prefix:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("VITE_"),
+        "and must not name the one this project replaced:\n{stdout}"
+    );
+}

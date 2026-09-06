@@ -546,3 +546,69 @@ fn a_project_with_no_env_files_exports_nothing() {
     assert!(env.exported().is_empty());
     assert!(env.files().is_empty());
 }
+
+/// A name the caller is about to set itself is not one uf read from a file.
+///
+/// [`ProjectEnv::apply_over`] is what `uf run` uses for a task's `env` block,
+/// and the half that is easy to lose is the marker rather than the value: a
+/// child that holds the caller's value under uf's own label hands it to the
+/// *next* uf as a file value, and that one lets its own files overrule it. So
+/// an overridden name leaves both the values and [`INJECTED`], and a name that
+/// really did come from a file stays in both.
+#[test]
+fn a_name_the_caller_overrides_leaves_the_marker() {
+    let dir = project(&[(".env", "ONE=1\nTWO=2\n")]);
+
+    let env = load_at(&dir, "development").unwrap();
+    let overridden: BTreeSet<&str> = ["ONE"].into_iter().collect();
+    let exported: BTreeMap<String, String> =
+        env.exported_beneath(&overridden).into_iter().collect();
+
+    assert_eq!(exported.get("ONE"), None);
+    assert_eq!(exported.get("TWO").map(String::as_str), Some("2"));
+    assert_eq!(exported.get(INJECTED).map(String::as_str), Some("TWO"));
+}
+
+/// And a name a *parent* uf injected drops out of the marker just the same.
+///
+/// The marker carries what this process was told about as well as what it
+/// read, so an override has to be taken off both lists or the grandchild is
+/// told the same wrong thing one step later.
+#[test]
+fn overriding_a_name_a_parent_injected_also_leaves_the_marker() {
+    let dir = project(&[]);
+    let process: BTreeMap<String, String> = [
+        (String::from(INJECTED), String::from("API,DATABASE_URL")),
+        (String::from("API"), String::from("from the parent")),
+        (String::from("DATABASE_URL"), String::from("postgres:///x")),
+    ]
+    .into_iter()
+    .collect();
+
+    let env = load_from(
+        &root(&dir),
+        &UniflowedConfig::default(),
+        "development",
+        &process,
+    )
+    .unwrap();
+    let overridden: BTreeSet<&str> = ["API"].into_iter().collect();
+    let exported: BTreeMap<String, String> =
+        env.exported_beneath(&overridden).into_iter().collect();
+
+    assert_eq!(
+        exported.get(INJECTED).map(String::as_str),
+        Some("DATABASE_URL")
+    );
+}
+
+/// Overriding everything leaves no marker at all, rather than an empty one.
+#[test]
+fn overriding_every_name_writes_no_marker() {
+    let dir = project(&[(".env", "ONE=1\n")]);
+
+    let env = load_at(&dir, "development").unwrap();
+    let overridden: BTreeSet<&str> = ["ONE"].into_iter().collect();
+
+    assert!(env.exported_beneath(&overridden).is_empty());
+}

@@ -222,8 +222,9 @@ issues.
 
 ### What reaches the browser
 
-**Only a name that starts with `VITE_`.** That value is substituted into the
-JavaScript the browser downloads, so it is public: anyone who opens the site can
+**Only a name that starts with the client prefix — `VITE_`, until a project
+sets another.** That value is substituted into the JavaScript the browser
+downloads, so it is public: anyone who opens the site can
 read it. Everything else is available to server code through `process.env` and
 is never written into a client bundle, even if a module that ships to the
 browser asks for it — `import.meta.env.DATABASE_URL` in client code is

@@ -125,7 +125,11 @@ async function viteConfig(config, mode) {
   //
   // A project that would rather Vite read the files can still say
   // `vite: { envDir: "." }` — its own configuration is merged over this one —
-  // and then both parsers run, Vite's winning for the prefixed names.
+  // and then both parsers run, uf's answer still standing. `loadEnv` takes the
+  // prefixed names out of the files it read and then copies every prefixed name
+  // in `process.env` over the top, and uf put its own there before this process
+  // started; so the second parser adds prefixed names uf did not set and
+  // changes none that it did.
   const generated = {
     root,
     configFile: false,

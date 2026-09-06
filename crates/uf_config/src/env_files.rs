@@ -187,13 +187,27 @@ impl ProjectEnv {
     /// from a file, whether or not this project's files mention it.
     #[must_use]
     pub fn exported(&self) -> Vec<(String, String)> {
+        self.exported_beneath(&BTreeSet::new())
+    }
+
+    /// The same, for a caller that is about to set `overridden` itself.
+    ///
+    /// Those names are left out of both the values and [`INJECTED`]. That
+    /// second half is the point: the marker means "this came from a file, so a
+    /// nested uf may let its own files overrule it", and a value the caller
+    /// wrote down — a task's `env` block — is the opposite of that. It is the
+    /// caller saying `NAME=… uf build`, and the documented answer to that is
+    /// that no file overrules it.
+    fn exported_beneath(&self, overridden: &BTreeSet<&str>) -> Vec<(String, String)> {
         let mut exported: Vec<(String, String)> = self
             .values
             .iter()
+            .filter(|(name, _)| !overridden.contains(name.as_str()))
             .map(|(name, value)| (name.clone(), value.clone()))
             .collect();
         let mut names: BTreeSet<&str> = self.injected.iter().map(String::as_str).collect();
         names.extend(self.values.keys().map(String::as_str));
+        names.retain(|name| !overridden.contains(name));
         if !names.is_empty() {
             exported.push((
                 INJECTED.to_owned(),
@@ -206,6 +220,24 @@ impl ProjectEnv {
     /// Set every variable on a command uf is about to run.
     pub fn apply(&self, command: &mut std::process::Command) {
         for (name, value) in self.exported() {
+            command.env(name, value);
+        }
+    }
+
+    /// The same, with `overrides` set over the file values.
+    ///
+    /// The two cannot be done in two calls, because the order in which they are
+    /// set is not the whole of the difference between them: a name in
+    /// `overrides` must also stop being listed in [`INJECTED`]. Setting the
+    /// files and then the overrides leaves the child holding the caller's value
+    /// under uf's own label, and the next uf in the chain reads that label and
+    /// lets a file win over it.
+    pub fn apply_over(&self, command: &mut std::process::Command, overrides: &[(&str, &str)]) {
+        let overridden: BTreeSet<&str> = overrides.iter().map(|(name, _)| *name).collect();
+        for (name, value) in self.exported_beneath(&overridden) {
+            command.env(name, value);
+        }
+        for (name, value) in overrides {
             command.env(name, value);
         }
     }
@@ -379,7 +411,13 @@ fn contained(root: &Utf8Path, path: &Utf8Path) -> bool {
 /// variable in the bundle — and falls back to the default rather than failing a
 /// build, since [`crate::UniflowedConfig::vite`] is untyped and this is not the
 /// place that validates it.
-fn client_prefixes(config: &UniflowedConfig) -> Vec<String> {
+///
+/// Public because a command that reports the boundary rather than enforcing it
+/// needs the same answer: `uf explain` names the prefix without loading a file,
+/// and naming `VITE_` at a project that configured `PUBLIC_` would be telling
+/// its reader that a public value is a private one.
+#[must_use]
+pub fn client_prefixes(config: &UniflowedConfig) -> Vec<String> {
     let declared = config
         .vite
         .as_ref()

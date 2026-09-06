@@ -256,26 +256,35 @@ fn execute_task(
     };
     let mut process = ProcessCommand::new("sh");
     process.arg("-c").arg(&command);
-    // Before the task's own `env`, which is the more specific of the two: a
-    // task that names a variable means it, and a `.env` file is the project's
-    // default rather than an override.
-    env.apply(&mut process);
 
-    if let TaskDefinition::Detailed(details) = task {
-        if let Some(cwd) = &details.cwd {
-            process.current_dir(resolved.root.join(cwd.as_str()));
-        } else {
-            process.current_dir(&resolved.root);
-        }
-        process.envs(
-            details
-                .env
-                .iter()
-                .map(|(key, value)| (key.as_str(), value.as_str())),
-        );
-    } else {
-        process.current_dir(&resolved.root);
-    }
+    let details = match task {
+        TaskDefinition::Detailed(details) => Some(details),
+        TaskDefinition::Command(_) => None,
+    };
+    let overrides: Vec<(&str, &str)> = details.map_or_else(Vec::new, |details| {
+        details
+            .env
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect()
+    });
+
+    // Under the task's own `env`, which is the more specific of the two: a task
+    // that names a variable means it, and a `.env` file is the project's
+    // default rather than an override.
+    //
+    // In one call rather than two, because setting the files and then the
+    // overrides gets the values right and the label wrong: `apply` also writes
+    // `UF_ENV_INJECTED`, which tells a nested uf "these came from a file, your
+    // own files may overrule them". A task's `env` did not come from a file, so
+    // a marker naming it let `.env.production` win over the task inside a
+    // nested `uf build` — the exact override the task was written to make.
+    env.apply_over(&mut process, &overrides);
+
+    match details.and_then(|details| details.cwd.as_ref()) {
+        Some(cwd) => process.current_dir(resolved.root.join(cwd.as_str())),
+        None => process.current_dir(&resolved.root),
+    };
 
     let status = process.status().with_context(|| {
         format!("failed to run task {script:?} through the fallback task runner")
@@ -354,10 +363,6 @@ pub(crate) fn exec_package(
     yes: bool,
 ) -> Result<()> {
     let resolved = load_config(cwd)?;
-    // The same environment `uf run` gives a task: `ufx` runs a tool against
-    // this project, and a codegen that reads `DATABASE_URL` should read the
-    // project's.
-    let env = project_env(&resolved, None, DEVELOPMENT)?;
 
     // uf's own packages first, and they are the only path that renders
     // anything: every other one hands stdout to a child process, and a banner
@@ -366,6 +371,17 @@ pub(crate) fn exec_package(
     if exec_uniflowed_virtual_package(cwd, ui, package, args)? {
         return Ok(());
     }
+
+    // And the environment below that branch, not above it. A virtual package
+    // resolves its own — `uf exec @uniflowed/test` reaches `test::test`, whose
+    // mode is `test` — so loading the `development` cascade first only added a
+    // way to fail: a `.env.development` that does not parse would have stopped
+    // a command that was never going to read it.
+    //
+    // Below this line it is the same environment `uf run` gives a task: `ufx`
+    // runs a tool against this project, and a codegen that reads
+    // `DATABASE_URL` should read the project's.
+    let env = project_env(&resolved, None, DEVELOPMENT)?;
 
     if let Some(binary) = installed_binary(&resolved.root, package) {
         return spawn_executable(&resolved.root, ui, &env, &binary, args, package);

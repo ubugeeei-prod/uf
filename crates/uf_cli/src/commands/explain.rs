@@ -407,6 +407,13 @@ fn transform_stage() -> Stage {
 /// a profile or an `env.active` sees the files it will actually get. A mode
 /// that cannot be resolved falls back to the command's default rather than
 /// failing: `uf explain` is what somebody runs *because* something is wrong.
+///
+/// The files are the cascade, not a reading of the disk. `uf explain` describes
+/// a pipeline and nothing here calls [`env_files::load`], so the list is what a
+/// command will look for and an absent file is skipped when it does — which the
+/// wording has to say, or a reader trying to find out why their variable is
+/// unset will read a file name here and conclude the file was found.
+/// `uf inspect` is the command that reports what was actually read.
 fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
     let mode = env_files::resolve_mode(&resolved.root, &resolved.config, None, default_mode)
         .unwrap_or_else(|_| default_mode.to_owned());
@@ -422,11 +429,17 @@ fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
             .collect::<Vec<_>>()
             .join(", ")
     };
+    // The project's own prefix, not the default one: a project that set
+    // `vite: { envPrefix: "PUBLIC_" }` would otherwise be told here that
+    // `PUBLIC_TOKEN` stays on the server, which is the one mistake this line
+    // exists to prevent.
+    let prefix = env_files::client_prefixes(&resolved.config).join(", ");
     Stage {
         name: "environment",
         provider: format!("uf (mode {mode})"),
         detail: format!(
-            "{files}; later wins, the process environment beats all, VITE_ reaches the client"
+            "looks for {files}, skipping any that are absent; later wins, the process \
+             environment beats all, {prefix} reaches the client"
         ),
     }
 }
