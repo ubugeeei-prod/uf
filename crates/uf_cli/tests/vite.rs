@@ -20,7 +20,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use support::{assert_plain, uf, uf_path};
+use support::{Project, assert_plain, uf, uf_path};
 
 /// The repository's `docs/` directory.
 fn docs_root() -> PathBuf {
@@ -158,6 +158,140 @@ fn build_renders_the_docs_site_through_vite() {
         "{paths:?}"
     );
     assert!(root.join("router.js").exists());
+}
+
+/// A minimal uf application, as `(path, source)` pairs.
+///
+/// Small on purpose: these tests are about one phase of the build each, and a
+/// page with anything in it would put the phase they are about behind a Flow
+/// compile of somebody's idea of a demo.
+fn minimal_app() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "app.js",
+            "// @flow\nimport { routerView } from \"@uniflowed/router\";\n\nexport default routerView(\"./app\");\n",
+        ),
+        (
+            "app/_uf.layout.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Layout(children: React.Node) {\n  return (\n    <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n",
+        ),
+        (
+            "app/_uf.page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
+        ),
+    ]
+}
+
+/// A middleware must run before the path it guards answers.
+///
+/// `_uf.middleware.js` was a reserved name in the Rust router, a reserved name
+/// in the build's router, a documented file convention, a column in `uf
+/// inspect --json` and a file the dev server invalidated the route table for —
+/// and `routesModuleSource` dropped it, so it was never imported and never
+/// called. Someone who wrote one to check a session got an unprotected page
+/// and no diagnostic anywhere. See ubugeeei-prod/uf#260.
+///
+/// Asserted against the built server bundle rather than against a running
+/// server: the whole chain — the directory scan, the generated table, the
+/// bundle, the runner — is exercised either way, and this way the test needs
+/// no socket, so it runs in the sandboxes where `TcpListener::bind` is
+/// refused. `tests/library/middleware.test.js` owns the runner's own rules.
+#[test]
+fn a_middleware_guards_the_path_it_sits_under() {
+    if !fixture_ready() {
+        return;
+    }
+
+    let mut files = minimal_app();
+    files.push((
+        "app/dashboard/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>secrets</main>;\n}\n",
+    ));
+    files.push((
+        "app/dashboard/_uf.middleware.js",
+        "// @flow\nconst SECRET_COOKIE_NAME = \"uf-fixture-session\";\n\nexport default function middleware(request: Request): Response | void {\n  const cookie = request.headers.get(\"cookie\") ?? \"\";\n  if (!cookie.includes(SECRET_COOKIE_NAME)) {\n    return Response.redirect(new URL(\"/sign-in\", request.url), 302);\n  }\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // The bundled server entry, which is what a deployment runs.
+    let server = project.path().join(".uf/build/server/server.js");
+    assert!(server.is_file(), "the build wrote no server bundle");
+    let probe = project.path().join("probe.mjs");
+    fs::write(
+        &probe,
+        format!(
+            r#"const {{ runMiddleware }} = await import({server:?});
+const at = async (path, init) => {{
+  const answer = await runMiddleware(new Request(`http://localhost${{path}}`, init));
+  return answer == null ? null : {{ status: answer.status, location: answer.headers.get("location") }};
+}};
+console.log(JSON.stringify({{
+  guarded: await at("/dashboard"),
+  nested: await at("/dashboard/reports/2026"),
+  missing: await at("/dashboard/typo"),
+  withCookie: await at("/dashboard", {{ headers: {{ cookie: "uf-fixture-session=1" }} }}),
+  home: await at("/"),
+}}));
+"#,
+            server = server.to_string_lossy(),
+        ),
+    )
+    .unwrap();
+
+    let ran = Command::new("node").arg(&probe).output().unwrap();
+    assert!(
+        ran.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    let answers: serde_json::Value =
+        serde_json::from_slice(&ran.stdout).expect("the probe printed JSON");
+
+    assert_eq!(
+        answers["guarded"]["status"], 302,
+        "the middleware did not run for the path it guards: {answers}"
+    );
+    assert!(
+        answers["guarded"]["location"]
+            .as_str()
+            .is_some_and(|location| location.ends_with("/sign-in")),
+        "{answers}"
+    );
+    // The subtree, and the paths under it that match no route: a guard that
+    // only covered its own page would leave both open.
+    assert_eq!(answers["nested"]["status"], 302, "{answers}");
+    assert_eq!(answers["missing"]["status"], 302, "{answers}");
+    // And it lets a request through when its own check passes, rather than
+    // being a wall.
+    assert!(answers["withCookie"].is_null(), "{answers}");
+    assert!(answers["home"].is_null(), "{answers}");
+
+    // Server-only, and not by convention: a middleware in the browser bundle
+    // would ship the check to the reader it is meant to keep out.
+    let shipped = fs::read_dir(project.path().join("dist/assets"))
+        .expect("the client build wrote assets")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|kind| kind == "js"))
+        .map(|entry| fs::read_to_string(entry.path()).unwrap_or_default())
+        .collect::<String>();
+    assert!(
+        !shipped.contains("uf-fixture-session"),
+        "the middleware reached the client bundle"
+    );
 }
 
 /// Whether a loopback socket can be bound here.

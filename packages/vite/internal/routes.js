@@ -42,8 +42,22 @@ const MAX_DEPTH = 32;
  * @property {ReadonlyArray<{name: string, catchAll: boolean}>} params
  * @property {string} page absolute path of the page module
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
- * @property {ReadonlyArray<string>} middleware absolute paths, root first
  * @property {boolean} mdx whether the page is MDX content
+ */
+
+/**
+ * One middleware — everything under a directory, guarded before it answers.
+ *
+ * A flat table keyed by the directory's route path, rather than an array on
+ * every route the way layouts are accumulated. That was the first shape and it
+ * left two holes: `/dashboard/typo` matches no route, so a per-route array
+ * would have rendered the 404 with the guard skipped, and a route handler is
+ * in a table of its own, so guarding pages would have guarded half of them.
+ * The path is the matcher, so the path is what the table carries.
+ *
+ * @typedef {object} Middleware
+ * @property {string} path route path of the directory it guards, `/` at the root
+ * @property {string} module absolute path of the middleware module
  */
 
 /**
@@ -69,19 +83,26 @@ const MAX_DEPTH = 32;
 export function scanRoutes(appRoot) {
   const routes = [];
   const handlers = [];
+  const middleware = [];
   let notFound = null;
-  if (!isDirectory(appRoot)) return { routes, handlers, notFound };
+  if (!isDirectory(appRoot)) return { routes, handlers, middleware, notFound };
 
-  const walk = (directory, segments, layouts, middleware, depth) => {
+  const walk = (directory, segments, layouts, depth) => {
     if (depth > MAX_DEPTH) return;
     const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
 
     const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS);
-    const ownMiddleware = findModule(directory, RESERVED.middleware, MODULE_EXTENSIONS);
     const nextLayouts = ownLayout ? [...layouts, ownLayout] : layouts;
-    const nextMiddleware = ownMiddleware ? [...middleware, ownMiddleware] : middleware;
+
+    // A middleware guards this directory and everything below it, whether or
+    // not this directory is itself a route: `app/dashboard/_uf.middleware.js`
+    // with no `_uf.page.js` beside it still guards `/dashboard/settings`.
+    const ownMiddleware = findModule(directory, RESERVED.middleware, MODULE_EXTENSIONS);
+    if (ownMiddleware) {
+      middleware.push({ path: routeFromSegments(segments).path, module: ownMiddleware });
+    }
 
     const page = findModule(directory, RESERVED.page, PAGE_EXTENSIONS);
     if (page) {
@@ -92,7 +113,6 @@ export function scanRoutes(appRoot) {
         params,
         page,
         layouts: nextLayouts,
-        middleware: nextMiddleware,
         mdx: page.endsWith(".mdx"),
       });
     }
@@ -115,21 +135,16 @@ export function scanRoutes(appRoot) {
       // A leading dot or underscore is private to the author: `_components/`
       // beside a page is a place to put things, not a route.
       if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
-      walk(
-        path.join(directory, entry.name),
-        [...segments, entry.name],
-        nextLayouts,
-        nextMiddleware,
-        depth + 1,
-      );
+      walk(path.join(directory, entry.name), [...segments, entry.name], nextLayouts, depth + 1);
     }
   };
 
-  walk(appRoot, [], [], [], 0);
+  walk(appRoot, [], [], 0);
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
   handlers.sort(byPath);
-  return { routes, handlers, notFound };
+  middleware.sort(byPath);
+  return { routes, handlers, middleware, notFound };
 }
 
 function isDirectory(candidate) {
@@ -193,9 +208,10 @@ export const VIRTUAL = Object.freeze({
  *
  * Each page and layout is a lazy `import()`, so a route is a chunk of its own.
  * Layouts are deduplicated into one table so a layout shared by fifty routes
- * is one dynamic import, not fifty.
+ * is one dynamic import, not fifty. Middleware needs no deduplication: it is
+ * already one entry per file, keyed by the path it guards.
  *
- * @param {{routes: Route[], notFound: object | null}} table
+ * @param {{routes: Route[], handlers: Handler[], middleware: Middleware[], notFound: object | null}} table
  */
 export function routesModuleSource(table) {
   const layoutIds = new Map();
@@ -243,12 +259,27 @@ export function routesModuleSource(table) {
   }`,
   );
 
+  // Middleware is a table of its own for the same reason, and for a stronger
+  // one: it is where an application puts the check it does not want a user to
+  // read. `clientModuleSource` imports `routes` and `notFound` and nothing
+  // else, so a middleware module is reachable from the server entry alone.
+  const middlewareEntries = (table.middleware ?? []).map(
+    (entry) => `  {
+    path: ${JSON.stringify(entry.path)},
+    file: ${JSON.stringify(entry.module)},
+    load: () => import(${JSON.stringify(entry.module)}),
+  }`,
+  );
+
   return `${layoutImports.join("\n")}
 export const routes = [
 ${entries.join(",\n")}
 ];
 export const handlers = [
 ${handlerEntries.join(",\n")}
+];
+export const middleware = [
+${middlewareEntries.join(",\n")}
 ];
 export const notFound = ${notFound};
 export default routes;
@@ -274,11 +305,16 @@ hydrate({ App, routes, notFound });
  * The source of `virtual:uf/server`: render one URL to HTML.
  */
 export function serverModuleSource(appEntry) {
-  return `import { createDispatcher, createRenderer } from "@uniflowed/router/server";
-import { routes, handlers, notFound } from ${JSON.stringify(VIRTUAL.routes)};
+  return `import {
+  createDispatcher,
+  createMiddlewareRunner,
+  createRenderer,
+} from "@uniflowed/router/server";
+import { routes, handlers, middleware, notFound } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-export { routes, handlers, notFound };
+export { routes, handlers, middleware, notFound };
 export const render = createRenderer({ App, routes, notFound });
 export const dispatch = createDispatcher({ handlers });
+export const runMiddleware = createMiddlewareRunner({ middleware });
 `;
 }

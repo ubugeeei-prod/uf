@@ -20,7 +20,7 @@ Four names are reserved. Everything else in `app/` is an ordinary module.
 | `_uf.page.js` | The page at this path. Its default export is a component. |
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
-| `_uf.middleware.js` | Runs before the route resolves — redirects, auth, headers. |
+| `_uf.middleware.js` | Runs before anything under this path answers — auth, redirects, logging. |
 | `_uf.route.js` | Answers a request instead of rendering a page. |
 
 Any of them may be `.mdx` instead of `.js`. A directory whose name starts with
@@ -99,6 +99,58 @@ import { Link } from "@uniflowed/router";
 `prefetch="off"` never does. `useRouter()` navigates imperatively;
 `useRoute()` gives the current path, params and search — which is what the
 sidebar on this page uses to mark the open entry.
+
+## Middleware
+
+`app/dashboard/_uf.middleware.js` runs before anything under `/dashboard`
+answers — the pages, the route handlers, and the paths under it that match
+nothing at all:
+
+```js
+// @flow
+import { cookies } from "@uniflowed/server";
+
+export default function middleware(request: Request): Response | void {
+  if (cookies().get("session") == null) {
+    return Response.redirect(new URL("/sign-in", request.url), 302);
+  }
+}
+```
+
+**Returning a `Response` is the answer.** Nothing after it runs: no page is
+resolved, no handler is called, and no middleware deeper in the tree runs
+either. **Returning nothing continues.** Both halves matter — a middleware that
+could only observe could not reject, and one that had to answer could not be a
+logger.
+
+There is no `matcher` to write. The directory the file sits in is the path it
+guards, and middleware composes down the tree exactly the way layouts do: a
+root `app/_uf.middleware.js` runs for every request, then the one in
+`app/dashboard/`, then the one in `app/dashboard/admin/`. Root first, and the
+first one to return a `Response` wins.
+
+A middleware runs inside the request, so `cookies()`, `headers()` and `after()`
+work without anything being threaded through. Its own path parameters arrive as
+`context.params` — `app/[org]/_uf.middleware.js` guarding `/acme/settings` gets
+`{ org: "acme" }`, which is what a tenant check needs.
+
+A middleware module never reaches the browser. It is loaded from the server
+entry and from nothing the client imports, which is the point: it is where the
+check you do not want a reader to be able to read belongs.
+
+What it deliberately cannot do yet is rewrite the request. That needs a
+spelling — a returned `Request`, or a `next(request)` argument — and one picked
+badly is harder to undo than one not yet picked. Answering and continuing are
+what exist, and they are enough for authentication, redirects and logging.
+
+### A prerendered page is not a guarded page
+
+A middleware runs on a server, when a request arrives. `uf build` prerenders
+every route without parameters to an HTML file, and a static host serves that
+file without asking anyone: there is no request for a middleware to run for,
+so the guard is not there. Keep a guarded path off the prerender — give it a
+parameter, or serve the build's server bundle rather than only `dist/` — and
+treat anything you can open in `dist/` as public.
 
 ## Route handlers
 

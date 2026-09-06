@@ -25,6 +25,7 @@ import { pathToFileURL } from "node:url";
 
 import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
+import { send, toRequest } from "./internal/http.js";
 import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
 
@@ -140,9 +141,10 @@ async function viteConfig(config, mode) {
  *
  *   1. load the server entry through `ssrLoadModule`, so it is transformed the
  *      same way the browser's copy is and picks up edits without a restart;
- *   2. render the URL, pointing the client script at the dev entry rather than
+ *   2. run the middleware guarding this path, which may answer instead;
+ *   3. render the URL, pointing the client script at the dev entry rather than
  *      at a built asset;
- *   3. hand the HTML to `transformIndexHtml`, which is what injects the HMR
+ *   4. hand the HTML to `transformIndexHtml`, which is what injects the HMR
  *      client and lets any Vite plugin see the document.
  *
  * Anything Vite already serves — a module, a public file — never reaches this,
@@ -162,11 +164,23 @@ async function dev() {
     const url = request.originalUrl ?? request.url ?? "/";
     try {
       const entry = await server.ssrLoadModule(VIRTUAL.server);
+      const asRequest = await toRequest(request, server.config);
 
-      // Route handlers first, and for every method: a handler is the only
+      // Middleware first, above everything: it guards a subtree, so it has to
+      // run for a page, for a route handler, and for a path under it that
+      // matches neither. Running it inside the dispatcher and again inside the
+      // renderer would have left `/dashboard/typo` unguarded and run it twice
+      // for a path that is both.
+      const guarded = await entry.runMiddleware(asRequest);
+      if (guarded != null) {
+        await send(response, guarded);
+        return;
+      }
+
+      // Route handlers next, and for every method: a handler is the only
       // thing that answers a POST, and it may also answer a GET for a path
       // that has no page.
-      const handled = await entry.dispatch(await toRequest(request, server.config));
+      const handled = await entry.dispatch(asRequest);
       if (handled != null) {
         await send(response, handled);
         return;
@@ -208,62 +222,6 @@ async function dev() {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-}
-
-/**
- * A Node request as a `Request`.
- *
- * The handler contract is the platform's, so the adapter belongs here rather
- * than in every handler. The body is read as a stream where the host supports
- * it, because a handler that accepts an upload should not need the whole thing
- * buffered before it starts.
- */
-async function toRequest(incoming, config) {
-  const host = incoming.headers.host ?? "localhost";
-  const protocol = config?.server?.https == null ? "http" : "https";
-  const url = new URL(incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${host}`);
-
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(incoming.headers)) {
-    if (value == null) continue;
-    for (const entry of Array.isArray(value) ? value : [value]) {
-      headers.append(name, entry);
-    }
-  }
-
-  const method = (incoming.method ?? "GET").toUpperCase();
-  const init = { method, headers };
-  if (method !== "GET" && method !== "HEAD") {
-    // `duplex` is required by the specification whenever a body is a stream,
-    // and Node throws without it.
-    init.body = incoming;
-    init.duplex = "half";
-  }
-  return new Request(url, init);
-}
-
-/** Write a `Response` to a Node response. */
-async function send(outgoing, result) {
-  outgoing.statusCode = result.status;
-  if (result.statusText !== "") {
-    outgoing.statusMessage = result.statusText;
-  }
-  for (const [name, value] of result.headers) {
-    outgoing.setHeader(name, value);
-  }
-  if (result.body == null) {
-    outgoing.end();
-    return;
-  }
-  // Streamed rather than buffered, so a handler returning a large or
-  // open-ended body is not read into memory first.
-  const reader = result.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    outgoing.write(value);
-  }
-  outgoing.end();
 }
 
 async function preview() {

@@ -50,6 +50,7 @@ import {
   serverModuleSource,
 } from "./internal/routes.js";
 import { TransformService, isFlowModule } from "@uniflowed/host/transform";
+import { send, toRequest } from "./internal/http.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
@@ -266,8 +267,20 @@ function flowPlugin({ routerRoot, appEntry, command }) {
           if (!wantsDocument(request)) return next();
           try {
             const url = request.url ?? "/";
-            const { render } = await importServerEntry(devServer);
-            const result = await render(url, {
+            const entry = await importServerEntry(devServer);
+
+            // Before the page: a middleware guards a subtree, and a page
+            // rendered while the guard on it had not run is the whole of
+            // ubugeeei-prod/uf#260. Only document requests reach here, so this
+            // is the page half of the guarantee; `driver.js` makes the same
+            // call above the route handlers, for every method.
+            const guarded = await entry.runMiddleware(await toRequest(request, devServer.config));
+            if (guarded != null) {
+              await send(response, guarded);
+              return;
+            }
+
+            const result = await entry.render(url, {
               scripts: [devUrlFor(VIRTUAL.client)],
               styles: [],
               preloads: [],

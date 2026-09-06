@@ -42,6 +42,14 @@ export { DATA_ID, ROOT_ID } from "./internal/document.js";
 export type { Handler, HandlerContext, HandlerModule, HandlerRecord } from "./handler.js";
 export { createDispatcher } from "./handler.js";
 
+export type {
+  Middleware,
+  MiddlewareContext,
+  MiddlewareModule,
+  MiddlewareRecord,
+} from "./middleware.js";
+export { createMiddlewareRunner } from "./middleware.js";
+
 export function createRenderer(options: {|
   readonly App: React.ComponentType<AppProps>,
   readonly routes: RouteTable["routes"],
