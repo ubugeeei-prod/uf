@@ -19,6 +19,19 @@
 # "implemented, and waiting on the one step a checkout cannot take", which is
 # `npm trust` against a name the registry does not have yet. Being in neither
 # is the case this refuses.
+#
+# The second rule is the same failure reached from the other direction. A
+# package that *is* on npm must not depend on one that is not — whether it is
+# waiting on `npm trust` or is a declaration that will never be published at
+# all. The tarball names a version the registry does not have, so
+# `npm install` answers `ETARGET` for a package that installs perfectly well
+# from this workspace, which is exactly the blind spot #409 lived in.
+#
+# No published package does this today, and until ubugeeei-prod/uf#318 nothing said it must
+# not. That issue declined a shared Web Storage helper in `@uniflowed/web`
+# precisely because `@uniflowed/hooks` is published and `@uniflowed/web` is
+# not, and an invariant an argument rests on is worth more as a check than as
+# a paragraph.
 set -eu
 
 repo_root="$(CDPATH= cd "$(dirname "$0")/../.." && pwd)"
@@ -97,6 +110,39 @@ for (const [file, list] of [
     if (!fs.existsSync(`packages/${name}/package.json`)) {
       problems.push(`${file} names ${name}, and packages/${name} does not exist.`);
     }
+  }
+}
+
+/** The `@uniflowed/*` a package declares, as directory names under `packages/`. */
+const uniflowedDependencies = (name) => {
+  const manifest = JSON.parse(fs.readFileSync(`packages/${name}/package.json`, "utf8"));
+  const out = new Set();
+  // `devDependencies` are deliberately not read: they are not installed for a
+  // consumer, so a published package may depend on an unpublished one there.
+  for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const dependency of Object.keys(manifest[field] ?? {})) {
+      if (dependency.startsWith("@uniflowed/")) out.add(dependency.slice("@uniflowed/".length));
+    }
+  }
+  return out;
+};
+
+// A name on npm may not need one that is not. Stated over "is it published"
+// rather than over "is it pending", because a declaration package is in
+// neither list and is deliberately never published either — depending on one
+// of those is the same ETARGET by a different route.
+for (const name of published) {
+  if (!fs.existsSync(`packages/${name}/package.json`)) continue;
+  for (const dependency of uniflowedDependencies(name)) {
+    if (published.includes(dependency)) continue;
+    const why = pending.includes(dependency)
+      ? "is implemented and waiting on `npm trust`"
+      : "is not in either release manifest";
+    problems.push(
+      `@uniflowed/${name} is published and depends on @uniflowed/${dependency}, which ` +
+        `${why}: \`npm install @uniflowed/${name}\` would answer ETARGET. Bind ` +
+        `${dependency} first, or keep the dependency out of ${name}.`,
+    );
   }
 }
 

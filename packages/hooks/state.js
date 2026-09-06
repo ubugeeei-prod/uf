@@ -390,6 +390,31 @@ function announce(key: string): void {
   }
 }
 
+/**
+ * `localStorage` or `sessionStorage`, or `null` where neither is readable.
+ *
+ * # Why this guard is written twice
+ *
+ * `@uniflowed/state`'s `createJSONStorage`
+ * (`packages/state/internal/composed.js`) guards the same four hazards — a
+ * storage property that throws, a read that throws, a write that throws, and
+ * finding the object a `storage` event arrives on — and reaches the same
+ * conclusions about each. Merging the two was considered and declined;
+ * ubugeeei-prod/uf#318 is the issue, and this is half of the decision. The other half is
+ * in `createJSONStorage`, which carries the argument in full.
+ *
+ * In short: the helper would have to live in a package both may depend on,
+ * `@uniflowed/web` is the only candidate, and it is not on npm while this
+ * package is — so the edge would make `npm install @uniflowed/hooks` answer
+ * `ETARGET`. `tools/ci/publishable.sh` refuses it now.
+ *
+ * What is *not* shared even in principle is the listener registry above. Two
+ * components reading one key in one document have to agree, so a write here
+ * announces itself; `createJSONStorage` deliberately does not announce, so
+ * that two stores in one process stay two stores. A shared helper would have
+ * had to leave that decision to its caller, which is most of what there was
+ * to share.
+ */
 function area(session: boolean): Storage | null {
   const win = browserWindow();
   if (win == null) {
@@ -453,12 +478,20 @@ export hook useStorage<T>(
     () => null,
   );
 
-  const value = useMemo(() => {
+  const value = useMemo((): T => {
     if (raw == null) {
       return initial;
     }
     try {
-      return JSON.parse(raw);
+      // The one unchecked step in this hook, and the comparison with
+      // `createJSONStorage` is what turned it up: that one marks the cast and
+      // offers a `revive` to close it, this one used to hand `JSON.parse`'s
+      // `any` back as a `T` without saying so. The trade is the same and so is
+      // the reason — persistence is a cache, and a cache that refuses to start
+      // because an older version of the application wrote the key is worse
+      // than one that is occasionally stale — but it is a trade, so it is
+      // named.
+      return JSON.parse(raw) as $FlowFixMe;
     } catch {
       return initial;
     }
