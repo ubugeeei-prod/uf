@@ -36,8 +36,8 @@ struct Stage {
 /// are absent on purpose: there is no provider to name, and an entry saying
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
-    "dev", "build", "doc", "test", "fmt", "lint", "check", "run", "install", "upgrade", "use",
-    "env", "prepare", "publish", "release", "lsp",
+    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "install",
+    "upgrade", "use", "env", "prepare", "publish", "release", "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -45,6 +45,8 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
     let stages = match command {
         "dev" => dev_stages(&resolved),
         "build" => build_stages(&resolved),
+        "preview" => preview_stages(&resolved),
+        "start" => start_stages(&resolved),
         "doc" => doc_stages(),
         "test" => test_stages(&resolved),
         "fmt" => fmt_stages(&resolved),
@@ -395,6 +397,60 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "prerender",
             provider: "@uniflowed/router".to_string(),
             detail: "every route without parameters, to static HTML".to_string(),
+        },
+    ]
+}
+
+/// `uf preview`, whose whole question is who answers a request.
+///
+/// Both servers are named in both plans, because the thing a reader wants to
+/// know here is which one they are talking to — the two exist precisely
+/// because one of them has Vite in the loop and the other does not.
+fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "configuration",
+            provider: "uf".to_string(),
+            detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
+        },
+        host_stage(resolved),
+        Stage {
+            name: "server",
+            provider: "vite (preview)".to_string(),
+            detail: format!(
+                "serves {} directly, with `vite.preview` in effect",
+                resolved.config.build.out_dir
+            ),
+        },
+        Stage {
+            name: "requests vite did not answer",
+            provider: "@uniflowed/router".to_string(),
+            detail: "route handlers, then a render — from .uf/build/server/server.js".to_string(),
+        },
+    ]
+}
+
+/// `uf start`, whose answer is that nothing here is Vite's.
+fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "configuration",
+            provider: "uf".to_string(),
+            detail: "uf.config.js; the build is read, not rebuilt".to_string(),
+        },
+        host_stage(resolved),
+        Stage {
+            name: "server",
+            provider: "@uniflowed/vite (node:http)".to_string(),
+            detail: format!(
+                "static files from {}, then route handlers, then a render",
+                resolved.config.build.out_dir
+            ),
+        },
+        Stage {
+            name: "application",
+            provider: "@uniflowed/router".to_string(),
+            detail: ".uf/build/server/server.js, imported once at startup".to_string(),
         },
     ]
 }

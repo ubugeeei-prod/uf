@@ -3,6 +3,13 @@
 /docs/dist/
 /docs/router.js
 /docs/server-actions.js
+# The application `uf preview` and `uf start` are tested against. It builds in
+# place rather than in a temporary directory, because a project that imports
+# `@uniflowed/*` needs `node_modules` above it; everything below is written by
+# `uf build` and rewritten on every run.
+/crates/uf_cli/tests/fixtures/served-app/dist/
+/crates/uf_cli/tests/fixtures/served-app/router.js
+/crates/uf_cli/tests/fixtures/served-app/server-actions.js
 /server-actions.js
 node_modules/
 .uf/

@@ -1,0 +1,293 @@
+---
+title: "Forms · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Forms
+
+<div className="lede">
+`@uniflowed/form` is React Hook Form's capability list without React Hook
+Form's `Proxy`. Uncontrolled inputs, narrow subscriptions, typed values,
+accessible errors wired for you — and one render where the incumbent gets
+zero, for a reason the page gives you rather than hides.
+</div>
+
+## A form
+
+```js
+"use client";
+// @flow
+import { useForm } from "@uniflowed/form";
+
+export component SignUp() {
+  const { register, handleSubmit, errorProps, formState } = useForm({
+    defaultValues: { email: "" },
+    mode: "onBlur",
+  });
+
+  return (
+    <form onSubmit={handleSubmit((values) => save(values))}>
+      <label htmlFor="email">Email</label>
+      <input
+        id="email"
+        {...register("email", {
+          required: "An email address is required",
+          pattern: { value: /@/, message: "That is not an email address" },
+        })}
+      />
+      {formState.errors.email != null && (
+        <p {...errorProps("email")}>{formState.errors.email.message}</p>
+      )}
+      <button type="submit">Join</button>
+    </form>
+  );
+}
+```
+
+`register(name, rules)` returns the props an uncontrolled input needs: `name`,
+a `ref`, the change and blur handlers, and — **only once the field has failed** —
+`aria-invalid="true"` and an `aria-describedby`. `errorProps(name)` returns the
+matching `id` and `role="alert"`.
+
+That pairing is the part with no equivalent in React Hook Form, and it exists
+because the alternative is worse than nothing: an `aria-describedby` pointing at
+an element that is not rendered makes a screen reader announce *nothing*. The
+ids come from `useId`, so two copies of the same form on one page do not collide.
+
+`mode` decides when a field is first judged — `"onSubmit"` (the default),
+`"onBlur"`, `"onChange"`, `"onTouched"` or `"all"` — and `reValidateMode`
+decides what happens after it has failed once, defaulting to `"onChange"` so a
+field that is showing a message updates as it is fixed.
+
+## What `useForm` gives you
+
+`register`, `unregister`, `errorProps`, `handleSubmit`, `watch`, `getValues`,
+`setValue`, `getFieldState`, `reset`, `setError`, `clearErrors`, `trigger`,
+`setFocus`, `formState` and `control`.
+
+`formState` carries `errors`, `isDirty`, `dirtyFields`, `touchedFields`,
+`isSubmitting`, `isSubmitted`, `isSubmitSuccessful`, `isValidating`, `isValid`
+and `submitCount`.
+
+**Errors are flat**, keyed by the string you registered:
+
+```js
+formState.errors["profile.city"]; // not formState.errors.profile.city
+```
+
+Flow has no mapped type over a path, so "the error for `items.0.name`" cannot be
+spelled as a nested shape. A flat map is the version that is true.
+
+## Rules
+
+Seven validators — `required`, `min`, `max`, `minLength`, `maxLength`,
+`pattern`, `validate` — three transforms — `valueAsNumber`, `valueAsDate`,
+`setValueAs` — and `deps`, for a field whose validity depends on another.
+
+```js
+register("age", { valueAsNumber: true, min: { value: 18, message: "18 or over" } });
+register("confirm", {
+  deps: ["password"],
+  validate: (value, values) => value === values.password || "The passwords differ",
+});
+```
+
+Three behaviours worth knowing, each of them a decision:
+
+- **A blank value skips every rule except `required` and `validate`.**
+  `minLength: 8` on an empty password would report "must be at least 8
+  characters", which is true and useless.
+- **`false` is not blank.** An unchecked checkbox is a real answer to a yes/no
+  question.
+- **Only the first failure is reported per field.** A form showing every failing
+  rule has to choose one to display anyway; choosing here means the choice is
+  written down.
+
+## A schema instead of rules
+
+```js
+import { useForm, validatorResolver } from "@uniflowed/form";
+import { email, minLength, object, pipe, string } from "@uniflowed/validator";
+
+const account = object({
+  email: pipe(string(), email()),
+  profile: object({ city: pipe(string(), minLength(2)) }),
+});
+
+component Account() {
+  const { register, handleSubmit } = useForm({
+    defaultValues: { email: "", profile: { city: "" } },
+    resolver: validatorResolver(account),
+  });
+
+  return (
+    <form onSubmit={handleSubmit((values) => save(values))}>
+      <input {...register("email")} />
+      <input {...register("profile.city")} />
+      <button type="submit">Save</button>
+    </form>
+  );
+}
+```
+
+The schema is a value, so it is built once at module scope; the `useForm` call
+is a hook, so it is in the component. That split is not a style preference —
+`useForm` calls `useId`, `useState` and `useSyncExternalStore`, and a `useForm`
+at module scope is an invalid hook call rather than a form.
+
+Schema issues become field errors at the path the field was registered at, and
+`handleSubmit`'s callback receives the schema's **output** type, not the form's
+input — so a `transform(Number)` in the schema means the submit handler sees a
+number where the input held a string.
+
+A resolver **replaces** the inline rules rather than merging with them: with a
+resolver, `register`'s rules are not consulted for validation at all. They still
+describe how to *read* the control — `valueAsNumber`, `setValueAs` — because
+that is a different question and a schema cannot answer it.
+
+A synchronous resolver stays synchronous. Awaiting a value that is not a promise
+is a microtask a form in `onChange` mode would pay on every keystroke, so
+`isValidating` only flips when something really is pending.
+
+## Subscribe where the value is rendered
+
+This is the performance story, and it is a different one from React Hook Form's.
+
+```js
+component Total(control: mixed) {
+  const value = useWatch({ control, name: "title" });
+  return <output>{String(value ?? "")}</output>;
+}
+
+component Status(control: mixed) {
+  const { isDirty } = useFormState({ control, name: "title" });
+  return <p>{isDirty ? "changed" : "untouched"}</p>;
+}
+```
+
+Both hooks take the `control` from `useForm` and subscribe to one path, so the
+component that renders a value is the only one that re-renders when it changes.
+`useFormState({ control, name })` also *scopes* `isDirty` and `isValid` to the
+named fields — in a slice, "dirty" means one of these was changed — while
+`isSubmitting`, `isSubmitted`, `isSubmitSuccessful`, `isValidating` and
+`submitCount` stay the whole form's.
+
+Measured, typing six characters into one field, counting each component
+separately rather than the tree as a whole:
+
+| Component | Renders |
+| --- | --- |
+| The `useForm` owner — `register`, `formState` | 2 |
+| `Total`, subscribed to `title` through `useWatch` | 7 |
+| `useState` and a controlled `input`, one component for the field | 7 |
+
+The owner's two are the mount and the moment the form first becomes dirty; the
+next five keystrokes cost *it* nothing. `Total`'s seven are the mount and one
+per keystroke, and they are not a defect: a component displaying a value that
+changed has to render. The subscription is what decides **who** renders, not
+how often — and that is the whole trade, because what wakes on the sixth
+keystroke here is an `<output>`, while the controlled row's identical seven are
+seven renders of everything that component holds.
+
+Put the two together and the shape is the point: a form of thirty fields with
+one `useWatch` beside one of them costs two renders of the form and seven of an
+`<output>`, not seven of the form.
+
+React Hook Form gets the owner's second render to zero with a `Proxy` that
+records which `formState` keys a render read. That technique depends on a render
+having happened — which is exactly what the React Compiler is allowed to skip —
+so this package does not use it, and says so instead of quietly being slower.
+
+## Arrays of fields
+
+```js
+const { fields, append, remove, move } = useFieldArray({ control, name: "items" });
+
+fields.map((field, index) => (
+  <input key={field.id} {...register(`items.${index}.name`)} />
+));
+```
+
+`append`, `prepend`, `insert`, `remove`, `swap`, `move`, `update` and `replace`,
+with `field.id` as a stable key across every one of them. Errors, dirty and
+touched flags are remapped with the rows, so removing the first row does not
+leave its error on the second.
+
+**A row's values in `fields` are stale on purpose** — they are the values as of
+the last array operation, not the last keystroke. Read a live one with
+`useWatch({ control, name: "items.3.price" })`. The snapshot is cached in the
+store rather than in a `useMemo`, because the React Compiler will hold a memo
+over a store read forever, and there is a regression test for exactly that.
+
+## Controlled components
+
+For an input that owns its own value — a select, a date picker, a third-party
+editor — `Controller` binds one:
+
+```js
+<Controller
+  control={control}
+  name="size"
+  render={(bound) => (
+    <select value={String(bound.field.value)} onChange={bound.field.onChange}>
+      <option value="s">small</option>
+      <option value="m">medium</option>
+    </select>
+  )}
+/>
+```
+
+`bound.field.onChange` takes **the value**, not an event, though an event still
+works. `useController` is the same thing as a hook.
+
+## Asynchronous validation
+
+An async `validate` or resolver is expected, and two things are handled for you.
+A slower answer never overwrites a newer one: every pass takes a sequence number
+and stamps the fields it is about to answer for, and a result whose field has
+since been stamped by a newer pass is dropped. And a `validate` that *rejects* —
+as opposed to returning a message — is re-raised outside the promise chain
+rather than swallowed, because that is a bug in your code and a silently
+unvalidated field is how it would stay hidden for the rest of the session.
+
+## Coming from React Hook Form
+
+| React Hook Form | Here | Why |
+| --- | --- | --- |
+| `formState` behind a `Proxy` | A plain object, one render on the dirty transition | A `Proxy` records reads during render, and the React Compiler may skip the render |
+| `errors.profile.city` | `errors["profile.city"]` | Flow has no mapped type over a path |
+| `FieldPath<T>` | `string` paths, `mixed` values | Flow has no template-literal types; a `FieldPath<T>` that is really `string` would be a type pretending to check something |
+| Resolver and rules both run | The resolver replaces the rules for validation | Rules still say how to *read* a control |
+| `useFormContext()` returns `null` outside a provider | It throws | A field with no form renders a control wired to nothing, and looks entirely correct |
+| No accessible-error helper | `register` plus `errorProps` | The attributes are only correct in pairs |
+| `ref(null)` on unmount | A React 19 ref that returns a cleanup | It is the only form that says *which* element left — a radio group is several nodes under one name |
+
+Typed where it can be: `defaultValues`, `getValues()`, `reset()` and
+`handleSubmit`'s callback argument. Untyped where Flow cannot: the path strings
+and the values behind them.
+
+## Not implemented
+
+`defaultValues` as a promise, `shouldUnregister`, `delayError`, form-level
+persistence, `criteriaMode: "all"` — one error per field is structural here —
+and devtools.
+
+One limitation is worth reading before a server-rendered form surprises you:
+`register` gives an input a `ref`, and a ref does not run on a server, so
+`defaultValues` alone puts no value into server-rendered HTML. A page that must
+show its values before hydration should put them in the markup —
+
+```js
+<input defaultValue={record.email} {...register("email")} />
+```
+
+— and the store adopts whatever the control already shows for any field it has
+no value for.
+
+Every snippet on this page was run before it was published — the short ones as
+excerpts of a component, since a fence that repeated the `useForm` call, the
+`control` and the imports around every three lines would be mostly repetition.
+`tests/library/form.test.js` is where the behaviour above is pinned, including
+the three render counts, in *"counts the owner, the watcher and a controlled
+input over the same six keystrokes"* — `uf test#library form.test.js`.
