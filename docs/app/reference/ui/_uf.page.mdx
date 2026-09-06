@@ -1,0 +1,611 @@
+---
+title: "Components · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# Components
+
+<div className="lede">
+`@uniflowed/ui` ships behaviour and no styles. Every part takes `className` and
+every other DOM prop and passes it through; what it contributes is the keyboard
+map and the screen-reader wiring, which is the half that does not show up in a
+screenshot and the half that is missing from almost every hand-written
+component.
+</div>
+
+Each primitive implements the WAI-ARIA authoring practices pattern for it — the
+roles, the `aria-*` wiring, the focus management and the whole keyboard map.
+Each module's header says which interaction it exists to get right and what a
+naive version breaks; this page is the shorter version.
+
+```js
+// @flow
+import { Select } from "@uniflowed/ui";
+// or, to import only what you use:
+import { SelectRoot } from "@uniflowed/ui/select";
+```
+
+## What ships
+
+| Component | Pattern | Module |
+| --- | --- | --- |
+| `Dialog` | Modal dialog: focus trap, focus restore, scroll lock | `dialog.js` |
+| `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking | `menu.js` |
+| `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter | `combobox.js` |
+| `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
+| `Tabs` | Tabs: a roving `tabindex`, automatic or manual activation | `tabs.js` |
+| `Toast` | Notifications: a live region that was already watching, and timers that stop | `toast.js` |
+| `Slider` | A value in a range, with the slider role on the thumb | `slider.js` |
+| `Resizable` | The window splitter: a separator that behaves like a slider | `resizable.js` |
+| `Progress` | How far along something is, or that it is under way at all | `progress.js` |
+| `Table` | The sort that is announced, the selection that can be mixed, the rows a page is not showing | `table.js` |
+| `Pagination` | Navigation with a name, one current page, and a sentence saying it moved | `pagination.js` |
+| `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
+| `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
+
+Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
+`<button>` in a tab list is a *type error* rather than a review comment;
+`Menu.Body` and `Select.List` state the same constraint about what may appear
+inside a menu and a listbox, which ARIA also requires and which nothing else
+checks.
+
+## Select
+
+A button that opens a list of options and takes one of them — the *select-only*
+combobox of ARIA 1.2, where `Combobox` is the editable one.
+
+```js
+<Select.Root defaultValue="GB" name="country">
+  <Select.Label>Country</Select.Label>
+  <Select.Trigger>
+    <Select.Value placeholder="Choose one" />
+  </Select.Trigger>
+  <Select.List>
+    <Select.Group>
+      <Select.GroupLabel>Europe</Select.GroupLabel>
+      <Select.Option value="GB">United Kingdom</Select.Option>
+      <Select.Option value="FR">France</Select.Option>
+    </Select.Group>
+    <Select.Separator />
+    <Select.Option value="JP">Japan</Select.Option>
+  </Select.List>
+</Select.Root>
+```
+
+### Use a native `<select>` if a native `<select>` will do
+
+That is the recommendation and not a disclaimer. A `<select>` is announced
+correctly by software this package has never been tested against, is a wheel
+the thumb already knows on a phone, autofills, and validates. Nothing here
+improves on it.
+
+What it cannot do is be styled. Its popup is drawn by the operating system, so
+an option cannot hold an icon, a second line, a shortcut or a checkmark. A
+design that needs any of those has two options — this pattern, or a `div` with
+a click handler that no keyboard reaches. `Select` is the first one, done
+properly: `role="combobox"` on the trigger, typeahead, and the arrow keys
+moving a cursor a screen reader is told about.
+
+### Parts
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Select.Root` | `div` | `value`, `open`, `name`, `disabled`. Controlled the moment you pass `value` or `open` |
+| `Select.Label` | `label` | Names the field. Without it the trigger has no accessible name at all |
+| `Select.Trigger` | `button role="combobox"` | `aria-haspopup="listbox"`, `aria-expanded`, `aria-activedescendant` |
+| `Select.Value` | `span` | What the trigger shows for the current value |
+| `Select.List` | `div role="listbox"` | In the document only while open |
+| `Select.Option` | `div role="option"` | `value`, optional `label`, `disabled` |
+| `Select.Group` | `div role="group"` | Named by its `Select.GroupLabel`, and only when one is rendered |
+| `Select.GroupLabel` | `div role="presentation"` | Names a group of options |
+| `Select.Separator` | `div aria-hidden` | A rule between groups. Decoration, so it says so |
+
+`Select.Label` names the field and `Select.GroupLabel` names a group of
+options. shadcn has one `SelectLabel` and it is the second of those; a select
+needs both.
+
+`Select.Label` is a real `<label htmlFor>` *and* the trigger's
+`aria-labelledby`, and the second one is not redundant. `role="combobox"` is not
+a role that takes its name from its own content, and a `<label for>` does not
+name a `<button>` either — so a select with only the label is a combobox
+announced as "combobox" and nothing else, while looking correct in the markup.
+
+### The keyboard
+
+Focus never leaves the trigger. The arrow keys move `aria-activedescendant`, a
+second cursor naming which option is current, which is how a screen reader is
+told the option changed — a highlight drawn in CSS moves the same pixels and
+says nothing.
+
+| Key | Closed | Open |
+| --- | --- | --- |
+| `ArrowDown` / `ArrowUp` | Open, cursor on the chosen option or the first / last | Move the cursor. Does not wrap |
+| `Home` / `End` | Open, cursor on the first / last option | Cursor to the first / last option |
+| `Enter`, `Space` | Open | Take the option under the cursor, close |
+| `Alt+ArrowDown` | Open with no cursor | — |
+| `Alt+ArrowUp` | — | Take the option under the cursor, close |
+| `Escape` | Passes through, so a dialog around it still closes | Close, changing nothing |
+| `Tab` | Moves on | Take the option under the cursor, then move on |
+| A letter | Open, cursor on the first match | Move the cursor to the match |
+
+Two of those differ from `Combobox` on purpose, and the pair is the clearest
+statement of why there are two components:
+
+- **`Home` and `End`.** A combobox leaves them to the text cursor, because a
+  combobox that steals them has made its own text field harder to edit than a
+  plain `<input>`. A select has no text, so they go to the ends of the list.
+- **`Tab`.** A combobox closes without taking the highlight: the reader typed
+  something, the highlight is a suggestion about text they still own, and
+  committing it turns "leave this field" into an edit. A select has nothing
+  typed and nothing to lose, so moving the cursor *is* the act of choosing, and
+  APG's rule for this pattern is that `Tab` takes it.
+
+Moving the cursor does not change the value. A native `<select>` on Windows does
+the opposite, and copying it would fire your `onValueChange` — and with it your
+validation, your form store or your server mutation — once per arrow press.
+
+### What a form submits
+
+Give `Select.Root` a `name` and it renders a hidden control carrying the
+**value**:
+
+```js
+<form action={save}>
+  <Select.Root name="country">…</Select.Root>
+</form>
+```
+
+Without a `name` nothing is submitted, which is right for a select that drives a
+filter. With one, the entry carries `GB` and not "United Kingdom" — the bug this
+exists for, since a `div` wearing an ARIA role is not one of a form's listed
+elements and a form collected nothing at all for it. A disabled select submits
+nothing, as a native `<select disabled>` does. `Combobox.Root` takes the same
+`name` and does the same thing, for the same reason: `Combobox.Input` renders
+the label, which is not the value.
+
+It is an `<input type="hidden">` rather than a concealed `<select>` on purpose.
+A real `<select>` is focusable, so a reader tabbing in hears the styled combobox
+and then a second, invisible one with the same options; `aria-hidden` on a
+focusable element is itself the violation it would be reached for to avoid. Two
+things are given up with it, and both are written down rather than hidden: the
+browser will not autofill a hidden input, and `required` gets no native
+constraint validation. The second is not a loss here — the browser reports a
+constraint failure by focusing the control and drawing a bubble at it, and on a
+control with no box it refuses to submit the form with nothing shown to the
+reader — so a headless select's `required` belongs to `@uniflowed/validator`,
+with the message in `Field.Error`.
+
+### With `@uniflowed/form`
+
+No `name`, and no import in either direction. That library keeps its values in
+its own store and prevents the native submission, so it never builds a
+`FormData` and never sees the hidden control. The binding is `useController`,
+whose own header names this exact case:
+
+```js
+// @flow
+import { useController } from "@uniflowed/form";
+import { Select } from "@uniflowed/ui";
+
+component CountryField(control: Control<Values>) {
+  const { field } = useController({ control, name: "country" });
+  return (
+    <Select.Root onValueChange={field.onChange} value={field.value}>
+      <Select.Label>Country</Select.Label>
+      <Select.Trigger>
+        <Select.Value placeholder="Choose one" />
+      </Select.Trigger>
+      <Select.List>…</Select.List>
+    </Select.Root>
+  );
+}
+```
+
+### What `Select.Value` shows
+
+In order: its own `children` if you passed any; the label of the option with
+that value, learned from the options themselves and remembered after the list
+closes; the value itself; the `placeholder` when nothing is chosen at all.
+
+The third of those is a boundary worth knowing about. A select whose value
+arrived from outside — a `defaultValue` from a saved form — has no option
+rendered for it until the list has been opened once, so the trigger shows `GB`
+rather than "United Kingdom". That is wrong and true; showing the placeholder
+there would be wrong and confident, telling a reader nothing is chosen when
+something is. Pass `children` to say what the value is called:
+
+```js
+<Select.Value placeholder="Choose one">{COUNTRIES[value]}</Select.Value>
+```
+
+### Not shipped, and why
+
+shadcn's Select has `ScrollUpButton` and `ScrollDownButton`. Both exist to
+scroll a popup that Radix positions and sizes; this package positions nothing,
+so a scroll button here would be a `button` with no idea what to scroll. The
+behaviour they are actually for — the cursor staying visible as the arrow keys
+move it — is already in the component, as the `scrollIntoView({ block:
+"nearest" })` every move performs, and it works inside your own scroll
+container without either button.
+
+## Toast
+
+Notifications, and the live region that was watching before them.
+
+```js
+// @flow
+import { Toast, toast } from "@uniflowed/ui";
+
+// Once, in the layout.
+<Toast.Region>
+  {(each) => (
+    <Toast.Root>
+      <Toast.Title>{each.content}</Toast.Title>
+      <Toast.Action onClick={undo}>Undo</Toast.Action>
+      <Toast.Close />
+    </Toast.Root>
+  )}
+</Toast.Region>;
+
+// Anywhere at all.
+toast("Saved");
+toast("Could not save", { urgency: "assertive" });
+```
+
+### The bug it exists for
+
+Every hand-written toast mounts a `<div role="alert">` at the moment the
+message arrives, and that is exactly the commit that makes it silent: a screen
+reader announces a live region's *changes*, so it has to have been watching the
+region before the change. Mounting the region and its first message together
+gives it nothing to have been watching.
+
+It looks perfect on screen, it passes review, and the reader who most needs to
+be told that the save failed is told nothing. `Toast.Region` renders on mount
+and stays, holding nothing; notifications are appended into it. That is the
+whole component in one sentence, and everything else here follows from it.
+
+### Parts
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Toast.Region` | `div role="region"` | The named landmark, and the two live regions inside it. Render it once |
+| `Toast.Root` | `div role="group"` | One notification, and its countdown |
+| `Toast.Title` | `div` | Names the group |
+| `Toast.Description` | `div` | Describes it |
+| `Toast.Action` | `button` | Undo, Retry, View. Taking it dismisses the notification |
+| `Toast.Close` | `button` | `label` becomes its accessible name, defaulting to "Dismiss" |
+
+| Function | What it does |
+| --- | --- |
+| `toast(content, options?)` | Queues a notification; returns its id |
+| `updateToast(id, changes)` | Changes one already queued |
+| `dismissToast(id)` | Takes one away |
+| `dismissAllToasts()` | Empties the queue |
+
+`Toast.Region` takes `label` (default `"Notifications"`) and `limit` (default
+`3`). `toast` takes `urgency` (`"polite"` or `"assertive"`) and `duration` in
+milliseconds, or `null` for one that never expires.
+
+### Two regions, not one
+
+"Saved" and "could not save" interrupt a reader differently and should, and
+which of the two a notification is belongs to the notification rather than to
+the application. That cannot be a role that changes: swapping a live region's
+`role` while it is being watched is the same bug as mounting it late. So there
+are two regions inside the landmark, `role="status"` and `role="alert"`, both
+mounted from the start and both empty, and a notification is appended into the
+one that matches it.
+
+What that costs is chronological order between the two: a failure and a success
+on screen together are in separate containers, and no CSS interleaves them. It
+buys the thing that matters more, which is that what a reader hears is exactly
+what a reader sees — the alternative, one visible stack plus hidden announcers
+mirroring its text, puts every notification in the document twice.
+
+Both regions are `aria-atomic="true"`, so a change presents the whole region.
+With one notification showing that is exactly right. With three, adding a fourth
+reads all four — so `limit` is not only how tall the stack may get, it is how
+much a reader is made to listen to.
+
+### Focus, and the key that gives it
+
+Nothing here moves focus when a notification appears. That interrupts whatever
+the reader was typing, and it is the single failure that makes people turn
+notifications off.
+
+But a notification carrying an Undo button that vanishes after four seconds is a
+control no keyboard reader can operate, so the region is a named landmark and
+**`F6`** — the key the APG suggests for moving between panes — moves focus into
+it. Focus lands on the region itself rather than on the first button in it, so a
+screen reader reads the region's name and its contents; `Tab` from there reaches
+the buttons. Pressing `F6` again while focus is inside gives it back to wherever
+it came from. The binding fires while the reader is typing, because a
+notification that arrives during a form fill is the one most likely to be about
+the form.
+
+### Timers that stop
+
+WCAG 2.2.1, *Timing Adjustable*, applies to anything that disappears on its own.
+The countdown stops while the pointer is over a notification, while focus is
+inside it, and while the document is hidden — the third because a reader who
+switches tabs for a minute should not come back to an empty region.
+
+It stops; it does not restart. What is left is banked and resumed, so brushing
+the stack with the pointer does not hand a notification its whole life again.
+Anything carrying an action should be given `duration: null` and dismissed by
+the action or the close button: the countdown stopping while focus is inside
+makes the button reachable, and that is not a promise that five seconds was
+enough time to decide.
+
+### The queue
+
+`toast("Saved")` is called from an event handler, from a `catch`, from a Server
+Action's error path — none of which have a component to put state in. So the
+queue lives outside React, as a store at module scope in `toast.js` read
+through `useSyncExternalStore`, and one page has one set of notifications:
+a function in a module has no context with which to find a scoped store, so
+there is nothing to scope.
+
+That store would be an atom in `@uniflowed/state` — a queue is what atoms are
+for — and it was one. `@uniflowed/ui` is published to npm and
+`@uniflowed/state` is not yet: binding a name that has never been published
+takes a person with an `npm login` session and a 2FA prompt, which is
+[uf#210](https://github.com/ubugeeei-prod/uf/issues/210). A published package
+whose dependency is missing installs as nothing, so `@uniflowed/ui` carries its
+own queue until that name exists, and goes back to `@uniflowed/state` when it
+does.
+
+The queue is what makes the fiddly parts ordinary. `limit` notifications are
+shown and the rest wait behind them, oldest first — and a waiting one's
+countdown has not started, because it is not rendered. `updateToast` changes one
+in place, so "Uploading…" becoming "Uploaded" is one notification rather than
+two contradicting each other.
+
+## A value in a range
+
+Three components report a number between two others, and all three make the
+same four promises through `aria-valuemin`, `aria-valuemax`, `aria-valuenow`
+and `aria-valuetext`. The arithmetic that keeps those true about each other
+lives once, in `internal/range.js`.
+
+### Slider
+
+```js
+<Slider.Root defaultValue={[20, 60]} valueText={(each) => `£${each}`}>
+  <Slider.Track>
+    <Slider.Range />
+  </Slider.Track>
+  <Slider.Thumb aria-label="Minimum" index={0} />
+  <Slider.Thumb aria-label="Maximum" index={1} />
+</Slider.Root>
+```
+
+`role="slider"` goes on the **thumb**, not on the track and not on the wrapper.
+That single placement is the difference between a control a keyboard reader can
+operate and a decorative div, because the element carrying the role is the
+element carrying `tabindex="0"`.
+
+It follows that a range is **two** sliders. Two thumbs are two elements with
+`role="slider"`, each in the tab order, each named — "Minimum" and "Maximum" —
+and each bounded by its neighbour's current value rather than by the slider's
+ends. Announcing both as 0–100 while the behaviour stops them passing each
+other is worse than not shipping the range at all: the reader is told they may
+set the low thumb to 90, they try, and the control silently refuses.
+
+| Key | What it does |
+| --- | --- |
+| `ArrowRight` / `ArrowUp` | Add a step |
+| `ArrowLeft` / `ArrowDown` | Subtract a step |
+| `PageUp` / `PageDown` | Move by `largeStep` |
+| `Home` / `End` | That thumb's own ends, which for a range thumb is its neighbour |
+
+The horizontal keys mirror in a right-to-left page — `ArrowRight` means
+"further along", and further along is to the left there. The vertical keys and
+`Home`/`End` are unaffected.
+
+`valueText` is the reason to reach for this component rather than an
+`<input type="range">` you cannot style. `aria-valuenow="3"` is announced as
+"3"; if the scale is Low, Medium, High then 3 is the implementation and
+"Medium" is the meaning. It is a function on the root rather than a string on
+the thumb, because an uncontrolled slider's value is the component's and a
+caller cannot write down a string for a number they have not been told.
+
+A press anywhere on `Slider.Track` moves the nearest thumb there. That is WCAG
+2.5.7, *Dragging Movements*: a control operated by dragging needs a way that is
+not a drag, and the arrow keys are only half of it.
+
+Nothing here has a width or a position. Each thumb carries
+`--uf-slider-fraction` and the range carries `--uf-slider-start` and
+`--uf-slider-end`, all numbers between 0 and 1, and your stylesheet decides
+what to do with them. A caller who writes no CSS sees nothing.
+
+### Resizable
+
+```js
+<Resizable.PanelGroup defaultValue={30}>
+  <Resizable.Panel primary>Files</Resizable.Panel>
+  <Resizable.Handle label="Resize the file list" />
+  <Resizable.Panel>Editor</Resizable.Panel>
+</Resizable.PanelGroup>
+```
+
+The APG calls this a **window splitter** and defines it as a separator that
+behaves like a slider, which is why it is documented beside one. Almost every
+resizable panel on the web is pointer-only — a WCAG 2.1.1 failure, no keyboard
+operation at all — so here the keyboard is the feature: the arrows move the
+splitter by a step, `Home` and `End` go to the ends of its range, and `Enter`
+collapses the primary pane and restores it.
+
+`aria-controls` names the primary pane, and only while one is rendered.
+`aria-valuenow` is that pane's percentage of the group.
+
+Two things are worth knowing:
+
+- **`aria-orientation` describes the separator, not the layout.** Two panes
+  side by side are divided by a *vertical* line, so a `PanelGroup` whose
+  `orientation` is `"horizontal"` renders a handle whose `aria-orientation` is
+  `"vertical"`. ARIA's default for the role is `horizontal`, so a vertical
+  splitter that says nothing is announced as a horizontal rule.
+- **This is not `Menu.Separator`.** Both are `role="separator"` and only one is
+  a control. A menu's separator is a rule between groups: not focusable, no
+  value. A splitter is focusable, carries a value, and changes the layout.
+
+Two panes is the pattern rather than a limitation — the window splitter is
+defined between a primary pane and the rest. A group of five panels is a
+layout-constraint problem and a different component. There is no drag yet; a
+keyboard-only splitter is a working splitter, where a pointer-only one is not.
+
+### Progress
+
+```js
+<Progress aria-label="Uploading" max={10} value={3} valueText="3 of 10 files" />
+<Progress aria-label="Uploading" />
+```
+
+The second one is indeterminate, and its one line is the line everybody gets
+wrong: a progress bar that does not know how far along it is **omits
+`aria-valuenow` entirely**. It does not set it to `0`.
+
+The two are opposite statements. `aria-valuenow="0"` says "nothing has happened
+yet", and a reader who asks again in ten seconds and hears zero again concludes
+the operation is stuck. Omitting it says "in progress, amount unknown", which
+is what a spinner means and what is actually true.
+
+`valueText` replaces what is announced without touching `aria-valuenow`, so a
+reader hears "3 of 10 files" and anything drawing a gauge still has the number.
+It is a prop rather than something you add afterwards because the two have to
+agree.
+
+This one renders on a server: it holds no state, listens to nothing and manages
+no focus.
+
+## Table
+
+```js
+<Table.Root onSortChange={setSort} rowCount={500} rowOffset={90} sort={sort}>
+  <Table.Caption>People</Table.Caption>
+  <Table.Header>
+    <Table.Row>
+      <Table.Head>
+        <Table.SelectAll checked={all} onCheckedChange={setAll} />
+      </Table.Head>
+      <Table.Head column="name">Name</Table.Head>
+    </Table.Row>
+  </Table.Header>
+  <Table.Body>
+    {page.map((person, at) => (
+      <Table.Row index={at} key={person.id}>
+        <Table.Cell>
+          <Table.RowSelect
+            checked={chosen.has(person.id)}
+            label={`Select ${person.name}`}
+            onCheckedChange={(on) => choose(person.id, on)}
+          />
+        </Table.Cell>
+        <Table.RowHeader>{person.name}</Table.RowHeader>
+      </Table.Row>
+    ))}
+  </Table.Body>
+</Table.Root>
+```
+
+The markup is not what this owns. A `<table>` with `<th scope="col">` and a
+`<caption>` is already accessible, and a component that only renames those
+elements has added a dependency and no behaviour. What it owns is four things
+that are invisible until somebody uses a screen reader.
+
+**Sorting.** `aria-sort` goes on the sorted header *only* — omitted on the
+others, not set to `"none"`, because eleven headers each announcing "not
+sorted" is eleven announcements of nothing on every pass through the table. The
+header's content is a `button`, so the sort is reachable at all. And the
+re-order is **announced**: the rows change places, nothing a reader is looking
+at moves, and without a sentence they are told nothing happened.
+
+**Selection.** `Table.SelectAll` takes `checked: boolean | "mixed"`, and the
+union is the point. A boolean would let you pass `false` for "two of three rows
+are selected", and a reader would be told nothing is selected while three
+checkboxes below say otherwise. Choosing a mixed box reports `true` — select
+all — which is the state a reader expects it to move to, and not the "clears
+itself on the first click" behaviour every table gets wrong.
+
+`Table.RowSelect` **requires** `label`. "Select row" repeated forty times is
+forty identical announcements with no way to tell which row you are on.
+
+**Counting.** `rowCount` is how many rows the whole set has — five hundred
+people, not the ten on this page — and `rowOffset` is where the rendered ones
+start. The component works out `aria-rowcount` (the data plus the header row)
+and each row's `aria-rowindex`, because a reader on page ten being told "row 1
+of 10" looks exactly like a reader being told the truth. A table showing
+everything it has needs neither, and gets neither.
+
+### `table`, not `grid`
+
+"Make it a `role="grid"`" is the advice that circulates and it is usually
+wrong. A grid takes the arrow keys away from the reader and gives them to the
+component — right for a spreadsheet, wrong for a list of records, because a
+screen reader already has table-reading commands that work perfectly on a plain
+`<table>` and readers rely on them.
+
+There is no `role="grid"` opt-in here, and that is deliberate rather than
+missing. A grid is not an attribute; it is a two-dimensional keyboard contract,
+and `role="grid"` without one is strictly worse than the table it replaced,
+because the reader is told the arrow keys will do something and they do
+nothing. An editable grid is a component of its own.
+
+### `DataTable` is not here, for shadcn's own reason
+
+The benchmark ships a guide rather than a component, and composes TanStack
+Table with its `Table`. uf has no TanStack Table equivalent — `@uniflowed/query`
+is the fetching layer, not table state — so a `DataTable` would mean shipping
+that library first. `Table` is the half that is uf's to own: the accessibility
+of a table whose state you hold.
+
+## Pagination
+
+```js
+<Pagination.Root page={4} pageCount={25}>
+  <Pagination.Content>
+    <Pagination.Previous disabled={page === 1} href={hrefFor(page - 1)}>‹</Pagination.Previous>
+    <Pagination.Item href={hrefFor(3)}>3</Pagination.Item>
+    <Pagination.Item current href={hrefFor(4)}>4</Pagination.Item>
+    <Pagination.Next href={hrefFor(page + 1)}>›</Pagination.Next>
+  </Pagination.Content>
+</Pagination.Root>
+```
+
+A `<nav>` with a name, because a page has more than one and an unnamed one is
+announced as "navigation" with no way to tell it from the site's menu. The
+current page is `aria-current="page"` — not a class, not bold text. Previous and
+next are named in words, because "link, single left-pointing angle quotation
+mark" is not something anybody can act on; the glyph stays, the name is words.
+And the change is announced, in a region that was already in the document.
+
+The controls are `<a>` elements, which constrains you and is meant to: page four
+of a table is a *place*, and a reader expects to open it in a new tab, copy it
+and come back to it. A list paginated with buttons is a list whose fourth page
+does not exist as far as the rest of the web is concerned. An application that
+genuinely has no URL for a page is the case where this is the wrong component.
+
+`disabled` drops the `href` rather than adding an attribute, because there is no
+such thing as a disabled link — an `<a>` with no `href` is out of the tab order
+and is not announced as a link, which is exactly what "there is no previous
+page" means.
+
+## What this page is
+
+A reference for what `@uniflowed/ui` guarantees, not a gallery. The guarantees
+are stated as tests in `tests/library/ui.test.js`, where every assertion is
+either "a reader is told X" or "this key does Y" — a snapshot of the markup
+would pass while every one of them was broken.
+
+Sections for `Dialog`, `Menu`, `Combobox`, `Tabs`, `Field`, `Switch` and
+`Checkbox` are still to be written; until they are, each module's header is the
+documentation, and it is written to be read.
+
+For a live region that is *only* a live region — a route change announced, a
+count that updates where nothing visible moves — `Announcer` in
+[`@uniflowed/web/regions`](/reference/packages) is the smaller thing, and the
+right one. The test that module states is whether a sighted reader would notice
+its absence: if only a screen reader would, it belongs there rather than here.
