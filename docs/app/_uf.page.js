@@ -2,12 +2,10 @@
 //
 // The home page.
 //
-// The heading says what uf is for: writing React, in Flow, better than the
-// assembled toolchains do. That is the promise, and everything under it is
-// the evidence — one command, and what that command really prints. The
-// heading used to be "One binary between your code and the web", which
-// described uf's shape rather than what it gets you, and left a reader who
-// had never heard of uf to work out what the binary was for.
+// The heading says what uf is for: the best React experience for Flow, with
+// the assembled toolchain collapsed into one command. That is the promise,
+// and everything under it is the evidence — one command, and what that
+// command really prints.
 //
 // Every claim below links to the page that backs it, and the ones uf loses
 // are on that list too.
@@ -50,7 +48,7 @@ export default component Home() {
         <div className="hero-copy">
           <Eyebrow>Unified toolchain for Flow</Eyebrow>
           <h1>
-            React at its best,
+            The best React experience,
             <br />
             typed by Flow.
           </h1>
