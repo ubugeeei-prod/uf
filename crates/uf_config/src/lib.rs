@@ -660,6 +660,7 @@ pub struct TestConfig {
     pub module: CompactString,
     pub runner: NativeTestRunnerConfig,
     pub react_testing_library_native: bool,
+    pub coverage: CoverageConfig,
 }
 
 impl Default for TestConfig {
@@ -668,8 +669,90 @@ impl Default for TestConfig {
             module: CompactString::const_new("@uniflowed/test"),
             runner: NativeTestRunnerConfig::default(),
             react_testing_library_native: true,
+            coverage: CoverageConfig::default(),
         }
     }
+}
+
+/// How `uf test --coverage` measures, reports and gates.
+///
+/// It lives here rather than in a file of its own because a coverage gate is a
+/// property of the project, not of the invocation: the number CI fails on has
+/// to be the number a laptop fails on, and the only way to guarantee that is
+/// for both to read it from `uf.config.js`.
+///
+/// `enabled` turns coverage on for every run; `--coverage` turns it on for one.
+/// The thresholds apply whenever coverage was collected, however it was asked
+/// for, so a project cannot pass by leaving the flag off — that is what makes
+/// it a gate rather than a report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CoverageConfig {
+    /// Collect coverage on every run, without `--coverage`.
+    pub enabled: bool,
+    /// Where the reports are written, relative to the project root.
+    pub directory: CompactString,
+    /// Which reports to write. `text` is the terminal summary.
+    pub reporters: Vec<CoverageReporterConfig>,
+    /// Keep only files whose path contains one of these; all of them when empty.
+    pub include: Vec<CompactString>,
+    /// Drop files whose path contains one of these.
+    pub exclude: Vec<CompactString>,
+    /// Percentages the project as a whole must reach.
+    pub thresholds: CoverageThresholdConfig,
+    /// Percentages every single file must reach.
+    pub per_file_thresholds: CoverageThresholdConfig,
+}
+
+impl Default for CoverageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            directory: CompactString::const_new("coverage"),
+            reporters: vec![CoverageReporterConfig::Text, CoverageReporterConfig::Lcov],
+            include: Vec::new(),
+            // A test file's own coverage is not information: it is a hundred
+            // per cent by construction, because running it is what coverage
+            // measures. Counting it would raise every project's number by
+            // however many tests it has, which is the opposite of what the
+            // number is for.
+            exclude: vec![
+                CompactString::const_new(".test."),
+                CompactString::const_new(".spec."),
+            ],
+            thresholds: CoverageThresholdConfig::default(),
+            per_file_thresholds: CoverageThresholdConfig::default(),
+        }
+    }
+}
+
+/// A percentage each metric must reach, or nothing when it is not checked.
+///
+/// Whole numbers: a coverage gate is a policy somebody chose, and `84.73` is
+/// not a number anybody chooses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CoverageThresholdConfig {
+    /// Least line coverage that passes.
+    pub lines: Option<u8>,
+    /// Least function coverage that passes.
+    pub functions: Option<u8>,
+    /// Least branch coverage that passes.
+    pub branches: Option<u8>,
+}
+
+/// One report `uf test --coverage` can write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CoverageReporterConfig {
+    /// A table on the terminal, and nothing on disk.
+    Text,
+    /// `lcov.info`, which every code-host coverage integration reads.
+    Lcov,
+    /// `cobertura-coverage.xml`, which the JVM-shaped half of CI reads.
+    Cobertura,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

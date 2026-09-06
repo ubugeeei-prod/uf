@@ -190,6 +190,102 @@ out so the top frame is yours.
 | `-j N` | Run at most N files at once; defaults to one per core |
 | `--list` | Print what would run without running it |
 | `--json` | The whole report, machine-readable |
+| `--coverage` | Measure which Flow lines the suite executed |
+| `--reporter junit --reporter-outfile FILE` | Write the results as JUnit XML |
+
+## Coverage
+
+`uf test --coverage` reports coverage **against the Flow you wrote**, not
+against the JavaScript uf printed for it.
+
+```
+coverage
+file                    lines      functions      branches  uncovered
+src/badge.js  85.71% (12/14)  66.67% (2/3)   50.00% (1/2)  17-18
+
+lines      85.71% (12/14)
+functions  66.67% (2/3)
+branches   50.00% (1/2)
+wrote coverage/lcov.info
+```
+
+Nothing is instrumented. V8 counts execution on its own, Node writes those
+counts out when a worker exits, and uf maps them back through the same source
+map the transform already produces. So the code the suite ran is the code you
+shipped, byte for byte — which is not true of any tool that rewrites your source
+to count it.
+
+### What the three numbers mean
+
+Every tool means something slightly different by "branch", so here is uf's, in
+full. One rule decides all three: **a position in the output that maps to
+nothing you wrote is not counted at all.**
+
+| Metric | Counted | Covered |
+| --- | --- | --- |
+| Lines | An author line that at least one generated position maps back to | The innermost V8 range over one of those positions ran at least once |
+| Functions | A generated function whose body holds at least one mapped position, attributed to the first one | It was entered |
+| Branches | A V8 *block* — an `if` or ternary arm, a `&&` right operand, a loop body, a `catch` — whose first mapped position exists | It was entered |
+
+The rule is what keeps the compiler out of your numbers. A `type` alias
+generates nothing, so it is not a missed line. A `match` lowers to a chain of
+tests you did not write, and those tests are not branches you failed to cover.
+The enum runtime and the React Compiler's memo blocks are not functions you
+forgot to test. None of them is reported as covered either — they are simply not
+in the denominator, because they are not your program.
+
+A file the suite never loaded is named rather than scored: it has no measured
+line to divide by, and `0/0` — which every other ratio here calls a hundred per
+cent — would make a file nobody imports the best-covered file in the project.
+
+### Failing a build on it
+
+Thresholds live in `uf.config.js`, not on the command line, because the number
+CI fails on has to be the number a laptop fails on.
+
+```js
+export default defineConfig({
+  test: {
+    coverage: {
+      reporters: ["text", "lcov"],
+      thresholds: { lines: 80, branches: 70 },
+      perFileThresholds: { lines: 50 },
+    },
+  },
+});
+```
+
+They are checked whenever coverage was collected, however it was asked for, and
+a threshold that is not reached fails the run with a non-zero exit code and a
+line per miss. A metric nobody names is not checked.
+
+### The files CI reads
+
+| Reporter | File | Who reads it |
+| --- | --- | --- |
+| `text` | — | The terminal table above |
+| `lcov` | `coverage/lcov.info` | Codecov, Coveralls, `genhtml`, the GitHub and GitLab coverage widgets |
+| `cobertura` | `coverage/cobertura-coverage.xml` | Azure Pipelines, Jenkins |
+
+`--reporter junit --reporter-outfile junit.xml` writes the *results* — one
+`testsuite` per file, one `testcase` per declaration — which is what turns a
+failing test into an annotation on a pull request. It needs an outfile because
+`uf test --json` already owns stdout for a machine.
+
+`uf test --json` grows a `coverage` object when a run measured, and it is absent
+rather than empty when it did not: a check reading the document has to be able
+to tell "not measured" from "measured, and bad".
+
+### What it does not do yet
+
+Coverage is **Node only**. It is V8's own count, written through
+`NODE_V8_COVERAGE` and mapped through the source map Node's loader attached;
+Bun implements neither, and Deno has no Flow loader at all. `uf test --coverage`
+on either says so rather than reporting zeroes.
+
+`--watch` and `--coverage` cannot be combined: watch mode re-runs the files an
+edit affected, so its coverage would be a number about three files wearing the
+project's name.
 
 ## What it gets right
 
@@ -233,7 +329,11 @@ between runs and a pre-bundled worker. Neither exists yet.
 
 ## Not there yet
 
-- No coverage, and no concurrent cases within a single file.
+- No concurrent cases within a single file, and no `--shard` for splitting a
+  suite across machines.
+- Coverage is Node-only, and a worker that has to be killed — a file that timed
+  out, a worker that crashed — takes its counts with it, because they are
+  written when the process exits.
 - Module mocking is Node-only; see "Which hosts" above.
 - `@uniflowed/react-testing` needs a DOM and says so when called; component
   tests need one supplied.

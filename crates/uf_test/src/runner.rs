@@ -32,7 +32,7 @@
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use camino::Utf8PathBuf;
 
@@ -256,6 +256,7 @@ impl TestRunner {
         loop {
             let at = state.next.fetch_add(1, Ordering::SeqCst);
             if at >= schedule.len() {
+                retire(&mut worker, host);
                 return;
             }
             if self.bailed(state) {
@@ -309,7 +310,7 @@ impl TestRunner {
                 outcome.status,
                 FileStatus::Completed | FileStatus::LoadFailed { .. }
             ) {
-                worker = None;
+                retire(&mut worker, host);
             } else if self.options.retry.max_attempts() > 1 {
                 self.retry_failures(host, file, &mut outcome, &mut worker);
             }
@@ -384,7 +385,7 @@ impl TestRunner {
                     self.options.effective_file_timeout() * MAX_CASES_PER_FILE_BUDGET,
                 );
                 if !matches!(retried.status, FileStatus::Completed) {
-                    *worker = None;
+                    retire(worker, host);
                     return;
                 }
                 let Some(fresh) = retried.records.into_iter().find(|record| {
@@ -417,6 +418,31 @@ impl TestRunner {
             Bail::Off => false,
             Bail::After(limit) => state.failures.load(Ordering::SeqCst) >= limit.get(),
         }
+    }
+}
+
+/// How long a worker is given to exit by itself when it is discarded.
+///
+/// It only ever matters to a run collecting coverage — see
+/// [`Worker::shutdown`] — and it is a bound rather than a wait: a worker that
+/// has not gone by then is killed, and the run loses that worker's counts
+/// rather than its ending.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+
+/// Let go of a worker, giving it the chance to write what it measured.
+///
+/// A run that is not collecting coverage has nothing to wait for and drops the
+/// worker as it always did, because waiting for a process to exit is time a
+/// suite spends doing nothing: `uf test` is 0.20 s on a thousand tests and the
+/// wait would be a measurable part of that. A run that *is* collecting has to
+/// wait, because the counts are written at exit and a killed process writes
+/// none.
+fn retire(worker: &mut Option<Worker>, host: &HostCommand) {
+    let Some(mut worker) = worker.take() else {
+        return;
+    };
+    if host.collects_coverage() {
+        worker.shutdown(SHUTDOWN_GRACE);
     }
 }
 

@@ -96,6 +96,15 @@ pub struct HostCommand {
     pub env: Vec<(String, String)>,
     /// Whether this run may rewrite a snapshot that did not match.
     pub update_snapshots: bool,
+    /// Where each worker writes its V8 coverage document, when coverage is on.
+    ///
+    /// Set as `NODE_V8_COVERAGE`, which is Node's own switch: V8 counts
+    /// execution whether anyone asks or not, and this is the variable that
+    /// makes Node write those counts — and the source-map cache beside them —
+    /// out when the process exits. Nothing is instrumented and the worker does
+    /// not know it is being measured; see [`crate::coverage`] for why that is
+    /// the property worth having.
+    pub coverage_dir: Option<Utf8PathBuf>,
 }
 
 impl HostCommand {
@@ -119,6 +128,7 @@ impl HostCommand {
             uf_binary: None,
             env: Vec::new(),
             update_snapshots: false,
+            coverage_dir: None,
         }
     }
 
@@ -166,6 +176,35 @@ impl HostCommand {
     pub fn with_uf_binary(mut self, binary: Utf8PathBuf) -> Self {
         self.uf_binary = Some(binary);
         self
+    }
+
+    /// Collect V8 coverage from every worker into `directory`.
+    ///
+    /// The directory must be this run's alone and must already exist: Node
+    /// appends a document per process and reads nothing back, so a directory
+    /// shared with a previous run would merge that run's counts into this one's.
+    #[must_use]
+    pub fn with_coverage_dir(mut self, directory: Utf8PathBuf) -> Self {
+        self.coverage_dir = Some(directory);
+        self
+    }
+
+    /// Whether this command collects coverage.
+    #[must_use]
+    pub const fn collects_coverage(&self) -> bool {
+        self.coverage_dir.is_some()
+    }
+
+    /// Whether this host can collect coverage at all.
+    ///
+    /// Node only, and the reason is not a missing feature of uf's: Bun's
+    /// preload transforms with `sourceMap: false` and implements no
+    /// `NODE_V8_COVERAGE`, and Deno has no Flow loader in `@uniflowed/host` to
+    /// produce a map with. A caller is expected to say so rather than report a
+    /// run of zeroes.
+    #[must_use]
+    pub const fn can_collect_coverage(&self) -> bool {
+        matches!(self.kind, HostKind::Node)
     }
 
     /// Let this run rewrite a snapshot that did not match.
@@ -568,7 +607,10 @@ fn file_output(
 #[derive(Debug)]
 pub struct Worker {
     child: Child,
-    stdin: ChildStdin,
+    /// Taken when the worker is asked to stop: closing it is how a worker is
+    /// told there is no more work, and the only way it reaches its own exit
+    /// handlers. See [`Worker::shutdown`].
+    stdin: Option<ChildStdin>,
     events: Receiver<String>,
     reader: Option<JoinHandle<()>>,
     /// Every file this worker has been asked to run, in the order it was asked.
@@ -630,6 +672,9 @@ impl Worker {
         if let Some(binary) = &command.uf_binary {
             process.env("UF_BINARY", binary.as_str());
         }
+        if let Some(directory) = &command.coverage_dir {
+            process.env("NODE_V8_COVERAGE", directory.as_str());
+        }
 
         let mut child = process.spawn().map_err(|error| SpawnError {
             message: format!("could not start `{}`: {error}", command.program),
@@ -660,7 +705,7 @@ impl Worker {
 
         Ok(Self {
             child,
-            stdin,
+            stdin: Some(stdin),
             events,
             reader: Some(reader),
             served: Vec::new(),
@@ -729,10 +774,15 @@ impl Worker {
             }
         };
         line.push('\n');
-        if let Err(error) = self
-            .stdin
+        let Some(stdin) = self.stdin.as_mut() else {
+            return Self::host_failed(
+                relative,
+                String::from("the worker has already been stopped"),
+            );
+        };
+        if let Err(error) = stdin
             .write_all(line.as_bytes())
-            .and_then(|()| self.stdin.flush())
+            .and_then(|()| stdin.flush())
         {
             return Self::host_failed(relative, format!("could not reach the worker: {error}"));
         }
@@ -819,6 +869,38 @@ impl Worker {
             records: Vec::new(),
             output: Vec::new(),
         }
+    }
+
+    /// Let the worker exit on its own, then stop it.
+    ///
+    /// Closing stdin is the worker's signal that there is no more work
+    /// (`packages/test/worker.js`'s `serve`), and it answers by draining its
+    /// queue and calling `process.exit(0)`. That exit is the only moment a
+    /// coverage document is written: `NODE_V8_COVERAGE` is flushed from an exit
+    /// handler, and a process that is killed runs none. So a run that collects
+    /// coverage has to wait for the worker to go rather than take it — the
+    /// difference between a merged report and a report missing whichever
+    /// workers happened to still be alive at the end.
+    ///
+    /// Bounded by `grace`, because "wait for it" and "a runner that can hang
+    /// CI" are the same sentence otherwise. Whatever is left is killed, which
+    /// costs that worker's counts and nothing else.
+    ///
+    /// Stdout closing is the signal, not a timer: the worker's stdout is a pipe
+    /// only that process holds, so the reader thread sees the end of it exactly
+    /// when the process is gone — after its exit handlers have run.
+    pub fn shutdown(&mut self, grace: Duration) {
+        drop(self.stdin.take());
+        let until = Instant::now() + grace;
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            match self.events.recv_timeout(left) {
+                // Something a finished file left behind. There is no file to
+                // report it under any more; the worker is on its way out.
+                Ok(_) => continue,
+                Err(RecvTimeoutError::Disconnected | RecvTimeoutError::Timeout) => break,
+            }
+        }
+        self.kill();
     }
 
     /// Stop the worker, waiting for its reader so no thread outlives the run.

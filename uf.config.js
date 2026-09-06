@@ -38,6 +38,22 @@ export default defineConfig({
     ignore: ["upstream", "crates", "dist", "target", "node_modules"],
   },
 
+  test: {
+    // `uf run test:lib:coverage` measures the packages this repository ships,
+    // and nothing else. The suite that drives them lives in `tests/library`,
+    // and the docs site and the fixtures under `tests/` are not the product —
+    // counting them would move the number for reasons nobody could act on.
+    //
+    // No threshold yet, deliberately. A gate is a promise about the next
+    // change, and the honest first step is to publish the number and let it
+    // settle; a threshold set on the first measurement is a threshold set by
+    // whatever happened to be true that afternoon. #280 says what it is.
+    coverage: {
+      include: ["packages/"],
+      reporters: ["text", "lcov"],
+    },
+  },
+
   tasks: {
     // --- Getting a checkout working ------------------------------------
     //
@@ -83,6 +99,23 @@ export default defineConfig({
     // of it. These are uf tests, run by the runner this repository ships.
     "test:lib": {
       command: "./target/release/uf test#library",
+      dependsOn: ["build"],
+    },
+
+    // The same suite, with V8's counters on, run from the repository root so
+    // that `packages/*` is inside the project and the counts have somewhere to
+    // land. `uf test#library` cannot do it: its project root is
+    // `tests/library`, and coverage is about the project's own files, so every
+    // package the suite exercises would be outside it.
+    //
+    // Not in `ci`, and the reason is the threshold rather than the cost —
+    // collecting and mapping is 0.4 s on a run that takes a minute. Until
+    // `test.coverage.thresholds` names a number this task cannot fail, and a
+    // green check that cannot go red teaches people to ignore checks. So it is
+    // one command rather than a gate, and what is left to do is choose the
+    // number; #280 carries that argument.
+    "test:lib:coverage": {
+      command: "./target/release/uf test tests/library --coverage",
       dependsOn: ["build"],
     },
 

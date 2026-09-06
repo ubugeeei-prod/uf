@@ -74,7 +74,11 @@ pub fn lower(program: &mut Value, _source: &str) -> Result<(), TransformError> {
     })?;
 
     if found {
-        let runtime = crate::estree::parse(RUNTIME_SOURCE)?;
+        let mut runtime = crate::estree::parse(RUNTIME_SOURCE)?;
+        // Parsed from `RUNTIME_SOURCE`, so every node in it carries a position
+        // in *that* text — which the printer would otherwise record against the
+        // author's module. See `builders::forget_positions`.
+        super::builders::forget_positions(&mut runtime);
         let helpers = runtime["body"].as_array().cloned().unwrap_or_default();
         if let Some(body) = program.get_mut("body").and_then(Value::as_array_mut) {
             let rest = std::mem::take(body);
@@ -165,6 +169,50 @@ mod tests {
         assert_eq!(body[2]["type"], "VariableDeclaration");
         assert_eq!(body[3]["type"], "ExportDefaultDeclaration");
         assert_eq!(body[3]["declaration"]["name"], "E");
+    }
+
+    /// The enum runtime is parsed from `RUNTIME_SOURCE`, so every node in it
+    /// arrives carrying a position — in a text that is not the author's file.
+    /// Recording those against the module put a page of source map on lines
+    /// the author never wrote, at columns their file does not have: a debugger
+    /// stepping into `$$ufEnum` landed somewhere in the user's code, and a
+    /// coverage report counted the runtime's four `value:` arrows as four
+    /// uncovered functions of theirs.
+    #[test]
+    fn the_enum_runtime_is_mapped_to_nothing_at_all() {
+        let source = "// @flow\nexport enum Size { Small, Large }\nexport const x: number = 1;\n";
+        let transformed = crate::transform(source, &crate::TransformOptions::new("/x/badge.js"))
+            .expect("the module transforms");
+        let map: Value =
+            serde_json::from_str(transformed.map.as_ref().expect("a map was asked for"))
+                .expect("the map is JSON");
+        let mappings = map["mappings"].as_str().expect("mappings are a string");
+
+        // One group per generated line, empty when that line maps to nothing.
+        let mapped: Vec<bool> = mappings.split(';').map(|group| !group.is_empty()).collect();
+        for (line, text) in transformed.code.lines().enumerate() {
+            let is_runtime = text.contains("$$ufEnum") && !text.contains("export const");
+            if is_runtime || text.trim().is_empty() {
+                continue;
+            }
+            // Everything the author wrote still maps.
+            if text.contains("export const") {
+                assert!(
+                    mapped.get(line).copied().unwrap_or(false),
+                    "line {line}: {text}"
+                );
+            }
+        }
+        // Nothing before the first line of the author's own code maps at all.
+        let first_authored = transformed
+            .code
+            .lines()
+            .position(|line| line.contains("export const Size"))
+            .expect("the lowered declaration");
+        assert!(
+            mapped[..first_authored].iter().all(|mapped| !mapped),
+            "the runtime maps to the author's file: {mappings}"
+        );
     }
 
     #[test]

@@ -3660,6 +3660,7 @@ dependencies = [
  "camino",
  "compact_str",
  "criterion",
+ "oxc_sourcemap",
  "serde",
  "serde_json",
  "similar-asserts",

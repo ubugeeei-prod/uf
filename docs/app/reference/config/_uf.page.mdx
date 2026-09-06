@@ -147,6 +147,18 @@ uf's rule table, and a test asserts the table matches the descriptors.
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
 | `runner.officialFlowParser` | `true` | Discovery reads Flow with the official parser |
 | `reactTestingLibraryNative` | `false` | Whether component tests can run without a DOM |
+| `coverage.enabled` | `false` | Collect coverage on every run, without `--coverage` |
+| `coverage.directory` | `"coverage"` | Where the reports are written |
+| `coverage.reporters` | `["text", "lcov"]` | `text` is the terminal table; `lcov` and `cobertura` are files |
+| `coverage.include` | `[]` | Keep only files whose path contains one of these; all of them when empty |
+| `coverage.exclude` | `[".test.", ".spec."]` | Drop files whose path contains one of these. A test file's own coverage is a hundred per cent by construction |
+| `coverage.thresholds` | `{}` | `lines`, `functions`, `branches` the project as a whole must reach, as whole percentages |
+| `coverage.perFileThresholds` | `{}` | The same three, required of every single file |
+
+A threshold that is not reached fails the run. They are checked whenever
+coverage was collected, so `enabled: false` plus `--coverage` still gates — the
+number CI fails on is the number a laptop fails on. A metric nobody names is not
+checked, which is not the same as requiring zero.
 
 ## vite
 
