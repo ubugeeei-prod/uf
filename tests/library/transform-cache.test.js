@@ -89,8 +89,9 @@ const project = (): string => {
  * what it then does is replace the binary and reach for a module that is not
  * cached under the new one.
  *
- * `import(...).then` rather than a top-level `await`, which uf cannot yet
- * parse — see ubugeeei-prod/uf#204.
+ * The import is dynamic because it has to happen *after* the swap above; the
+ * `await` in front of it is a top-level one, which uf reads as a module's since
+ * ubugeeei-prod/uf#204.
  */
 const projectThatRebuilds = (): string => {
   const root = project();
@@ -104,7 +105,8 @@ const projectThatRebuilds = (): string => {
       "  const when = new Date(Number(process.env.UF_NEXT_WHEN));\n" +
       "  fs.utimesSync(process.env.UF_BINARY, when, when);\n" +
       "}\n" +
-      'import("./thing.js").then((m) => process.stdout.write(m.compiledBy));\n',
+      'const thing = await import("./thing.js");\n' +
+      "process.stdout.write(thing.compiledBy);\n",
   );
   return root;
 };
