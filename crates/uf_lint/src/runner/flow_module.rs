@@ -28,6 +28,12 @@ pub(crate) fn run_flow_mixed_import_and_require(
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
         for at in find_words(code, "require") {
+            // `node -e "… require('node:fs') …"` is a shell command this module
+            // hands to a task runner, not a module system it mixes in. That is
+            // `uf.config.js` in this repository, twice on one line.
+            if line.in_string(at) {
+                continue;
+            }
             if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
                 continue;
             }
@@ -98,6 +104,9 @@ pub(crate) fn run_flow_export_renamed_default(
         let code = line.code();
         for at in find_all(code, "as default")
             .filter(|&at| starts_word(code, at) && ends_word(code, at + "as default".len()))
+            // Prose about the rule is not the rule being broken: a message
+            // saying `export it as default` renames nothing.
+            .filter(|&at| !line.in_string(at))
         {
             push_in_code(
                 diagnostics,
