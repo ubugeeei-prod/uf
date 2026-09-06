@@ -292,13 +292,15 @@ function flowPlugin({ routerRoot, appEntry, command }) {
               return;
             }
 
-            const result = await entry.render(url, {
-              scripts: [devUrlFor(VIRTUAL.client)],
-              styles: [],
-              preloads: [],
-            });
+            const result = await entry.render(
+              url,
+              { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
+              { onError: (error) => reportRenderError(devServer, url, error) },
+            );
             if (result.error != null) reportRenderError(devServer, url, result.error);
-            const html = await devServer.transformIndexHtml(url, result.html);
+            // Collected rather than piped, for the reason `driver.js` gives at
+            // step 4: `transformIndexHtml` is a whole-document hook.
+            const html = await devServer.transformIndexHtml(url, await result.text());
             response.statusCode = result.status;
             response.setHeader("Content-Type", "text/html; charset=utf-8");
             for (const [name, value] of Object.entries(result.headers ?? {})) {

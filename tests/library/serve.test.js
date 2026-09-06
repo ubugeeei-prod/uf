@@ -36,16 +36,59 @@ function entryWith(options: {
   handler?: (request: Request) => Promise<Response | null> | Response | null,
   render?: (url: string) => { status: number, html: string, headers?: { [string]: string } },
 }) {
+  const bodies = [];
   return {
     routes: [],
     handlers: [],
     middleware: [],
     notFound: [],
     errors: [],
+    /** Every document this entry was asked for, so a test can ask what became of one. */
+    bodies,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
     dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
-    render: async (url: string) =>
-      options.render ? options.render(url) : { status: 200, html: `<!doctype html><p>${url}</p>` },
+    render: async (url: string) => {
+      const answer = options.render
+        ? options.render(url)
+        : { status: 200, html: `<!doctype html><p>${url}</p>` };
+      const body = bodyOf(answer.html);
+      bodies.push(body);
+      return { ...answer, ...body };
+    },
+  };
+}
+
+/**
+ * The document methods a real `render` returns, over a string a test wrote.
+ *
+ * The handler asks for a stream now, so a fake that answered with `html` would
+ * be testing a renderer uf no longer has. `cancelled` is what the `HEAD` case
+ * turns on: the handler has to release the render rather than abandon it, and
+ * a fake that ignored `cancel()` could not tell the two apart.
+ */
+function bodyOf(html: string) {
+  let cancelled = false;
+  return {
+    cancelled: () => cancelled,
+    pipe: async (destination: {
+      readonly write: (chunk: string) => mixed,
+      readonly end: () => mixed,
+      ...
+    }) => {
+      destination.write(html);
+      destination.end();
+    },
+    text: async () => html,
+    stream: () =>
+      new ReadableStream({
+        start(controller: mixed) {
+          (controller: any).enqueue(new TextEncoder().encode(html));
+          (controller: any).close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
   };
 }
 
@@ -154,12 +197,20 @@ describe("the application handler", () => {
     expect(response.headers.get("location")).toBe("/elsewhere");
   });
 
-  it("gives a HEAD the status and no body", async () => {
-    const handle = createApplicationHandler({ entry: entryWith({}), assets });
+  it("gives a HEAD the status and no body, and releases the render", async () => {
+    // The status and the headers come from a real render, so the render
+    // happens — and then has to be stopped. A body nobody reads is a React
+    // render filling its queue and waiting for a drain that is never coming,
+    // which is a request that never ends.
+    const entry = entryWith({});
+    const handle = createApplicationHandler({ entry, assets });
 
     const response = await handle(request("/", { method: "HEAD" }));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("");
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(entry.bodies.length).toBe(1);
+    expect(entry.bodies[0].cancelled()).toBe(true);
   });
 });
 

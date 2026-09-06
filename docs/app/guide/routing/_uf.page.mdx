@@ -13,7 +13,7 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Six names are reserved. Everything else in `app/` is an ordinary module.
+Seven names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
@@ -21,6 +21,7 @@ Six names are reserved. Everything else in `app/` is an ordinary module.
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
 | `_uf.error.js` | Rendered when something under this path throws. |
+| `_uf.loading.js` | Rendered while something under this path is still resolving. |
 | `_uf.middleware.js` | Runs before anything under this path answers — auth, redirects, logging. |
 | `_uf.route.js` | Answers a request instead of rendering a page. |
 
@@ -133,6 +134,56 @@ belongs to.
 A route that throws during `uf build` fails *that route*: the build reports the
 URL, writes every route that did render, and then exits non-zero. It does not
 write an error page into `dist/`.
+
+## While a page is still resolving
+
+`_uf.loading.js` is a `<Suspense>` boundary around this segment's page and
+everything under it. Its default export is a component that takes no props —
+there is nothing to hand it, because what it stands in for has not happened yet.
+
+```js
+// @flow
+// app/guide/_uf.loading.js
+export default component Loading() {
+  return <p aria-busy="true">Loading…</p>;
+}
+```
+
+It is not resolved by the nearest-ancestor rule the other two boundaries use,
+and the difference is what a fallback is. A not-found or an error boundary is
+*chosen*: one of them renders. Loading boundaries **nest** — `app/_uf.loading.js`
+and `app/guide/_uf.loading.js` are two boundaries on one route, one inside the
+other — so a route carries every one declared above it, and the deepest is
+closest to the page.
+
+The boundary goes inside its own segment's layout and outside everything below
+it, which is what makes the shell arrive first: the server sends the layouts and
+the fallback while the page is still resolving, and the page replaces the
+fallback when it is ready. That is the whole reason the renderer streams.
+
+```
+app/_uf.layout.js          the masthead — sent immediately
+app/guide/_uf.layout.js    the sidebar — sent immediately
+app/guide/_uf.loading.js   the fallback — sent immediately
+app/guide/[slug]/_uf.page.js   arrives when it resolves
+```
+
+`uf build` writes the resolved page rather than the fallback. A prerendered file
+has nothing to wait for, so it contains the finished document — which is what
+makes it readable by a crawler and by `curl` rather than only by a browser
+running scripts.
+
+A segment with no `_uf.loading.js` gets no boundary at all. uf does not insert an
+invisible one: a page that suspends with nothing above it fails the way React
+says it should, rather than rendering as a blank document.
+
+What suspends today is a page that waits **while rendering** — `use()` on a
+promise, or a component that suspends. A page's `loader` is still awaited before
+the render begins, so a slow loader shows its fallback for no time; deferring it
+is [#373](https://github.com/ubugeeei-prod/uf/issues/373). `uf dev` also
+collects the document rather than streaming it, because Vite's HTML transform
+takes a whole one — [#374](https://github.com/ubugeeei-prod/uf/issues/374).
+`uf start`, `uf preview` and the deploy adapters stream.
 
 What none of this covers is a route handler. `_uf.route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting

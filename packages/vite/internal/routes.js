@@ -494,6 +494,10 @@ hydrate({ App, routes, notFound, errors });
  *
  * `internal/serve.js` and `driver.js` call them in that order, and
  * `packages/vite/index.js` does the same for a project driving Vite itself.
+ *
+ * `render` and `prerender` are two exports rather than one with a flag, because
+ * a host is one or the other: a server streams, a build writes files. See the
+ * header of `packages/router/server.js` for why React needs both told apart.
  */
 export function serverModuleSource(appEntry) {
   return `import {
@@ -504,7 +508,9 @@ export function serverModuleSource(appEntry) {
 import { routes, handlers, middleware, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
 export { routes, handlers, middleware, notFound, errors };
-export const render = createRenderer({ App, routes, notFound, errors });
+const renderer = createRenderer({ App, routes, notFound, errors });
+export const render = renderer.render;
+export const prerender = renderer.prerender;
 export const dispatch = createDispatcher({ handlers });
 export const runMiddleware = createMiddlewareRunner({ middleware });
 `;

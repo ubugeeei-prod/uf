@@ -7,10 +7,21 @@
 // grammar had no name for one. `suspense: true` was in the config and nothing
 // read it. See ubugeeei-prod/uf#254.
 //
-// Two halves here: the scanner finds the file and the route table carries it,
-// and `RouteView` puts a `<Suspense>` where the file said. The renderer is still
-// `renderToString`, so a boundary on the server shows its fallback and never
-// replaces it — that is the next commit, and the tests for it arrive with it.
+// The claim being tested is one sentence — a page that awaits, with a
+// `_uf.loading.js` beside it, sends its layouts and the fallback before the
+// await resolves, and `uf build` still writes a complete document for the same
+// route — and it takes four sections: the scanner finds the file, the route
+// table carries it, `RouteView` puts a `<Suspense>` where it belongs, and the
+// renderer's chunks arrive in the right order.
+//
+// # Why the ordering is asserted on chunks rather than on a socket
+//
+// "The first bytes arrived before the page did" is a claim about time, and the
+// honest way to make it is to record when each chunk of the document was
+// produced and check that the one holding the fallback came first. A stream
+// collected in process is still a stream: the chunk boundaries are React's, not
+// the network's, and a test that binds a port would be asserting the same thing
+// through an operating system that has nothing to do with it.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -19,7 +30,8 @@ import path from "node:path";
 import * as React from "@uniflowed/react";
 import { use } from "@uniflowed/react";
 import { act, render, screen } from "@uniflowed/react-testing";
-import { RouteView, RouterProvider, resolveMatch } from "@uniflowed/router";
+import { RouteView, RouterProvider, resolveMatch, routerView } from "@uniflowed/router";
+import { createRenderer } from "@uniflowed/router/server";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
 import { RESERVED, routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
@@ -43,6 +55,8 @@ function appRoot(files: { readonly [string]: string }): string {
   }
   return root;
 }
+
+const assets = { scripts: [], styles: [], preloads: [] };
 
 // ---------------------------------------------------------------------------
 // The reserved name
@@ -217,5 +231,200 @@ describe("the `<Suspense>` in the tree", () => {
     const resolved = await resolveMatch(table, "/slow");
 
     expect(resolved.loading).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The renderer
+// ---------------------------------------------------------------------------
+
+/** Read a document's chunks, recording when each one was produced. */
+async function chunksOf(result: {
+  readonly stream: () => ReadableStream,
+  ...
+}): Promise<Array<{| readonly at: number, readonly text: string |}>> {
+  const started = Date.now();
+  const decoder = new TextDecoder();
+  const reader = result.stream().getReader();
+  const out = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done === true) {
+      return out;
+    }
+    out.push({ at: Date.now() - started, text: decoder.decode(value, { stream: true }) });
+  }
+}
+
+describe("rendering a route that suspends", () => {
+  it("sends the layout and the fallback before the page resolves", async () => {
+    const waited = deferred();
+    const table = suspendingTable(waited.promise);
+    const renderer = createRenderer({ App: routerView("./app"), ...table });
+
+    const result = await renderer.render("/slow", assets);
+    // Resolved before the page's promise has been settled at all: this is the
+    // whole claim. `renderToString` could not have got here.
+    expect(result.status).toBe(200);
+
+    const reading = chunksOf(result);
+    // Long enough that a renderer which waited for the page would have had to
+    // wait for this, and short enough not to slow the suite down.
+    setTimeout(waited.resolve, 120);
+    const chunks = await reading;
+
+    const shell = chunks[0];
+    expect(shell.text).toContain("the layout is here");
+    expect(shell.text).toContain("the fallback is here");
+    expect(shell.text).not.toContain("the page is here");
+    // The shell is out before the page's promise settles, not merely first in
+    // the list: a renderer that buffered would have produced both chunks after
+    // the timer.
+    expect(shell.at < 120).toBe(true);
+
+    const rest = chunks
+      .slice(1)
+      .map((chunk) => chunk.text)
+      .join("");
+    expect(rest).toContain("the page is here");
+    expect(chunks.length > 1).toBe(true);
+  });
+
+  it("writes the head before any of the body", async () => {
+    // `packages/web/head.js` documents this from the other side, as the reason
+    // `useHead` does nothing on a server. It has to be true of the bytes.
+    const waited = deferred();
+    const table = suspendingTable(waited.promise);
+    const renderer = createRenderer({ App: routerView("./app"), ...table });
+
+    const result = await renderer.render("/slow", {
+      scripts: ["/assets/client.js"],
+      styles: ["/assets/app.css"],
+      preloads: [],
+    });
+    setTimeout(waited.resolve, 0);
+    const document = (await chunksOf(result)).map((chunk) => chunk.text).join("");
+
+    expect(document).toContain('<link rel="stylesheet" href="/assets/app.css">');
+    expect(document.indexOf("</head>")).toBeLessThan(document.indexOf("the layout is here"));
+    expect(document.indexOf("/assets/app.css")).toBeLessThan(document.indexOf("</head>"));
+    expect(document.indexOf("/assets/client.js")).toBeLessThan(document.indexOf("</head>"));
+  });
+
+  it("gives the same document however the host takes it", async () => {
+    // A route that does not suspend, so the two renders are comparable: with a
+    // boundary in play React legitimately writes a different document depending
+    // on whether the page had already resolved when the shell was ready, and
+    // that difference is the feature rather than something to assert against.
+    component Page() {
+      return <p>the page is here</p>;
+    }
+    const renderer = createRenderer({ App: routerView("./app"), ...tableOf(Page, []) });
+
+    const piped = [];
+    await (
+      await renderer.render("/", assets)
+    ).pipe({ write: (chunk) => piped.push(chunk), end: () => {} });
+
+    const collected = await (await renderer.render("/", assets)).text();
+    const streamed = await new Response((await renderer.render("/", assets)).stream()).text();
+
+    expect(piped.join("")).toBe(collected);
+    expect(streamed).toBe(collected);
+    expect(collected).toContain("the page is here");
+  });
+});
+
+describe("prerendering the same route", () => {
+  it("writes a document with the resolved page in it, not a fallback", async () => {
+    // `uf build`'s half. A file whose slow parts are `<template>` elements
+    // waiting for `$RC()` is a page that is blank to a crawler and to `curl`,
+    // which is most of what a file in `dist/` is for.
+    const waited = deferred();
+    setTimeout(waited.resolve, 20);
+    const table = suspendingTable(waited.promise);
+    const renderer = createRenderer({ App: routerView("./app"), ...table });
+
+    const result = await renderer.prerender("/slow", assets);
+
+    expect(result.status).toBe(200);
+    expect(result.html).toContain("the page is here");
+    expect(result.html).toContain("the layout is here");
+    expect(result.html).not.toContain("the fallback is here");
+    expect(result.html).not.toContain("$RC(");
+    expect(
+      result.html.startsWith("<!DOCTYPE html>") || result.html.startsWith("<!doctype html>"),
+    ).toBe(true);
+    expect(result.html).toContain("</html>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two document shapes, which is what `assemble` used to decide afterwards
+// ---------------------------------------------------------------------------
+
+/** A one-route table whose page is `Page` and whose layouts are `layouts`. */
+function tableOf(Page: React.ComponentType<empty>, layouts: $ReadOnlyArray<mixed>) {
+  return {
+    routes: [
+      {
+        path: "/",
+        params: [],
+        mdx: false,
+        file: "app/_uf.page.js",
+        page: () => Promise.resolve({ default: Page }),
+        layouts: layouts.map((layout) => () => Promise.resolve({ default: layout })),
+        loading: [],
+      },
+    ],
+    notFound: [],
+    errors: [],
+  };
+}
+
+describe("the document uf writes around the app", () => {
+  it("puts uf's tags in the head an app renders for itself", async () => {
+    component Document(children: React.Node) {
+      return (
+        <html lang="en">
+          <head>
+            <meta charSet="utf-8" />
+          </head>
+          <body>{children}</body>
+        </html>
+      );
+    }
+    component Page() {
+      return <main>owned</main>;
+    }
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...tableOf(Page, [Document]),
+    });
+
+    const html = await (
+      await renderer.render("/", { scripts: ["/c.js"], styles: [], preloads: [] })
+    ).text();
+
+    expect(html).toContain('<html lang="en">');
+    expect(html).not.toContain('id="uf-root"');
+    expect(html.indexOf("/c.js")).toBeLessThan(html.indexOf("</head>"));
+  });
+
+  it("wraps an app that renders only content in a shell it can hydrate", async () => {
+    component Page() {
+      return <main>content</main>;
+    }
+    const renderer = createRenderer({ App: routerView("./app"), ...tableOf(Page, []) });
+
+    const html = await (
+      await renderer.render("/", { scripts: ["/c.js"], styles: [], preloads: [] })
+    ).text();
+
+    expect(html).toContain('<div id="uf-root">');
+    expect(html).toContain("content");
+    expect(html.indexOf("/c.js")).toBeLessThan(html.indexOf("<body>"));
+    expect(html.startsWith("<!doctype html>\n")).toBe(true);
+    expect(html.endsWith("</html>\n")).toBe(true);
   });
 });

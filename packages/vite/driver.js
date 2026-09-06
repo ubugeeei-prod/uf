@@ -172,6 +172,13 @@ async function viteConfig(config, mode) {
  *   4. hand the HTML to `transformIndexHtml`, which is what injects the HMR
  *      client and lets any Vite plugin see the document.
  *
+ * Step 4 is why `uf dev` collects the stream instead of piping it: Vite's HTML
+ * hook takes a whole document and any plugin may rewrite any part of it, so
+ * there is no first byte to send until it has run. `uf start` and `uf preview`
+ * have no such hook and stream — see `internal/serve.js` — and it is worth
+ * being clear that this is a property of the development server rather than of
+ * the renderer. Streaming through the transform is ubugeeei-prod/uf#374.
+ *
  * Anything Vite already serves — a module, a public file — never reaches this,
  * because the middleware runs after Vite's own.
  */
@@ -219,9 +226,14 @@ async function dev() {
         return;
       }
 
-      const result = await entry.render(url, assets);
+      const result = await entry.render(url, assets, {
+        // A boundary that threw after the shell went out. `result.error` cannot
+        // carry it — the caller already has the result by then — so the
+        // terminal hears about it here or not at all.
+        onError: (error) => reportRenderError(server, url, error),
+      });
       if (result.error != null) reportRenderError(server, url, result.error);
-      const html = await server.transformIndexHtml(url, result.html);
+      const html = await server.transformIndexHtml(url, await result.text());
       response.statusCode = result.status ?? 200;
       response.setHeader("content-type", "text/html; charset=utf-8");
       response.end(html);
@@ -415,6 +427,12 @@ async function build() {
   // `createRenderer` renders the error boundary and reports the exception on
   // the result — so both are checked here. Neither writes a file: an error
   // page written into `dist/` is a build that shipped its own failure.
+  //
+  // `prerender`, not `render`: a build wants the document React produces once
+  // every boundary has resolved, with the content where the fallback was. The
+  // streaming renderer would write a file whose slow parts are `<template>`
+  // elements waiting for a script — correct in a browser, blank to a crawler
+  // and to `curl`, which is most of what a static file is for.
   const failures = [];
   const failed = (url, error) => {
     failures.push(url);
@@ -423,7 +441,7 @@ async function build() {
   for (const url of pages) {
     let result;
     try {
-      result = await server.render(url, assets);
+      result = await server.prerender(url, assets);
     } catch (error) {
       failed(url, error);
       continue;
@@ -453,7 +471,7 @@ async function build() {
   // rendered from the framework's bare default, which is worse than the file
   // it used to write, which was none.
   if (server.notFound.some((boundary) => boundary.path === "/")) {
-    const result = await server.render("/__uf_not_found__", assets);
+    const result = await server.prerender("/__uf_not_found__", assets);
     const file = path.join(outDir, "404.html");
     writeFileSync(file, result.html);
     emit("page", {
