@@ -55,11 +55,25 @@ export async function toRequest(incoming, config) {
 /**
  * Write a `Response` to a Node response.
  *
- * Re-exported rather than written again. This was a second copy of the loop
- * in `@uniflowed/server`'s `node.js`, and the two drifted the moment the
- * shared one moved: `uf start` and every adapter lost the socket pacing and
- * the hang-up cancel while `uf dev` and `uf preview` kept them, which is the
- * memory profile of a deployment differing from the one that was checked.
- * See ubugeeei-prod/uf#400.
+ * One implementation, reached late. This was a second copy of the loop in
+ * `@uniflowed/server`'s `node.js`, and the two drifted the moment the shared
+ * one moved: `uf start` and every adapter lost the socket pacing and the
+ * hang-up cancel while `uf dev` and `uf preview` kept them, which is a
+ * deployment whose memory profile differs from the one that was checked. See
+ * ubugeeei-prod/uf#400.
+ *
+ * The import is inside the function, and that is not a style choice.
+ * `driver.js` imports this module *statically* and registers the Flow loader
+ * hooks in its own body, so anything reachable from a static import here is
+ * read by Node before there is anything to compile Flow with —
+ * `@uniflowed/server/node` is Flow source, and a static re-export of it makes
+ * every `uf build` die on `import type` with a `SyntaxError`. `loadBuild` in
+ * `internal/serve.js` defers for the same reason and says so.
+ *
+ * @param {import("node:http").ServerResponse} outgoing
+ * @param {Response} result
  */
-export { send } from "@uniflowed/server/node";
+export async function send(outgoing, result) {
+  const { send: write } = await import("@uniflowed/server/node");
+  await write(outgoing, result);
+}
