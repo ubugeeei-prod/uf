@@ -5,7 +5,7 @@ mod support;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
-use support::{assert_plain, binary, create_app, uf};
+use support::{Project, assert_plain, binary, create_app, uf};
 
 #[test]
 fn uf_prints_help() {
@@ -860,14 +860,171 @@ fn ufx_alias_runs_uniflowed_create_package() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("ufx \u{b7} @uniflowed/create"), "{stdout}");
-    assert!(stdout.contains("UfNative"));
-    assert!(stdout.contains("exec-cache"));
     assert!(stdout.contains("created 9 files"));
     assert!(dir.path().join("app.js").exists());
+    // `.uf/exec-cache/` used to be written here, and by every other `ufx`
+    // invocation. Nothing ever read one back: the directory was named a cache
+    // and cached nothing, and it existed so that a command with nothing to do
+    // had something to write. See ubugeeei-prod/uf#274.
+    assert!(!dir.path().join(".uf/exec-cache").exists());
+}
+
+/// A binary the project has installed runs, with its arguments and its status.
+///
+/// `uf exec` used to write a JSON file, print "cached execution request for
+/// registry resolution", and exit 0 without running anything at all — so a CI
+/// step spelled `ufx some-codegen` went green having generated nothing.
+/// See ubugeeei-prod/uf#274.
+#[test]
+fn exec_runs_an_installed_binary_and_forwards_its_arguments_and_status() {
+    let project = Project::new(&[]);
+    let bin = project.path().join("node_modules/.bin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("uf-fixture-tool");
+    fs::write(
+        &script,
+        "#!/bin/sh\necho \"tool saw: $*\"\nexit \"${UF_FIXTURE_EXIT:-0}\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "uf-fixture-tool", "--flag", "value"])
+        .output()
+        .unwrap();
+
     assert!(
-        dir.path()
-            .join(".uf/exec-cache/_uniflowed_create.json")
-            .exists()
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        stdout, "tool saw: --flag value\n",
+        "the binary owns stdout; uf must not render onto it"
+    );
+
+    // And its failure is uf's failure, with the child's own number on it.
+    //
+    // `42` rather than `1`, because `1` is what a wrapper that loses the
+    // status also produces and the assertion would prove nothing. `uf exec`
+    // used to `bail!`, which `main` turns into `ExitCode::FAILURE` — so
+    // `jest`'s codes, `eslint`'s, and a codegen script's all arrived as the
+    // same `1` and a script branching on one could tell nothing apart, while
+    // `docs/app/reference/cli` said "exiting with its status".
+    let failed = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .env("UF_FIXTURE_EXIT", "42")
+        .args(["exec", "uf-fixture-tool"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        failed.status.code(),
+        Some(42),
+        "the child's exit status is uf's:\n{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&failed.stderr).contains("uf-fixture-tool exited with"),
+        "{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
+}
+
+/// A path is the third way to spell what `uf exec` runs, and adopts a status too.
+///
+/// `ufx ./scripts/codegen.js` is a thing people do and it is not a package
+/// name: `exec_package` tries it with `spawn_executable` between the
+/// `node_modules/.bin` lookup and the package manager. It is the path
+/// `uf explain exec` did not describe, and the one whose exit status a CI step
+/// is most likely to be branching on — a codegen script that exits `42` to mean
+/// "nothing to do" is exactly the shape.
+#[test]
+fn exec_runs_an_explicit_path_and_adopts_its_exit_status() {
+    let project = Project::new(&[]);
+    let script = project.path().join("scripts/codegen.js");
+    fs::create_dir_all(script.parent().unwrap()).unwrap();
+    fs::write(
+        &script,
+        "#!/bin/sh\necho \"codegen saw: $*\"\nexit \"${UF_FIXTURE_EXIT:-0}\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "./scripts/codegen.js", "--write"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "codegen saw: --write\n",
+        "the script owns stdout; uf must not render onto it"
+    );
+
+    let failed = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .env("UF_FIXTURE_EXIT", "42")
+        .args(["exec", "./scripts/codegen.js"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        failed.status.code(),
+        Some(42),
+        "the script's exit status is uf's:\n{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
+}
+
+/// A package the project never installed is refused, loudly.
+///
+/// Fetching an unpinned name from a registry and executing its binary is the
+/// most dangerous thing a package manager does, and uf already refuses to run
+/// a dependency's install scripts without being asked. `--yes` is how you ask;
+/// without it this is an error and not a shrug. See ubugeeei-prod/uf#274.
+#[test]
+fn exec_refuses_to_fetch_a_package_the_project_has_not_installed() {
+    let project = Project::new(&[]);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "uf-nonexistent-fixture-package", "hello"])
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "stdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    for expected in [
+        "uf-nonexistent-fixture-package is not installed",
+        "uf.lock",
+        "uf exec --yes uf-nonexistent-fixture-package",
+        // Naming the command it would run, with the arguments forwarded, so
+        // the reader can decide by reading rather than by trusting.
+        "uf-nonexistent-fixture-package hello",
+    ] {
+        assert!(
+            stderr.contains(expected),
+            "missing {expected:?} in:\n{stderr}"
+        );
+    }
+    assert!(
+        !stderr.contains("cached execution request"),
+        "the old shrug is still there:\n{stderr}"
     );
 }
 
@@ -1044,16 +1201,11 @@ fn explain_says_which_commands_it_knows() {
 /// The other half of {@link explain_describes_every_command_that_delegates}:
 /// the test asks `uf` itself for its commands, so a new one has to land in
 /// one list or the other. `help` and `completion` are clap's; `create`,
-/// `explain`, `info`, `inspect` and `exec` are uf's own work start to finish.
-const SELF_CONTAINED: &[&str] = &[
-    "completion",
-    "create",
-    "exec",
-    "explain",
-    "help",
-    "info",
-    "inspect",
-];
+/// `explain`, `info` and `inspect` are uf's own work start to finish.
+///
+/// `exec` left this list when it started running things: three of its four
+/// paths hand control to something else, so there is a provider to name.
+const SELF_CONTAINED: &[&str] = &["completion", "create", "explain", "help", "info", "inspect"];
 
 /// Every command `uf` has is either explained or classified.
 ///
@@ -1157,6 +1309,62 @@ fn explain_emits_json_when_asked() {
     assert!(
         value["configurationSources"].as_array().is_some(),
         "{value}"
+    );
+}
+
+/// `uf explain exec` describes the path that runs without asking.
+///
+/// `exec_package` tries four things in order, and the explanation listed three:
+/// uf's own packages, `node_modules/.bin`, and the package manager. The one it
+/// skipped runs an explicit path — `ufx ./scripts/codegen.js` — and it sits
+/// *before* the package-manager branch, so a reader who came here to find out
+/// what would happen was told their path would be fetched from a registry and
+/// refused without `--yes`, when in fact it executes with no consent asked for
+/// at all.
+///
+/// Being wrong about which of two paths asks permission is the one thing this
+/// command must not be, which is why the order is asserted and not only the
+/// presence.
+#[test]
+fn explain_exec_describes_every_path_exec_actually_takes() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "exec", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("uf explain --json emits JSON");
+    let stages = value["stages"].as_array().expect("stages is an array");
+    let names: Vec<&str> = stages
+        .iter()
+        .map(|stage| stage["name"].as_str().unwrap())
+        .collect();
+
+    // One per branch of `exec_package`, in `exec_package`'s order.
+    assert_eq!(
+        names,
+        vec![
+            "uf's own packages",
+            "installed binaries",
+            "an explicit path",
+            "everything else",
+        ],
+        "{value}"
+    );
+    // And the reader is told which of the two asks first.
+    let explicit = stages[2]["detail"].as_str().unwrap();
+    assert!(
+        explicit.contains("--yes"),
+        "the explicit-path stage must say whether it asks: {explicit}"
     );
 }
 

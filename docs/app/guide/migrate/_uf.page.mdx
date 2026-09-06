@@ -18,12 +18,14 @@ moved a large application to uf yet, because the packages are not on npm
 
 Answer these before you read the rest. Each one is a wall, not a speed bump.
 
-**Does your application render per request in production?** `uf build`
-prerenders every static route and stops. There is no `uf start`, no
-`uf preview`, and the server bundle is written outside `dist/` — so SSR, route
-handlers and every deployment adapter work under `uf dev` and disappear at build
-time ([#250](https://github.com/ubugeeei-prod/uf/issues/250)). If your answer is
-yes, stop here and read [uf compared](/guide/compare) instead.
+**Where do you deploy?** A build renders per request, serves route handlers
+and streams — through `uf preview`, `uf start`, the directory
+`uf build --adapter node` writes, or the file `uf build --compile` writes. What
+is missing is the *targets*: `node` is the only one of the seven deploy
+adapters implemented, so a project that needs a Cloudflare Worker or a Lambda
+has an entry file to write and no help writing it yet
+([#391](https://github.com/ubugeeei-prod/uf/issues/391)). If that is you, read
+[uf compared](/guide/compare) before you start.
 
 **Do you have TypeScript you cannot convert?** uf transforms `.js`, `.jsx`,
 `.mjs` and `.cjs` in your project and nothing else. A `.ts` file is handed to
@@ -180,7 +182,8 @@ The conventions line up more closely than the capabilities do:
 | `export const metadata` | `metadata` on a page or layout, merged along the path with the page last |
 | `next/link` | `Link` from `@uniflowed/router`, prefetching on intent |
 | `next/image` | `Image` from `@uniflowed/web` — layout-stable markup, no pipeline ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
-| `loading.tsx`, `error.tsx` | neither exists yet ([#257](https://github.com/ubugeeei-prod/uf/issues/257)) |
+| `loading.tsx` | `_uf.loading.js` — a `<Suspense>` boundary per segment, nested; the loader is still awaited before the render ([#373](https://github.com/ubugeeei-prod/uf/issues/373)) |
+| `error.tsx` | `_uf.error.js`, one file for 401, 403 and 500 as cases of `RouteError` |
 
 **Cost.** For a statically exportable site, the same as the Vite path plus the
 route renaming. For anything else, it is not a cost — it is a blocker, and the

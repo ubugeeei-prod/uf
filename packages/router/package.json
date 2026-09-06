@@ -15,13 +15,15 @@
     "./client": "./client.js",
     "./server": "./server.js",
     "./package.json": "./package.json",
-    "./handler": "./handler.js"
+    "./handler": "./handler.js",
+    "./middleware": "./middleware.js"
   },
   "files": [
     "client.js",
     "handler.js",
     "index.js",
     "internal",
+    "middleware.js",
     "server.js"
   ],
   "peerDependencies": {

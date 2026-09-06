@@ -101,23 +101,29 @@ pub enum CapabilityJsHost {
 pub struct DeployAnywhereConfig {
     /// Whether deploy adapter planning is enabled.
     pub enabled: bool,
-    /// Supported adapters.
+    /// The adapter `uf build` writes an artefact for when none is named on the
+    /// command line. `None` means `uf build` writes what it always wrote.
+    pub adapter: Option<DeployAdapter>,
+    /// Adapters this toolchain can produce an artefact for.
     pub adapters: Vec<DeployAdapter>,
 }
 
 impl Default for DeployAnywhereConfig {
+    /// One adapter, because there is one implementation.
+    ///
+    /// This listed all seven, and every one of them was a name. Grepping the
+    /// workspace for `DeployAdapter` outside this crate found nothing, so the
+    /// list described a feature rather than reporting one — which is precisely
+    /// what `docs/red-lines.md` closes with and what ubugeeei-prod/uf#250 and
+    /// ubugeeei-prod/uf#335 are about. The default is now what
+    /// [`DeployAdapter::is_implemented`] says is true, and naming any of the
+    /// other six is an error that says which issue tracks it rather than a
+    /// build that quietly produces nothing.
     fn default() -> Self {
         Self {
             enabled: true,
-            adapters: vec![
-                DeployAdapter::Node,
-                DeployAdapter::Bun,
-                DeployAdapter::Deno,
-                DeployAdapter::Edge,
-                DeployAdapter::Serverless,
-                DeployAdapter::Static,
-                DeployAdapter::Container,
-            ],
+            adapter: None,
+            adapters: vec![DeployAdapter::Node],
         }
     }
 }
@@ -140,6 +146,60 @@ pub enum DeployAdapter {
     Static,
     /// Container deployment.
     Container,
+}
+
+impl DeployAdapter {
+    /// Every adapter, implemented or not, in the order they are documented.
+    pub const ALL: &'static [Self] = &[
+        Self::Node,
+        Self::Bun,
+        Self::Deno,
+        Self::Edge,
+        Self::Serverless,
+        Self::Static,
+        Self::Container,
+    ];
+
+    /// The name a person writes, in `uf.config.js` and after `--adapter`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Node => "node",
+            Self::Bun => "bun",
+            Self::Deno => "deno",
+            Self::Edge => "edge",
+            Self::Serverless => "serverless",
+            Self::Static => "static",
+            Self::Container => "container",
+        }
+    }
+
+    /// Whether `uf build --adapter` can actually write this one.
+    ///
+    /// The distinction is load-bearing rather than documentary: it is what
+    /// makes `uf build --adapter edge` an error naming an issue instead of a
+    /// command that appears to work. Keep it in step with
+    /// `docs/app/reference/cli/_uf.page.mdx`, which is where a reader looks
+    /// first.
+    #[must_use]
+    pub const fn is_implemented(self) -> bool {
+        matches!(self, Self::Node)
+    }
+
+    /// The issue that tracks an adapter nobody has written yet.
+    ///
+    /// One issue rather than one per target, because they are one piece of
+    /// work: the application half is already shared (`@uniflowed/server/fetch`),
+    /// and what each of the six still needs is its own entry file and its own
+    /// answer for where the static half lives.
+    #[must_use]
+    pub const fn tracking_issue(self) -> Option<u32> {
+        if self.is_implemented() {
+            None
+        } else {
+            Some(391)
+        }
+    }
 }
 
 /// Development/server runtime settings.

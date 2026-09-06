@@ -1,21 +1,20 @@
 //! `uf run` and `ufx`: the two commands that hand control to another process.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::env;
-use std::fs;
 use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
-use serde_json::json;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
-use uf_pm::PackageManagerPlan;
-use uf_term::{Cell, Column, KeyValue, Status, Table, Tone, display_width, truncate_to_width};
+use uf_pm::{Operation, PackageManager, command_for, detect_package_manager};
+use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
 use crate::cli::CreateCommand;
 use crate::commands::{create, pm, test};
 use crate::suggest::closest;
-use crate::support::{plural, project_label, safe_file_label, write_json_file};
+use crate::support::{plural, project_label};
 use crate::ui::Ui;
 
 pub(crate) fn run_task(cwd: &Utf8Path, script: &str, args: &[String]) -> Result<()> {
@@ -290,87 +289,230 @@ fn execute_vite_task(resolved: &ResolvedConfig, script: &str, args: &[String]) -
     Ok(())
 }
 
+/// `uf exec PACKAGE [ARGS...]`, also spelled `ufx`.
+///
+/// Four paths, tried in order, and every one of them either runs something or
+/// fails:
+///
+///  1. a package uf implements itself, run in this process;
+///  2. a binary the project has already installed, in `node_modules/.bin`;
+///  3. a path the caller gave, executed as written;
+///  4. a package that is not installed — fetched and run through the detected
+///     package manager, but only when the caller said `--yes`.
+///
+/// # What this used to do
+///
+/// It wrote `.uf/exec-cache/<package>.json`, printed "cached execution request
+/// for registry resolution", and exited 0 having run nothing. Nothing ever
+/// read that file back, so the directory was named a cache and cached nothing;
+/// it existed so that a command with nothing to do had something to write. A
+/// CI job whose step was `ufx some-codegen` went green having generated
+/// nothing. See ubugeeei-prod/uf#274.
+///
+/// # Why fetching asks first
+///
+/// Fetching a package that is not in the lockfile and running its binary is
+/// the most dangerous thing a package manager does, and uf has already taken a
+/// position one step later: `pm.allowLifecycleScripts` is false by default and
+/// `uf install` passes `--ignore-scripts` through to whichever manager runs.
+/// Downloading and executing an unpinned name silently would be the same hole
+/// one step earlier, so it needs `--yes` — the flag `npx` spells the same way,
+/// for the same reason. `docs/security.md` records the decision.
+///
+/// A binary in `node_modules/.bin` needs no such consent: it is already
+/// installed, already in the tree the lockfile pins, and running it is what
+/// `npm exec` and `pnpm exec` do without asking.
 pub(crate) fn exec_package(
     cwd: &Utf8Path,
     ui: &mut Ui,
     package: &str,
     args: &[String],
+    yes: bool,
 ) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
-    let cache_dir = resolved.root.join(".uf/exec-cache");
-    fs::create_dir_all(&cache_dir).with_context(|| format!("failed to create {cache_dir}"))?;
-    let manifest = cache_dir.join(format!("{}.json", safe_file_label(package)));
-    write_json_file(
-        &manifest,
-        &json!({
-            "version": 1,
-            "package": package,
-            "args": args,
-            "resolver": package_manager.resolver,
-            "lockfile": package_manager.lockfile.as_str(),
-        }),
-    )?;
 
-    let resolver = format!("{:?}", package_manager.resolver);
-    let lockfile = package_manager.lockfile.to_string();
-    let manifest_path = manifest.to_string();
-    let argument_count = args.len().to_string();
-    ui.render(|renderer, out| {
-        renderer.banner(out, "ufx", Some(package));
-        renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("resolver", &resolver),
-                KeyValue::toned("lockfile", &lockfile, Tone::Path),
-                KeyValue::toned("arguments", &argument_count, Tone::Number),
-                KeyValue::toned("manifest", &manifest_path, Tone::Path),
-            ],
-        );
-        renderer.blank(out);
-    });
-
+    // uf's own packages first, and they are the only path that renders
+    // anything: every other one hands stdout to a child process, and a banner
+    // printed above somebody else's output is uf writing on a report it did
+    // not produce. `uf run` has held that line since it was written.
     if exec_uniflowed_virtual_package(cwd, ui, package, args)? {
         return Ok(());
     }
 
+    if let Some(binary) = installed_binary(&resolved.root, package) {
+        return spawn_executable(&resolved.root, ui, &binary, args, package);
+    }
+
+    // A path, executed as written. `ufx ./scripts/codegen.js` is a thing
+    // people do, and it is not a package name.
     let candidate = Utf8PathBuf::from(package);
     let executable = if candidate.is_absolute() {
         candidate
     } else {
         resolved.root.join(candidate)
     };
-    if executable.exists() {
-        let status = ProcessCommand::new(executable.as_std_path())
-            .args(args)
-            .current_dir(resolved.root.as_std_path())
-            .status()
-            .with_context(|| format!("failed to execute {executable}"))?;
-        if !status.success() {
-            bail!("{package} exited with {status}");
-        }
-        return Ok(());
+    if executable.is_file() {
+        return spawn_executable(&resolved.root, ui, &executable, args, package);
     }
 
-    ui.render(|renderer, out| {
-        renderer.status(
-            out,
-            Status::Info,
-            "cached execution request for registry resolution",
+    let detection = detect_package_manager(&resolved.root);
+    let manager = fetchable(detection.package_manager);
+    let mut invocation = command_for(manager, Operation::DlxExec);
+    invocation.args.push(Cow::Owned(package.to_owned()));
+    invocation
+        .args
+        .extend(args.iter().map(|arg| Cow::Owned(arg.clone())));
+
+    if !yes {
+        // Naming the exact command it would otherwise run, so the decision is
+        // made by reading rather than by trusting. `uf add` is not a command
+        // uf has, so the hint says what a person can actually type.
+        bail!(
+            "{package} is not installed in this project, and fetching it would run code \
+             {lockfile} does not pin.\n\
+             Declare it in package.json and run `uf install`, or say so explicitly:\n\
+             `uf exec --yes {package}`, which runs `{invocation}`.",
+            lockfile = resolved.config.pm.lockfile,
         );
+    }
+
+    // On stderr, so the fetched binary still owns stdout. Printed rather than
+    // silent because "uf downloaded and ran something" is not a thing a person
+    // should have to infer from a network light.
+    let announcement = format!("fetching and running {package} with `{invocation}`");
+    ui.render_err(|renderer, out| {
+        renderer.status(out, Status::Info, &announcement);
     });
+
+    let status = ProcessCommand::new(invocation.program)
+        .args(invocation.args.iter().map(AsRef::as_ref))
+        .current_dir(resolved.root.as_std_path())
+        .status()
+        .with_context(|| format!("failed to run `{invocation}`"))?;
+    if !status.success() {
+        adopt_exit_status(ui, status, package);
+    }
     Ok(())
 }
 
+/// The project's installed binary for `package`, when there is one.
+///
+/// `node_modules/.bin` is where every package manager links a dependency's
+/// executables, so this is the same lookup `npm exec` does before it considers
+/// fetching anything. A scoped name is linked under its bare binary name —
+/// `@scope/thing` installs `thing` — which is why the last segment is what is
+/// looked up.
+///
+/// One name, and on Windows that is the wrong number. A package manager writes
+/// three files there — `<name>` for Git Bash, `<name>.cmd`, `<name>.ps1` — and
+/// this finds the first, which Windows cannot execute. It is
+/// ubugeeei-prod/uf#390 rather than a fix here: uf publishes no Windows
+/// artifact (#309) and CI has no Windows runner, so a `#[cfg(windows)]` branch
+/// added now would compile nowhere, run nowhere, and read as a solved problem
+/// to the first person who built for it.
+fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
+    let name = package.rsplit('/').next().unwrap_or(package);
+    // Nothing good comes of joining a caller's string onto a path when it can
+    // climb out of it, and `uf exec ../../evil` must not become a lookup in
+    // somebody else's `node_modules`.
+    if name.is_empty() || name.contains(std::path::is_separator) || name.starts_with('.') {
+        return None;
+    }
+    let binary = root.join("node_modules/.bin").join(name);
+    binary.is_file().then_some(binary)
+}
+
+/// Run one executable, forwarding its arguments and its exit status.
+fn spawn_executable(
+    root: &Utf8Path,
+    ui: &mut Ui,
+    executable: &Utf8Path,
+    args: &[String],
+    package: &str,
+) -> Result<()> {
+    let status = ProcessCommand::new(executable.as_std_path())
+        .args(args)
+        .current_dir(root.as_std_path())
+        .status()
+        .with_context(|| format!("failed to execute {executable}"))?;
+    if !status.success() {
+        adopt_exit_status(ui, status, package);
+    }
+    Ok(())
+}
+
+/// Report a child's failure and leave with the child's own exit code.
+///
+/// Not a `bail!`. An error out of `run` becomes [`ExitCode::FAILURE`], which is
+/// `1`, so every code a child could exit with — `jest`'s, `eslint`'s, a
+/// codegen script's `42` — arrived at the caller as the same number, and a
+/// script branching on it could tell nothing apart. `docs/app/reference/cli`
+/// has said "exiting with its status" since this command started running
+/// anything at all, and #353 said "exit status adopted"; neither was true of
+/// any of the three paths that spawn.
+///
+/// `std::process::exit`, because there is nowhere else to put a number:
+/// `run` answers `Result<()>` for every command and `main` turns that into one
+/// of two codes. `uf env exec` reached the same conclusion and makes the same
+/// call, and its comment says the rest. Nothing is buffered past this point —
+/// `Ui` writes and flushes inside `render_err` — so there is nothing for the
+/// skipped destructors to lose.
+///
+/// A child killed by a signal has no code of its own, and answers `1` here.
+/// That loses which signal it was, and matching `uf env exec` is worth more
+/// than fixing it in one of the two commands: a sibling pair that disagreed
+/// about the same event would be the harder thing to reason about.
+fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, package: &str) -> ! {
+    // Said before leaving, because the number alone does not say whose it is:
+    // a reader looking at `42` should not have to guess whether uf failed or
+    // the thing uf ran did.
+    ui.error(&anyhow::anyhow!("{package} exited with {status}"));
+    std::process::exit(status.code().unwrap_or(1));
+}
+
+/// The manager that can fetch and run a package that is not installed.
+///
+/// [`PackageManager::Uf`] is what detection reports both when a project pins
+/// uf and when it shows no evidence of any manager, and uf's own resolver
+/// cannot fetch yet — the same reason [`uf_pm::run_install`] substitutes npm,
+/// and the same substitution. `npx` comes with Node.js, which a uf project
+/// needs anyway.
+pub(crate) fn fetchable(manager: PackageManager) -> PackageManager {
+    match manager {
+        PackageManager::Uf => PackageManager::Npm,
+        other => other,
+    }
+}
+
 /// Packages `uf` implements itself, rather than fetching from a registry.
+///
+/// The banner is here rather than in [`exec_package`] because this is the only
+/// path where uf is the thing that runs: every other one spawns a process and
+/// gives it stdout, and a heading printed above another program's output is uf
+/// signing a report it did not write.
 fn exec_uniflowed_virtual_package(
     cwd: &Utf8Path,
     ui: &mut Ui,
     package: &str,
     args: &[String],
 ) -> Result<bool> {
+    if !matches!(
+        package,
+        "@uniflowed/create"
+            | "uf/create"
+            | "@uniflowed/test"
+            | "uf/test"
+            | "@uniflowed/pm"
+            | "uf/pm"
+    ) {
+        return Ok(false);
+    }
+
+    ui.render(|renderer, out| {
+        renderer.banner(out, "ufx", Some(package));
+        renderer.blank(out);
+    });
+
     match package {
         "@uniflowed/create" | "uf/create" => {
             let Some(kind) = args.first().map(String::as_str) else {

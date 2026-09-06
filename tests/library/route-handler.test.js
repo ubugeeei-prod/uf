@@ -10,7 +10,8 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
-import { after, cookies, headers } from "@uniflowed/server";
+import { beginRequest } from "@uniflowed/router/server";
+import { cookies, headers } from "@uniflowed/server";
 
 /** A table entry whose module is given inline. */
 const record = (path, module) => ({
@@ -22,11 +23,30 @@ const record = (path, module) => ({
 
 const get = (url, init) => new Request(`http://localhost${url}`, init);
 
+/**
+ * The dispatcher, as a host calls it: inside a request the host owns and
+ * settles.
+ *
+ * The same scaffolding `middleware.test.js` has, and for the same reason: the
+ * dispatcher no longer builds a context of its own, so it does not run outside
+ * one. What the lifecycle is for is `request-lifecycle.test.js`.
+ */
+const hosted = (dispatch) => async (request) => {
+  const { run, settle } = beginRequest(request);
+  try {
+    return await run(() => dispatch(request));
+  } finally {
+    await settle();
+  }
+};
+
 describe("matching", () => {
   it("answers a literal path", async () => {
-    const dispatch = createDispatcher({
-      handlers: [record("/api/health", { GET: () => new Response("ok") })],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [record("/api/health", { GET: () => new Response("ok") })],
+      }),
+    );
 
     const response = await dispatch(get("/api/health"));
     expect(response?.status).toBe(200);
@@ -34,9 +54,11 @@ describe("matching", () => {
   });
 
   it("declines a path it does not have, so the caller can render a page", async () => {
-    const dispatch = createDispatcher({
-      handlers: [record("/api/health", { GET: () => new Response("ok") })],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [record("/api/health", { GET: () => new Response("ok") })],
+      }),
+    );
 
     // `null` rather than a 404: `/about` is a page, and the dispatcher saying
     // nothing is how it gets out of the way.
@@ -44,26 +66,30 @@ describe("matching", () => {
   });
 
   it("passes the path parameters", async () => {
-    const dispatch = createDispatcher({
-      handlers: [
-        record("/api/users/:id", {
-          GET: (request, context) => Response.json({ id: context.params.id }),
-        }),
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/users/:id", {
+            GET: (request, context) => Response.json({ id: context.params.id }),
+          }),
+        ],
+      }),
+    );
 
     const response = await dispatch(get("/api/users/42"));
     expect(await response?.json()).toEqual({ id: "42" });
   });
 
   it("gives a catch-all the rest of the path", async () => {
-    const dispatch = createDispatcher({
-      handlers: [
-        record("/files/:path*", {
-          GET: (request, context) => Response.json(context.params.path),
-        }),
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/files/:path*", {
+            GET: (request, context) => Response.json(context.params.path),
+          }),
+        ],
+      }),
+    );
 
     expect(await (await dispatch(get("/files/a/b/c")))?.json()).toEqual(["a", "b", "c"]);
     // Zero segments as well as many: `/files` is the collection.
@@ -71,13 +97,15 @@ describe("matching", () => {
   });
 
   it("prefers the more specific path", async () => {
-    const dispatch = createDispatcher({
-      handlers: [
-        record("/api/users/:id", { GET: () => new Response("by id") }),
-        record("/api/users/new", { GET: () => new Response("new") }),
-        record("/api/:rest*", { GET: () => new Response("catch all") }),
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/users/:id", { GET: () => new Response("by id") }),
+          record("/api/users/new", { GET: () => new Response("new") }),
+          record("/api/:rest*", { GET: () => new Response("catch all") }),
+        ],
+      }),
+    );
 
     // A literal beats a parameter and a parameter beats a catch-all, whatever
     // order the table happens to be in.
@@ -87,35 +115,41 @@ describe("matching", () => {
   });
 
   it("does not match a longer path against a shorter route", async () => {
-    const dispatch = createDispatcher({
-      handlers: [record("/api/users", { GET: () => new Response("list") })],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [record("/api/users", { GET: () => new Response("list") })],
+      }),
+    );
     expect(await dispatch(get("/api/users/42"))).toBe(null);
   });
 
   it("hands the query string over parsed", async () => {
-    const dispatch = createDispatcher({
-      handlers: [
-        record("/api/search", {
-          GET: (request, context) => new Response(context.searchParams.get("q") ?? ""),
-        }),
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/search", {
+            GET: (request, context) => new Response(context.searchParams.get("q") ?? ""),
+          }),
+        ],
+      }),
+    );
     expect(await (await dispatch(get("/api/search?q=flow")))?.text()).toBe("flow");
   });
 });
 
 describe("methods", () => {
   const table = () =>
-    createDispatcher({
-      handlers: [
-        record("/api/thing", {
-          GET: () => new Response("read"),
-          POST: async (request) => Response.json(await request.json(), { status: 201 }),
-          helper: () => new Response("not a method"),
-        }),
-      ],
-    });
+    hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/thing", {
+            GET: () => new Response("read"),
+            POST: async (request) => Response.json(await request.json(), { status: 201 }),
+            helper: () => new Response("not a method"),
+          }),
+        ],
+      }),
+    );
 
   it("routes each method to its own export", async () => {
     expect(await (await table()(get("/api/thing")))?.text()).toBe("read");
@@ -153,14 +187,16 @@ describe("methods", () => {
   });
 
   it("lets a module answer HEAD itself", async () => {
-    const dispatch = createDispatcher({
-      handlers: [
-        record("/api/thing", {
-          GET: () => new Response("body"),
-          HEAD: () => new Response(null, { status: 204 }),
-        }),
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/thing", {
+            GET: () => new Response("body"),
+            HEAD: () => new Response(null, { status: 204 }),
+          }),
+        ],
+      }),
+    );
     expect((await dispatch(get("/api/thing", { method: "HEAD" })))?.status).toBe(204);
   });
 
@@ -172,15 +208,17 @@ describe("methods", () => {
 
 describe("errors", () => {
   it("lets a handler's error out rather than turning it into a 500", async () => {
-    const dispatch = createDispatcher({
-      handlers: [
-        record("/api/broken", {
-          GET: () => {
-            throw new Error("bug in the handler");
-          },
-        }),
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/broken", {
+            GET: () => {
+              throw new Error("bug in the handler");
+            },
+          }),
+        ],
+      }),
+    );
 
     // Swallowing it would hide a bug the host's own error reporting should
     // see, and the handler cannot tell the difference between a 500 it meant
@@ -190,19 +228,21 @@ describe("errors", () => {
 
   it("loads a module only when its path is asked for", async () => {
     let loaded = 0;
-    const dispatch = createDispatcher({
-      handlers: [
-        {
-          path: "/api/lazy",
-          params: [],
-          file: "app/api/lazy/_uf.route.js",
-          load: async () => {
-            loaded += 1;
-            return { GET: () => new Response("ok") };
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          {
+            path: "/api/lazy",
+            params: [],
+            file: "app/api/lazy/_uf.route.js",
+            load: async () => {
+              loaded += 1;
+              return { GET: () => new Response("ok") };
+            },
           },
-        },
-      ],
-    });
+        ],
+      }),
+    );
 
     await dispatch(get("/elsewhere"));
     expect(loaded).toBe(0);
@@ -213,24 +253,26 @@ describe("errors", () => {
 
 describe("the request a handler is inside", () => {
   it("lets a handler read the request's headers and cookies with no argument", async () => {
-    // The dispatcher establishes the context; `headers()` and `cookies()` take
+    // The host establishes the context; `headers()` and `cookies()` take
     // nothing and answer about the request being handled.
-    const dispatch = createDispatcher({
-      handlers: [
-        {
-          path: "/api/who",
-          params: [],
-          file: "app/api/who/_uf.route.js",
-          load: async () => ({
-            GET: () =>
-              Response.json({
-                agent: headers().get("x-agent"),
-                session: cookies().get("session"),
-              }),
-          }),
-        },
-      ],
-    });
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          {
+            path: "/api/who",
+            params: [],
+            file: "app/api/who/_uf.route.js",
+            load: async () => ({
+              GET: () =>
+                Response.json({
+                  agent: headers().get("x-agent"),
+                  session: cookies().get("session"),
+                }),
+            }),
+          },
+        ],
+      }),
+    );
 
     const response = await dispatch(
       new Request("https://uniflowed.dev/api/who", {
@@ -241,29 +283,16 @@ describe("the request a handler is inside", () => {
     expect(await response?.json()).toEqual({ agent: "uf", session: "abc" });
   });
 
-  it("runs deferred work after the handler has answered", async () => {
-    const done: Array<string> = [];
+  it("refuses to run outside a request, naming what establishes one", async () => {
     const dispatch = createDispatcher({
-      handlers: [
-        {
-          path: "/api/defer",
-          params: [],
-          file: "app/api/defer/_uf.route.js",
-          load: async () => ({
-            GET: () => {
-              after(() => {
-                done.push("deferred");
-              });
-              done.push("responded");
-              return new Response("ok");
-            },
-          }),
-        },
-      ],
+      handlers: [record("/api/thing", { GET: () => new Response("ok") })],
     });
 
-    await dispatch(new Request("https://uniflowed.dev/api/defer"));
-
-    expect(done).toEqual(["responded", "deferred"]);
+    // The same refusal the middleware runner makes, and for the same reason:
+    // the failure belongs to whoever wired the host, so it says so there
+    // rather than surfacing as a confused `cookies()` further in.
+    await expect(dispatch(get("/api/thing"))).rejects.toThrow(
+      "dispatch() was called outside a request",
+    );
   });
 });

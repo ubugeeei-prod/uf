@@ -16,8 +16,10 @@ use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::json;
 use uf_config::{ResolvedConfig, load_config};
+use uf_pm::{Operation, command_for, detect_package_manager};
 use uf_term::KeyValue;
 
+use crate::commands::task::fetchable;
 use crate::support::project_label;
 use crate::ui::Ui;
 
@@ -36,8 +38,8 @@ struct Stage {
 /// are absent on purpose: there is no provider to name, and an entry saying
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
-    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "install",
-    "upgrade", "use", "env", "prepare", "publish", "release", "lsp",
+    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
+    "install", "upgrade", "use", "env", "prepare", "publish", "release", "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -53,6 +55,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         "lint" => lint_stages(&resolved),
         "check" => check_stages(&resolved),
         "run" => run_stages(&resolved),
+        "exec" => exec_stages(&resolved),
         "install" => install_stages(&resolved),
         "upgrade" => upgrade_stages(&resolved),
         "use" | "env" => runtime_stages(&resolved),
@@ -183,7 +186,60 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     ]
 }
 
-/// `uf install`, whose whole question is which resolver decides a tree.
+/// `uf exec`, which is four different commands wearing one name.
+///
+/// Worth explaining precisely because of that: the answer to "what will
+/// `ufx foo` do" is one of four things, and which one depends on a directory
+/// listing the reader cannot see. It used to be a fifth — write a JSON file and
+/// exit 0 — which is the thing nobody could have guessed.
+///
+/// The stages are `exec_package`'s branches in `exec_package`'s order, and that
+/// is the whole contract of this function. The explicit-path stage was missing
+/// for a while and the omission was not cosmetic: `ufx ./scripts/codegen.js`
+/// runs *before* the package-manager branch, so a reader who checked here was
+/// told their path would be fetched from a registry and refused without
+/// `--yes`, when in fact it runs with no consent asked for at all. Being wrong
+/// about which of two paths asks permission is the one thing this command must
+/// not be.
+fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "uf's own packages",
+            provider: "uf".to_string(),
+            detail: "@uniflowed/create, @uniflowed/test and @uniflowed/pm run in this process"
+                .to_string(),
+        },
+        Stage {
+            name: "installed binaries",
+            provider: "the project".to_string(),
+            detail: format!(
+                "anything in {}, run directly with your arguments and its exit status",
+                resolved.root.join("node_modules/.bin")
+            ),
+        },
+        Stage {
+            name: "an explicit path",
+            provider: "the project".to_string(),
+            detail: format!(
+                "a name that is a file — `ufx ./scripts/codegen.js` — is executed as written from {}, with no --yes asked for",
+                resolved.root
+            ),
+        },
+        Stage {
+            name: "everything else",
+            provider: command_for(
+                fetchable(detect_package_manager(&resolved.root).package_manager),
+                Operation::DlxExec,
+            )
+            .to_string(),
+            detail: format!(
+                "a package that is not installed: refused unless --yes, because fetching a name {} does not pin runs code the project never asked for",
+                resolved.config.pm.lockfile
+            ),
+        },
+    ]
+}
+
 fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {
@@ -398,7 +454,42 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "@uniflowed/router".to_string(),
             detail: "every route without parameters, to static HTML".to_string(),
         },
+        adapter_stage(resolved),
     ]
+}
+
+/// Which deploy adapter a build will write for, named rather than assumed.
+///
+/// Red line 7, and the last unticked box of ubugeeei-prod/uf#250: an
+/// integrated toolchain that cannot say what it is doing is a black box, and
+/// "which of the seven targets did that build produce" is a question a person
+/// asks at exactly the moment they can least afford to guess.
+///
+/// A project that has asked for none is told so, and told what the build
+/// therefore is: `dist/` plus a server bundle that needs the checkout around
+/// it. That sentence is the honest description of `uf build` today, and it is
+/// the reason `--adapter` exists.
+fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
+    match resolved.config.app.runtime.deploy.adapter {
+        Some(adapter) => Stage {
+            name: "adapter",
+            provider: format!("uf ({})", adapter.as_str()),
+            detail: format!(
+                ".uf/deploy/{}: handler.js, server.js and a copy of {}",
+                adapter.as_str(),
+                resolved.config.build.out_dir
+            ),
+        },
+        None => Stage {
+            name: "adapter",
+            provider: "none".to_string(),
+            detail: format!(
+                "{} plus a server bundle that needs this checkout; \
+                 `uf build --adapter node` writes a directory that does not",
+                resolved.config.build.out_dir
+            ),
+        },
+    }
 }
 
 /// `uf preview`, whose whole question is who answers a request.
@@ -424,7 +515,7 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "requests vite did not answer",
-            provider: "@uniflowed/router".to_string(),
+            provider: "@uniflowed/server".to_string(),
             detail: "route handlers, then a render — from .uf/build/server/server.js".to_string(),
         },
     ]
@@ -441,7 +532,12 @@ fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         host_stage(resolved),
         Stage {
             name: "server",
-            provider: "@uniflowed/vite (node:http)".to_string(),
+            // `@uniflowed/server`, and no longer `@uniflowed/vite`: the socket,
+            // the file lookup and the request translation moved there when the
+            // first deploy adapter needed them, and a deployment may not link
+            // the package named after the bundler. Naming the old one here
+            // would be `uf explain` describing a graph uf no longer has.
+            provider: "@uniflowed/server (node:http)".to_string(),
             detail: format!(
                 "static files from {}, then route handlers, then a render",
                 resolved.config.build.out_dir

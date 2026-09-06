@@ -20,6 +20,17 @@
 //! and a CI runner that forgot to will say so rather than silently cover less.
 //! `uf build --compile` needs Bun as well, and skips on the same terms; see
 //! [`bun_ready`].
+//!
+//! Two tests here assert about an *artefact* rather than about a server: the
+//! directory `uf build --adapter node` writes and the file `uf build
+//! --compile` writes are each copied somewhere with nothing else in it and
+//! asked. Both keep the half that needs no socket unconditional, because that
+//! half is the one that says whether the copy carries the application.
+//!
+//! One test here never reaches Vite:
+//! [`a_contract_violation_fails_the_build_before_vite_runs`]. It belongs with
+//! the others because what it asserts about is `uf build`, and because the
+//! phase it asserts about is the one that decides whether Vite runs at all.
 
 mod support;
 
@@ -31,7 +42,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use support::{assert_plain, uf, uf_path};
+use support::{Project, assert_plain, uf, uf_path};
 
 /// The repository's `docs/` directory.
 fn docs_root() -> PathBuf {
@@ -92,6 +103,20 @@ static DIST: Mutex<()> = Mutex::new(());
 /// second failure here would only bury the first one under this one.
 fn dist_lock() -> std::sync::MutexGuard<'static, ()> {
     DIST.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The same, for the served fixture, which now has two tests building it.
+///
+/// `preview_and_start_serve_the_whole_of_a_build` was the only one, so it
+/// needed no lock. `the_node_adapter_writes_a_directory_that_serves_from_an_
+/// empty_one` builds the same `dist/` and the same `.uf/`, and on a machine
+/// that can bind a socket the two run at once.
+static SERVED: Mutex<()> = Mutex::new(());
+
+fn served_lock() -> std::sync::MutexGuard<'static, ()> {
+    SERVED
+        .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
@@ -204,72 +229,243 @@ fn build_renders_the_docs_site_through_vite() {
     assert!(root.join("router.js").exists());
 }
 
-/// A project with one page that throws, built under `target/`.
+/// A minimal uf application, as `(path, source)` pairs.
 ///
-/// Under `target/` on purpose rather than in a `tests/fixtures` directory:
-/// `@uniflowed/*`, `react` and `react-dom` are resolved by walking up to the
-/// workspace's `node_modules`, so the project has to be inside the repository
-/// — and everything inside it that is not `target/` is linted, formatted and
-/// scanned for tests by uf's own tasks, which would report this page's
-/// deliberate throw as this repository's defect.
-fn project_with_a_throwing_page() -> PathBuf {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/throwing-page");
-    fs::remove_dir_all(&root).ok();
-    for (relative, contents) in [
-        (
-            "package.json",
-            r#"{ "name": "uf-throwing-page", "private": true, "type": "module" }
-"#,
-        ),
-        (
-            "uf.config.js",
-            r#"// @flow
-import { defineConfig } from "@uniflowed/config";
-
-export default defineConfig({
-  app: { router: { entry: "app.js", root: "app" } },
-  build: { entries: ["app.js"], outDir: "dist" },
-});
-"#,
-        ),
+/// Small on purpose: these tests are about one phase of the build each, and a
+/// page with anything in it would put the phase they are about behind a Flow
+/// compile of somebody's idea of a demo.
+fn minimal_app() -> Vec<(&'static str, &'static str)> {
+    vec![
         (
             "app.js",
-            r#"// @flow
-import { routerView } from "@uniflowed/router";
-
-export default routerView("./app");
-"#,
+            "// @flow\nimport { routerView } from \"@uniflowed/router\";\n\nexport default routerView(\"./app\");\n",
+        ),
+        (
+            "app/_uf.layout.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Layout(children: React.Node) {\n  return (\n    <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n",
         ),
         (
             "app/_uf.page.js",
-            r#"// @flow
-export default component Home() {
-  return <h1>the home page rendered</h1>;
-}
-"#,
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
         ),
-        (
-            "app/fine/_uf.page.js",
-            r#"// @flow
-export default component Fine() {
-  return <h1>this page is fine</h1>;
+    ]
 }
-"#,
-        ),
-        (
-            "app/broken/_uf.page.js",
-            r#"// @flow
-export default component Broken() {
-  throw new Error("this page throws on purpose");
-}
-"#,
-        ),
-    ] {
-        let file = root.join(relative);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(&file, contents).unwrap();
+
+/// A middleware must run before the path it guards answers.
+///
+/// `_uf.middleware.js` was a reserved name in the Rust router, a reserved name
+/// in the build's router, a documented file convention, a column in `uf
+/// inspect --json` and a file the dev server invalidated the route table for —
+/// and `routesModuleSource` dropped it, so it was never imported and never
+/// called. Someone who wrote one to check a session got an unprotected page
+/// and no diagnostic anywhere. See ubugeeei-prod/uf#260.
+///
+/// Asserted against the built server bundle rather than against a running
+/// server: the whole chain — the directory scan, the generated table, the
+/// bundle, the runner — is exercised either way, and this way the test needs
+/// no socket, so it runs in the sandboxes where `TcpListener::bind` is
+/// refused. `tests/library/middleware.test.js` owns the runner's own rules.
+///
+/// The probe is a host, so it owns the request the way the four real ones do:
+/// `beginRequest` from the bundle, `run` around the guard, `settle` after the
+/// answer. That is not ceremony to satisfy an assertion — it is the second
+/// thing this test now proves. A built bundle has its own inlined copy of
+/// `@uniflowed/server`, so a host that established a request in any other copy
+/// would leave every `cookies()` in the application outside one; taking
+/// `beginRequest` from the bundle is what makes that impossible, and only a
+/// real build can show it. And the `after()` below does not run until `settle`,
+/// which is what the router used to get wrong. See ubugeeei-prod/uf#389.
+#[test]
+fn a_middleware_guards_the_path_it_sits_under() {
+    if !fixture_ready() {
+        return;
     }
-    root
+
+    let mut files = minimal_app();
+    files.push((
+        "app/dashboard/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>secrets</main>;\n}\n",
+    ));
+    files.push((
+        "app/dashboard/_uf.middleware.js",
+        "// @flow\nimport { after } from \"@uniflowed/server\";\n\nconst SECRET_COOKIE_NAME = \"uf-fixture-session\";\n\nexport default function middleware(request: Request): Response | void {\n  after(() => {\n    globalThis.__ufAudited = (globalThis.__ufAudited ?? 0) + 1;\n  });\n  const cookie = request.headers.get(\"cookie\") ?? \"\";\n  if (!cookie.includes(SECRET_COOKIE_NAME)) {\n    return Response.redirect(new URL(\"/sign-in\", request.url), 302);\n  }\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // The bundled server entry, which is what a deployment runs.
+    let server = project.path().join(".uf/build/server/server.js");
+    assert!(server.is_file(), "the build wrote no server bundle");
+    let probe = project.path().join("probe.mjs");
+    fs::write(
+        &probe,
+        format!(
+            r#"const {{ beginRequest, runMiddleware }} = await import({server:?});
+// A host: begin the request, let the guard decide, "write" the answer, settle.
+// `duringAnswer` is what `globalThis.__ufAudited` was before `settle` ran, so
+// the probe can say whether the callback waited for the response or not.
+const at = async (path, init) => {{
+  const request = new Request(`http://localhost${{path}}`, init);
+  const {{ run, settle }} = beginRequest(request);
+  let duringAnswer = null;
+  try {{
+    const answer = await run(() => runMiddleware(request));
+    duringAnswer = globalThis.__ufAudited ?? 0;
+    return answer == null
+      ? {{ duringAnswer }}
+      : {{ status: answer.status, location: answer.headers.get("location"), duringAnswer }};
+  }} finally {{
+    await settle();
+  }}
+}};
+const guarded = await at("/dashboard");
+console.log(JSON.stringify({{
+  guarded,
+  auditedAfterSettle: globalThis.__ufAudited ?? 0,
+  nested: await at("/dashboard/reports/2026"),
+  missing: await at("/dashboard/typo"),
+  withCookie: await at("/dashboard", {{ headers: {{ cookie: "uf-fixture-session=1" }} }}),
+  home: await at("/"),
+}}));
+"#,
+            server = server.to_string_lossy(),
+        ),
+    )
+    .unwrap();
+
+    let ran = Command::new("node").arg(&probe).output().unwrap();
+    assert!(
+        ran.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    let answers: serde_json::Value =
+        serde_json::from_slice(&ran.stdout).expect("the probe printed JSON");
+
+    assert_eq!(
+        answers["guarded"]["status"], 302,
+        "the middleware did not run for the path it guards: {answers}"
+    );
+    assert!(
+        answers["guarded"]["location"]
+            .as_str()
+            .is_some_and(|location| location.ends_with("/sign-in")),
+        "{answers}"
+    );
+    // The subtree, and the paths under it that match no route: a guard that
+    // only covered its own page would leave both open.
+    assert_eq!(answers["nested"]["status"], 302, "{answers}");
+    assert_eq!(answers["missing"]["status"], 302, "{answers}");
+    // And it lets a request through when its own check passes, rather than
+    // being a wall. `null` is gone from the shape — a declining guard now
+    // answers with what the probe observed rather than with nothing — so the
+    // check is that no status came back.
+    assert!(answers["withCookie"]["status"].is_null(), "{answers}");
+    assert!(answers["home"]["status"].is_null(), "{answers}");
+
+    // What `after()` promises, through a real build: the callback the guard
+    // registered had not run while the guard's answer was being decided, and
+    // had run once the host settled the request. The runner used to drain
+    // before returning, so the first of these was 1 — a denial audited before
+    // it was sent, and, on a request the chain let through, before there was a
+    // response to audit at all. See ubugeeei-prod/uf#389.
+    assert_eq!(
+        answers["guarded"]["duringAnswer"], 0,
+        "a middleware's after() ran before the response: {answers}"
+    );
+    assert_eq!(
+        answers["auditedAfterSettle"], 1,
+        "a middleware's after() did not run when the host settled: {answers}"
+    );
+
+    // Server-only, and not by convention: a middleware in the browser bundle
+    // would ship the check to the reader it is meant to keep out.
+    let shipped = fs::read_dir(project.path().join("dist/assets"))
+        .expect("the client build wrote assets")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|kind| kind == "js"))
+        .map(|entry| fs::read_to_string(entry.path()).unwrap_or_default())
+        .collect::<String>();
+    assert!(
+        !shipped.contains("uf-fixture-session"),
+        "the middleware reached the client bundle"
+    );
+}
+
+/// A module that breaks the RSC contract fails the build, and says how.
+///
+/// `uf build` ran the analysis, got back typed diagnostics with a severity of
+/// `error`, printed how many there were — `rsc diagnostics  5`, on this
+/// repository's own documentation site — and exited 0, with the messages in a
+/// JSON file nobody reads. See ubugeeei-prod/uf#281.
+///
+/// The build stops before Vite, so this test needs neither Node nor the
+/// workspace: the phase under test is the one that decides whether the bundle
+/// is worth building.
+#[test]
+fn a_contract_violation_fails_the_build_before_vite_runs() {
+    let mut files = minimal_app();
+    // A page is a Server Component by classification, and `localStorage` is
+    // the browser's. `remember` is never called while the page renders, on
+    // purpose: a violation that also crashes the prerender would fail the
+    // build anyway, and this test would pass without reporting anything. This
+    // one is exactly the case that used to succeed — measured on the pinned
+    // `main` binary: `rsc diagnostics  1`, `✓ build succeeded`, exit 0.
+    files[2] = (
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport function remember(slug: string): void {\n  localStorage.setItem(\"last-seen\", slug);\n}\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
+    );
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "a build with an RSC contract violation must fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for expected in [
+        "app/_uf.page.js",
+        "rsc/client-only-api-in-server",
+        "uses client-only `localStorage`",
+        "React Server Components contract violation",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    // The count in the summary is what this used to be, and a build that
+    // failed after bundling would have printed the summary anyway.
+    assert!(
+        !said.contains("rsc diagnostics"),
+        "the build reached its summary despite a contract violation:\n{said}"
+    );
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "the build prerendered a page despite a contract violation"
+    );
 }
 
 /// A page that throws fails its own route, and nothing else.
@@ -279,14 +475,35 @@ export default component Broken() {
 /// this the prerender loop had no `try` — the first page to throw rejected out
 /// of the driver, the message named the exception rather than the route, and
 /// no page after it was written. See ubugeeei-prod/uf#257.
+///
+/// Built from [`minimal_app`] in a [`Project`] like the tests above, which
+/// puts the deliberate throw under the repository's `.uf/`: inside the
+/// workspace, because `@uniflowed/*`, `react` and `react-dom` are resolved by
+/// walking up to its `node_modules`, and inside the one directory uf's own
+/// lint, format and test discovery always ignore — anywhere else in the
+/// repository this page would be reported as this repository's defect.
 #[test]
 fn a_page_that_throws_fails_its_route_and_not_the_others() {
     if !fixture_ready() {
         return;
     }
-    let root = project_with_a_throwing_page();
+    let mut files = minimal_app();
+    files.push((
+        "app/fine/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>this page is fine</main>;\n}\n",
+    ));
+    files.push((
+        "app/broken/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  throw new Error(\"this page throws on purpose\");\n}\n",
+    ));
+    let project = Project::new(&files);
 
-    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
 
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
@@ -305,7 +522,7 @@ fn a_page_that_throws_fails_its_route_and_not_the_others() {
     );
 
     // The other routes are still written: one broken page is one broken page.
-    let dist = root.join("dist");
+    let dist = project.path().join("dist");
     assert!(
         dist.join("index.html").is_file(),
         "the home page was not written:\n{said}"
@@ -319,6 +536,66 @@ fn a_page_that_throws_fails_its_route_and_not_the_others() {
     assert!(
         !dist.join("broken/index.html").exists(),
         "the route that threw was written anyway:\n{said}"
+    );
+}
+
+/// A not-found boundary that throws fails the build, and writes no `404.html`.
+///
+/// The root 404 is prerendered outside the loop above and had neither of the
+/// loop's two checks. A boundary is a component like any other and can throw,
+/// and when it does `prerender` does not reject — it renders the *error* page
+/// and reports the exception on `result.error`. The driver wrote that HTML to
+/// `dist/404.html`, emitted `page`, and exited 0.
+///
+/// Which is the worst place in the build for that to happen. A static host
+/// serves `404.html` to everybody who mistypes a URL, so the page a project
+/// wrote to say "no such page" would have been silently replaced by uf's error
+/// page for the life of the deploy, and nothing between the throw and
+/// production would have mentioned it.
+#[test]
+fn a_not_found_boundary_that_throws_fails_the_build_and_writes_no_file() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/_uf.not-found.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport default component NotFound() {\n  throw new Error(\"the 404 boundary throws on purpose\");\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let said = format!("{stdout}{stderr}");
+    assert!(
+        !output.status.success(),
+        "a 404 boundary that throws must fail the build:\n{said}"
+    );
+    assert!(
+        said.contains("/404"),
+        "the build must name the page that threw:\n{said}"
+    );
+    assert!(
+        said.contains("the 404 boundary throws on purpose"),
+        "the build must say why it failed:\n{said}"
+    );
+    let dist = project.path().join("dist");
+    assert!(
+        !dist.join("404.html").exists(),
+        "the build published its own failure as 404.html:\n{said}"
+    );
+    // The rest of the build is untouched: one broken boundary is one broken
+    // boundary, the same as one broken page.
+    assert!(
+        dist.join("index.html").is_file(),
+        "the home page was not written:\n{said}"
     );
 }
 
@@ -899,6 +1176,7 @@ fn preview_and_start_serve_the_whole_of_a_build() {
     if !fixture_ready() || !loopback_ready() {
         return;
     }
+    let _served = served_lock();
     let root = served_app_root();
 
     let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
@@ -917,9 +1195,234 @@ fn preview_and_start_serve_the_whole_of_a_build() {
         "a route with parameters and no `generateStaticParams` must not be prerendered; \
          if it were, `uf start` would be serving a file rather than rendering"
     );
+    assert!(
+        !root.join("dist/slow").exists(),
+        "the suspending route must not be prerendered either; a file would be served without \
+         rendering and the streaming assertion below would pass without streaming"
+    );
 
     for command in ["preview", "start"] {
         serve_and_assert(&root, command);
+    }
+}
+
+/// The script the deployed directory is asked with, when no socket may be had.
+///
+/// It is written *beside* the copied directory rather than inside it, and
+/// imports it by a relative path — which is the assertion, not the setup. A
+/// probe living inside the artefact could be resolving something the artefact
+/// happens to sit next to; one outside it can only reach what was copied.
+const ASK_THE_ARTEFACT: &str = r#"import handler from "./app/handler.js";
+
+// The probe is the host, so it owns the request the way `server.js` does:
+// `beginRequest` from the artefact's own handler, `run` around answering, and
+// `settle` once the body has been read — which for a `Response` a host only
+// returns is the moment it has been sent. That the artefact hands out a
+// `beginRequest` at all is half of what this asserts: it is the copy inlined
+// into `handler.js`, and a host that used any other would establish a request
+// the application cannot see. See ubugeeei-prod/uf#389.
+const ask = async (label, url, init) => {
+  const request = new Request(`http://127.0.0.1${url}`, init);
+  const { run, settle } = handler.beginRequest(request);
+  try {
+    const response = await run(() => handler.fetch(request));
+    const body = (await response.text()).replace(/\s+/g, " ");
+    process.stdout.write(`${label} ${response.status} ${body}\n`);
+  } finally {
+    await settle();
+  }
+};
+
+await ask("handler-get", "/api/health");
+await ask("handler-post", "/api/health", { method: "POST", body: JSON.stringify({ name: "uf" }) });
+await ask("rendered", "/posts/hello-world");
+await ask("missing", "/definitely-not-a-page/");
+"#;
+
+/// `uf build --adapter node`, copied somewhere that is not a checkout.
+///
+/// This is the assertion ubugeeei-prod/uf#335 asks for and the one that
+/// distinguishes an artefact from a build: the directory is copied to a
+/// temporary directory with no `node_modules` anywhere above it and no `uf`
+/// anywhere near it, and it still answers a route handler and still renders a
+/// route the build wrote no file for.
+///
+/// The blocker recorded in that issue — that the server bundle keeps
+/// `@uniflowed/router/server` external, so serving it needs `uf transform`
+/// alive — was not one. `packages/vite/index.js` has set
+/// `ssr.noExternal: [/^@uniflowed\//]` since the plugin was written, because
+/// Node cannot import Flow; the dependencies the ordinary server build leaves
+/// external are `react` and `react-dom`, which are ordinary JavaScript. What
+/// the adapter adds is `ssr.noExternal: true`, so those come in too and the
+/// directory needs no `node_modules` at all.
+///
+/// Written to prove as much as the machine allows, like the `--compile` test
+/// below. The half that needs no socket runs everywhere and is the half that
+/// matters: whether the copied directory carries the application. Where a
+/// socket can be bound, `server.js` is started from the copy and asked
+/// everything `uf preview` and `uf start` are asked, by the same function — so
+/// a deployment that answered differently from the command it was checked with
+/// would fail here.
+#[test]
+fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
+    if !fixture_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--adapter", "node"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    for expected in ["adapter", ".uf/deploy/node", "node server.js"] {
+        assert!(
+            stdout.contains(expected),
+            "the summary must say what was written and how to run it; missing {expected:?} in:\n{stdout}"
+        );
+    }
+
+    // Copied out rather than driven in place, because in place proves nothing:
+    // `dist/`, `node_modules` and the source are all still there, and an
+    // artefact quietly reading one of them would pass.
+    let empty = tempfile::tempdir().unwrap();
+    let deployed = empty.path().join("app");
+    copy_tree(&root.join(".uf/deploy/node"), &deployed);
+    for ancestor in deployed.ancestors() {
+        assert!(
+            !ancestor.join("node_modules").exists(),
+            "this test means nothing with a node_modules at {}",
+            ancestor.display()
+        );
+    }
+
+    // The static half came along: the prerendered documents and the hashed
+    // client assets, which are what `server.js` serves before it renders
+    // anything. And the route that was *not* prerendered is still not there,
+    // which is what makes the render assertion below a render.
+    assert!(deployed.join("static/index.html").is_file());
+    assert!(deployed.join("static/guide/index.html").is_file());
+    assert!(
+        !deployed.join("static/posts").exists(),
+        "a route with parameters and no `generateStaticParams` must reach the copy unprerendered"
+    );
+    assert!(
+        deployed.join("package.json").is_file(),
+        "`node server.js` reads `.js` as CommonJS without it"
+    );
+
+    let ask = empty.path().join("ask.mjs");
+    fs::write(&ask, ASK_THE_ARTEFACT).unwrap();
+    let answered = Command::new("node")
+        .arg("ask.mjs")
+        .current_dir(empty.path())
+        .output()
+        .unwrap();
+    let said = format!(
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&answered.stdout),
+        String::from_utf8_lossy(&answered.stderr)
+    );
+    assert!(answered.status.success(), "{said}");
+    let answers = String::from_utf8_lossy(&answered.stdout).into_owned();
+    for expected in [
+        // A route handler, which is the clearest thing a build could not serve.
+        "handler-get 200 {\"status\":\"ok\"}",
+        // With a body, so the assertion is that the request reached the module
+        // rather than that something answered 200.
+        "handler-post 200 {\"echoed\":\"uf\"}",
+    ] {
+        assert!(
+            answers.contains(expected),
+            "missing {expected:?} in:\n{said}"
+        );
+    }
+    let rendered = answers
+        .lines()
+        .find(|line| line.starts_with("rendered "))
+        .unwrap_or_else(|| panic!("no rendered line in:\n{said}"));
+    assert!(
+        rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
+        "a route with no prerendered file has to be rendered per request:\n{rendered}"
+    );
+    let missing = answers
+        .lines()
+        .find(|line| line.starts_with("missing "))
+        .unwrap_or_else(|| panic!("no missing line in:\n{said}"));
+    assert!(
+        missing.starts_with("missing 404") && missing.contains("served-app has no such page"),
+        "an unrouted path is the project's own 404, not somebody else's page:\n{missing}"
+    );
+
+    if !loopback_ready() {
+        return;
+    }
+
+    // And the whole of it, through the socket `server.js` takes: the static
+    // half, the application half, and the streaming — asked by the function
+    // that asks `uf preview` and `uf start`, because "the deployment answers
+    // what the preview answered" is the only interesting thing left to say.
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut command = Command::new("node");
+            command
+                .arg("server.js")
+                .args(["--host", "127.0.0.1", "--port", &port.to_string()])
+                .current_dir(&deployed);
+            let mut server = Server::spawn(command, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_served(&mut server, port, &said, &body, "build --adapter node");
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the deployed directory never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Copy `from` to `to`, recursively.
+///
+/// The point of the copy is that the destination has nothing else in it, so
+/// this is deliberately not a merge and deliberately not `cp -r`: a test that
+/// shelled out would be asserting about the machine's coreutils on one of the
+/// three platforms uf supports.
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).unwrap();
+        }
     }
 }
 
@@ -1048,6 +1551,240 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("did not serve the project's own not-found page", &missing)
     );
+
+    // 5. A route that suspends: the layout and the fallback have to be on the
+    //    wire before the page is. This is the one assertion in this file about
+    //    *when* bytes arrived rather than what they said, and it is the only
+    //    kind that can tell a streaming renderer from a buffering one — a
+    //    document sent in one piece still has the fallback before the page in
+    //    document order, because that is where React writes it.
+    //
+    //    `id` is the command's own, because the fixture keeps a resolved
+    //    promise per id and a second request for the same one would answer
+    //    without waiting; see `app/slow/[id]/_uf.page.js`.
+    //
+    //    It is the command with every non-alphanumeric character replaced
+    //    rather than the command itself, because `command` is a label as much
+    //    as a key and one caller passes a whole command *line*: `build
+    //    --adapter node`. Interpolated into the target that spells
+    //    `GET /slow/build --adapter node HTTP/1.1`, which is not a request
+    //    line at all — a target may not contain a space — so Node's parser
+    //    refuses it and its default `clientError` handler answers a bare
+    //    `400 Bad Request`, before `nodeListener` or any other uf code runs.
+    //    That looked for a long time like a streaming failure in the adapter
+    //    and was never anything but these bytes. Substituting keeps the only
+    //    property the id needs, which is being different for each server;
+    //    `preview` and `start` are unchanged by it.
+    let slow_id: String = command
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let slow = timed_get(port, &format!("/slow/{slow_id}"));
+    assert!(
+        slow.text.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not render the suspending route", &slow.evidence())
+    );
+    let shell = slow.first_at("slow: waiting").unwrap_or_else(|| {
+        panic!(
+            "{}",
+            context("never sent the `_uf.loading.js` fallback", &slow.evidence())
+        )
+    });
+    let page = slow
+        .first_at(&format!("slow: {slow_id}"))
+        .unwrap_or_else(|| {
+            panic!(
+                "{}",
+                context("the suspended page never arrived", &slow.evidence())
+            )
+        });
+    assert!(
+        shell + STREAMING_MARGIN <= page,
+        "{}",
+        context(
+            &format!(
+                "sent the fallback and the page together: the fallback was {}ms in and the \
+                 page {}ms in, and the page waits {}ms — so nothing streamed",
+                shell.as_millis(),
+                page.as_millis(),
+                SUSPENDING_ROUTE_DELAY.as_millis()
+            ),
+            &slow.evidence()
+        )
+    );
+}
+
+/// How long `app/slow/[id]/_uf.page.js` waits before it renders.
+const SUSPENDING_ROUTE_DELAY: Duration = Duration::from_millis(500);
+
+/// How much of that gap has to survive for the response to have been streamed.
+///
+/// Well under the delay, because the question is "were these two in the same
+/// write" and not "is this machine fast". A buffered response puts both strings
+/// in the first read and the gap is zero; a streamed one cannot make the gap
+/// smaller than the page's own wait, minus whatever the shell took to render.
+const STREAMING_MARGIN: Duration = Duration::from_millis(200);
+
+/// A response, and when each byte of it turned up.
+///
+/// `reads` is one entry per successful `read`, holding how much of the response
+/// had arrived by then. That is enough to answer "when did this string first
+/// appear", which is the only question asked of it, and it avoids having to
+/// decide what a chunk is: the kernel decides, and the assertion is about a gap
+/// far larger than any packetization difference.
+struct TimedResponse {
+    /// The literal bytes written to the socket.
+    ///
+    /// Kept because the failure this struct is most likely to report is one
+    /// where they are the whole answer; see [`TimedResponse::evidence`].
+    request: String,
+    text: String,
+    reads: Vec<(Duration, usize)>,
+}
+
+impl TimedResponse {
+    /// When `needle` had first arrived, or `None` if it never did.
+    fn first_at(&self, needle: &str) -> Option<Duration> {
+        let end = self.text.find(needle)? + needle.len();
+        self.reads
+            .iter()
+            .find(|(_, received)| *received >= end)
+            .map(|(at, _)| *at)
+    }
+
+    /// What was sent, what came back, and on what connection.
+    ///
+    /// A bare `400 Bad Request` from this probe cost a long search through the
+    /// streaming renderer, because the failure said only "did not render the
+    /// suspending route" and printed a response with no body to say otherwise.
+    /// Three facts end that search, and all three are here: the request as it
+    /// actually went on the wire, since a request *target* with a space in it
+    /// is not a request line and Node answers those itself; the whole
+    /// response rather than the part an assertion looked at; and that this
+    /// connection carried nothing before this request, which rules out the
+    /// other way a bare `400` with `Connection: close` happens — a response
+    /// whose framing left a reused connection out of sync.
+    fn evidence(&self) -> String {
+        let mut evidence = format!(
+            "the request, as it went on the wire:\n{}\n\nthe whole response:\n{}\n\n\
+             the connection was opened for this request alone and nothing was written to it \
+             first, so a desynchronised reused connection is not what this is.",
+            indent(&visible(&self.request)),
+            indent(if self.text.is_empty() {
+                "<nothing: the server closed without writing a byte>"
+            } else {
+                self.text.as_str()
+            }),
+        );
+        // Node's `http.Server` writes exactly this, from its default
+        // `clientError` handler, when the parser rejects the bytes before a
+        // request object exists. `nodeListener` never runs — which is why the
+        // body is empty and the server's stderr says nothing — and no uf code
+        // can produce it, because uf answers a handler that threw with a 500
+        // and a body.
+        if self
+            .text
+            .starts_with("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
+        {
+            evidence.push_str(
+                "\n\nthat response is byte for byte Node's own `clientError` reply, which \
+                 means its parser refused the request above before any uf code ran. Read the \
+                 request line first: a target containing a space is the usual reason.",
+            );
+        }
+        evidence
+    }
+}
+
+/// The diagnosis a bare `400` has to carry, checked without a socket.
+///
+/// This is the failure that cost the search: the response to the suspending
+/// route was a `400` with no body, and the message printed that and nothing
+/// else — so the search went to the streaming renderer and the adapter, and
+/// the answer was in the request line all along.
+///
+/// The evidence is assembled from data rather than read off a connection, so
+/// this runs on a machine that cannot bind one. That is deliberate: the
+/// machine where the original failure could not be reproduced at all is
+/// exactly the machine where the message explaining it has to be readable.
+#[test]
+fn a_bare_400_says_it_is_node_refusing_the_request_line() {
+    let refused = TimedResponse {
+        request: "GET /slow/build --adapter node HTTP/1.1\r\nHost: 127.0.0.1:46335\r\n\
+                  Accept: text/html\r\nConnection: close\r\n\r\n"
+            .to_owned(),
+        text: "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n".to_owned(),
+        reads: Vec::new(),
+    };
+    let evidence = refused.evidence();
+    assert!(
+        evidence.contains("GET /slow/build --adapter node HTTP/1.1"),
+        "the request line is the answer, so it has to be in the message:\n{evidence}"
+    );
+    assert!(
+        evidence.contains("clientError"),
+        "a bare 400 is Node's own, and the message has to say so rather than leave it to be \
+         rediscovered:\n{evidence}"
+    );
+    assert!(
+        evidence.contains("reused connection"),
+        "the other way a bare 400 with `Connection: close` happens has to be ruled out in the \
+         message:\n{evidence}"
+    );
+}
+
+/// CRLF made visible, so a request line can be read for what it is.
+fn visible(raw: &str) -> String {
+    raw.replace('\r', "\\r").replace('\n', "\\n\n")
+}
+
+/// Two spaces in front of every line, so a quoted document is not read as the
+/// failure message's own words.
+fn indent(text: &str) -> String {
+    text.lines()
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// One request, read incrementally, timed from the moment it was sent.
+///
+/// `http_request` reads to the end and returns a string, which is the right
+/// shape for every other assertion here and destroys the only evidence this one
+/// needs. `Connection: close` is what makes the read loop end.
+fn timed_get(port: u16, path: &str) -> TimedResponse {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to the server");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .unwrap();
+    // Built before it is written, and kept, because it is the first thing a
+    // reader of a failure here needs; see `TimedResponse::evidence`.
+    let request = format!(
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\n\
+         Connection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).unwrap();
+
+    let started = Instant::now();
+    let mut bytes = Vec::new();
+    let mut reads = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                bytes.extend_from_slice(&buffer[..read]);
+                reads.push((started.elapsed(), bytes.len()));
+            }
+            Err(error) => panic!("reading the streamed response failed: {error}"),
+        }
+    }
+    TimedResponse {
+        request,
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+        reads,
+    }
 }
 
 fn server_said(said: &Mutex<String>) -> String {
