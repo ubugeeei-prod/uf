@@ -3132,9 +3132,13 @@ describe("Pagination", () => {
     expect(nav).toBeInTheDocument();
     // `aria-current="page"` and exactly one of it. Not a class, not bold text,
     // not `aria-selected` — `page` is the value ARIA defines for this and the
-    // only one that tells a reader where they are.
-    expect(within(nav).getByRole("link", { name: "4" })).toHaveAttribute("aria-current", "page");
-    expect(document.querySelectorAll("[aria-current]").length).toBe(1);
+    // only one that tells a reader where they are. Asked as a role query,
+    // because "exactly one control is current" is a fact about what is
+    // announced; reading the attribute back off a link found by its name says
+    // less, and was all this could say while `current` was an option
+    // `getByRole` accepted and ignored (ubugeeei-prod/uf#359).
+    expect(within(nav).getByRole("link", { current: "page" }).textContent).toBe("4");
+    expect(within(nav).getAllByRole("link", { current: false }).length).toBe(4);
   });
 
   it("names previous and next in words rather than in chevrons", () => {
@@ -3732,16 +3736,13 @@ describe("Accordion", () => {
     );
   }
 
-  // The panels that a reader can actually read, by their text. Asked this way
-  // rather than with `getByRole("region")` on purpose: every panel keeps its
-  // role and its place in the document whether it is open or closed — that is
-  // the point of `hidden="until-found"` — so "which are open" is a question
-  // about the `hidden` attribute, and asking it directly says so.
-  const showing = () =>
-    screen
-      .getAllByRole("region")
-      .filter((panel) => !panel.hasAttribute("hidden"))
-      .map((panel) => panel.textContent);
+  // The panels a reader is actually told about, by their text. Every panel
+  // keeps its role and its place in the document whether it is open or closed
+  // — that is the point of `hidden="until-found"` — and a closed one is not
+  // announced, so this is a role query and nothing else. It used to read the
+  // `hidden` attribute back off the result, because the query returned the
+  // closed panels too (ubugeeei-prod/uf#323).
+  const showing = () => screen.getAllByRole("region").map((panel) => panel.textContent);
 
   it("names the region after the trigger that opens it", async () => {
     render(<Faq />);
@@ -3760,25 +3761,28 @@ describe("Accordion", () => {
     render(<Faq level={3} />);
     // An accordion inside a section titled by an `<h2>` needs `<h3>`, and a
     // component that hard-codes one produces an outline nobody can navigate.
-    // The tag name rather than `getByRole("heading", { level })`, because that
-    // option is not implemented in this testing library and every heading comes
-    // back whichever level is asked for — a test that would pass on `<h2>`.
-    const heading: $FlowFixMe = screen.getByRole("button", { name: "Shipping" }).parentElement;
-    expect(heading.tagName).toBe("H3");
-    expect(within(heading).getByRole("button", { name: "Shipping" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading").length).toBe(3);
+    // Asked by level rather than by tag name, because the level is the thing a
+    // reader is told; the tag is how it happens to be spelt.
+    const headings = screen.getAllByRole("heading", { level: 3 });
+    expect(headings.length).toBe(3);
+    expect(within(headings[0]).getByRole("button", { name: "Shipping" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("heading", { level: 2 })).toEqual([]);
   });
 
   it("takes a different heading level without changing anything else", () => {
     render(<Faq level={2} />);
-    const heading: $FlowFixMe = screen.getByRole("button", { name: "Shipping" }).parentElement;
-    expect(heading.tagName).toBe("H2");
-    expect(screen.getAllByRole("heading").length).toBe(3);
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.length).toBe(3);
+    expect(within(headings[0]).getByRole("button", { name: "Shipping" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("heading", { level: 3 })).toEqual([]);
   });
 
   it("keeps a single accordion to one open item", async () => {
     render(<Faq />);
     expect(showing()).toEqual(["ships in two days"]);
+    // All three are in the document and one of them is announced, which is the
+    // difference `hidden` makes and the difference a role query has to see.
+    expect(screen.getAllByRole("region", { hidden: true }).length).toBe(3);
     await userEvent.click(screen.getByRole("button", { name: "Returns" }));
     expect(showing()).toEqual(["thirty days"]);
     expect(screen.getByRole("button", { name: "Shipping" })).toHaveAttribute(
