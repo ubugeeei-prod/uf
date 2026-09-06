@@ -21,6 +21,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
+use uf_config::env_files::ProjectEnv;
 use uf_config::{CapabilityJsHost, UniflowedConfig};
 use uf_term::{CodeFrame, DiagnosticLevel, Status};
 
@@ -327,18 +328,31 @@ pub(crate) struct Driver {
 impl Driver {
     /// Start `driver.js <command> --root <root> <args>` on `host`.
     ///
-    /// `env` is what this build knows and the driver cannot work out for
-    /// itself. It is deliberately not a general escape hatch: today it carries
-    /// [`uf_rsc::RSC_MANIFEST_ENV`], the path to the server-component analysis
-    /// the bundler splits the route table by, because that analysis is Rust's
-    /// and runs before Vite starts.
+    /// `env` is the project's environment for this run, and both halves of it
+    /// travel here rather than at each call site: the mode, as `--mode`, which
+    /// is what Vite reports as `import.meta.env.MODE` and what selected the
+    /// files; and the values, in the driver's own environment, which is where
+    /// server code reads them through `process.env` and where Vite picks the
+    /// client-prefixed subset up. One place, because "the dev server saw a
+    /// variable and the build did not" is the defect this exists to prevent —
+    /// see ubugeeei-prod/uf#259 — and five call sites are five chances to
+    /// forget.
+    ///
+    /// `extra` is what *this command* knows and neither the driver nor a `.env`
+    /// file can work out for itself. It is deliberately not a general escape
+    /// hatch: today it carries [`uf_rsc::RSC_MANIFEST_ENV`], the path to the
+    /// server-component analysis the bundler splits the route table by, because
+    /// that analysis is Rust's and runs before Vite starts. It is set after the
+    /// project's files for the same reason `UF_BINARY` is: it is uf's own, and
+    /// a file that names it must not be able to answer it.
     pub(crate) fn spawn(
         host: &Host,
         package: &Utf8Path,
         root: &Utf8Path,
         command: &str,
         args: &[String],
-        env: &[(&str, &str)],
+        env: &ProjectEnv,
+        extra: &[(&str, &str)],
     ) -> Result<Self> {
         let driver = package.join(DRIVER);
         let mut process = Command::new(host.program.as_std_path());
@@ -360,13 +374,22 @@ impl Driver {
             .arg(command)
             .arg("--root")
             .arg(root.as_str())
-            .args(args)
+            .arg("--mode")
+            .arg(env.mode())
+            .args(args);
+        // The project's `.env` files first, and uf's own two variables after
+        // them: a cloned repository's `.env` is untrusted input, and
+        // `UF_BINARY` names the binary every module in this build is
+        // transformed through. Written in this order, a file that sets it is
+        // overwritten rather than obeyed.
+        env.apply(&mut process);
+        process
             .env(
                 "UF_BINARY",
-                env::current_exe().context("locating the uf binary")?,
+                std::env::current_exe().context("locating the uf binary")?,
             )
             .env("UF_PROJECT_ROOT", root.as_str())
-            .envs(env.iter().copied())
+            .envs(extra.iter().copied())
             .current_dir(root.as_std_path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

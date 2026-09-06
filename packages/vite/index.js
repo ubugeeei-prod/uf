@@ -387,18 +387,37 @@ function flowPlugin({ routerRoot, appEntry, command }) {
             // `after()` runs than the same project run through `uf dev`; see
             // `internal/serve.js` and ubugeeei-prod/uf#389.
             //
-            // Only document requests reach here, so unlike `driver.js` there is
-            // no path where uf hands the response back to Vite's chain: what is
-            // below either writes it or throws.
+            // Only requests that look like a document reach here, so unlike
+            // `driver.js` there is no path where uf hands the response back to
+            // Vite's chain: what is below either writes it or throws.
             await withRequest(entry, asRequest, async () => {
-              // Before the page: a middleware guards a subtree, and a page
-              // rendered while the guard on it had not run is the whole of
-              // ubugeeei-prod/uf#260. Only document requests reach here, so this
-              // is the page half of the guarantee; `driver.js` makes the same
-              // call above the route handlers, for every method.
+              // Before anything answers: a middleware guards a subtree, and a
+              // page rendered while the guard on it had not run is the whole of
+              // ubugeeei-prod/uf#260. `driver.js` makes the same call, for
+              // every method.
               const guarded = await entry.runMiddleware(asRequest);
               if (guarded != null) {
                 await send(response, guarded);
+                return;
+              }
+
+              // Then the route handlers, above the renderer and for the same
+              // reason `driver.js` puts them there: a path that answers a
+              // request is not a document, whatever the client said it would
+              // accept. `curl /api/thing` and a `<form action>` navigation both
+              // send `Accept: text/html`, and both want the handler's answer.
+              //
+              // This step is not a duplicate of the dispatcher in `driver.js`,
+              // it is the only one that can run: this middleware is mounted by
+              // `configureServer`, which Vite calls while it is building the
+              // server, and `uf dev` adds its own after `createServer` has
+              // returned — so for every request this one claims, it is the one
+              // that decides. Without it a route handler under `uf dev` was
+              // reachable only by a client that asked for something other than
+              // HTML, and answered the 404 page to everyone else.
+              const handled = await entry.dispatch(asRequest);
+              if (handled != null) {
+                await send(response, handled);
                 return;
               }
 
