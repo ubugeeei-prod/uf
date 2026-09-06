@@ -89,7 +89,7 @@ type checker that read the same syntax tree the build does.
   ([#264](https://github.com/ubugeeei-prod/uf/issues/264)).
 - **`.env` files**, which uf turns off in the Vite config it generates
   ([#259](https://github.com/ubugeeei-prod/uf/issues/259)) — reachable again
-  with `vite: { envFile: true }`.
+  with `vite: { envDir: "." }`.
 - **Any Vite version you like.** uf pins the line it tests against.
 
 What does *not* change is the escape hatch: the `vite` key in `uf.config.js` is
