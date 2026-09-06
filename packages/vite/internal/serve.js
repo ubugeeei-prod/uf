@@ -216,15 +216,28 @@ export function createApplicationHandler({ entry, assets }) {
     }
 
     const url = new URL(request.url);
-    const result = await entry.render(url.pathname + url.search, assets);
+    const result = await entry.render(url.pathname + url.search, assets, {
+      // Nothing better than the console here: this is the handler a worker or a
+      // serverless function wraps, and it has no terminal of its own. Losing a
+      // boundary's exception entirely would be worse — it is the only trace a
+      // page that failed after its first byte leaves anywhere.
+      onError: (error) => {
+        console.error(error);
+      },
+    });
     const headers = new Headers(result.headers ?? {});
     headers.set("content-type", "text/html; charset=utf-8");
     // A `HEAD` gets the status and the headers and no body, which is what the
-    // renderer cannot know to do for itself.
-    return new Response(method === "HEAD" ? null : result.html, {
-      status: result.status ?? 200,
-      headers,
-    });
+    // renderer cannot know to do for itself. The stream is cancelled rather
+    // than dropped, so the render behind it stops instead of filling its queue
+    // and waiting for a reader that is never coming.
+    if (method === "HEAD") {
+      await result.stream().cancel();
+      return new Response(null, { status: result.status ?? 200, headers });
+    }
+    // The body is a stream, so the layouts and any `<Suspense>` fallback reach
+    // the browser while the page they surround is still resolving.
+    return new Response(result.stream(), { status: result.status ?? 200, headers });
   };
 }
 

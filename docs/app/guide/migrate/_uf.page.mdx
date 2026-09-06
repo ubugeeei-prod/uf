@@ -180,7 +180,8 @@ The conventions line up more closely than the capabilities do:
 | `export const metadata` | `metadata` on a page or layout, merged along the path with the page last |
 | `next/link` | `Link` from `@uniflowed/router`, prefetching on intent |
 | `next/image` | `Image` from `@uniflowed/web` — layout-stable markup, no pipeline ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
-| `loading.tsx`, `error.tsx` | neither exists yet ([#257](https://github.com/ubugeeei-prod/uf/issues/257)) |
+| `loading.tsx` | `_uf.loading.js` — a `<Suspense>` boundary per segment, nested; the loader is still awaited before the render ([#373](https://github.com/ubugeeei-prod/uf/issues/373)) |
+| `error.tsx` | `_uf.error.js`, one file for 401, 403 and 500 as cases of `RouteError` |
 
 **Cost.** For a statically exportable site, the same as the Vite path plus the
 route renaming. For anything else, it is not a cost — it is a blocker, and the
