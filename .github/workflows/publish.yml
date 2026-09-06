@@ -66,6 +66,28 @@ jobs:
       # the OIDC id-token GitHub mints for it. There is no npm token in this
       # repository, in its secrets, or on anyone's machine.
       # See tools/release/trust-npm.sh.
+      #
+      # `--tag alpha` on a prerelease is the right rule and it stays: a
+      # prerelease must not displace a stable release. What it does not do is
+      # move `latest`, and these packages have no stable release for `latest`
+      # to be protecting — so it stayed where the first publish left it,
+      # `0.0.0-alpha.1` on five names and `0.0.0-alpha.2` on twelve, through
+      # seven releases. That is what `npm install @uniflowed/react` gave a
+      # person. See ubugeeei-prod/uf#408.
+      #
+      # The move cannot happen here. npm exchanges this job's id-token for
+      # `npm publish` and for nothing else — `lib/utils/oidc.js` is required
+      # from `lib/commands/publish.js` alone, the exchange is per package, and
+      # the token it returns lives in that one command's config rather than in
+      # an `.npmrc` — while `npm dist-tag add` is an authenticated `PUT` that
+      # asks a 2FA account for a one-time password. Adding an npm token to
+      # this repository's secrets to get around that would give away the
+      # property this whole job is built on.
+      #
+      # So it is a person's step, after the publish and never inside it:
+      # `tools/release/promote-latest.sh`, which reads the registry, leaves
+      # alone any name that has a stable release, and is idempotent.
+      # `tools/release/preflight.sh` fails on the drift before the next tag.
       - name: Publish
         run: |
           set -eu
@@ -112,3 +134,13 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
         run: tools/release/verify-npm.sh "${REF_NAME#uf@}"
+      # The one part of a release this pipeline cannot do, said where it is
+      # noticed: at the end of the release, rather than in a script nobody has
+      # a reason to open. It prints and does not check, because at this moment
+      # `latest` is always behind — the move happens after this job, by a
+      # person, and `tools/release/preflight.sh` is what fails on it if it
+      # never happened.
+      - name: The dist-tag move this pipeline cannot make
+        run: |
+          set -eu
+          echo "::notice::While @uniflowed/* has no stable release, publishing on the prerelease tag does not move 'latest'. Run 'uf run release:promote' (tools/release/promote-latest.sh) from an npm session you are logged in to. 'uf run release:preflight' fails on the drift before the next tag."
