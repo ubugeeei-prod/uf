@@ -93,7 +93,8 @@ export default component Home() {
 
         <div className="notice">
           <strong>Pre-release.</strong> uf is at <code>0.0.0-alpha</code>. Interfaces move without
-          warning and the packages are not on npm yet. The guide says what works today and{" "}
+          warning, and every <code>@uniflowed/*</code> release on npm is a prerelease under the{" "}
+          <code>alpha</code> tag. The guide says what works today and{" "}
           <Link to="/guide/testing">where it loses</Link> to the tools it means to replace.
         </div>
       </section>
