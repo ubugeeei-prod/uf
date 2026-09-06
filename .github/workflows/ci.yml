@@ -316,6 +316,13 @@ jobs:
       # It reads the two files rather than asking npm to regenerate one, so
       # nothing but these cases says it works.
       - run: ./target/release/uf run lockfile:test
+      # And that every shell script in the repository parses under the shell
+      # this runner uses. `uf@0.0.0-alpha.8` published all seventeen packages
+      # and the release was reported as failed, over a `verify-npm.sh` that
+      # dash would not parse and bash would — and bash is `/bin/sh` on the
+      # laptop it was written on. `sh -n` reads and does not run.
+      - run: ./target/release/uf run scripts:parse
+      - run: ./target/release/uf run scripts:parse:test
       # And that the set that goes to npm is closed under its own
       # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
       # release that sends one without the other publishes a package that
