@@ -38,9 +38,11 @@ import {
   Combobox,
   Dialog,
   Field,
+  HoverCard,
   Menu,
   NavigationMenu,
   Pagination,
+  Popover,
   Progress,
   RadioGroup,
   Resizable,
@@ -52,10 +54,19 @@ import {
   Toast,
   Toggle,
   ToggleGroup,
+  Tooltip,
   dismissAllToasts,
   toast,
   updateToast,
 } from "@uniflowed/ui";
+
+// By path, not by subpath export, the way `highlight.test.js` reaches one:
+// `internal/` is not part of any package's public surface, and the whole
+// argument for keeping the positioning there is that a consumer cannot get a
+// weaker copy of it. The arithmetic is still the one thing in this package a
+// test can hold to an exact number, so it is reached where it lives.
+import type { Align, Placement, Rect, Side } from "../../packages/ui/internal/anchor.js";
+import { placeOverlay } from "../../packages/ui/internal/anchor.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -2118,6 +2129,49 @@ describe("one Escape is one dismissal", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("closes a popover inside a dialog without closing the dialog", async () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Body>
+          <Dialog.Title>Settings</Dialog.Title>
+          <Popover.Root>
+            <Popover.Trigger>Filters</Popover.Trigger>
+            <Popover.Body>
+              <button type="button">Only mine</button>
+            </Popover.Body>
+          </Popover.Root>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    await userEvent.keyboard("{Escape}");
+    // Two things with `role="dialog"` were open and one Escape closed the
+    // inner one; the dialog behind it is the reader's place in the page.
+    expect(screen.queryByRole("button", { name: "Only mine" })).toBe(null);
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("closes a tooltip inside a dialog without closing the dialog", async () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Body>
+          <Dialog.Title>Settings</Dialog.Title>
+          <Tooltip.Root openDelay={0}>
+            <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+            <Tooltip.Body>Bold</Tooltip.Body>
+          </Tooltip.Root>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Bold" }));
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    // The tooltip answers the key from the document, because it holds no
+    // focus — and having answered it, the dialog must not answer it as well.
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("closes a select's list inside a dialog without closing the dialog", async () => {
     render(
       <Dialog.Root defaultOpen>
@@ -2145,6 +2199,879 @@ describe("one Escape is one dismissal", () => {
     // by accident inside a modal they now cannot dismiss.
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBe(null);
+  });
+});
+
+describe("where an anchored overlay goes", () => {
+  // The arithmetic, called with numbers. This DOM computes no layout at all, so
+  // a test that went through a component could only assert *that* a position
+  // was applied; these are the only assertions in this file that can say the
+  // position was the right one. A real-layout check belongs to `@uniflowed/vrt`.
+
+  /** A viewport with room in it, so a case that is not about a collision has none. */
+  const room: Rect = { height: 800, width: 1000, x: 0, y: 0 };
+
+  /**
+   * A placement request with defaults, so each case names only what it is about.
+   */
+  function place(request: {
+    readonly anchor: Rect,
+    readonly overlay: Rect,
+    readonly align?: Align,
+    readonly alignOffset?: number,
+    readonly avoidCollisions?: boolean,
+    readonly collisionPadding?: number,
+    readonly direction?: "ltr" | "rtl",
+    readonly side?: Side,
+    readonly sideOffset?: number,
+    readonly viewport?: Rect,
+  }): Placement {
+    return placeOverlay({
+      align: request.align ?? "center",
+      alignOffset: request.alignOffset ?? 0,
+      anchor: request.anchor,
+      avoidCollisions: request.avoidCollisions ?? true,
+      collisionPadding: request.collisionPadding ?? 0,
+      direction: request.direction ?? "ltr",
+      overlay: request.overlay,
+      side: request.side ?? "bottom",
+      sideOffset: request.sideOffset ?? 0,
+      viewport: request.viewport ?? room,
+    });
+  }
+
+  /** A trigger in the middle of the page, with room on every side of it. */
+  const trigger: Rect = { height: 40, width: 200, x: 400, y: 300 };
+
+  it("puts it against the side it was asked for", () => {
+    const overlay = { height: 60, width: 150, x: 0, y: 0 };
+    expect(place({ anchor: trigger, overlay, side: "bottom" }).y).toBe(340);
+    expect(place({ anchor: trigger, overlay, side: "top" }).y).toBe(240);
+    expect(place({ anchor: trigger, overlay, side: "right" }).x).toBe(600);
+    expect(place({ anchor: trigger, overlay, side: "left" }).x).toBe(250);
+  });
+
+  it("leaves the gap it was asked for", () => {
+    const overlay = { height: 60, width: 150, x: 0, y: 0 };
+    expect(place({ anchor: trigger, overlay, side: "bottom", sideOffset: 8 }).y).toBe(348);
+    expect(place({ anchor: trigger, overlay, side: "top", sideOffset: 8 }).y).toBe(232);
+  });
+
+  it("aligns to the start, the middle or the end of the trigger", () => {
+    const overlay = { height: 60, width: 150, x: 0, y: 0 };
+    expect(place({ align: "start", anchor: trigger, overlay }).x).toBe(400);
+    // 400 + 100 − 75: the middle of the trigger, less half the overlay.
+    expect(place({ align: "center", anchor: trigger, overlay }).x).toBe(425);
+    expect(place({ align: "end", anchor: trigger, overlay }).x).toBe(450);
+  });
+
+  it("aligns along the other axis when the overlay is beside the trigger", () => {
+    const overlay = { height: 60, width: 150, x: 0, y: 0 };
+    expect(place({ align: "start", anchor: trigger, overlay, side: "right" }).y).toBe(300);
+    expect(place({ align: "end", anchor: trigger, overlay, side: "right" }).y).toBe(280);
+  });
+
+  it("flips to the opposite side when there is no room, and says which", () => {
+    // A trigger at the bottom of the page, and an overlay taller than what is
+    // left under it. This is the menu that opens upwards.
+    const anchor = { height: 40, width: 200, x: 400, y: 740 };
+    const placement = place({ anchor, overlay: { height: 200, width: 150, x: 0, y: 0 } });
+    expect(placement.side).toBe("top");
+    expect(placement.y).toBe(540);
+  });
+
+  it("stays where it was asked when it fits", () => {
+    const placement = place({ anchor: trigger, overlay: { height: 60, width: 150, x: 0, y: 0 } });
+    expect(placement.side).toBe("bottom");
+    expect(placement.shift).toBe(0);
+  });
+
+  it("slides along the trigger rather than off the edge of the page", () => {
+    // The case a flip cannot answer, and the reason #345 is not "no": the
+    // overlay is wider than the room on *either* side of a trigger near the
+    // right edge, so flipping the alignment moves it and it still overflows.
+    // 900 + 300 is 1200 in a viewport 1000 wide; 1000 − 300 is where it goes.
+    const anchor = { height: 40, width: 80, x: 900, y: 300 };
+    const placement = place({
+      align: "start",
+      anchor,
+      overlay: { height: 60, width: 300, x: 0, y: 0 },
+    });
+    expect(placement.x).toBe(700);
+    expect(placement.shift).toBe(-200);
+    // The alignment it reports is still the one that was asked for: a
+    // `data-align` that changed under a stylesheet would move the arrow to the
+    // wrong end of an overlay that only slid.
+    expect(placement.align).toBe("start");
+    expect(placement.side).toBe("bottom");
+  });
+
+  it("slides the other way at the other edge", () => {
+    const anchor = { height: 40, width: 80, x: 20, y: 300 };
+    const placement = place({
+      align: "end",
+      anchor,
+      collisionPadding: 8,
+      overlay: { height: 60, width: 300, x: 0, y: 0 },
+    });
+    expect(placement.x).toBe(8);
+    expect(placement.shift).toBe(208);
+  });
+
+  it("slides an overlay beside its trigger too", () => {
+    const anchor = { height: 40, width: 80, x: 400, y: 760 };
+    const placement = place({
+      align: "start",
+      anchor,
+      overlay: { height: 200, width: 150, x: 0, y: 0 },
+      side: "right",
+    });
+    // Beside the trigger, so the cross axis is the vertical one: 800 − 200.
+    expect(placement.y).toBe(600);
+    expect(placement.x).toBe(480);
+  });
+
+  it("pins an overlay wider than the page to the leading edge", () => {
+    // No position satisfies both edges. Pushing it off the far one would hide
+    // the end of it; `availableWidth` is what a stylesheet reads to stop it
+    // being this wide in the first place.
+    const anchor = { height: 40, width: 80, x: 100, y: 300 };
+    const placement = place({
+      anchor,
+      collisionPadding: 8,
+      overlay: { height: 60, width: 1200, x: 0, y: 0 },
+      viewport: { height: 800, width: 400, x: 0, y: 0 },
+    });
+    expect(placement.x).toBe(8);
+    expect(placement.availableWidth).toBe(384);
+  });
+
+  it("takes the side with more room when neither has enough", () => {
+    const anchor = { height: 40, width: 80, x: 100, y: 300 };
+    const placement = place({
+      anchor,
+      overlay: { height: 500, width: 150, x: 0, y: 0 },
+      viewport: { height: 400, width: 1000, x: 0, y: 0 },
+    });
+    // Above has 300 and below has 60, and neither fits 500. The reader sees as
+    // much of it as the page allows, and `availableHeight` says how much.
+    expect(placement.side).toBe("top");
+    expect(placement.availableHeight).toBe(300);
+  });
+
+  it("says how much room there was on the side it chose", () => {
+    const anchor = { height: 40, width: 200, x: 400, y: 660 };
+    const placement = place({
+      anchor,
+      collisionPadding: 10,
+      overlay: { height: 60, width: 150, x: 0, y: 0 },
+      sideOffset: 4,
+    });
+    // 800 − 10 − 700 − 4: the page, less the padding, less the trigger's
+    // bottom edge, less the gap.
+    expect(placement.availableHeight).toBe(86);
+    // And across it, which is what an overlay may grow to after sliding.
+    expect(placement.availableWidth).toBe(980);
+  });
+
+  it("aligns to the reading direction, not to the left", () => {
+    const overlay = { height: 60, width: 150, x: 0, y: 0 };
+    // `start` is the right-hand edge of the trigger in a right-to-left page,
+    // so the overlay's right edge meets the trigger's: 600 − 150.
+    expect(place({ align: "start", anchor: trigger, direction: "rtl", overlay }).x).toBe(450);
+    expect(place({ align: "end", anchor: trigger, direction: "rtl", overlay }).x).toBe(400);
+    // A right-to-left page still runs top to bottom, so an overlay beside its
+    // trigger is unaffected.
+    expect(
+      place({ align: "start", anchor: trigger, direction: "rtl", overlay, side: "right" }).y,
+    ).toBe(300);
+  });
+
+  it("nudges along the axis in the direction the page reads", () => {
+    const overlay = { height: 60, width: 150, x: 0, y: 0 };
+    expect(place({ align: "start", alignOffset: 10, anchor: trigger, overlay }).x).toBe(410);
+    expect(
+      place({ align: "start", alignOffset: 10, anchor: trigger, direction: "rtl", overlay }).x,
+    ).toBe(440);
+  });
+
+  it("does nothing at all when it is told not to avoid collisions", () => {
+    const anchor = { height: 40, width: 80, x: 900, y: 740 };
+    const placement = place({
+      align: "start",
+      anchor,
+      avoidCollisions: false,
+      overlay: { height: 200, width: 300, x: 0, y: 0 },
+    });
+    // Off the bottom and off the right, exactly as asked. A caller who has laid
+    // the page out themselves is not second-guessed.
+    expect(placement.side).toBe("bottom");
+    expect(placement.x).toBe(900);
+    expect(placement.y).toBe(780);
+    expect(placement.shift).toBe(0);
+  });
+});
+
+describe("an anchored overlay follows its trigger", () => {
+  // What a DOM without layout can be asked. `getBoundingClientRect` answers
+  // zero for everything here, so each case stubs the two boxes it is about and
+  // then asserts that the position was *recomputed and applied* — which is the
+  // half of positioning that can be wrong in a way this suite can see. Whether
+  // 240 pixels looks right belongs to `@uniflowed/vrt`.
+
+  component Example() {
+    return (
+      <Popover.Root>
+        <Popover.Trigger>Filters</Popover.Trigger>
+        <Popover.Body>
+          <button type="button">Only mine</button>
+        </Popover.Body>
+      </Popover.Root>
+    );
+  }
+
+  /** Ask for a fresh measurement, the way a scroll anywhere in the page does. */
+  const reflow = () => {
+    fireEvent.scroll(document);
+  };
+
+  it("positions the overlay against its trigger", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    measure(trigger, { height: 40, left: 100, top: 200, width: 80 });
+    await userEvent.click(trigger);
+
+    const body = screen.getByRole("dialog");
+    measure(body, { height: 60, left: 0, top: 0, width: 120 });
+    reflow();
+
+    // Fixed, so the coordinates are the viewport's and an ancestor with
+    // `overflow: hidden` does not cut the overlay in half.
+    expect(body.style.position).toBe("fixed");
+    // Under the trigger, centred on it: 200 + 40, and 100 + 40 − 60.
+    expect(body.style.top).toBe("240px");
+    expect(body.style.left).toBe("80px");
+    expect(body).toHaveAttribute("data-side", "bottom");
+    expect(body).toHaveAttribute("data-align", "center");
+  });
+
+  it("measures again when the page scrolls under it", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    measure(trigger, { height: 40, left: 100, top: 200, width: 80 });
+    await userEvent.click(trigger);
+    const body = screen.getByRole("dialog");
+    measure(body, { height: 60, left: 0, top: 0, width: 120 });
+    reflow();
+    expect(body.style.top).toBe("240px");
+
+    // The trigger has moved up the page, which is what a scroll does to it.
+    measure(trigger, { height: 40, left: 100, top: 120, width: 80 });
+    reflow();
+    expect(body.style.top).toBe("160px");
+  });
+
+  it("measures again when the window is resized", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    measure(trigger, { height: 40, left: 100, top: 200, width: 80 });
+    await userEvent.click(trigger);
+    const body = screen.getByRole("dialog");
+    measure(body, { height: 60, left: 0, top: 0, width: 120 });
+    fireEvent.resize(window);
+    expect(body.style.top).toBe("240px");
+
+    measure(trigger, { height: 40, left: 300, top: 200, width: 80 });
+    fireEvent.resize(window);
+    expect(body.style.left).toBe("280px");
+  });
+
+  it("opens upwards when there is no room below, and says so", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    // The window here is 768 tall, so a trigger at 700 has 28 pixels under it.
+    measure(trigger, { height: 40, left: 100, top: 700, width: 80 });
+    await userEvent.click(trigger);
+    const body = screen.getByRole("dialog");
+    measure(body, { height: 200, left: 0, top: 0, width: 120 });
+    reflow();
+
+    expect(body).toHaveAttribute("data-side", "top");
+    expect(body.style.top).toBe("500px");
+  });
+
+  it("slides along the trigger rather than off the side of the page", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    // The window is 1024 wide; an overlay 400 wide aligned to a trigger at 900
+    // would end at 1300, and no flip of the alignment brings it back.
+    measure(trigger, { height: 40, left: 900, top: 200, width: 80 });
+    await userEvent.click(trigger);
+    const body = screen.getByRole("dialog");
+    measure(body, { height: 60, left: 0, top: 0, width: 400 });
+    reflow();
+
+    expect(body.style.left).toBe("624px");
+    // Still centred as far as the stylesheet is concerned: what moved is where
+    // it sits, not which end of it the arrow belongs on — which is what
+    // `--uf-anchor-shift` is for.
+    expect(body).toHaveAttribute("data-align", "center");
+    expect(body.style.getPropertyValue("--uf-anchor-shift")).toBe("-116px");
+  });
+
+  it("hands a stylesheet the two measurements it cannot make", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    measure(trigger, { height: 40, left: 100, top: 600, width: 240 });
+    await userEvent.click(trigger);
+    const body = screen.getByRole("dialog");
+    measure(body, { height: 60, left: 0, top: 0, width: 120 });
+    reflow();
+
+    // The trigger's width, so a popup that must match it can, and the room
+    // that was left, so one that would overflow can scroll instead.
+    expect(body.style.getPropertyValue("--uf-anchor-trigger-width")).toBe("240px");
+    expect(body.style.getPropertyValue("--uf-anchor-available-height")).toBe("128px");
+    expect(body.style.getPropertyValue("--uf-anchor-available-width")).toBe("1024px");
+  });
+});
+
+describe("Popover", () => {
+  component Example() {
+    return (
+      <div>
+        <p>Behind</p>
+        <Popover.Root>
+          <Popover.Trigger>Filters</Popover.Trigger>
+          <Popover.Body>
+            <button type="button">Only mine</button>
+            <button type="button">Save</button>
+          </Popover.Body>
+        </Popover.Root>
+        <button type="button">After</button>
+      </div>
+    );
+  }
+
+  it("is closed until it is opened, and says what it controls", async () => {
+    render(<Example />);
+    expect(screen.queryByRole("dialog")).toBe(null);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    // Nothing to control yet, so nothing is named.
+    expect(trigger).not.toHaveAttribute("aria-controls");
+
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(trigger.getAttribute("aria-controls")).toBe(screen.getByRole("dialog").id);
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("leaves the page behind it alone", async () => {
+    render(<Example />);
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+
+    // The inverse of the dialog's own case above, and the assertion that says
+    // a popover is not a dialog: the page is still there, still readable and
+    // still scrollable.
+    const behind = screen.getByText("Behind");
+    expect(behind).not.toHaveAttribute("inert");
+    expect(behind).not.toHaveAttribute("aria-hidden");
+    expect(screen.getByRole("dialog")).not.toHaveAttribute("aria-modal");
+    expect(document.body.style.overflow).toBe("");
+  });
+
+  it("moves focus into it, and gives it back on Escape", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    await userEvent.click(trigger);
+    expect(screen.getByRole("button", { name: "Only mine" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+    // Back where the reader was, rather than at the top of the page.
+    expect(trigger).toHaveFocus();
+  });
+
+  it("lets Tab leave", async () => {
+    render(<Example />);
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    screen.getByRole("button", { name: "Save" }).focus();
+
+    await userEvent.tab();
+    // Out, rather than wrapped back to the first control inside. A trap here
+    // is a hole in the page: the reader tabbed in and cannot tab out.
+    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
+    // And the popover they left is dismissed rather than abandoned open behind
+    // them, because Escape is answered where focus is.
+    expect(screen.queryByRole("dialog")).toBe(null);
+  });
+
+  it("closes on a press outside and leaves focus where the reader put it", async () => {
+    render(<Example />);
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const after = screen.getByRole("button", { name: "After" });
+
+    await userEvent.click(after);
+    expect(screen.queryByRole("dialog")).toBe(null);
+    // Not dragged back to the trigger: the reader has already moved on.
+    expect(after).toHaveFocus();
+  });
+
+  it("is named by the button that opened it, unless the caller names it", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    await userEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("keeps the name a caller gave it", () => {
+    render(
+      <Popover.Root defaultOpen>
+        <Popover.Trigger>Filters</Popover.Trigger>
+        <Popover.Body aria-label="Filter options">
+          <button type="button">Only mine</button>
+        </Popover.Body>
+      </Popover.Root>,
+    );
+    // An `aria-labelledby` added on top would win over the caller's label and
+    // announce the button's text instead of theirs.
+    const body = screen.getByRole("dialog");
+    expect(body).not.toHaveAttribute("aria-labelledby");
+    expect(body).toHaveAttribute("aria-label", "Filter options");
+  });
+});
+
+describe("Tooltip", () => {
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  const advance = (millis: number) => {
+    act(() => {
+      uft.advanceTimersByTime(millis);
+    });
+  };
+
+  component Example() {
+    return (
+      <div>
+        <Tooltip.Root>
+          <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+          <Tooltip.Body>Bold (⌘B)</Tooltip.Body>
+        </Tooltip.Root>
+        <button type="button">After</button>
+      </div>
+    );
+  }
+
+  it("waits for the pointer and does not wait for focus", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Bold" });
+
+    fireEvent.pointerEnter(trigger);
+    advance(699);
+    // A pointer crossing a toolbar passes six triggers on its way elsewhere.
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    advance(1);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+
+    fireEvent.pointerLeave(trigger);
+    advance(300);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+
+    act(() => {
+      trigger.focus();
+    });
+    // No wait at all: a reader who tabbed here has already said what they want.
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+
+  it("stays while the pointer travels to it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+    const tip = screen.getByRole("tooltip");
+
+    fireEvent.pointerLeave(trigger);
+    advance(100);
+    fireEvent.pointerEnter(tip);
+    advance(10_000);
+    // WCAG 2.1 SC 1.4.13, hoverable: the trip across the gap must not take the
+    // content away, and this is the clause every hand-written tooltip fails.
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+
+    fireEvent.pointerLeave(tip);
+    advance(300);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+  });
+
+  it("closes on Escape without moving the pointer", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Bold" }));
+    advance(700);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+
+    // Nothing has focus, so the key is answered on the document — which is why
+    // the hand-written version cannot answer it at all.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBe(null);
+  });
+
+  it("stays dismissed while the pointer is still resting on the trigger", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBe(null);
+
+    // Nothing has moved, so nothing may bring it back: a dismissal the pointer
+    // undoes in the next instant is a key that does nothing a reader can see.
+    advance(10_000);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+
+    // Leaving and coming back is a fresh gesture, and gets a fresh answer.
+    fireEvent.pointerLeave(trigger);
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+
+  it("describes its trigger only while it is there", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Bold" });
+    expect(trigger).not.toHaveAttribute("aria-describedby");
+    expect(danglingReferences()).toEqual([]);
+
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+    expect(trigger.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
+    expect(danglingReferences()).toEqual([]);
+
+    fireEvent.pointerLeave(trigger);
+    advance(300);
+    expect(trigger).not.toHaveAttribute("aria-describedby");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("never takes focus", async () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Bold" });
+    act(() => {
+      trigger.focus();
+    });
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+
+    await userEvent.tab();
+    // The next control in the page, not a stop inside the tooltip: a focusable
+    // tooltip is a stop the reader cannot leave the way they expect.
+    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
+    expect(screen.queryByRole("tooltip")).toBe(null);
+  });
+
+  it("says nothing about a popup, because it is not one", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+    // `aria-haspopup` promises something to interact with, and a reader sent to
+    // a tooltip finds nothing there.
+    expect(trigger).not.toHaveAttribute("aria-haspopup");
+    expect(trigger).not.toHaveAttribute("aria-expanded");
+  });
+
+  it("does not open on a tap, and does not eat it either", () => {
+    uft.useFakeTimers();
+    const pressed = fn();
+    render(
+      <Tooltip.Root>
+        <Tooltip.Trigger aria-label="Bold" onClick={pressed}>
+          B
+        </Tooltip.Trigger>
+        <Tooltip.Body>Bold (⌘B)</Tooltip.Body>
+      </Tooltip.Root>,
+    );
+    const trigger = screen.getByRole("button", { name: "Bold" });
+
+    // A touch pointer, which is what a finger arriving looks like. There is no
+    // hover on a phone, so opening here would either swallow the tap or show
+    // something the next tap dismisses.
+    const touch = new Event("pointerenter", { bubbles: false });
+    (touch as $FlowFixMe).pointerType = "touch";
+    act(() => {
+      trigger.dispatchEvent(touch);
+    });
+    advance(10_000);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+
+    fireEvent.click(trigger);
+    expect(pressed).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a trigger the keyboard cannot reach", () => {
+    // A tooltip on a `<span>` is one only a mouse can find, and it looks
+    // perfect in the markup. This package's answer to that is an error.
+    expect(() =>
+      render(
+        <Tooltip.Root>
+          <Tooltip.Trigger render={(props) => <span {...props}>B</span>} />
+          <Tooltip.Body>Bold</Tooltip.Body>
+        </Tooltip.Root>,
+      ),
+    ).toThrow(/keyboard can reach/);
+  });
+
+  it("goes on a trigger the caller renders", () => {
+    uft.useFakeTimers();
+    render(
+      <Tooltip.Root>
+        <Tooltip.Trigger
+          render={(props) => (
+            <a href="/bold" {...props}>
+              Bold
+            </a>
+          )}
+        />
+        <Tooltip.Body>What bold does</Tooltip.Body>
+      </Tooltip.Root>,
+    );
+    const trigger = screen.getByRole("link", { name: "Bold" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+    expect(trigger.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
+  });
+});
+
+describe("Tooltip: one clock for a toolbar", () => {
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  const advance = (millis: number) => {
+    act(() => {
+      uft.advanceTimersByTime(millis);
+    });
+  };
+
+  component Toolbar() {
+    return (
+      <Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
+        <Tooltip.Root>
+          <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+          <Tooltip.Body>Bold</Tooltip.Body>
+        </Tooltip.Root>
+        <Tooltip.Root>
+          <Tooltip.Trigger aria-label="Italic">I</Tooltip.Trigger>
+          <Tooltip.Body>Italic</Tooltip.Body>
+        </Tooltip.Root>
+      </Tooltip.Provider>
+    );
+  }
+
+  /** Read the first tooltip, then leave it, which is what opens the window. */
+  const readTheFirst = () => {
+    const first = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(first);
+    advance(700);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Bold");
+    fireEvent.pointerLeave(first);
+    advance(300);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+  };
+
+  it("opens the second tooltip in a toolbar without waiting again", () => {
+    uft.useFakeTimers();
+    render(<Toolbar />);
+    readTheFirst();
+
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Italic" }));
+    // In the same tick. A reader who has waited out the delay once has
+    // established that they are reading tooltips.
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Italic");
+  });
+
+  it("waits again once the window has passed", () => {
+    uft.useFakeTimers();
+    render(<Toolbar />);
+    readTheFirst();
+    advance(301);
+
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Italic" }));
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    advance(700);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Italic");
+  });
+
+  it("leaves a tooltip outside a provider exactly as it is", () => {
+    uft.useFakeTimers();
+    render(
+      <div>
+        <Tooltip.Root>
+          <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+          <Tooltip.Body>Bold</Tooltip.Body>
+        </Tooltip.Root>
+        <Tooltip.Root openDelay={50}>
+          <Tooltip.Trigger aria-label="Italic">I</Tooltip.Trigger>
+          <Tooltip.Body>Italic</Tooltip.Body>
+        </Tooltip.Root>
+      </div>,
+    );
+    const first = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(first);
+    advance(699);
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    advance(1);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Bold");
+    fireEvent.pointerLeave(first);
+    advance(300);
+
+    // No group, so no skip window: the second one waits its own delay, and the
+    // delay is its own rather than a provider's.
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Italic" }));
+    expect(screen.queryByRole("tooltip")).toBe(null);
+    advance(50);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Italic");
+  });
+
+  it("lets one tooltip in a group keep a delay of its own", () => {
+    uft.useFakeTimers();
+    render(
+      <Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
+        <Tooltip.Root openDelay={0}>
+          <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+          <Tooltip.Body>Bold</Tooltip.Body>
+        </Tooltip.Root>
+      </Tooltip.Provider>,
+    );
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Bold" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Bold");
+  });
+});
+
+describe("HoverCard", () => {
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  const advance = (millis: number) => {
+    act(() => {
+      uft.advanceTimersByTime(millis);
+    });
+  };
+
+  component Example() {
+    return (
+      <div>
+        <HoverCard.Root>
+          <HoverCard.Trigger
+            render={(props) => (
+              <a href="/ada" {...props}>
+                @ada
+              </a>
+            )}
+          />
+          <HoverCard.Body>
+            <p>Ada Lovelace</p>
+            <a href="/ada/notes">Notes</a>
+          </HoverCard.Body>
+        </HoverCard.Root>
+        <button type="button">After</button>
+      </div>
+    );
+  }
+
+  it("opens on hover after a wait, and on focus at once", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("link", { name: "@ada" });
+
+    fireEvent.pointerEnter(trigger);
+    advance(699);
+    expect(screen.queryByText("Ada Lovelace")).toBe(null);
+    advance(1);
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+
+    fireEvent.pointerLeave(trigger);
+    advance(300);
+    expect(screen.queryByText("Ada Lovelace")).toBe(null);
+
+    act(() => {
+      trigger.focus();
+    });
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+  });
+
+  it("is not a dialog and does not describe its trigger", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    act(() => {
+      trigger.focus();
+    });
+
+    // Nothing about it is modal, and a card of links flattened into a
+    // description is a sentence nobody can act on.
+    expect(screen.queryByRole("dialog")).toBe(null);
+    expect(trigger).not.toHaveAttribute("aria-describedby");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("holds links Tab can reach, and stays while focus is inside", async () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    act(() => {
+      trigger.focus();
+    });
+
+    await userEvent.tab();
+    expect(screen.getByRole("link", { name: "Notes" })).toHaveFocus();
+    advance(10_000);
+    // Leaving the trigger scheduled a close; arriving in the card called it
+    // off, which is the hoverable clause applied to the keyboard.
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+  });
+
+  it("closes on Escape and gives focus back to the trigger", async () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    act(() => {
+      trigger.focus();
+    });
+    await userEvent.tab();
+    expect(screen.getByRole("link", { name: "Notes" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByText("Ada Lovelace")).toBe(null);
+    // The card took its own links away, so focus has to be put somewhere the
+    // reader recognises rather than left on `<body>`.
+    expect(trigger).toHaveFocus();
+  });
+
+  it("does not open on a tap", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    const touch = new Event("pointerenter", { bubbles: false });
+    (touch as $FlowFixMe).pointerType = "touch";
+    act(() => {
+      trigger.dispatchEvent(touch);
+    });
+    advance(10_000);
+    // A hover card is an enrichment: the link under it goes somewhere useful on
+    // its own, which is all a reader on a phone will ever get.
+    expect(screen.queryByText("Ada Lovelace")).toBe(null);
   });
 });
 
@@ -4231,6 +5158,66 @@ describe("caller props never disable the component", () => {
   });
 });
 
+// What `uf check` says about this package, and the two promises only it can
+// hold: that no part makes React's `key` a `mixed`, and that a misused `side`
+// or `align` is an error at the call rather than an overlay in the wrong place.
+// Both blocks below run the checker, so what it takes to run it is here.
+
+// This checkout, found by the file under test rather than by counting `..`.
+//
+// Two levels above the worker's project is this repository only while that
+// project is `tests/library`, and which project it is depends on how the
+// command was typed. `uf test#library` selects `tests/library` by name;
+// `uf test tests/library/ui.test.js` from the checkout selects the
+// *repository*, because a path is a filter over the project the command was
+// typed in and `UF_PROJECT_ROOT` is that project's root. Two levels above
+// the checkout holds no uf project at all, so `uf check` printed nothing,
+// and what a reader got was `SyntaxError: Unexpected end of JSON input` at
+// the parse below — a message about JSON for a mistake about a directory,
+// in the invocation someone reaches for when they want one file. That is
+// #313.
+//
+// Searching upwards for a file this repository has is true under both, and
+// is what `write-atomically.test.js` already does for the same reason.
+// `fileURLToPath(import.meta.url)` would say it more directly still, and is
+// itself one of the type errors `uf check` reports against this suite today
+// — see `story.test.js` — which is a poor thing for a test about type errors
+// to add another of.
+const repository: string = (() => {
+  // The package this block checks, so a checkout that moved it says so here
+  // rather than three lines later in a parse.
+  const wanted = path.join("packages", "ui", "internal", "merge-props.js");
+  const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
+  let directory = from;
+  for (let up = 0; up < 8; up += 1) {
+    if (fs.existsSync(path.join(directory, wanted))) return directory;
+    directory = path.dirname(directory);
+  }
+  throw new Error(`could not find ${wanted} above ${from}`);
+})();
+
+// The binary running this suite, the way `lsp.test.js` names it: `uf test`
+// puts its own path in `UF_BINARY`, so this checks *this* build rather than
+// whatever `uf` is on PATH.
+const UF: string = (() => {
+  const binary = process.env.UF_BINARY;
+  if (binary == null || binary === "") {
+    throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
+  }
+  return binary;
+})();
+
+// The part of `uf check --json` this reads. A message arrives as spans
+// rather than a string so that a renderer can mark the code inside it, which
+// is why the filter below joins it back together first.
+type Diagnostic = {
+  primary: { path: string, start: { line: number, column: number } },
+  message: Array<{ kind: string, text: string }>,
+};
+type Report = {
+  typeCheck: { status: string, filesChecked: number, diagnostics: Array<Diagnostic> },
+};
+
 describe("the props a part spreads onto its element", () => {
   // A type is a promise the same way a role is, and this is the only test here
   // that can hold one to it.
@@ -4248,61 +5235,6 @@ describe("the props a part spreads onto its element", () => {
   // nothing resolves a module for `@uniflowed/react` and the import is typed
   // `any` — a different bug, with a different fix, and not one this test
   // should start failing over.
-
-  // This checkout, found by the file under test rather than by counting `..`.
-  //
-  // Two levels above the worker's project is this repository only while that
-  // project is `tests/library`, and which project it is depends on how the
-  // command was typed. `uf test#library` selects `tests/library` by name;
-  // `uf test tests/library/ui.test.js` from the checkout selects the
-  // *repository*, because a path is a filter over the project the command was
-  // typed in and `UF_PROJECT_ROOT` is that project's root. Two levels above
-  // the checkout holds no uf project at all, so `uf check` printed nothing,
-  // and what a reader got was `SyntaxError: Unexpected end of JSON input` at
-  // the parse below — a message about JSON for a mistake about a directory,
-  // in the invocation someone reaches for when they want one file. That is
-  // #313.
-  //
-  // Searching upwards for a file this repository has is true under both, and
-  // is what `write-atomically.test.js` already does for the same reason.
-  // `fileURLToPath(import.meta.url)` would say it more directly still, and is
-  // itself one of the type errors `uf check` reports against this suite today
-  // — see `story.test.js` — which is a poor thing for a test about type errors
-  // to add another of.
-  const repository: string = (() => {
-    // The package this block checks, so a checkout that moved it says so here
-    // rather than three lines later in a parse.
-    const wanted = path.join("packages", "ui", "internal", "merge-props.js");
-    const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
-    let directory = from;
-    for (let up = 0; up < 8; up += 1) {
-      if (fs.existsSync(path.join(directory, wanted))) return directory;
-      directory = path.dirname(directory);
-    }
-    throw new Error(`could not find ${wanted} above ${from}`);
-  })();
-
-  // The binary running this suite, the way `lsp.test.js` names it: `uf test`
-  // puts its own path in `UF_BINARY`, so this checks *this* build rather than
-  // whatever `uf` is on PATH.
-  const UF: string = (() => {
-    const binary = process.env.UF_BINARY;
-    if (binary == null || binary === "") {
-      throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
-    }
-    return binary;
-  })();
-
-  // The part of `uf check --json` this reads. A message arrives as spans
-  // rather than a string so that a renderer can mark the code inside it, which
-  // is why the filter below joins it back together first.
-  type Diagnostic = {
-    primary: { path: string, start: { line: number, column: number } },
-    message: Array<{ kind: string, text: string }>,
-  };
-  type Report = {
-    typeCheck: { status: string, filesChecked: number, diagnostics: Array<Diagnostic> },
-  };
 
   it("does not make React's key mixed", () => {
     const run = spawnSync(UF, ["check", "packages/ui", "--json"], {
@@ -4335,5 +5267,81 @@ describe("the props a part spreads onto its element", () => {
       }))
       .filter((diagnostic) => diagnostic.said.includes("in property key"));
     expect(keyed).toEqual([]);
+  });
+});
+
+describe("a side and an alignment are unions, not strings", () => {
+  // The other promise a type makes, and the other one no amount of rendering
+  // can check. `internal/anchor.js` says a side is one of four names and an
+  // alignment one of three; the claim that follows is that a consumer who
+  // misspells one is stopped by the checker rather than by a reader finding an
+  // overlay in the wrong place.
+  //
+  // `tests/type-tests/anchoring.js` is the misuse, written down. It is
+  // *supposed* to fail `uf check`, it marks each line that must fail with a
+  // `// expect:` comment, and this reads both and compares them — so a change
+  // that makes one of them stop being an error fails here, and so does one that
+  // makes something else in that file start being one.
+  //
+  // Both paths go to the checker in one command, and that is load-bearing:
+  // `uf check` builds its module map from the files it is asked about, so a
+  // relative import that leaves that set resolves to an any-typed value —
+  // after which `Side` is `any` and every line of the fixture passes. The
+  // fixture's own header says why it is not inside the package.
+  const fixture = path.join("tests", "type-tests", "anchoring.js");
+
+  it("reports every misuse, and only the misuses", () => {
+    const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
+    const wanted = new Map<number, string>();
+    source.forEach((line, index) => {
+      const marker = line.match(/^\s*\/\/ expect: (.+)$/);
+      if (marker != null) {
+        // Lines are one-based, and the line that must fail is the next one.
+        wanted.set(index + 2, marker[1]);
+      }
+    });
+    // Without this the test would pass on a fixture somebody had emptied.
+    expect(wanted.size).toBeGreaterThan(4);
+
+    const run = spawnSync(UF, ["check", "tests/type-tests", "packages/ui", "--json"], {
+      cwd: repository,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    if (run.stdout === "") {
+      throw new Error(
+        `\`uf check tests/type-tests packages/ui --json\` in ${repository} printed ` +
+          `nothing: status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
+      );
+    }
+    const report: Report = JSON.parse(run.stdout);
+    expect(report.typeCheck.status).toBe("checked");
+
+    const reported = new Map<number, string>();
+    for (const diagnostic of report.typeCheck.diagnostics) {
+      if (diagnostic.primary.path.endsWith(fixture)) {
+        reported.set(
+          diagnostic.primary.start.line,
+          diagnostic.message.map((span) => span.text).join(""),
+        );
+      }
+    }
+
+    const missing = [];
+    for (const [line, expected] of wanted) {
+      const said = reported.get(line);
+      if (said == null || !said.includes(expected)) {
+        missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
+      }
+    }
+    // Every marked line is an error, with the message the fixture predicted.
+    expect(missing).toEqual([]);
+
+    // And nothing else in the file is: the four sides and the three alignments
+    // are usable, and this is what says the fixture is not just broken.
+    const unexpected = [...reported.keys()]
+      .filter((line) => !wanted.has(line))
+      .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
+    expect(unexpected).toEqual([]);
   });
 });

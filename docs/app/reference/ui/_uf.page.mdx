@@ -34,6 +34,9 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking | `menu.js` |
 | `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter | `combobox.js` |
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
+| `Popover` | A dialog that is not modal: focus in, `Escape` out, `Tab` leaves | `popover.js` |
+| `Tooltip` | A phrase on hover and focus that WCAG 2.1 SC 1.4.13 would accept | `tooltip.js` |
+| `HoverCard` | The preview a name expands into, with links `Tab` can reach | `hover-card.js` |
 | `Tabs` | Tabs: a roving `tabindex`, automatic or manual activation | `tabs.js` |
 | `Toast` | Notifications: a live region that was already watching, and timers that stop | `toast.js` |
 | `Slider` | A value in a range, with the slider role on the thumb | `slider.js` |
@@ -592,6 +595,189 @@ genuinely has no URL for a page is the case where this is the wrong component.
 such thing as a disabled link — an `<a>` with no `href` is out of the tab order
 and is not announced as a link, which is exactly what "there is no previous
 page" means.
+
+## Overlays that follow their trigger
+
+`Popover`, `Tooltip` and `HoverCard` are one component seen from three
+distances: one you click, one you hover, and one you hover and then read. They
+share where they go and they share nothing else, because what a reader is told
+differs in every one.
+
+| | Opens on | Role | Takes focus | Describes its trigger |
+| --- | --- | --- | --- | --- |
+| `Popover` | Click, `Enter`, `Space`, tap | `dialog`, never `aria-modal` | Yes, and gives it back | No |
+| `Tooltip` | Hover, focus | `tooltip` | **Never** | `aria-describedby`, while it is open |
+| `HoverCard` | Hover, focus | None | No, and `Tab` reaches into it | No |
+
+### A popover is not a `Dialog` with a flag
+
+`Dialog` is modal and only modal: it writes `aria-modal`, marks everything
+outside `inert`, locks the page's scroll and traps `Tab`. Every one of those is
+wrong for a popover, and the last one is the one that matters — `Tab` out of a
+popover is how a reader leaves it, and a trap turns it into a hole in the page.
+So they are two modules rather than one with a `modal` prop: a flag would be one
+flag every behaviour had to read, and the behaviour that forgot would announce a
+modal that is not one.
+
+```js
+<Popover.Root>
+  <Popover.Trigger>Filters</Popover.Trigger>
+  <Popover.Body align="start" side="bottom" sideOffset={8}>
+    <label>
+      Only mine <input type="checkbox" />
+    </label>
+  </Popover.Body>
+</Popover.Root>
+```
+
+Focus moves to the first thing worth acting on when it opens. `Escape` closes it
+and gives focus back to the trigger. A press outside closes it and leaves focus
+where the reader put it. `Tab` past the last control inside leaves — and
+dismisses the popover on the way, because a non-modal overlay the reader has
+left is one they can no longer press `Escape` at.
+
+Its accessible name comes from the button that opened it, unless you pass
+`aria-label` or `aria-labelledby`, in which case yours is kept.
+
+### A tooltip, and the specification it usually fails
+
+WCAG 2.1 SC 1.4.13, *Content on Hover or Focus*, requires content shown that way
+to be **dismissible** with `Escape`, **hoverable** — the pointer can travel onto
+it without it vanishing — and **persistent**. A `title` attribute fails all
+three. A `div` that appears on `:hover` fails the first two.
+
+```js
+<Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
+  <Tooltip.Root>
+    <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+    <Tooltip.Body>Bold (⌘B)</Tooltip.Body>
+  </Tooltip.Root>
+</Tooltip.Provider>
+```
+
+The tooltip never takes focus and holds no tab stop: a focusable tooltip is a
+stop in the tab order the reader did not ask for and cannot leave in the
+direction they expect. It carries `role="tooltip"`, it is named in the trigger's
+`aria-describedby` only while it is in the document, and it has no
+`aria-haspopup` — that attribute promises something to interact with, and a
+reader sent to a tooltip finds nothing there.
+
+The pointer waits; **focus does not**. A reader who tabbed to a control has
+already said what they want, and a delay exists to filter out intent nobody
+expressed. `Tooltip.Provider` shares one clock between a group of tooltips, so
+the second icon in a toolbar opens at once rather than making a reader who has
+already waited out the delay wait it out again — that is `skipDelayDuration`,
+the window after one closes during which the next opens immediately. A tooltip
+outside a provider is a complete tooltip with a delay of its own.
+
+`Tooltip.Trigger` renders a `<button>`, or whatever you pass to `render`:
+
+```js
+<Tooltip.Trigger render={(props) => <a href="/bold" {...props}>Bold</a>} />
+```
+
+Whatever it renders has to be something the keyboard can reach, and the
+component throws if it is not. A tooltip on a `<span>` is one only a mouse can
+find, and it looks perfect in the markup.
+
+**It does not open on touch.** There is no hover on a touch screen, and the only
+gesture left is the tap the control itself needs — a tooltip that opened on it
+would either swallow that tap or show something the next tap dismisses. What
+follows is a rule for you rather than for the component: a tooltip may not be
+the only place something is said, so give an icon button an `aria-label` and let
+the tooltip repeat it.
+
+### A hover card holds links
+
+```js
+<HoverCard.Root>
+  <HoverCard.Trigger render={(props) => <a href="/ada" {...props}>@ada</a>} />
+  <HoverCard.Body>
+    <p>Ada Lovelace</p>
+    <a href="/ada/notes">Notes</a>
+  </HoverCard.Body>
+</HoverCard.Root>
+```
+
+It is not a tooltip, because its contents are reachable — by pointer and by
+`Tab` — and not a dialog, because nothing about it is modal and announcing a
+dialog the reader never asked for is worse than announcing nothing. Its content
+sits immediately after the trigger, so the reading order carries it. `Escape`
+closes it, and gives focus back to the trigger when focus was inside.
+
+Like a tooltip it does not open on touch, which makes it an *enrichment*: the
+link under it has to go somewhere useful on its own, because a reader on a phone
+will only ever get the link.
+
+### Where they go
+
+All three take the same placement props:
+
+| Prop | Default | What it does |
+| --- | --- | --- |
+| `side` | `"bottom"`, `"top"` for a tooltip | Which side of the trigger it opens onto |
+| `align` | `"center"` | Where it sits along the trigger's other axis |
+| `sideOffset` | `0` | The gap between the trigger and the overlay |
+| `alignOffset` | `0` | A nudge along the other axis, in the direction the page reads |
+| `avoidCollisions` | `true` | Whether it may move to stay on the screen |
+| `collisionPadding` | `0` | How close to the edge of the page it may come |
+
+`side` is a union of `"top" | "right" | "bottom" | "left"` and `align` is
+`"start" | "center" | "end"`. Misspelling one is a type error at the call rather
+than an overlay that quietly opens somewhere else, and
+`packages/ui/type-tests/anchoring.js` is that promise written down as the code
+that must fail to check.
+
+When there is no room, the overlay does two things, and needing both is why it
+is measured rather than left to CSS:
+
+* it **flips** to the opposite side — the menu near the bottom of a long page
+  that opens upwards;
+* it **slides** along the trigger to stay on the screen. A flip alone cannot
+  answer an overlay that is wider than the room on *either* side of a trigger
+  near the edge: both alignments overflow, and only sliding it back brings it
+  in.
+
+Where it ended up is reported on the overlay as `data-side` and `data-align`, so
+a stylesheet can point an arrow without measuring anything. `data-align` is
+always the alignment you asked for — a slide moves where the overlay sits, not
+which end of it the arrow belongs on.
+
+Five custom properties are written on the overlay, and two of them are
+measurements you cannot make from CSS:
+
+| Property | What it holds |
+| --- | --- |
+| `--uf-anchor-trigger-width` | The trigger's width, for a popup that must match it |
+| `--uf-anchor-trigger-height` | The trigger's height |
+| `--uf-anchor-available-width` | How much room there was across the page |
+| `--uf-anchor-available-height` | How much room was left on the side it chose |
+| `--uf-anchor-shift` | How far it slid, so an arrow can be moved back |
+
+`Menu` and `Combobox` are not positioned by any of this yet: they still render
+where they are written, and adopting this module is the half of
+[ubugeeei-prod/uf#256](https://github.com/ubugeeei-prod/uf/issues/256) that is
+still open.
+
+An overlay is `position: fixed`, which is also how it escapes an ancestor's
+`overflow: hidden` — a popover in a table row or a scroll container is not cut
+in half — without being moved away from its trigger in the accessibility tree.
+The exception is an ancestor with `transform`, `filter` or `will-change`, which
+becomes the containing block for anything fixed inside it.
+
+### Why it is measured, and not CSS anchor positioning
+
+The platform grew this: `anchor-name`, `position-area` and
+`position-try-fallbacks` place an element against another in the compositor,
+with no JavaScript on the scroll path. It is the better mechanism and it is
+deliberately not used, because it cannot express the slide. `position-area`
+chooses one of a grid of regions around the anchor and offers no spelling for
+"and then move it back inside"; every `position-try` fallback, built-in or
+hand-written, is another *placement* rather than a nudge. Shipping the
+declarative tier where it works and the measured one elsewhere would put the
+same overlay in two different places, and which one a reader got would depend on
+their browser. One tier both engines run is worth more than the faster one for
+some of them.
 
 ## What this page is
 
