@@ -68,6 +68,11 @@ pub enum AlignKind {
 pub enum Label {
     /// The result of the member chain printer.
     MemberChain,
+    /// A template literal whose contents were formatted as an embedded
+    /// language. Prettier's `label.embed`: it is what makes a lone call
+    /// argument hug its parentheses even though nothing about the node says
+    /// it should.
+    Embed,
 }
 
 /// The shapes a doc can take. See the module docs for what each means to the

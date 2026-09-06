@@ -20,6 +20,7 @@ mod assignment;
 mod binary;
 mod call;
 mod class;
+mod embed;
 mod expression;
 mod function;
 mod jsx;
