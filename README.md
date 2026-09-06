@@ -292,6 +292,7 @@ reference, with every flag and exit code.
 | `uf lint` | uf's rules and Flow's built-in lints, one pass, one report |
 | `uf check` | Flow's own inference. uf has no second opinion about your types |
 | `uf install` | The project's package manager, with lifecycle scripts refused |
+| `uf add`, `uf remove`, `uf update`, `uf why` | The same manager, one dependency at a time, rewriting the lockfile and the store |
 | `uf run`, `ufx` | A task from `uf.config.js`; a package's binary |
 | `uf info`, `uf inspect`, `uf explain` | What uf found, what your config resolved to, and which provider does each stage of a command |
 | `uf prepare` | The code generation and checks a commit should not go without |
