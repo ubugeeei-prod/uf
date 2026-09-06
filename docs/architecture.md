@@ -433,6 +433,34 @@ Server Components are the default. Client Components must opt in with
 Caches are off by default. React 19, Suspense, `use`, and Async React are
 assumed.
 
+That analysis is load-bearing at the route level, and only there. `uf_rsc`
+resolves the module graph and marks every module a `"use client"` boundary is
+reachable from; `uf build` and `uf dev` write the result to
+`.uf/rsc/uf-rsc-manifest.json` and name it in `UF_RSC_MANIFEST`, and
+`@uniflowed/vite` generates the browser's copy of the route table without the
+page of any route that reaches no boundary. No `import()` in that table reaches
+the route's page, so Rollup emits no chunk for it and none for anything only it
+reached; `hydrate` returns without mounting the route, because the document the
+server wrote is the whole of it, and a link into it is a document navigation
+rather than a client render.
+
+One thing does still come back. A uf build links the stylesheets it finds in
+the *client* graph, so a route removed from that graph outright loses its rules
+— from every page of the site, because the linked sheets are the whole graph's.
+Each dropped module is therefore imported for its side effects, with nothing
+read from it: the stylesheet survives and the components, helpers and data it
+declared are unused exports that do not.
+
+What still ships is everything *above* a boundary. uf's client hydrates by
+re-rendering the matched tree from the same modules the server rendered it
+from, so a Server Component that renders a Client Component is a module React
+needs in the browser in order to reach the boundary at all; dropping it needs a
+Flight-shaped payload uf does not have. A route that keeps its page therefore
+keeps its whole subtree, and every application whose root layout imports one
+client component — this documentation site included — ships exactly what it
+shipped before. Server actions are scanned, keyed, typed and manifested, and
+none of them is callable. Both remainders are ubugeeei-prod/uf#252.
+
 The linter starts with framework rules that guide teams away from legacy React
 function component typing and toward Flow component syntax. React Native support
 starts with platform split diagnostics for generic files that branch on

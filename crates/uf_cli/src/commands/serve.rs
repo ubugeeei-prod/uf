@@ -134,6 +134,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             args.port,
             &resolved.config.build.out_dir,
         ),
+        &[],
     )?;
 
     let host_name = host.name();
@@ -221,6 +222,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             | Event::Phase { .. }
             | Event::Page { .. }
             | Event::SourceChanged
+            | Event::RscSplit { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}
         }

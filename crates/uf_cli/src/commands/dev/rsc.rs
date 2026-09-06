@@ -35,7 +35,10 @@
 //! says something or it does not.
 
 use camino::{Utf8Path, Utf8PathBuf};
-use uf_rsc::{BuildId, ProjectScanOptions, RscDiagnostic, RscSeverity, analyze_project};
+use uf_rsc::{
+    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_FILE_NAME, RscDiagnostic,
+    RscSeverity, analyze_project, write_manifest,
+};
 use uf_term::{CodeFrame, DiagnosticLevel, Status};
 
 use crate::support::plural;
@@ -60,8 +63,21 @@ pub(crate) enum RscUpdate {
 }
 
 /// The RSC analysis, as `uf dev` keeps it.
+///
+/// # Two readers
+///
+/// The diagnostics are for the person, and the manifest is for the bundler.
+/// `@uniflowed/vite` leaves a route's page out of the client route table when
+/// no client boundary is reachable from it, and it reads that decision out of
+/// the manifest this writes — so `uf dev` has to keep the file current for the
+/// same reason it keeps the diagnostics current. A dev server that hydrated a
+/// route `uf build` ships no page for would be a dev server disagreeing with
+/// the build about what the browser gets, which is the one thing it may never
+/// do.
 pub(crate) struct RscReport {
     root: Utf8PathBuf,
+    /// Where the bundler reads the analysis from.
+    manifest: Utf8PathBuf,
     build_id: BuildId,
     options: ProjectScanOptions,
     /// The diagnostics the last successful scan found. `None` before the first
@@ -88,6 +104,9 @@ impl RscReport {
     pub(crate) fn new(root: &Utf8Path) -> Self {
         Self {
             root: root.to_path_buf(),
+            manifest: root
+                .join(RSC_MANIFEST_BUILD_DIR)
+                .join(RSC_MANIFEST_FILE_NAME),
             build_id: BuildId::from_env_or_generate(),
             options: ProjectScanOptions::default(),
             last: None,
@@ -96,10 +115,55 @@ impl RscReport {
         }
     }
 
+    /// Where the bundler is told to read the analysis from.
+    ///
+    /// A path rather than a file: it is handed to the driver before the first
+    /// scan has necessarily succeeded, and `@uniflowed/vite` treats a manifest
+    /// it cannot read as "split nothing" — which is what the build did before
+    /// any of this existed. So the path is always true even when the file is
+    /// not yet there.
+    pub(crate) fn manifest_path(&self) -> &Utf8Path {
+        &self.manifest
+    }
+
+    /// Scan once and write the manifest, before the bundler starts.
+    ///
+    /// Failure is deliberately silent. A project that cannot be scanned is not
+    /// a dev server that should refuse to start — the file being edited is very
+    /// often the unreadable one — and the consequence of no manifest is that
+    /// nothing is split, which is a whole route table rather than a broken one.
+    /// The first [`Self::report`] scans again and writes it if it can.
+    pub(crate) fn prime(&mut self) {
+        if let Ok(analysis) = analyze_project(&self.root, &self.build_id, &self.options) {
+            self.persist(&analysis);
+        }
+    }
+
     /// Rescan, and say what changed.
     pub(crate) fn report(&mut self, ui: &mut Ui) {
         let update = self.refresh();
         render(ui, &update);
+    }
+
+    /// Write the manifest, unless the bytes it would hold are already there.
+    ///
+    /// Only when they moved: `@uniflowed/vite` watches this file and rebuilds
+    /// the client route table when it changes, so rewriting identical bytes on
+    /// every keystroke would be a full page reload on every keystroke.
+    ///
+    /// A write that fails is not reported. The diagnostics above are what this
+    /// module exists to say; a manifest that could not be written costs the
+    /// reader a split, and a second warning channel about `.uf/` on every save
+    /// would cost them the diagnostics.
+    fn persist(&self, analysis: &uf_rsc::RscAnalysis) {
+        let manifest = analysis.manifest();
+        let Ok(json) = manifest.to_json() else {
+            return;
+        };
+        if std::fs::read_to_string(&self.manifest).is_ok_and(|current| current == json) {
+            return;
+        }
+        let _ = write_manifest(&self.root.join(RSC_MANIFEST_BUILD_DIR), &manifest);
     }
 
     /// Rescan the project and decide whether there is anything new to say.
@@ -124,6 +188,11 @@ impl RscReport {
             }
         };
         self.last_error = None;
+        // Before the early returns below: the manifest has to follow the graph
+        // even when the *diagnostics* are unchanged, because adding a
+        // `"use client"` import moves what the browser gets without moving what
+        // the contract says.
+        self.persist(&analysis);
 
         let diagnostics = analysis.graph.diagnostics().to_vec();
         if self.last.as_ref() == Some(&diagnostics) {
@@ -167,8 +236,8 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                 .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
                 .count();
             let summary = format!(
-                "{} against the server/client contract, {} of them fatal to it once the \
-                 client/server split lands (ubugeeei-prod/uf#252)",
+                "{} against the server/client contract, {} of them fatal to `uf \
+                 build` (ubugeeei-prod/uf#281)",
                 plural(diagnostics.len(), "diagnostic"),
                 errors,
             );

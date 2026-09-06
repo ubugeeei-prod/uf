@@ -210,3 +210,46 @@ fn proximity_marks_modules_that_can_hand_a_closure_to_the_client() {
         ClientBoundaryProximity::Isolated
     );
 }
+
+/// The question the bundler asks, which proximity alone does not answer.
+///
+/// A `"use client"` module reaches no boundary of its own — it *is* the far
+/// side of one — so `proximity` says `Isolated` about the one module that is a
+/// client bundle root by definition. Anything deciding what to ship has to ask
+/// both halves, which is what `requires_client_bundle` is.
+#[test]
+fn the_client_bundle_takes_a_client_module_and_everything_above_one() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js"));
+    builder.add_module(server("app/static.js").with_import("./almanac.js"));
+    builder.add_module(server("app/almanac.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    builder.add_entry("app/static.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(
+        graph
+            .module("app/page.js")
+            .unwrap()
+            .requires_client_bundle()
+    );
+    assert!(
+        graph
+            .module("app/Counter.js")
+            .unwrap()
+            .requires_client_bundle()
+    );
+    assert!(
+        !graph
+            .module("app/static.js")
+            .unwrap()
+            .requires_client_bundle()
+    );
+    assert!(
+        !graph
+            .module("app/almanac.js")
+            .unwrap()
+            .requires_client_bundle()
+    );
+}
