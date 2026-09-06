@@ -92,8 +92,14 @@ impl Route {
 
         while let Some(segment) = expected.next() {
             if segment.starts_with(':') && segment.ends_with('*') {
-                // The last thing in the path by construction, so whatever is
-                // left of the URL is the catch-all's, and there must be some.
+                // The last thing in the path, so whatever is left of the URL
+                // is the catch-all's, and there must be some. That it is last
+                // is [`discover_routes`]'s doing: it refuses a `[...param]`
+                // with a routing directory below it, because a catch-all takes
+                // every remaining segment and leaves nothing for what follows.
+                // `expected.next().is_none()` is what says so here rather than
+                // assuming it, since `Route` is a public struct anyone can
+                // fill in by hand.
                 return actual.next().is_some() && expected.next().is_none();
             }
             let Some(given) = actual.next() else {
@@ -165,6 +171,35 @@ pub enum RouterError {
     },
     #[error("path is not UTF-8: {0}")]
     NonUtf8(String),
+    /// A `[...param]` directory with a routing directory below it.
+    ///
+    /// Refused rather than served, because there is nothing to serve. A
+    /// catch-all takes every segment of the URL that is left, so a segment
+    /// after it has nothing to match against: `packages/router/internal/
+    /// runtime.js`'s `matchSegments` compares `parts[parts.length]` — which is
+    /// `undefined` — against the following segment and gives up, and
+    /// [`Route::matches_url`] returns `false` for every URL. Both routers
+    /// already agreed the page was unreachable; discovery was the only place
+    /// that did not say so, and it produced a route that looked live in
+    /// `uf inspect`, in the generated `RoutePath`, and in the guard report
+    /// `uf build` writes — where a prerendered document under it was simply
+    /// left out.
+    #[error(
+        "{page}: `{catch_all}` is a catch-all and `{following}` is below it, so no URL can reach \
+         this page — a catch-all takes every segment of the path that is left, and there is \
+         nothing after it to match `{following}` with. Move the page so `{catch_all}` is the last \
+         routing directory in it, or make `{catch_all}` a `[{parameter}]`."
+    )]
+    NonTerminalCatchAll {
+        /// The `_uf.page.js` that cannot be reached.
+        page: Utf8PathBuf,
+        /// The catch-all directory, as it is written on disk.
+        catch_all: String,
+        /// The first routing directory below it.
+        following: String,
+        /// The catch-all's parameter name, for the suggested spelling.
+        parameter: String,
+    },
 }
 
 pub fn discover_routes(
@@ -190,6 +225,20 @@ pub fn discover_routes(
             .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
         let directory = page.parent().unwrap_or(&app_root).to_path_buf();
         let relative = directory.strip_prefix(&app_root).unwrap_or(&directory);
+        // Before the path is built, because the path is where the evidence
+        // goes missing: `/docs/:slug*/edit` reads like a route, and only the
+        // directory names say which `[...param]` the author wrote.
+        if let Some((catch_all, following)) = non_terminal_catch_all(relative) {
+            return Err(RouterError::NonTerminalCatchAll {
+                parameter: catch_all
+                    .trim_start_matches("[...")
+                    .trim_end_matches(']')
+                    .to_string(),
+                page,
+                catch_all,
+                following,
+            });
+        }
         let (path, params) = route_path_and_params(relative);
 
         routes.push(Route {
@@ -321,6 +370,32 @@ pub fn write_router_manifest(
         source,
     })?;
     Ok(Some(manifest))
+}
+
+/// The first `[...param]` in `relative` that has a routing directory below it,
+/// with that directory, if there is one.
+///
+/// A `(group)` is not a routing directory — it contributes no segment to the
+/// path — so `app/files/[...path]/(internal)/` leaves the catch-all last and
+/// is fine.
+fn non_terminal_catch_all(relative: &Utf8Path) -> Option<(String, String)> {
+    let mut catch_all: Option<&str> = None;
+    for segment in relative
+        .as_str()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+    {
+        if segment.starts_with('(') && segment.ends_with(')') {
+            continue;
+        }
+        if let Some(found) = catch_all {
+            return Some((found.to_string(), segment.to_string()));
+        }
+        if segment.starts_with("[...") && segment.ends_with(']') {
+            catch_all = Some(segment);
+        }
+    }
+    None
 }
 
 fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {

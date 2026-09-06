@@ -331,3 +331,61 @@ fn route_specificity_scores_the_way_the_runtime_does() {
     // A longer path outranks a shorter one that also matches.
     assert!(route("/docs/:a/:b").specificity() > route("/docs/:slug*").specificity());
 }
+
+/// A catch-all takes every remaining segment of the URL, so a directory below
+/// one is a page no request can reach: `/docs/:slug*/edit` needs a segment
+/// after the catch-all has consumed them all. Both routers agree, and neither
+/// used to say so — `matchSegments` compares `parts[parts.length]`, which is
+/// `undefined`, against `edit` and gives up, and `matches_url` returns `false`
+/// for every URL. Discovery accepted the directory and `uf build` then omitted
+/// its prerendered documents from the guard report without a word.
+#[test]
+fn a_catch_all_with_a_directory_below_it_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/docs/[...slug]/edit")).unwrap();
+    fs::write(
+        root.join("app/docs/[...slug]/edit/_uf.page.js"),
+        "// @flow\n",
+    )
+    .unwrap();
+
+    let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+    let message = error.to_string();
+    // The file to open, the segment that is wrong, and the segment that
+    // proves it: a refusal that only says "invalid route" is a refusal the
+    // reader has to reproduce before they can act on it.
+    assert!(
+        message.contains("app/docs/[...slug]/edit/_uf.page.js"),
+        "{message}"
+    );
+    assert!(message.contains("[...slug]"), "{message}");
+    assert!(message.contains("edit"), "{message}");
+}
+
+/// A catch-all that is last is what `[...slug]` is for, and a `(group)` below
+/// it contributes no segment, so it is still last.
+#[test]
+fn a_terminal_catch_all_is_discovered() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/docs/[...slug]")).unwrap();
+    fs::create_dir_all(root.join("app/files/[...path]/(internal)")).unwrap();
+    fs::write(root.join("app/docs/[...slug]/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(
+        root.join("app/files/[...path]/(internal)/_uf.page.js"),
+        "// @flow\n",
+    )
+    .unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/docs/:slug*", "/files/:path*"]
+    );
+}
