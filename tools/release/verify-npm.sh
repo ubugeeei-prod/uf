@@ -60,12 +60,10 @@ for name in $packages; do
 done
 
 if [ -n "$missing_closure" ]; then
-  cat >&2 <<MESSAGE
-
-Not closed:$missing_closure
-
-A package whose dependency is not published resolves to nothing. Either add
-the dependency to $list — and bind it with
+  printf '\nNot closed:%s\n' "$missing_closure" >&2
+  printf '\nA package whose dependency is not published resolves to nothing. Either add\n' >&2
+  printf 'the dependency to %s — and bind it with\n' "$list" >&2
+  cat >&2 <<'MESSAGE'
 tools/release/trust-npm.sh — or take the dependent out.
 MESSAGE
   exit 1
@@ -162,12 +160,22 @@ for name in $absent; do
 done
 
 if [ -n "$absent" ]; then
-  cat >&2 <<MESSAGE
-
-Not on the registry at $version:$absent
-
-The tag says this version was released. npm does not have it after retrying for
-$WAIT_SECONDS seconds, so nobody can install it.
+  printf '\nNot on the registry at %s:%s\n' "$version" "$absent" >&2
+  printf '\nThe tag says this version was released. npm does not have it after retrying for\n' >&2
+  printf '%s seconds, so nobody can install it.\n' "$WAIT_SECONDS" >&2
+  # Quoted delimiter, and it has to stay quoted: the body below is full of
+  # backticks, and in an unquoted here-document a backtick is command
+  # substitution, not punctuation. This message used to be written with an
+  # unquoted `<<MESSAGE`, and `sh` — dash on Ubuntu, where this runs — refused
+  # to parse the whole script over it, because `@uniflowed/<name>` inside a
+  # backtick is a redirection with nothing after the `>`:
+  #
+  #     tools/release/verify-npm.sh: 1: Syntax error: end of file unexpected
+  #
+  # Every package of `uf@0.0.0-alpha.8` was on npm and this job reported the
+  # release as failed. Had it parsed, printing the message would have *run*
+  # `npm trust` and `tools/release/bootstrap-publish.sh`.
+  cat >&2 <<'MESSAGE'
 
 Two things this can be, and they are told apart by the publish job above:
 
@@ -175,7 +183,7 @@ Two things this can be, and they are told apart by the publish job above:
     in that job. If it is absent, the name is not bound by `npm trust` and
     `tools/release/bootstrap-publish.sh` has not been run for it. See #210.
   * npm accepted it and the registry had not caught up. The notice is there,
-    and `npm view @uniflowed/<name>@$version` answers now. Re-run this job.
+    and `npm view @uniflowed/<name>@<version>` answers now. Re-run this job.
 
 Either way npm is additive, so the names that did go out stay.
 MESSAGE
