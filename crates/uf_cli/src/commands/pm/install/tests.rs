@@ -244,7 +244,13 @@ fn every_ladder_row_fits_the_region_it_is_drawn_in() {
     let mut row = String::new();
     for phase in watch.phases() {
         row.clear();
-        phase_row(&mut row, &renderer, "⠹", phase);
+        phase_row(
+            &mut row,
+            &renderer,
+            Ladder::for_width(ROW_WIDTH),
+            "⠹",
+            phase,
+        );
         assert!(
             display_width(&row) <= uf_term::LIVE_WIDTH,
             "a row wider than the region wraps, and a wrapped row breaks every \
@@ -399,6 +405,7 @@ fn the_live_frame_is_a_ladder_with_the_running_phase_on_it() {
                 manager: "npm",
                 elapsed: Duration::from_millis(at),
             },
+            ROW_WIDTH,
             spinner,
             watch,
         );
@@ -463,4 +470,142 @@ fn the_live_frame_is_a_ladder_with_the_running_phase_on_it() {
     for row in &rows {
         assert!(display_width(row) <= uf_term::LIVE_WIDTH);
     }
+}
+
+/// A ladder built for a window it does not fit in, at every width down to one.
+///
+/// This is the failure the width was added for. `Live` redraws by walking the
+/// cursor back up over the rows it drew, and a row wider than the window wraps
+/// onto two physical lines — so the region walks down the screen instead of
+/// staying where it is. One row too wide is enough to destroy every frame that
+/// follows it, which is why this asserts the bound at every width rather than
+/// at the two or three anybody would think to try.
+#[test]
+fn no_row_is_ever_wider_than_the_window_it_was_built_for() {
+    let renderer = rich();
+    let start = Instant::now();
+    let mut watch = InstallWatch::start(start);
+    watch.observe(
+        &ManagerEvent::Resolved {
+            package: "@typescript-eslint/eslint-plugin".to_owned(),
+        },
+        start,
+    );
+    watch.observe(
+        &ManagerEvent::Fetched {
+            package: "@esbuild/darwin-arm64@0.21.5".to_owned(),
+            cached: false,
+        },
+        start + Duration::from_millis(400),
+    );
+    let mut rows = Vec::new();
+
+    for width in 1..=100 {
+        frame(
+            &renderer,
+            &mut rows,
+            &FrameHeader {
+                title: "uf install · a-project-with-a-long-name",
+                manager: "npm",
+                elapsed: Duration::from_millis(1_234),
+            },
+            width,
+            "⠹",
+            &watch,
+        );
+        for row in &rows {
+            assert!(
+                display_width(row) <= width,
+                "at {width} columns this row is {} wide: {row:?}",
+                display_width(row)
+            );
+        }
+    }
+}
+
+/// What a narrow terminal actually shows.
+///
+/// Forty columns is a split pane, and it is the width at which the old
+/// fixed-72 ladder wrapped every row. The package name shrinks; nothing else
+/// moves, because a reader who has seen the wide ladder should recognise this
+/// one.
+#[test]
+fn a_narrow_window_keeps_the_ladder_and_shortens_the_package_name() {
+    let renderer = rich();
+    let start = Instant::now();
+    let mut watch = InstallWatch::start(start);
+    watch.observe(
+        &ManagerEvent::Resolved {
+            package: "@typescript-eslint/eslint-plugin".to_owned(),
+        },
+        start,
+    );
+    watch.idle(start + Duration::from_millis(900));
+    let mut rows = Vec::new();
+    frame(
+        &renderer,
+        &mut rows,
+        &FrameHeader {
+            title: "uf install · demo-app",
+            manager: "npm",
+            elapsed: Duration::from_millis(900),
+        },
+        40,
+        "⠹",
+        &watch,
+    );
+
+    assert_eq!(
+        rows,
+        [
+            "  uf install · demo-app      npm · 900ms",
+            "  ⠹ resolve  @typescrip       1    900ms",
+            "  · fetch    —                —        —",
+            "  · link     —                —        —",
+            "  · audit    —                —        —",
+        ]
+    );
+    for row in &rows {
+        assert_eq!(display_width(row), 40, "{row:?}");
+    }
+}
+
+/// The order the columns leave in, stated once as a table.
+#[test]
+fn the_columns_leave_in_the_order_a_reader_misses_them_least() {
+    // Wide enough for everything: the natural widths, unchanged.
+    assert_eq!(
+        Ladder::for_width(200),
+        Ladder {
+            indent: INDENT,
+            mark: true,
+            label: LABEL_WIDTH,
+            detail: DETAIL_WIDTH,
+            count: COUNT_WIDTH,
+            time: TIME_WIDTH,
+        }
+    );
+    // The package name is the only elastic column, so it gives first.
+    assert_eq!(Ladder::for_width(50).detail, 50 - LEFT_WIDTH - 1 - 17);
+    // Below the point where a name still says which package, it goes.
+    let cramped = Ladder::for_width(LEFT_WIDTH + 1 + MIN_DETAIL_WIDTH + 16);
+    assert_eq!(cramped.detail, 0);
+    assert_eq!((cramped.count, cramped.time), (COUNT_WIDTH, TIME_WIDTH));
+    // Then the count. The clock outlives it: "is this stuck" is the question a
+    // narrow window is most often being asked.
+    let counted_out = Ladder::for_width(LEFT_WIDTH + 2 + TIME_WIDTH);
+    assert_eq!((counted_out.count, counted_out.time), (0, TIME_WIDTH));
+    // Then the clock, leaving the mark and the phase.
+    let bare = Ladder::for_width(LEFT_WIDTH);
+    assert_eq!((bare.count, bare.time), (0, 0));
+    assert_eq!(bare.label, LABEL_WIDTH);
+    // And past that the label itself is cut. Below the width at which a cut
+    // label still reads, the indent and the mark go too: four columns of
+    // "reso" say more than two spaces and a dot do.
+    assert_eq!(Ladder::for_width(9).label, 5);
+    assert!(Ladder::for_width(9).mark);
+    assert_eq!(Ladder::for_width(7).indent, 0);
+    assert!(!Ladder::for_width(7).mark);
+    assert_eq!(Ladder::for_width(7).label, 7);
+    assert_eq!(Ladder::for_width(1).label, 1);
 }

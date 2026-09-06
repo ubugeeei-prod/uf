@@ -60,15 +60,111 @@ use crate::ui::Ui;
 /// reader is actually after.
 const CHANGES_SHOWN: usize = 15;
 
-/// Columns of the live region, left to right.
+/// Columns of the live region, left to right, at their natural widths.
 const INDENT: usize = 2;
 const LABEL_WIDTH: usize = 8;
 const DETAIL_WIDTH: usize = 38;
 const COUNT_WIDTH: usize = 6;
 const TIME_WIDTH: usize = 7;
+/// Everything before the detail column: the indent, the mark, and the label.
+const LEFT_WIDTH: usize = INDENT + 2 + LABEL_WIDTH;
 /// The whole region's width, which must stay inside [`uf_term::LIVE_WIDTH`].
-const ROW_WIDTH: usize =
-    INDENT + 2 + LABEL_WIDTH + 1 + DETAIL_WIDTH + 2 + COUNT_WIDTH + 2 + TIME_WIDTH;
+const ROW_WIDTH: usize = LEFT_WIDTH + 1 + DETAIL_WIDTH + 2 + COUNT_WIDTH + 2 + TIME_WIDTH;
+/// The narrowest a detail column is worth drawing.
+///
+/// Six columns of `react-dom@18.3.1` is `react-`, which is still one package
+/// rather than another. Below that it is a cut word that could be almost
+/// anything, taking room from the count and the clock — and those two are
+/// exactly as readable at six columns as at sixty.
+const MIN_DETAIL_WIDTH: usize = 6;
+/// The narrowest a phase label is cut to before the row gives up on fitting.
+const MIN_LABEL_WIDTH: usize = 4;
+
+/// Which of the ladder's columns fit, and how wide each one is.
+///
+/// A live region is redrawn by moving the cursor back up over the rows it drew
+/// last time, and that arithmetic is only correct while every row is one
+/// physical line. A row wider than the window wraps, the terminal counts two
+/// lines where this counts one, and the region walks down the screen. So the
+/// ladder is not merely clipped to the terminal — it is *laid out* for it, and
+/// the columns leave in the order a reader would miss them least.
+///
+/// A `0` means the column is not drawn at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Ladder {
+    /// Leading spaces, and the mark that follows them.
+    indent: usize,
+    /// Whether there is room for the phase mark at all.
+    mark: bool,
+    label: usize,
+    detail: usize,
+    count: usize,
+    time: usize,
+}
+
+impl Ladder {
+    /// The widest ladder that fits in `width` columns.
+    ///
+    /// The order things go in: the package name shrinks first, because it is
+    /// the only elastic column and a shortened name still identifies work;
+    /// then it goes entirely; then the count, which the phase's own mark
+    /// already half-implies; then the clock, which is the last thing worth
+    /// losing because it is what tells a reader whether an install is stuck.
+    fn for_width(width: usize) -> Self {
+        let full = Self {
+            indent: INDENT,
+            mark: true,
+            label: LABEL_WIDTH,
+            detail: DETAIL_WIDTH,
+            count: COUNT_WIDTH,
+            time: TIME_WIDTH,
+        };
+        if width >= ROW_WIDTH {
+            return full;
+        }
+        let numbers = 2 + COUNT_WIDTH + 2 + TIME_WIDTH;
+        let detail = width.saturating_sub(LEFT_WIDTH + 1 + numbers);
+        if detail >= MIN_DETAIL_WIDTH {
+            return Self { detail, ..full };
+        }
+        if width >= LEFT_WIDTH + numbers {
+            return Self { detail: 0, ..full };
+        }
+        if width >= LEFT_WIDTH + 2 + TIME_WIDTH {
+            return Self {
+                detail: 0,
+                count: 0,
+                ..full
+            };
+        }
+        let bare = Self {
+            detail: 0,
+            count: 0,
+            time: 0,
+            ..full
+        };
+        if width >= LEFT_WIDTH {
+            return bare;
+        }
+        // The indent and the mark are two columns each and are the first thing
+        // a phone-sized pane cannot afford. Below the width at which a cut
+        // label would still read, they go and the label takes the whole row —
+        // "reso" says more than two spaces and a dot do.
+        let room = width.saturating_sub(INDENT + 2);
+        if room >= MIN_LABEL_WIDTH {
+            return Self {
+                label: room,
+                ..bare
+            };
+        }
+        Self {
+            indent: 0,
+            mark: false,
+            label: width,
+            ..bare
+        }
+    }
+}
 
 /// `uf install`, and `uf install --frozen-lockfile`.
 pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
@@ -508,6 +604,12 @@ impl<'a> Screen<'a> {
                 manager: &self.manager,
                 elapsed: self.started.elapsed(),
             },
+            // The width the region will actually draw at, which is the
+            // terminal's when the terminal is narrower than the ceiling. Asking
+            // `Live` rather than assuming `ROW_WIDTH` is the whole point: a row
+            // this function builds too wide is a row the terminal wraps, and a
+            // wrapped row breaks every redraw after it.
+            self.live.width(),
             self.live.spinner(),
             watch,
         );
@@ -534,6 +636,7 @@ fn frame(
     renderer: &Renderer,
     rows: &mut Vec<String>,
     header: &FrameHeader<'_>,
+    width: usize,
     spinner: &str,
     watch: &InstallWatch,
 ) {
@@ -543,24 +646,33 @@ fn frame(
     }
     let (header_row, ladder) = rows.split_first_mut().expect("a frame has a header");
 
-    let right = format!("{} · {}", header.manager, format_duration(header.elapsed));
-    push_spaces(header_row, INDENT);
-    renderer
-        .theme()
-        .title
-        .paint(renderer.color(), header.title, header_row);
-    push_spaces(
-        header_row,
-        ROW_WIDTH.saturating_sub(INDENT + display_width(header.title) + display_width(&right)),
-    );
-    renderer
-        .theme()
-        .muted
-        .paint(renderer.color(), &right, header_row);
+    header_line(header_row, renderer, header, width);
 
+    let columns = Ladder::for_width(width);
     for (row, phase) in ladder.iter_mut().zip(watch.phases()) {
-        phase_row(row, renderer, spinner, phase);
+        phase_row(row, renderer, columns, spinner, phase);
     }
+}
+
+/// The header: the title on the left, the manager and the clock on the right.
+///
+/// The right-hand half is dropped rather than squeezed when the two would meet,
+/// because a title and a manager name run together read as one string. The
+/// title itself is cut last, and only when it alone is wider than the window.
+fn header_line(row: &mut String, renderer: &Renderer, header: &FrameHeader<'_>, width: usize) {
+    let right = format!("{} · {}", header.manager, format_duration(header.elapsed));
+    let indent = INDENT.min(width);
+    let title = truncate_to_width(header.title, width - indent);
+    let title_width = display_width(title);
+    // One column of daylight between the two halves, so they stay two things.
+    let room = width - indent - title_width;
+    push_spaces(row, indent);
+    renderer.theme().title.paint(renderer.color(), title, row);
+    if room <= display_width(&right) {
+        return;
+    }
+    push_spaces(row, room - display_width(&right));
+    renderer.theme().muted.paint(renderer.color(), &right, row);
 }
 
 impl InstallObserver for Screen<'_> {
@@ -588,7 +700,13 @@ impl InstallObserver for Screen<'_> {
 }
 
 /// One phase's row: mark, label, what it is working on, how many, how long.
-fn phase_row(row: &mut String, renderer: &Renderer, spinner: &str, phase: &PhaseProgress) {
+fn phase_row(
+    row: &mut String,
+    renderer: &Renderer,
+    columns: Ladder,
+    spinner: &str,
+    phase: &PhaseProgress,
+) {
     let glyphs = renderer.glyph_set();
     let dash = match glyphs {
         GlyphSet::Unicode => "—",
@@ -629,49 +747,57 @@ fn phase_row(row: &mut String, renderer: &Renderer, spinner: &str, phase: &Phase
         format_duration(phase.elapsed)
     };
 
-    push_spaces(row, INDENT);
-    mark_style.paint(renderer.color(), mark, row);
-    row.push(' ');
+    push_spaces(row, columns.indent);
+    if columns.mark {
+        mark_style.paint(renderer.color(), mark, row);
+        row.push(' ');
+    }
     cell(
         row,
         renderer,
         label_style,
         phase.phase.label(),
-        LABEL_WIDTH,
+        columns.label,
         Align::Left,
     );
-    row.push(' ');
-    let detail_style = if detail == dash {
-        renderer.theme().muted
-    } else {
-        renderer.theme().path
-    };
-    cell(
-        row,
-        renderer,
-        detail_style,
-        detail,
-        DETAIL_WIDTH,
-        Align::Left,
-    );
-    push_spaces(row, 2);
-    cell(
-        row,
-        renderer,
-        renderer.theme().number,
-        &count,
-        COUNT_WIDTH,
-        Align::Right,
-    );
-    push_spaces(row, 2);
-    cell(
-        row,
-        renderer,
-        renderer.theme().number,
-        &time,
-        TIME_WIDTH,
-        Align::Right,
-    );
+    if columns.detail > 0 {
+        row.push(' ');
+        let detail_style = if detail == dash {
+            renderer.theme().muted
+        } else {
+            renderer.theme().path
+        };
+        cell(
+            row,
+            renderer,
+            detail_style,
+            detail,
+            columns.detail,
+            Align::Left,
+        );
+    }
+    if columns.count > 0 {
+        push_spaces(row, 2);
+        cell(
+            row,
+            renderer,
+            renderer.theme().number,
+            &count,
+            columns.count,
+            Align::Right,
+        );
+    }
+    if columns.time > 0 {
+        push_spaces(row, 2);
+        cell(
+            row,
+            renderer,
+            renderer.theme().number,
+            &time,
+            columns.time,
+            Align::Right,
+        );
+    }
 }
 
 /// Append one padded, styled cell.
