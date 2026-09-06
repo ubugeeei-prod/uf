@@ -28,13 +28,17 @@
 // wants to be able to check against the runtime by eye.
 
 import {
+  MATCHER_OPTION_KEYS,
+  ROLE_OPTION_KEYS,
   allByDisplayValue,
   allByLabelText,
   allByPlaceholderText,
   allByRole,
   allByTestId,
   allByText,
+  atCallSite,
   queryFailure,
+  rejectUnknownOptions,
 } from "./queries.js";
 import type { Matcher, MatcherOptions, RoleOptions } from "./queries.js";
 import { bodyOf } from "./dom.js";
@@ -134,24 +138,40 @@ export type Queries = {|
  * `queryFailure` has to describe what was asked for, and it describes the
  * three things a matcher can be. A role is a string, so the bound holds and
  * the failure message is the same one it always was.
+ *
+ * `known` is the keys the query's options may have, and each of the six checks
+ * before it looks at anything. Six lines rather than one inside `all`, because
+ * the message has to name the function the reader typed — `getByRole`, not
+ * "a role query" — and because the two waiting forms have to raise now rather
+ * than a second from now: an option a query does not take is a mistake in the
+ * test, not a condition that is about to come true.
  */
 function forms<TTarget extends Matcher, TOptions>(
   name: string,
   find: (root: Element, target: TTarget, options?: TOptions) => Array<Element>,
   root: () => Element,
+  known: $ReadOnlyArray<string>,
 ): Forms<TTarget, TOptions> {
   const all = (target: TTarget, options?: TOptions) => find(root(), target, options);
+  const check = (form: string, options?: TOptions) => {
+    rejectUnknownOptions(`${form}By${name}`, options, known);
+  };
 
   return {
     getAll: (target, options) => {
+      check("getAll", options);
       const found = all(target, options);
       if (found.length === 0) {
         throw queryFailure(`getAllBy${name}`, target, root(), 0);
       }
       return found;
     },
-    queryAll: all,
+    queryAll: (target, options) => {
+      check("queryAll", options);
+      return all(target, options);
+    },
     get: (target, options) => {
+      check("get", options);
       const found = all(target, options);
       if (found.length !== 1) {
         throw queryFailure(`getBy${name}`, target, root(), found.length);
@@ -159,38 +179,59 @@ function forms<TTarget extends Matcher, TOptions>(
       return found[0];
     },
     query: (target, options) => {
+      check("query", options);
       const found = all(target, options);
       if (found.length > 1) {
         throw queryFailure(`queryBy${name}`, target, root(), found.length);
       }
       return found[0] ?? null;
     },
-    find: (target, options) =>
-      waitFor(() => {
-        const found = all(target, options);
-        if (found.length !== 1) {
-          throw queryFailure(`findBy${name}`, target, root(), found.length);
-        }
-        return found[0];
-      }),
-    findAll: (target, options) =>
-      waitFor(() => {
-        const found = all(target, options);
-        if (found.length === 0) {
-          throw queryFailure(`findAllBy${name}`, target, root(), 0);
-        }
-        return found;
-      }),
+    // The two waiting forms build an error at the call and hand it to the
+    // failure on the way out. A wait keeps the *last* attempt's failure, and
+    // the last attempt runs from a timer: by then the stack under it is the
+    // poll loop and nothing else, so the failure has no line of the test left
+    // in it to report. The synchronous four need none of this — they throw
+    // while the caller is still on the stack.
+    find: async (target, options) => {
+      check("find", options);
+      const asked = new Error("asked here");
+      try {
+        return await waitFor(() => {
+          const found = all(target, options);
+          if (found.length !== 1) {
+            throw queryFailure(`findBy${name}`, target, root(), found.length);
+          }
+          return found[0];
+        });
+      } catch (error) {
+        throw atCallSite(error, asked);
+      }
+    },
+    findAll: async (target, options) => {
+      check("findAll", options);
+      const asked = new Error("asked here");
+      try {
+        return await waitFor(() => {
+          const found = all(target, options);
+          if (found.length === 0) {
+            throw queryFailure(`findAllBy${name}`, target, root(), 0);
+          }
+          return found;
+        });
+      } catch (error) {
+        throw atCallSite(error, asked);
+      }
+    },
   };
 }
 
 function queriesFor(root: () => Element): Queries {
-  const text = forms("Text", allByText, root);
-  const role = forms("Role", allByRole, root);
-  const labelText = forms("LabelText", allByLabelText, root);
-  const placeholderText = forms("PlaceholderText", allByPlaceholderText, root);
-  const testId = forms("TestId", allByTestId, root);
-  const displayValue = forms("DisplayValue", allByDisplayValue, root);
+  const text = forms("Text", allByText, root, MATCHER_OPTION_KEYS);
+  const role = forms("Role", allByRole, root, ROLE_OPTION_KEYS);
+  const labelText = forms("LabelText", allByLabelText, root, MATCHER_OPTION_KEYS);
+  const placeholderText = forms("PlaceholderText", allByPlaceholderText, root, MATCHER_OPTION_KEYS);
+  const testId = forms("TestId", allByTestId, root, MATCHER_OPTION_KEYS);
+  const displayValue = forms("DisplayValue", allByDisplayValue, root, MATCHER_OPTION_KEYS);
 
   return {
     getByText: text.get,
