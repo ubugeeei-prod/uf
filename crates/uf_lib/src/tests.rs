@@ -165,7 +165,7 @@ fn hooks_registry_prefers_react_idempotency() {
 ///
 /// Types are deliberately not collected — see
 /// [`the_registry_names_exactly_what_each_package_exports`].
-fn exported_values(source: &str) -> Result<Vec<String>, String> {
+fn exported_values(source: &str) -> Result<Option<Vec<String>>, String> {
     use uf_flow::ast::statement::{self, ExportKind};
 
     let parsed = uf_flow::parse(source).map_err(|error| format!("{error:?}"))?;
@@ -182,11 +182,19 @@ fn exported_values(source: &str) -> Result<Vec<String>, String> {
         }
         // `export { useIdle } from "./idle.js"` is an export of this package
         // and the name is right there, so a `source` is not a reason to skip —
-        // these barrel modules are written almost entirely that way. Only
-        // `export * from`, whose names are in another file, cannot be read,
-        // and `re_exports_everything` excuses the whole module for it.
+        // these barrel modules are written almost entirely that way.
         if let Some(declaration) = &inner.declaration {
-            names.extend(declared_value_name(declaration));
+            names.extend(declared_value_names(declaration));
+        }
+        // `export * from "react"` hands on another package's whole surface,
+        // and the names are not in this file to be read. Recognised from the
+        // tree rather than from a line of text, because `export\n  * from` is
+        // the same statement and a string match would call the module checked
+        // and then compare its registry entry against nothing.
+        if let Some(statement::export_named_declaration::Specifier::ExportBatchSpecifier(_)) =
+            &inner.specifiers
+        {
+            return Ok(None);
         }
         if let Some(statement::export_named_declaration::Specifier::ExportSpecifiers(specifiers)) =
             &inner.specifiers
@@ -202,39 +210,41 @@ fn exported_values(source: &str) -> Result<Vec<String>, String> {
     }
     names.sort();
     names.dedup();
-    Ok(names)
+    Ok(Some(names))
 }
 
-/// The name a declaration binds, when it binds a value.
-fn declared_value_name(node: &uf_flow::ast::statement::Statement<Loc, Loc>) -> Option<String> {
+/// The names a declaration binds, when it binds values.
+fn declared_value_names(node: &uf_flow::ast::statement::Statement<Loc, Loc>) -> Vec<String> {
     use uf_flow::ast::{pattern, statement::StatementInner};
 
     match &**node {
-        StatementInner::FunctionDeclaration { inner, .. } => {
-            Some(inner.id.as_ref()?.name.to_string())
-        }
-        StatementInner::ComponentDeclaration { inner, .. } => Some(inner.id.name.to_string()),
-        StatementInner::ClassDeclaration { inner, .. } => Some(inner.id.as_ref()?.name.to_string()),
-        StatementInner::EnumDeclaration { inner, .. } => Some(inner.id.name.to_string()),
+        StatementInner::FunctionDeclaration { inner, .. } => inner
+            .id
+            .as_ref()
+            .map(|id| vec![id.name.to_string()])
+            .unwrap_or_default(),
+        StatementInner::ComponentDeclaration { inner, .. } => vec![inner.id.name.to_string()],
+        StatementInner::ClassDeclaration { inner, .. } => inner
+            .id
+            .as_ref()
+            .map(|id| vec![id.name.to_string()])
+            .unwrap_or_default(),
+        StatementInner::EnumDeclaration { inner, .. } => vec![inner.id.name.to_string()],
         StatementInner::VariableDeclaration { inner, .. } => {
-            // The first declarator only: `export const a = 1, b = 2;` is not
-            // written anywhere in `packages/`, and guessing at it would be a
-            // rule nobody had decided.
-            let declarator = inner.declarations.first()?;
-            match &declarator.id {
-                pattern::Pattern::Identifier { inner, .. } => Some(inner.name.name.to_string()),
-                _ => None,
+            // Every declarator. `export const a = 1, b = 2;` is not written
+            // anywhere in `packages/` today, and reading only the first would
+            // be a silent hole in the one check that exists to find silent
+            // holes — the day somebody writes it, this must notice `b`.
+            let mut names = Vec::new();
+            for declarator in inner.declarations.iter() {
+                if let pattern::Pattern::Identifier { inner, .. } = &declarator.id {
+                    names.push(inner.name.name.to_string());
+                }
             }
+            names
         }
-        _ => None,
+        _ => Vec::new(),
     }
-}
-
-/// Whether a module hands on another package's whole surface.
-fn re_exports_everything(source: &str) -> bool {
-    source
-        .lines()
-        .any(|line| line.trim_start().starts_with("export * from"))
 }
 
 /// The registry's list for a package is exactly the values that package
@@ -271,13 +281,22 @@ fn the_registry_names_exactly_what_each_package_exports() {
             continue;
         };
         let entry = root.join("packages").join(name).join("index.js");
-        let Ok(source) = fs::read_to_string(&entry) else {
-            // A declaration-only package with no entry point of its own. The
-            // registry is the only description of it there is, so there is
-            // nothing to compare it against.
-            continue;
-        };
-        if re_exports_everything(&source) {
+        // Every entry in the registry has one today, so an unreadable entry
+        // point is a failure rather than a skip. A `continue` here would let a
+        // renamed or deleted package go unchecked while `checked` still looked
+        // healthy, which is the shape of hole this test exists to close.
+        let source = fs::read_to_string(&entry).unwrap_or_else(|error| {
+            panic!(
+                "{} names {}, and {} cannot be read: {error}",
+                "the registry",
+                module.specifier,
+                entry.display()
+            )
+        });
+
+        let Some(exported) = exported_values(&source)
+            .unwrap_or_else(|error| panic!("{} does not parse: {error}", entry.display()))
+        else {
             // `export * from "react"` hands on somebody else's whole surface,
             // and the names are not in this file to be read. The entry is then
             // what uf itself adds plus the names worth suggesting, and it is
@@ -285,11 +304,8 @@ fn the_registry_names_exactly_what_each_package_exports() {
             // so the list of these is asserted below.
             exempt.push(module.specifier.to_string());
             continue;
-        }
+        };
         checked += 1;
-
-        let exported = exported_values(&source)
-            .unwrap_or_else(|error| panic!("{} does not parse: {error}", entry.display()));
         let listed: Vec<String> = module
             .flow_exports
             .iter()
@@ -323,4 +339,54 @@ fn the_registry_names_exactly_what_each_package_exports() {
     // cannot check, and adding a third should be a decision somebody makes.
     exempt.sort();
     assert_eq!(exempt, ["@uniflowed/react", "@uniflowed/relay"]);
+}
+
+/// The reader that [`the_registry_names_exactly_what_each_package_exports`]
+/// trusts, held to the shapes that would make it quietly wrong.
+///
+/// A check whose reader has a hole reports "no drift" for a package it never
+/// really read, which is worse than not having the check: it is the same
+/// answer with a signature on it.
+#[test]
+fn the_export_reader_sees_every_shape_a_package_uses() {
+    // Every binding of one declaration, not the first. Nothing in `packages/`
+    // is written this way today, which is exactly why the reader has to be.
+    assert_eq!(
+        exported_values("export const a = 1, b = 2;\n").unwrap(),
+        Some(vec!["a".to_owned(), "b".to_owned()])
+    );
+
+    // The renamed name is the exported one.
+    assert_eq!(
+        exported_values("const inner = 1;\nexport { inner as outer };\n").unwrap(),
+        Some(vec!["outer".to_owned()])
+    );
+
+    // A re-export from a relative file is an export of this package, and the
+    // name is right there — the barrel modules are written almost entirely
+    // this way.
+    assert_eq!(
+        exported_values("export { useIdle } from \"./idle.js\";\n").unwrap(),
+        Some(vec!["useIdle".to_owned()])
+    );
+
+    // Types are not in this list.
+    assert_eq!(
+        exported_values("export type Alias = string;\nexport const value = 1;\n").unwrap(),
+        Some(vec!["value".to_owned()])
+    );
+    assert_eq!(
+        exported_values("const a = 1;\nexport type { A };\nexport { a };\n").unwrap(),
+        Some(vec!["a".to_owned()])
+    );
+
+    // And the one that decides whether a module can be checked at all. Both
+    // spellings are the same statement, and a reader that matched a line of
+    // text would call the second one checked and then compare the registry
+    // against nothing.
+    assert_eq!(exported_values("export * from \"react\";\n").unwrap(), None);
+    assert_eq!(
+        exported_values("export\n  * from \"react\";\n").unwrap(),
+        None
+    );
 }
