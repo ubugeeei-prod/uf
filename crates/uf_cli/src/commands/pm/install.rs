@@ -32,15 +32,15 @@
 
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
-use camino::Utf8Path;
+use anyhow::{Context, Result, anyhow};
+use camino::{Utf8Path, Utf8PathBuf};
 use uf_bundle::ByteSize;
 use uf_config::load_config;
 use uf_pm::delta::{ChangeKind, LockfileDelta};
 use uf_pm::{
-    DetectionSource, InstallObserver, InstallWatch, LockfileSnapshot, ManagerStream,
+    DetectionSource, InstallObserver, InstallWatch, LockfileSnapshot, ManagerStream, Operation,
     PackageManagerPlan, PhaseProgress, PhaseState, detect_package_manager, install_workspace,
-    installable, run_install_watched,
+    installable, run_watched,
 };
 use uf_term::{
     Align, Capabilities, Cell, Column, GlyphSet, KeyValue, Live, Phase, PhaseTimer, Renderer,
@@ -70,17 +70,23 @@ const TIME_WIDTH: usize = 7;
 const ROW_WIDTH: usize =
     INDENT + 2 + LABEL_WIDTH + 1 + DETAIL_WIDTH + 2 + COUNT_WIDTH + 2 + TIME_WIDTH;
 
-/// `uf install`.
-pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+/// `uf install`, and `uf install --frozen-lockfile`.
+pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     let mut timer = PhaseTimer::start();
     let resolved = timer.measure("config", || load_config(cwd))?;
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
 
     // A manifest that declares scripts is refused before anything is fetched,
     // the way it was when uf planned the install itself. `--ignore-scripts`
-    // inside `run_install_watched` covers the dependencies; this covers the
-    // project.
+    // inside `run_watched` covers the dependencies; this covers the project.
+    //
+    // `uf.lock` is a pure function of those manifests, so writing it here is
+    // deterministic — but a frozen install promises to change nothing, and a
+    // `uf.lock` that comes out different is the workspace having drifted from
+    // it. `guard_uf_lock` puts the old one back and says so.
+    let guard = UfLockGuard::read(&resolved.root, &resolved.config, frozen);
     install_workspace(&resolved.root, &resolved.config)?;
+    guard.check()?;
 
     // Which manager is about to run has to be settled here rather than left to
     // the runner, because the lockfile it is about to rewrite must be read
@@ -90,22 +96,37 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     timer.lap("workspace");
     let prelude = timer.phases().to_vec();
 
+    let operation = if frozen {
+        Operation::InstallFrozen
+    } else {
+        Operation::Install
+    };
+    let heading = if frozen {
+        "uf install --frozen-lockfile"
+    } else {
+        "uf install"
+    };
     let project = project_label(&resolved.root).to_string();
     ui.render(|renderer, out| {
         brand::render_product_card(renderer, out, "uf install");
         renderer.blank(out);
-        renderer.banner(out, "uf install", Some(&project));
+        renderer.banner(out, heading, Some(&project));
         renderer.blank(out);
     });
 
     let manager_label = manager.to_string();
     let (outcome, echoed) = {
         let mut screen = Screen::new(ui, &project, &manager_label);
-        let run = run_install_watched(&resolved.root, !plan.forbids_npm_scripts(), &mut screen);
+        let run = run_watched(
+            &resolved.root,
+            operation,
+            !plan.forbids_npm_scripts(),
+            &mut screen,
+        );
         screen.close();
         (run, screen.echoed)
     };
-    let outcome = outcome?;
+    let outcome = outcome.map_err(|error| frozen_hint(error, frozen))?;
 
     let read_back = Instant::now();
     let after = uf_pm::delta::snapshot(&resolved.root, manager);
@@ -136,6 +157,69 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         render_summary(renderer, out, &report);
     });
     Ok(())
+}
+
+/// `uf.lock` as it stood before `install_workspace` rewrote it.
+///
+/// Only a frozen install has anything to guard: everywhere else rewriting
+/// `uf.lock` is the point. Reading it costs one `read` of a file that is about
+/// to be read again, so it is not read at all unless `--frozen-lockfile` was
+/// asked for.
+struct UfLockGuard {
+    path: Utf8PathBuf,
+    before: Option<Option<Vec<u8>>>,
+}
+
+impl UfLockGuard {
+    /// Read `uf.lock`, when there is a reason to.
+    fn read(root: &Utf8Path, config: &uf_config::UniflowedConfig, frozen: bool) -> Self {
+        let path = root.join(config.pm.lockfile.as_str());
+        let before = frozen.then(|| std::fs::read(&path).ok());
+        Self { path, before }
+    }
+
+    /// Fail when the rewrite changed it, having first put the old one back.
+    ///
+    /// Putting it back is what makes this a check rather than a side effect: a
+    /// CI job that fails here must leave the tree it was handed, so the next
+    /// step can print a diff of the real file.
+    fn check(&self) -> Result<()> {
+        let Some(before) = &self.before else {
+            return Ok(());
+        };
+        let after = std::fs::read(&self.path).ok();
+        if &after == before {
+            return Ok(());
+        }
+        match before {
+            Some(bytes) => std::fs::write(&self.path, bytes)
+                .with_context(|| format!("failed to restore {}", self.path))?,
+            None => std::fs::remove_file(&self.path)
+                .with_context(|| format!("failed to remove {}", self.path))?,
+        }
+        let name = self.path.file_name().unwrap_or("uf.lock");
+        Err(anyhow!(
+            "{name} does not match this workspace's package manifests\n\n  \
+             --frozen-lockfile installs what the lockfiles pin and changes nothing\n  \
+             run `uf install` and commit the {name} it writes"
+        ))
+    }
+}
+
+/// Say what a frozen install's failure usually means.
+///
+/// The manager has already printed its own diagnosis — `npm ci`'s is three
+/// lines naming the packages that are missing from the lockfile — and this
+/// adds the sentence it does not: what to run to fix it.
+fn frozen_hint(error: uf_pm::ManagerRunError, frozen: bool) -> anyhow::Error {
+    if !frozen || !matches!(error, uf_pm::ManagerRunError::Failed { .. }) {
+        return anyhow!(error);
+    }
+    anyhow!(
+        "{error}\n\n  \
+         a frozen install refuses a lockfile the manifests have moved away from\n  \
+         the manager named the packages above; run `uf install` and commit the lockfile it writes"
+    )
 }
 
 /// Everything `uf install` has to say once the manager has exited.
@@ -213,7 +297,10 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
 
 /// The four counts, in one aligned block, omitting the kinds that did not
 /// happen.
-fn render_change_counts(renderer: &Renderer, out: &mut String, delta: &LockfileDelta) {
+///
+/// Shared with `uf add`, `uf remove` and `uf update`: the same lockfile, read
+/// the same way, deserves the same block.
+pub(super) fn render_change_counts(renderer: &Renderer, out: &mut String, delta: &LockfileDelta) {
     let counts: Vec<(ChangeKind, String)> = ChangeKind::ALL
         .into_iter()
         .map(|kind| (kind, delta.count(kind)))
@@ -228,7 +315,7 @@ fn render_change_counts(renderer: &Renderer, out: &mut String, delta: &LockfileD
 }
 
 /// The changed packages themselves, capped.
-fn render_change_table(renderer: &Renderer, out: &mut String, delta: &LockfileDelta) {
+pub(super) fn render_change_table(renderer: &Renderer, out: &mut String, delta: &LockfileDelta) {
     if delta.changes.is_empty() {
         return;
     }
@@ -314,7 +401,7 @@ fn phases(prelude: &[Phase], watch: Option<&InstallWatch>, lockfile: Duration) -
 }
 
 /// Why this manager, in a sentence rather than in a derived `Debug`.
-fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
+pub(super) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
     if substituted {
         // Something named uf's own resolver, which records what a workspace
         // declares and reaches no registry, so npm did the fetching. Saying
@@ -354,7 +441,7 @@ fn runtime_label(config: &uf_config::UniflowedConfig) -> Option<String> {
 }
 
 /// The lockfile, its size, and how many packages it pins.
-fn lockfile_label(root: &Utf8Path, snapshot: &LockfileSnapshot) -> String {
+pub(super) fn lockfile_label(root: &Utf8Path, snapshot: &LockfileSnapshot) -> String {
     let name = snapshot
         .path
         .strip_prefix(root)
