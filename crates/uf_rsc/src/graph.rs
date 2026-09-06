@@ -27,8 +27,9 @@ use crate::directive::{
     scan_directive_tokens,
 };
 use crate::scan::{
-    ClientApiUseList, ExportKind, ExportList, ImportKind, ImportList, ImportSpecifier,
-    ModuleExport, client_api_uses_from_tokens, exports_from_tokens, imports_from_tokens, tokenize,
+    ClientApiUseList, ExportKind, ExportList, HookCallList, ImportKind, ImportList,
+    ImportSpecifier, ModuleExport, client_api_uses_from_tokens, exports_from_tokens,
+    hook_calls_from_tokens, imports_from_tokens, tokenize,
 };
 
 mod build;
@@ -169,6 +170,8 @@ pub struct RscModuleInput {
     pub function_actions: FunctionDirectiveList,
     /// Client-only APIs the module reaches for.
     pub client_api_uses: ClientApiUseList,
+    /// Hook calls the client-only name lists cannot classify.
+    pub hook_calls: HookCallList,
     /// Rejected directives found while scanning the module.
     pub directive_issues: DirectiveIssueList,
 }
@@ -183,6 +186,7 @@ impl RscModuleInput {
             exports: ExportList::new(),
             function_actions: FunctionDirectiveList::new(),
             client_api_uses: ClientApiUseList::new(),
+            hook_calls: HookCallList::new(),
             directive_issues: DirectiveIssueList::new(),
         }
     }
@@ -200,6 +204,7 @@ impl RscModuleInput {
             exports: exports_from_tokens(source, &tokens, &index),
             function_actions: directives.function_directives,
             client_api_uses: client_api_uses_from_tokens(source, &tokens, &index),
+            hook_calls: hook_calls_from_tokens(source, &tokens, &index),
             directive_issues: directives.issues,
         }
     }

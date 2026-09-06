@@ -258,3 +258,111 @@ fn empty_source_scans_cleanly() {
     assert!(scan_exports("").is_empty());
     assert!(scan_client_api_uses("").is_empty());
 }
+
+/// The worked example from ubugeeei-prod/uf#348: `useRoute` is built on
+/// `useContext`, and the name lists have never heard of it.
+#[test]
+fn finds_a_call_to_a_hook_the_name_lists_do_not_know() {
+    let source = "function Masthead() { const { pathname } = useRoute(); }";
+    assert!(
+        scan_client_api_uses(source).is_empty(),
+        "the name match has no opinion about `useRoute`, which is the problem"
+    );
+    let calls = scan_hook_calls(source);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "useRoute");
+    assert_eq!(calls[0].line, 1);
+}
+
+/// A hook that *is* on the list is answered rather than asked about; reporting
+/// it twice would turn one violation into a violation and a shrug.
+#[test]
+fn a_known_client_hook_is_not_also_an_unanswered_question() {
+    let calls = scan_hook_calls("function Page() { const [a] = useState(1); }");
+    assert!(calls.is_empty(), "{calls:?}");
+}
+
+/// The three exclusions the client-only match already makes, which are the
+/// three that keep this from being noise.
+#[test]
+fn a_hook_call_is_a_call_to_a_hook_by_name() {
+    // A declaration is not a use.
+    assert!(scan_hook_calls("function useRoute() {}").is_empty());
+    assert!(scan_hook_calls("const useRoute = () => {};").is_empty());
+    // A property access belongs to whatever owns it.
+    assert!(scan_hook_calls("router.useRoute();").is_empty());
+    // A reference that is not called is not a hook call: passing `useRoute`
+    // somewhere is not running it here.
+    assert!(scan_hook_calls("register(useRoute);").is_empty());
+    // And React's naming rule is the whole rule: `used` is not `useD`.
+    assert!(scan_hook_calls("used(1);").is_empty());
+    assert!(scan_hook_calls("use(1);").is_empty());
+    assert!(!scan_hook_calls("useRoute();").is_empty());
+}
+
+/// A comment or a string is not code, here as everywhere else in the scanner.
+#[test]
+fn does_not_flag_hook_calls_in_comments_or_strings() {
+    assert!(scan_hook_calls("// useRoute()\nconst s = \"useRoute()\";").is_empty());
+}
+
+/// A method *definition* is not a call, and this is the one the rule was
+/// getting wrong: `useRoute() {}` in an object literal or a class body is a
+/// hook being written, not one being run, and a module that only defines it
+/// was emitting `rsc/unclassified-hook-in-server` against a line that does
+/// nothing. A warning that fires on a definition teaches people to ignore the
+/// rule, which costs more than the rule is worth.
+#[test]
+fn a_method_definition_is_not_a_hook_call() {
+    for source in [
+        "export const routes = { useRoute() { return null; } };",
+        "class Router { useRoute() { return null; } }",
+        "class Router { async useRoute(): Promise<void> {} }",
+        "class Router { static useRoute() {} }",
+        "const o = { get useRoute() { return 1; } };",
+        "class Router { *useRoute() {} }",
+        "class Router { other() {} useRoute() {} }",
+        "type R = {| useRoute(): void |};",
+        "interface R { useRoute(): void }",
+    ] {
+        assert!(
+            scan_hook_calls(source).is_empty(),
+            "definition reported as a call: {source}"
+        );
+    }
+}
+
+/// And every shape of an actual call still is one. The definition test above
+/// is only safe if this one holds: a check that silences the rule in a place
+/// it should speak is the more expensive mistake of the two.
+#[test]
+fn a_call_next_to_a_brace_is_still_a_hook_call() {
+    for source in [
+        "useRoute();",
+        "if (useRoute()) { go(); }",
+        "f(a, useRoute());",
+        "{ useRoute(); }",
+        "const x = cond ? useRoute() : null;",
+        "for (const p of useRoute()) { go(); }",
+        "const v = useRoute().pathname;",
+        "async function f() { await useRoute(); }",
+        "function f() { return useRoute(); }",
+        "switch (useRoute()) { default: break; }",
+        "const flags = a | useRoute();",
+    ] {
+        assert_eq!(
+            scan_hook_calls(source).len(),
+            1,
+            "call not reported: {source}"
+        );
+    }
+}
+
+/// The same mistake the client-only name match could make, since a method
+/// definition is a declaration site there too.
+#[test]
+fn a_method_definition_is_not_a_client_api_use() {
+    assert!(scan_client_api_uses("class Store { useState() {} }").is_empty());
+    assert!(scan_client_api_uses("const o = { useEffect() {} };").is_empty());
+    assert!(!scan_client_api_uses("function Page() { useState(1); }").is_empty());
+}

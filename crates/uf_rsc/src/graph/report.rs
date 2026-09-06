@@ -62,6 +62,19 @@ pub(crate) fn report_module_diagnostics(
                 column: use_site.column,
             });
         }
+        // Under exactly the same condition, and for the same reason: a hook
+        // the name lists do not know is only a question worth asking about
+        // code the server runs. Reported rather than assumed harmless, because
+        // "the graph said nothing" and "the graph checked and found nothing"
+        // are the same output today and are not the same fact.
+        for call in &module.hook_calls {
+            diagnostics.push(RscDiagnostic::UnclassifiedHookInServerModule {
+                module: module.path.clone(),
+                hook: call.name.clone(),
+                line: call.line,
+                column: call.column,
+            });
+        }
     }
 
     if module.environment == ModuleEnvironment::Client || reachability.is_client_reachable() {
