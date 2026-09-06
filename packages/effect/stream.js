@@ -65,29 +65,64 @@
 //
 // `Chunk` as a type, for the reason above.
 //
-// `streamToReadableStream`. Consuming a web stream needs nothing but a reader,
-// which is why `streamFromReadableStream` is here; producing one means
-// constructing a host `ReadableStream` and deciding how the runtime is entered
-// from a callback the host calls — a design question rather than a missing
-// function, so it is filed as #329 rather than guessed at.
+// A list of transforms, which is a different kind of absence from the three
+// above: `streamFlatMap`, `streamScan`, `streamMapAccum`, `streamTakeWhile`,
+// `streamDrop`, `streamGrouped`, `streamAcquireRelease` (as opposed to today's
+// `streamEnsuring`), `streamRetry` over a `Schedule`, `streamTimeout`,
+// `streamInterruptWhen`, `streamThrottle`, `streamDebounce` and
+// `streamRechunk`. None of them changes the type or needs a decision, which is
+// exactly why they can wait: adding them later costs nothing that adding them
+// now would save. #329 is the list.
 //
-// `merge`, `zip`, `buffer` and `fromQueue`, which all want a bounded queue
-// with back pressure. There is no `Queue` yet (#328), and these should follow
-// it rather than lead it (#329).
+// # The two combinators that own a fiber
+//
+// Everything here was a pull until `streamBuffer` and `streamMerge`: a
+// traversal runs on whatever fiber asked it for the next batch, and there is no
+// concurrency to reason about. Those two cannot be that, because letting a
+// source run ahead of its consumer, and running two sources at once, is what
+// they are for.
+//
+// Both do it the same way, and the way is worth stating once. A fiber per
+// source, forked with `fork` so the fiber running the traversal owns it and a
+// traversal whose fiber ends takes its pumps with it. A `Queue` whose bound is
+// the back pressure, so the faster side stops rather than growing an array. The
+// end of a source is a value in the queue rather than a shutdown, because a
+// shutdown discards what is still buffered and an end must not; anything else —
+// a failure, a defect, an interruption — does shut the queue down, which is what
+// wakes a consumer that would otherwise wait for a batch nobody is going to
+// produce.
+//
+// What went wrong then lives on the fiber rather than in the queue, and `join`
+// is what puts it back on the stream's error channel with its cause intact.
+// That is the reason nothing in this module takes a `Cause` apart to move a
+// failure across a queue: a fiber already carries one faithfully, and the one
+// place that does read a `Cause` is `streamToReadableStream`, where the channel
+// on the other side genuinely has only one.
 
 import {
   andThen,
   as,
   effect,
   ensuring,
+  exit,
   flatMap,
   forEach,
+  fork,
+  interrupt,
+  join,
   map,
   promise,
+  queue,
+  queueOffer,
+  queueShutdown,
+  queueTake,
+  queueTakeUpTo,
+  runFork,
+  runPromiseExit,
   succeed,
   suspend,
 } from "./index.js";
-import type { Effect, EffectGenerator } from "./index.js";
+import type { Cause, Effect, EffectGenerator, Fiber, Queue } from "./index.js";
 
 /**
  * One traversal of a stream.
@@ -554,4 +589,475 @@ export function streamRunHead<A, E, R>(self: Stream<A, E, R>): Effect<?A, E, R> 
   return map(streamRunCollect(streamTake(self, 1)), (collected) =>
     collected.length === 0 ? null : collected[0],
   );
+}
+
+/**
+ * Everything a queue is handed, until it is shut down.
+ *
+ * A queue has no end of its own, so one has to be agreed: `queueShutdown` is
+ * it, and a traversal that finds the queue shut down ends rather than failing.
+ * That is the same decision `Queue` already took for a shutdown — it is an
+ * interruption and not a typed failure — read from the consumer's side.
+ *
+ * A batch is up to `chunkSize` of whatever is waiting, so a fast producer is
+ * consumed in batches rather than one value at a time, and a slow one does not
+ * make the traversal wait for a batch to fill.
+ */
+export function streamFromQueue<A>(
+  source: Queue<A>,
+  options?: { readonly chunkSize?: number },
+): Stream<A> {
+  const size = chunkSizeOf(options);
+  return makeStream(() => {
+    let drained = false;
+    const pull = effect(function* (): EffectGenerator<?$ReadOnlyArray<A>, empty, empty> {
+      if (drained) {
+        return null;
+      }
+      const first = yield* exit(queueTake(source));
+      if (first.kind === "failure") {
+        // A take stops for exactly two reasons, and only one of them is this
+        // stream's news. The queue having been shut down is the end of it. This
+        // fiber having been interrupted is not — and needs no saying here,
+        // because `effect` checks interruption between steps, so the traversal's
+        // own next step reports it before anything else can.
+        drained = true;
+        return null;
+      }
+      // The second take is asked the same way, because a queue shut down
+      // between the two is a stream that ends here rather than one that reports
+      // an interruption for the batch it had already taken a value for.
+      const rest = yield* exit(queueTakeUpTo(source, size - 1));
+      return rest.kind === "success" ? [first.value, ...rest.value] : [first.value];
+    });
+    return { pull, close: NOTHING_TO_CLOSE };
+  });
+}
+
+/**
+ * Let the source run ahead of the consumer, up to `capacity` batches.
+ *
+ * The first combinator here that needs a fiber of its own: the source is
+ * drained into a bounded queue by a fiber the traversal owns, and the pull takes
+ * from the queue. A consumer that is slower than the source stops the source at
+ * the queue's bound rather than at its own speed, which is the difference
+ * between a pipeline that overlaps and one that alternates.
+ *
+ * `bounded` and not `dropping`: a buffer that silently lost elements would make
+ * `streamBuffer` change what a stream contains rather than when it arrives.
+ */
+export function streamBuffer<A, E, R>(self: Stream<A, E, R>, capacity: number): Stream<A, E, R> {
+  const size = Math.max(1, Math.floor(capacity));
+  return makeStream(() => {
+    const source = openStream(self);
+    let running: ?PumpedInto<A, E> = null;
+    let drained = false;
+    const pull = effect(function* (): EffectGenerator<?$ReadOnlyArray<A>, E, R> {
+      if (drained) {
+        return null;
+      }
+      const started = running == null ? yield* pumping(source, size) : running;
+      running = started;
+      const taken = yield* exit(queueTake(started.buffer));
+      if (taken.kind === "failure") {
+        // The queue was shut down, which the pump does when it stopped without
+        // reaching the end of the source.
+        yield* whyPumpStopped(started.fiber);
+        drained = true;
+        return null;
+      }
+      const batch = taken.value;
+      if (batch == null) {
+        drained = true;
+        return null;
+      }
+      return batch;
+    });
+    const close = effect(function* (): EffectGenerator<mixed, mixed, empty> {
+      const started = running;
+      if (started != null) {
+        yield* interrupt(started.fiber);
+        yield* queueShutdown(started.buffer);
+      }
+      return yield* source.close;
+    });
+    return { pull, close };
+  });
+}
+
+/**
+ * Both streams' elements, in whatever order they arrive.
+ *
+ * Two fibers filling one bounded queue, which is what makes this a merge rather
+ * than a concatenation: neither side waits for the other, and the queue's bound
+ * is what stops the faster one from running away. The traversal ends when both
+ * sides have, and a failure on either side ends it with that failure.
+ *
+ * There is no ordering promise between the sides, which is what "merge" means.
+ * `streamZip` is the combinator with one.
+ */
+export function streamMerge<A, E1, E2, R1, R2>(
+  left: Stream<A, E1, R1>,
+  right: Stream<A, E2, R2>,
+  options?: { readonly capacity?: number },
+): Stream<A, E1 | E2, R1 | R2> {
+  const requested = options == null ? null : options.capacity;
+  const size = requested == null ? DEFAULT_MERGE_CAPACITY : Math.max(1, Math.floor(requested));
+  return makeStream(() => {
+    const leftSource = openStream(left);
+    const rightSource = openStream(right);
+    let shared: ?Queue<?$ReadOnlyArray<A>> = null;
+    let pumps: ?{ readonly left: Fiber<void, E1>, readonly right: Fiber<void, E2> } = null;
+    let ended = 0;
+    let drained = false;
+    const pull = effect(function* (): EffectGenerator<?$ReadOnlyArray<A>, E1 | E2, R1 | R2> {
+      if (drained) {
+        return null;
+      }
+      let buffer = shared;
+      let started = pumps;
+      if (buffer == null || started == null) {
+        buffer = yield* queue(size);
+        started = {
+          left: yield* pumpingInto(leftSource, buffer),
+          right: yield* pumpingInto(rightSource, buffer),
+        };
+        shared = buffer;
+        pumps = started;
+      }
+      for (;;) {
+        const taken = yield* exit(queueTake(buffer));
+        if (taken.kind === "failure") {
+          // Whichever side stopped without reaching its end shut the queue
+          // down. Both are asked, and the one that failed is the one that says
+          // so — the other has been interrupted by the shutdown and has nothing
+          // to report.
+          yield* whyPumpStopped(started.left);
+          yield* whyPumpStopped(started.right);
+          drained = true;
+          return null;
+        }
+        const batch = taken.value;
+        if (batch != null) {
+          return batch;
+        }
+        // One side reached its end. The stream does not, until both have.
+        ended += 1;
+        if (ended >= 2) {
+          drained = true;
+          return null;
+        }
+      }
+    });
+    const close = effect(function* (): EffectGenerator<mixed, mixed, empty> {
+      const started = pumps;
+      if (started != null) {
+        yield* interrupt(started.left);
+        yield* interrupt(started.right);
+      }
+      const buffer = shared;
+      if (buffer != null) {
+        yield* queueShutdown(buffer);
+      }
+      yield* leftSource.close;
+      return yield* rightSource.close;
+    });
+    return { pull, close };
+  });
+}
+
+/**
+ * Pairs, until either side runs out.
+ *
+ * The one combinator here that needs no queue and no fiber: both sides are
+ * pulled in step and the leftovers of the longer batch are kept until the
+ * shorter one catches up. A queue would buy nothing, because a zip cannot get
+ * ahead of its slower side by definition.
+ *
+ * The traversal ends with the shorter stream, and the longer one is closed
+ * without being drained — which is what makes zipping an infinite source with a
+ * finite one terminate.
+ */
+export function streamZip<A, B, E1, E2, R1, R2>(
+  left: Stream<A, E1, R1>,
+  right: Stream<B, E2, R2>,
+): Stream<[A, B], E1 | E2, R1 | R2> {
+  return makeStream(() => {
+    const leftSource = openStream(left);
+    const rightSource = openStream(right);
+    const leftOver: Array<A> = [];
+    const rightOver: Array<B> = [];
+    let drained = false;
+    const pull = effect(function* (): EffectGenerator<?$ReadOnlyArray<[A, B]>, E1 | E2, R1 | R2> {
+      while (!drained && (leftOver.length === 0 || rightOver.length === 0)) {
+        if (leftOver.length === 0) {
+          const batch = yield* leftSource.pull;
+          if (batch == null) {
+            drained = true;
+            break;
+          }
+          for (const item of batch) {
+            leftOver.push(item);
+          }
+        }
+        if (rightOver.length === 0) {
+          const batch = yield* rightSource.pull;
+          if (batch == null) {
+            drained = true;
+            break;
+          }
+          for (const item of batch) {
+            rightOver.push(item);
+          }
+        }
+      }
+      const pairs = Math.min(leftOver.length, rightOver.length);
+      if (pairs === 0) {
+        return null;
+      }
+      const zipped: Array<[A, B]> = [];
+      for (let index = 0; index < pairs; index += 1) {
+        zipped.push([leftOver[index], rightOver[index]]);
+      }
+      leftOver.splice(0, pairs);
+      rightOver.splice(0, pairs);
+      return zipped;
+    });
+    // `ensuring` and not `andThen`, so a left-hand close that fails still leaves
+    // the right-hand one run: two sources are two things to give back.
+    const close = ensuring(leftSource.close, () => rightSource.close);
+    return { pull, close };
+  });
+}
+
+/** The default bound on how far `streamMerge` lets a side run ahead. */
+const DEFAULT_MERGE_CAPACITY = 16;
+
+/** A traversal being drained into a queue by a fiber, and the queue. */
+type PumpedInto<A, E> = {
+  readonly buffer: Queue<?$ReadOnlyArray<A>>,
+  readonly fiber: Fiber<void, E>,
+};
+
+/** A queue of the right shape, and a fiber filling it from `source`. */
+function pumping<A, E, R>(
+  source: StreamStep<A, E, R>,
+  capacity: number,
+): Effect<PumpedInto<A, E>, empty, R> {
+  return effect(function* (): EffectGenerator<PumpedInto<A, E>, empty, R> {
+    const buffer: Queue<?$ReadOnlyArray<A>> = yield* queue(capacity);
+    return { buffer, fiber: yield* pumpingInto(source, buffer) };
+  });
+}
+
+/**
+ * Drain a traversal into a queue, in a fiber of its own.
+ *
+ * The end of the source is a `null` in the queue rather than a shutdown,
+ * because a shutdown discards what is still buffered and an end must not: the
+ * consumer takes the batches in order and finds the `null` behind them.
+ *
+ * Anything else — a failure, a defect, this fiber being interrupted — *does*
+ * shut the queue down, which is what wakes a consumer that would otherwise wait
+ * for a batch nobody is going to produce. What went wrong is then on the fiber,
+ * and `whyPumpStopped` is what puts it back on the stream's error channel.
+ *
+ * `fork` and not `forkDaemon`: the pump belongs to the fiber running the
+ * traversal, so a traversal whose fiber ends takes its pumps with it even if
+ * nothing closed the stream.
+ */
+function pumpingInto<A, E, R>(
+  source: StreamStep<A, E, R>,
+  into: Queue<?$ReadOnlyArray<A>>,
+): Effect<Fiber<void, E>, empty, R> {
+  return suspend(() => {
+    let reachedTheEnd = false;
+    const drain = effect(function* (): EffectGenerator<void, E, R> {
+      for (;;) {
+        const batch = yield* source.pull;
+        yield* queueOffer(into, batch);
+        if (batch == null) {
+          reachedTheEnd = true;
+          return;
+        }
+      }
+    });
+    return fork(
+      ensuring(drain, () =>
+        suspend(() => (reachedTheEnd ? succeed(undefined) : queueShutdown(into))),
+      ),
+    );
+  });
+}
+
+/**
+ * Stop a pump, and put back whatever it failed with.
+ *
+ * `join` on a settled fiber re-raises that fiber's own outcome, cause and all,
+ * which is the one thing that carries a defect or a composite failure across
+ * without this module taking a `Cause` apart. The `interrupt` first is for the
+ * *other* pump in a merge, which is still running and has nothing to say: a
+ * fiber that was interrupted is not the reason the traversal ended.
+ */
+function whyPumpStopped<E>(fiber: Fiber<void, E>): Effect<void, E, empty> {
+  return effect(function* (): EffectGenerator<void, E, empty> {
+    const stopped = yield* interrupt(fiber);
+    if (stopped.kind === "failure" && stopped.cause.kind !== "interrupt") {
+      yield* join(fiber);
+    }
+  });
+}
+
+/**
+ * What a host's `ReadableStream` hands its source, structurally.
+ *
+ * Structural for the same reason `ChunkReader` is: the four hosts uf targets do
+ * not agree on which library file declares `ReadableStreamController`, and they
+ * do agree on this shape.
+ */
+type ChunkSink<A> = {
+  readonly enqueue: (chunk: A) => mixed,
+  readonly close: () => mixed,
+  readonly error: (reason: mixed) => mixed,
+  ...
+};
+
+/** What a host's `ReadableStream` constructor takes, structurally. */
+type ChunkSource<A> = {
+  readonly pull: (controller: ChunkSink<A>) => Promise<mixed>,
+  readonly cancel: (reason: mixed) => Promise<mixed>,
+};
+
+/**
+ * A stream, as something a web consumer can read.
+ *
+ * The other end of `streamFromReadableStream`, and the one `@uniflowed/server`
+ * needs: streaming SSR and RSC produce a `ReadableStream`, and until this
+ * existed an effect program had no way to be on that end of one. Three
+ * decisions, none of which is about the function's body:
+ *
+ * **Which fiber the pull runs on.** One per host pull, started with `runFork`
+ * and kept in a closure that `cancel` can reach. A `ReadableStream`'s `pull` is
+ * a callback the *host* calls, so there is no fiber to inherit and no
+ * interruption to propagate — the handle is the only thing that can stop the
+ * work, which is exactly the situation `runFork` exists for. The traversal
+ * itself spans many pulls and is opened on the first of them, so a
+ * `ReadableStream` nobody reads never opens what the source would have.
+ *
+ * **What a typed failure becomes.** A `ReadableStream` has one `error(reason)`
+ * and no channels, so the three ways an effect can fail cannot stay three. A
+ * typed failure crosses as its own value, because `E` is the type the consumer
+ * named and an `Error` wrapped round it would lose it. A defect and an
+ * interruption cross as an `Error`, because neither has a value anybody named —
+ * a defect has a message and an interruption has only the fact.
+ *
+ * **How the host's constructor is reached.** By being handed it:
+ * `streamToReadableStream(stream, (source) => new ReadableStream(source))`. That
+ * is the same avoidance `streamFromReadableStream` makes by taking `open`, for
+ * the same reason — this module cannot name a global that four hosts declare in
+ * four places — and it is why the return type is whatever the caller's
+ * constructor produced rather than a type this module invented.
+ *
+ * The guarantees are the runners': a consumer that cancels stops the pull it
+ * interrupted and closes the traversal, so a `ReadableStream` abandoned halfway
+ * releases what its source opened, exactly as `streamTake(3)` of an infinite
+ * source does. Nothing is enqueued after a cancel, because the controller is
+ * closed by then and touching it would raise inside the host.
+ *
+ * `R` is `empty`, as it is for every runner in this package: an effect that
+ * still needs a service has nowhere to get one from outside the runtime.
+ */
+export function streamToReadableStream<A, E, Made>(
+  self: Stream<A, E>,
+  make: (source: ChunkSource<A>) => Made,
+): Made {
+  let traversal: ?StreamStep<A, E, empty> = null;
+  let pulling: ?Fiber<?$ReadOnlyArray<A>, E> = null;
+  let closed = false;
+  let cancelled = false;
+  const opened = (): StreamStep<A, E, empty> => {
+    const already = traversal;
+    if (already != null) {
+      return already;
+    }
+    const started = openStream(self);
+    traversal = started;
+    return started;
+  };
+  const closeOnce = async (): Promise<void> => {
+    const started = traversal;
+    if (closed || started == null) {
+      closed = true;
+      return;
+    }
+    closed = true;
+    await runPromiseExit(started.close);
+  };
+  return make({
+    pull: async (controller: ChunkSink<A>) => {
+      if (cancelled) {
+        return null;
+      }
+      const fiber = runFork(opened().pull);
+      pulling = fiber;
+      const settled = await runPromiseExit(join(fiber));
+      pulling = null;
+      if (cancelled) {
+        return null;
+      }
+      if (settled.kind === "failure") {
+        await closeOnce();
+        controller.error(reasonFor(settled.cause));
+        return null;
+      }
+      const batch = settled.value;
+      if (batch == null) {
+        await closeOnce();
+        controller.close();
+        return null;
+      }
+      for (const item of batch) {
+        controller.enqueue(item);
+      }
+      return null;
+    },
+    cancel: async () => {
+      cancelled = true;
+      const running = pulling;
+      if (running != null) {
+        await runPromiseExit(interrupt(running));
+      }
+      await closeOnce();
+      return null;
+    },
+  });
+}
+
+/**
+ * The one reason a `ReadableStream` can be given, out of the three an effect
+ * can end with.
+ *
+ * A typed failure is its own value; everything else is an `Error`, because a
+ * `reason` a consumer cannot name is one it can only print.
+ */
+function reasonFor<E>(cause: Cause<E>): mixed {
+  switch (cause.kind) {
+    case "fail":
+      return cause.error;
+    case "die":
+      return new Error(cause.defect);
+    case "interrupt":
+      return new Error("the fiber producing this stream was interrupted");
+    case "sequential":
+    case "parallel": {
+      for (const inner of cause.causes) {
+        if (inner.kind !== "empty") {
+          return reasonFor(inner);
+        }
+      }
+      return new Error("the stream failed");
+    }
+    default:
+      return new Error("the stream failed");
+  }
 }
