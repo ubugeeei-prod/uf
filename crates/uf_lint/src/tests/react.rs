@@ -36,6 +36,40 @@ fn no_default_export_component_covers_reserved_router_modules() {
 }
 
 #[test]
+fn no_default_export_component_reads_code_and_not_the_prose_beside_it() {
+    // The rule only looks at a file that declares a `component`, and that fact
+    // was a substring search over the whole file. So a module whose comment
+    // said "server-component analysis" — `packages/vite/index.js` does — was
+    // treated as declaring one, and its default export, a Vite plugin factory,
+    // was reported. The comment was reworded to get a clean run, which is the
+    // wrong direction: the file was right and the rule was not.
+    let diagnostics = lint_js(
+        "react/no-default-export-component",
+        "// @flow\n// The server-component analysis, which is not a component declaration.\nexport default function plugin() { return {}; }\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    // A string is not a declaration either. This is the shape a generated
+    // entry point has: source written as text, to be emitted rather than run.
+    let diagnostics = lint_js(
+        "react/no-default-export-component",
+        "// @flow\nconst source = \"component Page() { return null; }\";\nexport default source;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    // And the rule still fires on the thing it is about, so this is not a
+    // fact that has quietly stopped being computed.
+    let diagnostics = lint_js(
+        "react/no-default-export-component",
+        "// @flow\n// The server-component analysis, mentioned in a comment.\ncomponent Page() { return null; }\nexport default Page;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
 fn no_default_export_component_leaves_plain_modules_alone() {
     let diagnostics = lint_js(
         "react/no-default-export-component",
