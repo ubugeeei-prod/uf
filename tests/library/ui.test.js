@@ -3132,9 +3132,13 @@ describe("Pagination", () => {
     expect(nav).toBeInTheDocument();
     // `aria-current="page"` and exactly one of it. Not a class, not bold text,
     // not `aria-selected` — `page` is the value ARIA defines for this and the
-    // only one that tells a reader where they are.
-    expect(within(nav).getByRole("link", { name: "4" })).toHaveAttribute("aria-current", "page");
-    expect(document.querySelectorAll("[aria-current]").length).toBe(1);
+    // only one that tells a reader where they are. Asked as a role query,
+    // because "exactly one control is current" is a fact about what is
+    // announced; reading the attribute back off a link found by its name says
+    // less, and was all this could say while `current` was an option
+    // `getByRole` accepted and ignored (ubugeeei-prod/uf#359).
+    expect(within(nav).getByRole("link", { current: "page" }).textContent).toBe("4");
+    expect(within(nav).getAllByRole("link", { current: false }).length).toBe(4);
   });
 
   it("names previous and next in words rather than in chevrons", () => {

@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { useState } from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/test";
 import {
+  accessibleName,
   act,
   cleanup,
   fireEvent,
@@ -351,6 +352,162 @@ describe("a role query and the accessibility tree", () => {
       message = String(error);
     }
     expect(message).toContain("a level narrows a heading");
+  });
+});
+
+describe("an accessible name that comes from a caption", () => {
+  it("names a table by its caption and not by every cell in it", () => {
+    const { container } = render(
+      <table>
+        <caption>People</caption>
+        <tbody>
+          <tr>
+            <td>Ada Lovelace</td>
+            <td>1815</td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    // Without the caption rule the name of a table is its content, so this
+    // asked whether the table was called "People Name Born Ada Lovelace 1815"
+    // and found nothing. HTML-AAM gives a table its `<caption>`, and every
+    // browser does.
+    expect(screen.getByRole("table", { name: "People" })).toBeInTheDocument();
+    const table: $FlowFixMe = container.querySelector("table");
+    expect(accessibleName(table)).toBe("People");
+  });
+
+  it("names a fieldset by its legend and a figure by its figcaption", () => {
+    const { container } = render(
+      <div>
+        <fieldset>
+          <legend>Delivery</legend>
+          <label>
+            Street
+            <input type="text" />
+          </label>
+        </fieldset>
+        <figure>
+          <img alt="a plot" src="plot.png" />
+          <figcaption>Figure 1</figcaption>
+        </figure>
+      </div>,
+    );
+    const fieldset: $FlowFixMe = container.querySelector("fieldset");
+    const figure: $FlowFixMe = container.querySelector("figure");
+    expect(accessibleName(fieldset)).toBe("Delivery");
+    expect(accessibleName(figure)).toBe("Figure 1");
+  });
+
+  it("keeps aria-label ahead of the caption, which is the order in the spec", () => {
+    const { container } = render(
+      <table aria-label="Everyone">
+        <caption>People</caption>
+        <tbody>
+          <tr>
+            <td>Ada Lovelace</td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    const table: $FlowFixMe = container.querySelector("table");
+    expect(accessibleName(table)).toBe("Everyone");
+  });
+});
+
+describe("a role query and aria-current", () => {
+  component Pages() {
+    return (
+      <nav aria-label="Pages">
+        <a href="/1">1</a>
+        <a aria-current="page" href="/2">
+          2
+        </a>
+        <a href="/3">3</a>
+      </nav>
+    );
+  }
+
+  it("finds the current one, and the ones that are not", () => {
+    render(<Pages />);
+    // The point of a pagination test is that exactly one control is current,
+    // and the role query is where that belongs. This used to return all three.
+    expect(screen.getByRole("link", { current: "page" }).textContent).toBe("2");
+    expect(screen.getAllByRole("link", { current: false }).map((link) => link.textContent)).toEqual(
+      ["1", "3"],
+    );
+  });
+
+  it("reads the true and false spellings as the booleans they are", () => {
+    render(
+      <div>
+        <a aria-current="true" href="/a">
+          a
+        </a>
+        <a aria-current="false" href="/b">
+          b
+        </a>
+      </div>,
+    );
+    expect(screen.getByRole("link", { current: true }).textContent).toBe("a");
+    expect(screen.getAllByRole("link", { current: false }).map((link) => link.textContent)).toEqual(
+      ["b"],
+    );
+  });
+
+  it("takes a token ARIA does not define as true, the way a browser does", () => {
+    render(
+      <a aria-current="pge" href="/a">
+        a
+      </a>,
+    );
+    // ARIA: a value outside the list is treated as if `true` had been written,
+    // not as the default `false`. So the typo *is* announced as current, and
+    // the query that spells the typo finds nothing — which is the answer that
+    // sends the reader to look at their markup.
+    expect(screen.getByRole("link", { current: true })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { current: "pge" })).toBe(null);
+  });
+});
+
+describe("an option a query does not take", () => {
+  it("is refused, and the message says what the query does take", () => {
+    render(<button type="button">Save</button>);
+    let message = "";
+    try {
+      screen.getByRole("button", { nmae: "Save" });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain('getByRole: "nmae" is not an option this query takes');
+    expect(message).toContain("It takes current, exact, hidden, level, name.");
+  });
+
+  it("is refused by the other queries too, which take only exact", () => {
+    render(<p>hello</p>);
+    let message = "";
+    try {
+      screen.queryAllByText("hello", { hidden: true });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain('queryAllByText: "hidden" is not an option this query takes');
+    expect(message).toContain("It takes exact.");
+  });
+
+  it("is refused before the wait rather than after it gives up", async () => {
+    render(<p>hello</p>);
+    const started = Date.now();
+    let message = "";
+    try {
+      await screen.findByText("hello", { ignore: "script" });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain('findByText: "ignore" is not an option this query takes');
+    // A mistake in the test is not a condition that is about to come true, and
+    // waiting a second before saying so helps nobody.
+    expect(Date.now() - started).toBeLessThan(500);
   });
 });
 
