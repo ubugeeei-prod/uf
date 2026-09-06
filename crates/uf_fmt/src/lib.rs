@@ -12,13 +12,21 @@
 //! else a project holds (JSON, CSS, TypeScript) is routed to Biome's
 //! formatters.
 //!
+//! One embedded language is read rather than passed through: a template
+//! tagged `graphql`, `gql` or `graphql.experimental` — see [`graphql`] —
+//! has its contents formatted and re-indented to the code around it, as
+//! Prettier does. A template uf will not reprint comes out byte for byte as
+//! it was written.
+//!
 //! The formatter is built around four guarantees, each covered by tests:
 //!
 //! * **Idempotent.** `format(format(x)) == format(x)` for every input.
 //! * **Tree preserving.** The output re-parses to the same tree as the
 //!   input, locations, comments and parentheses aside. Parentheses are
 //!   recomputed from the tree, so a pair the grammar needs is always there
-//!   and a pair it does not is not.
+//!   and a pair it does not is not. A template whose GraphQL was reprinted
+//!   is compared as the document it denotes rather than as text — see
+//!   [`graphql::token_signature`].
 //! * **Comment preserving.** Every comment in the input is in the output
 //!   exactly once, `// @flow` docblocks and `$FlowFixMe` suppressions
 //!   included; a printer that forgot one returns an error instead.
@@ -36,6 +44,7 @@
 
 pub mod doc;
 mod flow;
+pub mod graphql;
 
 use std::borrow::Cow;
 

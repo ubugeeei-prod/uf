@@ -251,6 +251,7 @@ The pipeline is four stages, one module each in `uf_fmt`:
 | Index | `flow::text` | byte offsets from the parser's line/column positions, and the questions layout asks of the source: is the next line blank, what is the next character that is not a comment |
 | Attach | `flow::comments` | which node each comment belongs to, and whether it prints before it, after it, or inside it |
 | Print | `flow::print` → `doc` | a Wadler document, then a width-driven layout pass |
+| Embed | `flow::print::embed` → `graphql` | the contents of a template whose tag names GraphQL, printed into the same document |
 
 **The document IR** is Prettier's, ported: `text`, `line`, `softline`,
 `hardline`, `literalline`, `group`, `conditionalGroup`, `indent`, `align`,
@@ -276,8 +277,9 @@ a *tie*, broken by the whitespace between it and what follows.
 - **Prettier-compatible.** The fixtures under `crates/uf_fmt/tests/fixtures`
   pair an input with the output of `prettier --parser hermes
   --plugin prettier-plugin-hermes-parser`, and are compared byte for byte.
-  With one exception, named below: uf does not format code embedded in a
-  tagged template, so the target is `--embedded-language-formatting=off`.
+  Prettier's defaults, `embeddedLanguageFormatting: "auto"` included — with
+  the one qualification named below, which is the embedded languages uf
+  does not read.
 - **Idempotent.** `format(format(x)) == format(x)`.
 - **Tree-preserving.** The output re-parses to the same tree as the input,
   compared as JSON with locations, comments, `raw` spellings and the other
@@ -299,12 +301,6 @@ corpus is where most of the printer bugs this repository has fixed came
 from: a hand-written fixture is written by somebody who already knows what
 the printer does.
 
-The exception named above is embedded languages. Prettier formats GraphQL,
-CSS and SQL inside a tagged template and re-indents it to the surrounding
-code; uf leaves every template exactly as written. It is Prettier's
-`embeddedLanguageFormatting`, its default is `"auto"`, and uf is compatible
-with `"off"`. See ubugeeei-prod/uf#177.
-
 Parentheses are not in the port's tree, so every pair in the output is
 recomputed from precedence and position. That is what makes the
 tree-preserving test meaningful: a pair the grammar needs is always
@@ -323,6 +319,60 @@ Not linked in, because linking Biome would make uf's release depend on
 Biome's — red line 5. Running the binary a project already has means the
 project upgrades its formatter without waiting for uf, and can name one uf
 has never heard of.
+
+### Embedded GraphQL
+
+Prettier formats the code *inside* a tagged template when it recognises the
+tag — `graphql`, `css`, `html`, `sql`, `markdown` — and re-indents it to the
+code around it. **uf reads one of those: GraphQL.** It is the one this
+toolchain has a reason to know, and re-indentation is the visible half of
+the feature: GraphQL that keeps the indentation the author left it at is
+GraphQL at the wrong indentation as soon as anything around it moves. A
+`css` or `sql` template goes out byte for byte, as before.
+
+`crates/uf_fmt/src/graphql` is a GraphQL lexer, parser and printer — the
+executable grammar and the type-system grammar, no third-party crate — and
+its printer is Prettier's `printer-graphql` over the same document IR as the
+Flow printer, so the layout is reproducible arm for arm rather than
+approximated. `flow::print::embed` decides which templates hold one and
+splices the result back in. The rules there are Prettier's, established by
+running it:
+
+- **The tags.** `graphql`, `gql`, `graphql.experimental`, a template passed
+  to a call of `graphql(…)`, and a template behind a `/* GraphQL */` block
+  comment. Exact and case sensitive: `Relay.QL` and `gql.experimental` are
+  not GraphQL to Prettier and are not to uf.
+- **`${…}`.** Not one document with holes in it: each run of text *between*
+  the holes is parsed as a whole document of its own. So a trailing
+  `${Fragment}` works, and a hole in the middle of a selection does not —
+  and when any run fails, the whole template is left alone.
+- **Indentation.** One level in from the line the template starts on, with
+  the closing backtick back at it.
+
+**What uf declines, it does not touch.** A template it will not reprint
+comes out byte for byte as the author wrote it — the author's indentation
+included — rather than approximately right. Four things are declined:
+
+| Declined | Why |
+| --- | --- |
+| A document holding a `#` comment | Prettier places a GraphQL comment with its generic comment-attachment pass, and uf does not reproduce that pass. A comment on the wrong node is a worse answer than an untouched template. |
+| A string value holding a control character | Prettier prints a string value with only `"`, `\` and a newline escaped, so a `\r` goes out raw — and the formatter normalises line endings on the way in, so the next run would read a different string. |
+| Anything that is not GraphQL | Including a quasi that is not a document on its own. |
+| More than 128 levels of nesting | A template is untrusted input like any other source text. |
+
+Of the 1,138 `graphql` templates in Relay's test suite, uf reproduces
+Prettier byte for byte on 1,092 and declines 46, every one of them for a
+comment.
+
+Formatting the inside of a template rewrites a string literal's contents,
+so the tree-preserving guarantee had to learn what a template's text
+*means* rather than compare it byte for byte. For GraphQL that is its token
+sequence — commas and whitespace are nothing to the grammar, and a string
+value is reprinted from its value rather than from its source spelling — so
+a quasi that lexes as GraphQL is compared by
+`uf_fmt::graphql::token_signature` and one that does not is compared as
+text. A dropped directive, a reordered selection or a changed number is
+still a different token sequence and still fails.
 
 ## Flow And React
 
