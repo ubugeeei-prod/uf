@@ -288,7 +288,11 @@ use, and why.
 
 ### uf env use PROFILE
 
-Sets the active `.env` profile.
+Records the profile name, and **nothing reads it yet**. `.env` files are not
+loaded by uf at all today: the Vite driver sets `envDir: false`, so neither the
+profile nor the files it would select reach a build. A project that needs them
+turns Vite's own loader back on with `vite: { envDir: "." }`. See
+[#259](https://github.com/ubugeeei-prod/uf/issues/259).
 
 ### uf env install
 
