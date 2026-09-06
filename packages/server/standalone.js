@@ -76,6 +76,14 @@ type NodeResponse = {
   // gone out cannot be answered with a status, and dropping the socket is the
   // only way left to tell the client the document it received is not whole.
   destroy(error?: mixed): mixed,
+  // The events a writer has to listen to rather than assume: `drain`, so a body
+  // is paced by what the socket will take, and `close`, so a client that hung
+  // up stops the producer instead of being written at. Named individually, like
+  // `stream.js`'s `NodeDestination`, so that a host missing one of them fails
+  // to compile rather than to serve.
+  on(event: string, listener: (...args: Array<mixed>) => mixed): mixed,
+  once(event: string, listener: (...args: Array<mixed>) => mixed): mixed,
+  off(event: string, listener: (...args: Array<mixed>) => mixed): mixed,
   ...
 };
 
@@ -483,14 +491,66 @@ async function send(outgoing: NodeResponse, method: string, result: Response): P
     return;
   }
   // Streamed rather than buffered, so a handler returning a large or
-  // open-ended body is not read into memory first.
+  // open-ended body is not read into memory first — and paced by what the
+  // socket will take, or it is only streamed in shape. `write` answers `false`
+  // when the kernel buffer is full and the remainder is being held in this
+  // process, so a loop that read on regardless turned a slow client into a heap
+  // the size of everything it had not acknowledged.
+  //
+  // The same loop as `@uniflowed/vite`'s `internal/http.js`, and the same
+  // comments, because this is the third copy of "write a `Response` to a Node
+  // response" and the three have to answer alike: a binary that buffered where
+  // `uf start` paced would be the one deployment target whose memory profile
+  // nobody had measured. The code is not shared for the reason at the top of
+  // this file — importing `@uniflowed/vite` into the artefact a deployment runs
+  // is the property `uf start` exists to establish.
   const reader = result.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    outgoing.write(value);
+  // A client that hangs up is the other half: nothing written after that goes
+  // anywhere, and the producer behind the body keeps producing for a reader
+  // that is never coming back.
+  let open = true;
+  const onClose = () => {
+    open = false;
+  };
+  outgoing.on("close", onClose);
+  try {
+    while (open) {
+      const { done, value } = await reader.read();
+      if (done === true || !open) break;
+      if (outgoing.write(value) === false) {
+        await writable(outgoing);
+      }
+    }
+  } finally {
+    outgoing.off("close", onClose);
   }
-  outgoing.end();
+  if (open) {
+    outgoing.end();
+    return;
+  }
+  // Best effort: the connection is already gone, so there is nobody left to
+  // report a failed cancellation to and no response left to fail.
+  await reader.cancel().catch(() => {});
+}
+
+/**
+ * Resolve once `outgoing` can take more — or once it cannot ever again.
+ *
+ * `drain` alone would be a deadlock waiting to happen: a client that hangs up
+ * while the buffer is full emits `close` and never `drain`, and a writer
+ * waiting only for the latter waits for the life of the process, holding the
+ * body's producer open with it.
+ */
+function writable(outgoing: NodeResponse): Promise<void> {
+  return new Promise((resolve) => {
+    const settle = () => {
+      outgoing.off("drain", settle);
+      outgoing.off("close", settle);
+      resolve();
+    };
+    outgoing.once("drain", settle);
+    outgoing.once("close", settle);
+  });
 }
 
 /** Write one embedded file, with the length a client needs to reuse a socket. */

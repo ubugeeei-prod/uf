@@ -26,6 +26,7 @@ import {
   createApplicationHandler,
   createServeHandler,
   createStaticHandler,
+  send,
 } from "../../packages/vite/internal/serve.js";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
@@ -314,5 +315,136 @@ describe("the two together", () => {
     const response = await handle(request("/definitely-not-a-page/"));
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("<p>not found</p>");
+  });
+});
+
+describe("writing a `Response` to a Node response", () => {
+  /**
+   * A `ServerResponse` with the events one has, and nothing else.
+   *
+   * `full` makes every `write` answer `false`, which is how a real one says
+   * the kernel buffer is full and the remainder is being held in this process.
+   */
+  function outgoing(options?: {| readonly full?: boolean |}) {
+    const listeners: Map<string, Array<() => mixed>> = new Map();
+    return {
+      statusCode: 0,
+      statusMessage: "",
+      written: ([]: Array<string>),
+      ended: false,
+      setHeader() {},
+      write(chunk: Uint8Array): boolean {
+        this.written.push(new TextDecoder().decode(chunk));
+        return options?.full !== true;
+      },
+      end() {
+        this.ended = true;
+      },
+      on(event: string, listener: () => mixed) {
+        listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+        return this;
+      },
+      once(event: string, listener: () => mixed) {
+        return this.on(event, listener);
+      },
+      off(event: string, listener: () => mixed) {
+        listeners.set(
+          event,
+          (listeners.get(event) ?? []).filter((each) => each !== listener),
+        );
+        return this;
+      },
+      emit(event: string) {
+        for (const listener of [...(listeners.get(event) ?? [])]) {
+          listener();
+        }
+      },
+      listening(event: string): number {
+        return (listeners.get(event) ?? []).length;
+      },
+    };
+  }
+
+  /**
+   * A body that never ends, and says when it was last read.
+   *
+   * Endless because a body that finishes on its own proves nothing about
+   * pacing or about cancelling — the loop stops either way. The producer takes
+   * a turn of the event loop, because one that resolves in a microtask starves
+   * the timers below and because no real body is instant either.
+   */
+  function endless() {
+    const state = { pulls: 0, cancelled: false };
+    const body = new ReadableStream({
+      async pull(controller) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        state.pulls += 1;
+        controller.enqueue(new TextEncoder().encode(`chunk ${String(state.pulls)}\n`));
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    });
+    return { body, state };
+  }
+
+  it("stops reading while the socket is full, and goes on when it drains", async () => {
+    // `write` answering `false` means the kernel buffer is full and everything
+    // after it is being held in *this* process. Reading on regardless turns a
+    // slow client, or an open-ended body, into a heap the size of everything
+    // that client has not acknowledged: streaming in shape and buffering in
+    // fact, which is what the renderer's `ChunkQueue` exists to avoid a layer
+    // up and what this had no answer for at all.
+    const { body, state } = endless();
+    const response = outgoing({ full: true });
+    const writing = send(response, new Response(body, { status: 200 }));
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const held = state.pulls;
+    expect(held > 0).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(state.pulls).toBe(held);
+
+    // A pause, not a stop.
+    response.emit("drain");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(state.pulls > held).toBe(true);
+
+    response.emit("close");
+    await writing;
+  });
+
+  it("cancels the body when the client hangs up", async () => {
+    // Nothing written after a client closes goes anywhere, and the producer
+    // behind the body — a render, a proxied upstream, an event stream — keeps
+    // producing for a reader that is never coming back. `cancel()` is what
+    // says so; `releaseLock()` would only detach this end.
+    const { body, state } = endless();
+    const response = outgoing();
+    const writing = send(response, new Response(body, { status: 200 }));
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(state.cancelled).toBe(false);
+    response.emit("close");
+    await writing;
+
+    expect(state.cancelled).toBe(true);
+    // The response is not ended: it is already gone, and `end()` on a closed
+    // socket is a write to nowhere.
+    expect(response.ended).toBe(false);
+    // And the listener went with it. A server holds a response per in-flight
+    // request, and one that accumulates listeners leaks per request served.
+    expect(response.listening("close")).toBe(0);
+  });
+
+  it("still ends a response whose body finished normally", async () => {
+    // The half that keeps the two above from being a wall: an ordinary body
+    // is written and the response is closed, exactly as before.
+    const response = outgoing();
+    await send(response, new Response("hello", { status: 200 }));
+
+    expect(response.written.join("")).toBe("hello");
+    expect(response.ended).toBe(true);
+    expect(response.listening("close")).toBe(0);
   });
 });
