@@ -31,6 +31,10 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | Component | Pattern | Module |
 | --- | --- | --- |
 | `Dialog` | Modal dialog: focus trap, focus restore, scroll lock | `dialog.js` |
+| `AlertDialog` | The confirmation: `alertdialog`, no dismissal by a press outside, focus on Cancel | `alert-dialog.js` |
+| `Sheet` | A modal dialog attached to an edge, and one `data-side` contract | `sheet.js` |
+| `Drawer` | The sheet you can drag away, with the keyboard WCAG 2.5.7 requires | `drawer.js` |
+| `Sidebar` | Navigation beside the page that becomes a modal sheet on a narrow one | `sidebar.js` |
 | `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking | `menu.js` |
 | `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter | `combobox.js` |
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
@@ -46,6 +50,9 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Pagination` | Navigation with a name, one current page, and a sentence saying it moved | `pagination.js` |
 | `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
 | `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
+| `Carousel` | Slides that can be stopped, and that `Tab` cannot fall into | `carousel.js` |
+| `ScrollArea` | An overflow container a keyboard can actually scroll | `scroll-area.js` |
+| `InputOtp` | Six boxes drawn over one real `<input>`, so autofill still works | `input-otp.js` |
 
 Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
 `<button>` in a tab list is a *type error* rather than a review comment;
@@ -726,7 +733,9 @@ All three take the same placement props:
 `"start" | "center" | "end"`. Misspelling one is a type error at the call rather
 than an overlay that quietly opens somewhere else, and
 `tests/type-tests/anchoring.js` is that promise written down as the code
-that must fail to check.
+that must fail to check, and `tests/type-tests/overlays.js` is the same file for
+a sheet's edge, a sidebar's side, a modal's role and what a one-time code is
+made of.
 
 When there is no room, the overlay does two things, and needing both is why it
 is measured rather than left to CSS:
@@ -778,6 +787,268 @@ declarative tier where it works and the measured one elsewhere would put the
 same overlay in two different places, and which one a reader got would depend on
 their browser. One tier both engines run is worth more than the faster one for
 some of them.
+
+## The four built on `Dialog`
+
+`AlertDialog`, `Sheet`, `Drawer` and `Sidebar` are all `Dialog` underneath, and
+each differs from it in a specific way. They are four components rather than one
+with a `variant`, because the bundles do not line up: an alert dialog sets three
+things, a sheet sets none of them and adds an edge, a sidebar is most often not
+modal at all.
+
+What `dialog.js` grew for them is three props, and each is a behaviour that
+fails silently when it is hard-coded:
+
+| Prop | Default | What it decides |
+| --- | --- | --- |
+| `role` | `"dialog"` | `"alertdialog"` makes a screen reader announce the description the moment focus arrives |
+| `dismissOnOutsidePress` | `true` | Whether a press beside the dialog closes it. `Escape` closes it either way |
+| `initialFocus` | The first focus stop inside | A ref to the element focus should land on instead |
+
+`role` is a union of `"dialog" | "alertdialog"`, so `role="alertdailog"` is a
+type error at the call rather than a modal announced as a `div`.
+
+### Alert dialog
+
+```js
+<AlertDialog.Root>
+  <AlertDialog.Trigger>Delete the project</AlertDialog.Trigger>
+  <AlertDialog.Overlay />
+  <AlertDialog.Body>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Delete this project?</AlertDialog.Title>
+      <AlertDialog.Description>This cannot be undone.</AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action onClick={remove}>Delete</AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Body>
+</AlertDialog.Root>
+```
+
+`role="alertdialog"`, a press outside that does nothing, and focus on
+`AlertDialog.Cancel` — the least destructive action, which is a fact about which
+part it is rather than a ref you remember to pass. `Escape` still closes it: a
+modal a reader cannot leave from the keyboard is a trap, and declining is what
+`Escape` means.
+
+`AlertDialog.Description` is **required**, and `AlertDialog.Body` raises without
+one. `aria-describedby` is the whole of what the role buys, so an alert dialog
+with nothing to announce has interrupted the reader to say only its title —
+which is worse than the `Dialog` it replaced.
+
+`Action` and `Cancel` rather than one `Close` with a variant: they mean opposite
+things, and one of them is where focus goes.
+
+### Sheet
+
+```js
+<Sheet.Root side="left">
+  <Sheet.Trigger>Filters</Sheet.Trigger>
+  <Sheet.Overlay />
+  <Sheet.Body>
+    <Sheet.Title>Filters</Sheet.Title>
+    <Sheet.Close>Done</Sheet.Close>
+  </Sheet.Body>
+</Sheet.Root>
+```
+
+Deliberately small. Every modal promise is `Dialog`'s, unchanged; what a sheet
+adds is the two things a class name cannot be — `side` as a checked union of
+`"top" | "right" | "bottom" | "left"`, and `data-side` on the body and the
+overlay, which is the same attribute `Popover.Body` writes. `Drawer` and
+`Sidebar` are both defined in terms of this module, so a drawer and a
+sidebar-on-a-phone cannot come to disagree about what "left" means.
+
+The edge is not announced. There is no `aria-*` for "this came in from the
+right", and a sheet that put its edge in its accessible name would have a reader
+hearing "Filters, right" and wondering what "right" meant.
+
+### Drawer
+
+```js
+<Drawer.Root side="bottom" snapPoints={[0.4, 1]}>
+  <Drawer.Trigger>Details</Drawer.Trigger>
+  <Drawer.Overlay />
+  <Drawer.Body>
+    <Drawer.Handle label="Resize the details" />
+    <Drawer.Title>Details</Drawer.Title>
+    <Drawer.Close>Close</Drawer.Close>
+  </Drawer.Body>
+</Drawer.Root>
+```
+
+A sheet plus a gesture, and the gesture is where the specifications land.
+WCAG 2.2 SC 2.5.7, *Dragging Movements*, requires anything achievable by
+dragging to be achievable with a single pointer and no drag — so
+`Drawer.Body` **raises** when it holds a `Drawer.Handle` and no `Drawer.Close`.
+WCAG 2.1.1 requires it from the keyboard, so `Drawer.Handle` is a
+`role="slider"` over the snap points:
+
+| Key | What it does |
+| --- | --- |
+| The arrow away from the edge | One snap point larger |
+| The arrow towards the edge | One snap point smaller, and closes at the smallest |
+| `Home`, `End` | The smallest and the largest snap point |
+| `Escape` | Closes it, like any dialog |
+
+`snapPoints` are fractions of the drawer's full size, ascending; the state is
+the *index* into that list, which is what makes `aria-valuemin`, `aria-valuemax`
+and `aria-valuenow` true about it and `aria-valuetext` the percentage a reader
+can act on. The current fraction is written as `--uf-drawer-snap` and the live
+drag offset as `--uf-drawer-drag`, so a stylesheet sizes the drawer and this
+module has no opinion about how it looks. `usePrefersReducedMotion` puts
+`data-reduced-motion="true"` on the body for a reader who asked their system to
+stop moving things; the drag still follows the finger, because direct
+manipulation is not animation.
+
+### Sidebar
+
+```js
+<Sidebar.Root defaultOpen={fromCookie}>
+  <Sidebar.Trigger>Menu</Sidebar.Trigger>
+  <Sidebar.Body label="Main">
+    <Sidebar.Item label="Settings">
+      <Gear /> Settings
+    </Sidebar.Item>
+  </Sidebar.Body>
+</Sidebar.Root>
+```
+
+The one of the four that is usually not a dialog. It is part of the page:
+nothing behind it is inert, nothing is scroll-locked, there is no focus trap,
+and the trigger is a disclosure button carrying `aria-expanded`. `Sidebar.Body`
+is a named `<nav>` landmark rather than a `<div>`, which is how a screen reader
+offers to jump to it.
+
+Then the viewport gets narrow and it becomes a `Sheet` — modal, over the
+content, gone when it is closed. Focus moves into it when it opens and back to
+the trigger when it closes, because at that point it *is* a dialog; on a wide
+screen opening it moves focus nowhere, because nothing was taken away.
+
+Collapsed to icons is where this pattern usually goes wrong: a button whose name
+came from its text is announced as "button". `Sidebar.Item` takes a `label`,
+which becomes `aria-label` the moment the sidebar collapses — so the name
+survives whatever the stylesheet does to the text — and shows the same words in
+a `Tooltip` for a reader looking at the icon.
+
+`open` is yours to own. shadcn persists it in a cookie so the server renders the
+state the reader left it in, and that matters more under RSC than it looks: an
+uncontrolled sidebar renders expanded on the server and collapses on hydration,
+which is a layout shift on every navigation.
+
+## The three that replace something the browser does
+
+`Carousel`, `ScrollArea` and `InputOtp` each draw their own version of something
+the platform already provides. That makes them the three most likely to make a
+page *worse* than the plain HTML they replaced, so each module's header opens by
+saying what it gives that the plain element does not — and if that ever stops
+being true, the component should be deleted rather than fixed.
+
+### Carousel
+
+```js
+<Carousel.Root autoplay={5000} count={3} label="Featured">
+  <Carousel.Pause />
+  <Carousel.Content>
+    <Carousel.Item index={0}>…</Carousel.Item>
+    <Carousel.Item index={1}>…</Carousel.Item>
+    <Carousel.Item index={2}>…</Carousel.Item>
+  </Carousel.Content>
+  <Carousel.Previous />
+  <Carousel.Next />
+</Carousel.Root>
+```
+
+For a reader who can see it, a carousel gives nothing a list does not. So the
+component is the part that keeps the replacement from being worse:
+
+* **It can be stopped.** WCAG 2.2.2, *Pause, Stop, Hide*. `Carousel.Pause` is
+  that mechanism and it must be the **first** focusable thing inside the
+  carousel — a pause button after the slides is one nobody reaches in time — so
+  an autoplaying carousel that has not been given one, or has put it second,
+  raises.
+* **It says what it is.** `aria-roledescription="carousel"` on a named group,
+  and `aria-roledescription="slide"` with "3 of 7" on each slide.
+* **It stops announcing itself while it moves.** The slide container is
+  `aria-live="off"` while it rotates and `"polite"` while it does not.
+* **`Tab` cannot walk into a slide nobody can see.** The slides that are not
+  showing are `inert`, which takes them out of the tab order and out of the
+  accessibility tree.
+* **`prefers-reduced-motion` turns rotation off**, and rotation also stops while
+  the pointer is over it or focus is inside it — and stays stopped once
+  `Carousel.Pause` has been pressed, because that was a decision.
+
+`count` and `index` are yours, the way `Table.Root`'s `rowCount` and
+`Table.Row`'s `index` are: counting the children is wrong the first time a slide
+is rendered conditionally, and it is wrong silently.
+
+### Scroll area
+
+```js
+<ScrollArea.Root label="Release notes">
+  <ScrollArea.Viewport>…</ScrollArea.Viewport>
+  <ScrollArea.Scrollbar orientation="vertical" />
+</ScrollArea.Root>
+```
+
+The thing a custom scrollbar takes away is keyboard scrolling. Firefox makes a
+scrollable region focusable and Chromium historically does not, so a region that
+must be scrolled to be read is, in most browsers, one a keyboard reader can see
+the top of and nothing else. `ScrollArea.Viewport` is `role="region"` with a
+name and `tabindex="0"`, and then **intercepts no key at all**: every key that
+scrolls a native overflow container scrolls this one, because it is one.
+
+`scrollIntoView({ block: "nearest" })` still works, which matters because
+`Combobox` and `Select` both call it to keep the active option visible. And the
+scroll position survives a re-render: replacing the content of a scroll
+container makes the browser clamp the offset and never put it back, so the
+viewport remembers where the reader actually was — from the `scroll` event, so a
+reader who scrolled to the top themselves is never dragged back down.
+
+`ScrollArea.Scrollbar` is `aria-hidden` and holds no controls. That is what
+keeps it clear of WCAG 2.5.7: nothing here is achievable only by dragging. It
+reports `--uf-scroll-thumb-size` and `--uf-scroll-thumb-offset` (and the `-x`
+pair for the other axis), both between 0 and 1, so a stylesheet draws a thumb
+without measuring anything.
+
+### Input OTP
+
+```js
+<InputOtp.Root label="One-time code" length={6} name="code">
+  <InputOtp.Group>
+    <InputOtp.Slot index={0} />
+    <InputOtp.Slot index={1} />
+    <InputOtp.Slot index={2} />
+  </InputOtp.Group>
+  <InputOtp.Separator>-</InputOtp.Separator>
+  <InputOtp.Group>
+    <InputOtp.Slot index={3} />
+    <InputOtp.Slot index={4} />
+    <InputOtp.Slot index={5} />
+  </InputOtp.Group>
+</InputOtp.Root>
+```
+
+There is **one real `<input>`**, and the slots are a picture of its value. That
+decision is the component. `<input autocomplete="one-time-code"
+inputmode="numeric">` is already an excellent one-time-code field — the
+operating system offers the code it just received by SMS, a password manager
+fills it, a screen reader announces one field with one name — and six
+`<input maxlength="1">`es lose every one of those silently.
+
+So pasting fills every box, because a paste into one input is a single `input`
+event carrying the whole string. `Backspace`, the arrow keys, `Home` and `End`
+are the browser's text editing, unmodified. A `<form>` submits one value under
+one name. `kind` is `"numeric" | "alphanumeric"` and decides three things at
+once — which characters survive typing and pasting, which keyboard a phone
+shows, and the field's `pattern`.
+
+What it costs is that the input has to be drawn over the slots by your
+stylesheet, which is why `InputOtp.Root` puts your DOM props on the *input* and
+renders no wrapper of its own: the input is the field, so `Field.Control`'s
+`id`, `aria-describedby` and `aria-invalid` land where they mean something.
 
 ## What this page is
 
