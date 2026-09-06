@@ -27,10 +27,16 @@ There is no stylesheet, no theme prop and no StyleX import. From
 > consumer styling with plain CSS, CSS Modules or anything else gets exactly the
 > same components with exactly the same behaviour.
 
-Every part spreads whatever you pass onto its element, so `className`, `id`,
-`data-*` and `aria-*` all arrive. `className` is the bridge — a DOM prop, not a
-type from a styling library — which is what lets uf's own presets style these
-without the package knowing they exist. [Styling](/guide/styling) is that half.
+Every part that renders an element spreads whatever you pass onto it, so
+`className`, `id`, `data-*` and `aria-*` all arrive. `className` is the bridge —
+a DOM prop, not a type from a styling library — which is what lets uf's own
+presets style these without the package knowing they exist.
+[Styling](/guide/styling) is that half.
+
+One part renders no element and so forwards nothing: `Field.Control` takes a
+`render` function and that is its whole signature. A `className` on it would go
+nowhere; it belongs on whatever `render` returns, beside the four attributes
+that function is handed.
 
 Import from the package root, where each family is a namespace:
 
@@ -49,7 +55,9 @@ Every example on this page was rendered and asserted before it was published;
 the keyboard tables below cite the test in
 [`tests/library/ui.test.js`](https://github.com/ubugeeei-prod/uf/blob/main/tests/library/ui.test.js)
 that holds each row. `uf test#library ui.test.js` runs 119 of them, in 1.1
-seconds.
+seconds. There is exactly one row no test holds, and rather than leaving it to
+be discovered it is named where it appears, under Checkbox — a row with no test
+is how it came to say the wrong thing.
 
 ## Field
 
@@ -286,22 +294,43 @@ Both render a `button` with the matching role and `aria-checked`, both take the
 native `disabled` attribute, and both are uncontrolled with `defaultChecked`
 unless you pass `checked`.
 
-The difference is one key, and it is the reason they are two components rather
-than one with a prop:
+The difference that makes them two components rather than one with a prop is the
+third state. A checkbox is checked, unchecked or **mixed** —
+`aria-checked="mixed"` is what a "select all" says while some of its rows are
+selected — and a switch is on or off, with nowhere to put it. `Checkbox` takes
+`indeterminate` for it, and clicking a mixed checkbox reports `true` rather than
+the opposite of a boolean nobody set.
+
+The keyboard is not that difference. Both toggle on both keys:
 
 | Key | Checkbox | Switch |
 | --- | --- | --- |
 | `Space` | Toggles | Toggles |
-| `Enter` | **Left to the form** — it submits | Toggles |
+| `Enter` | Toggles | Toggles |
 
-From `checkbox.js`: *"That is the difference between a control that answers a
-question and one that operates a thing."* The test names are "toggles a checkbox
-on Space and leaves Enter to the form" and "toggles a switch on Space and on
-Enter".
+Three of those four cells have a test: *"toggles a switch on Space and on
+Enter"* holds the Switch column, and *"toggles a checkbox on Space and leaves
+Enter to the form"* holds the checkbox's `Space`. The fourth is the one row on
+this page nothing asserts, and it is worth the paragraph, because the code says
+the opposite of it.
 
-`Checkbox` also takes `indeterminate`, which reports `aria-checked="mixed"`, and
-clicking a mixed checkbox reports `true` rather than the opposite of a boolean
-nobody set.
+They also arrive differently, which matters before you write a third component.
+`switch.js` handles both keys itself and calls `preventDefault`, so the browser's
+own click never lands and the switch moves exactly once. `checkbox.js` handles
+only `Space`; `Enter` reaches it as the platform's activation behaviour, since
+the default action of `Enter` on a focused `<button>` is a click, and the click
+handler toggles.
+
+`checkbox.js` says otherwise in its header — that `Enter` is *"left alone, so a
+checkbox inside a form still submits it"* — and neither half of that survives
+contact with the element it renders, which is `<button type="button">`. A
+`type="button"` is precisely the button that submits nothing, and leaving a key
+unhandled is not the same as making it inert: pressed on a focused checkbox in
+Chrome, `Enter` produces one click, one toggle and no submit. The test named
+above presses `Enter` while nothing is focused, so the case it is named for is
+the one case it never runs.
+[Issue #324](https://github.com/ubugeeei-prod/uf/issues/324) has the three ways
+out and the argument for each; until one is taken, the table is what runs.
 
 ## Four rules that hold across all seven
 

@@ -106,8 +106,15 @@ import { Dialog } from "@uniflowed/ui";
 Because they answer with a plain `className`, they style
 [the headless components](/guide/ui) without those components knowing StyleX
 exists — `<Switch {...controlStyles({ shape: "track" })} />` keeps every one of
-its ARIA attributes and its keyboard behaviour, which `tests/library/stylex.test.js`
-asserts rather than assumes.
+its ARIA attributes and its keyboard behaviour. Two files assert that rather
+than assuming it, and they are not the same file:
+`tests/library/stylex.test.js` renders the *styled* switch and holds the preset
+against it — the classes land on the control, and it still reports
+`aria-checked` — while the keys are `tests/library/ui.test.js`'s, in *"toggles a
+switch on Space and on Enter"*, over a switch with no classes at all. Which is
+the arrangement the claim needs: a `className` cannot reach a key handler, so
+the styled test proves the styling arrives and the unstyled one proves there was
+behaviour there to keep.
 
 ### Dark mode
 

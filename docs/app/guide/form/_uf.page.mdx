@@ -107,7 +107,7 @@ Three behaviours worth knowing, each of them a decision:
 ## A schema instead of rules
 
 ```js
-import { validatorResolver } from "@uniflowed/form";
+import { useForm, validatorResolver } from "@uniflowed/form";
 import { email, minLength, object, pipe, string } from "@uniflowed/validator";
 
 const account = object({
@@ -115,11 +115,26 @@ const account = object({
   profile: object({ city: pipe(string(), minLength(2)) }),
 });
 
-const form = useForm({
-  defaultValues: { email: "", profile: { city: "" } },
-  resolver: validatorResolver(account),
-});
+component Account() {
+  const { register, handleSubmit } = useForm({
+    defaultValues: { email: "", profile: { city: "" } },
+    resolver: validatorResolver(account),
+  });
+
+  return (
+    <form onSubmit={handleSubmit((values) => save(values))}>
+      <input {...register("email")} />
+      <input {...register("profile.city")} />
+      <button type="submit">Save</button>
+    </form>
+  );
+}
 ```
+
+The schema is a value, so it is built once at module scope; the `useForm` call
+is a hook, so it is in the component. That split is not a style preference —
+`useForm` calls `useId`, `useState` and `useSyncExternalStore`, and a `useForm`
+at module scope is an invalid hook call rather than a form.
 
 Schema issues become field errors at the path the field was registered at, and
 `handleSubmit`'s callback receives the schema's **output** type, not the form's
@@ -158,19 +173,31 @@ named fields — in a slice, "dirty" means one of these was changed — while
 `isSubmitting`, `isSubmitted`, `isSubmitSuccessful`, `isValidating` and
 `submitCount` stay the whole form's.
 
-Measured, typing six characters into one field, each component rendered alone:
+Measured, typing six characters into one field, counting each component
+separately rather than the tree as a whole:
 
-| | Renders |
+| Component | Renders |
 | --- | --- |
-| `useForm` + `register`, value shown through `useWatch` | 2 |
-| `useState` + a controlled `input` | 7 |
+| The `useForm` owner — `register`, `formState` | 2 |
+| `Total`, subscribed to `title` through `useWatch` | 7 |
+| `useState` and a controlled `input`, one component for the field | 7 |
 
-The two are the mount and the moment the form first becomes dirty; the next five
-keystrokes cost nothing. React Hook Form gets that second render to zero with a
-`Proxy` that records which `formState` keys a render read. That technique
-depends on a render having happened — which is exactly what the React Compiler
-is allowed to skip — so this package does not use it, and says so instead of
-quietly being slower.
+The owner's two are the mount and the moment the form first becomes dirty; the
+next five keystrokes cost *it* nothing. `Total`'s seven are the mount and one
+per keystroke, and they are not a defect: a component displaying a value that
+changed has to render. The subscription is what decides **who** renders, not
+how often — and that is the whole trade, because what wakes on the sixth
+keystroke here is an `<output>`, while the controlled row's identical seven are
+seven renders of everything that component holds.
+
+Put the two together and the shape is the point: a form of thirty fields with
+one `useWatch` beside one of them costs two renders of the form and seven of an
+`<output>`, not seven of the form.
+
+React Hook Form gets the owner's second render to zero with a `Proxy` that
+records which `formState` keys a render read. That technique depends on a render
+having happened — which is exactly what the React Compiler is allowed to skip —
+so this package does not use it, and says so instead of quietly being slower.
 
 ## Arrays of fields
 
@@ -258,6 +285,9 @@ show its values before hydration should put them in the markup —
 — and the store adopts whatever the control already shows for any field it has
 no value for.
 
-Every snippet on this page was run before it was published, and
-`tests/library/form.test.js` is where the behaviour above is pinned —
-`uf test#library form.test.js`.
+Every snippet on this page was run before it was published — the short ones as
+excerpts of a component, since a fence that repeated the `useForm` call, the
+`control` and the imports around every three lines would be mostly repetition.
+`tests/library/form.test.js` is where the behaviour above is pinned, including
+the three render counts, in *"counts the owner, the watcher and a controlled
+input over the same six keystrokes"* — `uf test#library form.test.js`.

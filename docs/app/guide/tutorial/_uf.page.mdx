@@ -334,12 +334,24 @@ export const toggleSaved = action<string>((get, set, slug) => {
   set(savedSlugs, saved.includes(slug) ? saved.filter((each) => each !== slug) : [...saved, slug]);
 });
 
-/// Titles the reader typed into the form on this page. Client-side only: this
-/// is what the form writes, and it is thrown away on reload.
-export const suggestions = atom<$ReadOnlyArray<string>>([]);
+/// One thing the reader typed into the form on this page. The id is here
+/// because a title is not an identity: nothing stops the same article being
+/// suggested twice, and two `<li>` siblings under one key is a list React is
+/// entitled to reconcile wrongly.
+export type Suggestion = {
+  readonly id: number,
+  readonly title: string,
+};
+
+/// Client-side only: this is what the form writes, and it is thrown away on
+/// reload.
+export const suggestions = atom<$ReadOnlyArray<Suggestion>>([]);
+
+let nextSuggestionId = 0;
 
 export const suggest = action<string>((get, set, title) => {
-  set(suggestions, [...get(suggestions), title]);
+  nextSuggestionId += 1;
+  set(suggestions, [...get(suggestions), { id: nextSuggestionId, title }]);
 });
 ```
 
@@ -487,8 +499,8 @@ export component AddArticle() {
         </button>
       </form>
       <ul>
-        {added.map((title) => (
-          <li key={title}>{title}</li>
+        {added.map((suggestion) => (
+          <li key={suggestion.id}>{suggestion.title}</li>
         ))}
       </ul>
     </section>
@@ -503,6 +515,12 @@ the message. `errorProps("title")` supplies the other half, the matching `id` an
 have to remember. Neither attribute is emitted while the field is valid, because
 an `aria-describedby` pointing at an element that is not there makes a screen
 reader announce nothing at all.
+
+The list keys by `suggestion.id` rather than by the title, which is why `suggest`
+gives out an id at all. Nothing in the form stops the same article being
+suggested twice — `required` asks for *a* title, not a new one — and two
+siblings under one key is the case React is allowed to get wrong, quietly, in a
+list that until then looked fine.
 
 Coming from React Hook Form, three differences matter here and
 [the form guide](/guide/form) has the rest. Errors are flat, keyed by the string

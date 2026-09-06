@@ -213,6 +213,10 @@ There is one thing with no Jotai analogue: `useCell` reads a
 [`@uniflowed/cell`](/reference/packages) cell directly, for the layer below this
 one.
 
-Every snippet on this page was run before it was published, and
-`tests/library/state.test.js` is where the behaviour above is pinned —
-`uf test#library state.test.js`.
+Every snippet on this page was run before it was published — as parts of a
+module, not as programs. Only the first fence stands on its own: the rest
+continue from it, most leave their `@uniflowed/state` import to it, and a few
+name something a real module would have declared — `base`, `storage`, `userId`,
+`fetchUser`, `first`, `second` — rather than repeating a setup that is not the
+point of the example. `tests/library/state.test.js` is where the behaviour above
+is pinned, with that setup written out — `uf test#library state.test.js`.
