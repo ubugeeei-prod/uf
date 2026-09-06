@@ -56,6 +56,22 @@ export type UniflowedConfig = {
         },
         readonly cache?: "opt-in",
       },
+      readonly images?: {
+        readonly enabled?: boolean,
+        // The widths a layout asks for. uf emits one variant per width that is
+        // not wider than the source, plus one at the source's own width.
+        readonly widths?: $ReadOnlyArray<number>,
+        readonly quality?: number,
+        readonly placeholder?: boolean,
+      },
+      readonly fonts?: {
+        readonly enabled?: boolean,
+        readonly display?: string,
+        // The local face uf scales into a metric-matched fallback. One of the
+        // faces `uf_assets::font::LOCAL_FACES` knows the metrics of, because
+        // the scaling is a ratio against real numbers rather than a guess.
+        readonly fallback?: string,
+      },
       readonly motion?: {
         readonly module?: "@uniflowed/motion",
         readonly engine?: "uf-native",

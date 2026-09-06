@@ -110,8 +110,18 @@ pub struct BuiltinConfig {
     pub effect: EffectEngine,
     pub fetch: FetchConfig,
     pub cell: bool,
+    /// What the project declares about the fonts it imports.
+    ///
+    /// Read by `uf assets`, which self-hosts each one and computes the
+    /// metric-matched fallback; see `crates/uf_assets`.
+    pub fonts: crate::FontsConfig,
     pub framework_lints: bool,
     pub graphql: GraphQlConfig,
+    /// What the project declares about the images it imports.
+    ///
+    /// The widths a layout asks for and the quality they are encoded at. Read
+    /// by `uf assets`; see `crates/uf_assets`.
+    pub images: crate::ImagesConfig,
     pub loader: LoaderConfig,
     pub markdown: MarkdownConfig,
     pub motion: MotionConfig,
@@ -133,8 +143,10 @@ impl Default for BuiltinConfig {
             effect: EffectEngine::UniflowedEffect,
             fetch: FetchConfig::default(),
             cell: true,
+            fonts: crate::FontsConfig::default(),
             framework_lints: true,
             graphql: GraphQlConfig::default(),
+            images: crate::ImagesConfig::default(),
             loader: LoaderConfig::default(),
             markdown: MarkdownConfig::default(),
             motion: MotionConfig::default(),

@@ -477,6 +477,57 @@ fn transform_stage() -> Stage {
     }
 }
 
+/// What happens to an imported image or font, and what does not.
+///
+/// Red line 7, in the form that matters most for this stage: uf will not emit
+/// AVIF or a lossy WebP, and a reader who does not know that will conclude the
+/// pipeline is broken rather than bounded. The detail line says what the
+/// project asked for and `uf explain` is where somebody looks when the output
+/// surprised them, so the limit belongs in it rather than only in the
+/// documentation.
+///
+/// A project that turned both halves off is told the stage does nothing, which
+/// is a different answer from the stage not being listed: a pipeline whose
+/// shape changes when a feature is disabled cannot be compared between two
+/// projects.
+fn assets_stage(resolved: &ResolvedConfig) -> Stage {
+    let images = &resolved.config.app.builtins.images;
+    let fonts = &resolved.config.app.builtins.fonts;
+    match (images.enabled, fonts.enabled) {
+        (false, false) => Stage {
+            name: "assets",
+            provider: "none".to_string(),
+            detail: "images and fonts are both disabled; imports are Vite's to resolve".to_string(),
+        },
+        (images_on, fonts_on) => {
+            let mut detail = String::new();
+            if images_on {
+                detail.push_str(&format!(
+                    "images: {} widths at quality {}, png/jpeg and webp-when-smaller \
+                     (no avif, no lossy webp — neither encoder is in this binary)",
+                    images.widths.len(),
+                    images.quality,
+                ));
+            }
+            if images_on && fonts_on {
+                detail.push_str("; ");
+            }
+            if fonts_on {
+                detail.push_str(&format!(
+                    "fonts: self-hosted, font-display {}, fallback scaled from {} \
+                     (not subsetted)",
+                    fonts.display, fonts.fallback,
+                ));
+            }
+            Stage {
+                name: "assets",
+                provider: "uf assets (in this binary)".to_string(),
+                detail,
+            }
+        }
+    }
+}
+
 /// Where the values in `process.env` and `import.meta.env` come from.
 ///
 /// The mode is resolved the way the command would resolve it, so a project with
@@ -560,6 +611,7 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "module graph, HMR, plugin pipeline".to_string(),
         },
         transform_stage(),
+        assets_stage(resolved),
         Stage {
             name: "rendering",
             provider: "@uniflowed/router".to_string(),
@@ -578,6 +630,7 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         host_stage(resolved),
         env_stage(resolved, PRODUCTION),
         transform_stage(),
+        assets_stage(resolved),
         Stage {
             name: "bundle",
             // Vite, not what Vite uses inside it. A project chose Vite — it is

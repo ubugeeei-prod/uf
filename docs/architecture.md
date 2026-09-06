@@ -18,6 +18,7 @@ integrated feature coverage.
 
 - `uf_cli`: command router for `uf`
 - `uf_config`: zero-config defaults and `uf.config.js` loading
+- `uf_assets`: image resizing and re-encoding, and the font metrics behind `Image` and `Font`
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`

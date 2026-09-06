@@ -85,6 +85,15 @@ in `uf`.
 - File-system router compiler for web and React Native targets.
 - Nuxt-like web primitives: Font, Image, OgImage, Link with prefetch, Page,
   Layout, Time, Announcer, Picture, useCookie, and useHead.
+- The pipeline behind `Image` and `Font`. **Done at build time**: `uf assets`
+  decodes an imported image once, writes a variant at every declared width in
+  the source's own format and in WebP where the WebP is smaller, and emits the
+  `srcset`, `sizes`, intrinsic dimensions and blur placeholder from it; an
+  imported font is self-hosted under a content hash and declared with a
+  `size-adjust` fallback computed from its own `OS/2` metrics. **Not done**:
+  AVIF and lossy WebP, which need encoders uf does not ship; font subsetting;
+  and a request-time endpoint for remote and user-supplied images, which needs
+  `remotePatterns` in the same commit (`docs/security.md`).
 - Fully type-safe `useRoute`, `useRouter`, navigation guards, Remix-style
   loaders/actions, Next-style metadata/static params, and React Router-style
   route modules.
