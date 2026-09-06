@@ -90,6 +90,22 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 Builds the client and server bundles and prerenders what can be prerendered.
 `--size-report` prints the cost of each chunk.
 
+`--compile` writes one more thing: `dist/NAME`, a single executable file that
+serves the application. It answers with the prerendered documents, the hashed
+assets, the route handlers, and a fresh render for any route that could not be
+prerendered — all of it inside the file, so the file can be copied into an empty
+directory on an empty machine and started. `--port` and `PORT` choose the port,
+`--host` and `HOST` the address.
+
+Producing one needs `bun` on PATH, because Bun's runtime is what gets embedded;
+running one needs nothing. A project that imports a native `.node` addon cannot
+be a single file, and the build says which addon and which importer rather than
+producing something that fails on its first request — but an addon loaded
+through a runtime string, with `process.dlopen` or `require(variable)`, is
+invisible to any bundler and will still compile and still fail when a request
+reaches it. Building for a platform other than the one you are on is
+[#310](https://github.com/ubugeeei-prod/uf/issues/310).
+
 ### uf doc
 
 Generates `api.md` from JSDoc attached to exported Flow declarations. The

@@ -37,6 +37,10 @@ pub(crate) enum Commands {
         /// Print the emitted bundle's size, by chunk.
         #[arg(long)]
         size_report: bool,
+        /// Also write the application as one executable file, next to the
+        /// build. Needs Bun on PATH; the file itself needs nothing.
+        #[arg(long)]
+        compile: bool,
     },
     /// Lint the project, then type check it with Flow.
     ///
@@ -357,7 +361,13 @@ mod tests {
             }
             .wants_json()
         );
-        assert!(!Commands::Build { size_report: false }.wants_json());
+        assert!(
+            !Commands::Build {
+                size_report: false,
+                compile: false
+            }
+            .wants_json()
+        );
     }
 
     #[test]
@@ -378,7 +388,13 @@ mod tests {
             .owns_stdout(),
             "listing tasks renders, so it must keep stdout"
         );
-        assert!(!Commands::Build { size_report: false }.owns_stdout());
+        assert!(
+            !Commands::Build {
+                size_report: false,
+                compile: false
+            }
+            .owns_stdout()
+        );
     }
 
     #[test]

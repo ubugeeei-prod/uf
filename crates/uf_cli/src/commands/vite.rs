@@ -98,7 +98,7 @@ fn host_program(kind: CapabilityJsHost) -> &'static str {
 }
 
 /// Look `program` up on PATH the way a shell would.
-fn find_program(program: &str) -> Option<Utf8PathBuf> {
+pub(crate) fn find_program(program: &str) -> Option<Utf8PathBuf> {
     let path = env::var_os("PATH")?;
     for directory in env::split_paths(&path) {
         let candidate = directory.join(program);

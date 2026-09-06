@@ -167,7 +167,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
     };
 
     match cli.command {
-        Commands::Build { size_report } => commands::build::build(&cwd, ui, size_report),
+        Commands::Build {
+            size_report,
+            compile,
+        } => commands::build::build(&cwd, ui, size_report, compile),
         Commands::Check { json, paths } => commands::check::check(&cwd, ui, json, &paths),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
