@@ -46,7 +46,8 @@ bundle. On a four-route application with no client boundary anywhere that is
 
 ### Documentation
 
-- **site**: the heading says what uf is for (#413)
+- **site**: the heading says what uf is for (#413), sharpened to "The best React
+  experience, typed by Flow." ([#440](https://github.com/ubugeeei-prod/uf/pull/440))
 - six claims the site made that the source does not (#384)
 
 ## uf@0.0.0-alpha.7
