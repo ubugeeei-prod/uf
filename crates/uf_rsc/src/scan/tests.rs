@@ -258,3 +258,50 @@ fn empty_source_scans_cleanly() {
     assert!(scan_exports("").is_empty());
     assert!(scan_client_api_uses("").is_empty());
 }
+
+/// The worked example from ubugeeei-prod/uf#348: `useRoute` is built on
+/// `useContext`, and the name lists have never heard of it.
+#[test]
+fn finds_a_call_to_a_hook_the_name_lists_do_not_know() {
+    let source = "function Masthead() { const { pathname } = useRoute(); }";
+    assert!(
+        scan_client_api_uses(source).is_empty(),
+        "the name match has no opinion about `useRoute`, which is the problem"
+    );
+    let calls = scan_hook_calls(source);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "useRoute");
+    assert_eq!(calls[0].line, 1);
+}
+
+/// A hook that *is* on the list is answered rather than asked about; reporting
+/// it twice would turn one violation into a violation and a shrug.
+#[test]
+fn a_known_client_hook_is_not_also_an_unanswered_question() {
+    let calls = scan_hook_calls("function Page() { const [a] = useState(1); }");
+    assert!(calls.is_empty(), "{calls:?}");
+}
+
+/// The three exclusions the client-only match already makes, which are the
+/// three that keep this from being noise.
+#[test]
+fn a_hook_call_is_a_call_to_a_hook_by_name() {
+    // A declaration is not a use.
+    assert!(scan_hook_calls("function useRoute() {}").is_empty());
+    assert!(scan_hook_calls("const useRoute = () => {};").is_empty());
+    // A property access belongs to whatever owns it.
+    assert!(scan_hook_calls("router.useRoute();").is_empty());
+    // A reference that is not called is not a hook call: passing `useRoute`
+    // somewhere is not running it here.
+    assert!(scan_hook_calls("register(useRoute);").is_empty());
+    // And React's naming rule is the whole rule: `used` is not `useD`.
+    assert!(scan_hook_calls("used(1);").is_empty());
+    assert!(scan_hook_calls("use(1);").is_empty());
+    assert!(!scan_hook_calls("useRoute();").is_empty());
+}
+
+/// A comment or a string is not code, here as everywhere else in the scanner.
+#[test]
+fn does_not_flag_hook_calls_in_comments_or_strings() {
+    assert!(scan_hook_calls("// useRoute()\nconst s = \"useRoute()\";").is_empty());
+}
