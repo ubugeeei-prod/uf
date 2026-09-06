@@ -115,6 +115,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Forms",
         blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
       },
+      {
+        href: "/guide/effect",
+        title: "Effects",
+        blurb: "Failures in the type, and what Flow costs against Effect-TS.",
+      },
     ],
   },
   {
