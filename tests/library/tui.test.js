@@ -1,0 +1,923 @@
+// @flow
+//
+// `@uniflowed/tui`.
+//
+// Four claims, and a section for each: a tree renders to the cells it should,
+// flexbox behaves like flexbox, the diff writes only what changed, and a key
+// press reaches the thing that has focus. They are the four things the package
+// promises and the four things a refactor can break without breaking anything
+// a smoke test would notice.
+//
+// Every assertion here is on a *frame* or on the bytes that would put one on a
+// terminal, and every key arrives as the bytes a terminal actually sends —
+// `\u001b[D` and not `{ name: "left" }`. That is the difference between
+// testing this renderer and testing a picture of it: an escape-sequence
+// decoder that has never seen an escape sequence passes any number of tests
+// about `KeyEvent` objects somebody constructed by hand.
+//
+// The last section is not about rendering at all. It reads the Rust width
+// tables and asserts the JavaScript ones are the same data, because two copies
+// of a Unicode table that nothing compares are two copies that will differ.
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { describe, expect, fn, it } from "@uniflowed/test";
+import {
+  Attributes,
+  Box,
+  INHERIT,
+  Input,
+  Text,
+  decodeKeys,
+  detectCapabilities,
+  frameRow,
+  parseColor,
+  render,
+  testRender,
+  useKeyboard,
+  useTerminalSize,
+} from "@uniflowed/tui";
+import type { Frame } from "@uniflowed/tui";
+
+/** The repository root, for the tests that read Rust source. */
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/** The rows of a frame, so a failure prints a picture rather than one string. */
+const rows = (frame: Frame): Array<string> => {
+  const out = [];
+  for (let y = 0; y < frame.height; y += 1) {
+    out.push(frameRow(frame, y));
+  }
+  return out;
+};
+
+/** The style of one cell, which is what a colour assertion is really about. */
+const cell = (frame: Frame, x: number, y: number) => {
+  const index = y * frame.width + x;
+  return {
+    char: frame.chars[index],
+    fg: frame.fg[index],
+    bg: frame.bg[index],
+    attributes: frame.attributes[index],
+  };
+};
+
+describe("a tree, as cells", () => {
+  it("puts a string where layout put its text node", () => {
+    const handle = testRender(<Text>ready</Text>, { width: 8, height: 2 });
+    expect(rows(handle.frame())).toEqual(["ready   ", "        "]);
+    handle.stop();
+  });
+
+  it("stacks children in a column, which is the terminal default", () => {
+    const handle = testRender(
+      <Box>
+        <Text>one</Text>
+        <Text>two</Text>
+      </Box>,
+      { width: 5, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["one  ", "two  ", "     "]);
+    handle.stop();
+  });
+
+  it("draws a border, a title, and the content inside both", () => {
+    // The title sits in the border run with no padding around it, which is how
+    // OpenTUI renders one — the border characters run up to the text.
+    const handle = testRender(
+      <Box border={true} borderStyle="rounded" title="uf" titleAlignment="center" padding={1}>
+        <Text>ok</Text>
+      </Box>,
+      { width: 10, height: 5 },
+    );
+    expect(rows(handle.frame())).toEqual([
+      "╭───uf───╮",
+      "│        │",
+      "│ ok     │",
+      "│        │",
+      "╰────────╯",
+    ]);
+    handle.stop();
+  });
+
+  it("carries a colour and an attribute down to the cell", () => {
+    const handle = testRender(
+      <Text fg="#ff0000">
+        a<Text bold={true}>b</Text>
+      </Text>,
+      { width: 3, height: 1 },
+    );
+    const frame = handle.frame();
+    expect(cell(frame, 0, 0)).toEqual({
+      char: "a",
+      fg: 0xff0000,
+      bg: INHERIT,
+      attributes: Attributes.NONE,
+    });
+    // The nested node inherited the colour and added the weight, rather than
+    // replacing the style wholesale.
+    expect(cell(frame, 1, 0)).toEqual({
+      char: "b",
+      fg: 0xff0000,
+      bg: INHERIT,
+      attributes: Attributes.BOLD,
+    });
+    handle.stop();
+  });
+
+  it("gives a two-column grapheme two cells, the second of them a continuation", () => {
+    const handle = testRender(<Text>A界B</Text>, { width: 5, height: 1 });
+    const frame = handle.frame();
+    expect(frame.chars.slice(0, 5)).toEqual(["A", "界", "", "B", " "]);
+    // The row a reader sees is four columns of text, not five characters.
+    expect(frameRow(frame, 0)).toBe("A界B ");
+    handle.stop();
+  });
+
+  it("wraps at a word boundary and drops the space it broke on", () => {
+    const handle = testRender(<Text>alpha beta gamma</Text>, { width: 11, height: 3 });
+    expect(rows(handle.frame())).toEqual(["alpha beta ", "gamma      ", "           "]);
+    handle.stop();
+  });
+
+  it("breaks a word longer than the line rather than letting it overflow", () => {
+    const handle = testRender(<Text>unbreakable</Text>, { width: 5, height: 3 });
+    expect(rows(handle.frame())).toEqual(["unbre", "akabl", "e    "]);
+    handle.stop();
+  });
+
+  it("clips a child to the box when the box hides its overflow", () => {
+    const handle = testRender(
+      <Box width={4} height={1} overflow="hidden">
+        <Text wrap="none">overlong</Text>
+      </Box>,
+      { width: 8, height: 1 },
+    );
+    expect(rows(handle.frame())).toEqual(["over    "]);
+    handle.stop();
+  });
+
+  it("fills a background over what was under it", () => {
+    const handle = testRender(<Box backgroundColor="#0000ff" width={3} height={1} />, {
+      width: 4,
+      height: 1,
+    });
+    const frame = handle.frame();
+    expect(cell(frame, 0, 0).bg).toBe(0x0000ff);
+    expect(cell(frame, 3, 0).bg).toBe(INHERIT);
+    handle.stop();
+  });
+});
+
+describe("layout is flexbox", () => {
+  it("lays a row out along the main axis", () => {
+    const handle = testRender(
+      <Box flexDirection="row" gap={1}>
+        <Text>ab</Text>
+        <Text>cd</Text>
+      </Box>,
+      { width: 6, height: 1 },
+    );
+    expect(rows(handle.frame())).toEqual(["ab cd "]);
+    handle.stop();
+  });
+
+  it("divides the free space between growing children, losing no column", () => {
+    // Ten columns between three equal claims is 3⅓ each, and a terminal has no
+    // third of a column. The parts must still sum to the whole.
+    const handle = testRender(
+      <Box flexDirection="row" height={1} width={10}>
+        <Box flexGrow={1} backgroundColor="#111111" />
+        <Box flexGrow={1} backgroundColor="#222222" />
+        <Box flexGrow={1} backgroundColor="#333333" />
+      </Box>,
+      { width: 10, height: 1 },
+    );
+    const frame = handle.frame();
+    const widths = [0, 0, 0];
+    for (let x = 0; x < 10; x += 1) {
+      const bg = cell(frame, x, 0).bg;
+      if (bg === 0x111111) widths[0] += 1;
+      if (bg === 0x222222) widths[1] += 1;
+      if (bg === 0x333333) widths[2] += 1;
+    }
+    expect(widths.reduce((a, b) => a + b, 0)).toBe(10);
+    expect(widths).toEqual([3, 4, 3]);
+    handle.stop();
+  });
+
+  it("honours justifyContent along the main axis", () => {
+    const between = testRender(
+      <Box flexDirection="row" justifyContent="space-between" width={9}>
+        <Text>ab</Text>
+        <Text>cd</Text>
+      </Box>,
+      { width: 9, height: 1 },
+    );
+    expect(rows(between.frame())).toEqual(["ab     cd"]);
+    between.stop();
+
+    const centred = testRender(
+      <Box flexDirection="row" justifyContent="center" width={8}>
+        <Text>ab</Text>
+      </Box>,
+      { width: 8, height: 1 },
+    );
+    expect(rows(centred.frame())).toEqual(["   ab   "]);
+    centred.stop();
+  });
+
+  it("honours alignItems on the cross axis", () => {
+    const handle = testRender(
+      <Box flexDirection="row" alignItems="flex-end" height={3} width={3}>
+        <Text>x</Text>
+      </Box>,
+      { width: 3, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["   ", "   ", "x  "]);
+    handle.stop();
+  });
+
+  it("resolves a percentage against the containing block", () => {
+    const handle = testRender(
+      <Box flexDirection="row" height={1} width={10}>
+        <Box width="30%" backgroundColor="#111111" />
+      </Box>,
+      { width: 10, height: 1 },
+    );
+    const frame = handle.frame();
+    let painted = 0;
+    for (let x = 0; x < 10; x += 1) {
+      if (cell(frame, x, 0).bg === 0x111111) painted += 1;
+    }
+    expect(painted).toBe(3);
+    handle.stop();
+  });
+
+  it("does not shrink a child whose width was given as a number", () => {
+    // Two children asking for six columns each in a row of eight. The one with
+    // an explicit width keeps it, because `flexShrink` defaults to 0 for a
+    // numeric dimension, and the other gives up the difference.
+    const handle = testRender(
+      <Box flexDirection="row" height={1} width={8}>
+        <Box width={6} backgroundColor="#111111" />
+        <Box flexBasis={6} backgroundColor="#222222" />
+      </Box>,
+      { width: 8, height: 1 },
+    );
+    const frame = handle.frame();
+    let fixed = 0;
+    let flexible = 0;
+    for (let x = 0; x < 8; x += 1) {
+      if (cell(frame, x, 0).bg === 0x111111) fixed += 1;
+      if (cell(frame, x, 0).bg === 0x222222) flexible += 1;
+    }
+    expect(fixed).toBe(6);
+    expect(flexible).toBe(2);
+    handle.stop();
+  });
+
+  it("takes padding and a border out of the space children get", () => {
+    const handle = testRender(
+      <Box border={true} padding={1} width={9} height={6}>
+        <Text>abcdefghij</Text>
+      </Box>,
+      { width: 9, height: 6 },
+    );
+    // Nine columns minus two of border and two of padding is five for text,
+    // and six rows minus the same is two — so ten characters is exactly two
+    // wrapped lines, and the box is full.
+    expect(rows(handle.frame())).toEqual([
+      "┌───────┐",
+      "│       │",
+      "│ abcde │",
+      "│ fghij │",
+      "│       │",
+      "└───────┘",
+    ]);
+    handle.stop();
+  });
+
+  it("re-lays out when the terminal is resized", () => {
+    const handle = testRender(<Text>alpha beta</Text>, { width: 10, height: 2 });
+    expect(rows(handle.frame())).toEqual(["alpha beta", "          "]);
+    handle.resize(6, 2);
+    expect(rows(handle.frame())).toEqual(["alpha ", "beta  "]);
+    handle.stop();
+  });
+
+  it("tells a component the size through useTerminalSize", () => {
+    component Size() {
+      const { width, height } = useTerminalSize();
+      return <Text>{`${width}x${height}`}</Text>;
+    }
+    const handle = testRender(<Size />, { width: 8, height: 1 });
+    expect(rows(handle.frame())).toEqual(["8x1     "]);
+    handle.resize(12, 3);
+    expect(frameRow(handle.frame(), 0)).toBe("12x3        ");
+    handle.stop();
+  });
+});
+
+describe("the diff writes only what changed", () => {
+  /** An application whose one character changes when a key is pressed. */
+  component Counter() {
+    const [n, setN] = useState<number>(0);
+    useKeyboard(() => setN((previous) => previous + 1));
+    return (
+      <Box>
+        <Text>{`count ${n}`}</Text>
+        <Text>a line that does not change</Text>
+        <Text>another line that does not change</Text>
+      </Box>
+    );
+  }
+
+  it("sends every cell of the first frame and one cell of the second", () => {
+    const handle = testRender(<Counter />, { width: 40, height: 6 });
+    const first = handle.update();
+    expect(first.cells).toBe(40 * 6);
+
+    handle.press("x");
+    const second = handle.update();
+    expect(second.cells).toBe(1);
+    handle.stop();
+  });
+
+  it("costs a dozen bytes to change a character, not a screenful", () => {
+    // The measurement behind the performance claim. A renderer that reprints
+    // from the changed line to the bottom of the frame — which is what a
+    // line-diffing renderer does, React Ink included — has to send everything
+    // below the change; here the change is the change.
+    const handle = testRender(<Counter />, { width: 80, height: 24 });
+    const full = handle.update();
+    handle.press("x");
+    const incremental = handle.update();
+
+    expect(full.cells).toBe(1920);
+    expect(incremental.cells).toBe(1);
+    // Seven bytes: `ESC [ 1 ; 7 H` and the character. The exact figure is
+    // asserted rather than a bound, because a regression here is a renderer
+    // that started sending more than it had to, and nobody would notice a
+    // bound that said "under a hundred".
+    expect(incremental.output.length).toBe(7);
+    expect(full.output.length).toBeGreaterThan(1900);
+    handle.stop();
+  });
+
+  it("writes nothing at all when nothing changed", () => {
+    const handle = testRender(<Text>still</Text>, { width: 10, height: 2 });
+    handle.update();
+    const again = handle.update();
+    expect(again.output).toBe("");
+    expect(again.cells).toBe(0);
+    handle.stop();
+  });
+
+  it("repaints in full after a resize, because the terminal reflowed itself", () => {
+    const handle = testRender(<Text>abc</Text>, { width: 6, height: 2 });
+    handle.update();
+    handle.resize(6, 3);
+    const after = handle.update();
+    expect(after.cells).toBe(18);
+    handle.stop();
+  });
+
+  it("emits a colour once for a run rather than once per cell", () => {
+    const handle = testRender(<Text fg="#ff0000">aaaa</Text>, {
+      width: 4,
+      height: 1,
+    });
+    const update = handle.update();
+    // One SGR for the run, one reset at the end.
+    expect(update.output.split("\u001b[").length - 1).toBe(3);
+    handle.stop();
+  });
+
+  it("writes no escape sequences at all on a terminal that takes none", () => {
+    const handle = testRender(<Text fg="#ff0000">hi</Text>, {
+      width: 2,
+      height: 1,
+      capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
+    });
+    const update = handle.update();
+    expect(update.output.includes("m")).toBe(false);
+    expect(update.output).toBe("\u001b[1;1Hhi");
+    handle.stop();
+  });
+});
+
+describe("input reaches what has focus", () => {
+  it("decodes the bytes a terminal actually sends", () => {
+    expect(decodeKeys("\u001b[A").map((key) => key.name)).toEqual(["up"]);
+    expect(decodeKeys("\u001bOB").map((key) => key.name)).toEqual(["down"]);
+    expect(decodeKeys("\u001b[3~").map((key) => key.name)).toEqual(["delete"]);
+    expect(decodeKeys("\u001b").map((key) => key.name)).toEqual(["escape"]);
+    expect(decodeKeys("\r").map((key) => key.name)).toEqual(["return"]);
+    expect(decodeKeys("\u007f").map((key) => key.name)).toEqual(["backspace"]);
+
+    const ctrlC = decodeKeys("\u0003")[0];
+    expect([ctrlC.name, ctrlC.ctrl]).toEqual(["c", true]);
+
+    const altA = decodeKeys("\u001ba")[0];
+    expect([altA.name, altA.meta]).toEqual(["a", true]);
+
+    const ctrlUp = decodeKeys("\u001b[1;5A")[0];
+    expect([ctrlUp.name, ctrlUp.ctrl, ctrlUp.shift]).toEqual(["up", true, false]);
+
+    const shiftTab = decodeKeys("\u001b[Z")[0];
+    expect([shiftTab.name, shiftTab.shift]).toEqual(["tab", true]);
+  });
+
+  it("decodes a burst as several keys, because fast typing arrives as one chunk", () => {
+    expect(decodeKeys("abc").map((key) => key.sequence)).toEqual(["a", "b", "c"]);
+    expect(decodeKeys("a\u001b[Db").map((key) => key.name)).toEqual(["a", "left", "b"]);
+  });
+
+  it("reports a capital as shift, since that is all a terminal says", () => {
+    const key = decodeKeys("A")[0];
+    expect([key.name, key.sequence, key.shift]).toEqual(["a", "A", true]);
+  });
+
+  it("runs global handlers in registration order, then the focused node", () => {
+    const order: Array<string> = [];
+    component First() {
+      useKeyboard(() => order.push("first"));
+      return null;
+    }
+    component Second() {
+      useKeyboard(() => order.push("second"));
+      return null;
+    }
+    const handle = testRender(
+      <Box>
+        <First />
+        <Second />
+        <Box focusable={true} focused={true} onKeyDown={() => order.push("focused")} />
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    handle.press("k");
+    expect(order).toEqual(["first", "second", "focused"]);
+    handle.stop();
+  });
+
+  it("stops the focused node and later handlers with stopPropagation", () => {
+    const later = fn();
+    const focused = fn();
+    component Stopper() {
+      useKeyboard((key) => key.stopPropagation());
+      return null;
+    }
+    component Later() {
+      useKeyboard(later);
+      return null;
+    }
+    const handle = testRender(
+      <Box>
+        <Stopper />
+        <Later />
+        <Box focusable={true} focused={true} onKeyDown={focused} />
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    handle.press("k");
+    expect(later).not.toHaveBeenCalled();
+    expect(focused).not.toHaveBeenCalled();
+    handle.stop();
+  });
+
+  it("stops only the focused node with preventDefault", () => {
+    const later = fn();
+    const focused = fn();
+    component Preventer() {
+      useKeyboard((key) => key.preventDefault());
+      return null;
+    }
+    component Later() {
+      useKeyboard(later);
+      return null;
+    }
+    const handle = testRender(
+      <Box>
+        <Preventer />
+        <Later />
+        <Box focusable={true} focused={true} onKeyDown={focused} />
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    handle.press("k");
+    expect(later).toHaveBeenCalled();
+    expect(focused).not.toHaveBeenCalled();
+    handle.stop();
+  });
+
+  it("delivers to the box that says it has focus, and to no other", () => {
+    const first = fn();
+    const second = fn();
+    const handle = testRender(
+      <Box>
+        <Box focusable={true} focused={false} onKeyDown={first} />
+        <Box focusable={true} focused={true} onKeyDown={second} />
+      </Box>,
+      { width: 4, height: 2 },
+    );
+    handle.press("k");
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalled();
+    handle.stop();
+  });
+
+  it("removes a handler when its component unmounts", () => {
+    const handler = fn();
+    component Listener() {
+      useKeyboard(handler);
+      return null;
+    }
+    component App() {
+      const [on, setOn] = useState<boolean>(true);
+      useKeyboard((key) => {
+        if (key.name === "escape") {
+          setOn(false);
+        }
+      });
+      return <Box>{on ? <Listener /> : null}</Box>;
+    }
+    const handle = testRender(<App />, { width: 4, height: 2 });
+    handle.press("a");
+    expect(handler).toHaveBeenCalledTimes(1);
+    handle.press("\u001b");
+    handle.press("b");
+    // Once for `a`, once for the escape that unmounted it, and not for `b`.
+    expect(handler).toHaveBeenCalledTimes(2);
+    handle.stop();
+  });
+
+  it("edits a line through the real key path", () => {
+    const submitted = fn();
+    component Form() {
+      const [value, setValue] = useState<string>("");
+      return (
+        <Input
+          focused={true}
+          onInput={setValue}
+          onSubmit={submitted}
+          value={value}
+          width={10}
+          height={1}
+        />
+      );
+    }
+    const handle = testRender(<Form />, { width: 10, height: 1 });
+
+    handle.press("uf");
+    expect(frameRow(handle.frame(), 0)).toBe("uf        ");
+
+    handle.press("\u007f");
+    expect(frameRow(handle.frame(), 0)).toBe("u         ");
+
+    handle.press("xy");
+    expect(frameRow(handle.frame(), 0)).toBe("uxy       ");
+
+    // Left, then a character: the insertion lands at the cursor, not the end.
+    handle.press("\u001b[D");
+    handle.press("z");
+    expect(frameRow(handle.frame(), 0)).toBe("uxzy      ");
+
+    handle.press("\r");
+    expect(submitted).toHaveBeenCalledWith("uxzy");
+    handle.stop();
+  });
+
+  it("shows a placeholder until something is typed", () => {
+    const handle = testRender(<Input placeholder="name" focused={false} width={8} height={1} />, {
+      width: 8,
+      height: 1,
+    });
+    expect(frameRow(handle.frame(), 0)).toBe("name    ");
+    handle.stop();
+  });
+
+  it("draws the cursor as an inverse cell where the caret is", () => {
+    const handle = testRender(<Input defaultValue="ab" focused={true} width={6} height={1} />, {
+      width: 6,
+      height: 1,
+    });
+    handle.press("\u001b[D");
+    const frame = handle.frame();
+    expect(cell(frame, 0, 0).attributes).toBe(Attributes.NONE);
+    expect(cell(frame, 1, 0).attributes).toBe(Attributes.INVERSE);
+    handle.stop();
+  });
+
+  it("does not insert a character for a key that carries none", () => {
+    const handle = testRender(<Input defaultValue="" focused={true} width={6} height={1} />, {
+      width: 6,
+      height: 1,
+    });
+    handle.press("\u001b[A");
+    handle.press("");
+    expect(frameRow(handle.frame(), 0).trimEnd()).toBe("");
+    handle.stop();
+  });
+});
+
+describe("what the terminal can take", () => {
+  const env = (overrides: { [string]: string }) => ({ ...overrides });
+
+  it("follows the CLI's precedence, highest first", () => {
+    expect(detectCapabilities("never", "interactive", env({ COLORTERM: "truecolor" })).color).toBe(
+      "none",
+    );
+    expect(detectCapabilities("auto", "interactive", env({ NO_COLOR: "1" })).color).toBe("none");
+    expect(detectCapabilities("auto", "piped", env({ FORCE_COLOR: "3", TERM: "dumb" })).color).toBe(
+      "truecolor",
+    );
+    expect(detectCapabilities("auto", "interactive", env({ TERM: "dumb" })).color).toBe("none");
+    expect(detectCapabilities("auto", "interactive", env({ CLICOLOR: "0" })).color).toBe("none");
+    expect(detectCapabilities("auto", "piped", env({ COLORTERM: "truecolor" })).color).toBe("none");
+    expect(detectCapabilities("auto", "interactive", env({ COLORTERM: "truecolor" })).color).toBe(
+      "truecolor",
+    );
+    expect(detectCapabilities("auto", "interactive", env({ TERM: "xterm-256color" })).color).toBe(
+      "ansi256",
+    );
+    expect(detectCapabilities("auto", "interactive", env({ TERM: "xterm" })).color).toBe("ansi16");
+  });
+
+  it("keeps unicode glyphs when the locale is unset, and drops them when it says so", () => {
+    expect(detectCapabilities("auto", "interactive", env({})).glyphs).toBe("unicode");
+    expect(detectCapabilities("auto", "interactive", env({ LANG: "en_US.UTF-8" })).glyphs).toBe(
+      "unicode",
+    );
+    expect(detectCapabilities("auto", "interactive", env({ LANG: "C" })).glyphs).toBe("ascii");
+    expect(detectCapabilities("auto", "interactive", env({ TERM: "dumb" })).glyphs).toBe("ascii");
+  });
+
+  it("draws a box in ASCII when the terminal cannot be trusted with more", () => {
+    const handle = testRender(<Box border={true} width={5} height={3} />, {
+      width: 5,
+      height: 3,
+      capabilities: { color: "none", glyphs: "ascii", tty: "interactive" },
+    });
+    // The same geometry, drawn with characters a `TERM=dumb` terminal prints:
+    // every glyph is one column wide in both vocabularies, so the box does not
+    // change size when its characters do.
+    expect(rows(handle.frame())).toEqual(["+---+", "|   |", "+---+"]);
+    handle.stop();
+  });
+
+  it("downgrades a colour rather than dropping it", () => {
+    const red = testRender(<Text fg="#ff0000">x</Text>, {
+      width: 1,
+      height: 1,
+      capabilities: { color: "ansi16", glyphs: "unicode", tty: "interactive" },
+    });
+    expect(red.update().output).toContain("[0;91m");
+    red.stop();
+
+    const indexed = testRender(<Text fg="#ff0000">x</Text>, {
+      width: 1,
+      height: 1,
+      capabilities: { color: "ansi256", glyphs: "unicode", tty: "interactive" },
+    });
+    expect(indexed.update().output).toContain("[0;38;5;196m");
+    indexed.stop();
+  });
+
+  it("reads a colour written any of the three ways", () => {
+    expect(parseColor("#f00")).toBe(0xff0000);
+    expect(parseColor("#ff0000")).toBe(0xff0000);
+    expect(parseColor("brightyellow")).toBe(0xffff00);
+    expect(parseColor(0x123456)).toBe(0x123456);
+    // A typo leaves the interface readable instead of stopping the program.
+    expect(parseColor("chartreuse")).toBe(INHERIT);
+  });
+});
+
+describe("the width tables match the CLI's", () => {
+  /** Every `(low, high)` pair in a Rust range table, as numbers. */
+  const rustRanges = (source: string, name: string): Array<number> => {
+    const start = source.indexOf(`static ${name}: &[(u32, u32)] = &[`);
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf("\n];", start);
+    const body = source.slice(start, end);
+    const out = [];
+    for (const match of body.matchAll(/\(0x([0-9a-fA-F]+), 0x([0-9a-fA-F]+)\)/g)) {
+      out.push(Number.parseInt(match[1], 16), Number.parseInt(match[2], 16));
+    }
+    return out;
+  };
+
+  /** The same, from the JavaScript module, read as source rather than imported. */
+  const jsRanges = (source: string, name: string): Array<number> => {
+    const start = source.indexOf(`const ${name}: $ReadOnlyArray<number> = [`);
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf("\n];", start);
+    const body = source.slice(start, end);
+    const out = [];
+    for (const match of body.matchAll(/0x([0-9a-fA-F]+)/g)) {
+      out.push(Number.parseInt(match[1], 16));
+    }
+    return out;
+  };
+
+  it("is the same data on both sides, so a terminal agrees with itself", () => {
+    // Two copies of a Unicode table is a thing to be uncomfortable about. The
+    // discomfort is made mechanical here rather than moral: edit one side and
+    // this fails, which is the only property that makes the copy safe.
+    const rust = fs.readFileSync(path.join(REPO, "crates/uf_term/src/text/tables.rs"), "utf8");
+    const js = fs.readFileSync(path.join(REPO, "packages/tui/widths.js"), "utf8");
+    expect(jsRanges(js, "ZERO_WIDTH")).toEqual(rustRanges(rust, "ZERO_WIDTH"));
+    expect(jsRanges(js, "WIDE")).toEqual(rustRanges(rust, "WIDE"));
+  });
+});
+
+describe("the manual is not a screenshot", () => {
+  /**
+   * The application `docs/app/guide/tui/_uf.page.mdx` shows, transcribed.
+   *
+   * The transcription is the weak point and it is deliberate: importing the
+   * page's code block needs the docs build, and the alternative to both is a
+   * picture of a terminal that stops being true the first time somebody
+   * changes a border character. A copied component and an asserted frame catch
+   * the change that matters — the drawing — and the copy is a dozen lines a
+   * reader can compare by eye.
+   */
+  component Workers() {
+    const [running, setRunning] = useState<number>(3);
+    useKeyboard((key) => {
+      if (key.name === "up") {
+        setRunning((n) => n + 1);
+      }
+      if (key.name === "down") {
+        setRunning((n) => Math.max(0, n - 1));
+      }
+    });
+    return (
+      <Box
+        border={true}
+        borderStyle="rounded"
+        padding={1}
+        title=" uf test "
+        titleAlignment="center"
+        width={28}
+      >
+        <Text bold={true}>Workers</Text>
+        <Box flexDirection="row" justifyContent="space-between">
+          <Text fg="gray">running</Text>
+          <Text>{String(running)}</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  /** The guide page, read as text. */
+  const page = (): string =>
+    fs.readFileSync(path.join(REPO, "docs/app/guide/tui/_uf.page.mdx"), "utf8");
+
+  it("draws the frame the guide prints", () => {
+    const fence = page().match(/```text\n([\s\S]*?)```/);
+    expect(fence).not.toBe(null);
+    const documented = (fence?.[1] ?? "").replace(/\n$/, "").split("\n");
+
+    const handle = testRender(<Workers />, { width: 28, height: 6 });
+    expect(rows(handle.frame())).toEqual(documented);
+    handle.stop();
+  });
+
+  it("costs what the guide's table says it costs", () => {
+    // The two numbers in the guide, measured here, so publishing a different
+    // pair means changing this test on purpose.
+    const handle = testRender(<Workers />, { width: 28, height: 6 });
+    const first = handle.update();
+    expect([first.cells, first.output.length]).toEqual([168, 239]);
+
+    handle.press("\u001b[A");
+    const next = handle.update();
+    expect([next.cells, next.output.length]).toEqual([1, 8]);
+    expect(frameRow(handle.frame(), 3)).toBe("│ running                4 │");
+
+    const table = page().match(/\| the first frame \| (\d+) \| (\d+) \|/);
+    const keystroke = page().match(/\| pressing the up arrow \| (\d+) \| (\d+) \|/);
+    expect(table?.slice(1, 3)).toEqual([String(first.cells), String(first.output.length)]);
+    expect(keystroke?.slice(1, 3)).toEqual([String(next.cells), String(next.output.length)]);
+    handle.stop();
+  });
+});
+
+describe("a real terminal, or something that is not one", () => {
+  /** A stand-in for `process.stdout` that keeps what was written to it. */
+  const output = (options: { isTTY: boolean }) => {
+    const chunks: Array<string> = [];
+    const listeners: Array<() => mixed> = [];
+    return {
+      chunks,
+      listeners,
+      columns: 8,
+      rows: 2,
+      isTTY: options.isTTY,
+      write(chunk: string) {
+        chunks.push(chunk);
+        return true;
+      },
+      on(event: string, listener: () => mixed) {
+        listeners.push(listener);
+      },
+      off() {},
+      text(): string {
+        return chunks.join("");
+      },
+    };
+  };
+
+  /** A stand-in for `process.stdin`, with a handle on the key listener. */
+  const input = () => {
+    const modes: Array<boolean> = [];
+    let listener: ((chunk: string) => mixed) | null = null;
+    return {
+      modes,
+      isTTY: true,
+      setRawMode(raw: boolean) {
+        modes.push(raw);
+      },
+      setEncoding() {},
+      resume() {},
+      pause() {},
+      on(event: string, next: (chunk: string) => mixed) {
+        if (event === "data") {
+          listener = next;
+        }
+      },
+      off() {
+        listener = null;
+      },
+      type(bytes: string) {
+        if (listener == null) {
+          throw new Error("nothing is listening for input");
+        }
+        listener(bytes);
+      },
+    };
+  };
+
+  it("takes the screen, hides the cursor, and gives both back", () => {
+    const stdout = output({ isTTY: true });
+    const stdin = input();
+    const app = render(<Text>hi</Text>, { stdin, stdout, env: { COLORTERM: "truecolor" } });
+
+    const opened = stdout.text();
+    expect(opened).toContain("\u001b[?1049h"); // the alternate screen
+    expect(opened).toContain("\u001b[?25l"); // and no cursor of the terminal's own
+    expect(opened).toContain("hi");
+    // Raw mode, because a menu needs the keystroke rather than the line.
+    expect(stdin.modes).toEqual([true]);
+
+    app.stop();
+    const closed = stdout.text().slice(opened.length);
+    expect(closed).toContain("\u001b[?25h");
+    expect(closed).toContain("\u001b[?1049l");
+    expect(stdin.modes).toEqual([true, false]);
+  });
+
+  it("draws the frame a keystroke produces, through the whole path", () => {
+    const stdout = output({ isTTY: true });
+    const stdin = input();
+
+    component Typed() {
+      const [seen, setSeen] = useState<string>("-");
+      useKeyboard((key) => setSeen(key.sequence === "" ? key.name : key.sequence));
+      return <Text wrap="none">{seen}</Text>;
+    }
+
+    const app = render(<Typed />, { stdin, stdout, env: { COLORTERM: "truecolor" } });
+    const before = stdout.text().length;
+
+    // A terminal delivers bytes, so the test delivers bytes: this is the
+    // escape-sequence decoder, the key router, React's scheduler and the diff,
+    // all of them, and none of them stubbed.
+    stdin.type("\u001b[A");
+    const written = stdout.text().slice(before);
+    expect(written).toContain("up");
+    expect(app.text().split("\n")[0]).toBe("up      ");
+
+    app.stop();
+  });
+
+  it("writes plain lines once when nobody is watching", () => {
+    const stdout = output({ isTTY: false });
+    const app = render(<Text>logged</Text>, { stdout, env: {} });
+
+    // Nothing yet: cursor addressing in a file is noise, so a redirected
+    // stream gets no incremental updates at all.
+    expect(stdout.text()).toBe("");
+
+    app.stop();
+    expect(stdout.text()).toBe("logged  \n        \n");
+    expect(stdout.text()).not.toContain("\u001b");
+  });
+});
