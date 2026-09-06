@@ -22,7 +22,21 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
-import { Checkbox, Combobox, Dialog, Field, Menu, Switch, Tabs } from "@uniflowed/ui";
+import {
+  Accordion,
+  Checkbox,
+  Collapsible,
+  Combobox,
+  Dialog,
+  Field,
+  Menu,
+  NavigationMenu,
+  RadioGroup,
+  Switch,
+  Tabs,
+  Toggle,
+  ToggleGroup,
+} from "@uniflowed/ui";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -1015,6 +1029,148 @@ describe("Menu: named groups", () => {
   });
 });
 
+describe("right to left", () => {
+  // The bug this block exists for is invisible twice over: the page renders
+  // identically, the pointer still works, and the reading order is still right
+  // — only the keyboard walks backwards. In a right-to-left page the first item
+  // of a row is the rightmost one, so `ArrowLeft` is the reader's "next", and
+  // every set in this package took its answer from one hard-coded pair of keys.
+  //
+  // The LTR cases above are the other half of the evidence: if they still pass
+  // and these do too, the mirroring is conditional rather than swapped.
+
+  component Sections() {
+    return (
+      <Tabs.Root defaultValue="one">
+        <Tabs.List aria-label="Sections">
+          <Tabs.Tab value="one">One</Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+          <Tabs.Tab value="three">Three</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first panel</Tabs.Panel>
+        <Tabs.Panel value="two">second panel</Tabs.Panel>
+        <Tabs.Panel value="three">third panel</Tabs.Panel>
+      </Tabs.Root>
+    );
+  }
+
+  component Export() {
+    return (
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item>Open</Menu.Item>
+          <Menu.Sub>
+            <Menu.SubTrigger>Export</Menu.SubTrigger>
+            <Menu.Body>
+              <Menu.Item>PNG</Menu.Item>
+              <Menu.Item>SVG</Menu.Item>
+            </Menu.Body>
+          </Menu.Sub>
+        </Menu.Body>
+      </Menu.Root>
+    );
+  }
+
+  it("walks a horizontal tab list the way the reader reads", async () => {
+    render(
+      <div dir="rtl">
+        <Sections />
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("first panel");
+  });
+
+  it("leaves Home and End naming the first and last tab in reading order", async () => {
+    render(
+      <div dir="rtl">
+        <Sections />
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    // Unmirrored on purpose: `Home` is the first tab a reader reads, which in
+    // an RTL row is the rightmost one, and `moveTo` already walks the document
+    // in reading order.
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("third panel");
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("first panel");
+  });
+
+  it("reads a direction a caller wrote in CSS rather than with the attribute", async () => {
+    render(
+      <div style={{ direction: "rtl" }}>
+        <Sections />
+      </div>,
+    );
+    // No `dir` anywhere, so this is the computed style answering — which is
+    // the half of `directionOf` an attribute walk on its own would miss.
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+  });
+
+  it("lets a left-to-right island inside a right-to-left page keep its own keys", async () => {
+    render(
+      <div dir="rtl">
+        <div dir="ltr">
+          <Sections />
+        </div>
+      </div>,
+    );
+    // `closest` stops at the nearest ancestor carrying a `dir`, so the island
+    // is not dragged along by the page around it.
+    await userEvent.click(screen.getByRole("tab", { name: "One" }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tabpanel").textContent).toBe("second panel");
+  });
+
+  it("opens a submenu with the arrow that points at it", async () => {
+    render(
+      <div dir="rtl">
+        <Export />
+      </div>,
+    );
+    const trigger = screen.getByRole("menuitem", { name: "Export" });
+    act(() => trigger.focus());
+    // A submenu opens onto the inline end, which in RTL is the left. Pressing
+    // the key aimed at it used to close the menu the reader was standing in.
+    fireEvent.keyDown(trigger, { key: "ArrowLeft" });
+    expect(screen.getAllByRole("menu").length).toBe(2);
+    expect(screen.getByRole("menuitem", { name: "PNG" })).toHaveFocus();
+  });
+
+  it("closes a submenu with the arrow that points away from it", async () => {
+    render(
+      <div dir="rtl">
+        <Export />
+      </div>,
+    );
+    const trigger = screen.getByRole("menuitem", { name: "Export" });
+    act(() => trigger.focus());
+    fireEvent.keyDown(trigger, { key: "ArrowLeft" });
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getAllByRole("menu").length).toBe(1);
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveFocus();
+  });
+
+  it("leaves the vertical arrows alone, because the page still runs downwards", async () => {
+    render(
+      <div dir="rtl">
+        <Export />
+      </div>,
+    );
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+  });
+});
+
 describe("Combobox", () => {
   const FRUIT = ["Apple", "Apricot", "Banana", "Cherry"];
 
@@ -1397,6 +1553,691 @@ describe("Switch and Checkbox", () => {
     // A controlled component that also writes its own state moves anyway and is
     // moved back on the next render, which reads as a flicker and is a bug.
     expect(screen.getByRole("switch")).not.toBeChecked();
+  });
+});
+
+describe("Toggle", () => {
+  it("announces a toggle button as pressed, not as checked", () => {
+    render(<Toggle aria-label="Bold" />);
+    // The mirror of "announces a switch as a switch, not a checkbox", and the
+    // pair is what documents why there are three of these. A reader told
+    // "checkbox" believes they are answering a question; told "switch", that
+    // they are configuring something. A toggle button does neither: it is an
+    // action that stays applied.
+    const control = screen.getByRole("button", { name: "Bold" });
+    expect(control).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("switch")).toBe(null);
+    expect(screen.queryByRole("checkbox")).toBe(null);
+  });
+
+  it("presses on click, on Space and on Enter", async () => {
+    render(<Toggle aria-label="Bold" />);
+    const control = screen.getByRole("button", { name: "Bold" });
+    await userEvent.click(control);
+    expect(control).toHaveAttribute("aria-pressed", "true");
+    await userEvent.keyboard(" ");
+    expect(control).toHaveAttribute("aria-pressed", "false");
+    // A toggle button is a button, and a button activates on both keys.
+    await userEvent.keyboard("{Enter}");
+    expect(control).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("does not press while disabled", async () => {
+    render(<Toggle aria-label="Bold" disabled />);
+    await userEvent.click(screen.getByRole("button", { name: "Bold" }));
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("lets a parent own the state, and refuse a change", async () => {
+    component Refusing() {
+      const [on, setOn] = useState(false);
+      return <Toggle aria-label="Bold" onPressedChange={() => setOn(false)} pressed={on} />;
+    }
+    render(<Refusing />);
+    await userEvent.click(screen.getByRole("button", { name: "Bold" }));
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("RadioGroup", () => {
+  component Plans(orientation?: "horizontal" | "vertical" = "vertical") {
+    return (
+      <Field.Root>
+        <Field.Label>Plan</Field.Label>
+        <Field.Control
+          render={(props) => (
+            <RadioGroup.Root {...props} defaultValue="free" orientation={orientation}>
+              <RadioGroup.Item value="free">
+                Free
+                <RadioGroup.Indicator>dot</RadioGroup.Indicator>
+              </RadioGroup.Item>
+              <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+              <RadioGroup.Item value="team">Team</RadioGroup.Item>
+            </RadioGroup.Root>
+          )}
+        />
+      </Field.Root>
+    );
+  }
+
+  it("announces itself as a named radio group of radios", () => {
+    render(<Plans />);
+    // The name comes from `Field.Label` through `Field.Control`, which is the
+    // wiring `field.js` exists to get right; a second spelling of it in
+    // `radio-group.js` would be a second thing to keep in step.
+    expect(screen.getByRole("radiogroup", { name: "Plan" })).toHaveAttribute(
+      "aria-orientation",
+      "vertical",
+    );
+    expect(screen.getAllByRole("radio").length).toBe(3);
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("checks as it moves, because that is what a radio group does", async () => {
+    render(<Plans />);
+    await userEvent.click(screen.getByRole("radio", { name: /Free/ }));
+    await userEvent.keyboard("{ArrowDown}");
+    // One key press, focus and the answer together. Arrows that only moved
+    // focus would leave a reader believing they had answered when they had not.
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveFocus();
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /Free/ })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("wraps at the ends and jumps with Home and End", async () => {
+    render(<Plans />);
+    await userEvent.click(screen.getByRole("radio", { name: /Free/ }));
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("radio", { name: /Free/ })).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("uses the horizontal arrows when it is horizontal, and says which", async () => {
+    render(<Plans orientation="horizontal" />);
+    expect(screen.getByRole("radiogroup")).toHaveAttribute("aria-orientation", "horizontal");
+    await userEvent.click(screen.getByRole("radio", { name: /Free/ }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+    // And the vertical pair is left to the page, which scrolls with it.
+    expect(
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Pro" }), { key: "ArrowDown" }),
+    ).toBe(true);
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("checks the focused item on Space", async () => {
+    render(<Plans />);
+    const pro = screen.getByRole("radio", { name: "Pro" });
+    act(() => pro.focus());
+    await userEvent.keyboard(" ");
+    expect(pro).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("lets Tab reach a group where nothing is chosen", () => {
+    render(
+      <RadioGroup.Root aria-label="Plan">
+        <RadioGroup.Item value="free">Free</RadioGroup.Item>
+        <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+      </RadioGroup.Root>,
+    );
+    // With the tab stop derived from the selection alone, an unanswered group
+    // has no `tabindex="0"` at all and is not reachable from the keyboard:
+    // not awkward to reach — absent.
+    const stops = screen
+      .getAllByRole("radio")
+      .filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("Free");
+  });
+
+  it("gives the tab stop to the chosen item once there is one", async () => {
+    render(<Plans />);
+    const stops = () =>
+      screen.getAllByRole("radio").filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toContain("Free");
+    await userEvent.click(screen.getByRole("radio", { name: "Team" }));
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toBe("Team");
+  });
+
+  it("steps over a disabled choice and still announces it", async () => {
+    render(
+      <RadioGroup.Root aria-label="Plan" defaultValue="free">
+        <RadioGroup.Item value="free">Free</RadioGroup.Item>
+        <RadioGroup.Item disabled value="pro">
+          Pro
+        </RadioGroup.Item>
+        <RadioGroup.Item value="team">Team</RadioGroup.Item>
+      </RadioGroup.Root>,
+    );
+    // `aria-disabled` rather than `disabled`: the answer exists and is
+    // unavailable, which is a thing a reader can be told. A native `disabled`
+    // leaves a gap they cannot ask about.
+    expect(screen.getAllByRole("radio").length).toBe(3);
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(screen.getByRole("radio", { name: "Free" }));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("puts the tab stop on the first choice a reader can take", () => {
+    render(
+      <RadioGroup.Root aria-label="Plan">
+        <RadioGroup.Item disabled value="free">
+          Free
+        </RadioGroup.Item>
+        <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+      </RadioGroup.Root>,
+    );
+    // A group whose first answer is unavailable must still be reachable.
+    const stops = screen
+      .getAllByRole("radio")
+      .filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("Pro");
+  });
+
+  it("shows the indicator only inside the chosen item", async () => {
+    render(<Plans />);
+    expect(screen.getAllByText("dot").length).toBe(1);
+    // And it is decoration: the item already says `aria-checked`, so a reader
+    // who heard the dot as well would hear the answer's state twice.
+    expect(screen.getByText("dot")).toHaveAttribute("aria-hidden", "true");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(screen.queryByText("dot")).toBe(null);
+  });
+
+  it("reports the answer to a controlled parent, and takes its refusal", async () => {
+    const onValueChange = fn();
+    component Refusing() {
+      const [plan, setPlan] = useState<string | null>("free");
+      return (
+        <RadioGroup.Root
+          aria-label="Plan"
+          onValueChange={(next) => {
+            onValueChange(next);
+            setPlan("free");
+          }}
+          value={plan}
+        >
+          <RadioGroup.Item value="free">Free</RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+      );
+    }
+    render(<Refusing />);
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(onValueChange).toHaveBeenCalledWith("pro");
+    // A controlled component that also writes its own state moves anyway and
+    // is moved back on the next render, which reads as a flicker and is a bug.
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("submits the chosen value", async () => {
+    render(
+      <form data-testid="signup">
+        <RadioGroup.Root aria-label="Plan" defaultValue="free" name="plan">
+          <RadioGroup.Item value="free">Free</RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    // The document's own `FormData`, not the global one: this suite runs on
+    // Node, whose `FormData` takes no arguments at all, so `new FormData(form)`
+    // there throws rather than reading the form.
+    const submitted = () => new form.ownerDocument.defaultView.FormData(form).get("plan");
+    expect(submitted()).toBe("free");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    // A control a reader can operate and a form cannot read is half a control.
+    expect(submitted()).toBe("pro");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<RadioGroup.Item value="free">orphan</RadioGroup.Item>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("RadioGroup.Item must be rendered inside a RadioGroup.Root");
+  });
+});
+
+describe("ToggleGroup", () => {
+  it("keeps a single toggle group to one answer", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Alignment" defaultValue={["left"]} type="single">
+        <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+        <ToggleGroup.Item value="centre">Centre</ToggleGroup.Item>
+        <ToggleGroup.Item value="right">Right</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    // A reader told "three pressed buttons" will reasonably believe they may
+    // press all three, and they may not — so a single group is a radio group,
+    // and says so.
+    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+    expect(screen.getAllByRole("radio").length).toBe(3);
+    expect(document.querySelectorAll("[aria-pressed]").length).toBe(0);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Right" }));
+    expect(screen.getByRole("radio", { name: "Right" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("keeps two items of a multiple group pressed at once", async () => {
+    const onValueChange = fn();
+    render(
+      <ToggleGroup.Root aria-label="Formatting" onValueChange={onValueChange} type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+        <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    expect(screen.getByRole("group")).toHaveAttribute("aria-orientation", "horizontal");
+    expect(screen.queryByRole("radiogroup")).toBe(null);
+    await userEvent.click(screen.getByRole("button", { name: "Bold" }));
+    await userEvent.click(screen.getByRole("button", { name: "Italic" }));
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "true");
+    expect(onValueChange).toHaveBeenCalledWith(["bold", "italic"]);
+  });
+
+  it("takes one tab stop for the whole set and moves it with the arrows", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Formatting" type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+        <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+        <ToggleGroup.Item value="underline">Underline</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    const stops = () =>
+      within(screen.getByRole("group"))
+        .getAllByRole("button")
+        .filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toBe("Bold");
+
+    act(() => screen.getByRole("button", { name: "Bold" }).focus());
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveFocus();
+    // Moving does not press: arrowing across a toolbar to reach one command
+    // must not apply the five it passed on the way.
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "false");
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toBe("Italic");
+  });
+
+  it("presses the focused item on Space, and steps over a disabled one", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Formatting" type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+        <ToggleGroup.Item disabled value="italic">
+          Italic
+        </ToggleGroup.Item>
+        <ToggleGroup.Item value="underline">Underline</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    // Announced, not removed: the same choice `menu.js` and `tabs.js` make.
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-disabled", "true");
+    act(() => screen.getByRole("button", { name: "Bold" }).focus());
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Underline" })).toHaveFocus();
+    await userEvent.keyboard(" ");
+    expect(screen.getByRole("button", { name: "Underline" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("inherits the radio group's keyboard for its single mode", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Alignment" defaultValue={["left"]} type="single">
+        <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+        <ToggleGroup.Item value="centre">Centre</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    // The point of rendering through `radio-group.js`: this behaviour has one
+    // implementation, and a change to it cannot fix one of the two and not the
+    // other.
+    await userEvent.click(screen.getByRole("radio", { name: "Left" }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Centre" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<ToggleGroup.Item value="bold">orphan</ToggleGroup.Item>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("ToggleGroup.Item must be rendered inside a ToggleGroup.Root");
+  });
+});
+
+describe("Collapsible", () => {
+  component Details() {
+    return (
+      <Collapsible.Root>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+        <Collapsible.Content>the small print</Collapsible.Content>
+      </Collapsible.Root>
+    );
+  }
+
+  it("says that the button controls something, and whether it is showing", async () => {
+    render(<Details />);
+    const trigger = screen.getByRole("button", { name: "Details" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger.getAttribute("aria-controls")).toBe(
+      screen.getByText("the small print").getAttribute("id"),
+    );
+    expect(danglingReferences()).toEqual([]);
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("claims no aria-controls when there is no content to name", () => {
+    render(
+      <Collapsible.Root>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+      </Collapsible.Root>,
+    );
+    // A caller may render the content conditionally, or not at all until data
+    // arrives. An `aria-controls` pointing at an id nothing has tells a reader
+    // there is somewhere to go and then has nowhere to send them.
+    expect(screen.getByRole("button", { name: "Details" })).not.toHaveAttribute("aria-controls");
+  });
+
+  it("keeps the closed content in the document, where find-in-page can reach it", async () => {
+    render(<Details />);
+    const content = screen.getByText("the small print");
+    // Not `null`, which is what `Tabs.Panel` returns and what would take the
+    // text out of the browser's find-in-page. `until-found` rather than a bare
+    // `hidden` is the whole point, and React cannot say it through the prop —
+    // `<div hidden="until-found">` renders `hidden=""` — so an effect upgrades
+    // the attribute React has already committed.
+    expect(content).toHaveAttribute("hidden", "until-found");
+    await userEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(content).not.toHaveAttribute("hidden");
+  });
+
+  it("lets a parent own whether it is open", async () => {
+    const onOpenChange = fn();
+    render(
+      <Collapsible.Root onOpenChange={onOpenChange} open={false}>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+        <Collapsible.Content>the small print</Collapsible.Content>
+      </Collapsible.Root>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("button", { name: "Details" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+});
+
+describe("Accordion", () => {
+  component Faq(
+    collapsible?: boolean = true,
+    level?: number = 3,
+    type?: "single" | "multiple" = "single",
+  ) {
+    return (
+      <Accordion.Root collapsible={collapsible} defaultValue={["shipping"]} type={type}>
+        <Accordion.Item value="shipping">
+          <Accordion.Header level={level}>
+            <Accordion.Trigger>Shipping</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>ships in two days</Accordion.Content>
+        </Accordion.Item>
+        <Accordion.Item value="returns">
+          <Accordion.Header level={level}>
+            <Accordion.Trigger>Returns</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>thirty days</Accordion.Content>
+        </Accordion.Item>
+        <Accordion.Item value="warranty">
+          <Accordion.Header level={level}>
+            <Accordion.Trigger>Warranty</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>two years</Accordion.Content>
+        </Accordion.Item>
+      </Accordion.Root>
+    );
+  }
+
+  // The panels that a reader can actually read, by their text. Asked this way
+  // rather than with `getByRole("region")` on purpose: every panel keeps its
+  // role and its place in the document whether it is open or closed — that is
+  // the point of `hidden="until-found"` — so "which are open" is a question
+  // about the `hidden` attribute, and asking it directly says so.
+  const showing = () =>
+    screen
+      .getAllByRole("region")
+      .filter((panel) => !panel.hasAttribute("hidden"))
+      .map((panel) => panel.textContent);
+
+  it("names the region after the trigger that opens it", async () => {
+    render(<Faq />);
+    const region = screen.getAllByRole("region")[0];
+    const named = region.getAttribute("aria-labelledby") ?? "";
+    expect(document.getElementById(named)?.textContent).toBe("Shipping");
+    // A region with no name is a landmark that says "region" and nothing else.
+    expect(danglingReferences()).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Shipping" }));
+    // And still true with everything closed, which is when a name pointing at
+    // an unmounted trigger would have gone stale.
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("puts the trigger in a heading at the level the caller asked for", () => {
+    render(<Faq level={3} />);
+    // An accordion inside a section titled by an `<h2>` needs `<h3>`, and a
+    // component that hard-codes one produces an outline nobody can navigate.
+    // The tag name rather than `getByRole("heading", { level })`, because that
+    // option is not implemented in this testing library and every heading comes
+    // back whichever level is asked for — a test that would pass on `<h2>`.
+    const heading: $FlowFixMe = screen.getByRole("button", { name: "Shipping" }).parentElement;
+    expect(heading.tagName).toBe("H3");
+    expect(within(heading).getByRole("button", { name: "Shipping" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading").length).toBe(3);
+  });
+
+  it("takes a different heading level without changing anything else", () => {
+    render(<Faq level={2} />);
+    const heading: $FlowFixMe = screen.getByRole("button", { name: "Shipping" }).parentElement;
+    expect(heading.tagName).toBe("H2");
+    expect(screen.getAllByRole("heading").length).toBe(3);
+  });
+
+  it("keeps a single accordion to one open item", async () => {
+    render(<Faq />);
+    expect(showing()).toEqual(["ships in two days"]);
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(showing()).toEqual(["thirty days"]);
+    expect(screen.getByRole("button", { name: "Shipping" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("lets a multiple accordion hold two open at once", async () => {
+    render(<Faq type="multiple" />);
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(showing()).toEqual(["ships in two days", "thirty days"]);
+  });
+
+  it("says why the open one cannot be closed, and keeps it announced", async () => {
+    render(<Faq collapsible={false} />);
+    const open = screen.getByRole("button", { name: "Shipping" });
+    // `aria-disabled` rather than `disabled`: a reader is told "pressing this
+    // does nothing" instead of finding that a header they can see has left the
+    // accessibility tree.
+    expect(open).toHaveAttribute("aria-disabled", "true");
+    expect(open).toBeInTheDocument();
+    await userEvent.click(open);
+    expect(open).toHaveAttribute("aria-expanded", "true");
+    // And the constraint is only about closing: another section still opens,
+    // and the first trigger is then an ordinary one again.
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(showing()).toEqual(["thirty days"]);
+    expect(screen.getByRole("button", { name: "Shipping" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("leaves every header in the page's tab order", () => {
+    render(<Faq />);
+    // The inverse of the tab list's "keeps exactly one tab in the page's tab
+    // order", and the pair is what documents that an accordion is a stack of
+    // ordinary buttons rather than one control.
+    const headers = screen.getAllByRole("button");
+    expect(headers.length).toBe(3);
+    for (const header of headers) {
+      expect(header).not.toHaveAttribute("tabindex");
+    }
+  });
+
+  it("moves between headers with the arrows, Home and End", async () => {
+    render(<Faq />);
+    act(() => screen.getByRole("button", { name: "Shipping" }).focus());
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("button", { name: "Returns" })).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("button", { name: "Warranty" })).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("button", { name: "Shipping" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("button", { name: "Warranty" })).toHaveFocus();
+  });
+
+  it("lands the arrows on a header that cannot be pressed, rather than over it", async () => {
+    render(<Faq collapsible={false} />);
+    act(() => screen.getByRole("button", { name: "Returns" }).focus());
+    // Every other set in this package steps over an `aria-disabled` item. This
+    // one must not: `Tab` reaches all three headers, and arrows that skipped
+    // the open one would disagree with `Tab` about which headers exist.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("button", { name: "Shipping" })).toHaveFocus();
+  });
+
+  it("keeps the closed sections findable", async () => {
+    render(<Faq />);
+    const closed = screen.getByText("thirty days");
+    expect(closed).toHaveAttribute("hidden", "until-found");
+    await userEvent.click(screen.getByRole("button", { name: "Returns" }));
+    expect(closed).not.toHaveAttribute("hidden");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Accordion.Trigger>orphan</Accordion.Trigger>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Accordion.Trigger must be rendered inside an Accordion.Item");
+  });
+});
+
+describe("Navigation menu", () => {
+  component Site() {
+    return (
+      <NavigationMenu.Root aria-label="Main">
+        <NavigationMenu.List>
+          <NavigationMenu.Item value="docs">
+            <NavigationMenu.Trigger>Docs</NavigationMenu.Trigger>
+            <NavigationMenu.Body>
+              <NavigationMenu.Link href="/guide">Guide</NavigationMenu.Link>
+              <NavigationMenu.Link href="/reference">Reference</NavigationMenu.Link>
+            </NavigationMenu.Body>
+          </NavigationMenu.Item>
+          <NavigationMenu.Item value="blog">
+            <NavigationMenu.Trigger>Blog</NavigationMenu.Trigger>
+            <NavigationMenu.Body>
+              <NavigationMenu.Link href="/blog/latest">Latest</NavigationMenu.Link>
+            </NavigationMenu.Body>
+          </NavigationMenu.Item>
+        </NavigationMenu.List>
+      </NavigationMenu.Root>
+    );
+  }
+
+  it("is a list of links and not a menu", async () => {
+    render(<Site />);
+    await userEvent.click(screen.getByRole("button", { name: "Docs" }));
+    // `menu`, `menubar` and `menuitem` are for application commands. A reader
+    // told "menu, five items" expected a list of links, and a `menuitem` is not
+    // announced as a link, is not in the list of links they can pull up, and
+    // brings a whole keyboard map with it that this is not implementing.
+    expect(screen.queryByRole("menu")).toBe(null);
+    expect(screen.queryByRole("menubar")).toBe(null);
+    expect(screen.queryAllByRole("menuitem").length).toBe(0);
+    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Guide",
+      "Reference",
+    ]);
+    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+  });
+
+  it("says whether an entry is open, and names the group only while it is", async () => {
+    render(<Site />);
+    const trigger = screen.getByRole("button", { name: "Docs" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const group = screen.getAllByRole("list")[1];
+    expect(trigger.getAttribute("aria-controls")).toBe(group.getAttribute("id"));
+    expect(group.getAttribute("aria-labelledby")).toBe(trigger.getAttribute("id"));
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("closes the group on Escape and gives focus back to its button", async () => {
+    render(<Site />);
+    const trigger = screen.getByRole("button", { name: "Docs" });
+    await userEvent.click(trigger);
+    act(() => screen.getByRole("link", { name: "Guide" }).focus());
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("link", { name: "Guide" })).toBe(null);
+    // Leaving focus on the `<li>` the group was removed from drops the reader
+    // at the top of the page.
+    expect(trigger).toHaveFocus();
+  });
+
+  it("keeps one group open at a time", async () => {
+    render(<Site />);
+    await userEvent.click(screen.getByRole("button", { name: "Docs" }));
+    await userEvent.click(screen.getByRole("button", { name: "Blog" }));
+    expect(screen.queryByRole("link", { name: "Guide" })).toBe(null);
+    expect(screen.getByRole("link", { name: "Latest" })).toBeInTheDocument();
+  });
+
+  it("closes the group when a link in it is chosen", async () => {
+    render(<Site />);
+    await userEvent.click(screen.getByRole("button", { name: "Docs" }));
+    await userEvent.click(screen.getByRole("link", { name: "Guide" }));
+    expect(screen.getByRole("button", { name: "Docs" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<NavigationMenu.Trigger>orphan</NavigationMenu.Trigger>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain(
+      "NavigationMenu.Trigger must be rendered inside a NavigationMenu.Item",
+    );
   });
 });
 
