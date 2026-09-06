@@ -76,6 +76,39 @@
 export type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 /**
+ * A caller's props on their way to another *part of this package*, rather than
+ * onto an intrinsic element.
+ *
+ * `Rest` names `key` out of its indexer and types it `empty`, which is a true
+ * sentence and is what stopped thirty-two intrinsics being rejected for a
+ * property that cannot be there. It has a second consequence, and it only shows
+ * up the first time one part of this package renders another —
+ * `ToggleGroup.Root` rendering a `RadioGroup.Root`, which is how `single` mode
+ * avoids being a second copy of the radio group. Creating
+ * `<RadioGroup.Root {...rest} />` has Flow check the props object against that
+ * component's own `...rest: Rest`, `key` included, and the indexer answers
+ * `mixed` for it rather than the named `empty`:
+ *
+ *     error[incompatible-type]: Cannot create RadioGroupRoot element because in
+ *     property key: unknown is incompatible with empty.
+ *
+ * So a part is spreadable onto a `<div>` and not onto a sibling part. That is a
+ * hole in the type rather than a fact about the props, and this is the one
+ * place it is papered over — a named function rather than an `as $FlowFixMe` at
+ * the call site, so there is somewhere to say what is and is not lost.
+ *
+ * What is lost is nothing that was ever checked. Every element this package
+ * renders has `any`-typed props today, for the reason `Rest` gives above: uf
+ * does not merge Flow's `jsx.js` environment, so `$JSXIntrinsics` is the
+ * bare-bones table in `lib/react.js` and `key` is the only property of an
+ * element anything verifies. On the day that changes and `Rest` becomes
+ * `React.PropsOf`, this function is what gets deleted.
+ */
+export function forwarded(rest: Rest): $FlowFixMe {
+  return rest;
+}
+
+/**
  * Call the caller's handler and then the component's.
  *
  * The caller's runs first so it can inspect the event before the component acts
