@@ -4,6 +4,10 @@ fn rendered(manager: PackageManager, operation: Operation<'_>) -> String {
     command_for(manager, operation).to_string()
 }
 
+const fn add(kind: DependencyKind) -> Operation<'static> {
+    Operation::Add { kind }
+}
+
 const YARN_CLASSIC: PackageManager = PackageManager::Yarn(YarnEdition::Classic);
 const YARN_BERRY: PackageManager = PackageManager::Yarn(YarnEdition::Berry);
 
@@ -18,12 +22,20 @@ fn uf_maps_every_operation() {
         "uf install --frozen-lockfile"
     );
     assert_eq!(
-        rendered(PackageManager::Uf, Operation::Add { dev: false }),
+        rendered(PackageManager::Uf, add(DependencyKind::Prod)),
         "uf add"
     );
     assert_eq!(
-        rendered(PackageManager::Uf, Operation::Add { dev: true }),
+        rendered(PackageManager::Uf, add(DependencyKind::Dev)),
         "uf add --dev"
+    );
+    assert_eq!(
+        rendered(PackageManager::Uf, add(DependencyKind::Optional)),
+        "uf add --optional"
+    );
+    assert_eq!(
+        rendered(PackageManager::Uf, add(DependencyKind::Peer)),
+        "uf add --peer"
     );
     assert_eq!(rendered(PackageManager::Uf, Operation::Remove), "uf remove");
     assert_eq!(
@@ -32,10 +44,7 @@ fn uf_maps_every_operation() {
     );
     assert_eq!(rendered(PackageManager::Uf, Operation::Exec), "uf exec");
     assert_eq!(rendered(PackageManager::Uf, Operation::DlxExec), "uf exec");
-    assert_eq!(
-        rendered(PackageManager::Uf, Operation::Update),
-        "uf upgrade"
-    );
+    assert_eq!(rendered(PackageManager::Uf, Operation::Update), "uf update");
     assert_eq!(rendered(PackageManager::Uf, Operation::Why), "uf why");
 }
 
@@ -50,12 +59,20 @@ fn npm_maps_every_operation() {
         "npm ci"
     );
     assert_eq!(
-        rendered(PackageManager::Npm, Operation::Add { dev: false }),
+        rendered(PackageManager::Npm, add(DependencyKind::Prod)),
         "npm install"
     );
     assert_eq!(
-        rendered(PackageManager::Npm, Operation::Add { dev: true }),
+        rendered(PackageManager::Npm, add(DependencyKind::Dev)),
         "npm install --save-dev"
+    );
+    assert_eq!(
+        rendered(PackageManager::Npm, add(DependencyKind::Optional)),
+        "npm install --save-optional"
+    );
+    assert_eq!(
+        rendered(PackageManager::Npm, add(DependencyKind::Peer)),
+        "npm install --save-peer"
     );
     assert_eq!(
         rendered(PackageManager::Npm, Operation::Remove),
@@ -91,12 +108,20 @@ fn pnpm_maps_every_operation() {
         "pnpm install --frozen-lockfile"
     );
     assert_eq!(
-        rendered(PackageManager::Pnpm, Operation::Add { dev: false }),
+        rendered(PackageManager::Pnpm, add(DependencyKind::Prod)),
         "pnpm add"
     );
     assert_eq!(
-        rendered(PackageManager::Pnpm, Operation::Add { dev: true }),
+        rendered(PackageManager::Pnpm, add(DependencyKind::Dev)),
         "pnpm add --save-dev"
+    );
+    assert_eq!(
+        rendered(PackageManager::Pnpm, add(DependencyKind::Optional)),
+        "pnpm add --save-optional"
+    );
+    assert_eq!(
+        rendered(PackageManager::Pnpm, add(DependencyKind::Peer)),
+        "pnpm add --save-peer"
     );
     assert_eq!(
         rendered(PackageManager::Pnpm, Operation::Remove),
@@ -126,12 +151,20 @@ fn yarn_classic_maps_every_operation() {
         "yarn install --frozen-lockfile"
     );
     assert_eq!(
-        rendered(YARN_CLASSIC, Operation::Add { dev: false }),
+        rendered(YARN_CLASSIC, add(DependencyKind::Prod)),
         "yarn add"
     );
     assert_eq!(
-        rendered(YARN_CLASSIC, Operation::Add { dev: true }),
+        rendered(YARN_CLASSIC, add(DependencyKind::Dev)),
         "yarn add --dev"
+    );
+    assert_eq!(
+        rendered(YARN_CLASSIC, add(DependencyKind::Optional)),
+        "yarn add --optional"
+    );
+    assert_eq!(
+        rendered(YARN_CLASSIC, add(DependencyKind::Peer)),
+        "yarn add --peer"
     );
     assert_eq!(rendered(YARN_CLASSIC, Operation::Remove), "yarn remove");
     assert_eq!(
@@ -151,13 +184,18 @@ fn yarn_berry_maps_every_operation() {
         rendered(YARN_BERRY, Operation::InstallFrozen),
         "yarn install --immutable"
     );
+    assert_eq!(rendered(YARN_BERRY, add(DependencyKind::Prod)), "yarn add");
     assert_eq!(
-        rendered(YARN_BERRY, Operation::Add { dev: false }),
-        "yarn add"
+        rendered(YARN_BERRY, add(DependencyKind::Dev)),
+        "yarn add --dev"
     );
     assert_eq!(
-        rendered(YARN_BERRY, Operation::Add { dev: true }),
-        "yarn add --dev"
+        rendered(YARN_BERRY, add(DependencyKind::Optional)),
+        "yarn add --optional"
+    );
+    assert_eq!(
+        rendered(YARN_BERRY, add(DependencyKind::Peer)),
+        "yarn add --peer"
     );
     assert_eq!(rendered(YARN_BERRY, Operation::Remove), "yarn remove");
     assert_eq!(
@@ -181,12 +219,20 @@ fn bun_maps_every_operation() {
         "bun install --frozen-lockfile"
     );
     assert_eq!(
-        rendered(PackageManager::Bun, Operation::Add { dev: false }),
+        rendered(PackageManager::Bun, add(DependencyKind::Prod)),
         "bun add"
     );
     assert_eq!(
-        rendered(PackageManager::Bun, Operation::Add { dev: true }),
+        rendered(PackageManager::Bun, add(DependencyKind::Dev)),
         "bun add --dev"
+    );
+    assert_eq!(
+        rendered(PackageManager::Bun, add(DependencyKind::Optional)),
+        "bun add --optional"
+    );
+    assert_eq!(
+        rendered(PackageManager::Bun, add(DependencyKind::Peer)),
+        "bun add --peer"
     );
     assert_eq!(
         rendered(PackageManager::Bun, Operation::Remove),
@@ -227,12 +273,52 @@ fn frozen_installs_differ_from_plain_installs_for_every_manager() {
     }
 }
 
+/// Four dependency maps, four distinct commands, for every manager.
+///
+/// `uf add --peer react` that quietly writes `dependencies` is worse than one
+/// that refuses: the manifest would say something nobody meant, and the next
+/// install would honour it.
 #[test]
-fn dev_adds_differ_from_production_adds_for_every_manager() {
+fn every_dependency_kind_maps_to_its_own_command_for_every_manager() {
     for manager in PackageManager::ALL {
-        let production = command_for(manager, Operation::Add { dev: false });
-        let development = command_for(manager, Operation::Add { dev: true });
-        assert_ne!(production, development, "{manager} ignores dev adds");
+        let mut seen: Vec<(DependencyKind, Invocation)> = Vec::new();
+        for kind in DependencyKind::ALL {
+            let invocation = command_for(manager, add(kind));
+            for (earlier, previous) in &seen {
+                assert_ne!(
+                    *previous, invocation,
+                    "{manager} spells {earlier:?} and {kind:?} the same way"
+                );
+            }
+            seen.push((kind, invocation));
+        }
+    }
+}
+
+/// And each one names the field it will write, which is the fact a caller
+/// reports and a reader checks.
+#[test]
+fn a_dependency_kind_names_its_manifest_field() {
+    assert_eq!(DependencyKind::Prod.manifest_field(), "dependencies");
+    assert_eq!(DependencyKind::Dev.manifest_field(), "devDependencies");
+    assert_eq!(
+        DependencyKind::Optional.manifest_field(),
+        "optionalDependencies"
+    );
+    assert_eq!(DependencyKind::Peer.manifest_field(), "peerDependencies");
+}
+
+/// The read-only operation is the only one that must not be told to ignore
+/// scripts, because it installs nothing and the flag is not its vocabulary.
+#[test]
+fn only_the_operations_that_install_can_run_scripts() {
+    for operation in Operation::ALL {
+        let installs = operation.installs_packages();
+        let expected = !matches!(
+            operation,
+            Operation::Run { .. } | Operation::Exec | Operation::DlxExec | Operation::Why
+        );
+        assert_eq!(installs, expected, "{operation:?}");
     }
 }
 

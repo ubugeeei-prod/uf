@@ -147,12 +147,14 @@ snapshots, coverage and a
 than `vitest run` on that suite (1.96 s), it runs on Node.js as well as Bun,
 and it runs Flow — `bun test` has no `component` or `hook` syntax at all.
 
-**Package management.** `uf install` does not implement one: it detects the
-project's package manager and runs it, refusing a manifest that declares npm
-scripts. `uf_pm`'s operation table names ten commands and the CLI ships one —
-no `uf add`, no `uf remove`, no frozen install for CI
-([#287](https://github.com/ubugeeei-prod/uf/issues/287)). Bun's installer is a
-finished product; uf's is a policy in front of yours.
+**Package management.** uf does not implement one: `uf install`, `uf add`,
+`uf remove`, `uf update` and `uf why` each detect the project's package manager
+and run it, refusing a manifest that declares npm scripts and passing
+`--ignore-scripts` to whatever runs. `uf install --frozen-lockfile` is the CI
+install. Bun's installer is a finished product — a resolver, a global cache, a
+lockfile format, `bun outdated`, `bun audit`, `bun patch`, catalogs; uf's is a
+policy in front of yours, and deliberately: writing a resolver would make uf
+the chokepoint every ecosystem upgrade has to pass through.
 
 ## And Vite+
 
