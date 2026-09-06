@@ -30,6 +30,7 @@ import path from "node:path";
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
 
+import { reportRenderError } from "./internal/events.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -43,6 +44,7 @@ import {
   refreshRuntimeSource,
 } from "./internal/refresh.js";
 import {
+  RESERVED,
   VIRTUAL,
   clientModuleSource,
   routesModuleSource,
@@ -246,9 +248,19 @@ function flowPlugin({ routerRoot, appEntry, command }) {
         service = null;
       });
 
-      // A page or layout appearing or disappearing changes the route table,
+      // A reserved file appearing or disappearing changes the route table,
       // which lives in a virtual module the watcher knows nothing about.
-      const reserved = /\/_uf\.(page|layout|middleware|not-found)(\.[a-z]+)?\.(js|jsx|mdx)$/;
+      //
+      // Built from `RESERVED` rather than written out. It used to be the
+      // literal `(page|layout|middleware|not-found)`, which is a fourth
+      // spelling of a grammar that already has three, and it was already
+      // missing `route` — so adding a route handler to a running dev server
+      // did not rebuild the table and the handler stayed invisible until a
+      // restart. A list that has to match another list has to be that list.
+      const stems = Object.values(RESERVED)
+        .map((stem) => stem.replaceAll(".", "\\."))
+        .join("|");
+      const reserved = new RegExp(`/(${stems})(\\.[a-z]+)?\\.(js|jsx|mdx)$`);
       const onRouteFile = (file) => {
         if (!reserved.test(file) || !file.startsWith(appRoot)) return;
         const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
@@ -272,6 +284,7 @@ function flowPlugin({ routerRoot, appEntry, command }) {
               styles: [],
               preloads: [],
             });
+            if (result.error != null) reportRenderError(devServer, url, result.error);
             const html = await devServer.transformIndexHtml(url, result.html);
             response.statusCode = result.status;
             response.setHeader("Content-Type", "text/html; charset=utf-8");

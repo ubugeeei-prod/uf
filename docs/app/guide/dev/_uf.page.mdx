@@ -77,6 +77,13 @@ uf: listening on http://127.0.0.1:8080
 
 Building one needs `bun` installed; running one needs nothing at all.
 
+It is not the only way to serve a build, and it is the most self-contained of
+three: `uf preview` checks a build through Vite's own server before you deploy
+it, and `uf start` serves the same build over uf's server on a host that
+already has a JavaScript runtime. All three answer identically — that is the
+point of having more than one — and [Commands](/reference/cli) says which to
+reach for.
+
 ## Reaching past uf
 
 uf generates the Vite config; it does not hide it. A `plugins` array at the top

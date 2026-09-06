@@ -45,8 +45,8 @@ table, and the config handed to Vite. `--json` for the machine-readable form.
 ### uf explain COMMAND
 
 Says what a command will do and **which provider does each part** — `dev`,
-`build`, `doc`, `test`, `fmt`, `lint` or `check`. `--json` for the machine-readable
-form.
+`build`, `preview`, `start`, `doc`, `test`, `fmt`, `lint` or `check`. `--json`
+for the machine-readable form.
 
 ```
 uf dev
@@ -88,14 +88,81 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 ### uf build
 
 Builds the client and server bundles and prerenders what can be prerendered.
-`--size-report` prints the cost of each chunk.
+`--size-report` prints the cost of each chunk. `--compile` writes one more
+thing — a single executable file that serves the whole application — which is
+described under [uf build --compile](#uf-build---compile) below, beside the two
+other ways to serve a build.
 
-`--compile` writes one more thing: `dist/NAME`, a single executable file that
-serves the application. It answers with the prerendered documents, the hashed
-assets, the route handlers, and a fresh render for any route that could not be
-prerendered — all of it inside the file, so the file can be copied into an empty
-directory on an empty machine and started. `--port` and `PORT` choose the port,
-`--host` and `HOST` the address.
+### Serving a build
+
+Three commands serve what `uf build` wrote. They are not alternatives you pick
+by taste; they differ in what has to be installed on the machine that answers
+the request.
+
+| Command | Server | The host needs | Use it to |
+| --- | --- | --- | --- |
+| `uf preview` | Vite's preview server | the project, its dependencies and Vite | check a build on your own machine |
+| `uf start` | uf's own `node:http` server | a JavaScript host, `node_modules`, and the build | deploy to a host you install onto |
+| `uf build --compile` | that server, inside the executable | nothing at all | deploy one file |
+
+What they must *not* differ in is the answer, and they do not: an asset or a
+prerendered document is served first, then a route handler is offered the
+request for any method, and anything left is rendered. That order is Vite's
+rather than a preference — its preview server runs its own file middleware
+before anything uf mounts behind it — so `uf start` matches `uf preview` and a
+compiled binary matches both. A route that works when you check it works when
+you deploy it, whichever of the three you deployed with.
+
+### uf preview
+
+Serves the build through Vite's own preview server, on 4173. It is the step
+between `uf build` and deploying: the one place you find out that what worked
+in `uf dev` also works bundled, minified, hashed and served from `dist/`.
+
+It serves the *whole* build, not only the files. Vite's preview server is a
+static file server, and a uf application is more than static files — a route
+handler answers a `POST`, and a route with parameters and no
+`generateStaticParams` was never prerendered — so uf's request handler is
+mounted behind Vite's, and both are answered. Anything you set under `vite.preview`
+in `uf.config.js` — `proxy`, `https`, `headers`, `cors` — is in effect, because
+this is Vite's server.
+
+`--port PORT` binds that port or fails, the same rule `uf dev` follows.
+`--host HOST` needs a non-empty `dev.allowedHosts`, because Vite validates a
+preview's `Host` header against it and a preview bound to a routable address
+with nothing allowed would refuse every request.
+
+### uf start
+
+Serves the same build through uf's own server, with **no bundler in the
+process**. This is what a deployment runs: a host serving a built application
+should not need the tool that built it.
+
+It answers exactly what `uf preview` answers — one request handler, two front
+doors — so a route that works when you check it works when you deploy it.
+Static files from `dist/` first, then route handlers, then a render for
+anything the build did not prerender.
+
+Binds `0.0.0.0:3000`, and reads `HOST` and `PORT` from the environment, which
+is how a container or a process manager says which socket to take. `--host` and
+`--port` override both, and the port you name is the port it binds or it does
+not start.
+
+### uf build --compile
+
+Writes `dist/NAME`, a single executable file that serves the application, in
+addition to everything `uf build` already wrote. It answers with the
+prerendered documents, the hashed assets, the route handlers, and a fresh
+render for any route that could not be prerendered — all of it inside the file,
+so the file can be copied into an empty directory on an empty machine and
+started. `--port` and `PORT` choose the port, `--host` and `HOST` the address,
+the same way `uf start` reads them.
+
+The difference from `uf start` is only what the host must already have. `uf
+start` reads `dist/` and `.uf/build/server` from disk and needs a JavaScript
+host to run on; a compiled binary carries both, and needs nothing — which is
+also the trade, because the copy inside it is fixed at build time and changing
+a single asset means building again.
 
 Producing one needs `bun` on PATH, because Bun's runtime is what gets embedded;
 running one needs nothing. A project that imports a native `.node` addon cannot

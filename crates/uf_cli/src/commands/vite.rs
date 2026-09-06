@@ -166,11 +166,17 @@ pub(crate) enum Event {
     Phase { name: String },
     /// A line from Vite's logger, or anything else the driver printed.
     Log { level: LogLevel, message: String },
-    /// The dev server is up.
+    /// A server is up: `dev`, `preview` or `start`.
+    ///
+    /// `handlers` is empty for `uf dev`, which reports page routes only. The
+    /// two servers that serve a *build* report both, because a route handler
+    /// silently absent from a build is the failure they were written to make
+    /// visible, and a count of zero is the thing to look at when it is.
     Listening {
         local: Vec<String>,
         network: Vec<String>,
         routes: Vec<String>,
+        handlers: Vec<String>,
     },
     /// One page was prerendered.
     Page {
@@ -179,6 +185,13 @@ pub(crate) enum Event {
         status: u16,
         bytes: u64,
     },
+    /// One route did not prerender.
+    ///
+    /// Not [`Self::Error`], which ends the command: the build carries on and
+    /// writes the routes that did render, then fails once with all of them
+    /// named. A page that throws is one page's problem until the build is
+    /// over, and the reader needs the whole list rather than the first item.
+    PageFailed { url: String, error: DriverError },
     /// A build finished.
     Done { out_dir: String, pages: u64 },
     /// The JSON projection of the config, from `driver config`.
@@ -229,6 +242,15 @@ impl Event {
                 .unwrap_or_default()
         };
         let number = |key: &str| value.get(key).and_then(Value::as_u64);
+        // Two events carry a failure, and they are the same shape because
+        // `errorEvent` in the driver builds both.
+        let failure = || DriverError {
+            message: text("message").unwrap_or_else(|| String::from("the driver failed")),
+            file: text("file"),
+            line: number("line").and_then(|n| usize::try_from(n).ok()),
+            column: number("column").and_then(|n| usize::try_from(n).ok()),
+            frame: text("frame"),
+        };
         match value.get("event").and_then(Value::as_str) {
             Some("config-loaded") => Self::ConfigLoaded { file: text("file") },
             Some("phase") => Self::Phase {
@@ -246,12 +268,17 @@ impl Event {
                 local: list("local"),
                 network: list("network"),
                 routes: list("routes"),
+                handlers: list("handlers"),
             },
             Some("page") => Self::Page {
                 url: text("url").unwrap_or_default(),
                 file: text("file").unwrap_or_default(),
                 status: u16::try_from(number("status").unwrap_or(200)).unwrap_or(200),
                 bytes: number("bytes").unwrap_or(0),
+            },
+            Some("page-failed") => Self::PageFailed {
+                url: text("url").unwrap_or_default(),
+                error: failure(),
             },
             Some("done") => Self::Done {
                 out_dir: text("outDir").unwrap_or_default(),
@@ -260,13 +287,7 @@ impl Event {
             Some("config") => Self::Config {
                 config: value.get("config").cloned().unwrap_or(Value::Null),
             },
-            Some("error") => Self::Error(DriverError {
-                message: text("message").unwrap_or_else(|| String::from("the driver failed")),
-                file: text("file"),
-                line: number("line").and_then(|n| usize::try_from(n).ok()),
-                column: number("column").and_then(|n| usize::try_from(n).ok()),
-                frame: text("frame"),
-            }),
+            Some("error") => Self::Error(failure()),
             _ => Self::Log {
                 level: LogLevel::Info,
                 message: line.trim().to_owned(),
@@ -456,6 +477,22 @@ mod tests {
                 local: vec![String::from("http://127.0.0.1:5173/")],
                 network: vec![],
                 routes: vec![String::from("/"), String::from("/docs")],
+                handlers: vec![],
+            }
+        );
+        // `uf preview` and `uf start` report the handler table as well, and
+        // `uf dev` does not, so its absence has to mean "none" rather than
+        // failing to parse the event that has it.
+        let event = Event::parse(
+            r#"{"event":"listening","local":[],"network":[],"routes":["/"],"handlers":["/api/health"]}"#,
+        );
+        assert_eq!(
+            event,
+            Event::Listening {
+                local: vec![],
+                network: vec![],
+                routes: vec![String::from("/")],
+                handlers: vec![String::from("/api/health")],
             }
         );
         let event = Event::parse(

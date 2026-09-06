@@ -2,12 +2,14 @@
 //
 // Plain JavaScript: the host runs this file directly.
 //
-// The driver `uf dev`, `uf build` and `uf preview` spawn.
+// The driver `uf dev`, `uf build`, `uf build --compile`, `uf preview` and
+// `uf start` spawn.
 //
 //   <host> driver.js dev     --root <dir> [--host <h>] [--port <n>] [--strict-port]
 //   <host> driver.js build   --root <dir> [--out-dir <dir>] [--mode <m>]
 //   <host> driver.js compile --root <dir> [--out-dir <dir>] --assets <file> --bundle <dir>
-//   <host> driver.js preview --root <dir> [--host <h>] [--port <n>]
+//   <host> driver.js preview --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
+//   <host> driver.js start   --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js config  --root <dir>
 //
 // `uf` in Rust owns the terminal; this process owns Vite. They talk over
@@ -19,15 +21,24 @@
 // Rust side reads a config that may hold functions and plugin instances: the
 // one host that can evaluate the file evaluates it.
 
+import { createServer as createHttpServer } from "node:http";
 import { register } from "node:module";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { emit, errorEvent, eventLogger } from "./internal/events.js";
+import { emit, errorEvent, eventLogger, reportRenderError } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
+import {
+  assetsFromManifest,
+  createServeHandler,
+  loadBuild,
+  nodeListener,
+  send,
+  toRequest,
+} from "./internal/serve.js";
 
 function argument(name) {
   const at = process.argv.indexOf(name);
@@ -60,7 +71,7 @@ process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();
 
-const commands = { dev, build, compile, preview, config: printConfig };
+const commands = { dev, build, compile, preview, start, config: printConfig };
 const run = commands[command];
 if (run == null) {
   emit("error", { message: `unknown driver command ${JSON.stringify(command)}` });
@@ -112,7 +123,17 @@ async function viteConfig(config, mode) {
         deny: dev.fs?.deny,
       },
     },
-    preview: { host, port },
+    // Not `server`, and not `dev.port` either. Vite's own default for a
+    // preview is 4173 rather than 5173, and the reason is the case this
+    // command exists for: somebody comparing a build against the dev server
+    // they left running. Taking `dev.port` would have made the two collide,
+    // and Vite would have moved the preview to the next free port and served
+    // it somewhere nobody was looking.
+    preview: {
+      host: argument("--host") ?? "127.0.0.1",
+      port: Number(argument("--port") ?? 4173),
+      strictPort: flag("--strict-port"),
+    },
     build: {
       outDir: argument("--out-dir") ?? build.outDir ?? "dist",
       sourcemap: build.sourcemap ?? true,
@@ -182,6 +203,7 @@ async function dev() {
       }
 
       const result = await entry.render(url, assets);
+      if (result.error != null) reportRenderError(server, url, result.error);
       const html = await server.transformIndexHtml(url, result.html);
       response.statusCode = result.status ?? 200;
       response.setHeader("content-type", "text/html; charset=utf-8");
@@ -212,70 +234,115 @@ async function dev() {
 }
 
 /**
- * A Node request as a `Request`.
+ * The preview server: the build, as Vite serves it.
  *
- * The handler contract is the platform's, so the adapter belongs here rather
- * than in every handler. The body is read as a stream where the host supports
- * it, because a handler that accepts an upload should not need the whole thing
- * buffered before it starts.
+ * Vite's `preview()` is a static file server, and a uf build is not only
+ * static files — a route handler answers a `POST` and a route with parameters
+ * and no `generateStaticParams` was never prerendered. On its own it would
+ * therefore 404 every request the interesting half of an application exists to
+ * answer, which is worse than having no preview at all, because a preview is
+ * checked and believed.
+ *
+ * So the application handler is mounted behind it, and `appType: "custom"` is
+ * what makes that reachable: with Vite's default `spa` it inserts an
+ * index.html fallback and a 404 middleware of its own, so every unmatched path
+ * would have been answered with the home page — a 200 for a path that does not
+ * exist — before anything of uf's ran.
+ *
+ * The static middleware still runs first, and that is deliberate rather than
+ * incidental; see `internal/serve.js` for why `uf start` orders itself the
+ * same way.
  */
-async function toRequest(incoming, config) {
-  const host = incoming.headers.host ?? "localhost";
-  const protocol = config?.server?.https == null ? "http" : "https";
-  const url = new URL(incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${host}`);
-
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(incoming.headers)) {
-    if (value == null) continue;
-    for (const entry of Array.isArray(value) ? value : [value]) {
-      headers.append(name, entry);
-    }
-  }
-
-  const method = (incoming.method ?? "GET").toUpperCase();
-  const init = { method, headers };
-  if (method !== "GET" && method !== "HEAD") {
-    // `duplex` is required by the specification whenever a body is a stream,
-    // and Node throws without it.
-    init.body = incoming;
-    init.duplex = "half";
-  }
-  return new Request(url, init);
-}
-
-/** Write a `Response` to a Node response. */
-async function send(outgoing, result) {
-  outgoing.statusCode = result.status;
-  if (result.statusText !== "") {
-    outgoing.statusMessage = result.statusText;
-  }
-  for (const [name, value] of result.headers) {
-    outgoing.setHeader(name, value);
-  }
-  if (result.body == null) {
-    outgoing.end();
-    return;
-  }
-  // Streamed rather than buffered, so a handler returning a large or
-  // open-ended body is not read into memory first.
-  const reader = result.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    outgoing.write(value);
-  }
-  outgoing.end();
-}
-
 async function preview() {
   const { preview: startPreview } = await import("vite");
   const config = await loadConfig();
-  const server = await startPreview(await viteConfig(config, "production"));
+  const inline = await viteConfig(config, "production");
+  const build = await loadBuild({
+    root,
+    outDir: inline.build.outDir,
+    serverDir: path.join(".uf", "build", "server"),
+  });
+
+  const server = await startPreview({ ...inline, appType: "custom" });
+  const handle = createServeHandler(build);
+  server.middlewares.use(async (request, response, next) => {
+    try {
+      await send(response, await handle(await toRequest(request, server.config)));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   const urls = server.resolvedUrls ?? { local: [], network: [] };
-  emit("listening", { local: urls.local, network: urls.network, routes: [] });
+  emit("listening", {
+    local: urls.local,
+    network: urls.network,
+    routes: build.entry.routes.map((route) => route.path),
+    handlers: build.entry.handlers.map((handler) => handler.path),
+  });
+
   const shutdown = async () => {
     await server.close();
     process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+/**
+ * The production server: the build, with no bundler in the process.
+ *
+ * `preview` proves the build works through Vite. This is the thing that is
+ * actually deployed, and it imports `vite` nowhere — a host running a built
+ * application should not need the bundler that produced it, and the moment it
+ * does, "portable output" is a claim rather than a property.
+ *
+ * There is no `--strict-port` here and there is nothing to add: this server
+ * binds the port it was given or fails, where Vite's would have quietly moved
+ * to the next free one. `PORT` and `HOST` are read from the environment
+ * because that is how every process manager and container platform says which
+ * socket to take, and a production server that could only be told on the
+ * command line would need a wrapper script everywhere it ran.
+ *
+ * It is not the only thing that can be deployed. `uf build --compile` puts
+ * this same application behind this same resolution order inside a single
+ * executable, for a host that should not have to have a JavaScript runtime
+ * installed at all; see [`compile`] for what that costs and what it shares.
+ */
+async function start() {
+  const config = await loadConfig();
+  const outDir = argument("--out-dir") ?? config.build?.outDir ?? "dist";
+  const build = await loadBuild({
+    root,
+    outDir,
+    serverDir: path.join(".uf", "build", "server"),
+  });
+
+  const host = argument("--host") ?? process.env.HOST ?? "0.0.0.0";
+  const port = Number(argument("--port") ?? process.env.PORT ?? 3000);
+  const server = createHttpServer(nodeListener(createServeHandler(build)));
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
+
+  const bound = server.address();
+  // `0.0.0.0` is not a URL anybody can open, so the loopback spelling is what
+  // is printed as `local` and the bound address is reported as the network
+  // one — the same split `uf dev` prints, and for the same reason: one of the
+  // two is a link and the other is a fact about the socket.
+  const shown = `${bound.address}:${bound.port}`;
+  const wildcard = bound.address === "0.0.0.0" || bound.address === "::";
+  emit("listening", {
+    local: [`http://${wildcard ? `localhost:${bound.port}` : shown}/`],
+    network: wildcard ? [`http://${shown}/`] : [],
+    routes: build.entry.routes.map((route) => route.path),
+    handlers: build.entry.handlers.map((handler) => handler.path),
+  });
+
+  const shutdown = () => {
+    server.close(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
@@ -325,8 +392,34 @@ async function build() {
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
   const assets = assetsFromManifest(manifest);
   const pages = await staticPaths(server.routes);
+
+  // A route that throws fails *that route*, and the rest of the build still
+  // happens. This loop had no `try`: the first page to throw rejected out of
+  // `build()`, `run().catch` reported the exception, and which URL was being
+  // rendered was a local variable nobody could see. One broken page was the
+  // whole build, and the message named a stack rather than a route.
+  //
+  // The render itself no longer throws for an ordinary component failure —
+  // `createRenderer` renders the error boundary and reports the exception on
+  // the result — so both are checked here. Neither writes a file: an error
+  // page written into `dist/` is a build that shipped its own failure.
+  const failures = [];
+  const failed = (url, error) => {
+    failures.push(url);
+    emit("page-failed", { url, ...errorEvent(error) });
+  };
   for (const url of pages) {
-    const result = await server.render(url, assets);
+    let result;
+    try {
+      result = await server.render(url, assets);
+    } catch (error) {
+      failed(url, error);
+      continue;
+    }
+    if (result.error != null) {
+      failed(url, result.error);
+      continue;
+    }
     const file = htmlPathFor(outDir, url);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, result.html);
@@ -337,7 +430,17 @@ async function build() {
       bytes: Buffer.byteLength(result.html),
     });
   }
-  if (server.notFound != null) {
+  // One `404.html`, from the boundary at the router root: a static host serves
+  // a single error document for the whole site, so the nested boundaries a
+  // project declares are the server's and the client's to render, not
+  // something this loop can write a file for.
+  //
+  // The condition is "there is a root boundary", not "there is any boundary",
+  // because `/__uf_not_found__` is a path at the root: a project whose only
+  // `_uf.not-found.js` is in `app/guide/` would otherwise get a `404.html`
+  // rendered from the framework's bare default, which is worse than the file
+  // it used to write, which was none.
+  if (server.notFound.some((boundary) => boundary.path === "/")) {
     const result = await server.render("/__uf_not_found__", assets);
     const file = path.join(outDir, "404.html");
     writeFileSync(file, result.html);
@@ -347,6 +450,23 @@ async function build() {
       status: 404,
       bytes: Buffer.byteLength(result.html),
     });
+  }
+
+  if (failures.length > 0) {
+    // Emitted rather than thrown, so the message is the routes and not the
+    // last exception: each one has already been reported with its own frame.
+    //
+    // The first line stands on its own, because it is the one `uf build` uses
+    // as the headline and the one a CI log's last line will be. It read
+    // `... failed:` with the routes below it, and the headline was then a
+    // sentence ending in a colon and nothing.
+    emit("error", {
+      message: `${failures.length} of ${pages.length} prerendered ${plural(
+        pages.length,
+        "route",
+      )} failed\n${failures.map((url) => `  ${url}`).join("\n")}`,
+    });
+    process.exit(1);
   }
 
   emit("done", { outDir: path.relative(root, outDir), pages: pages.length });
@@ -374,6 +494,29 @@ async function build() {
  * `uf_bundle::embed`) and passes its path in `--assets`, because walking an
  * output directory and encoding every file in it is bulk work over the whole
  * build, which belongs in Rust rather than in the host process.
+ *
+ * # Three front doors onto one build, and why they are not one function
+ *
+ * `preview` and `start` above serve `dist/` from disk, and they share a single
+ * handler in `./internal/serve.js` for the express purpose of being unable to
+ * answer differently. What is linked here is a third front door onto the same
+ * build, and it deliberately does *not* import that module. Two reasons, and
+ * either would be enough: `internal/serve.js` answers by opening files under
+ * `dist/`, and a compiled binary has no `dist/` to open — it carries the bytes
+ * — so the half that reads a request would arrive with a half that cannot run;
+ * and it lives in `@uniflowed/vite`, so linking it would put the package named
+ * after the bundler inside the artefact a deployment runs, which is the one
+ * thing `start` exists to avoid.
+ *
+ * What a binary uses instead is `@uniflowed/server/standalone`, and the thing
+ * that is shared between the three is not code but the *answer*: an asset or a
+ * prerendered document first, then a route handler, then a render for whatever
+ * is left. That order is not a preference. `preview` cannot deviate from it —
+ * Vite's preview server runs its own file middleware before anything uf mounts
+ * behind it — so `start` matches Vite, and the binary matches `start`. A
+ * compiled application that resolved a collision the other way would be the
+ * trap `preview` exists to prevent, one deployment further along, and the only
+ * copy nobody can check with `uf preview` first.
  */
 async function compile() {
   const vite = await import("vite");
@@ -486,6 +629,11 @@ function nativeAddonGuard() {
   };
 }
 
+/** `word`, pluralised for `count`. */
+function plural(count, word) {
+  return count === 1 ? word : `${word}s`;
+}
+
 async function printConfig() {
   const config = await loadConfig();
   emit("config", { config: projectConfig(config) });
@@ -496,64 +644,6 @@ function readManifest(outDir) {
   const file = path.join(outDir, ".vite", "manifest.json");
   if (!existsSync(file)) throw new Error(`uf: the client build wrote no manifest at ${file}`);
   return JSON.parse(readFileSync(file, "utf8"));
-}
-
-/**
- * Script, stylesheet and preload URLs for the client entry chunk.
- *
- * The entry is found by its `isEntry` flag rather than by key, because a
- * virtual module's manifest key is an implementation detail of the bundler.
- */
-/**
- * The tags a prerendered document needs.
- *
- * Two walks over the manifest, because the two answers are different. A
- * `modulepreload` is worth emitting only for a chunk this document will
- * certainly load, which is the entry's *static* imports. A stylesheet has to
- * be emitted for anything the page might render, and the router loads every
- * route module dynamically — so a stylesheet imported by a layout is reached
- * through `dynamicImports` and through nothing else. Following only the static
- * graph, as this did, meant a layout could import a stylesheet and the built
- * HTML would silently ship without it.
- *
- * The cost is that a project with per-route stylesheets links all of them on
- * every page. Narrowing that needs the route table to say which chunk each
- * route came from, which the manifest alone cannot tell us.
- */
-function assetsFromManifest(manifest) {
-  const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
-  if (entry == null) throw new Error("uf: the client manifest has no entry chunk");
-
-  const styles = new Set(entry.css ?? []);
-  const seen = new Set();
-  const collectStyles = (chunk) => {
-    for (const imported of [...(chunk.imports ?? []), ...(chunk.dynamicImports ?? [])]) {
-      if (seen.has(imported)) continue;
-      seen.add(imported);
-      const dependency = manifest[imported];
-      if (dependency == null) continue;
-      for (const css of dependency.css ?? []) styles.add(css);
-      collectStyles(dependency);
-    }
-  };
-  collectStyles(entry);
-
-  const preloads = new Set();
-  const collectPreloads = (chunk) => {
-    for (const imported of chunk.imports ?? []) {
-      const dependency = manifest[imported];
-      if (dependency == null || preloads.has(dependency.file)) continue;
-      preloads.add(dependency.file);
-      collectPreloads(dependency);
-    }
-  };
-  collectPreloads(entry);
-
-  return {
-    scripts: [`/${entry.file}`],
-    styles: [...styles].map((file) => `/${file}`),
-    preloads: [...preloads].map((file) => `/${file}`),
-  };
 }
 
 /**

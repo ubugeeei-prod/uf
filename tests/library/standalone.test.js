@@ -11,10 +11,17 @@
 // socket at all — the handler is the whole of the request path and the socket
 // is only how bytes reach it.
 //
-// The order the handler resolves things in is the subject of most of these:
-// asset, then handler, then prerendered document, then render. Every one of
+// The order the handler resolves things in is the subject of most of these: a
+// file `uf build` already wrote — an embedded asset, or the prerendered
+// document for this URL — then a route handler, then a render. Every one of
 // those steps can shadow the next, and a shadow in the wrong direction is how
 // a route handler stops answering or a page starts being served for `POST`.
+//
+// It is also the order `uf preview` and `uf start` resolve in, and it is not
+// this module's to choose: `uf preview` is Vite's own server, which serves a
+// file before anything uf mounts behind it. So the assertions below are the
+// same assertions `serve.test.js` makes about the other two, written against
+// the handler that has the files inside it rather than on disk.
 
 import { Buffer } from "node:buffer";
 
@@ -190,6 +197,34 @@ describe("route handlers", () => {
   it("offers every request to the dispatcher before rendering", async () => {
     const { asked } = await request("GET", "/guide/dynamic");
     expect(asked.dispatched).toEqual(["GET /guide/dynamic"]);
+  });
+
+  it("does not shadow a page the build already prerendered", async () => {
+    // The router lets `_uf.route.js` sit beside `_uf.page.js`, so one path can
+    // have both a handler and a prerendered document. Vite's preview server
+    // serves the file first and gives uf no say in it, so a compiled binary
+    // that let the handler win would answer one way when the build was checked
+    // with `uf preview` and another way once it was deployed. See
+    // `@uniflowed/vite`'s `internal/serve.js`.
+    const dispatched = [];
+    const handle = createHandler({
+      app: {
+        render: async () => ({ status: 200, html: "<!doctype html><p>rendered</p>" }),
+        dispatch: async (request: Request) => {
+          dispatched.push(new URL(request.url).pathname);
+          return new Response("handled", { status: 201 });
+        },
+      },
+      assets,
+      document,
+    });
+
+    const response = recorder();
+    await handle({ method: "GET", url: "/guide/", headers: { host: "example.test" } }, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body()).toBe("<!doctype html><p>prerendered guide</p>");
+    expect(dispatched).toEqual([]);
   });
 
   it("refuses a POST to a page instead of rendering one", async () => {

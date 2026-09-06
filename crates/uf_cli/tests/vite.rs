@@ -1,14 +1,25 @@
-//! `uf build` and `uf dev` end to end, through Vite on the real driver.
+//! `uf build`, `uf build --compile`, `uf dev`, `uf preview` and `uf start` end
+//! to end, through Vite on the real driver.
 //!
-//! The fixture is this repository's own docs site: a uf project whose
+//! Two fixtures, because they answer different questions.
+//!
+//! The first is this repository's own docs site: a uf project whose
 //! `@uniflowed/*` dependencies resolve to `packages/` through the npm
 //! workspace. Building it exercises everything a user's build does — Flow
 //! through `uf transform`, the route table, the client and server bundles,
 //! prerendering — with no mocks anywhere.
 //!
+//! The second is `tests/fixtures/served-app`, and it exists because the docs
+//! site is a *static* site: it has no route handler and no route with
+//! parameters, so serving it proves only that files can be served. The
+//! fixture has one of each, and they are exactly the two things `uf build`
+//! produced and nothing could reach.
+//!
 //! The tests skip, loudly, when Node or the workspace's `node_modules` are
 //! absent, so a checkout that never ran `npm ci` still passes `cargo test`
 //! and a CI runner that forgot to will say so rather than silently cover less.
+//! `uf build --compile` needs Bun as well, and skips on the same terms; see
+//! [`bun_ready`].
 
 mod support;
 
@@ -25,6 +36,11 @@ use support::{assert_plain, uf, uf_path};
 /// The repository's `docs/` directory.
 fn docs_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs")
+}
+
+/// The application that has a route handler and an unprerendered route.
+fn served_app_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/served-app")
 }
 
 /// Whether the fixture can be built here: Node on PATH and the workspace
@@ -178,6 +194,124 @@ fn build_renders_the_docs_site_through_vite() {
     assert!(root.join("router.js").exists());
 }
 
+/// A project with one page that throws, built under `target/`.
+///
+/// Under `target/` on purpose rather than in a `tests/fixtures` directory:
+/// `@uniflowed/*`, `react` and `react-dom` are resolved by walking up to the
+/// workspace's `node_modules`, so the project has to be inside the repository
+/// — and everything inside it that is not `target/` is linted, formatted and
+/// scanned for tests by uf's own tasks, which would report this page's
+/// deliberate throw as this repository's defect.
+fn project_with_a_throwing_page() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/throwing-page");
+    fs::remove_dir_all(&root).ok();
+    for (relative, contents) in [
+        (
+            "package.json",
+            r#"{ "name": "uf-throwing-page", "private": true, "type": "module" }
+"#,
+        ),
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: { router: { entry: "app.js", root: "app" } },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+export default component Home() {
+  return <h1>the home page rendered</h1>;
+}
+"#,
+        ),
+        (
+            "app/fine/_uf.page.js",
+            r#"// @flow
+export default component Fine() {
+  return <h1>this page is fine</h1>;
+}
+"#,
+        ),
+        (
+            "app/broken/_uf.page.js",
+            r#"// @flow
+export default component Broken() {
+  throw new Error("this page throws on purpose");
+}
+"#,
+        ),
+    ] {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, contents).unwrap();
+    }
+    root
+}
+
+/// A page that throws fails its own route, and nothing else.
+///
+/// Three assertions because they are one behaviour: the build fails, it says
+/// which URL threw, and the routes that did render are still written. Before
+/// this the prerender loop had no `try` — the first page to throw rejected out
+/// of the driver, the message named the exception rather than the route, and
+/// no page after it was written. See ubugeeei-prod/uf#257.
+#[test]
+fn a_page_that_throws_fails_its_route_and_not_the_others() {
+    if !fixture_ready() {
+        return;
+    }
+    let root = project_with_a_throwing_page();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let said = format!("{stdout}{stderr}");
+    assert!(
+        !output.status.success(),
+        "a route that throws must fail the build:\n{said}"
+    );
+    assert!(
+        said.contains("/broken"),
+        "the build must name the route that threw:\n{said}"
+    );
+    assert!(
+        said.contains("this page throws on purpose"),
+        "the build must say why the route failed:\n{said}"
+    );
+
+    // The other routes are still written: one broken page is one broken page.
+    let dist = root.join("dist");
+    assert!(
+        dist.join("index.html").is_file(),
+        "the home page was not written:\n{said}"
+    );
+    assert!(
+        dist.join("fine/index.html").is_file(),
+        "a route after the broken one was not written:\n{said}"
+    );
+    // And the broken one is not: an error page in `dist/` is a build that
+    // shipped its own failure.
+    assert!(
+        !dist.join("broken/index.html").exists(),
+        "the route that threw was written anyway:\n{said}"
+    );
+}
+
 /// Whether a loopback socket can be bound here.
 ///
 /// The same policy as [`fixture_ready`], for the same reason: a sandbox that
@@ -211,18 +345,21 @@ fn loopback_ready() -> bool {
 /// when the pipes close, which is when the child does — so the server has to be
 /// dropped inside the scope, or the scope waits for a process nobody killed.
 ///
-/// It drives `uf dev` and it drives a compiled binary. Neither test cares which
-/// process is listening, only that something is and that it can be made to
-/// explain itself when it is not.
-struct TestServer {
+/// It drives `uf dev`, it drives `uf preview` and `uf start`, and it drives a
+/// compiled binary. No test here cares which process is listening, only that
+/// something is and that it can be made to explain itself when it is not — so
+/// there are two ways in: [`Server::start`] for a `uf` subcommand, and
+/// [`Server::spawn`] for a command that is already built, which is the only
+/// shape a standalone binary comes in.
+struct Server {
     child: Child,
 }
 
-impl TestServer {
-    /// Start `uf dev` on `port`, draining what it says into `said`.
-    fn dev<'scope, 'env: 'scope>(
+impl Server {
+    /// Start `uf <args>` in `root`, draining what it says into `said`.
+    fn start<'scope, 'env: 'scope>(
         root: &Path,
-        port: u16,
+        args: &[&str],
         scope: &'scope std::thread::Scope<'scope, 'env>,
         said: &'env Mutex<String>,
     ) -> Self {
@@ -230,7 +367,7 @@ impl TestServer {
         command
             .arg("--cwd")
             .arg(root)
-            .args(["dev", "--port", &port.to_string()])
+            .args(args)
             .env_remove("NO_COLOR")
             .env("TERM", "xterm-256color");
         Self::spawn(command, scope, said)
@@ -283,7 +420,7 @@ impl TestServer {
     }
 }
 
-impl Drop for TestServer {
+impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
@@ -326,7 +463,8 @@ fn dev_serves_the_docs_site_through_vite() {
             // quietly found nothing ended the test before it asserted anything
             // — which is how a dev server that answered every request with
             // "Cannot GET /" passed it.
-            let mut server = TestServer::dev(&root, port, scope, &said);
+            let mut server =
+                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
             if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
                 assert_page(&mut server, port, &said, &body);
                 return true;
@@ -353,7 +491,7 @@ fn dev_serves_the_docs_site_through_vite() {
 }
 
 /// Everything the served page and the routes have to be, once one is served.
-fn assert_page(server: &mut TestServer, port: u16, said: &Mutex<String>, body: &str) {
+fn assert_page(server: &mut Server, port: u16, said: &Mutex<String>, body: &str) {
     assert!(
         body.starts_with("HTTP/1.1 200"),
         "the dev server must render the page, not 404:\n{body}"
@@ -383,6 +521,205 @@ fn assert_page(server: &mut TestServer, port: u16, said: &Mutex<String>, body: &
         missing.starts_with("HTTP/1.1 404"),
         "an unrouted path must be a 404:\n{missing}"
     );
+
+    // A missing page *inside* the manual is answered by the manual's own
+    // boundary, inside the manual's layout. `_uf.not-found.js` was read at the
+    // router root only, so this used to be the site's root 404 with the
+    // sidebar and the prose column gone. See ubugeeei-prod/uf#263.
+    let in_guide = get(server, port, "/guide/definitely-not-a-page/", said);
+    assert!(
+        in_guide.starts_with("HTTP/1.1 404"),
+        "a missing guide page must be a 404:\n{in_guide}"
+    );
+    assert!(
+        in_guide.contains("There is no such page in the manual."),
+        "`app/guide/_uf.not-found.js` did not answer a path under /guide:\n{in_guide}"
+    );
+    assert!(
+        in_guide.contains("class=\"manual\""),
+        "the guide's 404 rendered outside `app/guide/_uf.layout.js`:\n{in_guide}"
+    );
+
+    // And the nearest-ancestor rule the other way: `/reference` declares no
+    // boundary of its own, so it falls back to the site's root one — which is
+    // what worked before and has to keep working.
+    let in_reference = get(server, port, "/reference/definitely-not-a-page/", said);
+    assert!(
+        in_reference.starts_with("HTTP/1.1 404"),
+        "a missing reference page must be a 404:\n{in_reference}"
+    );
+    assert!(
+        in_reference.contains("There is no page here."),
+        "/reference has no boundary, so the root one answers it:\n{in_reference}"
+    );
+}
+
+/// Both servers, against an application whose interesting half is not static.
+///
+/// One test rather than two, and one build rather than two, because the thing
+/// being asserted is that `uf preview` and `uf start` *agree*: they are two
+/// commands because one has Vite in the loop and the other does not, and the
+/// moment their answers diverge the preview stops being worth running. Two
+/// tests would also have raced — both would have rebuilt the same `dist/`.
+#[test]
+fn preview_and_start_serve_the_whole_of_a_build() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let root = served_app_root();
+
+    let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "the fixture must build before it can be served\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    // The half a static host could already serve. Asserted here rather than
+    // taken on trust, because every "the server rendered it" assertion below
+    // is only interesting if the prerender is what did not happen.
+    assert!(root.join("dist/guide/index.html").is_file());
+    assert!(
+        !root.join("dist/posts").exists(),
+        "a route with parameters and no `generateStaticParams` must not be prerendered; \
+         if it were, `uf start` would be serving a file rather than rendering"
+    );
+
+    for command in ["preview", "start"] {
+        serve_and_assert(&root, command);
+    }
+}
+
+/// Start one of the two servers and ask it everything, retrying the port the
+/// way `dev_serves_the_docs_site_through_vite` does and for the same reason.
+fn serve_and_assert(root: &Path, command: &str) {
+    let mut refused = Vec::new();
+
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        // `uf start` binds every interface by default, which is right for a
+        // production server and wrong for a test on somebody's laptop.
+        let port_text = port.to_string();
+        let args: Vec<&str> = vec![command, "--host", "127.0.0.1", "--port", &port_text];
+
+        let served = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &args, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_served(&mut server, port, &said, &body, command);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "`uf {command}` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Everything a built application has to answer, whichever server is answering.
+///
+/// The four questions are the four halves of a uf build, and before `uf
+/// preview` and `uf start` existed a build could answer only the first two.
+fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &str, command: &str) {
+    let context = |what: &str, response: &str| {
+        format!("`uf {command}` {what}\n{response}\n{}", server_said(said))
+    };
+
+    // 1. The home page, prerendered to `dist/index.html`.
+    assert!(
+        body.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not serve the home page", body)
+    );
+    assert!(
+        body.contains("served-app home"),
+        "{}",
+        context("served something that is not the home page", body)
+    );
+    assert!(
+        body.contains("<script type=\"module\" src=\"/assets/"),
+        "{}",
+        context("served a document with no hydration script", body)
+    );
+
+    // 2. A nested route, prerendered to `dist/guide/index.html`.
+    let guide = get(server, port, "/guide/", said);
+    assert!(
+        guide.starts_with("HTTP/1.1 200") && guide.contains("served-app guide"),
+        "{}",
+        context("did not serve the nested route", &guide)
+    );
+
+    // 3. A route with a parameter and no `generateStaticParams`, which the
+    //    build wrote no file for: the only way this can be a 200 is a render
+    //    per request.
+    let post = get(server, port, "/posts/hello-world", said);
+    assert!(
+        post.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not render an unprerendered route", &post)
+    );
+    assert!(
+        post.contains("post: hello-world"),
+        "{}",
+        context("rendered the wrong route, or ignored the parameter", &post)
+    );
+
+    // 4. A route handler, for both the method a page could have answered and
+    //    the method only a handler can.
+    let health = get(server, port, "/api/health", said);
+    assert!(
+        health.starts_with("HTTP/1.1 200") && health.contains("\"status\":\"ok\""),
+        "{}",
+        context("did not answer the route handler's GET", &health)
+    );
+    let posted = http_request(
+        "127.0.0.1",
+        port,
+        "POST",
+        "/api/health",
+        Some("{\"name\":\"uf\"}"),
+    );
+    assert!(
+        posted.starts_with("HTTP/1.1 200") && posted.contains("\"echoed\":\"uf\""),
+        "{}",
+        context("did not answer the route handler's POST", &posted)
+    );
+
+    // And a path with no route is a 404 rather than somebody else's page —
+    // the failure Vite's own preview server has by default, where an SPA
+    // fallback answers every unmatched path with the home page and a 200.
+    let missing = get(server, port, "/definitely-not-a-page/", said);
+    assert!(
+        missing.starts_with("HTTP/1.1 404"),
+        "{}",
+        context(
+            "answered an unrouted path with something other than a 404",
+            &missing
+        )
+    );
+    assert!(
+        missing.contains("served-app has no such page"),
+        "{}",
+        context("did not serve the project's own not-found page", &missing)
+    );
+}
+
+fn server_said(said: &Mutex<String>) -> String {
+    said.lock()
+        .map_or_else(|_| "<the reader thread panicked>".to_owned(), |s| s.clone())
 }
 
 /// One request to a server that has already answered once, with the server's
@@ -391,7 +728,7 @@ fn assert_page(server: &mut TestServer, port: u16, said: &Mutex<String>, body: &
 /// The failure in ubugeeei-prod/uf#234 was here: `/` was served and then the
 /// port stopped listening, and `http_get`'s bare `expect` reported
 /// `ConnectionRefused` and nothing about the process that had refused it.
-fn get(server: &mut TestServer, port: u16, path: &str, said: &Mutex<String>) -> String {
+fn get(server: &mut Server, port: u16, path: &str, said: &Mutex<String>) -> String {
     if TcpStream::connect(("127.0.0.1", port)).is_err() {
         panic!(
             "the dev server answered `/` and then stopped listening, before {path}\n{}",
@@ -424,13 +761,35 @@ fn wait_for_http(port: u16, path: &str, budget: Duration) -> Option<String> {
 
 /// One plain HTTP/1.1 request, so the test depends on nothing but the server.
 fn http_get(host: &str, port: u16, path: &str) -> String {
-    let mut stream = TcpStream::connect((host, port)).expect("connect to the dev server");
+    http_request(host, port, "GET", path, None)
+}
+
+/// The same, for a method and a body — which is the half a route handler is
+/// the only thing that can answer, and therefore the half a build that serves
+/// only files gets wrong.
+fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&str>) -> String {
+    let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
     stream
         .set_read_timeout(Some(Duration::from_secs(60)))
         .unwrap();
+    // The body's headers only when there is a body: a `GET` carrying
+    // `Content-Length: 0` is legal and is still not the request a browser
+    // makes, and this is the request every other assertion here is made about.
+    let entity = body.map_or_else(String::new, |body| {
+        format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+    });
     write!(
         stream,
-        "GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\nConnection: close\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\n\
+         Connection: close\r\n{}",
+        if entity.is_empty() {
+            String::from("\r\n")
+        } else {
+            entity
+        }
     )
     .unwrap();
     let mut response = String::new();
@@ -549,7 +908,7 @@ fn compile_writes_one_file_that_serves_the_site_from_an_empty_directory() {
             command
                 .current_dir(empty.path())
                 .args(["--port", &port.to_string()]);
-            let mut server = TestServer::spawn(command, scope, &said);
+            let mut server = Server::spawn(command, scope, &said);
             if let Some(body) = wait_for_http(port, "/", Duration::from_secs(60)) {
                 assert_compiled_site(&mut server, port, &said, &body);
                 let said = said.lock().unwrap();
@@ -598,7 +957,7 @@ fn run_briefly(binary: &Path, cwd: &Path) -> String {
     std::thread::scope(|scope| {
         let mut command = Command::new(binary);
         command.current_dir(cwd).args(["--port", "0"]);
-        let mut server = TestServer::spawn(command, scope, &said);
+        let mut server = Server::spawn(command, scope, &said);
         let deadline = Instant::now() + Duration::from_secs(30);
         while Instant::now() < deadline {
             if said
@@ -620,7 +979,7 @@ fn run_briefly(binary: &Path, cwd: &Path) -> String {
 /// Four things, and each one is a different part of the file: the prerendered
 /// document, an embedded asset, a route the router has to resolve, and a path
 /// that must not be answered with somebody else's page.
-fn assert_compiled_site(server: &mut TestServer, port: u16, said: &Mutex<String>, body: &str) {
+fn assert_compiled_site(server: &mut Server, port: u16, said: &Mutex<String>, body: &str) {
     assert!(
         body.starts_with("HTTP/1.1 200"),
         "the binary must serve the home page:\n{body}"

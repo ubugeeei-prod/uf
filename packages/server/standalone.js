@@ -19,15 +19,35 @@
 // open — which matters more here than the throughput of a shim that spends
 // almost all of its time inside React.
 //
-// # Why the request adapter is written out again here
+// # Why this is not `@uniflowed/vite`'s `internal/serve.js`
 //
-// `@uniflowed/vite`'s driver has a `toRequest`/`send` pair that does this same
-// job for `uf dev`. Importing it would have been the obvious way to share it,
-// and it is the wrong one: `@uniflowed/vite` depends on Vite, so every
-// compiled application would carry a bundler it can never use. Forty lines of
-// adapter is much cheaper than that, and both copies have a test that drives
-// them: `dev_serves_the_docs_site_through_vite` for the dev server's, and
-// `tests/library/standalone.test.js` for this one.
+// That module is the handler behind `uf preview` and `uf start`, and it is the
+// obvious thing to import rather than write a second one. It is the wrong
+// thing to import, for two reasons and either would be enough.
+//
+// It answers by opening files under `dist/`, and there is no `dist/` here —
+// the whole claim of a compiled binary is that it was copied into an empty
+// directory. Its static half is therefore not shareable at all, and its
+// application half arrives attached to it. And it lives in `@uniflowed/vite`,
+// so importing it would link the package named after the bundler into the
+// artefact a deployment runs, which is the property `uf start` exists to
+// establish and the one a single file makes strongest.
+//
+// So the code is not shared and the *answer* is. Both resolve a request in the
+// same order — a file the build already wrote, then a route handler for any
+// method, then a render for whatever is left — and that order is not a
+// preference either module gets to hold: `uf preview` is Vite's own server,
+// which runs its file middleware before anything uf mounts behind it, so
+// `internal/serve.js` matches Vite and this matches `internal/serve.js`. A
+// binary that resolved a page/handler collision the other way would behave
+// one way when it was checked with `uf preview` and another way once it was
+// deployed, which is the trap `uf preview` exists to prevent.
+//
+// Both copies are driven by a test: `serve.test.js` and
+// `preview_and_start_serve_the_whole_of_a_build` for that one,
+// `tests/library/standalone.test.js` and
+// `compile_writes_one_file_that_serves_the_site_from_an_empty_directory` for
+// this one.
 
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
@@ -223,18 +243,25 @@ function index(assets: EmbeddedAssets): Map<string, {| +type: string, +bytes: ()
  * a request handler that can only be reached through a listening socket is one
  * that can only be tested on a machine allowed to bind one.
  *
- * The order is the dev server's, with one step added:
+ * The order is `internal/serve.js`'s, which is Vite's:
  *
- *   1. an embedded file whose path matches exactly — in `uf dev` this is
- *      Vite's own middleware, which runs before uf's and for the same reason:
- *      a request for `/assets/index-a1b2c3.js` is not a route;
+ *   1. a file `uf build` already wrote, for `GET` and `HEAD` only — an
+ *      embedded path that matches exactly, such as `/assets/index-a1b2c3.js`
+ *      or anything copied out of `public/`, and then the prerendered document
+ *      for this URL, because `/guide` was written as `guide/index.html`;
  *   2. a route handler, for any method, because a handler is the only thing
  *      that answers a `POST` and may also answer a `GET` for a path with no
  *      page;
- *   3. for `GET` and `HEAD` only, the prerendered document `uf build` already
- *      wrote for this URL — the step `uf dev` has no equivalent of, because
- *      there is nothing prerendered to serve;
- *   4. and otherwise the renderer, which also produces the 404.
+ *   3. and otherwise the renderer, which also produces the 404.
+ *
+ * The prerendered document is looked up *before* the dispatcher, and that is
+ * the one place this used to disagree with `uf preview` and `uf start`. The
+ * router allows a handler to sit beside a page in the same directory, so a
+ * path can have both — and Vite's preview server serves the file first with no
+ * say in the matter, so a binary that let the handler win would answer
+ * differently from the command a build is checked with. Answering the same
+ * wrong-looking way as the other two is worth more than answering a better way
+ * alone.
  *
  * A page never answers a `POST`: letting one try turns a missing handler into
  * a rendered page with a 200 where the caller expected a 405.
@@ -254,6 +281,13 @@ export function createHandler(
       const file = files.get(assetKey(pathname));
       if (file != null) {
         sendBytes(response, method, 200, file.type, ASSET_CACHE_CONTROL, file.bytes());
+        return;
+      }
+      // A document is revalidated where an asset is cached, because a deploy
+      // replaces documents and gives assets a new hashed name.
+      const page = files.get(documentKey(pathname));
+      if (page != null) {
+        sendBytes(response, method, 200, page.type, DOCUMENT_CACHE_CONTROL, page.bytes());
         return;
       }
     }
@@ -280,14 +314,6 @@ export function createHandler(
         Buffer.from("method not allowed\n"),
       );
       return;
-    }
-
-    if (pathname != null) {
-      const page = files.get(documentKey(pathname));
-      if (page != null) {
-        sendBytes(response, method, 200, page.type, DOCUMENT_CACHE_CONTROL, page.bytes());
-        return;
-      }
     }
 
     const rendered = await app.render(url.pathname + url.search, document);

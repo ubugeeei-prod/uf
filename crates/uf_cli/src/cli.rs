@@ -168,6 +168,21 @@ pub(crate) enum Commands {
     Lsp,
     /// Run the checks and code generation a commit should not go without.
     Prepare,
+    /// Serve the production build through Vite's preview server.
+    ///
+    /// The step between `uf build` and deploying: the one place a person finds
+    /// out that what worked in `uf dev` also works bundled, minified, hashed
+    /// and served from `dist/`. Route handlers and routes that were never
+    /// prerendered are served too, so it is the build rather than half of it.
+    Preview {
+        /// Bind a routable address instead of loopback. Requires a non-empty
+        /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+        /// Listen on this port instead of 4173.
+        #[arg(long, value_name = "PORT")]
+        port: Option<u16>,
+    },
     /// Publish the project's packages to the registry.
     Publish,
     /// Cut a release: calculate the next version and write its metadata.
@@ -184,6 +199,20 @@ pub(crate) enum Commands {
         /// Everything after the task name, handed to it untouched.
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
+    },
+    /// Serve the production build, with no bundler in the process.
+    ///
+    /// What a deployment runs. `uf preview` checks a build through Vite;
+    /// this serves the same output through uf's own server, so a host needs
+    /// neither Vite nor a network to answer a request.
+    Start {
+        /// Bind this address instead of every interface. Also read from
+        /// `HOST`.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+        /// Listen on this port instead of 3000. Also read from `PORT`.
+        #[arg(long, value_name = "PORT")]
+        port: Option<u16>,
     },
     /// Run the project's tests.
     Test {
