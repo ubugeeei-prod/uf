@@ -110,6 +110,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "State",
         blurb: "Atoms, a store, and where this parts company with Jotai.",
       },
+      {
+        href: "/guide/form",
+        title: "Forms",
+        blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
+      },
     ],
   },
   {
