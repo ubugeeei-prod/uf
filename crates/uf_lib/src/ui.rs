@@ -149,6 +149,14 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Split,
         )
         .with_form(FormContract::validator_backed()),
+        // Implemented in `packages/ui/hover-card.js`: the third of the anchored
+        // overlays, and the one that is neither of the other two. It is not a
+        // tooltip, because its contents are links and a tooltip may hold
+        // nothing reachable; it is not a dialog, because nothing about it is
+        // modal and announcing one would be a widget the reader never asked
+        // for. So it carries no role of its own and earns its keep with the
+        // clause both of the others share: the pointer, and `Tab`, can get to
+        // it before it closes.
         UiComponent::new("HoverCard", &["Root", "Trigger", "Body"], UiRuntime::Client),
         UiComponent::new("Input", &["Root"], UiRuntime::Client),
         UiComponent::new(
@@ -198,6 +206,13 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Content", "Item", "Previous", "Next"],
             UiRuntime::Server,
         ),
+        // Implemented in `packages/ui/popover.js`, and deliberately not a
+        // `Dialog` with a flag: a popover is `role="dialog"` with no
+        // `aria-modal`, nothing inert, no scroll lock and — the load-bearing
+        // one — no focus trap, because `Tab` leaving is how a reader gets out
+        // of a popover and is the thing a trap exists to prevent. A flag would
+        // mean every one of those behaviours reading it, and the one that
+        // forgot would announce a modal that is not one.
         UiComponent::new("Popover", &["Root", "Trigger", "Body"], UiRuntime::Client),
         // Implemented in `packages/ui/progress.js`, and one element: the whole
         // component is the conditional that omits `aria-valuenow` when the
@@ -328,6 +343,16 @@ pub fn ui_components() -> Vec<UiComponent> {
         // pattern drawn as segments, and is rendered by `radio-group.js` rather
         // than written a second time.
         UiComponent::new("ToggleGroup", &["Root", "Item"], UiRuntime::Client),
-        UiComponent::new("Tooltip", &["Root", "Trigger", "Body"], UiRuntime::Client),
+        // Implemented in `packages/ui/tooltip.js`. `Provider` beyond the three
+        // parts a tooltip needs, and it is not decoration: it holds the clock a
+        // group of tooltips shares, so the second icon in a toolbar opens at
+        // once rather than making a reader who has already waited out the delay
+        // wait it out again. A tooltip outside one is still a complete tooltip
+        // with a delay of its own.
+        UiComponent::new(
+            "Tooltip",
+            &["Provider", "Root", "Trigger", "Body"],
+            UiRuntime::Client,
+        ),
     ]
 }
