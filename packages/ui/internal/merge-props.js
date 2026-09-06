@@ -28,8 +28,52 @@
 // consumer to build a part that spreads `rest` last, which is the failure this
 // exists to prevent — so it stays unreachable from outside the package.
 
-/** Anything a caller can spread onto an element. */
-export type Rest = { readonly [string]: mixed };
+/**
+ * Props on their way onto an element: what a caller hands a part, and what
+ * `Field.Control` hands back for a caller to spread.
+ *
+ * `key` is named out of the indexer rather than left to it, and that one
+ * property is the whole subtlety of this type. React takes `key` off the
+ * attributes before a component is called, so a part's props never contain
+ * one — but an indexer does not know that, and `{ readonly [string]: mixed }`
+ * answers `mixed` for every name, `key` included. React's `key` is
+ * `string | number`, so every intrinsic this package rendered was rejected for
+ * a property that cannot be there:
+ *
+ *     error[incompatible-type]: Cannot create button element because in
+ *     property key: Either unknown is incompatible with string. Or unknown is
+ *     incompatible with number.
+ *
+ * thirty-two times, one per element, which was 32 of `@uniflowed/ui`'s 73 type
+ * errors. `key?: empty` states what React already guarantees, and the errors
+ * are the checker agreeing.
+ *
+ * # Two answers that look better than they are
+ *
+ * **`readonly key?: string | number`** — React's own type for the property —
+ * also silences the error, and is a lie in the shape of a fix. It says a
+ * caller may pass a `key` here; a part would then spread it onto its element,
+ * which is the "spreading a key into JSX" mistake React 19 added a warning
+ * for. `empty` is the same repair and a true sentence. It reads oddly for
+ * about a second and then reads as exactly what it is: there is no value you
+ * can pass under this name.
+ *
+ * **`React.PropsOf<"button">`** — the props of the element actually being
+ * rendered, which is what this type would like to say — cannot be written
+ * here. uf does not merge Flow's `jsx.js` environment, deliberately and for
+ * reasons `crates/uf_check/src/upstream/environments.rs` gives, so
+ * `$JSXIntrinsics` is the bare-bones table in `lib/react.js`, every
+ * intrinsic's `props` is `any`, and `React.PropsOf` itself reads as an
+ * any-typed value. Nothing about an element is checked here except its `key`:
+ * `<button className={5} nonsenseAttr={{}} />` is not an error today. A named
+ * type per element would therefore not be React's contract but a hand-written
+ * copy of `jsx.js` living in a UI package, drifting from the DOM on its own
+ * schedule — and it would still need an indexer for `data-*` and `aria-*`,
+ * which is where this started. So it stays one `Rest`, and the day
+ * `$JSXIntrinsics` is real is the day this becomes `React.PropsOf` and the
+ * parts say which element they render.
+ */
+export type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 /**
  * Call the caller's handler and then the component's.
@@ -76,10 +120,16 @@ export function composeRefs<T>(
  * leaving them in would put the caller's copy back on top of the composed one.
  */
 export function withoutComposed(rest: Rest, names: $ReadOnlyArray<string>): Rest {
-  const kept: { [string]: mixed } = {};
-  for (const key of Object.keys(rest)) {
-    if (!names.includes(key)) {
-      kept[key] = rest[key];
+  const kept: { key?: empty, [string]: mixed } = {};
+  for (const name of Object.keys(rest)) {
+    // `key` is dropped whatever the caller asked to compose, because it is the
+    // one name the indexer does not speak for: writing `rest[name]` under it
+    // would put a `mixed` back where `Rest` promises nothing can be, and Flow
+    // says so. Nothing is lost — React removed the `key` long before this ran,
+    // so this is the type-level statement made at runtime rather than a filter
+    // that ever has work to do.
+    if (name !== "key" && !names.includes(name)) {
+      kept[name] = rest[name];
     }
   }
   return kept;

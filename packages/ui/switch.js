@@ -27,6 +27,7 @@
 
 import * as React from "@uniflowed/react";
 
+import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
@@ -37,7 +38,7 @@ export component Switch(
   onCheckedChange?: (checked: boolean) => void,
   disabled?: boolean = false,
   children?: React.Node,
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
