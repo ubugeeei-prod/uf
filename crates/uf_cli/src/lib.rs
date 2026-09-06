@@ -167,11 +167,35 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
     };
 
     match cli.command {
+        Commands::Add {
+            dev,
+            optional,
+            peer,
+            specs,
+        } => commands::pm::add(
+            &cwd,
+            ui,
+            &specs,
+            crate::cli::AddTarget {
+                dev,
+                optional,
+                peer,
+            }
+            .into(),
+        ),
         Commands::Build {
             size_report,
+            mode,
             compile,
             adapter,
-        } => commands::build::build(&cwd, ui, size_report, compile, adapter.map(Into::into)),
+        } => commands::build::build(
+            &cwd,
+            ui,
+            size_report,
+            mode.as_deref(),
+            compile,
+            adapter.map(Into::into),
+        ),
         Commands::Check { json, paths } => commands::check::check(&cwd, ui, json, &paths),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
@@ -179,8 +203,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         }
         Commands::Complete { words } => commands::completion::complete(&cwd, ui, &words),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
-        Commands::Dev { host, port } => {
-            commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port })
+        Commands::Dev { host, port, mode } => {
+            commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port, mode })
         }
         Commands::Doc { out_dir, json } => commands::doc::doc(&cwd, ui, &out_dir, json),
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
@@ -192,26 +216,28 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
-        Commands::Install => commands::pm::install(&cwd, ui),
+        Commands::Install { frozen_lockfile } => commands::pm::install(&cwd, ui, frozen_lockfile),
         Commands::Lint { json, paths } => {
             commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json, &paths)
         }
         Commands::Lsp => commands::dev::lsp(&cwd),
-        Commands::Preview { host, port } => {
-            commands::serve::preview(&cwd, ui, commands::serve::ServeArgs { host, port })
+        Commands::Preview { host, port, mode } => {
+            commands::serve::preview(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }
-        Commands::Start { host, port } => {
-            commands::serve::start(&cwd, ui, commands::serve::ServeArgs { host, port })
+        Commands::Start { host, port, mode } => {
+            commands::serve::start(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }
         Commands::Prepare => commands::prepare::prepare(&cwd, ui),
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
-        Commands::Run { script, args } => match script {
-            Some(script) => commands::task::run_task(&cwd, &script, &args),
+        Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
+        Commands::Run { mode, script, args } => match script {
+            Some(script) => commands::task::run_task(&cwd, mode.as_deref(), &script, &args),
             None => commands::task::list_tasks(&cwd, ui),
         },
         Commands::Test {
             list,
+            mode,
             watch,
             json,
             filter,
@@ -226,6 +252,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             ui,
             commands::test::TestArgs {
                 list,
+                mode,
                 watch,
                 json,
                 filter,
@@ -237,8 +264,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 paths,
             },
         ),
+        Commands::Update { packages } => commands::pm::update(&cwd, ui, &packages),
         Commands::Use { runtime } => commands::pm::use_runtime(&cwd, ui, &runtime),
         Commands::Upgrade => commands::pm::upgrade(&cwd, ui),
+        Commands::Why { package } => commands::pm::why(&cwd, ui, &package),
     }
 }
 

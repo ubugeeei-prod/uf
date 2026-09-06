@@ -1,7 +1,10 @@
-//! `uf install`, `uf upgrade`, and `uf use`: packages and runtimes.
+//! `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf upgrade`,
+//! and `uf use`: packages and runtimes.
 
+mod deps;
 mod install;
 
+pub(crate) use deps::{add, remove, update, why};
 pub(crate) use install::install;
 
 use std::fs;

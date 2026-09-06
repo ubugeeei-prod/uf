@@ -55,7 +55,7 @@ use uf_term::{KeyValue, Status, Tone};
 use crate::commands::vite::{
     Driver, Event, LogLevel, package_dir, render_error, render_log, resolve_host,
 };
-use crate::support::{plural, project_label};
+use crate::support::{PRODUCTION, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
 /// What `uf preview` and `uf start` were asked to do.
@@ -65,6 +65,8 @@ pub(crate) struct ServeArgs {
     pub(crate) host: Option<String>,
     /// Listen on this port instead of the command's default.
     pub(crate) port: Option<u16>,
+    /// Run in this mode instead of `production`.
+    pub(crate) mode: Option<String>,
 }
 
 /// Which of the two servers is being started.
@@ -124,6 +126,11 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
 
     let host = resolve_host(&resolved.config)?;
     let package = package_dir(&root)?;
+    // Loaded here rather than inherited from the build: these serve a `dist/`
+    // that may have been built on another machine days ago, and a server that
+    // could not be pointed at a different database than the build ran against
+    // would not be a server anybody could deploy.
+    let env = project_env(&resolved, args.mode.as_deref(), PRODUCTION)?;
     let mut driver = Driver::spawn(
         &host,
         &package,
@@ -134,6 +141,8 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             args.port,
             &resolved.config.build.out_dir,
         ),
+        &env,
+        &[],
     )?;
 
     let host_name = host.name();
@@ -143,17 +152,20 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
         Server::Preview => "the production build, through Vite's preview server",
         Server::Start => "the production build, with no bundler in the process",
     };
+    let mode = env.mode().to_owned();
+    let env_files = env_file_list(&root, &env);
     ui.render(|renderer, out| {
         renderer.banner(out, &banner, Some(&project));
         renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("serving", serves),
-                KeyValue::toned("host", host_name, Tone::Muted),
-            ],
-        );
+        let mut rows = vec![
+            KeyValue::new("serving", serves),
+            KeyValue::toned("host", host_name, Tone::Muted),
+            KeyValue::new("mode", &mode),
+        ];
+        if let Some(files) = &env_files {
+            rows.push(KeyValue::toned("env files", files, Tone::Path));
+        }
+        renderer.key_values(out, 2, &rows);
     });
 
     while let Some(event) = driver.next_event()? {
@@ -221,6 +233,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             | Event::Phase { .. }
             | Event::Page { .. }
             | Event::SourceChanged
+            | Event::RscSplit { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}
         }

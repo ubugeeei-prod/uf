@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
+use uf_config::env_files::ProjectEnv;
 use uf_config::load_config;
 use uf_project::{ProjectFile, scan_source_files};
 use uf_term::PhaseTimer;
@@ -30,7 +31,7 @@ use uf_test::{
 
 use crate::commands::vite::{installed_package, resolve_host};
 
-use crate::support::{plural, quoted_list, selects, unreadable_lines};
+use crate::support::{TEST, plural, project_env, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
 
 mod payload;
@@ -48,6 +49,8 @@ const SLOWEST_SHOWN: usize = 5;
 pub(crate) struct TestArgs {
     /// List what would run instead of running it.
     pub(crate) list: bool,
+    /// Run in this mode instead of `test`.
+    pub(crate) mode: Option<String>,
     /// Re-run affected tests when a file changes.
     pub(crate) watch: bool,
     /// Emit machine-readable JSON on stdout.
@@ -145,11 +148,16 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     if args.list {
         return render_list(ui, &root, &files, &args.filter());
     }
+    // `test` rather than `development`, so `.env.test` is a file that means
+    // something — the mode Vitest runs in, for the same reason: a suite that
+    // talks to the development database is a suite that can destroy it.
+    let env = project_env(&resolved, args.mode.as_deref(), TEST)?;
     if args.watch {
-        return watch::watch(ui, &root, resolved.config, args);
+        return watch::watch(ui, &root, resolved.config, &env, args);
     }
 
-    let host = test_host(&root, &resolved.config)?.with_snapshot_updates(args.update_snapshots);
+    let host =
+        test_host(&root, &resolved.config, &env)?.with_snapshot_updates(args.update_snapshots);
     let files = test_bearing(files);
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
@@ -187,6 +195,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
 pub(crate) fn test_host(
     root: &Utf8Path,
     config: &uf_config::UniflowedConfig,
+    env: &ProjectEnv,
 ) -> Result<HostCommand> {
     let host = resolve_host(config)?;
     // The loader, not the bundler. `uf test` transforms through `uf transform`
@@ -215,7 +224,10 @@ pub(crate) fn test_host(
         .with_flow_loader(
             Utf8Path::new("@uniflowed/host/register"),
             &loader.join("bun-preload.js"),
-        );
+        )
+        // Every worker gets the project's `.env` values, so a test reads
+        // `process.env.DATABASE_URL` and finds what `uf dev` would have found.
+        .with_env(env.exported());
     // The worker transforms through the binary that started it, never a
     // different `uf` that happens to be on PATH.
     if let Ok(binary) = std::env::current_exe()

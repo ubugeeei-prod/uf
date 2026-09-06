@@ -15,12 +15,13 @@
 use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::json;
+use uf_config::env_files;
 use uf_config::{ResolvedConfig, load_config};
-use uf_pm::{Operation, command_for, detect_package_manager};
+use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
 use uf_term::KeyValue;
 
 use crate::commands::task::fetchable;
-use crate::support::project_label;
+use crate::support::{DEVELOPMENT, PRODUCTION, TEST, project_label};
 use crate::ui::Ui;
 
 /// One step of a command, and what performs it.
@@ -39,7 +40,8 @@ struct Stage {
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
     "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
-    "install", "upgrade", "use", "env", "prepare", "publish", "release", "lsp",
+    "install", "add", "remove", "update", "why", "upgrade", "use", "env", "prepare", "publish",
+    "release", "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -57,6 +59,24 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         "run" => run_stages(&resolved),
         "exec" => exec_stages(&resolved),
         "install" => install_stages(&resolved),
+        "add" => dependency_stages(
+            &resolved,
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            "writes the specifiers into dependencies, the lockfile and node_modules",
+        ),
+        "remove" => dependency_stages(
+            &resolved,
+            Operation::Remove,
+            "takes the names out of every dependency field, the lockfile and node_modules",
+        ),
+        "update" => dependency_stages(
+            &resolved,
+            Operation::Update,
+            "moves the lockfile to the newest versions the manifest ranges already allow",
+        ),
+        "why" => why_stages(&resolved),
         "upgrade" => upgrade_stages(&resolved),
         "use" | "env" => runtime_stages(&resolved),
         "prepare" => prepare_stages(&resolved),
@@ -158,6 +178,7 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         other => format!("{other:?}"),
     };
     vec![
+        env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "task lookup",
             provider: "uf".to_string(),
@@ -265,6 +286,63 @@ fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             },
         },
     ]
+}
+
+/// `uf add`, `uf remove` and `uf update`, which differ only in the row above.
+///
+/// The provider is the manager that will actually run, spelled as the command
+/// line it will be spawned as — `command_for` with the detection, so a pnpm
+/// project is told `pnpm add` and a Bun project `bun add`. That is the whole
+/// point of asking: these three delegate, and a plan that hid the delegate
+/// would document the opposite of what happens.
+fn dependency_stages(
+    resolved: &ResolvedConfig,
+    operation: Operation<'_>,
+    what: &str,
+) -> Vec<Stage> {
+    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    vec![
+        Stage {
+            name: "workspace discovery",
+            provider: "uf_pm".to_string(),
+            detail: "every package.json this project owns, before anything is fetched".to_string(),
+        },
+        Stage {
+            name: "lifecycle scripts",
+            provider: "uf".to_string(),
+            detail: if resolved.config.pm.allow_lifecycle_scripts {
+                "allowed by pm.allowLifecycleScripts".to_string()
+            } else {
+                "refused; --ignore-scripts is passed to the manager below".to_string()
+            },
+        },
+        Stage {
+            name: "resolution and install",
+            provider: command_for(manager, operation).to_string(),
+            detail: what.to_string(),
+        },
+        Stage {
+            name: "uf's own lockfile",
+            provider: resolver_name(resolved).to_string(),
+            detail: format!(
+                "rewrites {} and the store under {} from the manifests the manager changed",
+                resolved.config.pm.lockfile, resolved.config.pm.store_dir
+            ),
+        },
+    ]
+}
+
+/// `uf why`, which changes nothing and therefore has one stage.
+fn why_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    vec![Stage {
+        name: "the answer",
+        provider: command_for(manager, Operation::Why).to_string(),
+        detail: format!(
+            "the manager reads its own lockfile and prints the chain; uf writes nothing, not even {}",
+            resolved.config.pm.lockfile
+        ),
+    }]
 }
 
 fn upgrade_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
@@ -399,6 +477,66 @@ fn transform_stage() -> Stage {
     }
 }
 
+/// Where the values in `process.env` and `import.meta.env` come from.
+///
+/// The mode is resolved the way the command would resolve it, so a project with
+/// a profile or an `env.active` sees the files it will actually get. A mode
+/// that cannot be resolved falls back to the command's default rather than
+/// failing: `uf explain` is what somebody runs *because* something is wrong.
+///
+/// It says so, though. A hand-edited `.uniflowed/profile` or an `env.active`
+/// that is not a mode is exactly the fault somebody runs this command about,
+/// and a stage that quietly described `development` instead would answer the
+/// question they asked with a description of a project they do not have — and
+/// the file list below would be the fallback's, not theirs.
+///
+/// The files are the cascade, not a reading of the disk. `uf explain` describes
+/// a pipeline and nothing here calls [`env_files::load`], so the list is what a
+/// command will look for and an absent file is skipped when it does — which the
+/// wording has to say, or a reader trying to find out why their variable is
+/// unset will read a file name here and conclude the file was found.
+/// `uf inspect` is the command that reports what was actually read.
+fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
+    let (mode, unresolved) =
+        match env_files::resolve_mode(&resolved.root, &resolved.config, None, default_mode) {
+            Ok(mode) => (mode, None),
+            Err(error) => (default_mode.to_owned(), Some(error.to_string())),
+        };
+    let files = if resolved.config.env.files.is_empty() {
+        format!(".env, .env.local, .env.{mode}, .env.{mode}.local")
+    } else {
+        resolved
+            .config
+            .env
+            .files
+            .iter()
+            .map(compact_str::CompactString::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    // The project's own prefix, not the default one: a project that set
+    // `vite: { envPrefix: "PUBLIC_" }` would otherwise be told here that
+    // `PUBLIC_TOKEN` stays on the server, which is the one mistake this line
+    // exists to prevent.
+    let prefix = env_files::client_prefixes(&resolved.config).join(", ");
+    let cascade = format!(
+        "looks for {files}, skipping any that are absent; later wins, the process \
+         environment beats all, {prefix} reaches the client"
+    );
+    match unresolved {
+        None => Stage {
+            name: "environment",
+            provider: format!("uf (mode {mode})"),
+            detail: cascade,
+        },
+        Some(reason) => Stage {
+            name: "environment",
+            provider: format!("uf (mode {mode}, the fallback)"),
+            detail: format!("this project's mode could not be resolved — {reason}; {cascade}"),
+        },
+    }
+}
+
 fn host_stage(resolved: &ResolvedConfig) -> Stage {
     Stage {
         name: "JavaScript host",
@@ -415,6 +553,7 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
         host_stage(resolved),
+        env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "dev server",
             provider: "vite (@uniflowed/vite driver)".to_string(),
@@ -437,6 +576,7 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
         host_stage(resolved),
+        env_stage(resolved, PRODUCTION),
         transform_stage(),
         Stage {
             name: "bundle",
@@ -505,6 +645,7 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
         host_stage(resolved),
+        env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
             provider: "vite (preview)".to_string(),
@@ -530,6 +671,7 @@ fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "uf.config.js; the build is read, not rebuilt".to_string(),
         },
         host_stage(resolved),
+        env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
             // `@uniflowed/server`, and no longer `@uniflowed/vite`: the socket,
@@ -573,6 +715,7 @@ fn doc_stages() -> Vec<Stage> {
 
 fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
+        env_stage(resolved, TEST),
         Stage {
             name: "discovery",
             provider: "uf_test (in this binary)".to_string(),

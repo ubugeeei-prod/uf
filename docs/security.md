@@ -101,6 +101,23 @@ what code the toolchain executes.
 | Unbounded config text as a denial-of-service or allocation vector | Plugin names have an explicit byte ceiling and control bytes are refused, so no config text reaches a resolver as a NUL- or newline-bearing string | `uf_plugin::resolve` |
 | A config plugin shadowing a built-in stage, silently replacing part of the toolchain | The `uf:` prefix is reserved, and two plugins with one name is a typed error that names both positions rather than a silent override | `uf_plugin::resolve` |
 
+## Environment variables
+
+A `.env` file holds the credentials a project's own developers put there, and it
+is read by a tool that also produces a bundle anybody can download. Two
+questions decide whether that is safe: which values cross into browser code, and
+what a file in a repository you just cloned can make uf do.
+
+| Concern | Decision in `uf` | Where |
+| --- | --- | --- |
+| A secret in a `.env` file inlined into the client bundle, where every visitor can read it | Only a name starting with the client prefix — `VITE_`, or Vite's own `envPrefix` when a project sets one — is substituted into browser code, and uf never widens that: it hands Vite the values through the process environment and Vite's `loadEnv` selects the prefixed subset. An empty prefix is refused, as Vite refuses it | `uf_config::env_files`, `crates/uf_cli/tests/vite.rs` asserts a non-prefixed value is absent from every file in `dist/` |
+| A `.env` served over HTTP by the dev server | Vite's built-in `server.fs.deny` covers `.env` and `.env.*` and no project configuration removes a built-in entry | `packages/vite/driver.js` |
+| A `.env` in a cloned repository steering the toolchain — `UF_BINARY` names the binary every module is transformed through | The project's values are applied to a child process *before* uf's own variables, so a file that names one is overwritten rather than obeyed | `uf_cli::commands::vite`, `uf_test::host` |
+| A `.env` file outside the project — `env.files: ["~/.aws/credentials"]` in a cloned repository, or a committed symlink at `.env` — putting somebody's keys into every process uf starts, and any name in them behind the client prefix into the bundle | An `env.files` entry is a closed grammar checked before the filesystem is touched: no absolute path, no `..`, no `~`, no drive letter, and `\` refused on every platform. Every file uf actually opens is then resolved and checked against the canonical project root, by path component rather than string prefix, which is what a symlink defeats | `uf_config::env_files::check_entry`, `uf_config::env_files::contained` |
+| A profile or mode that escapes the project — `uf env use ../../etc`, `uf build --mode ../secrets` | A mode is the end of a file name and is checked against a closed character set before anything is read or written; `local` is refused because `.env.local` already means something else | `uf_config::env_files::check_mode` |
+| Unbounded file text as an allocation vector | Every file has a byte ceiling and a typed error above it, and the parser is one hand-written pass with no regex | `uf_config::env_files` |
+| A credential printed into a log by a diagnostic | `uf inspect` reports the mode, the file names and the variable *names*; the banners report the mode and the files; a parse error names the line and the text before the `=`. No command prints a value | `uf_cli::commands::inspect`, `uf_config::env_files` |
+
 ## Parser, formatter, linter, and test runner
 
 These read attacker-authored source text. The failure mode is denial of service
@@ -131,7 +148,10 @@ file at the wrong location.
 - `persist-credentials: false` on every checkout, so a compromised build step
   cannot reuse the workflow token.
 - Publishing is tokenless OIDC trusted publishing on a `uf@*` tag push; the
-  first publish is local and manual.
+  first publish is local and manual. So is moving the `latest` dist-tag after a
+  prerelease release: npm exchanges the workflow's id-token for `npm publish`
+  and nothing else, and putting a token in this repository's secrets to widen
+  that would give away the property. See `tools/release/promote-latest.sh`.
 - `upstream/flow` is pinned to a specific commit and is subject to the same
   review as any other dependency bump.
 - `cargo-fuzz` builds on every pull request that touches the workspace, and

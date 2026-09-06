@@ -18,6 +18,8 @@ const STRING_TO_NUMBER: &str = include_str!("fixtures/string_to_number.js");
 const MISSING_PROP: &str = include_str!("fixtures/missing_prop.js");
 const BAD_RENDERS: &str = include_str!("fixtures/bad_renders.js");
 const UNHANDLED_NULL: &str = include_str!("fixtures/unhandled_null.js");
+const TOP_LEVEL_AWAIT: &str = include_str!("fixtures/top_level_await.js");
+const TOP_LEVEL_AWAIT_MISUSE: &str = include_str!("fixtures/top_level_await_misuse.js");
 
 /// Tests must not race the wall clock; a loaded CI box is not a type error.
 fn limits() -> CheckLimits {
@@ -59,6 +61,35 @@ fn a_modern_flow_react_file_checks_clean() {
             .map(|diagnostic| (diagnostic.code, diagnostic.primary.clone()))
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn a_module_that_awaits_at_its_top_level_checks_clean() {
+    let diagnostics = check("top_level_await.js", TOP_LEVEL_AWAIT);
+
+    assert!(
+        diagnostics.is_empty(),
+        "expected no diagnostics, got {:#?}",
+        diagnostics
+            .iter()
+            .map(|diagnostic| (diagnostic.code, diagnostic.primary.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_top_level_await_has_the_type_the_promise_resolves_to() {
+    // Not merely "it parses": the awaited value is a number, and a module
+    // that calls it a string is wrong in the same way as any other bad
+    // annotation. The caret belongs on the awaited expression.
+    let diagnostics = check("top_level_await_misuse.js", TOP_LEVEL_AWAIT_MISUSE);
+
+    let diagnostic = find(&diagnostics, "incompatible-type");
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert_eq!(diagnostic.kind, DiagnosticKind::Infer);
+    assert_eq!(diagnostic.primary.path, "top_level_await_misuse.js");
+    // `const retries: string = await Promise.resolve(3);`
+    assert_eq!(diagnostic.primary.start.line, 6);
 }
 
 #[test]

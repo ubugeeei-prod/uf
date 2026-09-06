@@ -87,6 +87,80 @@ fn creates_flow_library_template() {
     assert!(!package.contains("@uniflowed/host"));
 }
 
+/// A scaffolded manifest names the uf that wrote it, exactly.
+///
+/// Both templates said `"latest"`, which is a dist-tag and not a version, and
+/// on npm it did not point at the current release: with `uf@0.0.0-alpha.7` out,
+/// `latest` was `0.0.0-alpha.1` on every name these templates write. So the
+/// first thing a new project installed was five releases behind the binary that
+/// scaffolded it. See ubugeeei-prod/uf#408.
+///
+/// Two halves to the assertion, and the second is the one that would go
+/// unnoticed: every `@uniflowed/*` dependency is at this exact version, and no
+/// dependency anywhere in the manifest is a dist-tag. `react` and `react-dom`
+/// are not uf's to pin, and keep the ranges they had.
+#[test]
+fn both_templates_pin_the_version_of_the_uf_that_wrote_them() {
+    let version = env!("CARGO_PKG_VERSION");
+
+    for kind in [CreateKind::AppReact, CreateKind::Lib] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        create_project(
+            &root,
+            &CreateOptions {
+                name: "pinned".to_string(),
+                kind,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let package = fs::read_to_string(root.join("package.json")).unwrap();
+
+        // A dist-tag is resolved at install time by whatever the registry
+        // points it at that day, which is the whole bug: not "an old version"
+        // but "a version nothing in this repository chose".
+        assert!(
+            !package.contains(r#""latest""#),
+            "{kind:?}: the manifest still names a dist-tag:\n{package}"
+        );
+
+        let uniflowed: Vec<&str> = package
+            .lines()
+            .filter(|line| line.contains("\"@uniflowed/"))
+            .collect();
+        assert!(
+            !uniflowed.is_empty(),
+            "{kind:?}: the manifest names no @uniflowed/* package at all:\n{package}"
+        );
+        for line in uniflowed {
+            assert!(
+                line.contains(&format!("\"{version}\"")),
+                "{kind:?}: {} is not pinned to {version}:\n{package}",
+                line.trim()
+            );
+        }
+    }
+
+    // And the app template's React, which uf does not release and must not
+    // pin: a project is free to move it.
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    create_project(
+        &root,
+        &CreateOptions {
+            name: "pinned-app".to_string(),
+            kind: CreateKind::AppReact,
+            force: false,
+        },
+    )
+    .unwrap();
+    let package = fs::read_to_string(root.join("package.json")).unwrap();
+    assert!(package.contains(r#""react": "^19.2.0""#), "{package}");
+    assert!(package.contains(r#""react-dom": "^19.2.0""#), "{package}");
+}
+
 /// A scaffolded project does not commit what uf generates.
 ///
 /// It had no `.gitignore` at all, so the first `uf build` put `dist/`,
@@ -140,6 +214,17 @@ fn both_templates_ignore_what_uf_generates() {
                 "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
             );
         }
+        // The two `.env` files that are a developer's own. The tracked ones
+        // beside them are the project's defaults and are deliberately absent
+        // from this list; a credential belongs in a `.local` file, which is
+        // why that is the one uf refuses to commit for you.
+        for entry in [".env.local", ".env.*.local"] {
+            assert!(
+                ignored.lines().any(|line| line.trim() == entry),
+                "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
+            );
+        }
+
         // Three more that no ignore list knows about. `router.js` and
         // `server-actions.js` are generated Flow that looks hand-written —
         // this repository ignores its own `docs/router.js` for the same

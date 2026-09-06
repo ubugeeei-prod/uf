@@ -8,6 +8,7 @@ use thiserror::Error;
 pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
 
 mod app;
+pub mod env_files;
 mod lint;
 pub mod plugins;
 mod runtime;
@@ -173,7 +174,25 @@ pub struct DevFsConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct EnvConfig {
+    /// The mode a command runs in when nothing else says.
+    ///
+    /// The mode picks `.env.<mode>` and `.env.<mode>.local` out of the cascade
+    /// and is what `import.meta.env.MODE` reads. Empty by default, which means
+    /// the command decides — `development` for `uf dev`, `production` for `uf
+    /// build`, `uf preview` and `uf start`, `test` for `uf test`.
+    ///
+    /// `--mode` beats this, and so does the profile `uf env use` wrote; see
+    /// [`env_files::resolve_mode`].
     pub active: CompactString,
+    /// The environment files to read, instead of the conventional cascade.
+    ///
+    /// Empty by default, which selects `.env`, `.env.local`, `.env.<mode>` and
+    /// `.env.<mode>.local`, in that order, the later file winning. A project
+    /// that sets this gets exactly the files it names, in the order it names
+    /// them, and nothing else — a file that does not exist is skipped.
+    ///
+    /// Paths are relative to the project root. See [`env_files`] for the
+    /// precedence, the parser, and which values reach the browser.
     pub files: Vec<CompactString>,
     /// The JavaScript runtimes and package managers this project uses, by
     /// name and exact version — `{ node: "24.14.0", pnpm: "9.15.0" }`.
@@ -193,12 +212,13 @@ pub struct EnvConfig {
 impl Default for EnvConfig {
     fn default() -> Self {
         Self {
-            active: CompactString::const_new("development"),
-            files: vec![
-                CompactString::const_new(".env"),
-                CompactString::const_new(".env.local"),
-                CompactString::const_new(".env.development"),
-            ],
+            // Both empty, and both mean "the command decides". They used to be
+            // `"development"` and the three files a development run reads,
+            // which was a default that could only ever be right for `uf dev`:
+            // a `uf build` honouring it would have read `.env.development` into
+            // a production bundle. See ubugeeei-prod/uf#259.
+            active: CompactString::const_new(""),
+            files: Vec::new(),
             toolchain: BTreeMap::new(),
         }
     }

@@ -44,6 +44,7 @@ use std::fs;
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
+use uf_config::env_files::ProjectEnv;
 use uf_config::{DeployAdapter, DeployAnywhereConfig};
 
 use crate::commands::compile::binary_name;
@@ -157,6 +158,7 @@ pub(crate) fn deploy(
     package: &Utf8Path,
     root: &Utf8Path,
     out_dir: &Utf8Path,
+    env: &ProjectEnv,
 ) -> Result<Deployed> {
     let work = root.join(WORK_DIR);
     let directory = root.join(OUTPUT_DIR).join(adapter.as_str());
@@ -188,6 +190,8 @@ pub(crate) fn deploy(
             String::from("--output"),
             directory.to_string(),
         ],
+        env,
+        &[],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

@@ -409,7 +409,7 @@ pub fn parse(source: &str) -> Result<Parsed, ParseFailure> {
     }
 
     let (program, errors) = catch_unwind(AssertUnwindSafe(|| {
-        flow_parser::parse_program_without_file(false, None, Some(PARSE_OPTIONS), Ok(source))
+        crate::module::parse(source, &PARSE_OPTIONS, None)
     }))
     .map_err(|_| ParseFailure::ParserPanicked)?;
 

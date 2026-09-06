@@ -98,6 +98,29 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
   process-global and panic on first use if unset, and
   `flow_parsing::docblock_parser::Docblock` is private, so the context metadata
   has to be computed where the docblock is parsed rather than carried around.
+- **The port cannot be told which goal symbol it is reading.** ECMAScript has
+  two, *Script* and *Module*, and `await` is reserved in only one of them: at
+  the top level of a module `await x` is an operator, which is ES2022 and what
+  Node runs. The port pins `ParserEnvFlags::allow_await` to `false`,
+  `ParseOptions` has no member for it, and `with_allow_await` is `pub(crate)`;
+  its own `flow_parser_wasm` says as much where it maps Hermes' `source_type`.
+
+  `uf_flow::module` supplies the missing goal on uf's side of the boundary,
+  without a second grammar. `await` and `void ` are both five bytes and both a
+  *UnaryExpression*, so the port is asked about the same file with one traded
+  for the other — every other byte, line and column unmoved — the tree it hands
+  back says which of them it read as an operator at the module's top level, and
+  the operator is put back where the author wrote it. Which `await` is an
+  operator and which is a property name is never guessed: `{ await() {} }` and
+  `await (x)` are the same two tokens, so the parser decides and the ones it
+  did not take are offered back un-traded.
+
+  `uf fmt`, `uf lint`, `uf check` and the transform all go through that one
+  function, so one file gets one reading. A file with no `import`, `export` or
+  `import.meta` is a script — Babel's `sourceType: "unambiguous"` rule, and the
+  only rule every caller can evaluate, since `uf fmt` is handed source text
+  with no path beside it — and `await` outside an `async` function in one is
+  still refused, as it is inside a function that is not `async`.
 
 `flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
@@ -409,6 +432,34 @@ Server Components are the default. Client Components must opt in with
 `"use client";`, and server action modules must opt in with `"use server";`.
 Caches are off by default. React 19, Suspense, `use`, and Async React are
 assumed.
+
+That analysis is load-bearing at the route level, and only there. `uf_rsc`
+resolves the module graph and marks every module a `"use client"` boundary is
+reachable from; `uf build` and `uf dev` write the result to
+`.uf/rsc/uf-rsc-manifest.json` and name it in `UF_RSC_MANIFEST`, and
+`@uniflowed/vite` generates the browser's copy of the route table without the
+page of any route that reaches no boundary. No `import()` in that table reaches
+the route's page, so Rollup emits no chunk for it and none for anything only it
+reached; `hydrate` returns without mounting the route, because the document the
+server wrote is the whole of it, and a link into it is a document navigation
+rather than a client render.
+
+One thing does still come back. A uf build links the stylesheets it finds in
+the *client* graph, so a route removed from that graph outright loses its rules
+— from every page of the site, because the linked sheets are the whole graph's.
+Each dropped module is therefore imported for its side effects, with nothing
+read from it: the stylesheet survives and the components, helpers and data it
+declared are unused exports that do not.
+
+What still ships is everything *above* a boundary. uf's client hydrates by
+re-rendering the matched tree from the same modules the server rendered it
+from, so a Server Component that renders a Client Component is a module React
+needs in the browser in order to reach the boundary at all; dropping it needs a
+Flight-shaped payload uf does not have. A route that keeps its page therefore
+keeps its whole subtree, and every application whose root layout imports one
+client component — this documentation site included — ships exactly what it
+shipped before. Server actions are scanned, keyed, typed and manifested, and
+none of them is callable. Both remainders are ubugeeei-prod/uf#252.
 
 The linter starts with framework rules that guide teams away from legacy React
 function component typing and toward Flow component syntax. React Native support

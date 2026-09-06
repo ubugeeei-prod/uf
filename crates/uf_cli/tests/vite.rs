@@ -54,6 +54,11 @@ fn served_app_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/served-app")
 }
 
+/// The application whose two routes differ by one `"use client"` import.
+fn rsc_split_app_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rsc-split-app")
+}
+
 /// Whether the fixture can be built here: Node on PATH and the workspace
 /// installed.
 ///
@@ -2281,4 +2286,522 @@ fn compile_refuses_a_native_addon_and_names_it() {
         String::from_utf8_lossy(&plain.stdout),
         String::from_utf8_lossy(&plain.stderr)
     );
+}
+
+/// A project whose configuration comes from `.env` files, on both sides of the
+/// client boundary.
+///
+/// The page reads two variables through `import.meta.env` — one behind the
+/// client prefix and one not — and a route handler reads a third through
+/// `process.env`, which is what server code does. Three files, so that which
+/// value arrives says which mode the command ran in.
+///
+/// `UF_SECRET_TOKEN` is the one that matters. It is read by code that ships to
+/// the browser, and its value must not be in `dist/` anywhere: the prefix is
+/// the whole boundary between a build-time value and a credential in a public
+/// bundle.
+///
+/// Which is why the page renders a `"use client"` component. A route with no
+/// client boundary keeps its page out of the browser bundle entirely — see
+/// [`the_client_bundle_loses_a_route_that_needs_no_javascript`] — and a bundle
+/// with no page in it holds no substituted value either, so every assertion
+/// here about what does and does not ship would pass by shipping nothing. The
+/// boundary is what gives the negative assertions something to be false about.
+fn project_reading_the_environment() -> Project {
+    let mut files = minimal_app();
+    files.push((
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
+         import Reader from \"./_components/Reader.js\";\n\n\
+         const server =\n  \
+         typeof process === \"undefined\" ? \"no server here\" : \
+         String(process.env.UF_SERVER_VALUE);\n\n\
+         export component Page() {\n  \
+         return (\n    \
+         <main>\n      \
+         <p>greeting: {String(import.meta.env.VITE_GREETING)}</p>\n      \
+         <p>secret: {String(import.meta.env.UF_SECRET_TOKEN)}</p>\n      \
+         <p>server: {server}</p>\n      \
+         <Reader />\n    \
+         </main>\n  \
+         );\n\
+         }\n",
+    ));
+    // The client half, reading the same two names the page does: the prefixed
+    // one is substituted into what the browser downloads and the other is not,
+    // and this module is unambiguously in that download.
+    files.push((
+        "app/_components/Reader.js",
+        "\"use client\";\n// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
+         export default component Reader() {\n  \
+         return (\n    \
+         <aside>\n      \
+         <p>client greeting: {String(import.meta.env.VITE_GREETING)}</p>\n      \
+         <p>client secret: {String(import.meta.env.UF_SECRET_TOKEN)}</p>\n    \
+         </aside>\n  \
+         );\n\
+         }\n",
+    ));
+    files.push((
+        "app/api/env/_uf.route.js",
+        "// @flow\n\n\
+         export function GET(): Response {\n  \
+         return Response.json({ server: String(process.env.UF_SERVER_VALUE) });\n\
+         }\n",
+    ));
+    files.push((
+        ".env",
+        "VITE_GREETING=from .env\n\
+         UF_SERVER_VALUE=from .env\n\
+         UF_SECRET_TOKEN=this-must-not-be-in-the-bundle\n",
+    ));
+    files.push((
+        ".env.development",
+        "VITE_GREETING=greeting for development\nUF_SERVER_VALUE=server value for development\n",
+    ));
+    files.push((
+        ".env.production",
+        "VITE_GREETING=greeting for production\nUF_SERVER_VALUE=server value for production\n",
+    ));
+    Project::new(&files)
+}
+
+/// Every `.js` the browser downloads from a build, as one string.
+fn client_assets(dist: &Path) -> String {
+    let mut source = String::new();
+    let assets = dist.join("assets");
+    let entries = fs::read_dir(&assets)
+        .unwrap_or_else(|error| panic!("the build wrote no {}: {error}", assets.display()));
+    for entry in entries {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|extension| extension == "js") {
+            source.push_str(&fs::read_to_string(&path).unwrap());
+        }
+    }
+    assert!(!source.is_empty(), "the build wrote no client JavaScript");
+    source
+}
+
+/// The build reads `.env`, and only the prefixed half reaches the browser.
+///
+/// This is the half of ubugeeei-prod/uf#259 that is a security property rather
+/// than a convenience: everything in the cascade is available to server code,
+/// and a name without the client prefix must be absent from what ships. The
+/// negative assertion is the point — a build that inlined the whole environment
+/// would pass every other test in this file.
+#[test]
+fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = project_reading_the_environment();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dist = project.path().join("dist");
+    let index = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    // `production`, because that is `uf build`'s mode — so `.env.production`
+    // won over `.env`, and the value a dev server would have used is nowhere.
+    assert!(
+        index.contains("greeting for production"),
+        "the build did not read `.env.production`:\n{index}"
+    );
+    assert!(
+        !index.contains("greeting for development"),
+        "the build read the development file:\n{index}"
+    );
+    // A page reading a name without the prefix gets nothing. `undefined` and
+    // not the value, with React's own comment separator in between.
+    assert!(
+        index.contains("undefined</p>"),
+        "a variable without the client prefix must not reach the page:\n{index}"
+    );
+
+    // The server half of the same page: `process.env` is read by the module
+    // that renders it, and the prerender ran on a process uf had given the
+    // whole environment to. This is the half a route handler and a loader use.
+    assert!(
+        index.contains("server value for production"),
+        "server code must read every variable through `process.env`:\n{index}"
+    );
+
+    let client = client_assets(&dist);
+    assert!(
+        client.contains("greeting for production"),
+        "a prefixed variable is substituted into the browser bundle, and was not"
+    );
+    // And the value that page read on the server is *not* in what ships, even
+    // though the module that reads it does: only a prefixed name is
+    // substituted, everything else stays a lookup that finds nothing in a
+    // browser.
+    assert!(
+        !client.contains("server value for production"),
+        "a variable without the client prefix was inlined into the browser bundle"
+    );
+    // The assertion this test exists for.
+    for file in walk_files(&dist) {
+        let bytes = fs::read(&file).unwrap();
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("this-must-not-be-in-the-bundle"),
+            "a variable without the client prefix reached {}",
+            file.display()
+        );
+    }
+}
+
+/// Every file under `directory`, however deep.
+fn walk_files(directory: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in fs::read_dir(&next).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+/// Start `uf <args>` in `root`, wait for `/`, and ask it what it read.
+///
+/// The retries are [`PORT_ATTEMPTS`]' — the port is chosen by binding zero and
+/// letting it go, so anything on the machine can take it in between, and a
+/// typed port is a strict one, so losing that race is a server that never
+/// starts rather than one on a port nobody asked about.
+fn serve_and_ask(
+    root: &Path,
+    args: &[&str],
+    check: impl Fn(&mut Server, u16, &Mutex<String>, &str),
+) {
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let port_text = port.to_string();
+        let mut with_port: Vec<&str> = args.to_vec();
+        with_port.extend(["--port", &port_text]);
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &with_port, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                check(&mut server, port, &said, &body);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            // Inside the scope: the drain threads end when the pipes close.
+            drop(server);
+            false
+        });
+        if served {
+            return;
+        }
+    }
+    panic!(
+        "`uf {}` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        args.join(" "),
+        refused.join("\n\n")
+    );
+}
+
+/// The dev server and `uf start` read the same files the build did, each in its
+/// own mode.
+///
+/// Both halves in one test and one build, because the defect in
+/// ubugeeei-prod/uf#259 is precisely that two commands can disagree: `uf dev`
+/// must serve the development value and `uf start` the production one, from the
+/// same project, without either being told anything the other was not. The
+/// route handler is the server half — `process.env` in code that never reaches
+/// a browser — and the page is the client half.
+///
+/// `uf start` is asked *after* the file it reads has been rewritten, which is
+/// what says the loading happens when the server starts rather than when the
+/// bundle was built. A deployment that had to rebuild to change a database URL
+/// would not be a deployment.
+#[test]
+fn the_dev_server_and_the_production_server_each_read_their_own_mode() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let project = project_reading_the_environment();
+    let root = project.path().to_path_buf();
+
+    // The dev server first, on the source: `development` is its mode, so
+    // `.env.development` is the file that wins.
+    serve_and_ask(&root, &["dev"], |server, port, said, body| {
+        assert!(
+            body.contains("greeting for development"),
+            "`uf dev` must read `.env.development`:\n{body}"
+        );
+        assert!(
+            body.contains("undefined</p>"),
+            "`uf dev` must not hand a page a variable without the client prefix:\n{body}"
+        );
+        assert!(
+            !body.contains("this-must-not-be-in-the-bundle"),
+            "`uf dev` served a variable that has no client prefix:\n{body}"
+        );
+        let api = get(server, port, "/api/env", said);
+        assert!(
+            api.contains("server value for development"),
+            "a route handler must read the environment through `process.env`:\n{api}"
+        );
+    });
+
+    let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    // Rewritten after the build and before the server: what `uf start` answers
+    // has to come from the file it read on the way up.
+    fs::write(
+        root.join(".env.production"),
+        "VITE_GREETING=greeting for production\nUF_SERVER_VALUE=changed after the build\n",
+    )
+    .unwrap();
+
+    // `uf start` binds every interface by default, which is right for a
+    // production server and wrong for a test on somebody's laptop.
+    serve_and_ask(
+        &root,
+        &["start", "--host", "127.0.0.1"],
+        |server, port, said, body| {
+            assert!(
+                body.contains("greeting for production"),
+                "`uf start` must serve the production build:\n{body}"
+            );
+            let api = get(server, port, "/api/env", said);
+            assert!(
+                api.contains("changed after the build"),
+                "`uf start` must read `.env.production` when it starts, not at build time:\n{api}"
+            );
+        },
+    );
+}
+
+/// The server/client split, asserted on the bundle rather than on the analysis.
+///
+/// `crates/uf_rsc` has been able to say which modules a `"use client"`
+/// boundary is reachable from since it was written, and every test of that
+/// answer passed while the build ignored it: `virtual:uf/routes` emitted
+/// `page: () => import(<file>)` for every route and `virtual:uf/client`
+/// imported that table, so every page in the application was a chunk of the
+/// *client* bundle. A test over the analysis is a test that already passed.
+/// This one reads the emitted JavaScript.
+///
+/// `tests/fixtures/rsc-split-app` has two routes and one import between them:
+/// `/counter` renders a `"use client"` component and `/` renders a module in
+/// `app/_content/`. Each carries a marker *string*, because a production
+/// bundle renames identifiers and keeps string literals, so a marker is the
+/// only thing a grep over `dist/assets/*.js` can be about.
+///
+/// Five things have to hold at once, and each of the first three is a way the
+/// change could be wrong rather than absent:
+///
+/// 1. the counter's marker is in the client bundle — a split that dropped the
+///    route the browser needs would be worse than no split;
+/// 2. the almanac's is not, and neither is the static page's — the module and
+///    the subtree only it reached are gone;
+/// 3. both routes still prerender, and the interactive one still gets its
+///    hydration script;
+/// 4. `uf build`'s summary says `1 of 2`, and it says it because the bundler
+///    reported what it emitted rather than because uf predicted it;
+/// 5. the manifest published beside the build carries the same decision.
+///
+/// The stylesheet assertion inside (3) is the one that is not obvious. A uf
+/// build links the CSS it finds in the *client* graph, so the first version of
+/// this split — which removed a dropped route's page from that graph and left
+/// it at that — silently unstyled the whole site. See the note in
+/// `routesModuleSource`.
+#[test]
+fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
+    if !fixture_ready() {
+        return;
+    }
+    let _split = split_lock();
+    let root = rsc_split_app_root();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let dist = root.join("dist");
+    let scripts = client_scripts(&dist);
+    assert!(
+        !scripts.is_empty(),
+        "the build emitted no client JavaScript at all, so nothing below proves anything"
+    );
+    let bundle = scripts
+        .iter()
+        .map(|(name, source)| format!("// {name}\n{source}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // 1. The route that needs the browser is still whole.
+    assert!(
+        bundle.contains("counter-marker-the-browser-needs-this"),
+        "the `\"use client\"` counter is missing from the client bundle:\n{}",
+        script_names(&scripts)
+    );
+
+    // 2. The route that does not is gone, and so is what only it imported.
+    assert!(
+        !bundle.contains("almanac-marker-only-the-server-reads-this"),
+        "`app/_content/almanac.js` is server-only and reached the browser:\n{}",
+        script_names(&scripts)
+    );
+    assert!(
+        !bundle.contains("rsc-split-app home"),
+        "the static route's page reached the browser:\n{}",
+        script_names(&scripts)
+    );
+
+    // 3. Both routes are still documents, and the interactive one still says
+    //    how it is going to become interactive.
+    let home = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    assert!(
+        home.contains("almanac-marker-only-the-server-reads-this"),
+        "the static route stopped rendering its server-only content:\n{home}"
+    );
+    // And it is still styled. A uf build links the stylesheets it finds in the
+    // *client* graph, so the first version of this split — which removed the
+    // page from that graph outright — took the rules off every page in the
+    // site and said nothing. The page is imported for its side effects for
+    // exactly this, and the assertion is on the emitted CSS rather than on the
+    // import, because the import is the mechanism and this is the promise.
+    assert!(
+        home.contains("rel=\"stylesheet\" href=\"/assets/"),
+        "the static route's document links no stylesheet:\n{home}"
+    );
+    let css = stylesheets(&dist);
+    assert!(
+        css.contains(".almanac-note"),
+        "the static route's stylesheet was dropped with its JavaScript:\n{css}"
+    );
+    let counter =
+        fs::read_to_string(dist.join("counter/index.html")).expect("the counter is prerendered");
+    assert!(
+        counter.contains("counter-marker-the-browser-needs-this"),
+        "the counter did not render on the server:\n{counter}"
+    );
+    assert!(
+        counter.contains("<script type=\"module\" src=\"/assets/"),
+        "the interactive route lost its hydration script:\n{counter}"
+    );
+
+    // 4. The summary is the bundler's own count of what it emitted, not a
+    //    second implementation of the decision above.
+    assert_eq!(
+        summary_value(&stdout, "pages in the client bundle"),
+        "1 of 2",
+        "the summary must say what the bundler emitted:\n{stdout}"
+    );
+
+    // 5. And the manifest carries the field the bundler read, so a future
+    //    reader of `dist/uf-rsc-manifest.json` sees the same decision.
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join("uf-rsc-manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["version"], serde_json::json!(2));
+    let proximity = |path: &str| {
+        manifest["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["path"] == serde_json::json!(path))
+            .unwrap_or_else(|| panic!("no {path} in the manifest"))["proximity"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(proximity("app/counter/_uf.page.js"), "reaches-boundary");
+    assert_eq!(proximity("app/_uf.page.js"), "isolated");
+    assert_eq!(proximity("app/_content/almanac.js"), "isolated");
+}
+
+/// One output directory, one test building it — with the lock the other two
+/// fixtures have, because the next test written against this one will race it.
+static SPLIT: Mutex<()> = Mutex::new(());
+
+fn split_lock() -> std::sync::MutexGuard<'static, ()> {
+    SPLIT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Every `.js` file the client build emitted, as `(name, source)`.
+///
+/// `.js` and not `.js.map`: a source map carries the *source* of every module
+/// in the chunk, so a bundle that dropped a module still has its text in the
+/// map beside it. What ships to a browser as code is the question.
+fn client_scripts(dist: &Path) -> Vec<(String, String)> {
+    let assets = dist.join("assets");
+    let mut scripts = Vec::new();
+    let Ok(entries) = fs::read_dir(&assets) else {
+        return scripts;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.ends_with(".js") {
+            continue;
+        }
+        if let Ok(source) = fs::read_to_string(entry.path()) {
+            scripts.push((name, source));
+        }
+    }
+    scripts.sort();
+    scripts
+}
+
+/// Every stylesheet the client build emitted, concatenated.
+fn stylesheets(dist: &Path) -> String {
+    let assets = dist.join("assets");
+    let mut sheets = Vec::new();
+    let Ok(entries) = fs::read_dir(&assets) else {
+        return String::new();
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().ends_with(".css") {
+            continue;
+        }
+        if let Ok(source) = fs::read_to_string(entry.path()) {
+            sheets.push(source);
+        }
+    }
+    sheets.sort();
+    sheets.join("\n")
+}
+
+/// The emitted file names, for a failure that has to say what it looked at.
+fn script_names(scripts: &[(String, String)]) -> String {
+    scripts
+        .iter()
+        .map(|(name, source)| format!("  {name} ({} bytes)", source.len()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

@@ -16,6 +16,10 @@
 //                 that hydrates it, and the server entry that renders it. In
 //                 development it also renders every HTML request on the
 //                 server, so `uf dev` serves the same markup `uf build` writes.
+//                 The client's copy of the route table is not the server's:
+//                 `internal/rsc.js` reads the RSC analysis and leaves out the
+//                 page of every route no client boundary reaches, so that
+//                 route's modules never enter the browser bundle.
 // * `uf:mdx`    — `@mdx-js/rollup`, configured for React with GitHub-flavoured
 //                 markdown, front matter, heading ids and build-time syntax
 //                 highlighting, so `.mdx` works with
@@ -30,7 +34,7 @@ import path from "node:path";
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
 
-import { reportRenderError } from "./internal/events.js";
+import { emit, reportRenderError } from "./internal/events.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -43,6 +47,7 @@ import {
   preambleCode,
   refreshRuntimeSource,
 } from "./internal/refresh.js";
+import { RSC_MANIFEST_ENV, clientRouteFilter, readRscManifest } from "./internal/rsc.js";
 import {
   RESERVED,
   VIRTUAL,
@@ -140,6 +145,32 @@ function flowPlugin({ routerRoot, appEntry, command }) {
     return service;
   };
 
+  /**
+   * The browser's copy of the route table.
+   *
+   * The manifest is read here rather than once at start-up because `uf dev`
+   * rewrites it whenever the graph moves, and this hook runs again when it
+   * does — a table built from a manifest read at start-up would be the answer
+   * for the project as it was when the server started.
+   *
+   * The count is emitted rather than computed on the Rust side, and that is
+   * the point of it: `uf build` prints what the table it just generated
+   * contains, not what a second implementation of this decision predicted it
+   * would. Only for a build — a dev server has no summary to be true in.
+   */
+  const clientRoutesModule = (table) => {
+    const shipsPage = clientRouteFilter(
+      readRscManifest(process.env[RSC_MANIFEST_ENV]),
+      root,
+      table,
+    );
+    const kept = new Set(table.routes.filter(shipsPage));
+    if (server == null) {
+      emit("rsc-split", { pages: kept.size, routes: table.routes.length });
+    }
+    return routesModuleSource(table, { shipsPage: (route) => kept.has(route) });
+  };
+
   return {
     name: "uf:flow",
     enforce: "pre",
@@ -196,9 +227,16 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       return null;
     },
 
-    load(id) {
+    load(id, loadOptions) {
       if (id === RUNTIME_RESOLVED_ID) return refreshRuntimeSource();
-      if (id === resolved(VIRTUAL.routes)) return routesModuleSource(scanRoutes(appRoot));
+      if (id === resolved(VIRTUAL.routes)) {
+        const table = scanRoutes(appRoot);
+        // The server renders every route, so the server's table is the whole
+        // one and is generated with no filter at all. Only the browser's copy
+        // is split.
+        if (isSsr(this, loadOptions)) return routesModuleSource(table);
+        return clientRoutesModule(table);
+      }
       if (id === resolved(VIRTUAL.client)) return clientModuleSource(entryPath);
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
       if (id.startsWith(STYLE_PREFIX)) return styles.get(id) ?? "";
@@ -310,6 +348,27 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       devServer.watcher.on("add", onRouteFile);
       devServer.watcher.on("unlink", onRouteFile);
 
+      // The same problem one level up. Adding `"use client"` to a module, or
+      // deleting the import that reached it, changes which routes the browser
+      // is given a page for — and touches no reserved file name, so nothing
+      // above notices. `uf dev` rewrites the RSC manifest when the analysis
+      // moves and only then, so this fires when the answer changed rather than
+      // on every keystroke. Watched explicitly because the file is uf's own
+      // artefact and is in no module graph.
+      const manifestFile = process.env[RSC_MANIFEST_ENV];
+      if (manifestFile != null && manifestFile !== "") {
+        const manifestPath = path.resolve(manifestFile);
+        devServer.watcher.add(manifestPath);
+        const onManifest = (file) => {
+          if (path.resolve(file) !== manifestPath) return;
+          const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
+          if (routes) devServer.moduleGraph.invalidateModule(routes);
+          devServer.ws.send({ type: "full-reload", path: "*" });
+        };
+        devServer.watcher.on("add", onManifest);
+        devServer.watcher.on("change", onManifest);
+      }
+
       // After Vite's own middlewares, so `/@vite/client`, `/@id/...` and
       // static files are served first and only a document request reaches
       // the renderer.
@@ -328,18 +387,37 @@ function flowPlugin({ routerRoot, appEntry, command }) {
             // `after()` runs than the same project run through `uf dev`; see
             // `internal/serve.js` and ubugeeei-prod/uf#389.
             //
-            // Only document requests reach here, so unlike `driver.js` there is
-            // no path where uf hands the response back to Vite's chain: what is
-            // below either writes it or throws.
+            // Only requests that look like a document reach here, so unlike
+            // `driver.js` there is no path where uf hands the response back to
+            // Vite's chain: what is below either writes it or throws.
             await withRequest(entry, asRequest, async () => {
-              // Before the page: a middleware guards a subtree, and a page
-              // rendered while the guard on it had not run is the whole of
-              // ubugeeei-prod/uf#260. Only document requests reach here, so this
-              // is the page half of the guarantee; `driver.js` makes the same
-              // call above the route handlers, for every method.
+              // Before anything answers: a middleware guards a subtree, and a
+              // page rendered while the guard on it had not run is the whole of
+              // ubugeeei-prod/uf#260. `driver.js` makes the same call, for
+              // every method.
               const guarded = await entry.runMiddleware(asRequest);
               if (guarded != null) {
                 await send(response, guarded);
+                return;
+              }
+
+              // Then the route handlers, above the renderer and for the same
+              // reason `driver.js` puts them there: a path that answers a
+              // request is not a document, whatever the client said it would
+              // accept. `curl /api/thing` and a `<form action>` navigation both
+              // send `Accept: text/html`, and both want the handler's answer.
+              //
+              // This step is not a duplicate of the dispatcher in `driver.js`,
+              // it is the only one that can run: this middleware is mounted by
+              // `configureServer`, which Vite calls while it is building the
+              // server, and `uf dev` adds its own after `createServer` has
+              // returned — so for every request this one claims, it is the one
+              // that decides. Without it a route handler under `uf dev` was
+              // reachable only by a client that asked for something other than
+              // HTML, and answered the 404 page to everyone else.
+              const handled = await entry.dispatch(asRequest);
+              if (handled != null) {
+                await send(response, handled);
                 return;
               }
 
@@ -540,6 +618,16 @@ function packageOf(file) {
   // that is true without reading its `package.json` from a warning path.
   const up = parts.lastIndexOf("packages");
   return up === -1 ? parts.slice(0, -1).join("/") || file : parts.slice(up, up + 2).join("/");
+}
+
+/**
+ * Whether a hook is running for the server environment.
+ *
+ * Both spellings, for the reason `transform` above checks both: Vite 6 moved
+ * the answer onto the plugin context and the `ssr` option is the older one.
+ */
+function isSsr(context, options) {
+  return options?.ssr === true || context?.environment?.name === "ssr";
 }
 
 function cleanId(id) {

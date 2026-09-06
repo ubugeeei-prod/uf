@@ -331,6 +331,41 @@ export const VIRTUAL = Object.freeze({
  * is one dynamic import, not fifty. Middleware needs no deduplication: it is
  * already one entry per file, keyed by the path it guards.
  *
+ * # The client's copy is not the server's
+ *
+ * `shipsPage` is how the server/client split reaches the bundle. A route it
+ * answers `false` for keeps its path and its parameters — the router still has
+ * to *match* the URL, so that a link into it can hand the navigation back to
+ * the browser — and loses its `page`, its `layouts` and its `loading`
+ * boundaries, which are the only `import()` calls in this table. Nothing in
+ * the browser can then reach the module through the router, so Rollup emits no
+ * chunk for it and none for anything only it reached.
+ *
+ * Omitted by leaving the key out rather than by writing `page: null`, because
+ * the two say different things to a bundler: a property whose value is an
+ * `import()` is a chunk whether or not anything reads it.
+ *
+ * # Except for its styles
+ *
+ * A route that ships no JavaScript still has to *look* right, and a uf build
+ * takes its stylesheets from the client graph: `assetsFromManifest` walks the
+ * client entry's imports and links the CSS it finds, so a module removed from
+ * that graph takes its rules out of every page in the site. That is a silent
+ * visual break, and it is worse than shipping the module.
+ *
+ * So each module a dropped route was the only reader of comes back at the top
+ * of this file as a bare `import <file>;` — a side-effect import, with no
+ * binding read from it. Its stylesheet is a side effect and survives; its
+ * components, its helpers and everything only they referenced are unused
+ * exports and do not. A layout a *kept* route still uses is left out of that
+ * list: it is already here as a lazy import, and a static one as well would
+ * pull it into the entry chunk.
+ *
+ * The default answers `true` for every route, which is the whole table, no
+ * side-effect imports, and exactly what this emitted before the split existed.
+ * `virtual:uf/server` is generated with the default and always will be: the
+ * server renders every route, so its table is the complete one.
+ *
  * @param {{
  *   routes: Route[],
  *   handlers?: Handler[],
@@ -338,8 +373,10 @@ export const VIRTUAL = Object.freeze({
  *   notFound?: NotFoundBoundary[],
  *   errors?: ErrorBoundary[],
  * }} table
+ * @param {{shipsPage?: (route: Route) => boolean}} [options]
  */
-export function routesModuleSource(table) {
+export function routesModuleSource(table, options = {}) {
+  const shipsPage = options.shipsPage ?? (() => true);
   const layoutIds = new Map();
   const layoutImports = [];
   const layoutId = (file) => {
@@ -376,6 +413,16 @@ export function routesModuleSource(table) {
   };
 
   const entries = table.routes.map((route) => {
+    if (!shipsPage(route)) {
+      return `  {
+    path: ${JSON.stringify(route.path)},
+    params: ${JSON.stringify(route.params)},
+    mdx: ${route.mdx},
+    file: ${JSON.stringify(route.page)},
+    layouts: [],
+    loading: [],
+  }`;
+    }
     const layouts = route.layouts.map(layoutId);
     const loading = (route.loading ?? []).map(
       (boundary) => `{ above: ${boundary.above}, module: ${loadingId(boundary.module)} }`,
@@ -443,7 +490,26 @@ export function routesModuleSource(table) {
   }`,
   );
 
-  return `${[...layoutImports, ...loadingImports].join("\n")}
+  // Last, because it is defined by what everything above did *not* import: a
+  // layout a kept route also uses is already in the graph as a lazy chunk, and
+  // importing it here as well would pull it into the entry chunk instead.
+  const carried = new Set([...layoutIds.keys(), ...loadingIds.keys()]);
+  const styleOnlyImports = [];
+  for (const route of table.routes) {
+    if (shipsPage(route)) {
+      continue;
+    }
+    const files = [route.page, ...route.layouts, ...(route.loading ?? []).map((it) => it.module)];
+    for (const file of files) {
+      if (carried.has(file)) {
+        continue;
+      }
+      carried.add(file);
+      styleOnlyImports.push(`import ${JSON.stringify(file)};`);
+    }
+  }
+
+  return `${[...styleOnlyImports, ...layoutImports, ...loadingImports].join("\n")}
 export const routes = [
 ${entries.join(",\n")}
 ];

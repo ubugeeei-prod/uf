@@ -2,11 +2,11 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-use std::env;
 use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
+use uf_config::env_files::ProjectEnv;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::{Operation, PackageManager, command_for, detect_package_manager};
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
@@ -14,13 +14,25 @@ use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_widt
 use crate::cli::CreateCommand;
 use crate::commands::{create, pm, test};
 use crate::suggest::closest;
-use crate::support::{plural, project_label};
+use crate::support::{DEVELOPMENT, plural, project_env, project_label};
 use crate::ui::Ui;
 
-pub(crate) fn run_task(cwd: &Utf8Path, script: &str, args: &[String]) -> Result<()> {
+pub(crate) fn run_task(
+    cwd: &Utf8Path,
+    requested_mode: Option<&str>,
+    script: &str,
+    args: &[String],
+) -> Result<()> {
     let resolved = load_config(cwd)?;
+    // A task is project code with a shell in front of it, so it reads the
+    // project's `.env` files like everything else uf runs. `development` is the
+    // default because a task is something a person runs at a terminal; a task
+    // that runs `uf build` gets `production` from that command, because the
+    // values uf injected here are marked as uf's and lose to a file. See
+    // `uf_config::env_files`.
+    let env = project_env(&resolved, requested_mode, DEVELOPMENT)?;
     let mut visited = BTreeSet::new();
-    run_named_task(&resolved, script, args, &mut visited)
+    run_named_task(&resolved, &env, script, args, &mut visited)
 }
 
 /// Widest a task's command is shown at on the menu.
@@ -151,6 +163,7 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 
 fn run_named_task(
     resolved: &ResolvedConfig,
+    env: &ProjectEnv,
     script: &str,
     args: &[String],
     visited: &mut BTreeSet<String>,
@@ -165,11 +178,11 @@ fn run_named_task(
 
     if let TaskDefinition::Detailed(details) = task {
         for dependency in &details.depends_on {
-            run_named_task(resolved, dependency.as_str(), &[], visited)?;
+            run_named_task(resolved, env, dependency.as_str(), &[], visited)?;
         }
     }
 
-    execute_task(resolved, script, task, args)
+    execute_task(resolved, env, script, task, args)
 }
 
 /// The error for a task name that is not in `uf.config.js`.
@@ -225,6 +238,7 @@ fn unknown_task(resolved: &ResolvedConfig, script: &str) -> String {
 /// did not. A task with no command of its own is Vite+'s, and is handed over.
 fn execute_task(
     resolved: &ResolvedConfig,
+    env: &ProjectEnv,
     script: &str,
     task: &TaskDefinition,
     args: &[String],
@@ -232,7 +246,7 @@ fn execute_task(
     if task.command().trim().is_empty()
         && resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
     {
-        return execute_vite_task(resolved, script, args);
+        return execute_vite_task(resolved, env, script, args);
     }
 
     let command = if args.is_empty() {
@@ -243,21 +257,34 @@ fn execute_task(
     let mut process = ProcessCommand::new("sh");
     process.arg("-c").arg(&command);
 
-    if let TaskDefinition::Detailed(details) = task {
-        if let Some(cwd) = &details.cwd {
-            process.current_dir(resolved.root.join(cwd.as_str()));
-        } else {
-            process.current_dir(&resolved.root);
-        }
-        process.envs(
-            details
-                .env
-                .iter()
-                .map(|(key, value)| (key.as_str(), value.as_str())),
-        );
-    } else {
-        process.current_dir(&resolved.root);
-    }
+    let details = match task {
+        TaskDefinition::Detailed(details) => Some(details),
+        TaskDefinition::Command(_) => None,
+    };
+    let overrides: Vec<(&str, &str)> = details.map_or_else(Vec::new, |details| {
+        details
+            .env
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect()
+    });
+
+    // Under the task's own `env`, which is the more specific of the two: a task
+    // that names a variable means it, and a `.env` file is the project's
+    // default rather than an override.
+    //
+    // In one call rather than two, because setting the files and then the
+    // overrides gets the values right and the label wrong: `apply` also writes
+    // `UF_ENV_INJECTED`, which tells a nested uf "these came from a file, your
+    // own files may overrule them". A task's `env` did not come from a file, so
+    // a marker naming it let `.env.production` win over the task inside a
+    // nested `uf build` — the exact override the task was written to make.
+    env.apply_over(&mut process, &overrides);
+
+    match details.and_then(|details| details.cwd.as_ref()) {
+        Some(cwd) => process.current_dir(resolved.root.join(cwd.as_str())),
+        None => process.current_dir(&resolved.root),
+    };
 
     let status = process.status().with_context(|| {
         format!("failed to run task {script:?} through the fallback task runner")
@@ -268,9 +295,15 @@ fn execute_task(
     Ok(())
 }
 
-fn execute_vite_task(resolved: &ResolvedConfig, script: &str, args: &[String]) -> Result<()> {
-    let runner = env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
+fn execute_vite_task(
+    resolved: &ResolvedConfig,
+    env: &ProjectEnv,
+    script: &str,
+    args: &[String],
+) -> Result<()> {
+    let runner = std::env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
     let mut process = ProcessCommand::new(runner);
+    env.apply(&mut process);
     process.arg("run").arg(script);
     if !args.is_empty() {
         process.arg("--").args(args);
@@ -339,8 +372,19 @@ pub(crate) fn exec_package(
         return Ok(());
     }
 
+    // And the environment below that branch, not above it. A virtual package
+    // resolves its own — `uf exec @uniflowed/test` reaches `test::test`, whose
+    // mode is `test` — so loading the `development` cascade first only added a
+    // way to fail: a `.env.development` that does not parse would have stopped
+    // a command that was never going to read it.
+    //
+    // Below this line it is the same environment `uf run` gives a task: `ufx`
+    // runs a tool against this project, and a codegen that reads
+    // `DATABASE_URL` should read the project's.
+    let env = project_env(&resolved, None, DEVELOPMENT)?;
+
     if let Some(binary) = installed_binary(&resolved.root, package) {
-        return spawn_executable(&resolved.root, ui, &binary, args, package);
+        return spawn_executable(&resolved.root, ui, &env, &binary, args, package);
     }
 
     // A path, executed as written. `ufx ./scripts/codegen.js` is a thing
@@ -352,7 +396,7 @@ pub(crate) fn exec_package(
         resolved.root.join(candidate)
     };
     if executable.is_file() {
-        return spawn_executable(&resolved.root, ui, &executable, args, package);
+        return spawn_executable(&resolved.root, ui, &env, &executable, args, package);
     }
 
     let detection = detect_package_manager(&resolved.root);
@@ -384,7 +428,9 @@ pub(crate) fn exec_package(
         renderer.status(out, Status::Info, &announcement);
     });
 
-    let status = ProcessCommand::new(invocation.program)
+    let mut fetch = ProcessCommand::new(invocation.program);
+    env.apply(&mut fetch);
+    let status = fetch
         .args(invocation.args.iter().map(AsRef::as_ref))
         .current_dir(resolved.root.as_std_path())
         .status()
@@ -426,11 +472,14 @@ fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
 fn spawn_executable(
     root: &Utf8Path,
     ui: &mut Ui,
+    env: &ProjectEnv,
     executable: &Utf8Path,
     args: &[String],
     package: &str,
 ) -> Result<()> {
-    let status = ProcessCommand::new(executable.as_std_path())
+    let mut process = ProcessCommand::new(executable.as_std_path());
+    env.apply(&mut process);
+    let status = process
         .args(args)
         .current_dir(root.as_std_path())
         .status()
@@ -565,7 +614,9 @@ fn exec_uniflowed_virtual_package(
             Ok(true)
         }
         "@uniflowed/pm" | "uf/pm" => {
-            pm::install(cwd, ui)?;
+            // `ufx @uniflowed/pm` is the package, not the flag surface: the
+            // frozen install is `uf install --frozen-lockfile`.
+            pm::install(cwd, ui, false)?;
             Ok(true)
         }
         _ => Ok(false),

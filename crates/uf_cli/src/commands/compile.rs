@@ -61,6 +61,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_bundle::{Embedded, ReportOptions, write_embedded_assets};
+use uf_config::env_files::ProjectEnv;
 
 use crate::commands::vite::{
     Driver, Event, Host, LogLevel, find_program, render_error, render_log,
@@ -136,6 +137,7 @@ pub(crate) fn compile(
     package: &Utf8Path,
     root: &Utf8Path,
     out_dir: &Utf8Path,
+    env: &ProjectEnv,
 ) -> Result<Compiled> {
     let work = root.join(WORK_DIR);
     let assets = work.join("assets.js");
@@ -176,6 +178,8 @@ pub(crate) fn compile(
             String::from("--bundle"),
             work.to_string(),
         ],
+        env,
+        &[],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {
