@@ -184,6 +184,10 @@ export default defineConfig({
     // in it costs a round trip and blocks a release. It has cost three, each
     // a shape of `npm trust github` that no test was strict enough to see.
     "release:trust:test": "tools/release/test-trust-npm.sh",
+    // And the bump, whose two mistakes were both about the *second* run: a
+    // changelog written after the version moved, and a resumed release that
+    // was told its Cargo.toml has no version.
+    "release:bump:test": "tools/release/test-bump-version.sh",
     // `npm trust` binds a name the registry already has and cannot create
     // one, so a name that has never been published is published once by a
     // person and is the workflow's from then on.
@@ -193,6 +197,20 @@ export default defineConfig({
     "release:bump": "tools/release/bump-version.sh",
 
     // --- Manifests -----------------------------------------------------
+    //
+    // `npm ci` refuses a lock that disagrees with the manifests, and it
+    // refuses it in every job that installs: six went red at once when a
+    // package was added and the lock was not regenerated, each reporting a
+    // package none of those jobs is about. This says it once, where the
+    // manifests are the subject.
+    lockfile: "tools/ci/lockfile-in-sync.sh",
+    // The check reads the lock rather than regenerating it, so every way a
+    // lock can fall behind has to be written down as a case. Its first
+    // version compared bytes against a fresh `npm install
+    // --package-lock-only`, which passed here and failed in CI over a
+    // difference that could not be reproduced here afterwards.
+    "lockfile:test": "tools/ci/test-lockfile-in-sync.sh",
+
     manifests:
       "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
 
@@ -200,17 +218,41 @@ export default defineConfig({
     //
     // What CI runs, in one command. A check that is in the pipeline and not
     // here is a check a contributor cannot run before pushing.
+    //
+    // It had drifted eight tasks wide: the pipeline grew `flow:clippy`,
+    // `flow:test`, `rust:bench`, `release:closure`, `release:trust:test` and
+    // three more, and each was added to a workflow without being added here —
+    // including `release:closure`, whose own comment says "no network, so `ci`
+    // runs it" while `ci` did not. The list is the whole of `uf run` in
+    // `.github/workflows/`, and `install:test` is the one deliberate omission,
+    // below.
     ci: {
       command: "echo 'every check passed'",
       dependsOn: [
         "rust:fmt:check",
         "rust:clippy",
         "rust:test",
+        "rust:bench",
+        "flow:clippy",
+        "flow:test",
         "fmt:check",
         "test:lib",
         "docs:build",
         "rust:metadata",
         "manifests",
+        "lockfile",
+        "lockfile:test",
+        "release:closure",
+        "publishable",
+        "publishable:test",
+        "release:trust:test",
+        "release:bump:test",
+        // Not `install:test`. It packages a release before installing it, and
+        // packaging needs `wild-linker`, which CI installs in that job and a
+        // laptop has no reason to have. A `uf run ci` that fails on a fresh
+        // checkout for a missing linker teaches people to ignore failures,
+        // which costs more than this check earns here — it still runs in the
+        // pipeline, where the linker is present.
       ],
     },
   },

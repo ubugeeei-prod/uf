@@ -65,7 +65,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("install", "workflow.rs: runs the package manager"),
     ("lint", "here, and output.rs for the report"),
     ("lsp", "cli.rs: speaks a protocol over stdio"),
-    ("prepare", "here, and workflow.rs for the plan"),
+    (
+        "prepare",
+        "here, and prepare.rs for the staged set and the steps",
+    ),
     ("publish", "workflow.rs: names a registry"),
     ("release", "workflow.rs: writes a changelog"),
     ("run", "here, and cli.rs for the task runner"),
@@ -81,8 +84,9 @@ const COVERAGE: &[(&str, &str)] = &[
 /// Anything that writes, installs, binds a port or speaks a protocol is in
 /// [`COVERAGE`] against the file that runs it instead. `uf doc` is here in its
 /// `--json` form for exactly that reason: without it, it writes `api.md`, and
-/// `uf prepare` is absent because it generates `router.js` — it has a test of
-/// its own below, over a fixture it is allowed to change.
+/// `uf prepare` is absent because it generates `router.js` and runs the linter
+/// — it has a test of its own below, over a fixture it is allowed to change,
+/// and `prepare.rs` for the staged set and the steps.
 const READ_ONLY: &[&[&str]] = &[
     &["check"],
     &["completion", "bash"],

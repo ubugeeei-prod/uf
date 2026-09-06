@@ -117,6 +117,36 @@ const legacy = require("./legacy.js");
     );
 }
 
+/// A type-only import is erased before anything runs, so it is not an edge.
+///
+/// The exception is the one that only looks type-only: `import type from` is
+/// a default import into a binding named `type`, and dropping it would lose a
+/// real dependency.
+#[test]
+fn type_only_imports_are_not_module_edges() {
+    let source = r#"
+import type { Account } from "./types.js";
+import typeof * as Actions from "./actions.js";
+import typeof Save from "./save.js";
+import type Config, { Extra } from "./config.js";
+export type { Account } from "./types.js";
+import type from "./default-named-type.js";
+import { real } from "./real.js";
+"#;
+    let imports = scan_imports(source);
+    let specifiers: Vec<_> = imports
+        .iter()
+        .map(|import| (import.specifier.as_str(), import.kind))
+        .collect();
+    assert_eq!(
+        specifiers,
+        vec![
+            ("./default-named-type.js", ImportKind::Static),
+            ("./real.js", ImportKind::Static),
+        ]
+    );
+}
+
 #[test]
 fn ignores_import_like_text_inside_strings() {
     let imports = scan_imports("const doc = \"import x from './a.js'\";");

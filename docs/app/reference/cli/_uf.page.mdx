@@ -136,6 +136,35 @@ Runs the test suite. A PATH argument keeps only files whose path contains it.
 | `--list` | Print what would run without running it |
 | `--json` | The whole report on stdout, machine-readable |
 
+### uf prepare
+
+Runs the checks and code generation a commit should not go without. Five steps,
+in order, and every one of them does something:
+
+| Step | What it does |
+| --- | --- |
+| `discover-staged-files` | Asks git for the files in the index, and narrows the two checks to them |
+| `generate-router-types` | Writes `router.js` from the reserved page files |
+| `generate-server-action-types` | Writes `server-actions.js`: every callable server action, keyed by `module#export`, with its real type read off the declaring module |
+| `run-lint` | `uf lint` over the staged files |
+| `run-format-check` | `uf fmt --check` over the staged files |
+
+The record of the run goes to `.uf/prepare.json`, including the steps that did
+not run: a generation failure stops the run, and the checks after it are
+recorded as `not-run` rather than as anything that could be read as a pass.
+
+Both generated files are checked whether or not they are staged — a scaffolded
+project git-ignores them, so they never are, and a commit hook that writes a
+file its own linter rejects is a hook nobody keeps.
+
+Outside a git working tree there is no staged set, so every file is checked and
+the run says why. With git and an empty index there is nothing to check, and the
+two checks are skipped.
+
+`uf prepare` reads the working tree, not the staged blob. A file that is half
+staged is checked as it is on disk; uf does not stash the unstaged half the way
+`lint-staged` does.
+
 ## Environment
 
 ### uf install
@@ -183,10 +212,6 @@ removes nothing.
 Replaces the uf binary with the newest release.
 
 ## Publishing
-
-### uf prepare
-
-Builds whatever a package needs before it can be published.
 
 ### uf release BUMP
 
