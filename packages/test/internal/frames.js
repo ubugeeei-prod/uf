@@ -16,11 +16,24 @@
 /** A position in a source file, one-based line and column. */
 export type Site = {| readonly line: number, readonly column: number |};
 
-/** Frames belonging to the runner itself, which no test author wrote. */
+/**
+ * Frames belonging to the testing libraries, which no test author wrote.
+ *
+ * `@uniflowed/react-testing` is here for exactly the reason `@uniflowed/test`
+ * is, and was missing because it is a different package. Every `getBy…`
+ * failure is *constructed* inside it, so the first surviving frame of the
+ * commonest failure a component test can produce was `internal/queries.js` —
+ * and since a site is reported as a line of the file being run, the reader was
+ * sent to a line their own file does not have. That is ubugeeei-prod/uf#319.
+ * A library that raises on the caller's behalf is the runner as far as the
+ * report is concerned.
+ */
 const INTERNAL_MARKERS = [
   "/packages/test/internal/",
   "/packages/test/worker.js",
+  "/packages/react-testing/",
   "/@uniflowed/test/",
+  "/@uniflowed/react-testing/",
   "node:internal/",
 ];
 
@@ -83,6 +96,36 @@ export function firstUserSite(
   }
   for (const frame of stack.split("\n").slice(1)) {
     if (skipInternal && isInternalFrame(frame)) {
+      continue;
+    }
+    const site = frameSite(frame);
+    if (site != null) {
+      return site;
+    }
+  }
+  return null;
+}
+
+/**
+ * The first position in `stack` that is in `file`, or `null`.
+ *
+ * The reporter draws a failure's position as `path:line:column`, and it takes
+ * the path from the file it asked the worker to run rather than from the
+ * frame. So a number lifted from any other file is not a vaguer answer than
+ * none — it is a wrong one, naming a line the reader can open and that has
+ * nothing to do with what failed. Restricting the search to the file that will
+ * be named makes the two halves of that position come from the same place.
+ *
+ * `null` when the file is on no frame, which is a failure raised from work the
+ * case left behind: no line of it is the one that failed, and printing none is
+ * the honest answer.
+ */
+export function siteInFile(stack: string | null | void, file: string): Site | null {
+  if (stack == null) {
+    return null;
+  }
+  for (const frame of stack.split("\n").slice(1)) {
+    if (!frame.includes(file)) {
       continue;
     }
     const site = frameSite(frame);
