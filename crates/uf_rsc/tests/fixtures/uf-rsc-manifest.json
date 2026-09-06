@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "engine": "uf-native",
   "buildFingerprint": "71527ae95b8871ca4467cfe1c007937a061888fad13c7da20eb669bacb59fb0b",
   "modules": [
@@ -7,6 +7,7 @@
       "path": "app/_uf.page.js",
       "environment": "server",
       "reachability": "server-only",
+      "proximity": "reaches-boundary",
       "imports": [
         "app/client/Counter.js",
         "server/actions.js"
@@ -20,6 +21,7 @@
       "path": "app/client/Counter.js",
       "environment": "client",
       "reachability": "client-only",
+      "proximity": "isolated",
       "imports": [],
       "externalImports": [
         "@uniflowed/react"
@@ -32,6 +34,7 @@
       "path": "server/actions.js",
       "environment": "server-actions",
       "reachability": "server-only",
+      "proximity": "isolated",
       "imports": [],
       "externalImports": [],
       "exports": [

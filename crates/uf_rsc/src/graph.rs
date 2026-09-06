@@ -129,7 +129,10 @@ impl ModuleReachability {
 }
 
 /// Whether a module can hand a server action to the client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum ClientBoundaryProximity {
     /// Neither this module nor anything it imports crosses a client boundary.
     #[default]
@@ -143,6 +146,14 @@ impl ClientBoundaryProximity {
     /// Whether the module reaches a client boundary.
     pub fn reaches_boundary(self) -> bool {
         matches!(self, Self::ReachesBoundary)
+    }
+
+    /// Stable identifier used in the manifest.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Isolated => "isolated",
+            Self::ReachesBoundary => "reaches-boundary",
+        }
     }
 }
 
@@ -259,6 +270,29 @@ pub struct RscModule {
     pub exports: ExportList,
     /// Function-level `"use server"` closures.
     pub function_actions: FunctionDirectiveList,
+}
+
+impl RscModule {
+    /// Whether the browser has to be able to evaluate this module.
+    ///
+    /// True for a `"use client"` module, which is a client bundle root by
+    /// definition, and for any module that transitively imports one.
+    ///
+    /// The second half is uf's client renderer talking rather than React's.
+    /// `packages/router/client.js` hydrates by re-rendering the whole matched
+    /// tree from the same modules the server rendered it from, so a Server
+    /// Component *above* a client boundary is a module React needs in the
+    /// browser to reach the boundary at all. Dropping it needs a Flight-shaped
+    /// payload describing the rendered tree, which uf does not have yet; see
+    /// ubugeeei-prod/uf#252.
+    ///
+    /// What this does decide is the module that reaches *no* boundary. Nothing
+    /// under it is ever rendered in the browser, so nothing under it has to be
+    /// shipped — which is what `@uniflowed/vite` uses to leave a whole route's
+    /// page out of the client route table.
+    pub fn requires_client_bundle(&self) -> bool {
+        self.environment == ModuleEnvironment::Client || self.proximity.reaches_boundary()
+    }
 }
 
 /// The resolved React Server Components graph of a project.
