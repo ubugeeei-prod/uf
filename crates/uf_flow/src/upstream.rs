@@ -4,35 +4,15 @@
 //! enums) natively, so nothing rewrites the source before parsing and every
 //! diagnostic points at the location the user actually wrote.
 
-use flow_parser::ParseOptions;
 use flow_parser::loc::Loc;
 use flow_parser::parse_error::ParseError;
 
+use crate::parse::PARSE_OPTIONS;
 use crate::{FlowError, ParseDiagnostic, ParseOutcome};
-
-/// Parse options aligned with the `uf` project defaults.
-///
-/// Decorators stay off because generated projects never emit them, and every
-/// syntax `uf` ships in templates or lints stays on.
-const UF_PARSE_OPTIONS: ParseOptions = ParseOptions {
-    components: true,
-    enums: true,
-    pattern_matching: true,
-    records: true,
-    esproposal_decorators: false,
-    types: true,
-    ambiguous_types: true,
-    enable_types_in_comments: true,
-    use_strict: false,
-    assert_operator: false,
-    module_ref_prefix: None,
-    ambient: false,
-    allow_return_outside_function: false,
-};
 
 pub(crate) fn validate_source(source: &str) -> Result<ParseOutcome, FlowError> {
     let (_program, errors): (_, Vec<(Loc, ParseError)>) =
-        flow_parser::parse_program_without_file(false, None, Some(UF_PARSE_OPTIONS), Ok(source));
+        flow_parser::parse_program_without_file(false, None, Some(PARSE_OPTIONS), Ok(source));
 
     Ok(ParseOutcome {
         diagnostics: errors.iter().map(diagnostic_from_error).collect(),
