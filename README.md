@@ -4,7 +4,7 @@
 
 # uf
 
-**React at its best, typed by Flow.**
+**The best React experience, typed by Flow.**
 
 [Documentation](https://docs.uniflowed.dev) ·
 [Install](https://docs.uniflowed.dev/guide/install) ·
