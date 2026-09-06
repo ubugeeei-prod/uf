@@ -48,9 +48,11 @@ const COMMANDS: &[&str] = &[
     "lint",
     "lsp",
     "prepare",
+    "preview",
     "publish",
     "release",
     "run",
+    "start",
     "test",
     "upgrade",
     "use",
@@ -71,7 +73,9 @@ const RELEASE_BUMPS: &[&str] = &["alpha", "patch", "minor", "major"];
 const CREATE_KINDS: &[&str] = &["app", "lib"];
 
 /// What `uf explain` knows how to describe.
-const EXPLAINABLE: &[&str] = &["dev", "build", "doc", "test", "fmt", "lint", "check"];
+const EXPLAINABLE: &[&str] = &[
+    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check",
+];
 
 /// Print the completion script for `shell`.
 pub(crate) fn completion(ui: &mut Ui, shell: Shell) {
