@@ -16,6 +16,19 @@ export type TaskDefinition =
 
 export type CapabilityJsHost = "node" | "deno" | "bun";
 
+/**
+ * Percentages a coverage gate requires, as whole numbers between 0 and 100.
+ *
+ * A metric nobody names is not checked, which is not the same as requiring
+ * zero: `{ lines: 0 }` says "every line, and I mean it" in a way that reads
+ * wrong, so the absent case is the one that means nothing is required.
+ */
+export type CoverageThresholds = {
+  readonly lines?: number,
+  readonly functions?: number,
+  readonly branches?: number,
+};
+
 export type UniflowedConfig = {
   readonly app?: {
     readonly orm?: {
@@ -306,6 +319,23 @@ export type UniflowedConfig = {
       readonly officialFlowParser?: true,
     },
     readonly reactTestingLibraryNative?: true,
+    /**
+     * What `uf test --coverage` measures, writes and fails on.
+     *
+     * The thresholds live here rather than on the command line because a
+     * coverage gate is a property of the project: the number CI fails on has to
+     * be the number a laptop fails on. They are checked whenever coverage was
+     * collected, so `enabled: false` plus `--coverage` still gates.
+     */
+    readonly coverage?: {
+      readonly enabled?: boolean,
+      readonly directory?: string,
+      readonly reporters?: $ReadOnlyArray<"text" | "lcov" | "cobertura">,
+      readonly include?: $ReadOnlyArray<string>,
+      readonly exclude?: $ReadOnlyArray<string>,
+      readonly thresholds?: CoverageThresholds,
+      readonly perFileThresholds?: CoverageThresholds,
+    },
   },
   readonly tasks?: { readonly [string]: TaskDefinition },
   readonly vrt?: {
