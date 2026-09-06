@@ -1,4 +1,4 @@
-//! Actually installing dependencies.
+//! Actually changing what is installed.
 //!
 //! [`crate::install_workspace`] records what a workspace declares; it reaches
 //! no registry and creates no `node_modules`. Everything a uf project imports —
@@ -6,15 +6,17 @@
 //! until uf's own resolver can fetch and link a dependency tree, that somewhere
 //! is the package manager the project already uses.
 //!
-//! So `uf install` detects the manager, maps [`Operation::Install`] through the
-//! table in [`crate::command`], and spawns it. The program name comes from that
-//! table and never from a manifest.
+//! So `uf install`, `uf add`, `uf remove`, `uf update` and `uf why` each detect
+//! the manager, map their [`Operation`] through the table in [`crate::command`],
+//! and spawn it. The program name comes from that table and never from a
+//! manifest.
 //!
-//! # Two ways to run it
+//! # Two ways to run one
 //!
-//! [`run_install`] lets the child inherit uf's stdio, so its own progress and
+//! [`run_operation`] lets the child inherit uf's stdio, so its own progress and
 //! errors reach the terminal unedited. That is right for pnpm, Yarn and Bun,
-//! which all draw a good install.
+//! which all draw a good install, and it is the only way the four commands that
+//! carry operands run at all.
 //!
 //! [`run_install_watched`] reads the child's output instead, so uf can draw
 //! the phases as they happen — see [`crate::progress`] for what that costs and
@@ -23,6 +25,15 @@
 //! would have printed on its own is handed straight back to the caller through
 //! [`InstallObserver::line`]. A failed install still says why, in npm's words,
 //! because those words arrive on that callback like any other.
+//!
+//! # Operands
+//!
+//! A package specifier is the one part of these invocations that comes from
+//! outside the table. It is passed as a single `argv` entry and never through a
+//! shell, so `uf add "react@^18 || ^19"` is one argument and stays one — but an
+//! operand that *starts* with `-` would be read by the manager as a flag it was
+//! never asked for, so [`operands_for`] refuses it before the spawn rather than
+//! letting `uf remove --global` mean something.
 //!
 //! # Why a detected manager and not uf's own
 //!
@@ -83,9 +94,9 @@ pub trait InstallObserver {
     fn progress(&mut self, watch: &InstallWatch);
 }
 
-/// What `uf install` did.
+/// What a delegated package-manager command did.
 #[derive(Debug, Clone)]
-pub struct InstallRun {
+pub struct ManagerRun {
     /// The manager that ran.
     pub manager: PackageManager,
     /// The command it ran, for display. Never shell syntax.
@@ -102,9 +113,9 @@ pub struct InstallRun {
     pub watch: Option<InstallWatch>,
 }
 
-/// Installing failed.
+/// Running the manager failed, or uf refused to run it.
 #[derive(Debug, thiserror::Error)]
-pub enum InstallRunError {
+pub enum ManagerRunError {
     /// The manager could not be started at all.
     #[error("could not run `{invocation}`: {source}\n{hint}")]
     Spawn {
@@ -125,55 +136,76 @@ pub enum InstallRunError {
         /// How it described its failure.
         status: String,
     },
+    /// An operand uf will not put on a manager's command line.
+    #[error("{operand:?} is not a package name: {reason}")]
+    Operand {
+        /// The operand as it was given.
+        operand: String,
+        /// Why it was refused, and what to write instead.
+        reason: String,
+    },
 }
 
 /// Install `root`'s dependencies with the package manager that drives it.
 ///
+/// [`run_operation`] with [`Operation::Install`] and no operands.
+///
+/// # Errors
+///
+/// The same as [`run_operation`].
+pub fn run_install(root: &Utf8Path, allow_scripts: bool) -> Result<ManagerRun, ManagerRunError> {
+    run_operation(root, Operation::Install, &[], allow_scripts)
+}
+
+/// Run one package-manager operation in `root`, with the manager that drives it.
+///
+/// `operands` are the package specifiers or names the operation takes — the
+/// specifiers for [`Operation::Add`], the names for [`Operation::Remove`] and
+/// [`Operation::Why`], the packages to hold to for [`Operation::Update`], and
+/// nothing at all for the two installs.
+///
 /// `allow_scripts` is the project's `pm.allowLifecycleScripts`; when it is
 /// false the manager is told not to run any, which is the only way to keep
-/// that guarantee once the install is somebody else's process.
+/// that guarantee once the work is somebody else's process. It is passed only
+/// for the operations that can install something — see
+/// [`Operation::installs_packages`].
 ///
 /// Blocks until the manager exits, with the child's stdio connected to uf's, so
 /// the caller must have finished any progress rendering of its own first.
 ///
 /// # Errors
 ///
-/// [`InstallRunError::Spawn`] when the manager is not installed, and
-/// [`InstallRunError::Failed`] when it runs and fails.
-pub fn run_install(root: &Utf8Path, allow_scripts: bool) -> Result<InstallRun, InstallRunError> {
+/// [`ManagerRunError::Operand`] before anything is spawned when an operand
+/// could be read as a flag, [`ManagerRunError::Spawn`] when the manager is not
+/// installed, and [`ManagerRunError::Failed`] when it runs and fails.
+pub fn run_operation(
+    root: &Utf8Path,
+    operation: Operation<'_>,
+    operands: &[String],
+    allow_scripts: bool,
+) -> Result<ManagerRun, ManagerRunError> {
     let detection = detect_package_manager(root);
     let (manager, substituted) = installable(&detection);
-    let mut invocation = command_for(manager, Operation::Install);
-
-    // A dependency's `postinstall` is the supply-chain hole uf's own resolver
-    // was going to close by never running one. Delegating to a manager that
-    // runs them by default would have quietly reopened it, so the project's
-    // `pm.allowLifecycleScripts` is passed through to the manager. Every
-    // manager in the table spells the flag the same way.
-    if !allow_scripts {
-        invocation
-            .args
-            .push(std::borrow::Cow::Borrowed("--ignore-scripts"));
-    }
+    let invocation = invocation_for(manager, operation, operands, allow_scripts)?;
 
     let status = Command::new(invocation.program)
         .args(invocation.args.iter().map(AsRef::as_ref))
         .current_dir(root)
         .status()
-        .map_err(|source| InstallRunError::Spawn {
+        .map_err(|source| ManagerRunError::Spawn {
             invocation: invocation.to_string(),
             source,
             hint: missing_hint(manager),
         })?;
 
     if !status.success() {
-        return Err(InstallRunError::Failed {
+        return Err(ManagerRunError::Failed {
             invocation: invocation.to_string(),
             status: status.to_string(),
         });
     }
 
-    Ok(InstallRun {
+    Ok(ManagerRun {
         manager,
         invocation,
         source: detection.source,
@@ -183,35 +215,125 @@ pub fn run_install(root: &Utf8Path, allow_scripts: bool) -> Result<InstallRun, I
     })
 }
 
-/// Install `root`'s dependencies, reading the manager's output as it goes.
+/// The exact command `run_operation` would spawn.
 ///
-/// Same contract as [`run_install`] — same manager, same detection, same
-/// `--ignore-scripts` — with the child's streams piped instead of inherited so
-/// that `observer` sees them. When the detected manager is not one
-/// [`Reader::for_manager`] knows how to read, this falls back to
-/// [`run_install`] rather than piping a manager uf cannot narrate: taking a
-/// good install screen away and replacing it with a spinner is not an
-/// improvement.
+/// Separate from the spawn so that what uf is about to run can be asserted on,
+/// and printed — `uf explain add` names it — without running anything.
 ///
 /// # Errors
 ///
-/// The same two as [`run_install`], and for the same reasons.
-pub fn run_install_watched(
-    root: &Utf8Path,
+/// [`ManagerRunError::Operand`] for an operand uf will not pass on.
+pub fn invocation_for(
+    manager: PackageManager,
+    operation: Operation<'_>,
+    operands: &[String],
     allow_scripts: bool,
-    observer: &mut dyn InstallObserver,
-) -> Result<InstallRun, InstallRunError> {
-    let detection = detect_package_manager(root);
-    let (manager, substituted) = installable(&detection);
-    let Some(reader) = Reader::for_manager(manager) else {
-        return run_install(root, allow_scripts);
-    };
-    let mut invocation = command_for(manager, Operation::Install);
-    if !allow_scripts {
+) -> Result<Invocation, ManagerRunError> {
+    let mut invocation = command_for(manager, operation);
+
+    // A dependency's `postinstall` is the supply-chain hole uf's own resolver
+    // was going to close by never running one. Delegating to a manager that
+    // runs them by default would have quietly reopened it, so the project's
+    // `pm.allowLifecycleScripts` is passed through to the manager. Every
+    // manager in the table spells the flag the same way.
+    //
+    // Before the operands rather than after: a flag that follows a package
+    // name is still a flag to all four managers, but a reader checking the
+    // `command` row against what they typed should see uf's own additions
+    // together and their own specifiers last.
+    if !allow_scripts && operation.installs_packages() {
         invocation
             .args
             .push(std::borrow::Cow::Borrowed("--ignore-scripts"));
     }
+    check_operands(operands)?;
+    for operand in operands {
+        invocation
+            .args
+            .push(std::borrow::Cow::Owned(operand.clone()));
+    }
+    Ok(invocation)
+}
+
+/// Refuse an operand uf will not put on a manager's command line.
+///
+/// Nothing here is quoted or split: a specifier is one `argv` entry and stays
+/// one, which is what makes `uf add "react@>=18 <20"` mean what it says. What
+/// is refused is the operand that would stop being an operand — an empty
+/// string, which every manager reads as a package with no name, and anything
+/// starting with `-`, which it would read as a flag.
+///
+/// Public, and separate from [`invocation_for`], so a caller can refuse before
+/// it has done anything at all: `uf add -- --global` used to rewrite `uf.lock`
+/// on its way to failing, which is a command that both refused and wrote.
+///
+/// # Errors
+///
+/// [`ManagerRunError::Operand`], naming the operand and what to write instead.
+pub fn check_operands(operands: &[String]) -> Result<(), ManagerRunError> {
+    for operand in operands {
+        if operand.is_empty() {
+            return Err(ManagerRunError::Operand {
+                operand: operand.clone(),
+                reason: "it is empty; name the package you meant".to_owned(),
+            });
+        }
+        if operand.starts_with('-') {
+            return Err(ManagerRunError::Operand {
+                operand: operand.clone(),
+                reason: format!(
+                    "it starts with `-`, which the package manager would read as a flag; \
+                     write the package name, or `./{operand}` for a path"
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Install `root`'s dependencies, reading the manager's output as it goes.
+///
+/// [`run_watched`] with [`Operation::Install`].
+///
+/// # Errors
+///
+/// The same as [`run_watched`].
+pub fn run_install_watched(
+    root: &Utf8Path,
+    allow_scripts: bool,
+    observer: &mut dyn InstallObserver,
+) -> Result<ManagerRun, ManagerRunError> {
+    run_watched(root, Operation::Install, allow_scripts, observer)
+}
+
+/// Run an install-shaped `operation` in `root`, reading the manager's output as
+/// it goes.
+///
+/// Same contract as [`run_operation`] — same manager, same detection, same
+/// `--ignore-scripts` — with the child's streams piped instead of inherited so
+/// that `observer` sees them. It takes no operands, because the two operations
+/// worth narrating a ladder for are the two installs and neither has any.
+///
+/// When the detected manager is not one [`Reader::for_manager`] knows how to
+/// read, this falls back to [`run_operation`] rather than piping a manager uf
+/// cannot narrate: taking a good install screen away and replacing it with a
+/// spinner is not an improvement.
+///
+/// # Errors
+///
+/// The same as [`run_operation`], and for the same reasons.
+pub fn run_watched(
+    root: &Utf8Path,
+    operation: Operation<'_>,
+    allow_scripts: bool,
+    observer: &mut dyn InstallObserver,
+) -> Result<ManagerRun, ManagerRunError> {
+    let detection = detect_package_manager(root);
+    let (manager, substituted) = installable(&detection);
+    let Some(reader) = Reader::for_manager(manager) else {
+        return run_operation(root, operation, &[], allow_scripts);
+    };
+    let mut invocation = invocation_for(manager, operation, &[], allow_scripts)?;
     // Asked for so that there is something to narrate: npm prints nothing at
     // all between "starting" and "done" when its output is a pipe. Every line
     // this flag causes is consumed by `Reader::classify` and no other, so the
@@ -227,7 +349,7 @@ pub fn run_install_watched(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|source| InstallRunError::Spawn {
+        .map_err(|source| ManagerRunError::Spawn {
             invocation: invocation.to_string(),
             source,
             hint: missing_hint(manager),
@@ -268,19 +390,19 @@ pub fn run_install_watched(
     }
     watch.finish(Instant::now());
 
-    let status = child.wait().map_err(|source| InstallRunError::Spawn {
+    let status = child.wait().map_err(|source| ManagerRunError::Spawn {
         invocation: invocation.to_string(),
         source,
         hint: missing_hint(manager),
     })?;
     if !status.success() {
-        return Err(InstallRunError::Failed {
+        return Err(ManagerRunError::Failed {
             invocation: invocation.to_string(),
             status: status.to_string(),
         });
     }
 
-    Ok(InstallRun {
+    Ok(ManagerRun {
         manager,
         invocation,
         source: detection.source,
@@ -346,3 +468,6 @@ fn missing_hint(manager: PackageManager) -> String {
         ),
     }
 }
+
+#[cfg(test)]
+mod tests;

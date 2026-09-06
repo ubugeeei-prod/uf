@@ -59,8 +59,9 @@ pub use graph::{
     is_server_only_specifier, normalize_module_path, resolve_specifier,
 };
 pub use manifest::{
-    RSC_MANIFEST_FILE_NAME, RSC_MANIFEST_VERSION, RscManifest, RscManifestAction,
-    RscManifestBoundary, RscManifestDiagnostic, RscManifestModule, write_manifest,
+    RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RSC_MANIFEST_FILE_NAME, RSC_MANIFEST_VERSION,
+    RscManifest, RscManifestAction, RscManifestBoundary, RscManifestDiagnostic, RscManifestModule,
+    write_manifest,
 };
 pub use project::{
     IGNORED_DIRECTORIES, NON_APP_SUFFIXES, ProjectScanOptions, ROUTER_ENTRY_FILES, RscAnalysis,

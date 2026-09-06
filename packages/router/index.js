@@ -48,6 +48,7 @@ export {
   RouterProvider,
   UnauthorizedError,
   forbidden,
+  hasClientPage,
   matchRoute,
   notFound,
   parseSearch,

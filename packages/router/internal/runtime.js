@@ -162,7 +162,23 @@ export type RouteRecord = {|
   readonly params: $ReadOnlyArray<RouteParamSpec>,
   readonly mdx: boolean,
   readonly file: string,
-  readonly page: () => Promise<PageModule>,
+  /**
+   * The page module — absent when this table cannot render the route.
+   *
+   * The server's table always has one: the server renders every route. The
+   * browser's may not. `@uniflowed/vite` leaves the page out of the client
+   * route table when uf's server-component analysis finds no `"use client"`
+   * boundary reachable from the page, its layouts or its fallbacks, and with
+   * the `import()` gone so is the whole subtree it reached — which is the
+   * point of leaving it out.
+   *
+   * The route stays in the table because the router still has to *match* the
+   * URL. Matching is what tells a `Link` that the destination is a document
+   * the browser must fetch rather than a page this bundle can render; a route
+   * missing from the table entirely would be a 404 instead. See
+   * [`hasClientPage`], which is the question every caller asks.
+   */
+  readonly page?: () => Promise<PageModule>,
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
   /**
    * The `<Suspense>` boundaries this route renders inside, root first.
@@ -430,6 +446,18 @@ function decodeSegment(segment: string): string {
 }
 
 /**
+ * Whether this table can render the route in the browser.
+ *
+ * False only in the client bundle, and only for a route uf decided ships no
+ * JavaScript. Every caller that would load a page asks this first, and the two
+ * answers are different actions rather than a success and a failure: render
+ * it, or let the browser fetch the document.
+ */
+export function hasClientPage(route: RouteRecord): boolean {
+  return route.page != null;
+}
+
+/**
  * Match a pathname against the table, preferring the most specific route.
  */
 export function matchRoute(routes: $ReadOnlyArray<RouteRecord>, pathname: string): ?RouteMatch {
@@ -600,8 +628,20 @@ async function resolveRoute(
     return resolveNotFound(table, pathname, search, searchParams);
   }
 
+  const load = matched.route.page;
+  if (load == null) {
+    // Reachable only by asking this table to render a route it was built
+    // without. `hydrate` and every navigation check `hasClientPage` first and
+    // hand the URL to the browser instead, so arriving here means a caller
+    // went around them — and the honest answer is to say so rather than to
+    // render an empty page.
+    throw new Error(
+      `@uniflowed/router: ${matched.route.path} has no page in this route table; it ships no ` +
+        "client JavaScript, so the browser navigates to it rather than rendering it",
+    );
+  }
   const [page, ...layouts] = await Promise.all([
-    loadOnce(matched.route.page),
+    loadOnce(load),
     ...matched.route.layouts.map((layout) => loadOnce(layout)),
   ]);
   // Started here and awaited at the end: the boundary's module does not depend
@@ -1163,6 +1203,18 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     }
     const target = new URL(to, window.location.href);
     const next = target.pathname + target.search;
+    // The half of the split that is not about bytes. A route whose page is not
+    // in this bundle is not a route this router can render, and pretending
+    // otherwise is the silent break: the navigation would resolve to nothing
+    // and the visitor would be left on the page they clicked from. The browser
+    // has the document, so the browser does the navigation — which is what a
+    // link does when there is no JavaScript at all, and what the anchor
+    // `Link` renders would have done on its own.
+    const matched = matchRoute(routeTable().routes, target.pathname);
+    if (matched != null && !hasClientPage(matched.route)) {
+      window.location.assign(target.href);
+      return;
+    }
     setPending(true);
     try {
       const nextResolved = await resolveMatch(routeTable(), next);
@@ -1197,6 +1249,14 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     }
     const onPopState = () => {
       const next = window.location.pathname + window.location.search;
+      // Back into a route this bundle has no page for. The history entry is
+      // already the browser's — it moved before this listener ran — so the
+      // document that belongs to it is what has to be fetched.
+      const matched = matchRoute(routeTable().routes, window.location.pathname);
+      if (matched != null && !hasClientPage(matched.route)) {
+        window.location.reload();
+        return;
+      }
       resolveMatch(routeTable(), next).then((nextResolved) => {
         startTransition(() => {
           setResolved(nextResolved);
@@ -1219,11 +1279,12 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
         }
         const target = new URL(to, window.location.href);
         const matched = matchRoute(routeTable().routes, target.pathname);
-        if (matched == null) {
+        const load = matched?.route.page;
+        if (matched == null || load == null) {
           return;
         }
         await Promise.all([
-          loadOnce(matched.route.page),
+          loadOnce(load),
           ...matched.route.layouts.map((layout) => loadOnce(layout)),
         ]);
       },

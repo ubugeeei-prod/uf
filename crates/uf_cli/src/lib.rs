@@ -167,6 +167,22 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
     };
 
     match cli.command {
+        Commands::Add {
+            dev,
+            optional,
+            peer,
+            specs,
+        } => commands::pm::add(
+            &cwd,
+            ui,
+            &specs,
+            crate::cli::AddTarget {
+                dev,
+                optional,
+                peer,
+            }
+            .into(),
+        ),
         Commands::Build {
             size_report,
             compile,
@@ -192,7 +208,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
-        Commands::Install => commands::pm::install(&cwd, ui),
+        Commands::Install { frozen_lockfile } => commands::pm::install(&cwd, ui, frozen_lockfile),
         Commands::Lint { json, paths } => {
             commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json, &paths)
         }
@@ -206,6 +222,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Prepare => commands::prepare::prepare(&cwd, ui),
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
+        Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
         Commands::Run { script, args } => match script {
             Some(script) => commands::task::run_task(&cwd, &script, &args),
             None => commands::task::list_tasks(&cwd, ui),
@@ -237,8 +254,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 paths,
             },
         ),
+        Commands::Update { packages } => commands::pm::update(&cwd, ui, &packages),
         Commands::Use { runtime } => commands::pm::use_runtime(&cwd, ui, &runtime),
         Commands::Upgrade => commands::pm::upgrade(&cwd, ui),
+        Commands::Why { package } => commands::pm::why(&cwd, ui, &package),
     }
 }
 
