@@ -2334,10 +2334,7 @@ fn project_reading_the_environment() -> Project {
         ".env.production",
         "VITE_GREETING=greeting for production\nUF_SERVER_VALUE=server value for production\n",
     ));
-    // The page reads `import.meta.env`, and the router entry has to be the same
-    // one every other fixture here uses.
-    let project = Project::new(&files);
-    project
+    Project::new(&files)
 }
 
 /// Every `.js` the browser downloads from a build, as one string.

@@ -467,6 +467,60 @@ fn what_is_exported_is_the_values_and_the_note_that_uf_set_them() {
     assert_eq!(exported.get(INJECTED).map(String::as_str), Some("ONE,TWO"));
 }
 
+/// A file uf reads is a file inside the project.
+///
+/// `uf.config.js` in a repository somebody just cloned is untrusted input, and
+/// `~/.aws/credentials` parses as `NAME=value` like anything else: reading one
+/// would put somebody's keys into the environment of every process uf starts,
+/// and any name in it behind the client prefix into the bundle.
+#[test]
+fn env_files_cannot_name_a_path_outside_the_project() {
+    let dir = project(&[(".env", "INSIDE=1\n")]);
+    for entry in [
+        "../outside.env",
+        "/etc/passwd",
+        "~/.aws/credentials",
+        "config\\windows.env",
+        "C:/secrets.env",
+        "",
+    ] {
+        let mut config = UniflowedConfig::default();
+        config.env.files = vec![compact_str::CompactString::new(entry)];
+        let message = failure(load_from(
+            &root(&dir),
+            &config,
+            "development",
+            &BTreeMap::new(),
+        ));
+        assert!(
+            message.contains("is not an environment file this project may read"),
+            "{entry}: {message}"
+        );
+    }
+}
+
+/// And a symlink out of the project is not a file inside it.
+///
+/// The lexical check above cannot see this one: `.env` is a name in the project
+/// root, and what it points at is somewhere else entirely.
+#[cfg(unix)]
+#[test]
+fn a_file_that_points_out_of_the_project_is_refused() {
+    let outside = tempfile::tempdir().unwrap();
+    let secret = outside.path().join("credentials");
+    std::fs::write(&secret, "AWS_SECRET_ACCESS_KEY=not-yours\n").unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(&secret, dir.path().join(".env")).unwrap();
+
+    let message = failure(load_at(&dir, "development"));
+
+    assert!(
+        message.contains("is not an environment file this project may read"),
+        "{message}"
+    );
+}
+
 /// uf's own marker is not something a file may set.
 ///
 /// A file that could write it could tell the next uf command that a value the

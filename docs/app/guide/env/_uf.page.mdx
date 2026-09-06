@@ -300,6 +300,13 @@ Replaces the cascade entirely: those files, in that order, later winning,
 relative to the project root, and no `.env` anything. Empty by default, which is
 what selects the four files above.
 
+Inside the project, and only inside it. An absolute path, a `..`, a `~` and a
+symlink that points out are all refused, whichever of the files it is: a
+`uf.config.js` in a repository you have just cloned is not a thing that should
+be able to read `~/.aws/credentials` — which parses as `NAME=value` like
+anything else — into the environment of every command you then run. See
+[`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
+
 ### What the variables half does not do
 
 * **It does not watch.** A `.env` file you edit while `uf dev` is running is

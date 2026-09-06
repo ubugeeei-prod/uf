@@ -75,7 +75,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use thiserror::Error;
 
 use crate::UniflowedConfig;
@@ -126,6 +126,11 @@ pub enum EnvFileError {
         line: usize,
         message: String,
     },
+    #[error(
+        "`{entry}` is not an environment file this project may read; a `.env` file is named \
+         relative to the project root and lives inside it"
+    )]
+    OutsideProject { entry: String },
     #[error("{name:?} is not a mode: {reason}")]
     InvalidMode { name: String, reason: &'static str },
 }
@@ -254,7 +259,7 @@ pub fn load_from(
 
     let mut values: BTreeMap<String, String> = BTreeMap::new();
     let mut files = Vec::new();
-    for name in file_names(config, mode) {
+    for name in file_names(config, mode)? {
         let path = root.join(&name);
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => metadata,
@@ -262,6 +267,14 @@ pub fn load_from(
         };
         if !metadata.is_file() {
             continue;
+        }
+        // Named inside the project is not the same as *being* inside it: a
+        // symlink can be committed, and one at `.env` pointing at
+        // `~/.aws/credentials` would parse as `NAME=value` like anything else.
+        // Resolved and checked, the way `uf_plugin::resolve` checks a plugin
+        // path and for the same reason — see `docs/security.md`.
+        if !contained(root, &path) {
+            return Err(EnvFileError::OutsideProject { entry: name });
         }
         if metadata.len() > MAX_FILE_BYTES {
             return Err(EnvFileError::TooLarge { path });
@@ -288,21 +301,73 @@ pub fn load_from(
 }
 
 /// The files to read for `mode`, in the order they are read.
-fn file_names(config: &UniflowedConfig, mode: &str) -> Vec<String> {
+///
+/// # Errors
+///
+/// When `env.files` names something that is not a path inside the project.
+/// `uf.config.js` in a repository somebody has just cloned is untrusted input,
+/// and reading a file outside the project would put whatever parses as
+/// `NAME=value` in it — `~/.aws/credentials` does — into the environment of
+/// every process uf starts, and any name in it behind the client prefix into
+/// the bundle.
+fn file_names(config: &UniflowedConfig, mode: &str) -> Result<Vec<String>, EnvFileError> {
     if !config.env.files.is_empty() {
-        return config
-            .env
-            .files
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect();
+        let mut named = Vec::with_capacity(config.env.files.len());
+        for entry in &config.env.files {
+            check_entry(entry)?;
+            named.push(entry.to_string());
+        }
+        return Ok(named);
     }
-    vec![
+    Ok(vec![
         String::from(".env"),
         String::from(".env.local"),
         format!(".env.{mode}"),
         format!(".env.{mode}.local"),
-    ]
+    ])
+}
+
+/// Whether an `env.files` entry can name a file inside the project.
+///
+/// A closed grammar checked before the filesystem is touched, so a path that
+/// could never be inside the project is refused whether or not it happens to
+/// exist on this machine. `\\` is refused on every platform rather than only on
+/// Windows, which is the mistake `uf_plugin::resolve` records.
+fn check_entry(entry: &str) -> Result<(), EnvFileError> {
+    let refuse = || {
+        Err(EnvFileError::OutsideProject {
+            entry: entry.to_owned(),
+        })
+    };
+    if entry.is_empty()
+        || entry.starts_with('~')
+        || entry.contains('\\')
+        // A drive letter, and every URL scheme, in one character.
+        || entry.contains(':')
+        || entry.chars().any(char::is_control)
+    {
+        return refuse();
+    }
+    if Utf8Path::new(entry).components().any(|component| {
+        matches!(
+            component,
+            Utf8Component::ParentDir | Utf8Component::RootDir | Utf8Component::Prefix(_)
+        )
+    }) {
+        return refuse();
+    }
+    Ok(())
+}
+
+/// Whether `path` is inside `root` once both are resolved.
+///
+/// Components rather than a string prefix: `/app-secrets/.env` starts with
+/// `/app` as text and is not inside it.
+fn contained(root: &Utf8Path, path: &Utf8Path) -> bool {
+    let (Ok(root), Ok(path)) = (root.canonicalize_utf8(), path.canonicalize_utf8()) else {
+        return false;
+    };
+    path.starts_with(root)
 }
 
 /// The prefixes that let a value into browser code, honouring `vite.envPrefix`.
