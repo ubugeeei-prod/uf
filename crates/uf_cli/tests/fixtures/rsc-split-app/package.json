@@ -1,0 +1,14 @@
+{
+  "name": "uf-rsc-split-app",
+  "private": true,
+  "type": "module",
+  "description": "The fixture the server/client bundle split is measured against.",
+  "dependencies": {
+    "@uniflowed/config": "0.0.0-alpha.5",
+    "@uniflowed/react": "0.0.0-alpha.5",
+    "@uniflowed/router": "0.0.0-alpha.5",
+    "@uniflowed/vite": "0.0.0-alpha.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

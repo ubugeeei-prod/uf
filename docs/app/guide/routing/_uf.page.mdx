@@ -230,6 +230,15 @@ import { Link } from "@uniflowed/router";
 `useRoute()` gives the current path, params and search — which is what the
 sidebar on this page uses to mark the open entry.
 
+A `Link` into a route that ships no JavaScript is a document navigation. `uf
+build` leaves a route's page out of the client bundle when no `"use client"`
+module is reachable from it, so there is no page for the router to render and
+the browser fetches the document instead — which is what the anchor a `Link`
+renders would have done on its own. Nothing about writing the link changes,
+and the page it lands on is the same page; the difference is a full load
+rather than a transition. `useRouter().push()` and the back button do the same
+thing for the same reason.
+
 ## Middleware
 
 `app/dashboard/_uf.middleware.js` runs before anything under `/dashboard`
