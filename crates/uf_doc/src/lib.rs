@@ -181,10 +181,11 @@ pub fn generate(root: &Utf8Path, config: &UniflowedConfig) -> Result<DocReport, 
     let scan = scan_source_files(root, config)?;
 
     // On a thread with the stack the parser documents for its ceilings, the
-    // way `uf_fmt` does. Reading a tree recurses once per level and so does
-    // *freeing* it, and the free happens wherever the `Parsed` is held — a
-    // main thread's 8 MiB is not enough for a source at `MAX_CHAIN_DEPTH`,
-    // which `uf fmt` formats without complaint. See ubugeeei-prod/uf#155.
+    // way `uf_fmt` does. Both the parse and the walk over the tree below
+    // recurse once per level of nesting, and a main thread's 8 MiB is not
+    // enough for a source at `MAX_CHAIN_DEPTH`, which `uf fmt` formats
+    // without complaint. Freeing the tree recurses as well but needs nothing
+    // from here: `uf_flow::Parsed` takes a deep one to its own thread.
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("uf-doc".into())
