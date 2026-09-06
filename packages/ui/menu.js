@@ -58,6 +58,7 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import {
   indexOfActive,
@@ -257,7 +258,7 @@ component MenuLevel(
 }
 
 /** The button that opens the menu. */
-export component MenuTrigger(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component MenuTrigger(children: React.Node, ...rest: Rest) {
   const menu = useMenu("Menu.Trigger");
   const passed = withoutComposed(rest, ["onClick", "onKeyDown", "ref"]);
   useTriggerRegistration(menu);
@@ -308,7 +309,7 @@ export component MenuTrigger(children: React.Node, ...rest: { readonly [string]:
  */
 export component MenuBody(
   children: renders* (MenuItem | MenuSeparator | MenuGroup | MenuSub),
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const menu = useMenu("Menu.Body");
   const bodyRef = useRef<HTMLElement | null>(null);
@@ -481,7 +482,7 @@ export component MenuItem(
   children: React.Node,
   disabled?: boolean = false,
   onSelect?: () => mixed,
-  ...rest: { readonly [string]: mixed }
+  ...rest: Rest
 ) {
   const menu = useMenu("Menu.Item");
   const list = useContext(MenuListContext);
@@ -521,7 +522,7 @@ export component MenuItem(
  * is why it reads the list context of the menu around it and the menu context
  * of the one below it.
  */
-export component MenuSubTrigger(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component MenuSubTrigger(children: React.Node, ...rest: Rest) {
   const menu = useMenu("Menu.SubTrigger");
   const list = useContext(MenuListContext);
   const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown", "ref"]);
@@ -574,7 +575,7 @@ export component MenuSubTrigger(children: React.Node, ...rest: { readonly [strin
  * moving through the menu is told the group changed. It is not focusable and
  * the arrow keys pass straight over it.
  */
-export component MenuSeparator(...rest: { readonly [string]: mixed }) {
+export component MenuSeparator(...rest: Rest) {
   return <div {...rest} aria-orientation="horizontal" role="separator" />;
 }
 
@@ -586,7 +587,7 @@ export component MenuSeparator(...rest: { readonly [string]: mixed }) {
  * that is not in the document makes a screen reader announce *nothing*, which
  * is worse than an unnamed group.
  */
-export component MenuGroup(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component MenuGroup(children: React.Node, ...rest: Rest) {
   const base = useId();
   const [labelled, setLabelled] = useState(false);
 
@@ -608,7 +609,7 @@ export component MenuGroup(children: React.Node, ...rest: { readonly [string]: m
  * as ordinary content would have a reader hear the heading once as the group's
  * name and again as a stray line of text between the items.
  */
-export component MenuLabel(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component MenuLabel(children: React.Node, ...rest: Rest) {
   const group = useContext(MenuGroupContext);
   const register = group?.registerLabel;
 
