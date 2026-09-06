@@ -189,12 +189,15 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
                     renderer.status(out, Status::Success, "serving the production build");
                 });
             }
-            // A route that was not prerendered is rendered on request, so this
-            // is one request failing rather than the server failing. It is
-            // reported — the URL and the error, the same shape `uf build`
-            // prints — and the server keeps answering, because the next
-            // request is very likely a different route and killing the server
-            // would take those with it.
+            // `page-failed` is emitted from exactly one place — `build()`'s
+            // prerender loop in `driver.js` — so neither of these servers can
+            // produce it today. It is reported rather than ignored because the
+            // day one of them renders on demand it will, and an event named
+            // `page-failed` that a server silently swallowed is the shape of
+            // bug this pair of commands exists to make impossible. The server
+            // carries on: one route that could not be rendered is not a reason
+            // to stop answering every other request, which is `uf build`'s
+            // decision to make and not a running server's.
             Event::PageFailed { url, error } => {
                 render_log(
                     ui,
@@ -209,17 +212,13 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
                 let _ = driver.finish(&banner);
                 return Err(failure);
             }
-            // Everything the *build* says. `page-failed` is on this list
-            // rather than reported, because a serving command never prerenders
-            // anything and so can never be the thing that saw a route fail:
-            // `uf build` already refused to finish, and there is nothing here
-            // to serve. It is named rather than swept up by a `_` so that the
-            // next event added to the driver comes back here as a compile
-            // error instead of as silence.
+            // Everything the *build* says. Named rather than swept up by a
+            // `_` so that the next event added to the driver comes back here
+            // as a compile error instead of as silence — which is exactly how
+            // `main` stopped compiling once, see #366 and #367.
             Event::ConfigLoaded { .. }
             | Event::Phase { .. }
             | Event::Page { .. }
-            | Event::PageFailed { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}
         }
