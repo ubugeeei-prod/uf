@@ -21,6 +21,7 @@
     "register.js",
     "bun-preload.js",
     "transform.js",
+    "write-atomically.js",
     "internal/*.js"
   ]
 }
