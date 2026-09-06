@@ -102,10 +102,17 @@ async function viteConfig(config, mode) {
   // plugins make Flow compile, and the few settings uf enforces rather than
   // merely passes on — `allowedHosts` gates binding a routable address, and
   // `manifest` is how the prerender finds its assets.
+  //
+  // `envDir: false` rather than `envFile: false`: Vite 8 deprecated the second
+  // spelling and prints a line saying so on every dev server and every build,
+  // twice in the docs site's. A project turns the loader back on with
+  // `vite: { envDir: "." }`, which is the default directory — the project's own
+  // configuration is merged over this one, so it wins. See #259 for why uf
+  // switches it off at all.
   const generated = {
     root,
     configFile: false,
-    envFile: false,
+    envDir: false,
     mode,
     clearScreen: false,
     customLogger: eventLogger(argument("--log-level") ?? "info"),
