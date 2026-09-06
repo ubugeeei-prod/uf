@@ -2,6 +2,11 @@
 
 ## North Star
 
+**uf alone is enough to build a React application — any React application —
+and everything it provides is production-ready.** Comprehensive, fast, and
+typed strongly enough that inference reaches the end of a real program. It runs
+on every runtime and deploys anywhere, including as a single executable file.
+
 - Beat Vite+ on Flow React DX, framework completeness, build latency, and dev
   server feedback loops.
 - Use Vite Task for cached, dependency-aware task execution while beating Vitest
@@ -9,6 +14,45 @@
   performance, and integrated toolchain coverage.
 - Keep Vite itself as the internal bundler, dev server, and plugin system, but
   make `uf.config.js` the only user-authored config entry.
+- Reach the feature surface of the tools a user would otherwise reach for —
+  Next.js for the framework, Bun and Vite for the toolchain, shadcn/ui for the
+  components, Effect, Jotai and React Hook Form for the libraries. Where uf
+  deliberately differs, the reason is written down; where it simply does not
+  have something, that is a gap and it has an issue.
+
+### The three ways this fails
+
+Stated as failures because each is easier to notice than its opposite, and
+each already has a check behind it:
+
+1. **A declared API that throws.** `packages/*` holds both real libraries and
+   declaration modules whose functions call `nativeRuntimeRequired`, and a
+   declaration is not a feature. `tools/ci/publishable.sh` refuses a real
+   implementation that is on its way nowhere; nothing yet refuses a declaration
+   that has been one for too long.
+2. **A type that is `any` under another name.** `flow/unclear-type` catches the
+   spelling. It does not catch a type that is technically not `any` and still
+   tells the caller nothing, and it does not catch inference that stops at a
+   package boundary — which is what
+   [#248](https://github.com/ubugeeei-prod/uf/issues/248) is: 145 of the 581
+   errors `uf check` reports on this repository are one resolver bug.
+3. **A feature that works for the demo.** Every fix in this repository carries
+   a test that fails before it and passes after, and the corpus tests run the
+   formatter over 8,100 modules nobody here wrote. That is the standard, and
+   it is the reason a benchmark claim in these documents is expected to have a
+   number beside it.
+
+### Where it is not true yet
+
+Honesty about this is the point of writing it down, and each line is an issue
+rather than a note:
+
+| Claim | Today | |
+| --- | --- | --- |
+| Runs on every runtime | Node and Bun. `HostKind::Deno` loads no Flow; the edge runtimes have no host at all | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
+| Builds a standalone binary | `uf build` emits bundles; there is no `--compile` | [#245](https://github.com/ubugeeei-prod/uf/issues/245) |
+| Inference reaches the end of a program | A type imported by its published name resolves to nothing | [#248](https://github.com/ubugeeei-prod/uf/issues/248) |
+| Everything shipped is real | Ten implemented packages are not on npm; `@uniflowed/tui` is a contract with nothing behind it | [#210](https://github.com/ubugeeei-prod/uf/issues/210), [#247](https://github.com/ubugeeei-prod/uf/issues/247) |
 
 The threat model that every one of these must satisfy is in
 [docs/security.md](security.md): each row names a published CVE in an
