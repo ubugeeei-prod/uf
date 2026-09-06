@@ -58,6 +58,20 @@ export type ControlledField = {|
   readonly onChange: (value: mixed) => void,
   readonly onBlur: () => void,
   readonly ref: (element: mixed) => void,
+  /**
+   * Whether the field is switched off, by its own option or by the form's.
+   *
+   * Spread onto whatever the caller is wrapping, the way `register` puts it on
+   * an `input`. It is here rather than left to the caller because the field
+   * does not know about `useForm({ disabled })` and this does.
+   *
+   * Its own option is current, because it is recorded during this render. The
+   * form's is the store's copy, which an effect brings up to date one commit
+   * after `useForm` was given it — `register` is handed the flag directly and a
+   * hook holding only a `control` has nowhere to be handed it from. A component
+   * that must not lag should take the form's flag as a prop and pass it here.
+   */
+  readonly disabled: boolean,
 |};
 
 /** What is currently true of the field, for rendering its state. */
@@ -73,6 +87,11 @@ export type UseControllerOptions<TValues extends FieldValues, TOutput> = {|
   readonly name: FieldPath,
   readonly rules?: ValidationRules,
   readonly defaultValue?: mixed,
+  /**
+   * Switch this field off. The form's own `disabled` switches it off too, and
+   * neither overrides the other: either one is enough.
+   */
+  readonly disabled?: boolean,
 |};
 
 export type UseControllerReturn = {|
@@ -96,11 +115,17 @@ export hook useController<TValues extends FieldValues, TOutput>(
 ): UseControllerReturn {
   const control = options.control;
   const name = options.name;
-  const rules = options.rules ?? NO_RULES;
+  const own = options.rules ?? NO_RULES;
+  // `disabled` is an option here and a rule there, and this is where the two
+  // meet: `rulesFor` is the store's one channel for both, so the option is
+  // folded in rather than given a second one. A new object only when the option
+  // was passed, so the ordinary controlled field records the rules it was given.
+  const rules = options.disabled == null ? own : { ...own, disabled: options.disabled };
 
   // The same write `register` makes, for the same reason: rules are not part of
   // any snapshot, and recording them again records the same thing.
   control.rulesFor(name, rules);
+  const disabled = control.isDisabled(name);
 
   const value = useWatch({ control, name, defaultValue: options.defaultValue });
   const state = useFormState({ control, name });
@@ -131,8 +156,8 @@ export hook useController<TValues extends FieldValues, TOutput>(
   );
 
   const field = useMemo(
-    () => ({ name, value, onChange, onBlur, ref }),
-    [name, value, onChange, onBlur, ref],
+    () => ({ name, value, onChange, onBlur, ref, disabled }),
+    [name, value, onChange, onBlur, ref, disabled],
   );
 
   const fieldState = useMemo(
@@ -160,8 +185,9 @@ export component Controller<TValues extends FieldValues, TOutput = TValues>(
   name: FieldPath,
   rules?: ValidationRules,
   defaultValue?: mixed,
+  disabled?: boolean,
   render: (bound: UseControllerReturn) => React.Node,
 ) {
-  const bound = useController({ control, name, rules, defaultValue });
+  const bound = useController({ control, name, rules, defaultValue, disabled });
   return render(bound);
 }

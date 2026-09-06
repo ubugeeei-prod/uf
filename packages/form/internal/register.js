@@ -55,6 +55,31 @@
 // description; the two compose — put the input inside a `Field.Root` for the
 // label, and spread `register` on it for the error.
 //
+// # The constraints, and why they are opt-in
+//
+// `register("email", { required: "We need an email address" })` records a rule
+// and used to put none of it on the element. Two things follow from that, and
+// the first is not a nicety.
+//
+// **Before hydration a form is unvalidated.** A server-rendered page that
+// somebody submits before the JavaScript arrives posts whatever is in it. With
+// `required` on the element the browser refuses; without it, nothing does. So
+// `useForm({ progressive: true })` emits `required`, `min`, `max`, `minlength`,
+// `maxlength` and `pattern` from the rules already given, and the markup
+// carries the constraints with no JavaScript at all.
+//
+// **Assistive technology hears less than it could.** `aria-invalid` says a
+// field is wrong after it has been checked. `required` says it is required
+// before the user gets there. `aria-required` is emitted in its place when
+// `progressive` is off, so the announcement does not depend on a flag that is
+// really about what the browser enforces — and never beside it, because two
+// attributes saying one thing is one too many.
+//
+// It is opt-in because `pattern` changes what the browser does. `rules.js`'s
+// `constraintsOf` sets out where the `RegExp` and the attribute stop agreeing;
+// a form that gets a second, slightly different opinion about its own pattern
+// without asking would be a worse default than one that has to ask.
+//
 // # Server rendering
 //
 // A `ref` does not run on a server, so nothing here puts a value into
@@ -78,10 +103,20 @@
 // render the React Compiler skips is a render whose rules did not change.
 
 import type { ValidationRules } from "../rules.js";
+import { constraintsOf, isRequired } from "../rules.js";
 import type { FieldPath, FieldValues } from "./field-path.js";
 import type { Control, FieldErrors } from "./form-store.js";
 
-/** What `register` returns: spread it onto an `input`, `select` or `textarea`. */
+/**
+ * What `register` returns: spread it onto an `input`, `select` or `textarea`.
+ *
+ * Exact, and every member is declared even when it is absent, because that is
+ * how an exact object type says "this may not be here": the value is `void`,
+ * and React drops an attribute whose value is `undefined`. A caller cannot
+ * spread something extra in to make up for a member this type does not have,
+ * which is why the constraint attributes had to be added rather than left to
+ * the application.
+ */
 export type FieldProps = {|
   readonly name: string,
   readonly ref: (element: mixed) => (() => void) | void,
@@ -91,6 +126,39 @@ export type FieldProps = {|
   readonly "aria-invalid": "true" | void,
   /** The id of the message element, and only while that element is rendered. */
   readonly "aria-describedby": string | void,
+  /**
+   * Present when the field is required and the native attribute is not.
+   *
+   * Exactly one of the two is emitted, never both. `required` on the element
+   * already announces the field as required, so adding the ARIA attribute
+   * beside it is a second copy of the same fact; without `required` — which is
+   * every form that has not asked for `progressive` — the ARIA attribute is the
+   * only thing that announces it before the user gets there. `aria-invalid`
+   * says a field is wrong after it has been checked; this says it is required
+   * before, which is the announcement that prevents the error rather than
+   * reporting it.
+   */
+  readonly "aria-required": "true" | void,
+  /** The five constraint attributes, and only under `progressive`. */
+  readonly required: boolean | void,
+  readonly min: number | string | void,
+  readonly max: number | string | void,
+  readonly minLength: number | void,
+  readonly maxLength: number | void,
+  readonly pattern: string | void,
+  /** Present while the field, or the whole form, is switched off. */
+  readonly disabled: boolean | void,
+|};
+
+/** What the current render says about the form as a whole. */
+export type RegisterContext = {|
+  /**
+   * Emit the constraint attributes, so the browser enforces them before the
+   * JavaScript arrives.
+   */
+  readonly progressive: boolean,
+  /** The whole form is switched off — `useForm({ disabled })`. */
+  readonly disabled: boolean,
 |};
 
 /** What `errorProps` returns: spread it onto the element holding the message. */
@@ -118,6 +186,7 @@ export type Registrar<TValues extends FieldValues, TOutput> = {|
    */
   readonly registerWith: (
     errors: FieldErrors,
+    context: RegisterContext,
     name: FieldPath,
     rules?: ValidationRules,
   ) => FieldProps,
@@ -185,20 +254,42 @@ export function createRegistrar<TValues extends FieldValues, TOutput>(
     return held;
   }
 
-  function registerWith(errors: FieldErrors, name: FieldPath, rules?: ValidationRules): FieldProps {
-    control.rulesFor(name, rules ?? NO_RULES);
-    const held = handlersFor(name);
+  function registerWith(
+    errors: FieldErrors,
+    context: RegisterContext,
+    name: FieldPath,
+    rules?: ValidationRules,
+  ): FieldProps {
+    const held = rules ?? NO_RULES;
+    control.rulesFor(name, held);
+    const handlers = handlersFor(name);
     const invalid = errors[name] != null;
+    const required = isRequired(held);
+    // Both halves of the current render, not the store's copy of them. The
+    // store is told what the latest render's options were from an effect, which
+    // is soon enough for an event and one commit too late for an attribute: a
+    // form disabled while it submits has to render a disabled control on the
+    // render that disabled it, not the one after.
+    const off = context.disabled || held.disabled === true;
+    const constraints = context.progressive ? constraintsOf(held) : null;
     return {
       name,
-      ref: held.ref,
-      onChange: held.onChange,
-      onBlur: held.onBlur,
+      ref: handlers.ref,
+      onChange: handlers.onChange,
+      onBlur: handlers.onBlur,
       // Absent rather than `"false"` while the field is fine: the ui package's
       // `Field` makes the same choice, and a form that permanently announces
       // `aria-invalid="false"` on every control is noise.
       "aria-invalid": invalid ? "true" : undefined,
       "aria-describedby": invalid ? errorId(name) : undefined,
+      "aria-required": required && constraints == null ? "true" : undefined,
+      required: constraints?.required,
+      min: constraints?.min,
+      max: constraints?.max,
+      minLength: constraints?.minLength,
+      maxLength: constraints?.maxLength,
+      pattern: constraints?.pattern,
+      disabled: off ? true : undefined,
     };
   }
 

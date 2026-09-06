@@ -75,7 +75,80 @@ export type ValidationRules = {|
    * field keeps the error it earned before the first one was corrected.
    */
   readonly deps?: string | $ReadOnlyArray<string>,
+  /**
+   * Switch the field off: not validated, not dirtied, and absent from the
+   * values a submit hands over.
+   *
+   * Not a validation rule, and it is in a type named for them because this is
+   * `register`'s second argument and React Hook Form puts it here too. The
+   * alternative — a third parameter, or a second options type the caller has to
+   * know the difference between — costs every call site more than the misnomer
+   * costs this one.
+   */
+  readonly disabled?: boolean,
 |};
+
+/**
+ * The constraint attributes a rule set corresponds to.
+ *
+ * `void` for a rule that was not given, because these are spread onto an
+ * element and React drops an attribute whose value is `undefined`.
+ */
+export type FieldConstraints = {|
+  readonly required: boolean | void,
+  readonly min: number | string | void,
+  readonly max: number | string | void,
+  readonly minLength: number | void,
+  readonly maxLength: number | void,
+  readonly pattern: string | void,
+|};
+
+/** Whether `required` was asked for, in any of the three shapes it takes. */
+export function isRequired(rules: ValidationRules): boolean {
+  const rule = rules.required;
+  if (rule == null || rule === false) {
+    return false;
+  }
+  if (typeof rule === "object") {
+    return rule.value === true;
+  }
+  // `true`, or a message — `{ required: "We need an email address" }` is the
+  // shortest way to write both halves and the most common way it is written.
+  return rule !== "";
+}
+
+/**
+ * What `register` puts on the element, given the rules it was handed.
+ *
+ * The translation is exact for five of the six and approximate for `pattern`,
+ * which is the reason this is opt-in. `ValidationRules.pattern` is a `RegExp`
+ * and the HTML attribute is a string that the browser anchors implicitly and
+ * matches with the `v` flag's dialect. `re.source` is right for the patterns
+ * people write — character classes, `\d`, alternation — and wrong for some:
+ * a leading `^` and a trailing `$` become redundant rather than harmful, but a
+ * `u`-flag escape the `v` dialect reads differently is a pattern that means one
+ * thing to `runRules` and another to the browser. Emitting it verbatim and
+ * saying so here is honest; claiming the two are equivalent is not.
+ *
+ * Flags are dropped, because the attribute has nowhere to put them. A
+ * case-insensitive `pattern` therefore becomes case-sensitive in the browser's
+ * check and stays case-insensitive in this package's — write the insensitivity
+ * into the pattern (`[aA]`) if both have to agree.
+ */
+export function constraintsOf(rules: ValidationRules): FieldConstraints {
+  return {
+    required: isRequired(rules) ? true : undefined,
+    // The type argument is written out for the same reason `whenSettled`'s are
+    // below: `Rule<T>` is `T | { value: T, message: string }`, so inference
+    // handed a union takes the whole union for `T` and the limit comes back as
+    // the rule it was read out of.
+    min: rules.min == null ? undefined : limitOf<number | string>(rules.min),
+    max: rules.max == null ? undefined : limitOf<number | string>(rules.max),
+    minLength: rules.minLength == null ? undefined : limitOf<number>(rules.minLength),
+    maxLength: rules.maxLength == null ? undefined : limitOf<number>(rules.maxLength),
+    pattern: rules.pattern == null ? undefined : limitOf<RegExp>(rules.pattern).source,
+  };
+}
 
 /** One field's error: what failed, and what to show for it. */
 export type FieldError = {|

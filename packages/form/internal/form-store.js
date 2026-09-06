@@ -141,6 +141,19 @@ export type FormState = {|
   readonly isValidating: boolean,
   readonly isValid: boolean,
   readonly submitCount: number,
+  /**
+   * Whether the whole form is switched off — `useForm({ disabled })`.
+   *
+   * The form's own flag, not a summary of its fields: a form with one disabled
+   * field is not a disabled form. It follows the option by one commit, because
+   * a snapshot is only rebuilt when the store is told, and the store is told
+   * from an effect. The `disabled` attribute on a control does *not* lag, and
+   * that is deliberate — `register` is handed the current render's flag. Use
+   * this for what a form-level flag is for, disabling a submit button while a
+   * save is in flight, and `formState.isSubmitting` where the timing has to be
+   * exact.
+   */
+  readonly disabled: boolean,
 |};
 
 /**
@@ -179,6 +192,8 @@ export type WatchInfo = {|
 type FieldRecord = {|
   elements: Array<mixed>,
   rules: ValidationRules,
+  /** `register(name, { disabled })` — this field alone. */
+  disabled: boolean,
 |};
 
 /** One row of a field array: its values, plus the key React identifies it by. */
@@ -208,6 +223,7 @@ export type CreateStoreOptions<TValues extends FieldValues, TOutput> = {|
   readonly resolver: Resolver<TValues, TOutput> | null,
   readonly context: mixed,
   readonly shouldFocusError: boolean,
+  readonly disabled: boolean,
 |};
 
 /**
@@ -233,6 +249,8 @@ export type Control<TValues extends FieldValues, TOutput = TValues> = {|
   readonly reset: (values?: TValues, options?: ResetOptions) => void,
 
   readonly rulesFor: (name: FieldPath, rules: ValidationRules) => void,
+  /** Whether this field is switched off, by its own flag or the form's. */
+  readonly isDisabled: (name: FieldPath) => boolean,
   readonly attach: (name: FieldPath, element: mixed) => void,
   readonly detach: (name: FieldPath, element: mixed) => void,
   readonly unregister: (names?: FieldPath | $ReadOnlyArray<FieldPath>) => void,
@@ -396,7 +414,19 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   let settings: CreateStoreOptions<TValues, TOutput> = initial;
 
   function configure(next: CreateStoreOptions<TValues, TOutput>): void {
+    const was = settings.disabled;
     settings = next;
+    if (was !== next.disabled) {
+      // Switching the form off must not leave the errors it earned while it was
+      // on: nothing will re-check a field that is no longer validated, and
+      // `submitWith` refuses while any error stands, so they would block every
+      // later submit. Switching it back on leaves the form unchecked, which is
+      // what `isValid` already means for a field nothing has looked at.
+      for (const name of fields.keys()) {
+        forgetChecks(name);
+      }
+      invalidateFormState();
+    }
   }
 
   let defaultValues: TValues = cloneValues(initial.defaultValues);
@@ -538,6 +568,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       isValidating,
       isValid,
       submitCount,
+      disabled: settings.disabled,
     };
     if (previous != null && sameFormState(previous, next)) {
       return previous;
@@ -557,7 +588,8 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       left.isSubmitSuccessful === right.isSubmitSuccessful &&
       left.isValidating === right.isValidating &&
       left.isValid === right.isValid &&
-      left.submitCount === right.submitCount
+      left.submitCount === right.submitCount &&
+      left.disabled === right.disabled
     );
   }
 
@@ -619,6 +651,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       isValidating: whole.isValidating,
       isValid: Object.keys(errorSlice).length === 0,
       submitCount: whole.submitCount,
+      disabled: whole.disabled,
     };
     if (cell != null && sameSlice(cell, next)) {
       return cell;
@@ -657,6 +690,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
       left.isValidating === right.isValidating &&
       left.isValid === right.isValid &&
       left.submitCount === right.submitCount &&
+      left.disabled === right.disabled &&
       sameShallow(left.errors, right.errors) &&
       sameShallow(left.dirtyFields, right.dirtyFields) &&
       sameShallow(left.touchedFields, right.touchedFields)
@@ -810,11 +844,41 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     return values;
   }
 
+  /**
+   * The values a submit and a resolver are about: everything except the
+   * disabled fields.
+   *
+   * `getValues()` still answers with all of them, and the difference is the
+   * point. `getValues()` is "what does the form hold", which a caller asks in
+   * order to restore a field or to prefill another form; this is "what is the
+   * user telling us", which is what gets validated and sent. A disabled field
+   * that stayed in either of those would be a value nobody could see and nobody
+   * agreed to.
+   *
+   * `values` itself is returned when nothing is disabled, so the ordinary form
+   * pays nothing: no clone, no walk, and the identity `useWatch`'s comparisons
+   * depend on is untouched.
+   */
+  function activeValues(): TValues {
+    let pruned: TValues | null = null;
+    for (const name of fields.keys()) {
+      if (isDisabled(name)) {
+        pruned = removeAt(pruned ?? values, name);
+      }
+    }
+    return pruned ?? values;
+  }
+
   function valueAt(name: FieldPath): mixed {
     return name === "" ? values : readAt(values, name);
   }
 
   function updateDirty(name: FieldPath, next: mixed): void {
+    if (isDisabled(name)) {
+      // A programmatic write to a field the user cannot reach is not the user
+      // changing it, so it is not what `isDirty` is about.
+      return;
+    }
     const wasDirty = dirty.has(name);
     const nowDirty = !sameValue(next, readAt(defaultValues, name));
     if (wasDirty === nowDirty) {
@@ -869,7 +933,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   function recordFor(name: FieldPath): FieldRecord {
     let record = fields.get(name);
     if (record == null) {
-      record = { elements: [], rules: NO_RULES };
+      record = { elements: [], rules: NO_RULES, disabled: false };
       fields.set(name, record);
     }
     return record;
@@ -891,7 +955,16 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
   /** The first of the two writes that happen during render; see the module docs. */
   function rulesFor(name: FieldPath, rules: ValidationRules): void {
     const record = recordFor(name);
+    const wasDisabled = record.disabled;
     record.rules = rules;
+    record.disabled = rules.disabled === true;
+    if (record.disabled !== wasDisabled) {
+      // For the reason in [`configure`]. A field switched off mid-form must not
+      // keep the error it earned while it was on, because nothing will re-check
+      // it and `submitWith` refuses while any error stands.
+      forgetChecks(name);
+      invalidateFormState();
+    }
     if (isTrivial(rules)) {
       // A field with nothing to check is valid the moment it exists, which is
       // what keeps `isValid` honest for a form whose fields are mostly optional.
@@ -938,11 +1011,41 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     }
   }
 
-  /** Every field with a control in the document — the ones validation is about. */
+  /**
+   * Whether a field is switched off, by its own flag or by the whole form's.
+   *
+   * A disabled field behaves like an absent one rather than an inert one: it is
+   * not validated, a `setValue` does not dirty it, and a submit does not carry
+   * its value. That is React Hook Form's rule and it is the one that makes
+   * `disabled` mean something — a field the user cannot answer must not be able
+   * to stop them submitting, and a value they were never shown must not be sent
+   * as though they had agreed to it.
+   */
+  function isDisabled(name: FieldPath): boolean {
+    return settings.disabled || fields.get(name)?.disabled === true;
+  }
+
+  /** Forget what was decided about a field whose disabled state just changed. */
+  function forgetChecks(name: FieldPath): void {
+    if (errors.delete(name)) {
+      errorsStale = true;
+    }
+    eligible.delete(name);
+    validity.delete(name);
+  }
+
+  /**
+   * Every field with a control in the document — the ones validation is about.
+   *
+   * Disabled fields are not among them, which is the single place that decision
+   * is made: `validateNames(null)`, `refreshValidity`, `trigger()` with no
+   * argument, `primeValidity` and the eligibility a submit grants all read this
+   * list, so none of them has to know about `disabled` separately.
+   */
   function liveNames(): Array<FieldPath> {
     const names = [];
     for (const [name, record] of fields) {
-      if (record.elements.length > 0) {
+      if (record.elements.length > 0 && !isDisabled(name)) {
         names.push(name);
       }
     }
@@ -1154,7 +1257,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     // Saying which is which costs one line and removes four errors that were
     // never about this code.
     return whenSettled<ResolverResult<TOutput>, Map<FieldPath, FieldError>>(
-      runResolver(resolver, values, settings.context),
+      runResolver(resolver, activeValues(), settings.context),
       (result) => {
         const found: Map<FieldPath, FieldError> = new Map();
         const reported: ResolverErrors = errorsOf(result);
@@ -1192,7 +1295,9 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     while (at < targets.length) {
       const name = targets[at];
       const record = fields.get(name);
-      if (record == null) {
+      // `liveNames` has already excluded the disabled ones, but `trigger("x")`
+      // names its targets directly and reaches here without passing through it.
+      if (record == null || isDisabled(name)) {
         at += 1;
         continue;
       }
@@ -1373,7 +1478,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
         // `{ age: 42 }` where the form held `{ age: "42" }` — so a schema that
         // coerces is not re-run by hand at the submit boundary.
         const output: TOutput =
-          resolvedOutput == null ? (values as $FlowFixMe) : (resolvedOutput as $FlowFixMe);
+          resolvedOutput == null ? (activeValues() as $FlowFixMe) : (resolvedOutput as $FlowFixMe);
         await onValid(output, event);
         isSubmitSuccessful = true;
       } finally {
@@ -1772,6 +1877,7 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
     setValue,
     reset,
     rulesFor,
+    isDisabled,
     attach,
     detach,
     unregister,
