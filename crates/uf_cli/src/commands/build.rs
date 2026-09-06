@@ -41,7 +41,9 @@ use crate::commands::compile;
 use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
-use crate::support::{plural, problem_summary, project_label, relative_to, write_json_file};
+use crate::support::{
+    PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
+};
 use crate::ui::Ui;
 
 mod guards;
@@ -69,6 +71,7 @@ pub(crate) fn build(
     cwd: &Utf8Path,
     ui: &mut Ui,
     size_report: bool,
+    requested_mode: Option<&str>,
     standalone: bool,
     requested_adapter: Option<DeployAdapter>,
 ) -> Result<()> {
@@ -133,6 +136,11 @@ pub(crate) fn build(
     progress.tick("resolving the JavaScript host");
     let host = resolve_host(&resolved.config)?;
     let package = package_dir(&root)?;
+    // `production` unless the project or the command line said another mode,
+    // which is what selects `.env.production` over `.env.development` — the
+    // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
+    // about the same variable.
+    let env = project_env(&resolved, requested_mode, PRODUCTION)?;
 
     // Asked for before anything is built. `--compile` on a machine without Bun
     // fails either way; failing now costs the user nothing, and failing after
@@ -157,6 +165,7 @@ pub(crate) fn build(
                 String::from("--out-dir"),
                 resolved.config.build.out_dir.to_string(),
             ],
+            &env,
             &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
         )?;
         let mut report = ViteBuild::default();
@@ -261,7 +270,7 @@ pub(crate) fn build(
         Some(runtime) => {
             progress.tick("compiling a standalone binary");
             Some(timer.measure("compile", || {
-                compile::compile(ui, runtime, &host, &package, &root, &out_dir)
+                compile::compile(ui, runtime, &host, &package, &root, &out_dir, &env)
             })?)
         }
         None => None,
@@ -276,7 +285,7 @@ pub(crate) fn build(
                 adapter.as_str()
             ));
             Some(timer.measure("adapter", || {
-                deploy::deploy(ui, adapter, &host, &package, &root, &out_dir)
+                deploy::deploy(ui, adapter, &host, &package, &root, &out_dir, &env)
             })?)
         }
         None => None,

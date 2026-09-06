@@ -88,6 +88,12 @@ pub struct HostCommand {
     pub root: Utf8PathBuf,
     /// The `uf` binary the worker's transform must go through.
     pub uf_binary: Option<Utf8PathBuf>,
+    /// Variables to set on every worker, from the project's `.env` files.
+    ///
+    /// A test reads configuration the way the application does — through
+    /// `process.env` — so the runner has to put the same values there. See
+    /// `uf_config::env_files` for where they come from and what wins.
+    pub env: Vec<(String, String)>,
     /// Whether this run may rewrite a snapshot that did not match.
     pub update_snapshots: bool,
 }
@@ -111,8 +117,16 @@ impl HostCommand {
             worker,
             root,
             uf_binary: None,
+            env: Vec::new(),
             update_snapshots: false,
         }
+    }
+
+    /// Set these variables on every worker this command starts.
+    #[must_use]
+    pub fn with_env(mut self, env: Vec<(String, String)>) -> Self {
+        self.env = env;
+        self
     }
 
     /// Register the host's Flow loader, so an imported module is transformed.
@@ -591,6 +605,13 @@ impl Worker {
     /// it.
     pub fn spawn(command: &HostCommand) -> Result<Self, SpawnError> {
         let mut process = Command::new(command.program.as_std_path());
+        // The project's own variables first: uf's three below name the project
+        // root, the binary the worker transforms through and whether snapshots
+        // may be rewritten, and a `.env` file in a cloned repository must not
+        // be able to answer any of those.
+        for (name, value) in &command.env {
+            process.env(name, value);
+        }
         process
             .args(&command.leading_args)
             .arg(command.worker.as_str())

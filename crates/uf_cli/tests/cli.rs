@@ -1172,6 +1172,12 @@ fn explain_names_the_provider_for_every_stage() {
     assert!(stdout.contains("@uniflowed/router"), "{stdout}");
     // And where the answers came from.
     assert!(stdout.contains("uf.config.js"), "{stdout}");
+    // Including the values: which `.env` files this command reads, in which
+    // mode, and which of them reach the browser. "Where did this value come
+    // from" is exactly the question this command exists for.
+    assert!(stdout.contains("environment"), "{stdout}");
+    assert!(stdout.contains(".env.development"), "{stdout}");
+    assert!(stdout.contains("VITE_"), "{stdout}");
 }
 
 #[test]
@@ -2255,9 +2261,16 @@ fn fmt_check_ignores_the_package_manifest() {
     );
 }
 
+/// `uf env use` records the profile, and says which files it selected.
+///
+/// It writes `.uniflowed/profile`. It used to write `.uniflowed/env`, which is
+/// the directory `uf env install` links this project's toolchain into — so
+/// whichever of the two ran second broke the other. What reads the profile back
+/// is `tests/env_files.rs`; this is about what a person types and sees.
 #[test]
 fn env_use_records_the_active_environment() {
     let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("package.json"), "{}\n").unwrap();
 
     let output = uf()
         .arg("--cwd")
@@ -2271,13 +2284,11 @@ fn env_use_records_the_active_environment() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        String::from_utf8(output.stdout)
-            .unwrap()
-            .contains("✓ active environment: staging")
-    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("✓ mode staging"), "{stdout}");
+    assert!(stdout.contains(".env.staging"), "{stdout}");
     assert_eq!(
-        fs::read_to_string(dir.path().join(".uniflowed/env")).unwrap(),
+        fs::read_to_string(dir.path().join(".uniflowed/profile")).unwrap(),
         "staging\n"
     );
 }
