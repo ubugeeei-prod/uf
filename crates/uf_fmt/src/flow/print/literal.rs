@@ -252,7 +252,7 @@ impl<'a> Printer<'a> {
         self.docs.concat_vec(parts)
     }
 
-    fn print_template_expression(
+    pub(super) fn print_template_expression(
         &mut self,
         expression: &'a Expression,
         previous_quasi: &'a expression::template_literal::Element<Loc>,
@@ -331,14 +331,22 @@ impl<'a> Printer<'a> {
             .targs
             .as_ref()
             .map_or(self.s(""), |targs| self.print_call_type_args(targs));
-        let quasi = self.print_template_literal(&tagged.quasi.1);
+        let embedded = if Self::tag_is_graphql(&tagged.tag) {
+            self.print_graphql_template(&tagged.quasi.1)
+        } else {
+            None
+        };
+        let quasi = match embedded {
+            Some(doc) => doc,
+            None => self.print_template_literal(&tagged.quasi.1),
+        };
         self.concat([tag, targs, &LINE_SUFFIX_BOUNDARY, quasi])
     }
 }
 
 /// Columns of indentation on the last line of `text`, tabs counted as
 /// `tab_width`. Prettier's `getIndentSize`.
-fn indent_size_of(text: &str, tab_width: usize) -> usize {
+pub(super) fn indent_size_of(text: &str, tab_width: usize) -> usize {
     let Some(last_newline) = text.rfind('\n') else {
         return 0;
     };

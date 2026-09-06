@@ -194,29 +194,58 @@ impl<'a> Printer<'a> {
 
     /// `{items.map((item) => <li />)}`: the arrow body breaks so the
     /// element sits on its own line.
+    ///
+    /// Prettier's `path.match(undefined, isArrowFunctionExpression,
+    /// isCallExpression, isJSXExpressionContainer)`, and `match` counts
+    /// positions: one real parent per predicate, stopping at the first that
+    /// fails. The three nodes above the element have to be *exactly* the
+    /// arrow, the call and the container.
+    ///
+    /// Reading it as the looser "an arrow, and a call somewhere under a
+    /// container" was the wrong answer. The walk let anything through above
+    /// the call, so every one of these broke where Prettier keeps it on one
+    /// line — a logical operator, a ternary, a unary, a lookup continuing
+    /// the chain, an enclosing call, a spread child:
+    ///
+    /// ```text
+    /// {showList && arr.map((num, idx) => <li key={idx}>{num}</li>)}
+    /// {showList ? arr.map((num, idx) => <li key={idx}>{num}</li>) : null}
+    /// {!arr.map((num) => <li>{num}</li>)}
+    /// {arr.map((num) => <li>{num}</li>).filter(Boolean)}
+    /// {f(g((num) => <li />))}
+    /// {...arr.map((num) => <li>{num}</li>)}
+    /// ```
+    ///
+    /// The first is react-devtools-shell's `LargeSubtree.js`. Prettier lays
+    /// the container's child out as a logical chain rather than as an arrow
+    /// body returning JSX, so the element never asks for its own
+    /// parentheses and the whole declaration fits in 79 columns.
     fn jsx_in_arrow_body_in_call_in_container(&self, expression: &'a Expression) -> bool {
-        // The member-chain printer pushes a call twice, so the walk skips
-        // repeats rather than counting fixed positions.
-        let mut frames = self.ancestors.iter().rev().skip(1);
+        let mut frames = self.ancestors.iter().rev().skip(1).copied();
         let Some(NodeRef::Expression(arrow)) = frames.next() else {
             return false;
         };
-        let expression::ExpressionInner::ArrowFunction { inner, .. } = &***arrow else {
+        let expression::ExpressionInner::ArrowFunction { inner, .. } = &**arrow else {
             return false;
         };
         if !matches!(&inner.body, function::Body::BodyExpression(body) if same(body, expression)) {
             return false;
         }
-        let mut seen_call = false;
-        for frame in frames {
-            match frame {
-                NodeRef::Expression(candidate) if is_call(candidate) => seen_call = true,
-                NodeRef::Expression(_) if seen_call => {}
-                NodeRef::JsxExpressionContainer(..) | NodeRef::JsxChild(_) => return seen_call,
-                _ => return false,
-            }
+        let Some(NodeRef::Expression(call)) = frames.next() else {
+            return false;
+        };
+        if !is_call(call) {
+            return false;
         }
-        false
+        // The member-chain printer pushes a call twice, so a position is
+        // one node rather than one frame.
+        let container =
+            frames.find(|frame| !matches!(frame, NodeRef::Expression(again) if same(again, call)));
+        matches!(
+            container,
+            Some(NodeRef::JsxExpressionContainer(..))
+                | Some(NodeRef::JsxChild(jsx::Child::ExpressionContainer { .. }))
+        )
     }
 
     fn print_jsx_element_internal(

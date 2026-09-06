@@ -782,9 +782,7 @@ component Head(metadata: Metadata) {
         <meta property="og:description" content={openGraph.description} />
       ) : null}
       {openGraph?.images != null
-        ? openGraph.images.map((image) => (
-            <meta key={image} property="og:image" content={image} />
-          ))
+        ? openGraph.images.map((image) => <meta key={image} property="og:image" content={image} />)
         : null}
     </>
   );
