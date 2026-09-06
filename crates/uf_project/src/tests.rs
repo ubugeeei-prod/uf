@@ -140,6 +140,17 @@ fn both_templates_ignore_what_uf_generates() {
                 "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
             );
         }
+        // The two `.env` files that are a developer's own. The tracked ones
+        // beside them are the project's defaults and are deliberately absent
+        // from this list; a credential belongs in a `.local` file, which is
+        // why that is the one uf refuses to commit for you.
+        for entry in [".env.local", ".env.*.local"] {
+            assert!(
+                ignored.lines().any(|line| line.trim() == entry),
+                "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
+            );
+        }
+
         // Three more that no ignore list knows about. `router.js` and
         // `server-actions.js` are generated Flow that looks hand-written —
         // this repository ignores its own `docs/router.js` for the same

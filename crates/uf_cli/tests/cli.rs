@@ -1172,6 +1172,12 @@ fn explain_names_the_provider_for_every_stage() {
     assert!(stdout.contains("@uniflowed/router"), "{stdout}");
     // And where the answers came from.
     assert!(stdout.contains("uf.config.js"), "{stdout}");
+    // Including the values: which `.env` files this command reads, in which
+    // mode, and which of them reach the browser. "Where did this value come
+    // from" is exactly the question this command exists for.
+    assert!(stdout.contains("environment"), "{stdout}");
+    assert!(stdout.contains(".env.development"), "{stdout}");
+    assert!(stdout.contains("VITE_"), "{stdout}");
 }
 
 #[test]

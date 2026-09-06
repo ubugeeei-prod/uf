@@ -464,6 +464,16 @@ fn parse_into(
         }
         scanner.advance();
         scanner.skip_spaces();
+        // uf's own protocol variable, and not something a file may set: it is
+        // the list of names a parent uf injected, and a file that could write
+        // it could tell the *next* uf command that a value the shell really
+        // set — a CI secret — came from a file, and so may be overridden.
+        if name == INJECTED {
+            return Err(scanner.error(
+                line,
+                format!("`{INJECTED}` is uf's own; a file cannot set it"),
+            ));
+        }
         let value = scanner.value(&name, &|wanted| {
             environment
                 .get(wanted)

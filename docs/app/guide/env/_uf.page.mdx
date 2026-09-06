@@ -166,9 +166,10 @@ They are read **in that order, and the last one to set a name wins**. So
 that is not there is skipped, which is why `.env.local` can be in
 `.gitignore` and nothing breaks on a machine that has never had one.
 
-Add the two `.local` names to `.gitignore` yourself; uf does not write it for
-you. Vite's dev server refuses to serve `.env` and `.env.*` over HTTP whatever
-else is configured — see
+`uf create` writes `.env.local` and `.env.*.local` into `.gitignore`, because
+those two are where a credential goes; the tracked `.env` and `.env.<mode>` are
+the project's defaults and belong in the repository. Vite's dev server refuses
+to serve any of them over HTTP whatever else is configured — see
 [`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
 
 ### The mode
@@ -182,7 +183,8 @@ Four ways to say otherwise, and they are tried in this order:
 1. `--mode <name>` on the command: `uf build --mode staging` reads
    `.env.staging` and builds with `import.meta.env.MODE === "staging"`.
 2. The profile `uf env use <name>` recorded, in `.uniflowed/profile`. It is a
-   local choice — put it in `.gitignore` — and it lasts until you change it.
+   local choice — a scaffolded project already ignores `.uniflowed/` — and it
+   lasts until you change it.
 3. `env.active` in `uf.config.js`, for a project whose default mode is not one
    of the usual ones.
 4. The command's own default, above.
@@ -190,6 +192,13 @@ Four ways to say otherwise, and they are tried in this order:
 A mode becomes the end of a file name, so it may hold letters, digits, `_`, `-`
 and `.` and nothing else. `local` is refused, because `.env.local` is already
 the file that overrides every mode.
+
+The mode chooses files; it does not choose optimisations. `uf build --mode
+staging` is still a production build — minified, with `import.meta.env.PROD`
+true — because that is what building means. The one variable that changes it is
+`NODE_ENV`, which is an ordinary variable here and which Vite reads: a file that
+sets `NODE_ENV=development` makes even `uf build` produce a development build.
+If you did not mean that, do not put `NODE_ENV` in a `.env` file.
 
 <div className="command"><code>uf env use staging</code></div>
 
@@ -223,8 +232,9 @@ browser asks for it — `import.meta.env.DATABASE_URL` in client code is
 That boundary is Vite's, uf does not widen it, and there is a test that a value
 without the prefix is absent from every file in `dist/`
 (`crates/uf_cli/tests/vite.rs`). A project that prefers another prefix sets
-Vite's own option, `vite: { envPrefix: "PUBLIC_" }`, and uf honours it; an empty
-prefix is refused, because it would put every variable in the bundle.
+Vite's own option, `vite: { envPrefix: "PUBLIC_" }`, and uf honours it. An empty
+prefix is refused — by Vite, which throws on it, and by uf, which goes on using
+`VITE_` — because it would put every variable in the bundle.
 
 The rule to hold on to: **if it is a secret, it must not start with the
 prefix.**

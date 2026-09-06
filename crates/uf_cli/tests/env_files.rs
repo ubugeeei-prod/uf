@@ -302,6 +302,12 @@ fn inspect_reports_the_mode_and_the_files_but_no_values() {
 /// The mode is `test`, not `development`: a suite that reaches for the
 /// development database is a suite that can destroy it, so the file that names
 /// the test one has to be the file that wins.
+///
+/// The `.env` here also sets `UF_BINARY`, which is uf's own — it names the
+/// binary every module in the run is transformed through, and a cloned
+/// repository's `.env` must not be able to answer it. uf's variables are
+/// written *after* the project's for exactly that reason, so this run has to
+/// succeed; obey the file and every import in it fails.
 #[test]
 fn the_test_runner_sees_the_environment() {
     if !host_ready() {
@@ -315,7 +321,10 @@ fn the_test_runner_sees_the_environment() {
              expect(process.env.UF_FIXTURE_GREETING).toBe(\"from .env.test\");\n\
              });\n",
         ),
-        (".env", "UF_FIXTURE_GREETING=from .env\n"),
+        (
+            ".env",
+            "UF_FIXTURE_GREETING=from .env\nUF_BINARY=/definitely-not-a-binary\n",
+        ),
         (
             ".env.development",
             "UF_FIXTURE_GREETING=from .env.development\n",

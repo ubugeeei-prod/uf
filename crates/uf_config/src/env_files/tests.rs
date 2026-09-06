@@ -467,6 +467,20 @@ fn what_is_exported_is_the_values_and_the_note_that_uf_set_them() {
     assert_eq!(exported.get(INJECTED).map(String::as_str), Some("ONE,TWO"));
 }
 
+/// uf's own marker is not something a file may set.
+///
+/// A file that could write it could tell the next uf command that a value the
+/// shell really set — a CI secret — came from a file and may be overridden.
+#[test]
+fn a_file_cannot_write_the_marker_uf_uses_for_its_own_children() {
+    let dir = project(&[(".env", "UF_ENV_INJECTED=DATABASE_URL\n")]);
+
+    let message = failure(load_at(&dir, "development"));
+
+    assert!(message.contains(INJECTED), "{message}");
+    assert!(message.contains("is uf's own"), "{message}");
+}
+
 /// A project with no files at all sets nothing, including the note.
 #[test]
 fn a_project_with_no_env_files_exports_nothing() {
