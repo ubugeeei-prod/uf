@@ -711,6 +711,11 @@ fn preview_and_start_serve_the_whole_of_a_build() {
         "a route with parameters and no `generateStaticParams` must not be prerendered; \
          if it were, `uf start` would be serving a file rather than rendering"
     );
+    assert!(
+        !root.join("dist/slow").exists(),
+        "the suspending route must not be prerendered either; a file would be served without \
+         rendering and the streaming assertion below would pass without streaming"
+    );
 
     for command in ["preview", "start"] {
         serve_and_assert(&root, command);
@@ -842,6 +847,122 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("did not serve the project's own not-found page", &missing)
     );
+
+    // 5. A route that suspends: the layout and the fallback have to be on the
+    //    wire before the page is. This is the one assertion in this file about
+    //    *when* bytes arrived rather than what they said, and it is the only
+    //    kind that can tell a streaming renderer from a buffering one — a
+    //    document sent in one piece still has the fallback before the page in
+    //    document order, because that is where React writes it.
+    //
+    //    `id` is the command's own, because the fixture keeps a resolved
+    //    promise per id and a second request for the same one would answer
+    //    without waiting; see `app/slow/[id]/_uf.page.js`.
+    let slow = timed_get(port, &format!("/slow/{command}"));
+    assert!(
+        slow.text.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not render the suspending route", &slow.text)
+    );
+    let shell = slow.first_at("slow: waiting").unwrap_or_else(|| {
+        panic!(
+            "{}",
+            context("never sent the `_uf.loading.js` fallback", &slow.text)
+        )
+    });
+    let page = slow
+        .first_at(&format!("slow: {command}"))
+        .unwrap_or_else(|| {
+            panic!(
+                "{}",
+                context("the suspended page never arrived", &slow.text)
+            )
+        });
+    assert!(
+        shell + STREAMING_MARGIN <= page,
+        "{}",
+        context(
+            &format!(
+                "sent the fallback and the page together: the fallback was {}ms in and the \
+                 page {}ms in, and the page waits {}ms — so nothing streamed",
+                shell.as_millis(),
+                page.as_millis(),
+                SUSPENDING_ROUTE_DELAY.as_millis()
+            ),
+            &slow.text
+        )
+    );
+}
+
+/// How long `app/slow/[id]/_uf.page.js` waits before it renders.
+const SUSPENDING_ROUTE_DELAY: Duration = Duration::from_millis(500);
+
+/// How much of that gap has to survive for the response to have been streamed.
+///
+/// Well under the delay, because the question is "were these two in the same
+/// write" and not "is this machine fast". A buffered response puts both strings
+/// in the first read and the gap is zero; a streamed one cannot make the gap
+/// smaller than the page's own wait, minus whatever the shell took to render.
+const STREAMING_MARGIN: Duration = Duration::from_millis(200);
+
+/// A response, and when each byte of it turned up.
+///
+/// `reads` is one entry per successful `read`, holding how much of the response
+/// had arrived by then. That is enough to answer "when did this string first
+/// appear", which is the only question asked of it, and it avoids having to
+/// decide what a chunk is: the kernel decides, and the assertion is about a gap
+/// far larger than any packetization difference.
+struct TimedResponse {
+    text: String,
+    reads: Vec<(Duration, usize)>,
+}
+
+impl TimedResponse {
+    /// When `needle` had first arrived, or `None` if it never did.
+    fn first_at(&self, needle: &str) -> Option<Duration> {
+        let end = self.text.find(needle)? + needle.len();
+        self.reads
+            .iter()
+            .find(|(_, received)| *received >= end)
+            .map(|(at, _)| *at)
+    }
+}
+
+/// One request, read incrementally, timed from the moment it was sent.
+///
+/// `http_request` reads to the end and returns a string, which is the right
+/// shape for every other assertion here and destroys the only evidence this one
+/// needs. `Connection: close` is what makes the read loop end.
+fn timed_get(port: u16, path: &str) -> TimedResponse {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to the server");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\n\
+         Connection: close\r\n\r\n"
+    )
+    .unwrap();
+
+    let started = Instant::now();
+    let mut bytes = Vec::new();
+    let mut reads = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                bytes.extend_from_slice(&buffer[..read]);
+                reads.push((started.elapsed(), bytes.len()));
+            }
+            Err(error) => panic!("reading the streamed response failed: {error}"),
+        }
+    }
+    TimedResponse {
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+        reads,
+    }
 }
 
 fn server_said(said: &Mutex<String>) -> String {
