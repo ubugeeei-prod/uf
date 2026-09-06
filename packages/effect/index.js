@@ -64,9 +64,10 @@
 // That is a statement about the runtime and not about one combinator, so it is
 // stated once here and enforced in three places: `childContext` links a new
 // fiber to its parent, `interruptFiber` walks the link downwards, and
-// `releaseChild` — which every group and both forks end at — walks it upwards.
+// `releaseChild` — which every group and `fork` end at — walks it upwards.
 // `all`, `race` and `timeout` were already written against it; before this,
-// `fork` was the one hole in it.
+// `fork` was the one hole in it. The two deliberate exceptions are named below,
+// and each is a name a reader has to have typed.
 //
 // `forkDaemon` is the deliberate way out, and it is a separate name rather
 // than an option because the two answers fail in opposite directions. A caller
@@ -76,10 +77,25 @@
 // process will not exit. The silent failure is the one that must be spelled
 // out at the call site.
 //
-// What this does *not* have is `forkScoped` and `forkIn`: a child tied to a
-// `Scope` rather than to a fiber. `Scope` is already an ordinary member of `R`
-// so they are expressible, and they are the right way to say "outlive this
-// fiber, die with this request". Filed as #325 rather than guessed at.
+// `forkScoped` is the third answer, and the one a request handler usually
+// means: a child tied to a `Scope` rather than to a fiber, which outlives the
+// fiber that forked it and dies when the scope closes. That is the lifetime
+// neither of the other two has — a background refresh should finish its own
+// work and stop when the *request* is over — and `Scope` was already an
+// ordinary member of `R`, so saying it costs nothing new in the types.
+//
+// `forkIn` — the same thing against a named scope rather than the enclosing
+// one — is deliberately absent, and the reason is that it needs something this
+// package does not have: a `Scope` that is a *value*. `Scope` here is a
+// phantom that is never constructed, which is what lets `acquireRelease` state
+// a lifetime in the type and makes `scoped` the only thing that discharges it.
+// A constructible handle means a public `close`, and then two ways to close a
+// scope — the combinator and the handle — with nothing stopping the second
+// from closing a scope an `acquireRelease` is still registering into. A
+// `forkScoped` inside a nested `scoped` says what `forkIn` says, with the
+// nesting visible in the code rather than in a value somebody has to have
+// passed to the right place. It stays out until something concrete needs a
+// scope it cannot get by nesting.
 //
 // # Readiness
 //
@@ -87,21 +103,31 @@
 // generator syntax with both `yield` and `yield*`, over effects and over other
 // generators; `runSync`, `runPromise` and the `Exit`-returning `runSyncExit`,
 // `runPromiseExit`, `exit`; typed failures kept distinct from defects and from
-// interruption, with `catchAll`, `catchTag`, `orElse`, `either` and `orDie`;
-// `retry` over a `Schedule`, narrowed by a predicate over the error, and
-// `repeat` over the same schedules; `timeout`; `acquireRelease` with `scoped`, and
-// `ensuring`, both of which release on success, failure, defect and
-// interruption and both of which keep a synchronous program synchronous; `all` and `forEach` with a concurrency limit and a synchronous
-// form when every element has one, `race`, and
-// `fork`/`forkDaemon`/`join`/`interrupt` over fibers whose lifetimes nest;
+// interruption, with `catchAll`, `catchTag`, `orElse`, `either` and `orDie`.
+//
+// `retry` and `repeat` over a `Schedule` — a state machine with an input, an
+// output and a decision, so one policy drives both, `repeat` gives back the
+// number its schedule reached, and a policy can decide on the error or on the
+// value rather than only on how many attempts have been made; `timeout`;
+// `acquireRelease` with `scoped`, and `ensuring`, both of which release on
+// success, failure, defect and interruption and both of which keep a
+// synchronous program synchronous; `all` and `forEach` with a concurrency
+// limit and a synchronous form when every element has one, `race`, and
+// `fork`/`forkDaemon`/`forkScoped`/`join`/`interrupt` over fibers whose
+// lifetimes nest.
+//
 // `Tag` and `Layer` for services, with `layerProvide` feeding one layer into
-// another, `layerScoped` for a layer that acquires something, and one
-// memoised build per `provide`, so a layer reached twice in one graph is
-// built once and `runSync` still answers for a program that uses one; and
-// `Ref`, `Deferred` and `Semaphore` for the things two fibers have to share,
-// each of which a blocked fiber can be interrupted out of; and a pull-based
-// `Stream` in `./stream.js`, whose traversal closes what it opened on success,
-// on failure and on interruption.
+// another, `layerScoped` for a layer that acquires something, and one memoised
+// build per `provide`, so a layer reached twice in one graph is built once and
+// `runSync` still answers for a program that uses one — with `managedRuntime`
+// for the other half, a layer built once for an application, many effects run
+// against it, and a `dispose` that closes what it acquired.
+//
+// `Ref`, `Deferred`, `Semaphore`, `Queue` and `PubSub` for the things two
+// fibers have to share, each of which a blocked fiber can be interrupted out
+// of, and the last two of which put a bound on a producer that outruns its
+// consumer. And a pull-based `Stream` in `./stream.js`, whose traversal closes
+// what it opened on success, on failure and on interruption.
 //
 // **Experimental.** Requirement subtraction, for the reason above: `provide`,
 // `provideService` and `scoped` state the service they remove and let Flow
@@ -111,20 +137,17 @@
 // variable by a string compared at run time. `layerProvide` and `layerScoped`
 // subtract requirements the same way and carry the same caveat.
 //
-// **Not implemented.** `Queue`, `Hub` and STM — the first two are the same
-// waiting mechanism `Deferred` and `Semaphore` are built on with a buffer in
-// front (#328), and STM is a transaction log and a retry-on-conflict scheduler,
-// which is larger than everything above it put together and has no use that a
-// serialised `Ref` cannot serve at a cost worth measuring first; `Channel`,
-// `Sink`, `GroupBy` and `Chunk`, which `./stream.js` explains being without
-// rather than pending; a fiber scheduler of its own (this runs on the host's microtask
-// queue and its `sleep` is `setTimeout`); tracing, spans, metrics and the
-// logging layer; a `Runtime` or `ManagedRuntime` that builds a layer once and
-// runs many effects against it, so a layer handed to two `provide`s is still
-// built twice — the memo lives for one build and not for the process (#326); a typed
-// defect channel; a heterogeneous `all`, which in Effect-TS keeps a tuple's
-// element types and here takes and returns one array type; and Effect's
-// `"inherit"` concurrency, because no enclosing limit is tracked to inherit.
+// **Not implemented.** STM — a transaction log and a retry-on-conflict
+// scheduler, which is larger than everything above it put together and has no
+// use that a serialised `Ref` cannot serve at a cost worth measuring first;
+// `Channel`, `Sink`, `GroupBy` and `Chunk`, which `./stream.js` explains being
+// without rather than pending; `forkIn` and a schedule's output as a type
+// parameter, each argued against where it would have gone; a fiber scheduler
+// of its own (this runs on the host's microtask queue and its `sleep` is
+// `setTimeout`); tracing, spans, metrics and the logging layer; a typed defect
+// channel; a heterogeneous `all`, which in Effect-TS keeps a tuple's element
+// types and here takes and returns one array type; and Effect's `"inherit"`
+// concurrency, because no enclosing limit is tracked to inherit.
 //
 // # Why the runtime is one file
 //
@@ -148,8 +171,10 @@
 // after nothing narrower than the package itself, to see any code.
 //
 // `./schedule.js` is the one thing that is genuinely separable on those terms,
-// and it is separate: a retry policy is arithmetic over an attempt count that
-// never sees a `Context`, an `Exit` or a fiber, and it explains itself there.
+// and it is separate: a policy is a state machine over a state and an input
+// that never sees a `Context`, an `Exit` or a fiber — it is handed the clock
+// and the random factor rather than reading either — and it explains itself
+// there.
 //
 // `./stream.js` is separate on different terms, and finding out which was the
 // first task of writing it. A stream does reach the runtime — it produces
@@ -169,10 +194,10 @@
 // same reason. It is a checker gap to close, not a reason to put a retry
 // policy back inside a runtime.
 
-import { scheduleDelay } from "./schedule.js";
-import type { Schedule } from "./schedule.js";
+import { scheduleStart, scheduleStep } from "./schedule.js";
+import type { Schedule, ScheduleDecision, ScheduleState } from "./schedule.js";
 
-export type { Schedule };
+export type { Schedule, ScheduleDecision, ScheduleState };
 
 /**
  * How one effect takes its step.
@@ -263,8 +288,9 @@ type LayerKernel<out E> = {
  *
  * The memo lives for one `provide` and is keyed by the layer object, so a
  * layer that appears twice in one graph is built once and a layer handed to
- * two `provide`s is built twice. The second half is a real limit; see
- * Readiness.
+ * two `provide`s is built twice. That second half is what `managedRuntime` is
+ * for: one build for a whole application, and a `dispose` rather than the end
+ * of one effect.
  */
 type LayerMemo = Map<Layer<mixed, mixed, mixed>, $ReadOnlyMap<string, mixed>>;
 
@@ -277,6 +303,21 @@ type LayerCarrier<out Out, out E, out In> = {
 
 type ScopeState = {
   readonly finalizers: Array<() => Effect<void, mixed, empty>>,
+};
+
+/**
+ * A layer already built, and the scope it was built in.
+ *
+ * `disposed` is on the carrier rather than inferred from the scope, because a
+ * scope with nothing to close and a scope that has been closed look the same
+ * from outside and mean opposite things.
+ */
+type RuntimeCarrier<R> = {
+  readonly __kind: "Runtime",
+  readonly __provides: () => R,
+  readonly services: $ReadOnlyMap<string, mixed>,
+  readonly scope: ScopeState,
+  disposed: boolean,
 };
 
 type RefCarrier<A> = {
@@ -328,6 +369,93 @@ type SemaphoreState = {
 type SemaphoreCarrier = {
   readonly __kind: "Semaphore",
   readonly state: SemaphoreState,
+};
+
+/**
+ * What a full queue does with one more value.
+ *
+ * `bounded` is the only one of the three that is back pressure: the producer
+ * waits, and a producer that waits is a producer that cannot outrun its
+ * consumer. The other two keep the producer running and lose a value instead —
+ * `dropping` loses the value being offered, `sliding` loses the oldest one
+ * already waiting — which is what a metrics feed or a live cursor position
+ * wants, where the newest reading is the only interesting one.
+ */
+export type QueueStrategy = "bounded" | "dropping" | "sliding";
+
+/**
+ * What one attempt to take a value found, without waiting for another.
+ *
+ * `empty` is the only one that means "wait"; it never leaves this module,
+ * because every caller either waits on it or reports it as the reason a
+ * synchronous run could not answer.
+ */
+type QueueTaken<A> =
+  | { readonly kind: "taken", readonly value: A }
+  | { readonly kind: "stopped" }
+  | { readonly kind: "empty" };
+
+/** What one attempt to offer a value did, `full` being the one that waits. */
+type QueueOffered = "accepted" | "dropped" | "stopped" | "full";
+
+/** One fiber waiting for a value, and how to give it one or tell it to stop. */
+type QueueTaker<A> = {
+  readonly settle: (QueueTaken<A>) => void,
+};
+
+/** One fiber waiting for room, still holding the value it could not put down. */
+type QueueOfferer<A> = {
+  readonly value: A,
+  readonly settle: (accepted: boolean) => void,
+};
+
+/**
+ * The buffer, and the fibers queued at each end of it.
+ *
+ * Two invariants hold for every capacity of at least one, and everything below
+ * is written to keep them: a fiber waits in `takers` only while `items` is
+ * empty, and in `offerers` only while `items` is full. They cannot both be
+ * non-empty, which is why an offer never has to choose between handing its
+ * value to a waiting taker and appending it behind a waiting offerer.
+ *
+ * Both queues are served strictly from the head, for the reason
+ * `releasePermits` records: a later taker that overtook a waiting one would
+ * raise throughput and starve the one that asked first, and an order nobody
+ * can predict is not an order.
+ */
+type QueueState<A> = {
+  readonly capacity: number,
+  readonly strategy: QueueStrategy,
+  readonly items: Array<A>,
+  readonly takers: Array<QueueTaker<A>>,
+  readonly offerers: Array<QueueOfferer<A>>,
+  shutdown: boolean,
+};
+
+type QueueCarrier<A> = {
+  readonly __kind: "Queue",
+  readonly state: QueueState<A>,
+};
+
+/**
+ * The subscribers, and the buffer each of them gets.
+ *
+ * A `PubSub` owns no buffer of its own: it owns the *shape* of one, and hands
+ * every subscriber a queue of that shape. That is the whole implementation of
+ * "the same buffer with several subscribers", and it is why a subscription is
+ * an ordinary `Queue` that `queueTake` and `queueTakeAll` already work on
+ * rather than a second family of readers.
+ */
+type PubSubState<A> = {
+  readonly capacity: number,
+  readonly strategy: QueueStrategy,
+  readonly subscribers: Set<QueueState<A>>,
+  shutdown: boolean,
+};
+
+type PubSubCarrier<A> = {
+  readonly __kind: "PubSub",
+  readonly state: PubSubState<A>,
 };
 
 /**
@@ -385,6 +513,26 @@ export opaque type Tag<out Service>: Effect<Service, empty, Service> = TagCarrie
 export opaque type Layer<out Out, out E = empty, out In = empty> = LayerCarrier<Out, E, In>;
 
 /**
+ * Services built once, for an application rather than for one effect.
+ *
+ * `provide` builds a layer, runs one effect against it and closes the scope
+ * when that effect ends, which is right for what `provide` is and wrong for
+ * what a server is: a request handler is an `Effect` per request against a
+ * connection pool opened once at boot. Building the layer per request opens two
+ * pools a second; assembling a `provideService` chain by hand at the entry point
+ * is the thing `Layer` exists to replace.
+ *
+ * Invariant in `R`, unlike `Effect` and `Layer`, and that is what makes the
+ * requirement check mean something here. `Effect` is covariant in `R`, so with
+ * a covariant `Runtime` the checker could satisfy `runtimeRunPromise` by
+ * widening *both* sides to a union containing a service the runtime does not
+ * have. Pinned to exactly what the layer produced, the effect has to be a
+ * subtype of it, which is the ordinary subtyping the issue this came from
+ * expected and not another instance of the requirement-subtraction caveat.
+ */
+export opaque type Runtime<R> = RuntimeCarrier<R>;
+
+/**
  * A place two fibers can both read and write.
  *
  * Invariant in `A`, unlike `Effect` and `Fiber`: a `Ref` is written as well as
@@ -418,6 +566,40 @@ export opaque type Deferred<A, E = empty> = DeferredCarrier<A, E>;
  * `forEach`es against the same host can hold one of these between them.
  */
 export opaque type Semaphore = SemaphoreCarrier;
+
+/**
+ * A bounded place to hand work from one fiber to another.
+ *
+ * The type the rest of this package was waiting on. `all` collects into an
+ * array, so a producer that outruns its consumer grows one until the process
+ * dies and there is no seam to put a limit in; a `Queue` is that seam. A
+ * `bounded` queue makes the producer wait, which is the only one of the three
+ * strategies that is back pressure rather than a way of losing values politely.
+ *
+ * Invariant in `A` for the reason `Ref` is: a queue is written as well as read,
+ * so a `Queue<string>` is not a `Queue<mixed>`.
+ *
+ * Every operation but `queueShutdown` and `queueIsShutdown` reports an
+ * *interruption* on a queue that has been shut down, waiting or not. That is
+ * one rule rather than two, and it is the one `Cause` already has a word for:
+ * a shutdown is a decision somebody took, which is exactly what `interrupt`
+ * means and exactly what `fail` does not.
+ */
+export opaque type Queue<A> = QueueCarrier<A>;
+
+/**
+ * One value, delivered to everybody who is listening when it is published.
+ *
+ * `Queue` is one-to-one — a value taken by one consumer is gone. This is the
+ * many-to-many case: every subscriber gets its own buffer, so a slow one falls
+ * behind rather than stealing from a fast one, and with `bounded` a slow one
+ * makes the publisher wait.
+ *
+ * A subscription is an ordinary `Queue`, which is what makes this a small type
+ * rather than a second family of readers: `queueTake`, `queueTakeAll` and
+ * `queueSize` are already the operations a subscriber needs.
+ */
+export opaque type PubSub<A> = PubSubCarrier<A>;
 
 /**
  * The lifetime a resource is released at.
@@ -1645,19 +1827,31 @@ export function either<A, E, R>(
  *
  * A separate parameter rather than a `{ schedule, while, until }` union in
  * `retry`'s second position, which is what Effect takes. Flow's objects are
- * exact, so a union of `Schedule` and an options object cannot be refined by
+ * exact, so a union of a `Schedule` and an options object cannot be refined by
  * reading a property one of them does not have, and the trick that makes it
  * possible would be a worse thing to explain than a third parameter. Effect's
  * `times` is not here either: it is `intersect` with `recurs`, which the
  * schedule union already says, and two ways to say one thing is the cost of
  * copying an API rather than reading it.
  *
+ * A `Schedule<E>` can now read the error itself, so `whileInput` says the same
+ * thing inside a policy. That is not a duplicate: this is the condition the
+ * *call site* knows, and a policy is the one a config file could name. Both
+ * have to allow an attempt for one to happen.
+ *
  * The predicates see the first typed failure in the cause, which is the same
- * error `catchAll` would hand a recovery function.
+ * error `catchAll` would hand a recovery function and the same one the schedule
+ * is stepped with.
  */
 export type RetryOptions<in E> = {
   readonly while?: (error: E) => boolean,
   readonly until?: (error: E) => boolean,
+};
+
+/** The same, over the value a `repeat` produced. */
+export type RepeatOptions<in A> = {
+  readonly while?: (value: A) => boolean,
+  readonly until?: (value: A) => boolean,
 };
 
 /**
@@ -1683,12 +1877,24 @@ function worthRetrying<E>(cause: Cause<E>, options: ?RetryOptions<E>): boolean {
   if (found == null) {
     return false;
   }
-  const whilePredicate = options.while;
-  if (whilePredicate != null && !whilePredicate(found.error)) {
+  return allowedBy(found.error, options.while, options.until);
+}
+
+/** The same two predicates over a success, for `repeat`. */
+function worthRepeating<A>(value: A, options: ?RepeatOptions<A>): boolean {
+  return options == null || allowedBy(value, options.while, options.until);
+}
+
+/** `while` must hold and `until` must not, and an absent one is no opinion. */
+function allowedBy<T>(
+  subject: T,
+  whilePredicate: ?(T) => boolean,
+  untilPredicate: ?(T) => boolean,
+): boolean {
+  if (whilePredicate != null && !whilePredicate(subject)) {
     return false;
   }
-  const untilPredicate = options.until;
-  return untilPredicate == null || !untilPredicate(found.error);
+  return untilPredicate == null || !untilPredicate(subject);
 }
 
 /**
@@ -1699,41 +1905,49 @@ function worthRetrying<E>(cause: Cause<E>, options: ?RetryOptions<E>): boolean {
  * is a bug, so running it again runs the bug again, and an interruption is a
  * decision already taken.
  *
- * `options` narrows that further to the failures the *application* thinks are
- * worth repeating. Without it a policy retries every typed failure, which
- * means a permanently rejected request is retried on an exponential backoff
- * until the schedule gives up — slower than failing and no more likely to
- * work.
+ * The schedule's input is the error, so a policy can decide on it —
+ * `{ kind: "whileInput", schedule: backoff, predicate: (e) => e.kind !== "forbidden" }`
+ * is a policy that gives up on a rejection. `options` says the same thing at
+ * the call site; both have to allow an attempt.
  *
- * The random factor a `jittered` schedule needs is drawn here, once per wait,
- * and passed in: `scheduleDelay` stays a pure function of its arguments, which
- * is what lets a policy be tested without a clock or a seed.
+ * `Date.now()` is read once per decision and passed to the schedule, which is
+ * what lets `fixed` subtract the time the attempt itself took, and what keeps
+ * `scheduleStep` a pure function of its arguments. The random factor a
+ * `jittered` schedule needs is drawn in the same place and for the same reason.
  */
 export function retry<A, E, R>(
   self: Effect<A, E, R>,
-  schedule: Schedule,
+  schedule: Schedule<E>,
   options?: RetryOptions<E>,
 ): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
-      let attempt = 0;
+      let state = scheduleStart(Date.now());
       let settled = await runKernel(self, runContext);
       while (settled.kind === "failure" && !isInterrupted(runContext)) {
-        let worthIt;
+        const cause = settled.cause;
+        let decision;
         try {
-          worthIt = worthRetrying(settled.cause, options);
+          if (!worthRetrying(cause, options)) {
+            return settled;
+          }
+          const found = failureNode(cause);
+          if (found == null) {
+            // `worthRetrying` said yes, which means `isRetriable` found a typed
+            // failure in this cause, so there is one here to find. Written as a
+            // branch rather than asserted, because a schedule with no input to
+            // step on has no answer and giving up is the total one.
+            return settled;
+          }
+          decision = scheduleStep(schedule, state, found.error, Date.now(), Math.random());
         } catch (error) {
           return defect(error);
         }
-        if (!worthIt) {
+        if (decision.kind === "done") {
           return settled;
         }
-        const millis = scheduleDelay(schedule, attempt, Math.random());
-        if (millis == null) {
-          return settled;
-        }
-        attempt += 1;
-        await pause(millis, runContext);
+        state = decision.state;
+        await pause(decision.delayMillis, runContext);
         if (isInterrupted(runContext)) {
           return settled;
         }
@@ -1748,49 +1962,70 @@ export function retry<A, E, R>(
  * Run again on *success*, on the schedule's timetable: a poll, a heartbeat, a
  * cache refresh.
  *
- * The other half of what a schedule is for, and the half that was missing
- * entirely rather than approximated. The first run is not a repetition, so
- * `{ kind: "recurs", times: 2 }` runs the effect three times, and
+ * The other half of what a schedule is for. The first run is not a repetition,
+ * so `{ kind: "recurs", times: 2 }` runs the effect three times, and
  * `{ kind: "spaced", millis: 1000 }` runs it until something stops it.
  *
- * A failure ends the repetition and is the result. That is not a policy
- * choice: an effect that failed produced no value to repeat *from*, and
- * swallowing the failure to keep polling would hide the outage the poll exists
- * to notice. `retry` is what wraps an unreliable step, and the two compose —
+ * The value is the schedule's *input*, so "poll until the job reports finished"
+ * is a schedule rather than a loop:
+ * `{ kind: "untilInput", schedule: everySecond, predicate: (job) => job.done }`.
+ * `options` says the same thing at the call site, the way `retry`'s does.
+ *
+ * The result is the schedule's output — the number of repetitions, the elapsed
+ * time, whichever number the schedule's last decision reached — which is what
+ * Effect's `repeat` gives back and what this could not give back while a
+ * schedule was arithmetic over an attempt count. The effect's own last value is
+ * one `tap` or one `Ref` away and was never the interesting half: a poll that
+ * ran eleven times wants to say eleven.
+ *
+ * A failure ends the repetition and is the result. That is not a policy choice:
+ * an effect that failed produced no value to repeat *from*, and swallowing the
+ * failure to keep polling would hide the outage the poll exists to notice.
+ * `retry` is what wraps an unreliable step, and the two compose —
  * `repeat(retry(poll, backoff), everySecond)` is a poll that tolerates a blip
  * and stops on a real failure.
  *
  * Interruption is checked before each wait and after it, so a fiber polling
  * once a minute stops when it is cancelled rather than at the top of the next
- * minute, and reports an interruption rather than the last value it happened
- * to have. That is the bug `pause` exists to prevent, on the other side.
- *
- * Effect's `repeat` returns the *schedule's* output. This one returns the
- * effect's last value, because this `Schedule` is arithmetic over an attempt
- * count and has no output channel to return. A `Schedule<Out, In>` with a
- * state and a step would change that; filed as #327 rather than half-built.
+ * minute, and reports an interruption rather than the last number it happened
+ * to have.
  */
-export function repeat<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effect<A, E, R> {
+export function repeat<A, E, R>(
+  self: Effect<A, E, R>,
+  schedule: Schedule<A>,
+  options?: RepeatOptions<A>,
+): Effect<number, E, R> {
   return makeEffect({
     run: async (runContext) => {
-      let attempt = 0;
+      let state = scheduleStart(Date.now());
+      let output = state.output;
       let settled = await runKernel(self, runContext);
       while (settled.kind === "success") {
         if (isInterrupted(runContext)) {
           return interruptedExit();
         }
-        const millis = scheduleDelay(schedule, attempt, Math.random());
-        if (millis == null) {
-          return settled;
+        const value = settled.value;
+        let decision;
+        try {
+          if (!worthRepeating(value, options)) {
+            return success(output);
+          }
+          decision = scheduleStep(schedule, state, value, Date.now(), Math.random());
+        } catch (error) {
+          return defect(error);
         }
-        attempt += 1;
-        await pause(millis, runContext);
+        output = decision.output;
+        if (decision.kind === "done") {
+          return success(output);
+        }
+        state = decision.state;
+        await pause(decision.delayMillis, runContext);
         if (isInterrupted(runContext)) {
           return interruptedExit();
         }
         settled = await runKernel(self, runContext);
       }
-      return settled;
+      return failure(settled.cause);
     },
   });
 }
@@ -2261,6 +2496,171 @@ function mergedServices(
 }
 
 /**
+ * Build a layer once, and hand back something many effects can be run against.
+ *
+ * Effect-TS calls this `ManagedRuntime.make`. The build is one pass with one
+ * memo, exactly as `provide`'s is; the difference is entirely in who closes the
+ * scope and when. `provide` closes it when its one effect ends, and this does
+ * not close it at all — `runtimeDispose` does, whenever the application is
+ * over.
+ *
+ * That makes this the one effect in the package that deliberately leaves
+ * something open when it returns, which is why `dispose` is not optional and
+ * why it is a named function rather than a finalizer somebody might not have
+ * registered. A runtime built and never disposed holds whatever its layers
+ * acquired for the life of the process, which for a process-lifetime pool is
+ * the point and for anything shorter is a leak.
+ *
+ * The runtime keeps the services in scope where it was built as well as the
+ * ones the layer produced, so a runtime built inside a `provideService` sees
+ * both. A build that fails releases whatever the build had already acquired
+ * and reports the failure, as `provide`'s does.
+ */
+export function managedRuntime<Out, E, In>(layer: Layer<Out, E, In>): Effect<Runtime<Out>, E, In> {
+  return makeEffect({
+    run: async (runContext) => {
+      const scope: ScopeState = { finalizers: [] };
+      const built = await buildLayer(layer, runtimeBuildContext(runContext, scope), new Map());
+      if (built.kind === "failure") {
+        await closeScope(scope, runContext);
+        return failure(built.cause);
+      }
+      return success(makeRuntime<Out>(mergedServices(runContext.services, built.value), scope));
+    },
+    // A layer with a synchronous build gives a synchronous runtime, for the
+    // reason `provide`'s own synchronous kernel exists: nothing about a layer
+    // is inherently asynchronous, and a test that cannot use `runSync` because
+    // it used a layer is a test paying for a limitation that is not there.
+    runSync: (runContext) => {
+      const scope: ScopeState = { finalizers: [] };
+      const built = buildLayerSync(layer, runtimeBuildContext(runContext, scope), new Map());
+      if (built.kind === "failure") {
+        closeScopeSync(scope, runContext);
+        return failure(built.cause);
+      }
+      return success(makeRuntime<Out>(mergedServices(runContext.services, built.value), scope));
+    },
+  });
+}
+
+/**
+ * Run an effect against a built runtime, raising whatever it failed with.
+ *
+ * `runPromise` with the runtime's services in scope. Each run gets a root fiber
+ * of its own, so two effects running against one runtime do not own each other:
+ * one of them ending stops what *it* forked and nothing of the other's.
+ *
+ * The runtime's own scope is not the effect's scope, for the reason `provide`
+ * does not hand the body one either — doing so would silently discharge the
+ * `Scope` an `acquireRelease` in the body requires while the requirement
+ * channel went on saying otherwise.
+ */
+export function runtimeRunPromise<A, E, R>(self: Runtime<R>, body: Effect<A, E, R>): Promise<A> {
+  return runtimeRunPromiseExit(self, body).then((settled) => {
+    if (settled.kind === "success") {
+      return settled.value;
+    }
+    throw throwable(settled.cause);
+  });
+}
+
+/** The same, returning the outcome rather than raising. */
+export function runtimeRunPromiseExit<A, E, R>(
+  self: Runtime<R>,
+  body: Effect<A, E, R>,
+): Promise<Exit<A, E>> {
+  const closed = disposedExit<A, E, R>(self);
+  if (closed != null) {
+    return Promise.resolve(closed);
+  }
+  const runContext = runtimeContext(self);
+  return runKernel(body, runContext).then((settled) => {
+    endFiber(runContext.fiber);
+    return settled;
+  });
+}
+
+/** Run a synchronous effect against a built runtime, raising its failure. */
+export function runtimeRunSync<A, E, R>(self: Runtime<R>, body: Effect<A, E, R>): A {
+  const settled = runtimeRunSyncExit(self, body);
+  if (settled.kind === "success") {
+    return settled.value;
+  }
+  throw throwable(settled.cause);
+}
+
+/** The same, returning the outcome rather than raising. */
+export function runtimeRunSyncExit<A, E, R>(self: Runtime<R>, body: Effect<A, E, R>): Exit<A, E> {
+  const closed = disposedExit<A, E, R>(self);
+  return closed == null ? runSyncKernel(body, runtimeContext(self)) : closed;
+}
+
+/** Start an effect against a built runtime and keep a handle on it. */
+export function runtimeRunFork<A, E, R>(self: Runtime<R>, body: Effect<A, E, R>): Fiber<A, E> {
+  const runContext = runtimeContext(self);
+  const closed = disposedExit<A, E, R>(self);
+  if (closed != null) {
+    return makeFiber(Promise.resolve(closed), runContext.fiber);
+  }
+  const running = runKernel(body, runContext).then((settled) => {
+    endFiber(runContext.fiber);
+    return settled;
+  });
+  return makeFiber(running, runContext.fiber);
+}
+
+/**
+ * Close what the runtime's layers acquired.
+ *
+ * Idempotent, so a shutdown path that runs twice is not a second release of a
+ * connection pool. Every run against a disposed runtime is a defect rather than
+ * a typed failure: the services are gone, so an effect that asks for one is
+ * reaching for a resource somebody has already closed, and that is a bug in the
+ * program's shutdown order rather than a condition it should be recovering
+ * from — the same line `readService` draws for a service that was never
+ * provided.
+ */
+export function runtimeDispose<R>(self: Runtime<R>): Effect<void> {
+  return makeEffect({
+    run: async (runContext) => {
+      if (self.disposed) {
+        return success(undefined);
+      }
+      self.disposed = true;
+      const broken = await closeScope(self.scope, runContext);
+      return broken == null ? success(undefined) : releaseDefect<void, empty>(broken);
+    },
+    runSync: (runContext) => {
+      if (self.disposed) {
+        return success(undefined);
+      }
+      self.disposed = true;
+      const broken = closeScopeSync(self.scope, runContext);
+      return broken == null ? success(undefined) : releaseDefect<void, empty>(broken);
+    },
+  });
+}
+
+function makeRuntime<R>(services: $ReadOnlyMap<string, mixed>, scope: ScopeState): Runtime<R> {
+  return { __kind: "Runtime", __provides: absurd, services, scope, disposed: false };
+}
+
+/** The context a layer is built in: the caller's fiber, and the runtime's scope. */
+function runtimeBuildContext(runContext: Context, scope: ScopeState): Context {
+  return { services: runContext.services, scope, fiber: runContext.fiber };
+}
+
+/** A root context over the runtime's services, with a fiber of its own. */
+function runtimeContext<R>(self: Runtime<R>): Context {
+  return { services: self.services, scope: null, fiber: newFiber() };
+}
+
+/** The answer a disposed runtime gives every run, or `null` if it is still open. */
+function disposedExit<A, E, R>(self: Runtime<R>): ?Exit<A, E> {
+  return self.disposed ? defect("runtime has been disposed; nothing can be run against it") : null;
+}
+
+/**
  * Start `self` beside the current fiber and hand back a handle to it.
  *
  * The child gets its own interruption state, so cancelling it does not cancel
@@ -2316,6 +2716,68 @@ export function forkDaemon<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, 
         endFiber(child.fiber);
         return settled;
       });
+      const started: Exit<Fiber<A, E>, empty> = success(makeFiber(running, child.fiber));
+      return Promise.resolve(started);
+    },
+  });
+}
+
+/**
+ * Start `self` beside the current fiber, tied to the enclosing `Scope`.
+ *
+ * The third lifetime, and the one a request handler usually means. `fork` stops
+ * the child when the fiber that forked it returns, which is too early for a
+ * background refresh that should finish its own work; `forkDaemon` never stops
+ * it, which is a leak with one more step. The lifetime the caller means is
+ * neither fiber's — it is the request's, and a request is a `Scope`.
+ *
+ * The child is registered on the scope and deliberately *not* on the forking
+ * fiber's `children`. Being on both would let `endFiber` stop it the moment
+ * the handler returned, which is the behaviour this exists to avoid.
+ *
+ * The child gets a scope of its own, and that is an ordering rather than a
+ * detail: finalizers run newest first, so a resource the child acquired after
+ * the fork would be released *before* the finalizer that stops the child, out
+ * from under a fiber still using it. Its own scope closes when it settles,
+ * however it settles.
+ *
+ * The scope's finalizer interrupts the child and waits for it to stop, so a
+ * `scoped` block does not return until what it started has actually finished
+ * and released — the same promise `interrupt` makes, made by the scope.
+ */
+export function forkScoped<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty, R | Scope> {
+  return makeEffect({
+    run: (runContext) => {
+      const scope = runContext.scope;
+      if (scope == null) {
+        const missing: Exit<Fiber<A, E>, empty> = defect(
+          "forkScoped needs a Scope; wrap the effect in scoped()",
+        );
+        return Promise.resolve(missing);
+      }
+      const childScope: ScopeState = { finalizers: [] };
+      const child: Context = {
+        services: runContext.services,
+        scope: childScope,
+        fiber: newFiber(),
+      };
+      const running = runKernel(self, child).then(async (settled) => {
+        endFiber(child.fiber);
+        const broken = await closeScope(childScope, runContext);
+        if (settled.kind === "success" && broken != null) {
+          return releaseDefect<A, E>(broken);
+        }
+        return settled;
+      });
+      scope.finalizers.push(() =>
+        makeEffect({
+          run: async () => {
+            interruptFiber(child.fiber);
+            await running;
+            return success(undefined);
+          },
+        }),
+      );
       const started: Exit<Fiber<A, E>, empty> = success(makeFiber(running, child.fiber));
       return Promise.resolve(started);
     },
@@ -2691,6 +3153,455 @@ function releasePermits(state: SemaphoreState, permits: number): void {
     state.available -= next.permits;
     next.settle(true);
   }
+}
+
+/**
+ * A place to hand values from one fiber to another, `capacity` deep.
+ *
+ * `capacity` is at least one: a queue of nothing has no buffer for a `sliding`
+ * strategy to slide and no room for a `dropping` one to drop into, so the two
+ * would silently mean "hand over directly or lose it", which is a rendezvous
+ * and not a queue. A `Deferred` is the rendezvous.
+ *
+ * `strategy` defaults to `bounded`, which is the one that is back pressure:
+ * the default should be the answer that cannot lose a value.
+ */
+export function queue<A>(capacity: number, strategy?: QueueStrategy): Effect<Queue<A>> {
+  return sync(() => {
+    const made: QueueCarrier<A> = {
+      __kind: "Queue",
+      state: {
+        capacity: Math.max(1, Math.floor(capacity)),
+        strategy: strategy == null ? "bounded" : strategy,
+        items: [],
+        takers: [],
+        offerers: [],
+        shutdown: false,
+      },
+    };
+    return made;
+  });
+}
+
+/**
+ * Put a value in, waiting for room if the queue is `bounded` and full.
+ *
+ * `true` when the queue took the value, `false` when a `dropping` queue that
+ * was full threw it away. A `sliding` queue always answers `true`, because it
+ * took the value — what it lost was an older one.
+ *
+ * A fiber waiting for room can be interrupted out of the wait, by the protocol
+ * `deferredAwait` and `acquirePermits` use, and a fiber interrupted while
+ * waiting never enqueues the value it was holding: it was never in the queue,
+ * and putting it there on the way out would deliver work from a request that
+ * had already been cancelled.
+ */
+export function queueOffer<A>(self: Queue<A>, value: A): Effect<boolean> {
+  const state = self.state;
+  const answer = (offered: QueueOffered): Exit<boolean, empty> =>
+    offered === "stopped" ? interruptedExit() : success(offered === "accepted");
+  return makeEffect({
+    run: (runContext) => offerToQueue(state, value, runContext).then(answer),
+    // An offer that does not have to wait is a push onto an array, and there
+    // is no reason a synchronous program should lose `runSync` for making one.
+    // An offer that *would* wait ends the run the way any other asynchronous
+    // effect does, and under `runSync` that is not a race it might have won:
+    // nothing else is running, so nothing will ever drain the queue.
+    runSync: (runContext) => {
+      const offered = offerNow(state, value, runContext);
+      return offered === "full"
+        ? failure(dieCause("queueOffer would wait for room; a bounded queue is asynchronous"))
+        : answer(offered);
+    },
+  });
+}
+
+/**
+ * Take the next value, waiting for one if there is none.
+ *
+ * Interruptible while waiting, and a taker woken by an interruption leaves the
+ * queue exactly as it found it: it is removed from the queue of takers before
+ * anything can hand it a value, so the value it did not receive is still there
+ * for the next one. Getting that wrong is how a cancelled request eats a piece
+ * of work that nobody then does.
+ *
+ * A taker that has already been handed a value keeps it even if its fiber is
+ * interrupted a moment later. The alternative is dropping a value that has
+ * left the queue, and interruption is checked at the caller's next step
+ * anyway — a cancelled fiber stops there rather than one step earlier, and the
+ * work does not vanish in between.
+ *
+ * Unlike `deferredAwait` this has a synchronous kernel, and the difference is
+ * real rather than an inconsistency: taking from a queue that has something in
+ * it is reading a buffer, not waiting for a value nobody has produced.
+ */
+export function queueTake<A>(self: Queue<A>): Effect<A> {
+  const state = self.state;
+  const answer = (taken: QueueTaken<A>): Exit<A, empty> =>
+    taken.kind === "taken" ? success(taken.value) : interruptedExit();
+  return makeEffect({
+    run: (runContext) => takeFromQueue(state, runContext).then(answer),
+    runSync: (runContext) => {
+      const taken = takeNow(state, runContext);
+      return taken.kind === "empty"
+        ? failure(dieCause("queueTake would wait for a value; an empty queue is asynchronous"))
+        : answer(taken);
+    },
+  });
+}
+
+/** Everything waiting, without waiting. An empty queue answers with `[]`. */
+export function queueTakeAll<A>(self: Queue<A>): Effect<$ReadOnlyArray<A>> {
+  return takeManyEffect(self.state, Number.POSITIVE_INFINITY);
+}
+
+/** At most `max` of what is waiting, without waiting for more. */
+export function queueTakeUpTo<A>(self: Queue<A>, max: number): Effect<$ReadOnlyArray<A>> {
+  return takeManyEffect(self.state, Math.max(0, Math.floor(max)));
+}
+
+/**
+ * How many values are waiting to be taken.
+ *
+ * The buffer's length, and not Effect's signed count. A fiber blocked in
+ * `queueOffer` is holding a value that is not in the queue, and a fiber blocked
+ * in `queueTake` is not a negative value; a number that means three different
+ * things depending on its sign is a worse answer than one that means the one
+ * thing its name says.
+ */
+export function queueSize<A>(self: Queue<A>): Effect<number> {
+  const state = self.state;
+  const step = (): Exit<number, empty> =>
+    state.shutdown ? interruptedExit() : success(state.items.length);
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/**
+ * Stop the queue, and stop everybody waiting on it.
+ *
+ * Waiting takers and waiting offerers are all interrupted, and what was in the
+ * buffer is dropped: a shutdown is a decision that the work is over, and
+ * handing out three more values on the way down would be that decision half
+ * taken.
+ *
+ * Idempotent, and the one operation a shut-down queue still answers normally —
+ * along with `queueIsShutdown`, which has to stay answerable for anything to be
+ * able to tell a shutdown from an interruption of its own fiber.
+ */
+export function queueShutdown<A>(self: Queue<A>): Effect<void> {
+  const state = self.state;
+  const step = (): Exit<void, empty> => {
+    shutdownQueue(state);
+    return success(undefined);
+  };
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Whether the queue has been shut down, which a shut-down queue still answers. */
+export function queueIsShutdown<A>(self: Queue<A>): Effect<boolean> {
+  const state = self.state;
+  const step = (): Exit<boolean, empty> => success(state.shutdown);
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/**
+ * `queueTakeAll` and `queueTakeUpTo`, which differ only in how many.
+ *
+ * Neither of them ever waits, and both still refuse to run in an interrupted
+ * fiber — unlike `refGet`, which also never waits. The difference is that these
+ * *remove* what they read: a cancelled fiber that drained a queue on its way
+ * out would take the work with it, which is the same loss `queueTake` avoids by
+ * leaving a value for the next taker.
+ */
+function takeManyEffect<A>(state: QueueState<A>, wanted: number): Effect<$ReadOnlyArray<A>> {
+  const step = (runContext: Context): Exit<$ReadOnlyArray<A>, empty> =>
+    state.shutdown || isInterrupted(runContext)
+      ? interruptedExit()
+      : success(drainQueue(state, wanted));
+  return makeEffect({
+    run: (runContext) => Promise.resolve(step(runContext)),
+    runSync: step,
+  });
+}
+
+/**
+ * Put a value down without waiting, and say what became of it.
+ *
+ * `full` is the one answer that is not an answer: it means only a `bounded`
+ * queue's back pressure is left, which is the caller's to wait on.
+ */
+function offerNow<A>(state: QueueState<A>, value: A, runContext: Context): QueueOffered {
+  if (state.shutdown || isInterrupted(runContext)) {
+    return "stopped";
+  }
+  const taker = state.takers[0];
+  if (taker != null) {
+    // Handed straight over. The invariant says the buffer is empty whenever
+    // anybody is waiting for one, so there is nothing this could jump ahead of.
+    taker.settle({ kind: "taken", value });
+    return "accepted";
+  }
+  if (state.items.length < state.capacity) {
+    state.items.push(value);
+    return "accepted";
+  }
+  switch (state.strategy) {
+    case "dropping":
+      return "dropped";
+    case "sliding":
+      state.items.shift();
+      state.items.push(value);
+      return "accepted";
+    default:
+      return "full";
+  }
+}
+
+/** `offerNow`, and then the wait a `bounded` queue asks for. */
+function offerToQueue<A>(
+  state: QueueState<A>,
+  value: A,
+  runContext: Context,
+): Promise<QueueOffered> {
+  return new Promise((resolve) => {
+    const immediate = offerNow(state, value, runContext);
+    if (immediate !== "full") {
+      resolve(immediate);
+      return;
+    }
+    const offerer: QueueOfferer<A> = {
+      value,
+      settle: (accepted: boolean) => {
+        const queued = state.offerers.indexOf(offerer);
+        if (queued >= 0) {
+          state.offerers.splice(queued, 1);
+        }
+        runContext.fiber.wakers.delete(wake);
+        resolve(accepted ? "accepted" : "stopped");
+      },
+    };
+    const wake = () => offerer.settle(false);
+    state.offerers.push(offerer);
+    runContext.fiber.wakers.add(wake);
+  });
+}
+
+/** Take the head without waiting, or say that waiting is what is left. */
+function takeNow<A>(state: QueueState<A>, runContext: Context): QueueTaken<A> {
+  if (state.shutdown || isInterrupted(runContext)) {
+    return { kind: "stopped" };
+  }
+  if (state.takers.length > 0 || state.items.length === 0) {
+    return { kind: "empty" };
+  }
+  return { kind: "taken", value: takeOne(state) };
+}
+
+/** `takeNow`, and then the wait an empty queue asks for. */
+function takeFromQueue<A>(state: QueueState<A>, runContext: Context): Promise<QueueTaken<A>> {
+  return new Promise((resolve) => {
+    const immediate = takeNow(state, runContext);
+    if (immediate.kind !== "empty") {
+      resolve(immediate);
+      return;
+    }
+    const taker: QueueTaker<A> = {
+      settle: (taken: QueueTaken<A>) => {
+        const queued = state.takers.indexOf(taker);
+        if (queued >= 0) {
+          state.takers.splice(queued, 1);
+        }
+        runContext.fiber.wakers.delete(wake);
+        resolve(taken);
+      },
+    };
+    const wake = () => taker.settle({ kind: "stopped" });
+    state.takers.push(taker);
+    runContext.fiber.wakers.add(wake);
+  });
+}
+
+/** Remove the head, and let whoever was waiting for room put a value down. */
+function takeOne<A>(state: QueueState<A>): A {
+  const value = state.items.shift();
+  admitOfferers(state);
+  return value;
+}
+
+/** The head of the buffer, up to `wanted` of it, and then the same admission. */
+function drainQueue<A>(state: QueueState<A>, wanted: number): $ReadOnlyArray<A> {
+  const drained = state.items.splice(0, Math.min(wanted, state.items.length));
+  admitOfferers(state);
+  return drained;
+}
+
+/**
+ * Move waiting offerers' values into the room that has just appeared.
+ *
+ * From the head, and only as far as the capacity allows, so a producer that has
+ * been waiting since before a faster one arrived goes first. `settle` removes
+ * the offerer it is called on, which is what makes the loop terminate.
+ */
+function admitOfferers<A>(state: QueueState<A>): void {
+  while (state.offerers.length > 0 && state.items.length < state.capacity) {
+    const offerer = state.offerers[0];
+    state.items.push(offerer.value);
+    offerer.settle(true);
+  }
+}
+
+/** Shut a queue down and stop everybody waiting at either end of it. */
+function shutdownQueue<A>(state: QueueState<A>): void {
+  if (state.shutdown) {
+    return;
+  }
+  state.shutdown = true;
+  state.items.length = 0;
+  while (state.takers.length > 0) {
+    state.takers[0].settle({ kind: "stopped" });
+  }
+  while (state.offerers.length > 0) {
+    state.offerers[0].settle(false);
+  }
+}
+
+/**
+ * A place to publish values every subscriber sees, `capacity` deep each.
+ *
+ * The capacity and the strategy describe one *subscriber's* buffer, because
+ * that is where the choice bites: with `bounded`, the slowest subscriber is
+ * what a publisher waits for, and with `sliding` a subscriber that falls behind
+ * loses its oldest values rather than holding the publisher up.
+ */
+export function pubSub<A>(capacity: number, strategy?: QueueStrategy): Effect<PubSub<A>> {
+  return sync(() => {
+    const made: PubSubCarrier<A> = {
+      __kind: "PubSub",
+      state: {
+        capacity: Math.max(1, Math.floor(capacity)),
+        strategy: strategy == null ? "bounded" : strategy,
+        subscribers: new Set(),
+        shutdown: false,
+      },
+    };
+    return made;
+  });
+}
+
+/**
+ * Listen, until the enclosing scope closes.
+ *
+ * The `Scope` is not decoration: a subscription that nothing unsubscribes is a
+ * buffer that a publisher keeps filling and nobody keeps draining, which with
+ * `bounded` stops the publisher for ever and with the other two is a leak. So
+ * the lifetime is stated in the type, in the same shape `acquireRelease` states
+ * it, and `scoped` discharges both.
+ *
+ * A subscriber sees what is published after it subscribes and nothing that came
+ * before, because the buffer it is handed is its own and starts empty.
+ */
+export function pubSubSubscribe<A>(self: PubSub<A>): Effect<Queue<A>, empty, Scope> {
+  const state = self.state;
+  const step = (runContext: Context): Exit<Queue<A>, empty> => {
+    const scope = runContext.scope;
+    if (scope == null) {
+      return defect("pubSubSubscribe needs a Scope; wrap the effect in scoped()");
+    }
+    if (state.shutdown) {
+      return interruptedExit();
+    }
+    const subscription: QueueState<A> = {
+      capacity: state.capacity,
+      strategy: state.strategy,
+      items: [],
+      takers: [],
+      offerers: [],
+      shutdown: false,
+    };
+    state.subscribers.add(subscription);
+    scope.finalizers.push(() =>
+      sync(() => {
+        state.subscribers.delete(subscription);
+        shutdownQueue(subscription);
+      }),
+    );
+    const made: QueueCarrier<A> = { __kind: "Queue", state: subscription };
+    return success(made);
+  };
+  return makeEffect({
+    run: (runContext) => Promise.resolve(step(runContext)),
+    runSync: step,
+  });
+}
+
+/**
+ * Hand a value to every subscriber, waiting for the slowest one that has back
+ * pressure.
+ *
+ * `true` when every subscriber took it, and `false` when one of them did not —
+ * a `dropping` subscriber that was full, or one whose scope closed while the
+ * publish was waiting for it. A pub-sub with no subscribers answers `true`,
+ * because nobody failed to take it.
+ *
+ * No synchronous kernel, unlike `queueOffer`. A publish to a `bounded`
+ * subscriber waits by design, and one that reported "would wait" for the fast
+ * subscribers and not the slow one would be an answer about which subscribers
+ * happened to be behind.
+ */
+export function pubSubPublish<A>(self: PubSub<A>, value: A): Effect<boolean> {
+  const state = self.state;
+  return makeEffect({
+    run: async (runContext) => {
+      if (state.shutdown || isInterrupted(runContext)) {
+        return interruptedExit();
+      }
+      const delivered = await Promise.all(
+        Array.from(state.subscribers, (subscription) =>
+          offerToQueue(subscription, value, runContext),
+        ),
+      );
+      // A `stopped` answer is either this fiber being cancelled — in which case
+      // the publish is cancelled — or one subscriber having unsubscribed while
+      // the offer waited, which is that subscriber missing a value and not the
+      // publisher's failure.
+      if (isInterrupted(runContext)) {
+        return interruptedExit();
+      }
+      return success(delivered.every((outcome) => outcome === "accepted"));
+    },
+  });
+}
+
+/**
+ * Stop the pub-sub, and every subscription with it.
+ *
+ * Every subscriber is interrupted where it waits, by the rule a shut-down queue
+ * already has. A subscription's scope still runs its own finalizer afterwards,
+ * which finds the queue already down and says so by doing nothing.
+ */
+export function pubSubShutdown<A>(self: PubSub<A>): Effect<void> {
+  const state = self.state;
+  const step = (): Exit<void, empty> => {
+    state.shutdown = true;
+    for (const subscription of state.subscribers) {
+      shutdownQueue(subscription);
+    }
+    state.subscribers.clear();
+    return success(undefined);
+  };
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
 }
 
 /**
