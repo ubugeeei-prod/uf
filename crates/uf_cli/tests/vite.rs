@@ -477,6 +477,66 @@ fn a_page_that_throws_fails_its_route_and_not_the_others() {
     );
 }
 
+/// A not-found boundary that throws fails the build, and writes no `404.html`.
+///
+/// The root 404 is prerendered outside the loop above and had neither of the
+/// loop's two checks. A boundary is a component like any other and can throw,
+/// and when it does `prerender` does not reject — it renders the *error* page
+/// and reports the exception on `result.error`. The driver wrote that HTML to
+/// `dist/404.html`, emitted `page`, and exited 0.
+///
+/// Which is the worst place in the build for that to happen. A static host
+/// serves `404.html` to everybody who mistypes a URL, so the page a project
+/// wrote to say "no such page" would have been silently replaced by uf's error
+/// page for the life of the deploy, and nothing between the throw and
+/// production would have mentioned it.
+#[test]
+fn a_not_found_boundary_that_throws_fails_the_build_and_writes_no_file() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/_uf.not-found.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport default component NotFound() {\n  throw new Error(\"the 404 boundary throws on purpose\");\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let said = format!("{stdout}{stderr}");
+    assert!(
+        !output.status.success(),
+        "a 404 boundary that throws must fail the build:\n{said}"
+    );
+    assert!(
+        said.contains("/404"),
+        "the build must name the page that threw:\n{said}"
+    );
+    assert!(
+        said.contains("the 404 boundary throws on purpose"),
+        "the build must say why it failed:\n{said}"
+    );
+    let dist = project.path().join("dist");
+    assert!(
+        !dist.join("404.html").exists(),
+        "the build published its own failure as 404.html:\n{said}"
+    );
+    // The rest of the build is untouched: one broken boundary is one broken
+    // boundary, the same as one broken page.
+    assert!(
+        dist.join("index.html").is_file(),
+        "the home page was not written:\n{said}"
+    );
+}
+
 /// Whether a loopback socket can be bound here.
 ///
 /// The same policy as [`fixture_ready`], for the same reason: a sandbox that

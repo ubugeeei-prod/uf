@@ -477,16 +477,40 @@ async function build() {
   // `_uf.not-found.js` is in `app/guide/` would otherwise get a `404.html`
   // rendered from the framework's bare default, which is worse than the file
   // it used to write, which was none.
+  //
+  // Through the same two checks as the loop, and for the same reason. A
+  // not-found boundary is a component like any other: it can throw, and when it
+  // does `prerender` answers with the *error* page's HTML and a non-null
+  // `error` rather than rejecting. Writing that HTML and emitting `page` was a
+  // build publishing its own failure as `404.html` and exiting 0 — the static
+  // host would then serve uf's error page to every visitor who mistyped a URL,
+  // and nothing between the throw and the deploy would have mentioned it.
+  let attempted = pages.length;
   if (server.notFound.some((boundary) => boundary.path === "/")) {
-    const result = await server.prerender("/__uf_not_found__", assets);
-    const file = path.join(outDir, "404.html");
-    writeFileSync(file, result.html);
-    emit("page", {
-      url: "/404",
-      file: path.relative(root, file),
-      status: 404,
-      bytes: Buffer.byteLength(result.html),
-    });
+    attempted += 1;
+    // `/404` rather than `/__uf_not_found__`: the internal path is how the
+    // router is asked, and the file the reader is looking for is `404.html`.
+    let result;
+    try {
+      result = await server.prerender("/__uf_not_found__", assets);
+    } catch (error) {
+      failed("/404", error);
+      result = null;
+    }
+    if (result != null && result.error != null) {
+      failed("/404", result.error);
+      result = null;
+    }
+    if (result != null) {
+      const file = path.join(outDir, "404.html");
+      writeFileSync(file, result.html);
+      emit("page", {
+        url: "/404",
+        file: path.relative(root, file),
+        status: 404,
+        bytes: Buffer.byteLength(result.html),
+      });
+    }
   }
 
   if (failures.length > 0) {
@@ -497,9 +521,12 @@ async function build() {
     // as the headline and the one a CI log's last line will be. It read
     // `... failed:` with the routes below it, and the headline was then a
     // sentence ending in a colon and nothing.
+    // `attempted`, not `pages.length`: the root 404 is prerendered too, and
+    // counting a failure of it against a total that excludes it produced
+    // "1 of 12" for a build that rendered thirteen things.
     emit("error", {
-      message: `${failures.length} of ${pages.length} prerendered ${plural(
-        pages.length,
+      message: `${failures.length} of ${attempted} prerendered ${plural(
+        attempted,
         "route",
       )} failed\n${failures.map((url) => `  ${url}`).join("\n")}`,
     });
