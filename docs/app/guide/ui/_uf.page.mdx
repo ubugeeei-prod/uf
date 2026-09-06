@@ -1,0 +1,342 @@
+---
+title: "Headless components · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Headless components
+
+<div className="lede">
+`@uniflowed/ui` is seven primitives that ship behaviour and no styles: the
+roving tab stop, the focus trap, the typeahead, the ARIA — everything a `div`
+that looks the same does not do. It has no dependency on a styling system, and
+119 tests hold it in place.
+</div>
+
+## What you get, and what you do not
+
+Seven modules: `Field`, `Tabs`, `Dialog`, `Menu`, `Combobox`, `Checkbox` and
+`Switch`. They render semantic elements with the right roles and relationships,
+handle the keyboard the way the platform's own controls do, and have no opinion
+whatsoever about how any of it looks.
+
+There is no stylesheet, no theme prop and no StyleX import. From
+`packages/ui/index.js`:
+
+> Nothing here imports StyleX, and nothing here has a StyleX-shaped type. A
+> consumer styling with plain CSS, CSS Modules or anything else gets exactly the
+> same components with exactly the same behaviour.
+
+Every part spreads whatever you pass onto its element, so `className`, `id`,
+`data-*` and `aria-*` all arrive. `className` is the bridge — a DOM prop, not a
+type from a styling library — which is what lets uf's own presets style these
+without the package knowing they exist. [Styling](/guide/styling) is that half.
+
+Import from the package root, where each family is a namespace:
+
+```js
+import { Checkbox, Combobox, Dialog, Field, Menu, Switch, Tabs } from "@uniflowed/ui";
+```
+
+or from a subpath — `@uniflowed/ui/dialog`, `/menu`, `/combobox`, `/tabs`,
+`/field`, `/checkbox`, `/switch` — which is where the flat names
+(`DialogRoot`, `MenuSubTrigger`) live. `internal/` has no subpath and is not
+importable, on purpose: it holds the roving-focus reader, the controlled-state
+hook and the prop merger, and each of their headers says why publishing it would
+be a weaker promise than not.
+
+Every example on this page was rendered and asserted before it was published;
+the keyboard tables below cite the test in
+[`tests/library/ui.test.js`](https://github.com/ubugeeei-prod/uf/blob/main/tests/library/ui.test.js)
+that holds each row. `uf test#library ui.test.js` runs 119 of them, in 1.1
+seconds.
+
+## Field
+
+A label, a control, help text and an error message, wired to each other. The
+control is whatever you render.
+
+```js
+<Field.Root invalid={error != null}>
+  <Field.Label>Email</Field.Label>
+  <Field.Control render={(props) => <input type="email" {...props} />} />
+  <Field.Description>We will not share it.</Field.Description>
+  <Field.Error>{error}</Field.Error>
+</Field.Root>
+```
+
+`Field.Control` takes a `render` function rather than children, and hands it
+`id`, `aria-labelledby`, `aria-describedby` and `aria-invalid` to spread onto
+whatever the control really is — an `input`, a `textarea`, a third-party editor.
+
+| Part | Element | What it emits |
+| --- | --- | --- |
+| `Root` | `div` | Owns the ids. Takes `invalid` |
+| `Label` | `label` | `for` and `id` |
+| `Control` | yours | Calls `render` with the four attributes |
+| `Description` | `p` | An id that `aria-describedby` names |
+| `Error` | `p` | `role="alert"`; renders nothing while valid |
+
+Three things it will not do, each with a test:
+
+- **`aria-invalid` is absent when the field is valid**, not `"false"` — *"says
+  nothing about validity while the field is valid"*.
+- **`aria-describedby` names only ids that exist.** No description and no error
+  means no attribute — *"never points aria-describedby at an element that is not
+  there"*. An `aria-describedby` pointing at nothing makes a reader announce
+  nothing, which is worse than silence.
+- **Your `id` on the label loses to the field's** — *"keeps the field's ids
+  authoritative"* — because a caller id would break the label-control
+  relationship, and break it invisibly.
+
+A part used outside a `Field.Root` throws and says which part it was.
+
+## Tabs
+
+```js
+<Tabs.Root defaultValue="one">
+  <Tabs.List aria-label="Sections">
+    <Tabs.Tab value="one">One</Tabs.Tab>
+    <Tabs.Tab value="two">Two</Tabs.Tab>
+  </Tabs.List>
+  <Tabs.Panel value="one">…</Tabs.Panel>
+  <Tabs.Panel value="two">…</Tabs.Panel>
+</Tabs.Root>
+```
+
+`defaultValue` is required. `value` and `onValueChange` make it controlled;
+`orientation="vertical"` moves the keys to the other axis; and
+`activationMode="manual"` separates moving from choosing.
+
+| Key | What happens | Test |
+| --- | --- | --- |
+| `ArrowRight` / `ArrowLeft` | Next / previous tab, wrapping | "moves between tabs with the arrow keys", "wraps at the ends" |
+| `ArrowUp` / `ArrowDown` | The same, when `orientation="vertical"` | "uses the up and down arrows when it is vertical, and says so" |
+| `ArrowDown` in a horizontal list | **Nothing.** The page scrolls | "leaves the page's own arrow keys alone in a horizontal list" |
+| `Home` / `End` | First / last enabled tab | "jumps to the first and last tab with Home and End" |
+| `Enter` / `Space` | Selects, in manual mode | "selects on Enter", "selects on Space" |
+| `Tab` | Leaves the list in one press | "keeps exactly one tab in the page's tab order" |
+
+In automatic activation — the default — an arrow key moves focus *and* selects,
+so one key press is one tab. In manual activation it only moves, and the panel
+does not change until `Enter` or `Space`.
+
+The ARIA: `role="tablist"` with `aria-orientation`, `role="tab"` with
+`aria-selected` and a roving `tabindex`, `role="tabpanel"` with
+`aria-labelledby` pointing back at its tab. A tab points at its panel with
+`aria-controls` **only while that panel is mounted** — an unselected tab's panel
+does not exist, and naming it would be naming nothing. A disabled tab keeps
+`role="tab"` and gets `aria-disabled`, never the native `disabled` attribute,
+so it stays in the accessibility tree and is skipped by the arrows rather than
+vanishing from the list.
+
+## Dialog
+
+```js
+<Dialog.Root>
+  <Dialog.Trigger>Delete</Dialog.Trigger>
+  <Dialog.Overlay />
+  <Dialog.Body>
+    <Dialog.Header>
+      <Dialog.Title>Delete this project?</Dialog.Title>
+      <Dialog.Description>This cannot be undone.</Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer>
+      <Dialog.Close>Cancel</Dialog.Close>
+    </Dialog.Footer>
+  </Dialog.Body>
+</Dialog.Root>
+```
+
+| Key or gesture | What happens | Test |
+| --- | --- | --- |
+| Open | Focus moves to the first thing worth acting on | "moves focus to the first thing worth acting on" |
+| `Tab` at the end | Wraps to the start | "wraps Tab at the end rather than letting it leave" |
+| `Shift+Tab` at the start | Wraps to the end | "wraps Shift+Tab at the start" |
+| `Tab` with nothing focusable | Stays on the dialog | "keeps Tab inside a dialog with nothing focusable in it" |
+| `Escape` | Closes, focus returns to the trigger | "closes on Escape", "gives focus back to whatever opened it" |
+| Press outside | Closes. Press inside does not | "closes on a press outside it", "stays open for a press inside it" |
+
+While it is open, everything else on the page gets `aria-hidden="true"` and
+`inert`, and the body stops scrolling — both undone exactly on close, and
+reference-counted so the outer of two stacked dialogs still holds the page still
+when the inner one closes.
+
+Three decisions worth knowing before you reach for something else:
+
+- **It does not portal.** From `dialog.js`: *"A portal solves a stacking-context
+  problem that belongs to CSS, and it costs the thing this component is for:
+  rendered where it is written, the dialog is next to its trigger in the
+  accessibility tree, which is where a screen reader looks."*
+- **`Dialog.Header` is a `div`, not a `header`**, because a `header` is a
+  `banner` landmark and a second banner inside a dialog is a landmark a reader
+  will find in the landmark list and be unable to explain.
+- **`Dialog.Overlay` owns no behaviour.** Closing on an outside press belongs to
+  the dialog, so it still works for somebody who styles their own backdrop or
+  renders none.
+
+`Dialog.Body` claims a name only when there is a `Dialog.Title` to claim it
+from, so an `aria-label` you pass survives.
+
+## Menu
+
+```js
+<Menu.Root>
+  <Menu.Trigger>File</Menu.Trigger>
+  <Menu.Body>
+    <Menu.Group>
+      <Menu.Label>Recent</Menu.Label>
+      <Menu.Item onSelect={open}>Open…</Menu.Item>
+    </Menu.Group>
+    <Menu.Separator />
+    <Menu.Sub>
+      <Menu.SubTrigger>Export</Menu.SubTrigger>
+      <Menu.Body>
+        <Menu.Item onSelect={png}>PNG</Menu.Item>
+      </Menu.Body>
+    </Menu.Sub>
+  </Menu.Body>
+</Menu.Root>
+```
+
+| Key | Where | What happens | Test |
+| --- | --- | --- | --- |
+| `ArrowDown` | Closed trigger | Opens onto the first item | "opens onto the first item for ArrowDown" |
+| `ArrowUp` | Closed trigger | Opens onto the last item | "opens onto the last item for ArrowUp" |
+| `ArrowDown` / `ArrowUp` | Open menu | Moves, wrapping at both ends | "moves with the arrows and wraps at both ends" |
+| `Home` / `End` | Open menu | First / last item | "jumps to the ends with Home and End" |
+| Letters | Open menu | Typeahead, 500 ms buffer | "goes to an item by its first letter", "accumulates the letters into a prefix" |
+| `Escape` | Open menu | Closes this level, focus back to its trigger | "closes on Escape and gives focus back to the trigger" |
+| `Tab` | Open menu | Closes the whole tree **and moves on** | "closes on Tab and lets the key carry on through the page" |
+| `ArrowRight` | `SubTrigger` | Opens the submenu onto its first item | "opens on ArrowRight and lands on the first item" |
+| `ArrowLeft` | Submenu | Closes it, focus back to the sub-trigger | "closes on ArrowLeft and comes back to the item that opened it" |
+
+Typing the same letter twice cycles between the items starting with it; typing
+something nothing matches leaves the highlight where it was. Matching reads
+`aria-label ?? textContent`, collapsed and lower-cased.
+
+A menu moves **real focus** onto its items rather than using
+`aria-activedescendant` — the virtual kind belongs to the pattern where focus
+cannot leave a text field, which is the combobox below. A separator is stepped
+over, a disabled item keeps `role="menuitem"` and `aria-disabled` and is skipped
+by both the arrows and the typeahead, and exactly one item is in the tab order
+at a time.
+
+**Hover does not open a submenu, deliberately.** From `menu.js`:
+
+> Opening on hover requires an intent heuristic — the "safe triangle" that lets
+> the pointer travel diagonally across a sibling item to reach the submenu
+> without it snapping shut — and a naive `onPointerEnter` that opens immediately
+> is *worse* than no hover at all.
+
+## Combobox
+
+```js
+<Combobox.Root inputValue={query} onInputValueChange={setQuery}>
+  <Combobox.Label>Country</Combobox.Label>
+  <Combobox.Input />
+  <Combobox.List>
+    {matches.map((each) => (
+      <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
+    ))}
+  </Combobox.List>
+  <Combobox.Empty>No matches.</Combobox.Empty>
+  <Combobox.Status />
+</Combobox.Root>
+```
+
+**It never filters.** The options are the ones you rendered, and matching them
+against `inputValue` is application logic — a decision `combobox.js` states
+outright, because a filter built into a combobox is a filter you fight the first
+time your data is remote, fuzzy or grouped.
+
+Three values you can own independently, or leave alone: `value` (what was
+chosen), `inputValue` (what was typed) and `open`.
+
+| Key | What happens | Test |
+| --- | --- | --- |
+| `ArrowDown` / `ArrowUp` | Opens, moves the highlight, wrapping. Focus stays in the input | "moves a second cursor through the list without moving focus", "wraps at the ends of the list" |
+| `Alt+ArrowDown` | Opens without highlighting anything | "opens without choosing anything on Alt+ArrowDown" |
+| `Alt+ArrowUp` | Closes | "closes on Alt+ArrowUp" |
+| `Enter` with a highlight | Takes it and closes | "takes the active option on Enter and closes" |
+| `Enter` with none | **Left to the form**, so it submits | "leaves Enter to the form when nothing is highlighted" |
+| `Escape` | Closes; a second one clears the field | "closes on Escape, and clears the field on the next one" |
+| `Tab` | Closes **without** taking the highlight | "closes on Tab without taking the highlight" |
+| `Home` / `End` | **Nothing.** They belong to the text cursor | "leaves Home and End to the text cursor" |
+
+`Combobox.Status` is a `role="status"` region that is mounted from the start —
+an announcement region added at the moment it has something to say is an
+announcement region that says nothing. It counts for you: `"No results
+available."`, `"1 result available."`, `"3 results available."`, and empty while
+closed. Pass children to word it yourself.
+
+The invariant the whole component is built around has its own test: *"drops the
+highlight when the option it named is filtered away"*. `aria-activedescendant`
+is removed the moment the option it names leaves the document, so the attribute
+never points at an element that is not there.
+
+## Checkbox and Switch
+
+```js
+<Checkbox checked={checked} onCheckedChange={setChecked}>Ship it</Checkbox>
+<Switch checked={on} onCheckedChange={setOn}>Notifications</Switch>
+```
+
+Both render a `button` with the matching role and `aria-checked`, both take the
+native `disabled` attribute, and both are uncontrolled with `defaultChecked`
+unless you pass `checked`.
+
+The difference is one key, and it is the reason they are two components rather
+than one with a prop:
+
+| Key | Checkbox | Switch |
+| --- | --- | --- |
+| `Space` | Toggles | Toggles |
+| `Enter` | **Left to the form** — it submits | Toggles |
+
+From `checkbox.js`: *"That is the difference between a control that answers a
+question and one that operates a thing."* The test names are "toggles a checkbox
+on Space and leaves Enter to the form" and "toggles a switch on Space and on
+Enter".
+
+`Checkbox` also takes `indeterminate`, which reports `aria-checked="mixed"`, and
+clicking a mixed checkbox reports `true` rather than the opposite of a boolean
+nobody set.
+
+## Four rules that hold across all seven
+
+**No attribute ever names a missing element.** A helper in the test file walks
+every `aria-labelledby`, `aria-describedby`, `aria-controls` and
+`aria-activedescendant` in the document and asserts the id it names exists. It
+runs in seven places, and it is the single most valuable assertion in the suite:
+a dangling reference does not look broken, it just makes a screen reader say
+nothing.
+
+**One `Escape` is one dismissal.** A menu inside a dialog closes the menu and
+leaves the dialog open; so does a combobox list. Two tests, one for each,
+because the natural implementation closes both.
+
+**Your props never disable the component.** Pass a `ref` and the component still
+gets its own; pass `onKeyDown` or `onClick` and yours runs first and the
+component's behaviour still happens. Twelve tests cover that. The escape hatch is
+explicit: call `event.preventDefault()` in your handler and the component stands
+down, which is a decision rather than an accident.
+
+**The keyboard reads the DOM, not a registry.** Roving focus asks the document
+which items are there, because mount order stops being document order the moment
+a list is filtered or reordered — and a registry that disagrees with the page
+sends the arrow keys somewhere the reader is not.
+
+## What is not there yet
+
+| Missing | Why it matters | Tracked |
+| --- | --- | --- |
+| Positioning | Nothing places a menu, dialog or list against its trigger; five components need it | [#256](https://github.com/ubugeeei-prod/uf/issues/256) |
+| Right-to-left | The horizontal arrow keys are hard-coded left-to-right | [#253](https://github.com/ubugeeei-prod/uf/issues/253) |
+| Alert Dialog, Sheet, Drawer, Sidebar | Three fixed lines in `dialog.js` are what stand in the way | [#284](https://github.com/ubugeeei-prod/uf/issues/284) |
+| Calendar and Date Picker | The grid pattern is the one place the roving-focus reader does not fit | [#293](https://github.com/ubugeeei-prod/uf/issues/293) |
+| The other 44 components | The registry names 51 and the package ships seven | [#249](https://github.com/ubugeeei-prod/uf/issues/249) |
+| Live examples | These pages show code; a story that runs as a test is what keeps it true | [#301](https://github.com/ubugeeei-prod/uf/issues/301) |
+
+Nothing here is a placeholder: each of the seven is finished behaviour with a
+test suite, and the list above is what has not been started.
