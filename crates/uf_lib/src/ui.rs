@@ -176,6 +176,9 @@ pub fn ui_components() -> Vec<UiComponent> {
         ),
         UiComponent::new("Popover", &["Root", "Trigger", "Body"], UiRuntime::Client),
         UiComponent::new("Progress", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/radio-group.js`: the WAI-ARIA radio group,
+        // with the arrow keys that check as they move and the tab stop an
+        // unanswered group would otherwise not have.
         UiComponent::new(
             "RadioGroup",
             &["Root", "Item", "Indicator"],
@@ -232,7 +235,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Title", "Description", "Action", "Close"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/toggle.js`, and the shipped part is the
+        // component itself rather than a `Toggle.Root`: there is nothing to
+        // compose, exactly as with `Switch` and `Checkbox`, the other two
+        // two-state controls it is deliberately not either of.
         UiComponent::new("Toggle", &["Root"], UiRuntime::Client),
+        // Implemented in `packages/ui/toggle-group.js`. `type="multiple"` is a
+        // `group` of `aria-pressed` buttons; `type="single"` is the radio group
+        // pattern drawn as segments, and is rendered by `radio-group.js` rather
+        // than written a second time.
         UiComponent::new("ToggleGroup", &["Root", "Item"], UiRuntime::Client),
         UiComponent::new("Tooltip", &["Root", "Trigger", "Body"], UiRuntime::Client),
     ]

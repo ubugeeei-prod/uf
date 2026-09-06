@@ -618,7 +618,16 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             NativeModuleKind::Ui,
             Stability::Experimental,
             &[
-                "Checkbox", "Combobox", "Dialog", "Field", "Menu", "Switch", "Tabs",
+                "Checkbox",
+                "Combobox",
+                "Dialog",
+                "Field",
+                "Menu",
+                "RadioGroup",
+                "Switch",
+                "Tabs",
+                "Toggle",
+                "ToggleGroup",
             ],
         ),
         NativeModule::new(

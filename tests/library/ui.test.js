@@ -22,7 +22,18 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
-import { Checkbox, Combobox, Dialog, Field, Menu, Switch, Tabs } from "@uniflowed/ui";
+import {
+  Checkbox,
+  Combobox,
+  Dialog,
+  Field,
+  Menu,
+  RadioGroup,
+  Switch,
+  Tabs,
+  Toggle,
+  ToggleGroup,
+} from "@uniflowed/ui";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -1539,6 +1550,372 @@ describe("Switch and Checkbox", () => {
     // A controlled component that also writes its own state moves anyway and is
     // moved back on the next render, which reads as a flicker and is a bug.
     expect(screen.getByRole("switch")).not.toBeChecked();
+  });
+});
+
+describe("Toggle", () => {
+  it("announces a toggle button as pressed, not as checked", () => {
+    render(<Toggle aria-label="Bold" />);
+    // The mirror of "announces a switch as a switch, not a checkbox", and the
+    // pair is what documents why there are three of these. A reader told
+    // "checkbox" believes they are answering a question; told "switch", that
+    // they are configuring something. A toggle button does neither: it is an
+    // action that stays applied.
+    const control = screen.getByRole("button", { name: "Bold" });
+    expect(control).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("switch")).toBe(null);
+    expect(screen.queryByRole("checkbox")).toBe(null);
+  });
+
+  it("presses on click, on Space and on Enter", async () => {
+    render(<Toggle aria-label="Bold" />);
+    const control = screen.getByRole("button", { name: "Bold" });
+    await userEvent.click(control);
+    expect(control).toHaveAttribute("aria-pressed", "true");
+    await userEvent.keyboard(" ");
+    expect(control).toHaveAttribute("aria-pressed", "false");
+    // A toggle button is a button, and a button activates on both keys.
+    await userEvent.keyboard("{Enter}");
+    expect(control).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("does not press while disabled", async () => {
+    render(<Toggle aria-label="Bold" disabled />);
+    await userEvent.click(screen.getByRole("button", { name: "Bold" }));
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("lets a parent own the state, and refuse a change", async () => {
+    component Refusing() {
+      const [on, setOn] = useState(false);
+      return <Toggle aria-label="Bold" onPressedChange={() => setOn(false)} pressed={on} />;
+    }
+    render(<Refusing />);
+    await userEvent.click(screen.getByRole("button", { name: "Bold" }));
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("RadioGroup", () => {
+  component Plans(orientation?: "horizontal" | "vertical" = "vertical") {
+    return (
+      <Field.Root>
+        <Field.Label>Plan</Field.Label>
+        <Field.Control
+          render={(props) => (
+            <RadioGroup.Root {...props} defaultValue="free" orientation={orientation}>
+              <RadioGroup.Item value="free">
+                Free
+                <RadioGroup.Indicator>dot</RadioGroup.Indicator>
+              </RadioGroup.Item>
+              <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+              <RadioGroup.Item value="team">Team</RadioGroup.Item>
+            </RadioGroup.Root>
+          )}
+        />
+      </Field.Root>
+    );
+  }
+
+  it("announces itself as a named radio group of radios", () => {
+    render(<Plans />);
+    // The name comes from `Field.Label` through `Field.Control`, which is the
+    // wiring `field.js` exists to get right; a second spelling of it in
+    // `radio-group.js` would be a second thing to keep in step.
+    expect(screen.getByRole("radiogroup", { name: "Plan" })).toHaveAttribute(
+      "aria-orientation",
+      "vertical",
+    );
+    expect(screen.getAllByRole("radio").length).toBe(3);
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("checks as it moves, because that is what a radio group does", async () => {
+    render(<Plans />);
+    await userEvent.click(screen.getByRole("radio", { name: /Free/ }));
+    await userEvent.keyboard("{ArrowDown}");
+    // One key press, focus and the answer together. Arrows that only moved
+    // focus would leave a reader believing they had answered when they had not.
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveFocus();
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /Free/ })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("wraps at the ends and jumps with Home and End", async () => {
+    render(<Plans />);
+    await userEvent.click(screen.getByRole("radio", { name: /Free/ }));
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("radio", { name: /Free/ })).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("uses the horizontal arrows when it is horizontal, and says which", async () => {
+    render(<Plans orientation="horizontal" />);
+    expect(screen.getByRole("radiogroup")).toHaveAttribute("aria-orientation", "horizontal");
+    await userEvent.click(screen.getByRole("radio", { name: /Free/ }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+    // And the vertical pair is left to the page, which scrolls with it.
+    expect(
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Pro" }), { key: "ArrowDown" }),
+    ).toBe(true);
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("checks the focused item on Space", async () => {
+    render(<Plans />);
+    const pro = screen.getByRole("radio", { name: "Pro" });
+    act(() => pro.focus());
+    await userEvent.keyboard(" ");
+    expect(pro).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("lets Tab reach a group where nothing is chosen", () => {
+    render(
+      <RadioGroup.Root aria-label="Plan">
+        <RadioGroup.Item value="free">Free</RadioGroup.Item>
+        <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+      </RadioGroup.Root>,
+    );
+    // With the tab stop derived from the selection alone, an unanswered group
+    // has no `tabindex="0"` at all and is not reachable from the keyboard:
+    // not awkward to reach — absent.
+    const stops = screen
+      .getAllByRole("radio")
+      .filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("Free");
+  });
+
+  it("gives the tab stop to the chosen item once there is one", async () => {
+    render(<Plans />);
+    const stops = () =>
+      screen.getAllByRole("radio").filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toContain("Free");
+    await userEvent.click(screen.getByRole("radio", { name: "Team" }));
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toBe("Team");
+  });
+
+  it("steps over a disabled choice and still announces it", async () => {
+    render(
+      <RadioGroup.Root aria-label="Plan" defaultValue="free">
+        <RadioGroup.Item value="free">Free</RadioGroup.Item>
+        <RadioGroup.Item disabled value="pro">
+          Pro
+        </RadioGroup.Item>
+        <RadioGroup.Item value="team">Team</RadioGroup.Item>
+      </RadioGroup.Root>,
+    );
+    // `aria-disabled` rather than `disabled`: the answer exists and is
+    // unavailable, which is a thing a reader can be told. A native `disabled`
+    // leaves a gap they cannot ask about.
+    expect(screen.getAllByRole("radio").length).toBe(3);
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(screen.getByRole("radio", { name: "Free" }));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("puts the tab stop on the first choice a reader can take", () => {
+    render(
+      <RadioGroup.Root aria-label="Plan">
+        <RadioGroup.Item disabled value="free">
+          Free
+        </RadioGroup.Item>
+        <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+      </RadioGroup.Root>,
+    );
+    // A group whose first answer is unavailable must still be reachable.
+    const stops = screen
+      .getAllByRole("radio")
+      .filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("Pro");
+  });
+
+  it("shows the indicator only inside the chosen item", async () => {
+    render(<Plans />);
+    expect(screen.getAllByText("dot").length).toBe(1);
+    // And it is decoration: the item already says `aria-checked`, so a reader
+    // who heard the dot as well would hear the answer's state twice.
+    expect(screen.getByText("dot")).toHaveAttribute("aria-hidden", "true");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(screen.queryByText("dot")).toBe(null);
+  });
+
+  it("reports the answer to a controlled parent, and takes its refusal", async () => {
+    const onValueChange = fn();
+    component Refusing() {
+      const [plan, setPlan] = useState<string | null>("free");
+      return (
+        <RadioGroup.Root
+          aria-label="Plan"
+          onValueChange={(next) => {
+            onValueChange(next);
+            setPlan("free");
+          }}
+          value={plan}
+        >
+          <RadioGroup.Item value="free">Free</RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+      );
+    }
+    render(<Refusing />);
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(onValueChange).toHaveBeenCalledWith("pro");
+    // A controlled component that also writes its own state moves anyway and
+    // is moved back on the next render, which reads as a flicker and is a bug.
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("submits the chosen value", async () => {
+    render(
+      <form data-testid="signup">
+        <RadioGroup.Root aria-label="Plan" defaultValue="free" name="plan">
+          <RadioGroup.Item value="free">Free</RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+      </form>,
+    );
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    // The document's own `FormData`, not the global one: this suite runs on
+    // Node, whose `FormData` takes no arguments at all, so `new FormData(form)`
+    // there throws rather than reading the form.
+    const submitted = () => new form.ownerDocument.defaultView.FormData(form).get("plan");
+    expect(submitted()).toBe("free");
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    // A control a reader can operate and a form cannot read is half a control.
+    expect(submitted()).toBe("pro");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<RadioGroup.Item value="free">orphan</RadioGroup.Item>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("RadioGroup.Item must be rendered inside a RadioGroup.Root");
+  });
+});
+
+describe("ToggleGroup", () => {
+  it("keeps a single toggle group to one answer", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Alignment" defaultValue={["left"]} type="single">
+        <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+        <ToggleGroup.Item value="centre">Centre</ToggleGroup.Item>
+        <ToggleGroup.Item value="right">Right</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    // A reader told "three pressed buttons" will reasonably believe they may
+    // press all three, and they may not — so a single group is a radio group,
+    // and says so.
+    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+    expect(screen.getAllByRole("radio").length).toBe(3);
+    expect(document.querySelectorAll("[aria-pressed]").length).toBe(0);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Right" }));
+    expect(screen.getByRole("radio", { name: "Right" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("keeps two items of a multiple group pressed at once", async () => {
+    const onValueChange = fn();
+    render(
+      <ToggleGroup.Root aria-label="Formatting" onValueChange={onValueChange} type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+        <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    expect(screen.getByRole("group")).toHaveAttribute("aria-orientation", "horizontal");
+    expect(screen.queryByRole("radiogroup")).toBe(null);
+    await userEvent.click(screen.getByRole("button", { name: "Bold" }));
+    await userEvent.click(screen.getByRole("button", { name: "Italic" }));
+    expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "true");
+    expect(onValueChange).toHaveBeenCalledWith(["bold", "italic"]);
+  });
+
+  it("takes one tab stop for the whole set and moves it with the arrows", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Formatting" type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+        <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+        <ToggleGroup.Item value="underline">Underline</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    const stops = () =>
+      within(screen.getByRole("group"))
+        .getAllByRole("button")
+        .filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toBe("Bold");
+
+    act(() => screen.getByRole("button", { name: "Bold" }).focus());
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveFocus();
+    // Moving does not press: arrowing across a toolbar to reach one command
+    // must not apply the five it passed on the way.
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "false");
+    expect(stops().length).toBe(1);
+    expect(stops()[0].textContent).toBe("Italic");
+  });
+
+  it("presses the focused item on Space, and steps over a disabled one", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Formatting" type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+        <ToggleGroup.Item disabled value="italic">
+          Italic
+        </ToggleGroup.Item>
+        <ToggleGroup.Item value="underline">Underline</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    // Announced, not removed: the same choice `menu.js` and `tabs.js` make.
+    expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-disabled", "true");
+    act(() => screen.getByRole("button", { name: "Bold" }).focus());
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Underline" })).toHaveFocus();
+    await userEvent.keyboard(" ");
+    expect(screen.getByRole("button", { name: "Underline" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("inherits the radio group's keyboard for its single mode", async () => {
+    render(
+      <ToggleGroup.Root aria-label="Alignment" defaultValue={["left"]} type="single">
+        <ToggleGroup.Item value="left">Left</ToggleGroup.Item>
+        <ToggleGroup.Item value="centre">Centre</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    // The point of rendering through `radio-group.js`: this behaviour has one
+    // implementation, and a change to it cannot fix one of the two and not the
+    // other.
+    await userEvent.click(screen.getByRole("radio", { name: "Left" }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Centre" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<ToggleGroup.Item value="bold">orphan</ToggleGroup.Item>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("ToggleGroup.Item must be rendered inside a ToggleGroup.Root");
   });
 });
 

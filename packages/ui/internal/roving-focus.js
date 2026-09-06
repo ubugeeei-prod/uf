@@ -8,7 +8,7 @@
 // twelve-item menu something a keyboard user passes in one Tab press instead of
 // twelve, and it is the part hand-written components leave out.
 //
-// Four rules make it up, and each one has a way of being got wrong that no
+// Five rules make it up, and each one has a way of being got wrong that no
 // screenshot shows:
 //
 //   * **Document order, read from the document.** Items are found by querying
@@ -43,7 +43,7 @@
 // happen to work today, which is a different and much weaker promise than the
 // one the components make.
 
-import { useCallback, useRef } from "@uniflowed/react";
+import { useCallback, useEffect, useRef, useState } from "@uniflowed/react";
 
 /** Which way a key asks the focus to move within a set. */
 export type Movement = "previous" | "next" | "first" | "last";
@@ -220,6 +220,116 @@ export function moveTo(
 /** The index of the focused item, or `-1` when focus is elsewhere. */
 export function indexOfActive(items: $ReadOnlyArray<HTMLElement>, active: mixed): number {
   return items.findIndex((item) => item === active);
+}
+
+/**
+ * Which items a container owns and how the keyboard runs across them.
+ *
+ * The two selectors are the pair `itemsOf` needs — what an item is, and what
+ * owns one — kept together because giving a set only the first of them is how a
+ * nested set steals its parent's items.
+ */
+export type RovingSet = {|
+  readonly item: string,
+  readonly owner: string,
+  readonly orientation: Orientation,
+  /** Whether running off the end cycles or stops. */
+  readonly wrap: boolean,
+|};
+
+/** The part of a key event a set reads, and the right to claim the key. */
+type KeyPress = {
+  readonly key: string,
+  readonly preventDefault: () => mixed,
+  ...
+};
+
+/**
+ * Move focus within `container` for one key press, and say where it went.
+ *
+ * Returns the item focus moved to, or null when the key was not one of the
+ * set's — `ArrowDown` in a horizontal set, a letter, `Tab` — or when there was
+ * nowhere for it to go. A null answer is a key the caller has not claimed, so
+ * the page still gets it.
+ *
+ * This is the whole of the container half of a roving tab stop, written once
+ * because the order of the last three lines is not obvious and getting it wrong
+ * is invisible: the key has to be claimed *before* focus moves, or the browser
+ * scrolls the page under the item that has just taken focus, and the reader
+ * ends up looking somewhere else entirely. Every set in this package that is
+ * only arrows — a tab list, a radio group, a toggle group — is this function
+ * plus what it does with the answer. `Menu.Body` is deliberately not: its keys
+ * interleave with `Escape`, `Tab` and typeahead, and it has to stop events
+ * propagating between nested menus, which is a different job.
+ */
+export function moveOnKey(
+  event: KeyPress,
+  container: HTMLElement,
+  set: RovingSet,
+): HTMLElement | null {
+  const movement = movementFor(event.key, set.orientation, directionOf(container));
+  if (movement == null) {
+    return null;
+  }
+  const items = itemsOf(container, set.item, set.owner);
+  const next = moveTo(
+    items,
+    indexOfActive(items, container.ownerDocument?.activeElement),
+    movement,
+    set.wrap,
+  );
+  if (next == null) {
+    return null;
+  }
+  event.preventDefault();
+  next.focus();
+  return next;
+}
+
+/**
+ * The id of the first item the keyboard may land on, or null for none.
+ *
+ * This answers the one question a roving set cannot answer during a render:
+ * which item holds the tab stop before anything has claimed it. A tab list
+ * never has that state, because a selection is required — but a radio group
+ * with nothing chosen does, and a toggle group nobody has focused does, and
+ * getting it wrong is not a cosmetic loss: with no item at `tabindex="0"` the
+ * whole set is unreachable by `Tab`, which is the failure worth the machinery.
+ *
+ * It is a fact about the document, so it is read from the document in an effect
+ * and put in state because a render depends on the answer — the rule
+ * `index.js` states for the package. `wanted` turns it off: the moment
+ * something is chosen or focused, that item holds the tab stop and this is work
+ * with no reader.
+ *
+ * The effect has no dependency array on purpose. What comes first changes when
+ * the caller renders a different set of items or disables one, and neither of
+ * those is anything this hook is handed — a dependency list here would be a
+ * claim about when the document changes that only the caller could keep, and it
+ * would be wrong exactly when a caller made their first item conditional. The
+ * cost is one `querySelectorAll` over a set that is small by construction, only
+ * while nothing is chosen; `setState` with an unchanged id renders nothing.
+ */
+export hook useFirstItem(
+  container: { current: HTMLElement | null },
+  set: RovingSet,
+  wanted: boolean,
+): string | null {
+  const [first, setFirst] = useState<string | null>(null);
+
+  useEffect(() => {
+    const root = container.current;
+    if (!wanted || root == null) {
+      return;
+    }
+    // `moveTo` rather than `items[0]`, so a disabled first item is stepped over
+    // here exactly as the arrow keys step over it: a group whose first choice
+    // is unavailable must still be reachable.
+    const landing = moveTo(itemsOf(root, set.item, set.owner), -1, "first", false);
+    setFirst(landing?.id ?? null);
+  });
+
+  return wanted ? first : null;
 }
 
 /**

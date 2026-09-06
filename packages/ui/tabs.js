@@ -52,13 +52,7 @@ import {
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
-import {
-  directionOf,
-  indexOfActive,
-  itemsOf,
-  movementFor,
-  moveTo,
-} from "./internal/roving-focus.js";
+import { moveOnKey } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Orientation } from "./internal/roving-focus.js";
 
@@ -160,24 +154,17 @@ export component TabsList(children: renders* TabsTab, ...rest: Rest) {
       aria-orientation={tabs.orientation}
       onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         const list: $FlowFixMe = event.currentTarget;
-        // Read from the list the key arrived on rather than taken from a prop:
-        // a tab set inside somebody else's `dir="rtl"` gets this right without
+        // The list the key arrived on carries the answer to both halves of
+        // this: which items there are, and which way the page reads — so a tab
+        // set inside somebody else's `dir="rtl"` walks the right way without
         // the caller having had to know it needed to say so.
-        const movement = movementFor(event.key, tabs.orientation, directionOf(list));
-        if (movement == null) {
-          return;
-        }
-        const items = itemsOf(list, '[role="tab"]', '[role="tablist"]');
-        const active = list.ownerDocument?.activeElement;
-        const next = moveTo(items, indexOfActive(items, active), movement, true);
-        if (next == null) {
-          return;
-        }
-        // Before moving, or the arrow also scrolls the page under the tab that
-        // just took focus.
-        event.preventDefault();
-        next.focus();
-        if (tabs.activation === "automatic") {
+        const next = moveOnKey(event, list, {
+          item: '[role="tab"]',
+          owner: '[role="tablist"]',
+          orientation: tabs.orientation,
+          wrap: true,
+        });
+        if (next != null && tabs.activation === "automatic") {
           tabs.select(next.getAttribute("data-value") ?? "");
         }
       })}

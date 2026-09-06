@@ -73,8 +73,14 @@
 //   count a screen reader is told.
 // - `tabs.js` — the roving `tabindex`, and automatic versus manual activation.
 // - `field.js` — the label, description, error and `aria-invalid` wiring.
-// - `switch.js` and `checkbox.js` — the two two-state controls, apart because
-//   the third state and the `Enter` key genuinely differ between them.
+// - `switch.js`, `checkbox.js` and `toggle.js` — the three two-state controls,
+//   apart because a reader is told something different by each, and because the
+//   third state and the `Enter` key genuinely differ between them.
+// - `radio-group.js` — one answer out of several, and the tab stop an
+//   unanswered group would otherwise not have.
+// - `toggle-group.js` — a row of toggle buttons as one control, whose `single`
+//   mode is a radio group and is rendered by `radio-group.js` rather than
+//   written a second time.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
@@ -123,12 +129,16 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "./menu.js";
+import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
 import { Switch } from "./switch.js";
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
+import { Toggle } from "./toggle.js";
+import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
 
 export type { ActivationMode } from "./tabs.js";
+export type { ToggleGroupType } from "./toggle-group.js";
 
-export { Checkbox, Switch };
+export { Checkbox, Switch, Toggle };
 
 /**
  * An accessible form field.
@@ -168,6 +178,50 @@ export const Tabs = {
   List: TabsList,
   Tab: TabsTab,
   Panel: TabsPanel,
+};
+
+/**
+ * One answer out of several, with the arrow keys that check as they move.
+ *
+ * `Tab` reaches the chosen answer, or the first one while there is none, and
+ * leaves the whole group in one press. `name` puts the answer where a form can
+ * submit it.
+ *
+ *   <Field.Root>
+ *     <Field.Label>Plan</Field.Label>
+ *     <Field.Control
+ *       render={(props) => (
+ *         <RadioGroup.Root {...props} defaultValue="free" name="plan">
+ *           <RadioGroup.Item value="free">
+ *             Free <RadioGroup.Indicator>●</RadioGroup.Indicator>
+ *           </RadioGroup.Item>
+ *           <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+ *         </RadioGroup.Root>
+ *       )}
+ *     />
+ *   </Field.Root>
+ */
+export const RadioGroup = {
+  Root: RadioGroupRoot,
+  Item: RadioGroupItem,
+  Indicator: RadioGroupIndicator,
+};
+
+/**
+ * A row of toggle buttons that behaves as one control.
+ *
+ * `type="multiple"` is a group of toggle buttons, any number of them pressed.
+ * `type="single"` is a radio group drawn as segments, and is rendered by
+ * `RadioGroup` rather than written a second time.
+ *
+ *   <ToggleGroup.Root aria-label="Formatting" type="multiple">
+ *     <ToggleGroup.Item value="bold">B</ToggleGroup.Item>
+ *     <ToggleGroup.Item value="italic">I</ToggleGroup.Item>
+ *   </ToggleGroup.Root>
+ */
+export const ToggleGroup = {
+  Root: ToggleGroupRoot,
+  Item: ToggleGroupItem,
 };
 
 /**
