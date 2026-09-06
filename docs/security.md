@@ -83,6 +83,7 @@ decisions are:
 | Lifecycle scripts as an RCE vector | npm scripts are **forbidden by default** — `uf install` fails on a manifest that declares them. Project automation lives in `uf.config.js` tasks | `crates/uf_pm` |
 | Shell injection through the `packageManager` field | Parsed by a hand-written single-pass parser with no regex (ReDoS), and `Invocation.program` comes only from a fixed program table, so no manifest text can name a program or inject an argument | `uf_pm::detect` |
 | Prototype-pollution keys in manifest JSON | `__proto__`, `constructor`, and `prototype` are reported and dropped wherever manifest JSON becomes a map | `uf_pm::detect` |
+| Terminal escape sequences in a package name, injected into a progress display that steers the cursor | Every name taken out of a manager's output is stripped of control characters and length-capped before it can be drawn, and the redrawn region cuts each row to a fixed width, so no registry text can move the cursor | `uf_pm::progress` |
 
 ## Config and plugins
 
