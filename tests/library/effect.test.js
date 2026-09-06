@@ -27,6 +27,7 @@ import {
   flatMap,
   forEach,
   fork,
+  forkDaemon,
   interrupt,
   join,
   layerEffect,
@@ -854,6 +855,152 @@ describe("resource release under interruption", () => {
     } else {
       throw new Error("expected the body's failure to survive");
     }
+  });
+});
+
+describe("what a forked fiber's parent owns", () => {
+  /** Ticks every twenty milliseconds, five times, and says how far it got. */
+  const ticker = () => {
+    let ticks = 0;
+    return {
+      count: () => ticks,
+      effect: effect(function* () {
+        for (let index = 0; index < 5; index += 1) {
+          yield* sleep(20);
+          ticks += 1;
+        }
+        return ticks;
+      }),
+    };
+  };
+
+  it("interrupts a forked child when the fiber that forked it is interrupted", async () => {
+    // The reproduction from #258. `fork` was `detachedContext`, so the parent
+    // was gone at thirty milliseconds and the child ran to completion at a
+    // hundred — reported by nobody, because the only handle to it was the one
+    // the parent dropped.
+    const child = ticker();
+    const parent = effect(function* () {
+      yield* fork(child.effect);
+      yield* sleep(1000);
+    });
+
+    const fiber = runFork(parent);
+    await runPromise(sleep(30));
+    await runPromise(interrupt(fiber));
+    const atInterrupt = child.count();
+    await runPromise(sleep(150));
+
+    expect(atInterrupt).toBeLessThan(5);
+    expect(child.count()).toBe(atInterrupt);
+  });
+
+  it("leaves a forkDaemon child running when its parent is interrupted", async () => {
+    // The behaviour `fork` used to have, under the name that says what it is.
+    const child = ticker();
+    const parent = effect(function* () {
+      yield* forkDaemon(child.effect);
+      yield* sleep(1000);
+    });
+
+    const fiber = runFork(parent);
+    await runPromise(sleep(30));
+    await runPromise(interrupt(fiber));
+    const atInterrupt = child.count();
+    await runPromise(sleep(150));
+
+    expect(atInterrupt).toBeLessThan(5);
+    expect(child.count()).toBe(5);
+  });
+
+  it("interrupts a child that has not reached its first checkpoint yet", async () => {
+    // `childContext` promises that a child born to an interrupted parent
+    // starts interrupted. This is the earliest moment that promise can be
+    // asked for: the fork has happened but the child has not run a step.
+    const events = [];
+    const program = effect(function* () {
+      yield* fork(
+        effect(function* () {
+          yield* sleep(20);
+          events.push("child ran");
+        }),
+      );
+      yield* sleep(400);
+    });
+
+    const fiber = runFork(program);
+    await runPromise(interrupt(fiber));
+    await runPromise(sleep(80));
+
+    expect(events).toEqual([]);
+  });
+
+  it("stops a forked child when the fiber that forked it simply ends", async () => {
+    // Not an interruption: the parent returned. A child that outlived a
+    // finished parent would be unreachable from any handle, which is the same
+    // leak by a quieter route.
+    const events = [];
+    const child = ensuring(sleep(400), () => sync(() => events.push("child stopped")));
+
+    await runPromise(
+      effect(function* () {
+        yield* fork(child);
+        yield* sleep(10);
+        return "parent finished";
+      }),
+    );
+    await runPromise(sleep(40));
+
+    expect(events).toEqual(["child stopped"]);
+  });
+
+  it("still ends a daemon's own children when the daemon ends", async () => {
+    // A daemon is detached from its parent, not from its children. If the
+    // escape were inherited, one `forkDaemon` would detach a whole subtree.
+    const events = [];
+    const grandchild = ensuring(sleep(400), () => sync(() => events.push("grandchild stopped")));
+
+    await runPromise(
+      effect(function* () {
+        yield* forkDaemon(
+          effect(function* () {
+            yield* fork(grandchild);
+            yield* sleep(10);
+          }),
+        );
+        yield* sleep(80);
+      }),
+    );
+
+    expect(events).toEqual(["grandchild stopped"]);
+  });
+
+  it("does not interrupt the fiber that forked it when the child is interrupted", async () => {
+    // The link is one-way on purpose: a child is cancellable on its own, which
+    // is the whole reason to hold a handle to it.
+    const settled = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(sleep(400));
+        yield* interrupt(fiber);
+        yield* sleep(5);
+        return "parent finished";
+      }),
+    );
+
+    expect(settled).toBe("parent finished");
+  });
+
+  it("keeps a joined child's value when the parent ends right after it", async () => {
+    // Ending a fiber must not reach a child that has already settled and left
+    // the tree, or every `fork`-then-`join` would race its own bookkeeping.
+    const settled = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(as(sleep(5), "child value"));
+        return yield* join(fiber);
+      }),
+    );
+
+    expect(settled).toBe("child value");
   });
 });
 

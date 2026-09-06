@@ -51,6 +51,36 @@
 // carried forty-three `as any` casts before, and the reason it no longer needs
 // them is `EffectKernel` — see below.
 //
+// # What a fiber owns
+//
+// A fiber owns the fibers it starts. `fork` gives back a handle to a child,
+// and the child's lifetime is contained in its parent's: interrupting the
+// parent interrupts the child, and a parent that simply *ends* interrupts
+// whatever it still had running. Neither half is optional — a tree that only
+// propagates cancellation downwards leaks every child of a fiber that returned
+// normally, and a tree that only cleans up on return leaks every child of a
+// fiber that was cancelled.
+//
+// That is a statement about the runtime and not about one combinator, so it is
+// stated once here and enforced in three places: `childContext` links a new
+// fiber to its parent, `interruptFiber` walks the link downwards, and
+// `releaseChild` — which every group and both forks end at — walks it upwards.
+// `all`, `race` and `timeout` were already written against it; before this,
+// `fork` was the one hole in it.
+//
+// `forkDaemon` is the deliberate way out, and it is a separate name rather
+// than an option because the two answers fail in opposite directions. A caller
+// who wanted a daemon and got a child sees their work stop, and goes looking.
+// A caller who wanted a child and got a daemon sees nothing at all, until a
+// cancelled request is still writing to a socket nobody is reading, or the
+// process will not exit. The silent failure is the one that must be spelled
+// out at the call site.
+//
+// What this does *not* have is `forkScoped` and `forkIn`: a child tied to a
+// `Scope` rather than to a fiber. `Scope` is already an ordinary member of `R`
+// so they are expressible, and they are the right way to say "outlive this
+// fiber, die with this request". They are filed rather than guessed at.
+//
 // # Readiness
 //
 // **Implemented.** The `Effect<A, E, R>` value and its three channels;
@@ -61,7 +91,8 @@
 // `retry` over a `Schedule`; `timeout`; `acquireRelease` with `scoped`, and
 // `ensuring`, both of which release on success, failure, defect and
 // interruption; `all` and `forEach` with a concurrency limit and a synchronous
-// form when every element has one, `race`, and `fork`/`join`/`interrupt`;
+// form when every element has one, `race`, and
+// `fork`/`forkDaemon`/`join`/`interrupt` over fibers whose lifetimes nest;
 // `Tag` and `Layer` for services.
 //
 // **Experimental.** Requirement subtraction, for the reason above: `provide`,
@@ -69,9 +100,7 @@
 // solve for the rest, which is weaker than Effect-TS's `Exclude`. `catchTag`
 // reads a `kind` (or `tag`) string off the error at run time and does not
 // narrow `E` for the recovery function, because Flow cannot narrow a type
-// variable by a string compared at run time. `fork` is detached rather than
-// scoped to its parent: cancelling the parent does not cancel the child, which
-// is `forkDaemon`'s semantics rather than `fork`'s.
+// variable by a string compared at run time.
 //
 // **Not implemented.** `Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM;
 // streams; a fiber scheduler of its own (this runs on the host's microtask
@@ -360,13 +389,40 @@ function childContext(parent: Context): Context {
 }
 
 /**
- * Forget a finished child.
+ * A fiber has settled: stop whatever it still had running.
  *
- * Without this a long-lived fiber calling `all` in a loop holds every group it
- * ever opened, and the leak is invisible because nothing reads the set except
- * an interruption that never comes.
+ * The half of structured concurrency that is not about cancellation. A fiber
+ * that returns normally is as finished as one that was interrupted, and its
+ * children are as orphaned either way — nobody is left holding a handle to
+ * them, so nothing will ever stop them. Effect ties a `fork`ed child to the
+ * parent's scope, which closes when the parent terminates however it
+ * terminates; this is the same rule said in terms of the link `childContext`
+ * already builds.
+ *
+ * Called wherever a fiber's run is known to have settled: both forks, the two
+ * asynchronous runners, and `releaseChild`. The synchronous runners need no
+ * call — `fork` has no `runSync` kernel, so a program `runSync` will answer for
+ * has no children to end.
+ */
+function endFiber(state: FiberState): void {
+  for (const child of state.children) {
+    interruptFiber(child);
+  }
+}
+
+/**
+ * Forget a finished child, having first stopped whatever it started.
+ *
+ * Two failures, and one call site fixes both. Without the `delete`, a
+ * long-lived fiber calling `all` in a loop holds every group it ever opened,
+ * and that leak is invisible because nothing reads the set except an
+ * interruption that never comes. Without the `endFiber`, the `delete` *causes*
+ * a leak rather than closing one: cutting a finished fiber out of the tree
+ * takes its own still-running children with it, and they are then unreachable
+ * from any root. Removing a subtree is only safe once the subtree is empty.
  */
 function releaseChild(parent: Context, child: Context): void {
+  endFiber(child.fiber);
   parent.fiber.children.delete(child.fiber);
 }
 
@@ -1631,19 +1687,59 @@ export function layerMerge<Out1, Out2, E1, E2, In1, In2>(
  * Start `self` beside the current fiber and hand back a handle to it.
  *
  * The child gets its own interruption state, so cancelling it does not cancel
- * the fiber that forked it, and cancelling the parent does not silently take
- * the child down with it. That is Effect's `forkDaemon` rather than its `fork`,
- * and it is what makes this usable for the case it exists for: starting work
- * you intend to be able to stop. Work that should die with its parent is what
- * `all`, `race` and `timeout` open a child fiber for.
+ * the fiber that forked it. The link runs the other way: the child is
+ * registered as the caller's, so the caller's interruption reaches it, and the
+ * caller ending reaches it too. See *What a fiber owns* in the header — this
+ * is where the rule stated there is entered.
+ *
+ * The handle is the fiber's own promise with the bookkeeping attached in
+ * front, so a caller that has `join`ed or `interrupt`ed a child is looking at
+ * a tree the child has already left. The promise has no rejection arm because
+ * no kernel in this file has one: `runKernel` turns a throw into a defect and
+ * every asynchronous kernel below settles its own errors into an `Exit`.
+ *
+ * This used to be `detachedContext`, which is `forkDaemon` under this name.
+ * The bug that made was not that a cancelled child kept running — nobody
+ * cancels a fiber they cannot see — but that cancelling a *request* left the
+ * work it had started writing to a connection that was already closed, with no
+ * handle anywhere that could have stopped it.
  */
 export function fork<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty, R> {
   return makeEffect({
     run: (runContext) => {
+      const child = childContext(runContext);
+      const running = runKernel(self, child).then((settled) => {
+        releaseChild(runContext, child);
+        return settled;
+      });
+      const started: Exit<Fiber<A, E>, empty> = success(makeFiber(running, child.fiber));
+      return Promise.resolve(started);
+    },
+  });
+}
+
+/**
+ * Start `self` in a fiber that outlives the one that forked it.
+ *
+ * The escape from the rule `fork` keeps, for work whose lifetime is genuinely
+ * not the caller's: a cache warmer, a metrics flush, a supervisor started from
+ * a request that has no business owning it. Nothing but the returned handle
+ * can stop a daemon, so dropping that handle is dropping the work — which is
+ * why this is a name a reader can look up rather than an option on `fork`.
+ *
+ * A daemon is detached from its parent, not from its own children: it still
+ * ends the fibers it started, or the escape would be inherited by everything
+ * below it.
+ */
+export function forkDaemon<A, E, R>(self: Effect<A, E, R>): Effect<Fiber<A, E>, empty, R> {
+  return makeEffect({
+    run: (runContext) => {
       const child = detachedContext(runContext);
-      const started: Exit<Fiber<A, E>, empty> = success(
-        makeFiber(runKernel(self, child), child.fiber),
-      );
+      const running = runKernel(self, child).then((settled) => {
+        endFiber(child.fiber);
+        return settled;
+      });
+      const started: Exit<Fiber<A, E>, empty> = success(makeFiber(running, child.fiber));
       return Promise.resolve(started);
     },
   });
@@ -1776,18 +1872,36 @@ export function as<A, B, E, R>(self: Effect<A, E, R>, value: B): Effect<B, E, R>
   return map(self, () => value);
 }
 
-/** Run an effect, raising whatever it failed with. */
+/**
+ * Run an effect, raising whatever it failed with.
+ *
+ * The root fiber ends when this returns, which is what stops a program that
+ * forked and did not wait from leaving the fork behind. `forkDaemon` is how a
+ * caller says the work should outlive the run.
+ */
 export async function runPromise<A, E>(self: Effect<A, E>): Promise<A> {
-  const settled = await runKernel(self, context());
+  const runContext = context();
+  const settled = await runKernel(self, runContext);
+  endFiber(runContext.fiber);
   if (settled.kind === "success") {
     return settled.value;
   }
   throw throwable(settled.cause);
 }
 
-/** Run an effect, returning its outcome rather than raising. */
+/**
+ * Run an effect, returning its outcome rather than raising.
+ *
+ * `.then` rather than `async`, because an extra async frame costs a microtask
+ * on a function whose whole body is one call, and the root fiber has to be
+ * ended after the run either way.
+ */
 export function runPromiseExit<A, E>(self: Effect<A, E>): Promise<Exit<A, E>> {
-  return runKernel(self, context());
+  const runContext = context();
+  return runKernel(self, runContext).then((settled) => {
+    endFiber(runContext.fiber);
+    return settled;
+  });
 }
 
 /** Run a synchronous effect, returning its outcome rather than raising. */
@@ -1811,8 +1925,17 @@ export function runSync<A, E>(self: Effect<A, E>): A {
   throw throwable(settled.cause);
 }
 
-/** Start an effect from outside the runtime and keep a handle on it. */
+/**
+ * Start an effect from outside the runtime and keep a handle on it.
+ *
+ * The handle is a root fiber, so it owns what it forks in the same way any
+ * other fiber does: when it settles, the children it still has are stopped.
+ */
 export function runFork<A, E>(self: Effect<A, E>): Fiber<A, E> {
   const runContext = context();
-  return makeFiber(runKernel(self, runContext), runContext.fiber);
+  const running = runKernel(self, runContext).then((settled) => {
+    endFiber(runContext.fiber);
+    return settled;
+  });
+  return makeFiber(running, runContext.fiber);
 }

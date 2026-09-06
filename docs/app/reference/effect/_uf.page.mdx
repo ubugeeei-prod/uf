@@ -1,0 +1,175 @@
+---
+title: "Effects · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# @uniflowed/effect
+
+<div className="lede">
+Work described as a value, with its failures and its requirements in the type.
+Plain Flow — no native binding — so `Effect<A, E, R>` is a thing you can read
+the source of in an afternoon.
+</div>
+
+```js
+// @flow
+import { effect, fail, retry, runPromise, sleep } from "@uniflowed/effect";
+
+const fetchUser = (id: string) =>
+  effect(function* () {
+    const response = yield* tryPromise({
+      try: () => fetch(`/users/${id}`),
+      catch: () => ({ kind: "offline" }),
+    });
+    if (!response.ok) {
+      return yield* fail({ kind: "notFound", id });
+    }
+    return yield* promise(() => response.json());
+  });
+
+await runPromise(retry(fetchUser("7"), { kind: "exponential", baseMillis: 100 }));
+```
+
+## The three channels
+
+An `Effect<A, E, R>` produces an `A`, may fail with an `E`, and needs an `R`.
+`E` and `R` default to `empty`, so `Effect<number>` reads as *cannot fail, needs
+nothing*.
+
+The channels accumulate as a union rather than by subtraction, because Flow has
+no type-level set difference. `flatMap(a, b)` is `Effect<B, E1 | E2, R1 | R2>`,
+and a generator body accumulates the same way: Flow infers a generator's yield
+type as the union of everything yielded, so a pipeline's failure type is the sum
+of its steps' without anyone writing it down.
+
+## Failure is not the same as a defect
+
+Three ways an effect can end without a value, and keeping them apart is the
+point of the package.
+
+| Cause | What it is | Who acts on it |
+| --- | --- | --- |
+| `fail` | The typed error the signature promised | `catchAll`, `catchTag`, `either`, `retry` |
+| `die` | A bug: a thrown exception, a missing service | Nobody. It reaches the runner |
+| `interrupt` | A decision somebody already took | Nobody. Repeating it repeats the decision |
+
+`retry` only retries a `fail`, because running a bug again runs the bug again.
+`catchAll` only catches a `fail`, because catching a defect is how a bug gets
+reported as a handled condition. `orDie` moves a failure into the defect channel
+when nobody downstream is going to handle it.
+
+## Running
+
+| Runner | Gives back | When |
+| --- | --- | --- |
+| `runSync` | `A`, raising the failure | Every step has a synchronous kernel |
+| `runSyncExit` | `Exit<A, E>` | The same, without raising |
+| `runPromise` | `Promise<A>`, rejecting with the failure | Always |
+| `runPromiseExit` | `Promise<Exit<A, E>>` | Always |
+| `runFork` | `Fiber<A, E>`, immediately | Always |
+
+An effect with an asynchronous step run under `runSync` fails as a defect
+rather than handing back a promise nobody is awaiting.
+
+## Fibers, and what a fiber owns
+
+`fork` starts work beside the current fiber and hands back a handle. The child's
+lifetime is contained in its parent's, in both directions:
+
+- interrupting the parent interrupts the child, and
+- a parent that *ends* — returns, fails, or is interrupted — stops whatever it
+  still had running.
+
+```js
+const handler = effect(function* () {
+  const refresh = yield* fork(refreshCache);
+  const page = yield* render();
+  yield* interrupt(refresh); // optional: it would be stopped anyway
+  return page;
+});
+```
+
+A cancelled request cannot leave a background refresh writing to a connection
+that is already closed, and a handler that returns early cannot either.
+
+`forkDaemon` is the way out, for work whose lifetime genuinely is not the
+caller's — a cache warmer, a metrics flush. A daemon outlives its parent, so the
+handle `forkDaemon` returns is the only thing that can ever stop it. It is a
+separate name rather than an option because the two answers fail in opposite
+directions: a caller who wanted a daemon and got a child sees their work stop
+and goes looking, while a caller who wanted a child and got a daemon sees
+nothing at all until the process will not exit.
+
+A daemon is detached from its parent, not from its own children — otherwise one
+`forkDaemon` would detach a whole subtree.
+
+`all`, `race` and `timeout` open child fibers under the same rule, which is why
+a failing `all` stops its siblings before it returns and a `timeout` stops the
+effect it timed out on.
+
+## Interruption is cooperative
+
+The flag is read between steps, never inside one: an effect that has started
+runs to its own end, and interruption decides whether the *next* step begins.
+A pending `sleep` is the exception — it registers a waker, so cancelling a fiber
+that is asleep for a minute takes effect now rather than in a minute.
+
+`interrupt` returns the fiber's `Exit` rather than `void`, so a caller can tell
+"cancelled in time" from "too late, it had finished".
+
+## Resources
+
+`acquireRelease` puts `Scope` in the requirement channel, so an effect that
+acquires something cannot be run until somebody has said where the release
+belongs. `scoped` is what says it, and it closes the scope however the effect
+ends — success, failure, defect, interruption.
+
+Finalizers run in a detached fiber, because a cleanup that is itself cancelled
+is not a cleanup.
+
+`ensuring` is the same guarantee without the `Scope`, for the ordinary "close
+this when the block is done" case.
+
+## Services
+
+A `Tag` is both the name of a service and the effect that reads it, so
+`yield* Clock` inside a generator produces the service and there is no second
+accessor to learn. `provideService` satisfies one requirement with a value;
+`provide` satisfies them by building a `Layer`.
+
+Requirement subtraction is the experimental part. Flow has no type-level set
+difference, so `provide` is typed as
+`(Effect<A, E, R | Out>, Layer<Out, …>) => Effect<A, E, R>` and the checker
+solves for `R`. That works when the provided service is a distinct member of the
+union, and silently leaves it in `R` when it is not.
+
+## Retrying
+
+A `Schedule` is data — arithmetic over an attempt count, importable on its own
+from `@uniflowed/effect/schedule` and testable with no runtime at all.
+
+| Schedule | Waits |
+| --- | --- |
+| `{ kind: "recurs", times }` | Not at all, `times` more attempts |
+| `{ kind: "spaced", millis }` | A fixed gap, for ever |
+| `{ kind: "exponential", baseMillis, factorPercent? }` | Doubling by default |
+| `{ kind: "fibonacci", baseMillis }` | More gently than doubling |
+| `{ kind: "upTo", millis }` | Once, then stops |
+| `{ kind: "intersect", left, right }` | While both would, the longer wait |
+| `{ kind: "union", left, right }` | While either would, the shorter wait |
+| `{ kind: "maxDelay", schedule, millis }` | The inner schedule, capped |
+
+## What is not here
+
+`Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM; streams; `forkScoped`
+and `forkIn`; a fiber scheduler of its own — this runs on the host's microtask
+queue and its `sleep` is `setTimeout`; tracing, spans and metrics; a typed
+defect channel; and a heterogeneous `all`, which in Effect-TS keeps a tuple's
+element types and here takes and returns one array type.
+
+Effect-TS is built on a higher-kinded encoding. Flow has no higher-kinded types
+— a type parameter cannot itself take type arguments — so there is no `pipe`
+with inference and no typeclass dispatch here. Composition is monomorphic
+functions over `Effect`, which is a smaller surface and one with nothing to
+resolve at run time.

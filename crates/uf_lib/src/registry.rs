@@ -256,6 +256,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "layerEffect",
                 "layerMerge",
                 "fork",
+                "forkDaemon",
                 "join",
                 "interrupt",
                 "sleep",

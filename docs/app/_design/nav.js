@@ -120,6 +120,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Packages",
         blurb: "What each @uniflowed/* package is for.",
       },
+      {
+        href: "/reference/effect",
+        title: "Effects",
+        blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
+      },
     ],
   },
 ];
