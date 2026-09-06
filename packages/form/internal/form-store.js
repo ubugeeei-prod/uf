@@ -902,13 +902,29 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
    * depend on is untouched.
    */
   function activeValues(): TValues {
-    let pruned: TValues | null = null;
+    return withoutDisabled(values);
+  }
+
+  /**
+   * Anything shaped like the form's values, without the disabled fields' paths.
+   *
+   * Generic in what it prunes because it is asked twice about two different
+   * types. The form's own values are one; a resolver's output is the other, and
+   * it is not a subset of them — `Resolver<TIn, TOut>` is generic in both
+   * precisely so a schema can parse `{ age: "42" }` into `{ age: 42 }`, and
+   * nothing in that contract stops it also producing a key the form did not
+   * send. A schema with a default does exactly that: the disabled field is
+   * pruned out of the input, the default puts it back, and without this the
+   * value the user was never shown is submitted after all.
+   */
+  function withoutDisabled<TRoot>(root: TRoot): TRoot {
+    let pruned: TRoot | null = null;
     for (const name of fields.keys()) {
       if (isDisabled(name)) {
-        pruned = removeAt(pruned ?? values, name);
+        pruned = removeAt(pruned ?? root, name);
       }
     }
-    return pruned ?? values;
+    return pruned ?? root;
   }
 
   function valueAt(name: FieldPath): mixed {
@@ -1526,8 +1542,17 @@ export function createFormStore<TValues extends FieldValues, TOutput>(
         // With a resolver, `onValid` receives the resolver's *output* —
         // `{ age: 42 }` where the form held `{ age: "42" }` — so a schema that
         // coerces is not re-run by hand at the submit boundary.
+        //
+        // Pruned again on the way out, because the resolver was given the
+        // pruned values and answered with a value of its own: a schema that
+        // fills a default in for the field that was missing hands the disabled
+        // field straight back, and this is the boundary that decides what the
+        // user is telling us. `activeValues` is already pruned, so only the
+        // resolver's answer needs it.
         const output: TOutput =
-          resolvedOutput == null ? (activeValues() as $FlowFixMe) : (resolvedOutput as $FlowFixMe);
+          resolvedOutput == null
+            ? (activeValues() as $FlowFixMe)
+            : (withoutDisabled(resolvedOutput) as $FlowFixMe);
         await onValid(output, event);
         isSubmitSuccessful = true;
       } finally {

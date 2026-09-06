@@ -1547,6 +1547,39 @@ describe("disabled", () => {
     expect(screen.getByText("form: true")).toBeInTheDocument();
   });
 
+  it("keeps a disabled field out of the values a resolver hands back", async () => {
+    // A resolver's output is a type of its own, not a subset of the form's
+    // values — that is what `Resolver<TIn, TOut>` is generic in both for. So
+    // pruning the input is not enough to keep a disabled field out of the
+    // submission: a schema with a default for the field that went missing puts
+    // it straight back, and `handleSubmit` hands the resolver's answer to
+    // `onValid` verbatim.
+    const onValid = fn();
+    const withADefault = (values: any) => ({
+      values: { ...values, code: "filled in by the schema" },
+      errors: {},
+    });
+    component Probe() {
+      const { register, handleSubmit } = useForm({
+        defaultValues: { email: "a@b.com", code: "never shown" },
+        resolver: withADefault as any,
+      });
+      return (
+        <form onSubmit={handleSubmit(onValid)}>
+          <input aria-label="email" {...register("email")} />
+          <input aria-label="code" {...register("code", { disabled: true })} />
+        </form>
+      );
+    }
+
+    const { container } = render(<Probe />);
+    submitForm(container);
+    await waitFor(() => {
+      expect(onValid).toHaveBeenCalled();
+    });
+    expect(onValid.mock.calls[0].args[0]).toEqual({ email: "a@b.com" });
+  });
+
   it("tells a controlled field the form was switched off in the commit that switched it", async () => {
     // The same claim the `register` test at the top of this describe makes,
     // for the hook that cannot be handed the flag: a form disabled while it
