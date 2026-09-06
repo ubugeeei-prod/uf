@@ -1,5 +1,7 @@
 use super::*;
 
+mod cache;
+
 const CLEAN: &str = "// @flow\nconst n: number = 1;\n";
 
 /// A type error that inference reports whenever it runs over the file.
@@ -103,6 +105,7 @@ fn a_report_counts_by_severity() {
         diagnostics: Vec::new(),
         files_checked: 3,
         files_skipped: 0,
+        files_from_cache: 0,
         untyped_modules: Vec::new(),
         builtins: BuiltinsTiming {
             elapsed: std::time::Duration::ZERO,
@@ -124,6 +127,7 @@ fn throughput_is_unknown_when_no_time_passed() {
         diagnostics: Vec::new(),
         files_checked: 1,
         files_skipped: 0,
+        files_from_cache: 0,
         untyped_modules: Vec::new(),
         builtins: BuiltinsTiming {
             elapsed: std::time::Duration::ZERO,

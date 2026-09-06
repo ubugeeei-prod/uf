@@ -8,6 +8,9 @@
 //! each fragment back onto a typed segment instead of concatenating it into a
 //! sentence.
 
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
+
 use compact_str::CompactString;
 use flow_common_errors::error_codes::ErrorCode;
 use flow_common_errors::error_utils::{
@@ -16,6 +19,9 @@ use flow_common_errors::error_utils::{
 };
 use flow_parser::loc::Loc;
 use flow_parser::offset_utils::OffsetKind;
+use serde::Deserialize;
+use serde::de::value::{Error as ValueError, StrDeserializer};
+use serde::de::{Deserializer, Visitor};
 use serde_json::Value;
 use smallvec::SmallVec;
 
@@ -35,6 +41,75 @@ const STRIP_ROOT: Option<&str> = Some(super::VIRTUAL_ROOT);
 /// user-written unions. A bound here is what keeps a hostile union from turning
 /// message rendering into unbounded recursion on the check thread.
 const MAX_MARKUP_DEPTH: u8 = 16;
+
+/// The error code upstream renders as `spelling`, if it renders one.
+///
+/// [`TypeDiagnostic::code`] borrows upstream's table rather than mirroring it,
+/// so reading a diagnostic back from the check cache has to find the entry
+/// that a recorded spelling names. The table is built from upstream's own
+/// derive, not from a list kept here: `uf` must not carry a second copy of a
+/// set that gains members every Flow release, and a copy would answer for
+/// codes this build does not have.
+pub(crate) fn error_code(spelling: &str) -> Option<&'static str> {
+    static CODES: OnceLock<BTreeMap<&'static str, &'static str>> = OnceLock::new();
+    CODES
+        .get_or_init(|| {
+            error_code_variants()
+                .iter()
+                .filter_map(|variant| {
+                    // Serde accepts a fieldless variant from its own name, so
+                    // this is upstream turning its own list back into values.
+                    let code = ErrorCode::deserialize(StrDeserializer::<ValueError>::new(variant));
+                    code.ok().map(|code| (code.as_str(), code.as_str()))
+                })
+                .collect()
+        })
+        .get(spelling)
+        .copied()
+}
+
+/// Every variant name `ErrorCode` has, asked of upstream rather than listed.
+///
+/// Serde's derived `Deserialize` for a fieldless enum hands its deserializer
+/// the full `&'static [&'static str]` of variant names before it looks at any
+/// input. A deserializer that keeps that list and then refuses is therefore a
+/// way to read the table out of the derive — which is the point: the list
+/// stays upstream's, and a Flow release that adds a code adds it here too
+/// without anyone editing this file.
+fn error_code_variants() -> &'static [&'static str] {
+    let mut variants = Variants(&[]);
+    // Expected to fail: the deserializer refuses every input, having already
+    // recorded what it was asked about.
+    let _ = ErrorCode::deserialize(&mut variants);
+    variants.0
+}
+
+/// A deserializer that answers nothing and records what it was asked for.
+struct Variants(&'static [&'static str]);
+
+impl<'de> Deserializer<'de> for &mut Variants {
+    type Error = ValueError;
+
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        variants: &'static [&'static str],
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.0 = variants;
+        Err(serde::de::Error::custom("the variants were the answer"))
+    }
+
+    fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom("only an enum can be described"))
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct identifier ignored_any
+    }
+}
 
 /// Convert both error sets into diagnostics, errors first.
 ///

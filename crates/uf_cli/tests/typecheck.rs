@@ -145,6 +145,74 @@ fn two_runs_of_the_same_project_report_identical_diagnostics() {
 }
 
 #[test]
+fn a_second_run_is_answered_from_the_cache_under_the_project_root() {
+    let dir = tempfile::tempdir().unwrap();
+    typed_project(dir.path());
+
+    let first = check_json(dir.path());
+    let second = check_json(dir.path());
+
+    assert_eq!(first["typeCheck"]["filesFromCache"], serde_json::json!(0));
+    assert_eq!(
+        second["typeCheck"]["filesFromCache"], first["typeCheck"]["filesChecked"],
+        "every file the first run checked is answered by the second"
+    );
+    // Everything a reader is told about the check, other than how long it took
+    // and how much of it was avoided, has to be the same both times.
+    for field in [
+        "diagnostics",
+        "filesChecked",
+        "filesSkipped",
+        "untypedModules",
+    ] {
+        assert_eq!(
+            first["typeCheck"][field], second["typeCheck"][field],
+            "typeCheck.{field} differs between the run that filled the cache and the run served from it"
+        );
+    }
+    assert!(
+        dir.path().join(".uf/cache/check").is_dir(),
+        "the cache belongs under `.uf/`, which `.gitignore` already covers"
+    );
+}
+
+#[test]
+fn editing_a_dependency_rechecks_what_imports_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport type { Mode } from \"./mode.js\";\nexport const mode: Mode = \"onSubmit\";\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("mode.js"),
+        "// @flow\nexport type Mode = \"onSubmit\" | \"onChange\";\n",
+    )
+    .unwrap();
+    let clean = check_json(dir.path());
+    assert_eq!(clean["errors"], serde_json::json!(0), "{clean}");
+
+    // `app.js` is not touched. The type it is checked against is.
+    fs::write(
+        src.join("mode.js"),
+        "// @flow\nexport type Mode = \"onChange\";\n",
+    )
+    .unwrap();
+    let after = check_json(dir.path());
+
+    assert_eq!(after["typeCheck"]["filesFromCache"], serde_json::json!(0));
+    let codes: Vec<&str> = after["typeCheck"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap_or("<none>"))
+        .collect();
+    assert_eq!(codes, ["incompatible-type"], "{after}");
+}
+
+#[test]
 fn a_file_in_the_project_is_typed_by_the_file_it_imports_from() {
     let dir = tempfile::tempdir().unwrap();
     let src = dir.path().join("src");

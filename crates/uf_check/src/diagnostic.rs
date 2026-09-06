@@ -9,7 +9,7 @@
 //! [`TypeDiagnostic::related`] keeps the locations they refer to.
 
 use compact_str::CompactString;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 /// Message fragments held inline before spilling to the heap.
@@ -22,7 +22,7 @@ pub type MessageFeatures = SmallVec<[MessageSegment; 6]>;
 pub type RelatedLocations = SmallVec<[RelatedLocation; 2]>;
 
 /// Whether a diagnostic fails the run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Severity {
     /// The run fails.
@@ -47,7 +47,7 @@ impl Severity {
 /// differently; collapsing them into "error" loses the distinction between a
 /// checker bug ([`Self::Internal`]), a guard firing
 /// ([`Self::RecursionLimit`]), and a real type error ([`Self::Infer`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiagnosticKind {
     /// The parser rejected the source, or the checker reported as if it had.
@@ -84,7 +84,7 @@ impl DiagnosticKind {
 /// and `column` counts **bytes** rather than characters — which is what the
 /// code-frame renderer expects, and what Flow's parser produces before its JSON
 /// layer converts to codepoints.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Position {
     /// One-based line.
     pub line: u32,
@@ -98,7 +98,7 @@ impl Position {
 }
 
 /// A half-open range in one source file.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Span {
     /// The file the range belongs to, as Flow reported it. Library definitions
@@ -127,7 +127,7 @@ impl Span {
 /// Flow's messages interleave prose, quoted code, and references to other
 /// locations. Keeping the three apart is what lets a renderer highlight code
 /// and hyperlink references instead of printing one grey sentence.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "kind")]
 pub enum MessageSegment {
     /// Prose.
@@ -159,7 +159,7 @@ impl MessageSegment {
 }
 
 /// A location one of the message's references points at.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelatedLocation {
     /// The reference number Flow used in the message, starting at one.
@@ -223,6 +223,57 @@ impl TypeDiagnostic {
     pub const fn is_error(&self) -> bool {
         matches!(self.severity, Severity::Error)
     }
+}
+
+/// Read a diagnostic back from what [`Serialize`] wrote.
+///
+/// Written out rather than derived because of one field. [`Self::code`] is a
+/// borrow of upstream's own table, and serde reads a `&'static str` field as a
+/// claim that the *document* outlives the program — which is exactly backwards
+/// here: the document is read from and dropped, and the code is found again in
+/// the table by the spelling it was written under. A spelling this build has no
+/// error code for reads as [`None`], which is the field's own meaning for
+/// "Flow reported an error it has given no code to".
+impl<'de> Deserialize<'de> for TypeDiagnostic {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        /// The document shape, which is [`TypeDiagnostic`]'s with the code as
+        /// what a document can actually hold.
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Written {
+            severity: Severity,
+            kind: DiagnosticKind,
+            code: Option<CompactString>,
+            primary: Span,
+            root: Option<Span>,
+            message: MessageFeatures,
+            related: RelatedLocations,
+        }
+
+        let written = Written::deserialize(deserializer)?;
+        Ok(Self {
+            severity: written.severity,
+            kind: written.kind,
+            code: written.code.as_deref().and_then(error_code),
+            primary: written.primary,
+            root: written.root,
+            message: written.message,
+            related: written.related,
+        })
+    }
+}
+
+/// The `&'static str` upstream renders for the error code spelled `spelling`.
+#[cfg(feature = "upstream-typecheck")]
+fn error_code(spelling: &str) -> Option<&'static str> {
+    crate::upstream::error_code(spelling)
+}
+
+/// Without a checker there is no table of error codes to find anything in —
+/// and no cache to read, because nothing in this build produces a diagnostic.
+#[cfg(not(feature = "upstream-typecheck"))]
+fn error_code(_spelling: &str) -> Option<&'static str> {
+    None
 }
 
 /// Append a decimal `u32` without going through `format!`.
