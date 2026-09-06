@@ -9,9 +9,13 @@ on every runtime and deploys anywhere, including as a single executable file.
 
 - Beat Vite+ on Flow React DX, framework completeness, build latency, and dev
   server feedback loops.
-- Use Vite Task for cached, dependency-aware task execution while beating Vitest
-  and Bun Test on native test throughput, runtime startup, package manager
-  performance, and integrated toolchain coverage.
+- Run `uf.config.js` tasks natively — a dependency graph rather than a
+  recursion, a concurrency limit, and a cache keyed on the files each task
+  says it reads — while beating Vitest and Bun Test on native test throughput,
+  runtime startup, package manager performance, and integrated toolchain
+  coverage. Vite Task still runs a task that names no command of its own;
+  everything anybody actually writes is uf's, because `uf.config.js` is where
+  a task's meaning is written down and `vp run` cannot read it.
 - Keep Vite itself as the internal bundler, dev server, and plugin system, but
   make `uf.config.js` the only user-authored config entry.
 - Reach the feature surface of the tools a user would otherwise reach for —

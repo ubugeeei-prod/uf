@@ -463,10 +463,22 @@ pub(crate) enum Commands {
         /// `import.meta.env.MODE` reads.
         #[arg(long, value_name = "MODE")]
         mode: Option<String>,
+        /// Run at most N tasks at once. Defaults to four, or the number of
+        /// cores when that is fewer. `1` runs them one at a time.
+        #[arg(long, short = 'j', value_name = "N")]
+        concurrency: Option<usize>,
+        /// Run every task, whatever `.uf/cache/task` holds. What they produce
+        /// is still recorded.
+        #[arg(long)]
+        force: bool,
+        /// Say, for each task, why it ran or was answered from the cache.
+        #[arg(long)]
+        why: bool,
         /// The task to run, as named under `tasks` in `uf.config.js`.
         /// Omit it to see what this project defines.
         script: Option<String>,
-        /// Everything after the task name, handed to it untouched.
+        /// Everything after the task name, handed to it untouched. A task
+        /// that takes an option `uf run` also has is reached past `--`.
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
@@ -830,6 +842,9 @@ mod tests {
         assert!(
             Commands::Run {
                 mode: None,
+                concurrency: None,
+                force: false,
+                why: false,
                 script: Some("build".to_string()),
                 args: Vec::new(),
             }
@@ -838,6 +853,9 @@ mod tests {
         assert!(
             !Commands::Run {
                 mode: None,
+                concurrency: None,
+                force: false,
+                why: false,
                 script: None,
                 args: Vec::new(),
             }
