@@ -1,0 +1,339 @@
+// @flow
+//
+// The two things you can point a rendered tree at: a terminal, or memory.
+//
+// Everything below this module is a pure function of a tree and a size.
+// Everything a real terminal needs — raw mode, an alternate screen, a resize
+// signal, bytes on a file descriptor — is here and nowhere else, which is what
+// makes the in-memory renderer a first-class way to run an application rather
+// than a mock of one. `testRender` and `render` mount the same tree through
+// the same reconciler and produce the same frames; they differ in where the
+// frames go and in who presses the keys.
+//
+// # Why the cursor is never used to draw
+//
+// `crates/uf_term/src/prompt/draw.rs` ends every line of its frames with
+// `\r\n` and explains why: raw mode turns off the mapping that makes a bare
+// line feed also return to column zero, so a menu drawn with `\n` walks off
+// the right edge one row at a time. This renderer avoids that class of bug by
+// never writing a newline at all. Every cell it writes is preceded by an
+// absolute cursor position, so no frame depends on where the cursor was left,
+// on whether the terminal wraps at the right margin, or on the line-ending
+// translation the mode happens to be in.
+//
+// # A terminal nobody is watching gets text, not escapes
+//
+// Piping a TUI into a file or a CI log has one sensible answer, and it is not
+// "the same escape sequences". A log is read afterwards, in order, by
+// something that does not implement cursor addressing — so an incremental
+// renderer writing into one produces a file full of `ESC[12;40H`. Here, a
+// non-interactive stream gets no escapes and no incremental updates at all:
+// the final frame is written once, as plain lines, when the application stops.
+// That is the same answer `uf_term`'s progress bars give, for the same reason.
+
+import * as React from "@uniflowed/react";
+
+import type { Capabilities, ColorChoice, TerminalEnv } from "./capability.js";
+import { detectCapabilities } from "./capability.js";
+import type { Frame } from "./cells.js";
+import { frameText } from "./cells.js";
+import type { Update } from "./diff.js";
+import type { Renderer } from "./internal/host.js";
+import {
+  RendererContext,
+  createRenderer,
+  createRoot,
+  nextUpdate,
+  pressKey,
+  renderFrame,
+  resize,
+} from "./internal/host.js";
+import { decodeKeys } from "./keys.js";
+
+/** Enter the alternate screen buffer, so the shell's scrollback survives. */
+const ENTER_ALTERNATE = "\u001b[?1049h";
+/** Leave it, putting back whatever the reader was looking at. */
+const LEAVE_ALTERNATE = "\u001b[?1049l";
+/** Hide the terminal's own cursor; the frame draws its own where it wants one. */
+const HIDE_CURSOR = "\u001b[?25l";
+const SHOW_CURSOR = "\u001b[?25h";
+/** Clear the screen and put the cursor at the top left. */
+const CLEAR = "\u001b[2J\u001b[H";
+
+/** The default terminal, for a stream that will not say how big it is. */
+const FALLBACK_WIDTH = 80;
+const FALLBACK_HEIGHT = 24;
+
+/** What `render` gives back. */
+export type Handle = {
+  /** Put the terminal back the way it was found and unmount the tree. */
+  stop(): void,
+  /** The frame currently on the screen. */
+  frame(): Frame,
+  /** That frame as text, which is what a snapshot asserts on. */
+  text(): string,
+};
+
+/** What `testRender` gives back: a `Handle`, plus the terminal's side. */
+export type TestHandle = {
+  ...Handle,
+  /** Feed raw terminal input, as a terminal would deliver it. */
+  press(input: string): void,
+  /** Draw the next frame and report what writing it would cost. */
+  update(): Update,
+  /** Resize the terminal, discarding what was on it. */
+  resize(width: number, height: number): void,
+  /** Every update produced since mounting, in order. */
+  updates(): $ReadOnlyArray<Update>,
+};
+
+/** Anything that can be written to; `process.stdout`, or a string collector. */
+export type OutputStream = {
+  write(chunk: string): mixed,
+  readonly columns?: number,
+  readonly rows?: number,
+  readonly isTTY?: boolean,
+  /** A real `process.stdout` emits `"resize"`; a string collector does not. */
+  on?: (event: string, listener: () => mixed) => mixed,
+  off?: (event: string, listener: () => mixed) => mixed,
+  ...
+};
+
+/** Anything keys arrive from; `process.stdin`. */
+export type InputStream = {
+  readonly isTTY?: boolean,
+  setRawMode?: (raw: boolean) => mixed,
+  resume?: () => mixed,
+  pause?: () => mixed,
+  setEncoding?: (encoding: string) => mixed,
+  on?: (event: string, listener: (chunk: string) => mixed) => mixed,
+  off?: (event: string, listener: (chunk: string) => mixed) => mixed,
+  ...
+};
+
+/** How to mount onto a real terminal. */
+export type RenderOptions = {
+  readonly stdin?: InputStream,
+  readonly stdout?: OutputStream,
+  /** `--color`, when the application has such a flag. */
+  readonly color?: ColorChoice,
+  /** The environment to detect from. Defaults to the process's. */
+  readonly env?: TerminalEnv,
+  /**
+   * Whether to take over the whole screen.
+   *
+   * On by default because a full-screen application that scrolls the shell's
+   * history away has destroyed something it cannot put back. Off for an
+   * application that wants to leave its last frame in the scrollback, which is
+   * what a progress display wants.
+   */
+  readonly alternateScreen?: boolean,
+};
+
+/** Mount a tree into a renderer and return the pieces both drivers need. */
+function mount(element: React.Node, renderer: Renderer) {
+  const root = createRoot(renderer);
+  root.render(React.createElement(RendererContext.Provider, { value: renderer }, element));
+  return root;
+}
+
+/**
+ * Render into memory.
+ *
+ * The way an application is *tested*, and the way one is rendered anywhere
+ * that is not a terminal. No environment is read, no stream is touched, and
+ * the capabilities are the caller's to choose — which is the point: a test
+ * asserting how a box degrades on a terminal with no colour should not have to
+ * arrange for the machine running it to have no colour.
+ */
+export function testRender(
+  element: React.Node,
+  options: {
+    readonly width?: number,
+    readonly height?: number,
+    readonly capabilities?: Capabilities,
+  } = {},
+): TestHandle {
+  const width = options.width ?? FALLBACK_WIDTH;
+  const height = options.height ?? FALLBACK_HEIGHT;
+  const capabilities: Capabilities = options.capabilities ?? {
+    color: "truecolor",
+    glyphs: "unicode",
+    tty: "interactive",
+  };
+  const renderer = createRenderer(width, height, capabilities);
+  const root = mount(element, renderer);
+  const produced: Array<Update> = [];
+
+  const handle: TestHandle = {
+    press(input: string) {
+      for (const key of decodeKeys(input)) {
+        pressKey(renderer, key);
+      }
+    },
+    update() {
+      const next = nextUpdate(renderer);
+      produced.push(next);
+      return next;
+    },
+    updates() {
+      return produced;
+    },
+    resize(nextWidth: number, nextHeight: number) {
+      resize(renderer, nextWidth, nextHeight);
+    },
+    frame() {
+      return renderFrame(renderer);
+    },
+    text() {
+      return frameText(renderFrame(renderer));
+    },
+    stop() {
+      root.unmount();
+    },
+  };
+  return handle;
+}
+
+/**
+ * Render onto a terminal.
+ *
+ * Returns as soon as the first frame is on the screen; the application keeps
+ * running because stdin is open, and stops when the caller calls `stop()`.
+ * That is deliberate — a `render` that never returned would make the calling
+ * program unable to do anything else, including install the signal handler
+ * that has to call `stop()`.
+ */
+export function render(element: React.Node, options: RenderOptions = {}): Handle {
+  // Three casts, and the same reason for all of them: Flow's library
+  // definition for `process` describes Node's classes, and these types
+  // describe the three things this renderer actually needs — so that a test
+  // can pass a string collector, and so that a runtime whose streams are not
+  // Node's is not excluded by a type. The narrowing is checked at run time by
+  // the `!= null` guards below rather than trusted.
+  const stdout: OutputStream = options.stdout ?? (process.stdout: $FlowFixMe);
+  const stdin: InputStream = options.stdin ?? (process.stdin: $FlowFixMe);
+  const env: TerminalEnv = options.env ?? (process.env: $FlowFixMe);
+  const capabilities = detectCapabilities(
+    options.color ?? "auto",
+    stdout.isTTY === true ? "interactive" : "piped",
+    env,
+  );
+  const interactive = capabilities.tty === "interactive";
+  const alternateScreen = (options.alternateScreen ?? true) && interactive;
+
+  const renderer = createRenderer(
+    stdout.columns ?? FALLBACK_WIDTH,
+    stdout.rows ?? FALLBACK_HEIGHT,
+    capabilities,
+  );
+
+  let stopped = false;
+  let scheduled = false;
+
+  const draw = () => {
+    if (stopped || !interactive) {
+      return;
+    }
+    const update = nextUpdate(renderer);
+    if (update.output !== "") {
+      stdout.write(update.output);
+    }
+  };
+
+  // One draw per turn of the event loop, however many commits happened in it.
+  // A component that sets three pieces of state in one handler commits three
+  // times, and drawing three frames means writing two of them to a terminal
+  // nobody ever saw.
+  renderer.onCommit = () => {
+    if (scheduled || stopped) {
+      return;
+    }
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      draw();
+    });
+  };
+
+  if (interactive) {
+    stdout.write((alternateScreen ? ENTER_ALTERNATE : "") + HIDE_CURSOR + CLEAR);
+  }
+
+  const onData = (chunk: string) => {
+    for (const key of decodeKeys(String(chunk))) {
+      pressKey(renderer, key);
+    }
+    draw();
+  };
+
+  const onResize = () => {
+    resize(renderer, stdout.columns ?? FALLBACK_WIDTH, stdout.rows ?? FALLBACK_HEIGHT);
+    draw();
+  };
+
+  const root = mount(element, renderer);
+  draw();
+
+  if (interactive && stdin.on != null) {
+    if (stdin.isTTY === true && stdin.setRawMode != null) {
+      stdin.setRawMode(true);
+    }
+    if (stdin.setEncoding != null) {
+      stdin.setEncoding("utf8");
+    }
+    if (stdin.resume != null) {
+      stdin.resume();
+    }
+    stdin.on("data", onData);
+  }
+  if (interactive && stdout.on != null) {
+    stdout.on("resize", onResize);
+  }
+
+  return {
+    stop() {
+      if (stopped) {
+        return;
+      }
+      stopped = true;
+      // The last frame, read *before* the tree comes down. Unmounting empties
+      // the tree, and a frame rendered from an empty tree is a rectangle of
+      // spaces — which is exactly what a redirected stream received until this
+      // line existed, and exactly what no test that only drove a terminal
+      // would have noticed.
+      const farewell = interactive ? "" : `${frameText(renderFrame(renderer))}\n`;
+      // The tree comes down before the terminal is restored, so that effect
+      // cleanups run while the terminal is still in the state they were set up
+      // in. Restoring first is how a cleanup that writes a farewell line ends
+      // up writing it into the alternate screen, a millisecond before that
+      // screen is thrown away.
+      root.unmount();
+      if (stdin.off != null) {
+        stdin.off("data", onData);
+      }
+      if (stdout.off != null) {
+        stdout.off("resize", onResize);
+      }
+      if (interactive) {
+        if (stdin.isTTY === true && stdin.setRawMode != null) {
+          stdin.setRawMode(false);
+        }
+        if (stdin.pause != null) {
+          stdin.pause();
+        }
+        stdout.write(SHOW_CURSOR + (alternateScreen ? LEAVE_ALTERNATE : "\n"));
+      } else {
+        // Nobody was watching, so nothing has been written yet. The last frame
+        // goes out once, as text, which is what a log can carry.
+        stdout.write(farewell);
+      }
+    },
+    frame() {
+      return renderFrame(renderer);
+    },
+    text() {
+      return frameText(renderFrame(renderer));
+    },
+  };
+}

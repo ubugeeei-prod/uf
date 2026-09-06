@@ -8,9 +8,14 @@ use crate::descriptor::{FormContract, UiComponent, UiRuntime};
 
 pub fn ui_components() -> Vec<UiComponent> {
     vec![
+        // Implemented in `packages/ui/accordion.js`. `Header` is a part rather
+        // than something the trigger renders for itself, because the heading
+        // level belongs to the caller: an accordion inside an `<h2>` section
+        // needs `<h3>`, and a hard-coded level produces a document outline
+        // nobody can navigate.
         UiComponent::new(
             "Accordion",
-            &["Root", "Item", "Trigger", "Content"],
+            &["Root", "Item", "Header", "Trigger", "Content"],
             UiRuntime::Split,
         ),
         UiComponent::new(
@@ -59,6 +64,9 @@ pub fn ui_components() -> Vec<UiComponent> {
         ),
         UiComponent::new("Chart", &["Root", "Tooltip", "Legend"], UiRuntime::Split),
         UiComponent::new("Checkbox", &["Root", "Indicator"], UiRuntime::Client),
+        // Implemented in `packages/ui/collapsible.js`: the WAI-ARIA disclosure
+        // pattern on its own, and the module the accordion's argument about a
+        // closed panel staying findable is written against.
         UiComponent::new(
             "Collapsible",
             &["Root", "Trigger", "Content"],
@@ -164,6 +172,11 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Menu", "Trigger", "Body", "Item"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/navigation-menu.js`, and deliberately not
+        // one of the menus above: it is the practices' *Disclosure Navigation
+        // Menu* — a `<nav>` of links behind `aria-expanded` buttons — because
+        // `menu`/`menuitem` are for application commands, and a reader told
+        // "menu, five items" expected a list of links.
         UiComponent::new(
             "NavigationMenu",
             &["Root", "List", "Item", "Trigger", "Body", "Link"],
@@ -176,6 +189,9 @@ pub fn ui_components() -> Vec<UiComponent> {
         ),
         UiComponent::new("Popover", &["Root", "Trigger", "Body"], UiRuntime::Client),
         UiComponent::new("Progress", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/radio-group.js`: the WAI-ARIA radio group,
+        // with the arrow keys that check as they move and the tab stop an
+        // unanswered group would otherwise not have.
         UiComponent::new(
             "RadioGroup",
             &["Root", "Item", "Indicator"],
@@ -232,7 +248,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Title", "Description", "Action", "Close"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/toggle.js`, and the shipped part is the
+        // component itself rather than a `Toggle.Root`: there is nothing to
+        // compose, exactly as with `Switch` and `Checkbox`, the other two
+        // two-state controls it is deliberately not either of.
         UiComponent::new("Toggle", &["Root"], UiRuntime::Client),
+        // Implemented in `packages/ui/toggle-group.js`. `type="multiple"` is a
+        // `group` of `aria-pressed` buttons; `type="single"` is the radio group
+        // pattern drawn as segments, and is rendered by `radio-group.js` rather
+        // than written a second time.
         UiComponent::new("ToggleGroup", &["Root", "Item"], UiRuntime::Client),
         UiComponent::new("Tooltip", &["Root", "Trigger", "Body"], UiRuntime::Client),
     ]

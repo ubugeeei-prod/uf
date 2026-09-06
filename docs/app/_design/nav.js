@@ -36,9 +36,24 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "What Flow says about React that nothing else can, and what it costs.",
       },
       {
+        href: "/guide/typescript",
+        title: "Flow and TypeScript",
+        blurb: "The rows TypeScript wins, the four Flow wins, and why uf is possible.",
+      },
+      {
         href: "/guide/architecture",
         title: "Architecture",
         blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
+      },
+      {
+        href: "/guide/scope",
+        title: "What uf does not do",
+        blurb: "The refusals, and the gaps — the second list with issue numbers.",
+      },
+      {
+        href: "/guide/compare",
+        title: "uf compared",
+        blurb: "Against Next.js, Vite, Bun and CRA, including the rows uf loses.",
       },
       {
         href: "/guide/vite-plus",
@@ -54,6 +69,11 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/project",
         title: "Your first project",
         blurb: "From an empty directory to a built site.",
+      },
+      {
+        href: "/guide/migrate",
+        title: "Migrating to uf",
+        blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
       },
     ],
   },
@@ -79,6 +99,11 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/state",
         title: "State",
         blurb: "Atoms are declarations; a store holds the values; React reads them safely.",
+      },
+      {
+        href: "/guide/tui",
+        title: "Terminal UI",
+        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
       },
     ],
   },

@@ -1,7 +1,7 @@
 {
   "name": "@uniflowed/tui",
-  "version": "0.0.0-alpha.5",
-  "description": "Flow declarations for @uniflowed/tui, part of the Unified Toolchain for Flow.",
+  "version": "0.0.0-alpha.6",
+  "description": "A React renderer whose host is a terminal, following OpenTUI, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -11,13 +11,23 @@
     "directory": "packages/tui"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./capability": "./capability.js",
+    "./cells": "./cells.js",
+    "./components": "./components.js",
+    "./diff": "./diff.js",
+    "./keys": "./keys.js",
+    "./layout": "./layout.js",
+    "./terminal": "./terminal.js",
+    "./widths": "./widths.js",
+    "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
+    "*.js",
+    "internal/*.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.5",
-    "@uniflowed/react": "0.0.0-alpha.5"
+    "@uniflowed/react": "0.0.0-alpha.6",
+    "react-reconciler": "^0.33.0"
   }
 }
