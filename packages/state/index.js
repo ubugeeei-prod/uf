@@ -72,7 +72,7 @@ import type {
   SetAction,
 } from "./internal/atom.js";
 import { defineAction, defineAsync, definePrimitive, defineSelector } from "./internal/atom.js";
-import type { Reset, StorageAdapter } from "./internal/composed.js";
+import type { Reset, StorageAdapter, StorageOptions } from "./internal/composed.js";
 import {
   atomWithDefault as composeWithDefault,
   atomWithStorage as composeWithStorage,
@@ -82,7 +82,14 @@ import type { StoreInstance } from "./internal/store.js";
 import { bindCell, createStore as createStoreInstance, defaultStore } from "./internal/store.js";
 import { StoreScope, useStoreInstance } from "./internal/provider.js";
 
-export type { AtomFamily, Reset, StorageAdapter } from "./internal/composed.js";
+export type {
+  AtomFamily,
+  JSONStorageOptions,
+  Reset,
+  StorageAdapter,
+  StorageOptions,
+  StringStorage,
+} from "./internal/composed.js";
 export type {
   AtomMount,
   AtomOptions,
@@ -92,7 +99,7 @@ export type {
 } from "./internal/atom.js";
 export type { Cell, LoadContext, Unsubscribe };
 
-export { atomFamily, RESET } from "./internal/composed.js";
+export { atomFamily, createJSONStorage, RESET } from "./internal/composed.js";
 export { batch } from "@uniflowed/cell";
 
 /**
@@ -301,13 +308,31 @@ export function atomWithDefault<T>(
   return composeWithDefault(getDefault, options);
 }
 
-/** An atom mirrored into a key-value store on every write. */
+/**
+ * An atom mirrored into a key-value store on every write, and read back from
+ * it when a store mounts it.
+ *
+ * ```
+ * const theme = atomWithStorage("theme", "light", createJSONStorage(() => localStorage));
+ * ```
+ *
+ * The read happens on mount rather than when the atom is declared, and that is
+ * the whole difference between a persisted preference that survives hydration
+ * and one that does not: a server renders `initial`, so the first client
+ * render has to be `initial` too, and the stored value arrives immediately
+ * after commit. `options.getOnInit` is for an application with no server
+ * render to agree with.
+ *
+ * Writing [`RESET`] removes the key rather than storing the initial value,
+ * which is the difference between "back to the default" and "persisting the
+ * default forever".
+ */
 export function atomWithStorage<T>(
   key: string,
   initial: T,
-  storage?: StorageAdapter,
-  options?: AtomOptions<T>,
-): Atom<T> {
+  storage?: StorageAdapter<T>,
+  options?: StorageOptions<T>,
+): WritableAtom<T, SetAction<T> | Reset> {
   return composeWithStorage(key, initial, storage, options);
 }
 

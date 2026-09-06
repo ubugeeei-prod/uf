@@ -24,6 +24,7 @@ import {
   atomWithDefault,
   atomWithStorage,
   batch,
+  createJSONStorage,
   createStore,
   getDefaultStore,
   read,
@@ -40,21 +41,39 @@ import {
   write,
 } from "@uniflowed/state";
 
-/** A `StorageAdapter` backed by a map, so the tests need no browser. */
+/**
+ * A `StringStorage` backed by a map, so the tests need no browser.
+ *
+ * It counts its reads, because "when is storage read" is the question the
+ * hydration bug was an answer to and a value assertion cannot see it: a page
+ * that reads storage at import and a page that reads it on mount agree about
+ * every value and disagree about the only thing that matters.
+ */
 function memoryStorage(seed?: { [string]: string }): {
   getItem: (key: string) => null | string,
   setItem: (key: string, value: string) => void,
+  removeItem: (key: string) => void,
   entries: Map<string, string>,
+  reads: () => number,
 } {
   const entries: Map<string, string> = new Map(Object.entries(seed ?? {}));
+  let reads = 0;
   return {
     entries,
-    getItem: (key) => entries.get(key) ?? null,
+    reads: () => reads,
+    getItem: (key) => {
+      reads += 1;
+      return entries.get(key) ?? null;
+    },
     setItem: (key, value) => {
       entries.set(key, value);
     },
+    removeItem: (key) => {
+      entries.delete(key);
+    },
   };
 }
+
 /**
  * A load whose promises the test settles by hand, one per key.
  *
@@ -630,31 +649,164 @@ describe("atomWithDefault", () => {
 });
 
 describe("atomWithStorage", () => {
-  it("is a plain atom when no storage is given", () => {
+  it("behaves the same with no storage, RESET included", () => {
     const theme = atomWithStorage("theme", "light");
+    expect(read(theme)).toBe("light");
+    write(theme, "dark");
+    expect(read(theme)).toBe("dark");
+    write(theme, RESET);
     expect(read(theme)).toBe("light");
   });
 
-  it("starts from what was stored", () => {
+  it("reads nothing when it is declared", () => {
+    // The bug this replaced: `restore(...)` was an argument to the atom, so
+    // the read happened while the module was being evaluated — before any
+    // store existed, before React ran, and before the server's markup could
+    // be disagreed with.
     const storage = memoryStorage({ theme: '"dark"' });
-    expect(read(atomWithStorage("theme", "light", storage))).toBe("dark");
+    atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+    expect(storage.reads()).toBe(0);
+  });
+
+  it("reads nothing for a store that only reads it", () => {
+    const storage = memoryStorage({ theme: '"dark"' });
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+    expect(read(theme)).toBe("light");
+    expect(storage.reads()).toBe(0);
+  });
+
+  it("adopts the stored value when a store mounts it", () => {
+    const storage = memoryStorage({ theme: '"dark"' });
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+    subscribe(theme, () => {});
+    expect(read(theme)).toBe("dark");
+  });
+
+  it("mounts once per store, and each store reads for itself", () => {
+    const storage = memoryStorage({ theme: '"dark"' });
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+    const a = createStore();
+    const b = createStore();
+
+    subscribe(theme, () => {}, a);
+    expect(read(theme, a)).toBe("dark");
+    // The store that has not mounted it is still on the value a server would
+    // have rendered, which is the point of the isolation.
+    expect(read(theme, b)).toBe("light");
+
+    subscribe(theme, () => {}, b);
+    expect(read(theme, b)).toBe("dark");
+    expect(storage.reads()).toBe(2);
+  });
+
+  it("reads on first use rather than on mount when getOnInit is set", () => {
+    const storage = memoryStorage({ theme: '"dark"' });
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+      {
+        getOnInit: true,
+      },
+    );
+    expect(read(theme)).toBe("dark");
+    expect(storage.reads()).toBe(1);
   });
 
   it("writes back on every change", () => {
     const storage = memoryStorage();
-    const theme = atomWithStorage("theme", "light", storage);
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
     write(theme, "dark");
     expect(storage.entries.get("theme")).toBe('"dark"');
   });
 
+  it("takes a reducer over the value it currently shows", () => {
+    const storage = memoryStorage();
+    const count = atomWithStorage(
+      "count",
+      1,
+      createJSONStorage(() => storage),
+    );
+    write(count, (current) => current + 1);
+    expect(read(count)).toBe(2);
+    expect(storage.entries.get("count")).toBe("2");
+  });
+
+  it("removes the key on RESET rather than storing the initial value", () => {
+    // Storing `initial` would leave the key behind, so "clear my preferences"
+    // would persist the absence of a preference and the next schema change
+    // would find it.
+    const storage = memoryStorage();
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+    write(theme, "dark");
+    expect(storage.entries.has("theme")).toBe(true);
+
+    write(theme, RESET);
+    expect(storage.entries.has("theme")).toBe(false);
+    expect(read(theme)).toBe("light");
+  });
+
   it("falls back to the initial value when the stored data is malformed", () => {
     const storage = memoryStorage({ theme: "{not json" });
-    expect(read(atomWithStorage("theme", "light", storage))).toBe("light");
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+    subscribe(theme, () => {});
+    expect(read(theme)).toBe("light");
+  });
+
+  it("falls back to the initial value when revive rejects the stored data", () => {
+    const storage = memoryStorage({ theme: '"solar"' });
+    const themes = ["light", "dark"];
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage, {
+        revive: (raw) => {
+          if (typeof raw !== "string" || !themes.includes(raw)) {
+            throw Error(`not a theme: ${String(raw)}`);
+          }
+          return raw;
+        },
+      }),
+    );
+    subscribe(theme, () => {});
+    expect(read(theme)).toBe("light");
   });
 
   it("persists once for a batch of writes", () => {
     const storage = memoryStorage();
-    const count = atomWithStorage("count", 0, storage);
+    const count = atomWithStorage(
+      "count",
+      0,
+      createJSONStorage(() => storage),
+    );
     batch(() => {
       write(count, 1);
       write(count, 2);
@@ -666,9 +818,82 @@ describe("atomWithStorage", () => {
     // A route handler writes state nobody is rendering. Persistence that
     // lived in a subscription would silently do nothing here.
     const storage = memoryStorage();
-    const seen = atomWithStorage("seen", 0, storage);
+    const seen = atomWithStorage(
+      "seen",
+      0,
+      createJSONStorage(() => storage),
+    );
     write(seen, (current) => current + 1);
     expect(storage.entries.get("seen")).toBe("1");
+  });
+
+  it("takes an outside write through the storage's own subscribe", () => {
+    const storage = memoryStorage({ theme: '"dark"' });
+    // A set rather than one callback: every mounted store subscribes for
+    // itself, under the same key, and a map keyed by the key alone would have
+    // silently kept only the last of them.
+    const outside: Set<(value: string) => void> = new Set();
+    const json = createJSONStorage<string>(() => storage);
+    const theme = atomWithStorage("theme", "light", {
+      getItem: json.getItem,
+      setItem: json.setItem,
+      removeItem: json.removeItem,
+      subscribe: (key, onChange) => {
+        outside.add(onChange);
+        return () => {
+          outside.delete(onChange);
+        };
+      },
+    });
+
+    const a = createStore();
+    const b = createStore();
+    const stop = subscribe(theme, () => {}, a);
+    subscribe(theme, () => {}, b);
+    expect(outside.size).toBe(2);
+
+    for (const onChange of Array.from(outside)) {
+      onChange("solar");
+    }
+    expect(read(theme, a)).toBe("solar");
+    expect(read(theme, b)).toBe("solar");
+
+    // Unmounting takes that store's listener with it, so a store nothing is
+    // rendering stops hearing about a tab it has no part in.
+    stop();
+    expect(outside.size).toBe(1);
+  });
+
+  it("degrades to an unpersisted atom where there is no storage at all", () => {
+    // An edge runtime has no `localStorage`, so the identifier itself is not
+    // defined and evaluating it throws rather than answering `undefined`.
+    const missing = createJSONStorage(() => {
+      throw ReferenceError("localStorage is not defined");
+    });
+    const theme = atomWithStorage("theme", "light", missing);
+    subscribe(theme, () => {});
+    expect(read(theme)).toBe("light");
+    write(theme, "dark");
+    expect(read(theme)).toBe("dark");
+    write(theme, RESET);
+    expect(read(theme)).toBe("light");
+  });
+
+  it("degrades to an unpersisted atom where storage refuses to be written", () => {
+    // Safari in private mode, and a browser with site data blocked.
+    const refuses = createJSONStorage(() => ({
+      getItem: () => null,
+      setItem: () => {
+        throw Error("QuotaExceededError");
+      },
+      removeItem: () => {
+        throw Error("QuotaExceededError");
+      },
+    }));
+    const theme = atomWithStorage("theme", "light", refuses);
+    subscribe(theme, () => {});
+    write(theme, "dark");
+    expect(read(theme)).toBe("dark");
   });
 });
 
@@ -843,6 +1068,60 @@ describe("the React binding, rendered to markup", () => {
     renderToStaticMarkup(<Count />);
     setter((current: number) => current + 5);
     expect(read(count)).toBe(15);
+  });
+});
+
+describe("a persisted atom, from a server render to a client mount", () => {
+  it("renders the same first value on both sides, then adopts the stored one", () => {
+    // The bug, in one test. Storage holds `"dark"`; the server has no
+    // storage and renders `"light"`. If the atom reads storage while the
+    // module is being evaluated, the browser's first render is `"dark"`
+    // against markup that says `"light"` — a hydration mismatch that no
+    // amount of care in `useSyncExternalStore` can undo, because the value
+    // was already wrong before React was called.
+    const storage = memoryStorage({ theme: '"dark"' });
+    const theme = atomWithStorage(
+      "theme",
+      "light",
+      createJSONStorage(() => storage),
+    );
+
+    // Pushed during render, which is a side effect a component may not have —
+    // allowed here because the sequence of rendered values is the assertion,
+    // and there is no other way to see the first one.
+    const rendered = [];
+    component Theme() {
+      const shown = useAtomValue(theme);
+      rendered.push(shown);
+      return <span>{shown}</span>;
+    }
+
+    // The server. Its own store, because a request is not a browser tab.
+    const markup = renderToStaticMarkup(
+      <Provider store={createStore()}>
+        <Theme />
+      </Provider>,
+    );
+    expect(markup).toBe("<span>light</span>");
+    // And it read nothing: a server that reached for `localStorage` would
+    // have thrown rather than mismatched.
+    expect(storage.reads()).toBe(0);
+
+    // The browser, with that markup on screen and this module now evaluated.
+    const { container } = render(
+      <Provider store={createStore()}>
+        <Theme />
+      </Provider>,
+    );
+
+    expect(rendered[0]).toBe("light");
+    // The one that matters: what the client rendered first is what the
+    // server sent.
+    expect(rendered[1]).toBe("light");
+    // And the stored value arrives on the render after the commit.
+    expect(rendered[rendered.length - 1]).toBe("dark");
+    expect(container.textContent).toBe("dark");
+    expect(storage.reads()).toBe(1);
   });
 });
 

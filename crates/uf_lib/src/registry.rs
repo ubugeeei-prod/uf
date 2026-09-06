@@ -397,6 +397,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "atomWithDefault",
                 "atomWithStorage",
                 "batch",
+                "createJSONStorage",
                 "createStore",
                 "getDefaultStore",
                 "read",
