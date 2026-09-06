@@ -23,6 +23,7 @@ export const RESERVED = Object.freeze({
   page: "_uf.page",
   middleware: "_uf.middleware",
   notFound: "_uf.not-found",
+  error: "_uf.error",
   route: "_uf.route",
 });
 
@@ -57,6 +58,38 @@ const MAX_DEPTH = 32;
  */
 
 /**
+ * One not-found boundary — the page a path under `path` gets when nothing
+ * there matched.
+ *
+ * A `_uf.not-found.js` is a segment file like `_uf.layout.js`, so a directory
+ * declares the 404 for everything beneath it and the resolver takes the
+ * nearest one above the path. `layouts` are the layouts in scope *at that
+ * directory*, which is what wraps the boundary when it renders.
+ *
+ * @typedef {object} NotFoundBoundary
+ * @property {string} path route path of the directory that declares it
+ * @property {string} page absolute path of the page module
+ * @property {ReadonlyArray<string>} layouts absolute paths, root first
+ * @property {boolean} mdx whether the page is MDX content
+ */
+
+/**
+ * One error boundary — what renders in place of the subtree under `path` when
+ * something in it throws.
+ *
+ * The same nearest-ancestor shape as a not-found boundary, and deliberately
+ * not the same extensions: an error module is handed an error and a `reset`,
+ * which is a component's contract. `.mdx` compiles to a component that takes
+ * no such thing, so a `_uf.error.mdx` would be a file the router loads and can
+ * never hand its arguments to.
+ *
+ * @typedef {object} ErrorBoundary
+ * @property {string} path route path of the directory that declares it
+ * @property {string} module absolute path of the error module
+ * @property {ReadonlyArray<string>} layouts absolute paths, root first
+ */
+
+/**
  * Scan `appRoot` for routes.
  *
  * Returns routes sorted by path, which is the order `uf_router` uses too.
@@ -64,13 +97,14 @@ const MAX_DEPTH = 32;
  * library project has no router root, and that is not a mistake.
  *
  * @param {string} appRoot absolute path of the router root (`app/`)
- * @returns {Route[]}
+ * @returns {{routes: Route[], handlers: Handler[], notFound: NotFoundBoundary[], errors: ErrorBoundary[]}}
  */
 export function scanRoutes(appRoot) {
   const routes = [];
   const handlers = [];
-  let notFound = null;
-  if (!isDirectory(appRoot)) return { routes, handlers, notFound };
+  const notFound = [];
+  const errors = [];
+  if (!isDirectory(appRoot)) return { routes, handlers, notFound, errors };
 
   const walk = (directory, segments, layouts, middleware, depth) => {
     if (depth > MAX_DEPTH) return;
@@ -105,9 +139,29 @@ export function scanRoutes(appRoot) {
       handlers.push({ path: routePath, pattern, params, module: handler });
     }
 
-    if (depth === 0) {
-      const own = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS);
-      if (own) notFound = { page: own, layouts: nextLayouts, mdx: own.endsWith(".mdx") };
+    // At every depth, not only the root. This read `if (depth === 0)`, so
+    // `app/guide/_uf.not-found.js` was never looked for and a reader who
+    // followed a stale link into the manual was answered by the site's root
+    // 404, outside the manual's own layout. See ubugeeei-prod/uf#263.
+    const ownNotFound = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS);
+    if (ownNotFound) {
+      notFound.push({
+        path: routeFromSegments(segments).path,
+        page: ownNotFound,
+        layouts: nextLayouts,
+        mdx: ownNotFound.endsWith(".mdx"),
+      });
+    }
+
+    // `errors` is the boundaries a project declares, not failures that
+    // happened: one entry per directory holding an `_uf.error.js`.
+    const ownError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS);
+    if (ownError) {
+      errors.push({
+        path: routeFromSegments(segments).path,
+        module: ownError,
+        layouts: nextLayouts,
+      });
     }
 
     for (const entry of entries) {
@@ -129,7 +183,20 @@ export function scanRoutes(appRoot) {
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
   handlers.sort(byPath);
-  return { routes, handlers, notFound };
+  // Sorted by path, not by which is nearest: the resolver picks the longest
+  // path that covers the URL, so it does not depend on this order, and sorting
+  // by nearness would hide that.
+  //
+  // Two boundaries can share a path, because a `(group)` directory is not a URL
+  // segment — `app/_uf.not-found.js` and `app/(marketing)/_uf.not-found.js` are
+  // both at `/`, and the URL cannot say which tree it is in. The sort is stable
+  // and `walk` records a directory's own boundary before descending, so the
+  // shallower file wins, which is the one that is the site's own 404 rather
+  // than one section's idea of it. Letting each group own a boundary needs the
+  // parallel-route trees uf does not have yet; see ubugeeei-prod/uf#267.
+  notFound.sort(byPath);
+  errors.sort(byPath);
+  return { routes, handlers, notFound, errors };
 }
 
 function isDirectory(candidate) {
@@ -195,7 +262,7 @@ export const VIRTUAL = Object.freeze({
  * Layouts are deduplicated into one table so a layout shared by fifty routes
  * is one dynamic import, not fifty.
  *
- * @param {{routes: Route[], notFound: object | null}} table
+ * @param {{routes: Route[], handlers?: Handler[], notFound?: NotFoundBoundary[], errors?: ErrorBoundary[]}} table
  */
 export function routesModuleSource(table) {
   const layoutIds = new Map();
@@ -222,14 +289,32 @@ export function routesModuleSource(table) {
   }`;
   });
 
-  const notFound = table.notFound
-    ? `{
-  mdx: ${table.notFound.mdx},
-  file: ${JSON.stringify(table.notFound.page)},
-  page: () => import(${JSON.stringify(table.notFound.page)}),
-  layouts: [${table.notFound.layouts.map(layoutId).join(", ")}],
-}`
-    : "null";
+  // A list, because a not-found is a segment file: every directory may declare
+  // one and the router takes the nearest above the path. `layoutId` is the
+  // same table the routes use, so a boundary that shares a layout with a page
+  // shares its dynamic import too.
+  const notFoundEntries = (table.notFound ?? []).map(
+    (boundary) => `  {
+    path: ${JSON.stringify(boundary.path)},
+    mdx: ${boundary.mdx},
+    file: ${JSON.stringify(boundary.page)},
+    page: () => import(${JSON.stringify(boundary.page)}),
+    layouts: [${boundary.layouts.map(layoutId).join(", ")}],
+  }`,
+  );
+
+  // An error boundary is loaded with the route it guards rather than when it
+  // is needed: React decides to render a boundary's fallback synchronously,
+  // during the render that threw, so a module that still has to be imported is
+  // a module that is not there when the only chance to use it arrives.
+  const errorEntries = (table.errors ?? []).map(
+    (boundary) => `  {
+    path: ${JSON.stringify(boundary.path)},
+    file: ${JSON.stringify(boundary.module)},
+    module: () => import(${JSON.stringify(boundary.module)}),
+    layouts: [${boundary.layouts.map(layoutId).join(", ")}],
+  }`,
+  );
 
   // Handlers are a separate table because nothing on the client wants them:
   // a route handler answers a request, so shipping its module to the browser
@@ -250,7 +335,12 @@ ${entries.join(",\n")}
 export const handlers = [
 ${handlerEntries.join(",\n")}
 ];
-export const notFound = ${notFound};
+export const notFound = [
+${notFoundEntries.join(",\n")}
+];
+export const errors = [
+${errorEntries.join(",\n")}
+];
 export default routes;
 `;
 }
@@ -264,9 +354,9 @@ export default routes;
  */
 export function clientModuleSource(appEntry) {
   return `import { hydrate } from "@uniflowed/router/client";
-import { routes, notFound } from ${JSON.stringify(VIRTUAL.routes)};
+import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-hydrate({ App, routes, notFound });
+hydrate({ App, routes, notFound, errors });
 `;
 }
 
@@ -275,10 +365,10 @@ hydrate({ App, routes, notFound });
  */
 export function serverModuleSource(appEntry) {
   return `import { createDispatcher, createRenderer } from "@uniflowed/router/server";
-import { routes, handlers, notFound } from ${JSON.stringify(VIRTUAL.routes)};
+import { routes, handlers, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-export { routes, handlers, notFound };
-export const render = createRenderer({ App, routes, notFound });
+export { routes, handlers, notFound, errors };
+export const render = createRenderer({ App, routes, notFound, errors });
 export const dispatch = createDispatcher({ handlers });
 `;
 }

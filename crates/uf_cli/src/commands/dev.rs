@@ -133,6 +133,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             Event::ConfigLoaded { .. }
             | Event::Phase { .. }
             | Event::Page { .. }
+            | Event::PageFailed { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}
         }
