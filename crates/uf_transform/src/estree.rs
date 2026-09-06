@@ -11,7 +11,6 @@
 //! columns count code points instead; [`crate::babel`] recomputes them from
 //! the offsets so every position downstream agrees.
 
-use flow_parser::ParseOptions;
 use flow_parser::estree_translator::{self, Config, OffsetStyle};
 use flow_parser::loc::Loc;
 use flow_parser::offset_utils::{OffsetKind, OffsetTable};
@@ -26,26 +25,16 @@ use crate::TransformError;
 /// scan in uf has an explicit ceiling rather than trusting its input.
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
-/// Parse options aligned with the `uf` project defaults.
+/// The parse options every part of uf uses, re-exported from `uf_flow`.
 ///
-/// Every syntax uf documents is on: components, hooks, enums, pattern
-/// matching, records. Decorators stay off because generated projects never
-/// emit them.
-pub const PARSE_OPTIONS: ParseOptions = ParseOptions {
-    components: true,
-    enums: true,
-    pattern_matching: true,
-    records: true,
-    esproposal_decorators: false,
-    types: true,
-    ambiguous_types: true,
-    enable_types_in_comments: true,
-    use_strict: false,
-    assert_operator: false,
-    module_ref_prefix: None,
-    ambient: false,
-    allow_return_outside_function: false,
-};
+/// This crate used to declare its own literal, equal to `uf_flow`'s member for
+/// member and equal only by coincidence: nothing compared them, and a syntax
+/// the transform accepted and the linter did not would have shown up as a
+/// module that lints clean and fails to load. `uf_flow` owns Flow syntax for
+/// uf, and the options are part of what that means.
+///
+/// `tests/parse_options.rs` is what keeps this a re-export.
+pub use uf_flow::PARSE_OPTIONS;
 
 /// Parse `source` and render it as an ESTree `Program`.
 ///
@@ -71,11 +60,16 @@ pub fn parse(source: &str) -> Result<Value, TransformError> {
         flow_parser::parse_program_without_file(false, None, Some(PARSE_OPTIONS), Ok(source));
 
     if let Some((loc, error)) = errors.first() {
+        // Through `uf_flow` so a module that fails to transform is refused in
+        // the same words `uf check` and `uf lint` refuse it. A construct the
+        // parser does not implement described three ways is three bugs to
+        // report.
+        let (message, start) = uf_flow::explain::explained(source, loc, error.to_string());
         let position = offsets
-            .convert_flow_position_to_js_position(loc.start)
-            .unwrap_or(loc.start);
+            .convert_flow_position_to_js_position(start)
+            .unwrap_or(start);
         return Err(TransformError::Syntax {
-            message: error.to_string(),
+            message,
             line: u32::try_from(position.line).unwrap_or(u32::MAX),
             column: u32::try_from(position.column).unwrap_or(u32::MAX),
         });
@@ -100,6 +94,18 @@ mod tests {
         assert_eq!(body[0]["type"], "ComponentDeclaration");
         assert_eq!(body[0]["params"][0]["type"], "ComponentParameter");
         assert_eq!(program["comments"][0]["type"], "Line");
+    }
+
+    #[test]
+    fn refuses_top_level_await_in_the_same_words_as_the_linter() {
+        // The same module, the same sentence, whichever command reached it.
+        let source = "// @flow\nconst value = await load();\n";
+        let TransformError::Syntax { message, line, .. } = parse(source).unwrap_err() else {
+            panic!("expected a syntax error");
+        };
+        let expected = uf_flow::validate_source(source).unwrap().diagnostics[0].clone();
+        assert_eq!(message, expected.message);
+        assert_eq!(line, expected.line.unwrap());
     }
 
     #[test]

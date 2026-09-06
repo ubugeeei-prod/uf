@@ -91,11 +91,20 @@ export default defineConfig({
     // check in the pipeline.
     //
     // Not in `ci` yet, and the reason is written down rather than left to be
-    // rediscovered: it reports 315 errors today. The largest groups are
-    // `flow/unclear-type` (125), `flow/react-intrinsic-overlap` (89) and
-    // `react/hooks-rules` (86), and each needs looking at on its own terms —
-    // some are real findings in uf's packages, and some are rules that are
-    // wrong the way `flow/ambiguous-object-type` was wrong.
+    // rediscovered: it reports 153 errors and 11 warnings over 280 files.
+    // `flow/unclear-type` is 139 of them — 81 in `tests/library`, 58 in
+    // shipped packages, which are not the same question — and
+    // `react/no-render-side-effects` is 8, all of them `packages/test`'s fake
+    // timers, where a `useX` name that is not a hook is read as one. The rest
+    // are one small fix each. ubugeeei-prod/uf#225 counts them and says what
+    // each group needs.
+    //
+    // The numbers were wrong here for a while, which is its own lesson: this
+    // said 315 errors and named `flow/react-intrinsic-overlap` (89) and
+    // `react/hooks-rules` (86) as the largest groups, and both of those report
+    // nothing at all today — the first is one of sixteen rules that need type
+    // inference uf does not implement yet, so it is skipped rather than
+    // passing.
     "check:lib": {
       command: "./target/release/uf lint",
       dependsOn: ["build"],
@@ -157,6 +166,19 @@ export default defineConfig({
     // The offline half of it: a published package whose dependency is not
     // published resolves to nothing. No network, so `ci` runs it.
     "release:closure": "tools/release/verify-npm.sh --closure-only",
+    // And that a package somebody implemented is on its way to npm at all.
+    // Ten were not, `@uniflowed/state` and `@uniflowed/effect` among them:
+    // about 22,000 lines of Flow that `npm install` answered `ETARGET` for.
+    // A list somebody adds to is a list somebody forgets, so the rule is
+    // stated from the other side — a package that never calls
+    // `nativeRuntimeRequired` has to be named in one of the two manifests.
+    publishable: "tools/ci/publishable.sh",
+    "publishable:test": "tools/ci/test-publishable.sh",
+    // Not in `ci.dependsOn` here, and that is a sequencing detail rather than
+    // an exception: the release branch rewrites that list wholesale to close
+    // an eight-task gap between it and the pipeline, and adding two names to
+    // the old list would conflict with it for nothing. They go in with that
+    // list, which cannot name a task that does not exist yet.
     "install:test": "tools/release/test-install.sh",
     // The bootstrap is run by hand, once, by one person, and every mistake
     // in it costs a round trip and blocks a release. It has cost three, each

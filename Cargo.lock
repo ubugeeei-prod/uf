@@ -3687,6 +3687,7 @@ dependencies = [
  "serde_json",
  "similar-asserts",
  "thiserror",
+ "uf_flow",
  "uf_infra",
 ]
 

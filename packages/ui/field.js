@@ -31,6 +31,8 @@
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useEffect, useId, useMemo, useState } from "@uniflowed/react";
 
+import type { Rest } from "./internal/merge-props.js";
+
 type FieldState = {|
   readonly controlId: string,
   readonly labelId: string,
@@ -66,11 +68,7 @@ hook useField(part: string): FieldState {
  * message is rendered or not, and the control's `aria-describedby` includes the
  * error's id or not.
  */
-export component FieldRoot(
-  children: React.Node,
-  invalid?: boolean = false,
-  ...rest: { readonly [string]: mixed }
-) {
+export component FieldRoot(children: React.Node, invalid?: boolean = false, ...rest: Rest) {
   const base = useId();
   const [hasDescription, setHasDescription] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -105,7 +103,7 @@ export component FieldRoot(
 }
 
 /** The label, pointing at the control by id rather than by nesting. */
-export component FieldLabel(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component FieldLabel(children: React.Node, ...rest: Rest) {
   const field = useField("Field.Label");
   // `rest` first: a caller `id` here would break the relationship the control
   // points at, and it would break it silently.
@@ -121,7 +119,7 @@ export component FieldLabel(children: React.Node, ...rest: { readonly [string]: 
  *
  * See the module header for why this takes a render function.
  */
-export component FieldControl(render: (props: { readonly [string]: mixed }) => React.Node) {
+export component FieldControl(render: (props: Rest) => React.Node) {
   const field = useField("Field.Control");
   return render({
     id: field.controlId,
@@ -132,7 +130,7 @@ export component FieldControl(render: (props: { readonly [string]: mixed }) => R
 }
 
 /** Help text, which the control points at while it is rendered. */
-export component FieldDescription(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component FieldDescription(children: React.Node, ...rest: Rest) {
   const field = useField("Field.Description");
   const register = field.registerDescription;
   useEffect(() => {
@@ -153,7 +151,7 @@ export component FieldDescription(children: React.Node, ...rest: { readonly [str
  * `role="alert"` so it is announced when it appears, which is the point of an
  * error that arrives after a blur or a submit.
  */
-export component FieldError(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component FieldError(children: React.Node, ...rest: Rest) {
   const field = useField("Field.Error");
   const register = field.registerError;
   useEffect(() => {
