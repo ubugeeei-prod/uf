@@ -71,6 +71,8 @@
 // - `menu.js` — the arrow keys, typeahead, submenus and `Escape` stacking.
 // - `combobox.js` — `aria-activedescendant` over a filtered list, and the
 //   count a screen reader is told.
+// - `select.js` — the other half of the combobox pattern: the select-only one,
+//   with typeahead, option groups and a value a form can submit.
 // - `tabs.js` — the roving `tabindex`, and automatic versus manual activation.
 // - `field.js` — the label, description, error and `aria-invalid` wiring.
 // - `switch.js` and `checkbox.js` — the two two-state controls, apart because
@@ -81,14 +83,15 @@
 // is by primitive because that is the unit a reader looks for, the unit a
 // bundler drops, and the unit the WAI-ARIA practices are written in.
 //
-// `internal/` holds three modules and nothing else, each a rule the primitives
+// `internal/` holds four modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
-// last), `controlled-state.js` (what "controlled" means here), and
-// `roving-focus.js` (how a set of items is found and moved between). Each says
-// in its own header why it is unreachable rather than exported. There is no
-// `internal/props.js`-shaped bag of helpers: a module that cannot say what it
-// is about does not belong in this package.
+// last), `controlled-state.js` (what "controlled" means here),
+// `roving-focus.js` (how a set of items is found and moved between), and
+// `form-value.js` (what a `<form>` submits for a control the browser has never
+// heard of). Each says in its own header why it is unreachable rather than
+// exported. There is no `internal/props.js`-shaped bag of helpers: a module
+// that cannot say what it is about does not belong in this package.
 
 import { Checkbox } from "./checkbox.js";
 import {
@@ -123,6 +126,17 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "./menu.js";
+import {
+  SelectGroup,
+  SelectGroupLabel,
+  SelectLabel,
+  SelectList,
+  SelectOption,
+  SelectRoot,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "./select.js";
 import { Switch } from "./switch.js";
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
 
@@ -256,4 +270,42 @@ export const Combobox = {
   Option: ComboboxOption,
   Empty: ComboboxEmpty,
   Status: ComboboxStatus,
+};
+
+/**
+ * The other half of the combobox pattern: a button, a list, and no typing.
+ *
+ * Use a native `<select>` when a native `<select>` will do — `select.js` says
+ * so first and means it. This is for the popup a `<select>` cannot draw.
+ *
+ *   <Select.Root defaultValue="GB" name="country">
+ *     <Select.Label>Country</Select.Label>
+ *     <Select.Trigger>
+ *       <Select.Value placeholder="Choose one" />
+ *     </Select.Trigger>
+ *     <Select.List>
+ *       <Select.Group>
+ *         <Select.GroupLabel>Europe</Select.GroupLabel>
+ *         <Select.Option value="GB">United Kingdom</Select.Option>
+ *         <Select.Option value="FR">France</Select.Option>
+ *       </Select.Group>
+ *       <Select.Separator />
+ *       <Select.Option value="JP">Japan</Select.Option>
+ *     </Select.List>
+ *   </Select.Root>
+ *
+ * `Select.Label` names the field and `Select.GroupLabel` names a group of
+ * options. shadcn has one `SelectLabel` and it is the second of those; a select
+ * needs both, so they are two parts here.
+ */
+export const Select = {
+  Root: SelectRoot,
+  Label: SelectLabel,
+  Trigger: SelectTrigger,
+  Value: SelectValue,
+  List: SelectList,
+  Option: SelectOption,
+  Group: SelectGroup,
+  GroupLabel: SelectGroupLabel,
+  Separator: SelectSeparator,
 };

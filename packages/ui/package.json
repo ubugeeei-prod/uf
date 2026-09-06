@@ -17,6 +17,7 @@
     "./dialog": "./dialog.js",
     "./field": "./field.js",
     "./menu": "./menu.js",
+    "./select": "./select.js",
     "./switch": "./switch.js",
     "./tabs": "./tabs.js"
   },

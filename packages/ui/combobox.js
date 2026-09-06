@@ -68,6 +68,7 @@ import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { FormValue } from "./internal/form-value.js";
 
 const OPTION_SELECTOR = '[role="option"]';
 const LISTBOX_SELECTOR = '[role="listbox"]';
@@ -123,6 +124,14 @@ hook useCombobox(part: string): ComboboxState {
  * `open` is whether the list is showing. A search box owns the text and nothing
  * else; a form field owns the value; a page with a "browse all" button owns
  * `open`. Tying them together would make two of those three impossible.
+ *
+ * `name` is what a form submits, and it exists because that same distinction
+ * had a hole in it. `Combobox.Input` renders the *text* — the label the reader
+ * sees — so a combobox named `country` inside a `<form>` submitted "United
+ * Kingdom" where the application meant `GB`, silently and only in production.
+ * Given a `name`, the root renders a hidden control carrying `value` instead;
+ * `internal/form-value.js` says why it is an `<input>` and why
+ * `@uniflowed/form` does not need it.
  */
 export component ComboboxRoot(
   children: React.Node,
@@ -135,6 +144,7 @@ export component ComboboxRoot(
   open?: boolean,
   defaultOpen?: boolean = false,
   onOpenChange?: (open: boolean) => void,
+  name?: string,
   ...rest: Rest
 ) {
   const base = useId();
@@ -191,7 +201,10 @@ export component ComboboxRoot(
 
   return (
     <ComboboxContext.Provider value={state}>
-      <div {...rest}>{children}</div>
+      <div {...rest}>
+        {children}
+        {name == null ? null : <FormValue name={name} value={chosen} />}
+      </div>
     </ComboboxContext.Provider>
   );
 }

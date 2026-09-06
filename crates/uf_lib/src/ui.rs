@@ -191,9 +191,28 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Viewport", "Scrollbar"],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/select.js`: the ARIA 1.2 *select-only*
+        // combobox, the other half of the pattern `Combobox` implements.
+        //
+        // `List` and `Option` rather than `Body` and `Item`, for the reason
+        // `Tabs` gives below — the shipped parts are named after the ARIA roles
+        // they render — and because a reader who has met `Combobox.List` and
+        // `Combobox.Option` should not have to learn two names for the same
+        // listbox. `Label` names the field and `GroupLabel` names a group of
+        // options; shadcn has one `SelectLabel` and it is the second of those.
         UiComponent::new(
             "Select",
-            &["Root", "Trigger", "Body", "Item", "Value"],
+            &[
+                "Root",
+                "Label",
+                "Trigger",
+                "Value",
+                "List",
+                "Option",
+                "Group",
+                "GroupLabel",
+                "Separator",
+            ],
             UiRuntime::Client,
         ),
         UiComponent::new("Separator", &["Root"], UiRuntime::Server),

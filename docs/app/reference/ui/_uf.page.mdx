@@ -1,0 +1,235 @@
+---
+title: "Components · uf"
+---
+
+<p className="eyebrow">Reference</p>
+
+# Components
+
+<div className="lede">
+`@uniflowed/ui` ships behaviour and no styles. Every part takes `className` and
+every other DOM prop and passes it through; what it contributes is the keyboard
+map and the screen-reader wiring, which is the half that does not show up in a
+screenshot and the half that is missing from almost every hand-written
+component.
+</div>
+
+Each primitive implements the WAI-ARIA authoring practices pattern for it — the
+roles, the `aria-*` wiring, the focus management and the whole keyboard map.
+Each module's header says which interaction it exists to get right and what a
+naive version breaks; this page is the shorter version.
+
+```js
+// @flow
+import { Select } from "@uniflowed/ui";
+// or, to import only what you use:
+import { SelectRoot } from "@uniflowed/ui/select";
+```
+
+## What ships
+
+| Component | Pattern | Module |
+| --- | --- | --- |
+| `Dialog` | Modal dialog: focus trap, focus restore, scroll lock | `dialog.js` |
+| `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking | `menu.js` |
+| `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter | `combobox.js` |
+| `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
+| `Tabs` | Tabs: a roving `tabindex`, automatic or manual activation | `tabs.js` |
+| `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
+| `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
+
+Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
+`<button>` in a tab list is a *type error* rather than a review comment;
+`Menu.Body` and `Select.List` state the same constraint about what may appear
+inside a menu and a listbox, which ARIA also requires and which nothing else
+checks.
+
+## Select
+
+A button that opens a list of options and takes one of them — the *select-only*
+combobox of ARIA 1.2, where `Combobox` is the editable one.
+
+```js
+<Select.Root defaultValue="GB" name="country">
+  <Select.Label>Country</Select.Label>
+  <Select.Trigger>
+    <Select.Value placeholder="Choose one" />
+  </Select.Trigger>
+  <Select.List>
+    <Select.Group>
+      <Select.GroupLabel>Europe</Select.GroupLabel>
+      <Select.Option value="GB">United Kingdom</Select.Option>
+      <Select.Option value="FR">France</Select.Option>
+    </Select.Group>
+    <Select.Separator />
+    <Select.Option value="JP">Japan</Select.Option>
+  </Select.List>
+</Select.Root>
+```
+
+### Use a native `<select>` if a native `<select>` will do
+
+That is the recommendation and not a disclaimer. A `<select>` is announced
+correctly by software this package has never been tested against, is a wheel
+the thumb already knows on a phone, autofills, and validates. Nothing here
+improves on it.
+
+What it cannot do is be styled. Its popup is drawn by the operating system, so
+an option cannot hold an icon, a second line, a shortcut or a checkmark. A
+design that needs any of those has two options — this pattern, or a `div` with
+a click handler that no keyboard reaches. `Select` is the first one, done
+properly: `role="combobox"` on the trigger, typeahead, and the arrow keys
+moving a cursor a screen reader is told about.
+
+### Parts
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Select.Root` | `div` | `value`, `open`, `name`, `disabled`. Controlled the moment you pass `value` or `open` |
+| `Select.Label` | `label` | Names the field. Without it the trigger has no accessible name at all |
+| `Select.Trigger` | `button role="combobox"` | `aria-haspopup="listbox"`, `aria-expanded`, `aria-activedescendant` |
+| `Select.Value` | `span` | What the trigger shows for the current value |
+| `Select.List` | `div role="listbox"` | In the document only while open |
+| `Select.Option` | `div role="option"` | `value`, optional `label`, `disabled` |
+| `Select.Group` | `div role="group"` | Named by its `Select.GroupLabel`, and only when one is rendered |
+| `Select.GroupLabel` | `div role="presentation"` | Names a group of options |
+| `Select.Separator` | `div aria-hidden` | A rule between groups. Decoration, so it says so |
+
+`Select.Label` names the field and `Select.GroupLabel` names a group of
+options. shadcn has one `SelectLabel` and it is the second of those; a select
+needs both.
+
+`Select.Label` is a real `<label htmlFor>` *and* the trigger's
+`aria-labelledby`, and the second one is not redundant. `role="combobox"` is not
+a role that takes its name from its own content, and a `<label for>` does not
+name a `<button>` either — so a select with only the label is a combobox
+announced as "combobox" and nothing else, while looking correct in the markup.
+
+### The keyboard
+
+Focus never leaves the trigger. The arrow keys move `aria-activedescendant`, a
+second cursor naming which option is current, which is how a screen reader is
+told the option changed — a highlight drawn in CSS moves the same pixels and
+says nothing.
+
+| Key | Closed | Open |
+| --- | --- | --- |
+| `ArrowDown` / `ArrowUp` | Open, cursor on the chosen option or the first / last | Move the cursor. Does not wrap |
+| `Home` / `End` | Open, cursor on the first / last option | Cursor to the first / last option |
+| `Enter`, `Space` | Open | Take the option under the cursor, close |
+| `Alt+ArrowDown` | Open with no cursor | — |
+| `Alt+ArrowUp` | — | Take the option under the cursor, close |
+| `Escape` | Passes through, so a dialog around it still closes | Close, changing nothing |
+| `Tab` | Moves on | Take the option under the cursor, then move on |
+| A letter | Open, cursor on the first match | Move the cursor to the match |
+
+Two of those differ from `Combobox` on purpose, and the pair is the clearest
+statement of why there are two components:
+
+- **`Home` and `End`.** A combobox leaves them to the text cursor, because a
+  combobox that steals them has made its own text field harder to edit than a
+  plain `<input>`. A select has no text, so they go to the ends of the list.
+- **`Tab`.** A combobox closes without taking the highlight: the reader typed
+  something, the highlight is a suggestion about text they still own, and
+  committing it turns "leave this field" into an edit. A select has nothing
+  typed and nothing to lose, so moving the cursor *is* the act of choosing, and
+  APG's rule for this pattern is that `Tab` takes it.
+
+Moving the cursor does not change the value. A native `<select>` on Windows does
+the opposite, and copying it would fire your `onValueChange` — and with it your
+validation, your form store or your server mutation — once per arrow press.
+
+### What a form submits
+
+Give `Select.Root` a `name` and it renders a hidden control carrying the
+**value**:
+
+```js
+<form action={save}>
+  <Select.Root name="country">…</Select.Root>
+</form>
+```
+
+Without a `name` nothing is submitted, which is right for a select that drives a
+filter. With one, the entry carries `GB` and not "United Kingdom" — the bug this
+exists for, since a `div` wearing an ARIA role is not one of a form's listed
+elements and a form collected nothing at all for it. A disabled select submits
+nothing, as a native `<select disabled>` does. `Combobox.Root` takes the same
+`name` and does the same thing, for the same reason: `Combobox.Input` renders
+the label, which is not the value.
+
+It is an `<input type="hidden">` rather than a concealed `<select>` on purpose.
+A real `<select>` is focusable, so a reader tabbing in hears the styled combobox
+and then a second, invisible one with the same options; `aria-hidden` on a
+focusable element is itself the violation it would be reached for to avoid. Two
+things are given up with it, and both are written down rather than hidden: the
+browser will not autofill a hidden input, and `required` gets no native
+constraint validation. The second is not a loss here — the browser reports a
+constraint failure by focusing the control and drawing a bubble at it, and on a
+control with no box it refuses to submit the form with nothing shown to the
+reader — so a headless select's `required` belongs to `@uniflowed/validator`,
+with the message in `Field.Error`.
+
+### With `@uniflowed/form`
+
+No `name`, and no import in either direction. That library keeps its values in
+its own store and prevents the native submission, so it never builds a
+`FormData` and never sees the hidden control. The binding is `useController`,
+whose own header names this exact case:
+
+```js
+// @flow
+import { useController } from "@uniflowed/form";
+import { Select } from "@uniflowed/ui";
+
+component CountryField(control: Control<Values>) {
+  const { field } = useController({ control, name: "country" });
+  return (
+    <Select.Root onValueChange={field.onChange} value={field.value}>
+      <Select.Label>Country</Select.Label>
+      <Select.Trigger>
+        <Select.Value placeholder="Choose one" />
+      </Select.Trigger>
+      <Select.List>…</Select.List>
+    </Select.Root>
+  );
+}
+```
+
+### What `Select.Value` shows
+
+In order: its own `children` if you passed any; the label of the option with
+that value, learned from the options themselves and remembered after the list
+closes; the value itself; the `placeholder` when nothing is chosen at all.
+
+The third of those is a boundary worth knowing about. A select whose value
+arrived from outside — a `defaultValue` from a saved form — has no option
+rendered for it until the list has been opened once, so the trigger shows `GB`
+rather than "United Kingdom". That is wrong and true; showing the placeholder
+there would be wrong and confident, telling a reader nothing is chosen when
+something is. Pass `children` to say what the value is called:
+
+```js
+<Select.Value placeholder="Choose one">{COUNTRIES[value]}</Select.Value>
+```
+
+### Not shipped, and why
+
+shadcn's Select has `ScrollUpButton` and `ScrollDownButton`. Both exist to
+scroll a popup that Radix positions and sizes; this package positions nothing,
+so a scroll button here would be a `button` with no idea what to scroll. The
+behaviour they are actually for — the cursor staying visible as the arrow keys
+move it — is already in the component, as the `scrollIntoView({ block:
+"nearest" })` every move performs, and it works inside your own scroll
+container without either button.
+
+## What this page is
+
+A reference for what `@uniflowed/ui` guarantees, not a gallery. The guarantees
+are stated as tests in `tests/library/ui.test.js`, where every assertion is
+either "a reader is told X" or "this key does Y" — a snapshot of the markup
+would pass while every one of them was broken.
+
+Sections for `Dialog`, `Menu`, `Combobox`, `Tabs`, `Field`, `Switch` and
+`Checkbox` are still to be written; until they are, each module's header is the
+documentation, and it is written to be read.

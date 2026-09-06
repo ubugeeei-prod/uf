@@ -21,8 +21,16 @@ import path from "node:path";
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { describe, expect, fn, it } from "@uniflowed/test";
-import { act, fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
-import { Checkbox, Combobox, Dialog, Field, Menu, Switch, Tabs } from "@uniflowed/ui";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  within,
+} from "@uniflowed/react-testing";
+import { Checkbox, Combobox, Dialog, Field, Menu, Select, Switch, Tabs } from "@uniflowed/ui";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -1267,6 +1275,591 @@ describe("Combobox: the active option never outlives the list", () => {
   });
 });
 
+describe("Select", () => {
+  component Example(defaultValue?: string | null = null, disabledOption?: string) {
+    return (
+      <Select.Root defaultValue={defaultValue}>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option disabled={disabledOption === "FR"} value="FR">
+            France
+          </Select.Option>
+          <Select.Option disabled={disabledOption === "DE"} value="DE">
+            Germany
+          </Select.Option>
+          <Select.Option disabled={disabledOption === "JP"} value="JP">
+            Japan
+          </Select.Option>
+          <Select.Option disabled={disabledOption === "UY"} value="UY">
+            Uruguay
+          </Select.Option>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  /** The keyboard path into the list, which is what most of these are about. */
+  const openFromTheKeyboard = async () => {
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}");
+  };
+
+  /** What `aria-activedescendant` currently names, read the way a reader is told it. */
+  const cursor = (): string | void =>
+    document.getElementById(
+      screen.getByRole("combobox").getAttribute("aria-activedescendant") ?? "",
+    )?.textContent ?? undefined;
+
+  it("announces itself as a combobox with a listbox, and never as a text field", () => {
+    render(<Example />);
+    const trigger = screen.getByRole("combobox");
+    // The two halves of the pattern differ here and nowhere more visibly: the
+    // editable one is a text field the reader types in, and this one is a
+    // button. A select announced as a textbox invites a reader to type into
+    // something that will never take a character.
+    expect(screen.queryByRole("textbox")).toBe(null);
+    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+    expect(screen.queryByRole("listbox")).toBe(null);
+  });
+
+  it("takes its name from its label and leaves its own content to be the value", async () => {
+    render(<Example />);
+    // `role="combobox"` is not a role that takes its name from its content, and
+    // a `<label for>` does not name a `<button>` either — so without the
+    // `aria-labelledby` this is a combobox announced as "combobox" and nothing
+    // else, while looking perfectly correct in the markup.
+    expect(screen.getByRole("combobox", { name: "Country" })).toBeInTheDocument();
+    await openFromTheKeyboard();
+    const list = screen.getByRole("listbox");
+    expect(document.getElementById(list.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Country",
+    );
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("opens on Enter, on Space and on ArrowDown", async () => {
+    for (const key of ["{Enter}", " ", "{ArrowDown}"]) {
+      render(<Example />);
+      screen.getByRole("combobox").focus();
+      await userEvent.keyboard(key);
+      expect(screen.getByRole("combobox")).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it("closes on Escape without changing the selection", async () => {
+    render(<Example defaultValue="DE" />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}");
+    // The cursor has moved off Germany, and Escape must not take what it is on.
+    expect(cursor()).toBe("Japan");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Germany");
+  });
+
+  it("keeps focus on the trigger and moves a second cursor", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    // The same promise `Combobox` makes and for the same reason: a highlight
+    // drawn in CSS moves the same pixels and tells a screen reader nothing.
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    expect(cursor()).toBe("France");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    expect(cursor()).toBe("Germany");
+  });
+
+  it("goes to an option by typing its first letters", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("ur");
+    // The key every hand-written select leaves out, and the one that makes a
+    // list of two hundred countries usable at all.
+    expect(cursor()).toBe("Uruguay");
+  });
+
+  it("opens the list and goes there when the first letter arrives closed", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("j");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("jumps to the first and last option with Home and End", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{End}");
+    // The exact inverse of the Combobox, which leaves both keys to the text
+    // cursor. The pair of tests is the clearest statement of why there are two
+    // components rather than one with a flag.
+    expect(cursor()).toBe("Uruguay");
+    await userEvent.keyboard("{Home}");
+    expect(cursor()).toBe("France");
+  });
+
+  it("opens onto the option already chosen", async () => {
+    render(<Example defaultValue="JP" />);
+    await openFromTheKeyboard();
+    // A list of two hundred countries opened onto "Afghanistan" when the reader
+    // had already chosen Zimbabwe is a list they arrow through twice.
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("answers Home and End with a position rather than with the selection", async () => {
+    render(<Example defaultValue="JP" />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{End}");
+    // Those two keys name a position, and answering "the last one" with "the
+    // one you already chose" is not an answer to the question that was asked.
+    expect(cursor()).toBe("Uruguay");
+  });
+
+  it("stops at the ends rather than wrapping", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(cursor()).toBe("Uruguay");
+    await userEvent.keyboard("{ArrowDown}");
+    // A native menu cycles and a native select stops; the reader's expectation
+    // comes from the platform control the widget imitates, which is why this
+    // differs from `menu.js` on purpose.
+    expect(cursor()).toBe("Uruguay");
+  });
+
+  it("takes the option under the cursor on Enter and closes", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Germany");
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
+  it("takes the option under the cursor on Tab and moves on", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}");
+    // The opposite of what `Combobox` does with this key, and deliberately.
+    // There is nothing typed here to lose: moving the cursor *is* the act of
+    // choosing, and a select that discarded it on Tab would be the only select
+    // on the machine that did. Not prevented, so focus still moves on.
+    expect(fireEvent.keyDown(screen.getByRole("combobox"), { key: "Tab" })).toBe(true);
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Germany");
+  });
+
+  it("moving the cursor does not change the value", async () => {
+    const onValueChange = fn();
+    render(
+      <Select.Root onValueChange={onValueChange}>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+          <Select.Option value="DE">Germany</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}{ArrowUp}{ArrowDown}");
+    // Selection-follows-focus is what a native select does on Windows, and
+    // copying it here would fire the caller's validation, form store or server
+    // mutation once per arrow press.
+    expect(onValueChange.mock.calls.length).toBe(0);
+    await userEvent.keyboard("{Enter}");
+    expect(onValueChange.mock.calls.length).toBe(1);
+  });
+
+  it("marks the chosen option as selected", async () => {
+    render(<Example defaultValue="JP" />);
+    await openFromTheKeyboard();
+    expect(screen.getByRole("option", { name: "Japan" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: "France" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
+
+  it("steps over a disabled option and still announces it", async () => {
+    render(<Example disabledOption="DE" />);
+    await openFromTheKeyboard();
+    // Announced, not removed: a reader can tell the option exists and is
+    // unavailable, rather than finding a gap where it used to be.
+    expect(screen.getByRole("option", { name: "Germany" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await userEvent.keyboard("{ArrowDown}");
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("opens with no cursor at all on Alt+ArrowDown", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown", altKey: true });
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    // Looking at the options is not the same as moving among them.
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+  });
+
+  it("takes an option that is clicked and leaves focus on the trigger", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.click(screen.getByRole("option", { name: "Uruguay" }));
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Uruguay");
+    // Without the option's `pointerdown` guard the trigger blurs, and the next
+    // keystroke arrives at the document instead of at this widget.
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
+  it("closes on a press outside it", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("listbox")).toBe(null);
+  });
+
+  it("never names an option that has left the list", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    expect(screen.getByRole("combobox")).toHaveAttribute("aria-activedescendant");
+    await userEvent.keyboard("{Escape}");
+    // Closed, the cursor names nothing: an `aria-activedescendant` pointing at
+    // an id that has left the document makes a reader hear nothing where it
+    // used to hear the current option.
+    expect(screen.getByRole("combobox")).not.toHaveAttribute("aria-activedescendant");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Select.Trigger>orphan</Select.Trigger>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Select.Trigger must be rendered inside a Select.Root");
+  });
+});
+
+describe("Select: what the trigger shows for a value", () => {
+  component Example(defaultValue?: string | null = null) {
+    return (
+      <Select.Root defaultValue={defaultValue}>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="GB">United Kingdom</Select.Option>
+          <Select.Option value="JP">Japan</Select.Option>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  it("shows the placeholder while nothing is chosen", () => {
+    render(<Example />);
+    expect(screen.getByRole("combobox").textContent).toBe("Choose one");
+  });
+
+  it("keeps showing the option's own text after the list has closed", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    // The options are unmounted with the list, which is exactly when the
+    // trigger needs to say what the value is called. A registry that forgot on
+    // unmount would blank the trigger the instant the reader chose something.
+    expect(screen.queryByRole("option")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("United Kingdom");
+  });
+
+  it("shows the value itself for an option it has never rendered", () => {
+    render(<Example defaultValue="JP" />);
+    // The documented boundary: a value that arrived from outside, for a list
+    // that has not been opened. "JP" is wrong and true; the placeholder there
+    // would be wrong and confident, telling a reader nothing is chosen when
+    // something is. `Select.Value`'s children are the way out.
+    expect(screen.getByRole("combobox").textContent).toBe("JP");
+  });
+
+  it("lets the caller say what a value is called", () => {
+    render(
+      <Select.Root defaultValue="JP">
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one">Japan</Select.Value>
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="JP">Japan</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    expect(screen.getByRole("combobox").textContent).toBe("Japan");
+  });
+});
+
+describe("Select: option groups", () => {
+  component Example() {
+    return (
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Group>
+            <Select.GroupLabel>Europe</Select.GroupLabel>
+            <Select.Option value="FR">France</Select.Option>
+            <Select.Option value="DE">Germany</Select.Option>
+          </Select.Group>
+          <Select.Separator />
+          <Select.Group>
+            <Select.GroupLabel>Asia</Select.GroupLabel>
+            <Select.Option value="JP">Japan</Select.Option>
+          </Select.Group>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  const openFromTheKeyboard = async () => {
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}");
+  };
+
+  const cursor = (): string | void =>
+    document.getElementById(
+      screen.getByRole("combobox").getAttribute("aria-activedescendant") ?? "",
+    )?.textContent ?? undefined;
+
+  it("names a group after its label", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    const [europe, asia] = screen.getAllByRole("group");
+    expect(document.getElementById(europe.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Europe",
+    );
+    expect(document.getElementById(asia.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Asia",
+    );
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("claims no name when there is no label", async () => {
+    render(
+      <Select.Root defaultOpen>
+        <Select.Trigger>
+          <Select.Value />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Group>
+            <Select.Option value="FR">France</Select.Option>
+          </Select.Group>
+        </Select.List>
+      </Select.Root>,
+    );
+    // An `aria-labelledby` naming an id nothing has makes a screen reader
+    // announce nothing at all, which is worse than an unnamed group.
+    expect(screen.getByRole("group")).not.toHaveAttribute("aria-labelledby");
+  });
+
+  it("crosses group boundaries without ever landing on a label", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    expect(cursor()).toBe("France");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    // Straight from the last option of one group to the first of the next,
+    // over the label and the separator between them.
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("keeps the rule between groups out of the accessibility tree", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    // The one place this differs from `Menu.Separator`. A `listbox` may own
+    // `option` and `group` and nothing else, so a `role="separator"` inside one
+    // is a child ARIA does not allow; the rule is decoration and says so.
+    expect(screen.queryByRole("separator")).toBe(null);
+    expect(screen.getAllByRole("option").length).toBe(3);
+  });
+});
+
+describe("what a form submits for a control the browser has never heard of", () => {
+  /**
+   * Submit the form in `container` and hand back what it carried for `field`.
+   *
+   * The entry list is built inside the `submit` handler, which is where a
+   * Server Action or a `fetch` of the form would build it, and from the
+   * document's own `FormData` rather than the global one — the suite runs on
+   * Node, whose `FormData` has no constructor that takes an element, and the
+   * document is happy-dom's.
+   */
+  const submitted = (container: mixed, field: string): mixed => {
+    let carried: mixed = null;
+    const form: $FlowFixMe = (container as $FlowFixMe).querySelector("form");
+    const FormData: $FlowFixMe = form.ownerDocument.defaultView.FormData;
+    form.addEventListener("submit", (event: $FlowFixMe) => {
+      event.preventDefault();
+      carried = new FormData(form).get(field);
+    });
+    fireEvent.submit(form);
+    return carried;
+  };
+
+  it("submits the value and not the label", () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB" name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // The bug this exists for: the reader chose "United Kingdom" and the server
+    // was waiting for `GB`. A `div` wearing a role is not a listed element, so
+    // a form collected nothing at all for it until there was a control to find.
+    expect(submitted(container, "country")).toBe("GB");
+  });
+
+  it("submits what the reader chose, not what it started as", async () => {
+    const { container } = render(
+      <form>
+        <Select.Root name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+            <Select.Option value="JP">Japan</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(submitted(container, "country")).toBe("JP");
+  });
+
+  it("carries the field even when the reader chose nothing", () => {
+    const { container } = render(
+      <form>
+        <Select.Root name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // A key missing from the payload and a key present and empty are different
+    // questions to a server, and this is the second one.
+    expect(submitted(container, "country")).toBe("");
+  });
+
+  it("submits nothing for a select nobody named", () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // A select driving a filter has nothing to submit, and a field the caller
+    // never named is not one this package should invent.
+    expect(submitted(container, "country")).toBe(null);
+  });
+
+  it("submits nothing for a select that is disabled", () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB" disabled name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // What a native `<select disabled>` does, and what a caller who disabled
+    // the widget expects.
+    expect(submitted(container, "country")).toBe(null);
+  });
+
+  it("submits the combobox's value and not the text in its field", async () => {
+    const { container } = render(
+      <form>
+        <Combobox.Root defaultOpen name="country">
+          <Combobox.Label>Country</Combobox.Label>
+          <Combobox.Input />
+          <Combobox.List>
+            <Combobox.Option value="GB">United Kingdom</Combobox.Option>
+          </Combobox.List>
+        </Combobox.Root>
+      </form>,
+    );
+    await userEvent.click(screen.getByRole("option", { name: "United Kingdom" }));
+    // The field now reads "United Kingdom", which is the label. The same hole
+    // as the Select's and the same answer.
+    expect(screen.getByRole("combobox")).toHaveValue("United Kingdom");
+    expect(submitted(container, "country")).toBe("GB");
+  });
+
+  it("never puts a second combobox in the accessibility tree", () => {
+    render(
+      <form>
+        <Select.Root defaultValue="GB" name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // The reason the hidden control is an `<input type="hidden">` and not a
+    // concealed `<select>`: a real one is focusable, so a reader tabbing in
+    // hears the styled combobox and then a second, invisible one with the same
+    // options — and `aria-hidden` on a focusable element is itself the
+    // violation it was reached for to avoid.
+    expect(screen.getAllByRole("combobox").length).toBe(1);
+    expect(screen.queryAllByRole("listbox").length).toBe(0);
+  });
+});
+
 describe("one Escape is one dismissal", () => {
   it("closes a menu inside a dialog without closing the dialog", async () => {
     render(
@@ -1307,6 +1900,35 @@ describe("one Escape is one dismissal", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).toBe(null);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("closes a select's list inside a dialog without closing the dialog", async () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Body>
+          <Dialog.Title>Settings</Dialog.Title>
+          <Select.Root>
+            <Select.Label>Theme</Select.Label>
+            <Select.Trigger>
+              <Select.Value placeholder="Choose one" />
+            </Select.Trigger>
+            <Select.List>
+              <Select.Option value="light">Light</Select.Option>
+            </Select.List>
+          </Select.Root>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}{Escape}");
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // And the second Escape, with the list already closed, belongs to the
+    // dialog: a select that swallowed it would trap a reader who opened a list
+    // by accident inside a modal they now cannot dismiss.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
   });
 });
 
@@ -1531,6 +2153,48 @@ describe("caller props never disable the component", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(theirs.mock.calls.length).toBe(1);
     expect(input).toHaveAttribute("aria-activedescendant");
+  });
+
+  it("keeps the select's keys when the caller passes onKeyDown", async () => {
+    const theirs = fn();
+    render(
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger onKeyDown={theirs}>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps the select's trigger findable when the caller passes a ref", async () => {
+    const seen = { current: null };
+    render(
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger ref={seen}>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    // The caller's ref is set too, not instead: the component's own copy is
+    // what an option's click restores focus to, and a replaced one would leave
+    // the reader's next keystroke arriving at the document.
+    expect(seen.current).toBe(screen.getByRole("combobox"));
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.click(screen.getByRole("option", { name: "France" }));
+    expect(screen.getByRole("combobox")).toHaveFocus();
   });
 
   it("keeps the field's ids authoritative", () => {
