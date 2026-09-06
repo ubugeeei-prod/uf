@@ -43,12 +43,101 @@ export type FieldValues = { readonly [string]: mixed, ... };
  * A dotted path from the root of the values, e.g. `"items.2.quantity"`.
  *
  * A `string`, and deliberately not a type derived from the shape of the values.
- * Flow has no template-literal types, so there is no honest way to spell
- * "a path that exists in `TValues`" — and a type that only *looks* like it
- * checks paths would be worse than one that admits it does not. See the
- * package's `index.js` for what this costs and what is typed instead.
+ * Flow has no template-literal types, so there is no honest way to spell "a
+ * dotted path that exists in `TValues`" — and a type that only *looks* like it
+ * checks paths would be worse than one that admits it does not.
+ *
+ * This stays the storage key and the wire format: it is what `register` gives
+ * an input as its `name`, what an error is keyed by, and what a field array
+ * rewrites. What it is *not* any more is the only way to address a field —
+ * see [`FieldSegment`], and `index.js` for what each form is checked for.
  */
 export type FieldPath = string;
+
+/**
+ * A path given as its segments, rather than as one dotted string.
+ *
+ * `"items.2.quantity"` cannot be checked against the shape of the values, and
+ * that is a fact about template literal types. `["items", 2, "quantity"]` is a
+ * different question, and Flow answers it: a generic bounded by the keys of the
+ * object it indexes resolves, and composes to the next segment. The whole of
+ * the typed half of this package's API is that observation, applied at a depth.
+ */
+export type FieldSegments = $ReadOnlyArray<string | number>;
+
+/**
+ * What may follow `TNode` in a path: an index if it is a list, a key if not.
+ *
+ * The conditional is load-bearing rather than decorative. `$Keys<Array<Row>>`
+ * is not "a number" — it reports *an index signature declaring the expected key
+ * / value type is missing in array type*, because an array's keys are not what
+ * `$Keys` is about. One line tells the two cases apart and every array index in
+ * a path works from there.
+ */
+export type FieldSegment<TNode> = TNode extends $ReadOnlyArray<mixed> ? number : $Keys<TNode>;
+
+/**
+ * What one segment of a path lands on, given what the one before it landed on.
+ *
+ * `TNode[TSegment]` on its own would be the whole of this, and it cannot be
+ * used: the type is also instantiated with `TSegment` still abstract — once per
+ * branch of [`ValueAtPath`], while checking the `useWatch` that returns it — and
+ * an abstract segment is `unknown`, which is not a key of anything. Flow
+ * evaluates the branch anyway and reports *Cannot instantiate $ElementType
+ * because unknown is incompatible with string* against the declaration rather
+ * than against any call. Both conditionals here exist to stop that.
+ *
+ * The first is the array case, which has to be answered before the key case for
+ * the reason [`FieldSegment`] gives. The second turns "not a key of this" from
+ * an error into `mixed` — which is what makes the abstract instantiation quiet,
+ * and what makes a misspelt segment degrade rather than explode. A misspelt
+ * segment is still caught: `mixed` is refused wherever the value is used at a
+ * type. It is caught one step later than [`FieldSegment`]'s bound catches it,
+ * and `watch.js` says why the two differ.
+ */
+type StepInto<TNode, TSegment> = TNode extends $ReadOnlyArray<infer TItem>
+  ? TItem
+  : TSegment extends $Keys<TNode>
+    ? TNode[TSegment & string]
+    : mixed;
+
+/**
+ * The type held at `TPath` within `TValues`, to a depth of four.
+ *
+ * Written out per length rather than recursively, and the reason is a defect
+ * rather than a preference: a recursive conditional over a tuple —
+ * `TPath extends [infer K, ...infer Rest]` — binds `K` as `unknown` and `Rest`
+ * as the whole array widened, which is ubugeeei-prod/uf#300. So the variadic
+ * version is blocked, not impossible in principle, and this is what can be
+ * written until it is fixed.
+ *
+ * Four segments reaches `items.0.tags.0`. A fifth is `mixed`, which is what the
+ * dotted form gives everywhere and is the floor this degrades to rather than an
+ * error. That is why the last branch exists: a path past the cap has to keep
+ * *working*.
+ */
+export type ValueAtPath<TValues, TPath> = TPath extends [infer K1]
+  ? StepInto<TValues, K1>
+  : TPath extends [infer K1, infer K2]
+    ? StepInto<StepInto<TValues, K1>, K2>
+    : TPath extends [infer K1, infer K2, infer K3]
+      ? StepInto<StepInto<StepInto<TValues, K1>, K2>, K3>
+      : TPath extends [infer K1, infer K2, infer K3, infer K4]
+        ? StepInto<StepInto<StepInto<StepInto<TValues, K1>, K2>, K3>, K4>
+        : mixed;
+
+/**
+ * The dotted path a list of segments addresses.
+ *
+ * The inverse of [`segmentsOf`], and the reason the typed API needs no second
+ * store: a segment list is turned into the string every other module in this
+ * package already understands, at the one boundary where it arrives. `2` and
+ * `"2"` become the same path, which is what makes `["items", 2, "quantity"]`
+ * and `"items.2.quantity"` address the same field.
+ */
+export function pathOf(segments: FieldSegments): FieldPath {
+  return segments.join(".");
+}
 
 const SEGMENTS: Map<string, $ReadOnlyArray<string>> = new Map();
 
