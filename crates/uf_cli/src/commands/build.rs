@@ -395,7 +395,7 @@ fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagno
 
     for group in group_by_module(diagnostics) {
         let module = group[0].module().to_string();
-        let source = fs::read_to_string(root.join(module.as_str())).unwrap_or_default();
+        let source = diagnostic_source(root, &module, &group);
         let lines: Vec<&str> = source.lines().collect();
         let errors = group
             .iter()
@@ -447,6 +447,47 @@ fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagno
 /// the order the modules were reached, and re-sorting would lose that for no
 /// gain — the reason a module is in the client graph at all is the module
 /// before it.
+/// The source of `module`, when reading it is both any use and inside the
+/// project.
+///
+/// Two conditions, and they are not the same question asked twice.
+///
+/// *Any use*: a code frame needs a line to underline, and `line() == 0` is how
+/// a diagnostic says it has none. Reading a file to throw it away is only
+/// wasted work — except that the one variant with no line is
+/// `ModulePathOutsideProject`, whose `module` is by definition a path
+/// `is_inside_project` has just rejected: absolute, climbing out with `..`, or
+/// carrying a drive letter or a URL scheme.
+///
+/// *Inside the project*: `Utf8Path::join` with an absolute right-hand side
+/// *replaces* the root rather than extending it. So `root.join(module)` for
+/// that same diagnostic resolved to the outside path itself, the file was read,
+/// and — because `line().saturating_sub(1)` is `0` for a line of `0` —
+/// `lines.get(0)` put its first line into the build output. The diagnostic
+/// whose entire content is "this path is not in your project" was the one that
+/// made uf read it.
+///
+/// Lexical, and deliberately not `canonicalize`: the check is about what `join`
+/// does with the string, the scanner produces relative paths and does not
+/// follow symlinks (`collect_module_paths`), and a `stat` per module to
+/// re-establish something already true by construction would buy nothing. This
+/// is the belt on top of the braces, and it costs no syscall.
+///
+/// An empty string means "no source line", which is what the reporter already
+/// does with a file that has since moved: the header and the message still
+/// print. A diagnostic about a module's *content* must not be lost because the
+/// file could not be read.
+fn diagnostic_source(root: &Utf8Path, module: &str, group: &[&RscDiagnostic]) -> String {
+    if group.iter().all(|diagnostic| diagnostic.line() == 0) {
+        return String::new();
+    }
+    let path = Utf8Path::new(module);
+    if path.is_absolute() || path.components().any(|part| part.as_str() == "..") {
+        return String::new();
+    }
+    fs::read_to_string(root.join(path)).unwrap_or_default()
+}
+
 fn group_by_module(diagnostics: &[RscDiagnostic]) -> Vec<Vec<&RscDiagnostic>> {
     let mut groups: Vec<Vec<&RscDiagnostic>> = Vec::new();
     for diagnostic in diagnostics {
@@ -531,4 +572,75 @@ fn enforce_budgets(ui: &mut Ui, report: &BundleReport, budgets: &BundleBudgets) 
         "bundle size exceeded {}",
         plural(outcome.violations.len(), "budget")
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `ClientOnlyApiInServerModule` for `module` at `line`, which is the
+    /// ordinary shape: a diagnostic that points somewhere.
+    fn positioned(module: &str, line: u32) -> RscDiagnostic {
+        RscDiagnostic::ClientOnlyApiInServerModule {
+            module: Utf8PathBuf::from(module),
+            api: "localStorage",
+            line,
+            column: 3,
+        }
+    }
+
+    #[test]
+    fn a_diagnostic_with_a_line_gets_its_source() {
+        let root = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(root.path()).unwrap();
+        fs::write(root.join("page.js"), "// @flow\nlocalStorage.clear();\n").unwrap();
+
+        let diagnostic = positioned("page.js", 2);
+        let source = diagnostic_source(root, "page.js", &[&diagnostic]);
+
+        assert!(source.contains("localStorage.clear();"), "{source:?}");
+    }
+
+    #[test]
+    fn a_diagnostic_with_no_line_reads_nothing() {
+        // `ModulePathOutsideProject` is the only variant whose `line()` is `0`,
+        // and it is also the only one whose `module` is a path the graph has
+        // *rejected* — so this is not merely an optimisation. Without the skip,
+        // `root.join(module)` on an absolute path drops the root entirely,
+        // `line.saturating_sub(1)` is `0`, and `lines.get(0)` puts the first
+        // line of somebody else's file into the build output.
+        let outside = tempfile::tempdir().unwrap();
+        let outside = Utf8Path::from_path(outside.path()).unwrap();
+        let secret = outside.join("elsewhere.txt");
+        fs::write(&secret, "the first line of a file uf was not asked about\n").unwrap();
+
+        let root = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(root.path()).unwrap();
+
+        let diagnostic = RscDiagnostic::ModulePathOutsideProject {
+            module: secret.clone(),
+        };
+        let source = diagnostic_source(root, secret.as_str(), &[&diagnostic]);
+
+        assert_eq!(source, "", "a diagnostic with no line read a file anyway");
+    }
+
+    #[test]
+    fn a_module_path_that_climbs_out_of_the_project_reads_nothing() {
+        // The same hole reached the other way, and with a line on it so the
+        // skip above cannot be what closes it. `RscGraphBuilder` keeps a
+        // caller-supplied path, and a relative one that climbs is still
+        // outside.
+        let outside = tempfile::tempdir().unwrap();
+        let outside = Utf8Path::from_path(outside.path()).unwrap();
+        fs::write(outside.join("elsewhere.txt"), "not this project's\n").unwrap();
+        let root = outside.join("project");
+        fs::create_dir_all(&root).unwrap();
+
+        let module = "../elsewhere.txt";
+        let diagnostic = positioned(module, 1);
+        let source = diagnostic_source(&root, module, &[&diagnostic]);
+
+        assert_eq!(source, "", "a climbing module path read a file anyway");
+    }
 }
