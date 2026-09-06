@@ -52,6 +52,16 @@ export type RoleOptions = {|
   readonly name?: Matcher,
   /** `false` matches a substring of the name. Defaults to `true`. */
   readonly exact?: boolean,
+  /**
+   * `true` also returns what the accessibility tree does not expose.
+   *
+   * Defaults to `false`, which is the question a role query is asking. The
+   * other question — "is it in the document at all" — is a real one, and this
+   * is how a test says it means that one.
+   */
+  readonly hidden?: boolean,
+  /** The level a heading is announced at. Only a heading has one. */
+  readonly level?: number,
 |};
 
 /**
@@ -113,7 +123,29 @@ export function allByText(
 
 /** Elements with this ARIA role, whether written down or implied by the tag. */
 export function allByRole(root: Element, role: string, options?: RoleOptions): Array<Element> {
-  const found = candidates(root, "*").filter((element) => roleOf(element) === role);
+  const level = options?.level;
+  if (level != null && role !== "heading") {
+    // Refused rather than ignored. An option a query accepts and does nothing
+    // with turns a test into a decoration: it reads as if it checks the thing
+    // it was written for and checks nothing.
+    throw new Error(
+      `getByRole("${role}", { level }): a level narrows a heading, and this query asked for "${role}"`,
+    );
+  }
+
+  // Elements the accessibility tree does not expose are dropped, because a
+  // role query asks what a reader is told and those are told to nobody: a
+  // closed accordion panel, a `display: none` menu, the page behind an open
+  // dialog. Returning them made "is this announced" unaskable, which is the
+  // one thing the query is for.
+  let found = candidates(root, "*").filter(
+    (element) => roleOf(element) === role && (options?.hidden === true || exposed(element)),
+  );
+
+  if (level != null) {
+    found = found.filter((element) => headingLevel(element) === level);
+  }
+
   const name = options?.name;
   if (name == null) {
     return found;
@@ -121,6 +153,78 @@ export function allByRole(root: Element, role: string, options?: RoleOptions): A
   return found.filter((element) =>
     matches(accessibleName(element), element, name, { exact: options?.exact ?? true }),
   );
+}
+
+/**
+ * Whether the accessibility tree exposes this element.
+ *
+ * Up the ancestors, because each of these hides a subtree: an element under a
+ * `display: none` parent is announced by nobody however plain its own style
+ * is.
+ *
+ * `packages/test/internal/expect.js` carries a walk that looks like this one
+ * and answers a different question. `toBeVisible` asks whether a reader would
+ * *see* the element, so it counts `opacity: 0` as hidden — and a screen reader
+ * announces an element at zero opacity, which is exactly why hiding text that
+ * way is a bug rather than a technique. The two rules part company there, and
+ * a role query wants this one. `aria-hidden` is the mirror image: the element
+ * is on the screen and out of the tree.
+ *
+ * `hidden` is taken in every spelling, `hidden="until-found"` included. That
+ * one applies `content-visibility: hidden`, whose subtree is not in the
+ * accessibility tree; find-in-page being able to reach it does not make it
+ * announced, and a closed accordion panel is the case that raised this.
+ */
+function exposed(element: Element): boolean {
+  let child: Element | null = null;
+  let current: Element | null = element;
+  while (current != null) {
+    if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
+      return false;
+    }
+    // A closed `<details>` renders its summary and nothing else, so the
+    // summary is still announced and everything beside it is not — the half
+    // that a walk looking only at the ancestor gets wrong.
+    if (
+      child != null &&
+      current.tagName.toLowerCase() === "details" &&
+      !current.hasAttribute("open") &&
+      child.tagName.toLowerCase() !== "summary"
+    ) {
+      return false;
+    }
+    const style = current.ownerDocument?.defaultView?.getComputedStyle?.(current);
+    if (style != null && (style.display === "none" || style.visibility === "hidden")) {
+      return false;
+    }
+    child = current;
+    current = current.parentElement;
+  }
+  return true;
+}
+
+/**
+ * The level a heading is announced at, or `null` when it has none.
+ *
+ * `aria-level` first, because the ARIA attribute overrides what the host
+ * language implies: `<h2 aria-level="4">` is a level four heading. Then the
+ * tag. Then two, which is what browsers fall back to when `role="heading"` is
+ * written without the `aria-level` ARIA requires with it — an authoring
+ * mistake, and a query has to answer the way a reader would be told rather
+ * than the way the author meant.
+ *
+ * `null` for an `aria-level` that is not a whole number of at least one, which
+ * is what ARIA says the value is. A level of "big" is not a level, and
+ * matching nothing says so.
+ */
+function headingLevel(element: Element): number | null {
+  const written = element.getAttribute("aria-level");
+  if (written != null && written.trim() !== "") {
+    const level = Number(written);
+    return Number.isInteger(level) && level >= 1 ? level : null;
+  }
+  const tag = element.tagName.toLowerCase();
+  return tag.length === 2 && tag[0] === "h" && tag[1] >= "1" && tag[1] <= "6" ? Number(tag[1]) : 2;
 }
 
 /** Form controls labelled by this text. */

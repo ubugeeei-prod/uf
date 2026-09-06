@@ -227,6 +227,133 @@ describe("queries", () => {
   });
 });
 
+describe("a role query and the accessibility tree", () => {
+  it("leaves out what the hidden attribute takes out of the tree", () => {
+    render(
+      <div>
+        <section aria-label="open">shown</section>
+        <section aria-label="closed" hidden>
+          gone
+        </section>
+      </div>,
+    );
+    expect(
+      screen.getAllByRole("region").map((region) => region.getAttribute("aria-label")),
+    ).toEqual(["open"]);
+  });
+
+  it("hands the hidden one back to a test that says it means the document", () => {
+    render(
+      <section aria-label="closed" hidden>
+        gone
+      </section>,
+    );
+    expect(screen.queryByRole("region")).toBe(null);
+    expect(screen.getByRole("region", { hidden: true })).toBeInTheDocument();
+  });
+
+  it('reads hidden="until-found" as hidden, which is what a closed panel uses', () => {
+    // The case from #323: an accordion keeps its closed panels in the document
+    // so that find-in-page can reach the prose in them, and a reader is still
+    // not told about them — `content-visibility: hidden` is not in the
+    // accessibility tree, and being findable is not being announced.
+    //
+    // Set on the element rather than written in the JSX, because React cannot
+    // say it: `hidden` is one of its boolean attributes, so the string is
+    // truthy and truthy is all it keeps. `packages/ui`'s `useUntilFound`
+    // upgrades the attribute in an effect for exactly this reason, so this is
+    // the shape the DOM is really in.
+    const { container } = render(<section aria-label="panel">gone</section>);
+    const panel: $FlowFixMe = container.querySelector("section");
+    panel.setAttribute("hidden", "until-found");
+
+    expect(screen.queryByRole("region")).toBe(null);
+    expect(screen.getByRole("region", { hidden: true })).toBe(panel);
+  });
+
+  it("leaves out an aria-hidden subtree, which is the page behind a dialog", () => {
+    render(
+      <div>
+        <div aria-hidden="true">
+          <button type="button">behind</button>
+        </div>
+        <div role="dialog">
+          <button type="button">in front</button>
+        </div>
+      </div>,
+    );
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["in front"]);
+  });
+
+  it("leaves out what a display:none ancestor hides", () => {
+    render(
+      <div style={{ display: "none" }}>
+        <button type="button">press</button>
+      </div>,
+    );
+    expect(screen.queryByRole("button")).toBe(null);
+  });
+
+  it("keeps a closed details' summary and leaves out the rest of it", () => {
+    component Disclosure(open: boolean) {
+      return (
+        <details open={open}>
+          <summary>
+            <span aria-label="chevron" role="img" />
+            more
+          </summary>
+          <button type="button">inside</button>
+        </details>
+      );
+    }
+    render(<Disclosure open={false} />);
+    // The summary is what a closed disclosure renders, so it is the one part
+    // still announced — a rule about the ancestor alone would lose it too.
+    expect(screen.getByRole("img", { name: "chevron" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "inside" })).toBe(null);
+
+    cleanup();
+    render(<Disclosure open={true} />);
+    expect(screen.getByRole("button", { name: "inside" })).toBeInTheDocument();
+  });
+
+  it("finds a heading by its level, and not one at another level", () => {
+    render(
+      <div>
+        <h2>Two</h2>
+        <h3>Three</h3>
+      </div>,
+    );
+    // The assertion #323 was filed for: this used to return every heading
+    // whichever level was asked for, so it passed against the `<h2>`.
+    expect(screen.getByRole("heading", { level: 3 }).textContent).toBe("Three");
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Two");
+    expect(screen.queryByRole("heading", { level: 4 })).toBe(null);
+  });
+
+  it("takes the level from aria-level, which overrides the tag", () => {
+    render(<h2 aria-level={4}>Four</h2>);
+    expect(screen.getByRole("heading", { level: 4 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2 })).toBe(null);
+  });
+
+  it("reads a role=heading with no aria-level as level two, as a browser does", () => {
+    render(<div role="heading">titled</div>);
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("titled");
+  });
+
+  it("refuses a level on a role that has none, rather than ignoring it", () => {
+    render(<button type="button">Save</button>);
+    let message = "";
+    try {
+      screen.getByRole("button", { level: 3 });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("a level narrows a heading");
+  });
+});
+
 describe("fireEvent", () => {
   it("dispatches an event React hears", () => {
     render(<Counter />);
