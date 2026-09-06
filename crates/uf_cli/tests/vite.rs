@@ -9,6 +9,11 @@
 //! The tests skip, loudly, when Node or the workspace's `node_modules` are
 //! absent, so a checkout that never ran `npm ci` still passes `cargo test`
 //! and a CI runner that forgot to will say so rather than silently cover less.
+//!
+//! One test here never reaches Vite:
+//! [`a_contract_violation_fails_the_build_before_vite_runs`]. It belongs with
+//! the others because what it asserts about is `uf build`, and because the
+//! phase it asserts about is the one that decides whether Vite runs at all.
 
 mod support;
 
@@ -291,6 +296,69 @@ console.log(JSON.stringify({{
     assert!(
         !shipped.contains("uf-fixture-session"),
         "the middleware reached the client bundle"
+    );
+}
+
+/// A module that breaks the RSC contract fails the build, and says how.
+///
+/// `uf build` ran the analysis, got back typed diagnostics with a severity of
+/// `error`, printed how many there were — `rsc diagnostics  5`, on this
+/// repository's own documentation site — and exited 0, with the messages in a
+/// JSON file nobody reads. See ubugeeei-prod/uf#281.
+///
+/// The build stops before Vite, so this test needs neither Node nor the
+/// workspace: the phase under test is the one that decides whether the bundle
+/// is worth building.
+#[test]
+fn a_contract_violation_fails_the_build_before_vite_runs() {
+    let mut files = minimal_app();
+    // A page is a Server Component by classification, and `localStorage` is
+    // the browser's. `remember` is never called while the page renders, on
+    // purpose: a violation that also crashes the prerender would fail the
+    // build anyway, and this test would pass without reporting anything. This
+    // one is exactly the case that used to succeed — measured on the pinned
+    // `main` binary: `rsc diagnostics  1`, `✓ build succeeded`, exit 0.
+    files[2] = (
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport function remember(slug: string): void {\n  localStorage.setItem(\"last-seen\", slug);\n}\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
+    );
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "a build with an RSC contract violation must fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for expected in [
+        "app/_uf.page.js",
+        "rsc/client-only-api-in-server",
+        "uses client-only `localStorage`",
+        "React Server Components contract violation",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    // The count in the summary is what this used to be, and a build that
+    // failed after bundling would have printed the summary anyway.
+    assert!(
+        !said.contains("rsc diagnostics"),
+        "the build reached its summary despite a contract violation:\n{said}"
+    );
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "the build prerendered a page despite a contract violation"
     );
 }
 

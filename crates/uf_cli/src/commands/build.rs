@@ -4,8 +4,11 @@
 //! JavaScript host (see [`super::vite`]): a client bundle, a server bundle,
 //! and every static route prerendered to HTML. uf's own phases run around it:
 //! the config, the route table and its generated types, the server-component
-//! analysis, and — once Vite has written `dist/` — the shipped-size report and
-//! the budgets it enforces.
+//! analysis and its diagnostics, and — once Vite has written `dist/` — the
+//! shipped-size report and the budgets it enforces.
+//!
+//! Two of those phases can fail the build: an RSC contract violation, before
+//! Vite runs, and a bundle-size budget, after it.
 
 use std::fs;
 
@@ -19,11 +22,15 @@ use uf_bundle::{
 };
 use uf_config::load_config;
 use uf_router::{Route, discover_routes, write_router_manifest};
-use uf_rsc::{BuildId, ProjectScanOptions, analyze_project};
-use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
+use uf_rsc::{BuildId, ProjectScanOptions, RscDiagnostic, RscSeverity, analyze_project};
+use uf_term::{
+    Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, PhaseTimer, Status, Table, Tone, Tree,
+    format_duration,
+};
 
+use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
-use crate::support::{plural, project_label, relative_to, write_json_file};
+use crate::support::{plural, problem_summary, project_label, relative_to, write_json_file};
 use crate::ui::Ui;
 
 /// How many assets `--size-report` names before the list is cut off.
@@ -65,6 +72,29 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
             &ProjectScanOptions::default(),
         )
     })?;
+
+    // Before Vite, not after: a module that breaks the RSC contract is not
+    // going to be fixed by bundling it, and a build that spends thirty seconds
+    // on the bundle before saying so is thirty seconds of the wrong answer.
+    // The count in the summary below is what this used to be — `rsc
+    // diagnostics 5`, exit 0, and the messages in a JSON file nobody reads.
+    // See ubugeeei-prod/uf#281.
+    if !rsc.graph.diagnostics().is_empty() {
+        progress.finish();
+        render_rsc_diagnostics(ui, &root, rsc.graph.diagnostics());
+        if rsc.graph.has_errors() {
+            let errors = rsc
+                .graph
+                .diagnostics()
+                .iter()
+                .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
+                .count();
+            bail!(
+                "{}",
+                plural(errors, "React Server Components contract violation")
+            );
+        }
+    }
 
     progress.tick("resolving the JavaScript host");
     let host = resolve_host(&resolved.config)?;
@@ -273,6 +303,92 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)
+}
+
+/// Print the RSC analysis's diagnostics, grouped by module.
+///
+/// The same shape `uf lint` and `uf check` print — a path, then a code frame
+/// per diagnostic — because a person should not have to learn two diagnostic
+/// formats to read two of uf's commands. `uf_rsc` accumulates violations as
+/// typed data precisely so that a reporter can be written once against them,
+/// and until now none had been: the build turned the whole list into
+/// `diagnostics.len()` and printed the number.
+///
+/// A module that cannot be read still gets its header and its message, with no
+/// source line under it. That is a diagnostic about the module's *content*,
+/// so refusing to report it because the file has since moved would lose the
+/// finding to a race.
+fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagnostic]) {
+    ui.render(|renderer, out| {
+        renderer.blank(out);
+    });
+
+    for group in group_by_module(diagnostics) {
+        let module = group[0].module().to_string();
+        let source = fs::read_to_string(root.join(module.as_str())).unwrap_or_default();
+        let lines: Vec<&str> = source.lines().collect();
+        let errors = group
+            .iter()
+            .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
+            .count();
+        let header = problem_summary(errors, group.len() - errors);
+        let rendered: Vec<(DiagnosticLevel, &'static str, String, usize, usize)> = group
+            .iter()
+            .map(|diagnostic| {
+                let level = match diagnostic.severity() {
+                    RscSeverity::Error => DiagnosticLevel::Error,
+                    RscSeverity::Warn => DiagnosticLevel::Warning,
+                };
+                (
+                    level,
+                    diagnostic.rule(),
+                    diagnostic.to_string(),
+                    diagnostic.line() as usize,
+                    diagnostic.column() as usize,
+                )
+            })
+            .collect();
+
+        ui.render(|renderer, out| {
+            renderer.theme().path.paint(renderer.color(), &module, out);
+            out.push_str("  ");
+            renderer.theme().muted.paint(renderer.color(), &header, out);
+            out.push('\n');
+            renderer.blank(out);
+
+            for (level, rule, message, line, column) in &rendered {
+                let mut frame =
+                    CodeFrame::new(*level, message, &module, *line, *column).with_rule(rule);
+                if let Some(source_line) = lines.get(line.saturating_sub(1)).copied() {
+                    frame = frame
+                        .with_source_line(source_line)
+                        .with_span(identifier_span(source_line, *column));
+                }
+                renderer.code_frame_at(out, &frame, 2);
+                renderer.blank(out);
+            }
+        });
+    }
+}
+
+/// The diagnostics of one module at a time, in the order they were found.
+///
+/// Grouped rather than sorted: `uf_rsc` returns them in graph order, which is
+/// the order the modules were reached, and re-sorting would lose that for no
+/// gain — the reason a module is in the client graph at all is the module
+/// before it.
+fn group_by_module(diagnostics: &[RscDiagnostic]) -> Vec<Vec<&RscDiagnostic>> {
+    let mut groups: Vec<Vec<&RscDiagnostic>> = Vec::new();
+    for diagnostic in diagnostics {
+        match groups
+            .iter_mut()
+            .find(|group| group[0].module() == diagnostic.module())
+        {
+            Some(group) => group.push(diagnostic),
+            None => groups.push(vec![diagnostic]),
+        }
+    }
+    groups
 }
 
 /// Attribute the client entry to every route.
