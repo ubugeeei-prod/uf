@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { emit, errorEvent, eventLogger } from "./internal/events.js";
+import { emit, errorEvent, eventLogger, reportRenderError } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
@@ -181,6 +181,7 @@ async function dev() {
       }
 
       const result = await entry.render(url, assets);
+      if (result.error != null) reportRenderError(server, url, result.error);
       const html = await server.transformIndexHtml(url, result.html);
       response.statusCode = result.status ?? 200;
       response.setHeader("content-type", "text/html; charset=utf-8");
@@ -324,8 +325,34 @@ async function build() {
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
   const assets = assetsFromManifest(manifest);
   const pages = await staticPaths(server.routes);
+
+  // A route that throws fails *that route*, and the rest of the build still
+  // happens. This loop had no `try`: the first page to throw rejected out of
+  // `build()`, `run().catch` reported the exception, and which URL was being
+  // rendered was a local variable nobody could see. One broken page was the
+  // whole build, and the message named a stack rather than a route.
+  //
+  // The render itself no longer throws for an ordinary component failure —
+  // `createRenderer` renders the error boundary and reports the exception on
+  // the result — so both are checked here. Neither writes a file: an error
+  // page written into `dist/` is a build that shipped its own failure.
+  const failures = [];
+  const failed = (url, error) => {
+    failures.push(url);
+    emit("page-failed", { url, ...errorEvent(error) });
+  };
   for (const url of pages) {
-    const result = await server.render(url, assets);
+    let result;
+    try {
+      result = await server.render(url, assets);
+    } catch (error) {
+      failed(url, error);
+      continue;
+    }
+    if (result.error != null) {
+      failed(url, result.error);
+      continue;
+    }
     const file = htmlPathFor(outDir, url);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, result.html);
@@ -336,7 +363,17 @@ async function build() {
       bytes: Buffer.byteLength(result.html),
     });
   }
-  if (server.notFound != null) {
+  // One `404.html`, from the boundary at the router root: a static host serves
+  // a single error document for the whole site, so the nested boundaries a
+  // project declares are the server's and the client's to render, not
+  // something this loop can write a file for.
+  //
+  // The condition is "there is a root boundary", not "there is any boundary",
+  // because `/__uf_not_found__` is a path at the root: a project whose only
+  // `_uf.not-found.js` is in `app/guide/` would otherwise get a `404.html`
+  // rendered from the framework's bare default, which is worse than the file
+  // it used to write, which was none.
+  if (server.notFound.some((boundary) => boundary.path === "/")) {
     const result = await server.render("/__uf_not_found__", assets);
     const file = path.join(outDir, "404.html");
     writeFileSync(file, result.html);
@@ -348,8 +385,30 @@ async function build() {
     });
   }
 
+  if (failures.length > 0) {
+    // Emitted rather than thrown, so the message is the routes and not the
+    // last exception: each one has already been reported with its own frame.
+    //
+    // The first line stands on its own, because it is the one `uf build` uses
+    // as the headline and the one a CI log's last line will be. It read
+    // `... failed:` with the routes below it, and the headline was then a
+    // sentence ending in a colon and nothing.
+    emit("error", {
+      message: `${failures.length} of ${pages.length} prerendered ${plural(
+        pages.length,
+        "route",
+      )} failed\n${failures.map((url) => `  ${url}`).join("\n")}`,
+    });
+    process.exit(1);
+  }
+
   emit("done", { outDir: path.relative(root, outDir), pages: pages.length });
   process.exit(0);
+}
+
+/** `word`, pluralised for `count`. */
+function plural(count, word) {
+  return count === 1 ? word : `${word}s`;
 }
 
 async function printConfig() {

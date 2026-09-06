@@ -21,8 +21,13 @@ export async function hydrate(options: {|
   readonly App: React.ComponentType<AppProps>,
   readonly routes: RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
+  readonly errors: RouteTable["errors"],
 |}): Promise<void> {
-  const table: RouteTable = { routes: options.routes, notFound: options.notFound };
+  const table: RouteTable = {
+    routes: options.routes,
+    notFound: options.notFound,
+    errors: options.errors,
+  };
   installRoutes(table);
 
   const url = window.location.pathname + window.location.search;

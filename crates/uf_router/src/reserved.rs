@@ -25,6 +25,11 @@
 //! uses for its 404 page. `every_name_the_build_router_reserves_is_a_role`
 //! reads that table now, which is the part that was missing: a rule that both
 //! files must agree, enforced by neither, is a comment.
+//!
+//! [`ReservedRole::Error`] is the first role added since, and it is what those
+//! tests are for: a role here that the build router does not scan for, or a
+//! name there this enum does not know, now fails by name rather than becoming
+//! the next thing nobody noticed.
 
 use std::str::FromStr;
 
@@ -43,6 +48,21 @@ pub enum ReservedRole {
     /// it and rendered like one — except that no path leads to it, which is
     /// why it is not one of [`route_parts`](ReservedRole::route_parts).
     NotFound,
+    /// Renders in place of a subtree that threw.
+    ///
+    /// One role rather than three. `forbidden` and `unauthorized` were the
+    /// obvious alternative — Next.js has a file for each, and uf already has
+    /// `not-found` as a role of its own, which argues the same way — and it is
+    /// the wrong shape here. A `not-found` is a *page*: a 404 is an ordinary
+    /// answer a site gives, reached by a URL that matched nothing. An `error`
+    /// is the unhappy path, and 401, 403 and 500 differ only in why the
+    /// subtree stopped. Three files per segment to say three sentences about
+    /// one thing is what the union in `@uniflowed/router`'s `RouteError`
+    /// replaces, and `match` over it is checked where three files are not.
+    ///
+    /// It is not one of [`route_parts`](ReservedRole::route_parts): it renders
+    /// *instead* of a route, never as part of one.
+    Error,
     /// Answers a request instead of rendering a page.
     Route,
     /// Names a rendered state of a component, for `@uniflowed/story`.
@@ -58,6 +78,7 @@ impl ReservedRole {
             Self::Page => "page",
             Self::Middleware => "middleware",
             Self::NotFound => "not-found",
+            Self::Error => "error",
             Self::Route => "route",
             Self::Story => "story",
         }
@@ -71,12 +92,13 @@ impl ReservedRole {
     /// Two `all` in one module meaning two different things is the drift this
     /// module exists to prevent, one level up.
     #[must_use]
-    pub const fn all() -> [Self; 6] {
+    pub const fn all() -> [Self; 7] {
         [
             Self::Layout,
             Self::Page,
             Self::Middleware,
             Self::NotFound,
+            Self::Error,
             Self::Route,
             Self::Story,
         ]
@@ -85,8 +107,9 @@ impl ReservedRole {
     /// The roles a rendered route is built from.
     ///
     /// A `route` answers a request rather than rendering, a `story` names a
-    /// state of a component, and a `not-found` is reached by no path — so none
-    /// of the three composes a route, though all three are reserved names.
+    /// state of a component, a `not-found` is reached by no path, and an
+    /// `error` renders instead of the route rather than as part of it — so
+    /// none of the four composes a route, though all four are reserved names.
     #[must_use]
     pub const fn route_parts() -> [Self; 3] {
         [Self::Layout, Self::Page, Self::Middleware]
@@ -102,6 +125,7 @@ impl FromStr for ReservedRole {
             "page" => Ok(Self::Page),
             "middleware" => Ok(Self::Middleware),
             "not-found" => Ok(Self::NotFound),
+            "error" => Ok(Self::Error),
             "route" => Ok(Self::Route),
             "story" => Ok(Self::Story),
             _ => Err(()),
@@ -303,6 +327,32 @@ mod tests {
             !ReservedRole::route_parts().contains(&ReservedRole::NotFound),
             "no path leads to a not-found page, so no route is built from one"
         );
+    }
+
+    #[test]
+    fn an_error_file_is_reserved_and_is_not_part_of_a_route() {
+        // One role for 401, 403 and 500, not three files per segment; see
+        // `ReservedRole::Error`. `_uf.forbidden.js` and `_uf.unauthorized.js`
+        // are therefore names uf does not define, and the linter says so.
+        assert_eq!(recognized("_uf.error.js").role, ReservedRole::Error);
+        assert_eq!(
+            recognized("_uf.error.native.js").variant,
+            ReservedVariant::Native
+        );
+        assert!(
+            !ReservedRole::route_parts().contains(&ReservedRole::Error),
+            "an error boundary renders instead of a route, not as part of one"
+        );
+        for name in [
+            "_uf.forbidden.js",
+            "_uf.unauthorized.js",
+            "_uf.global-error.js",
+        ] {
+            assert!(
+                classify_reserved_file(name).is_unknown(),
+                "{name} should be unknown"
+            );
+        }
     }
 
     #[test]

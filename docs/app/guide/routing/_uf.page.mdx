@@ -13,17 +13,18 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Four names are reserved. Everything else in `app/` is an ordinary module.
+Six names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
 | `_uf.page.js` | The page at this path. Its default export is a component. |
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
+| `_uf.error.js` | Rendered when something under this path throws. |
 | `_uf.middleware.js` | Runs before the route resolves — redirects, auth, headers. |
 | `_uf.route.js` | Answers a request instead of rendering a page. |
 
-Any of them may be `.mdx` instead of `.js`. A directory whose name starts with
+A page, a layout and a not-found may be `.mdx` instead of `.js`. A directory whose name starts with
 `_` is not a route, which is where shared components belong — this site keeps
 its design system in `app/_design/`.
 
@@ -65,6 +66,77 @@ rather than copying it.
 
 A layout does not re-render when navigating between pages that share it, so
 scroll position and state in a sidebar survive navigation.
+
+## Not found nests too
+
+`_uf.not-found.js` is a segment file like `_uf.layout.js`: any directory may
+declare one, and a path that matches nothing gets the nearest one above it,
+inside that directory's layouts.
+
+```
+app/_uf.not-found.js            →  answers /anything
+app/guide/_uf.not-found.js      →  answers /guide/anything
+```
+
+This site has both. `/guide/nope` renders `app/guide/_uf.not-found.js` with the
+manual's sidebar and prose column still around it, so a reader who followed a
+stale link keeps the table of contents. `/reference/nope` has no boundary of its
+own and falls back to the root one, which is the same nearest-ancestor rule
+layouts already follow.
+
+`notFound()` thrown from a loader lands on the same boundary — the nearest one
+above the path being rendered, not the root one.
+
+## When a page throws
+
+`_uf.error.js` is the other boundary, resolved by the same nearest-ancestor
+rule. It renders in place of the subtree below it, and everything above stays
+mounted: the layouts, the navigation, whatever state they hold.
+
+```js
+// @flow
+// app/guide/_uf.error.js
+import type { RouteError } from "@uniflowed/router";
+
+export default component Error(error: RouteError, reset: () => void) {
+  return (
+    <section>
+      <h1>
+        {match (error) {
+          {kind: "unauthorized"} => "Please sign in",
+          {kind: "forbidden"} => "You cannot read this page",
+          {kind: "thrown"} => "This page did not load",
+        }}
+      </h1>
+      <button type="button" onClick={reset}>Try again</button>
+    </section>
+  );
+}
+```
+
+One file, not three. `unauthorized()` and `forbidden()` are thrown the way
+`notFound()` is, and they arrive here as cases of one `RouteError` rather than
+as `_uf.unauthorized.js` and `_uf.forbidden.js` — so `match` says all three in
+the place a reader looks for the answer, and Flow says which one you forgot.
+The statuses are 401, 403 and 500.
+
+`reset()` re-renders the subtree the boundary replaced. When the failure was a
+loader's, it re-runs the resolution; when it was the browser rendering, it
+mounts the page again.
+
+A project that declares no `_uf.error.js` still does not lose the document: uf
+renders its own page inside the outermost boundary. What it does not do is show
+the exception — that text is written for whoever deployed the application, so
+it goes to `uf dev`'s terminal instead, and `uf build` fails the route it
+belongs to.
+
+A route that throws during `uf build` fails *that route*: the build reports the
+URL, writes every route that did render, and then exits non-zero. It does not
+write an error page into `dist/`.
+
+What none of this covers is a route handler. `_uf.route.js` answers a request
+itself, and a handler that throws is still a bug for the host's error reporting
+to see — "Route handlers", below, says why.
 
 ## Loading data
 

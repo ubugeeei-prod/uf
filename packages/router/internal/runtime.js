@@ -99,6 +99,22 @@ export type LayoutModule = {
   ...
 };
 
+/**
+ * What an error module may export. The component is `default` or `Error`.
+ *
+ * `Error` shadows the global inside the file that writes it, which is the
+ * cost of naming the export after what it is; a file that needs the
+ * constructor still has `globalThis.Error`. The alternative was a name the
+ * convention would have to explain — `ErrorPage`, `Boundary` — for a file
+ * whose whole job is already in its name.
+ */
+export type ErrorModule = {
+  readonly default?: RouteComponent,
+  readonly Error?: RouteComponent,
+  readonly metadata?: Metadata,
+  ...
+};
+
 /** Document metadata a page or layout declares. */
 export type Metadata = {
   readonly title?: string,
@@ -134,18 +150,48 @@ export type RouteRecord = {|
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
-/** The not-found page, when the app declares one. */
-export type NotFoundRecord = {|
+/**
+ * One not-found boundary: the page for a path under `path` that matched
+ * nothing.
+ *
+ * `_uf.not-found.js` is a segment file, so `path` is the route path of the
+ * directory that declares it and `layouts` are the layouts in scope *there* —
+ * which is what the boundary renders inside. A project with one at the router
+ * root has one of these; a project whose manual answers its own 404 has two.
+ */
+export type NotFoundBoundary = {|
+  readonly path: string,
   readonly mdx: boolean,
   readonly file: string,
   readonly page: () => Promise<PageModule>,
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
-/** A route table plus the not-found page. */
+/**
+ * One error boundary: what renders in place of the subtree under `path` when
+ * something in it throws.
+ *
+ * The same nearest-ancestor shape as [`NotFoundBoundary`], and `layouts` means
+ * the same thing — the layouts in scope where the file is, which stay mounted
+ * around the error and are why the rest of the document is still there.
+ */
+export type ErrorBoundary = {|
+  readonly path: string,
+  readonly file: string,
+  readonly module: () => Promise<ErrorModule>,
+  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
+|};
+
+/**
+ * A route table plus the boundaries declared under it.
+ *
+ * `errors` is the error boundaries a project declared, not failures that
+ * happened.
+ */
 export type RouteTable = {|
   readonly routes: $ReadOnlyArray<RouteRecord>,
-  readonly notFound: ?NotFoundRecord,
+  readonly notFound: $ReadOnlyArray<NotFoundBoundary>,
+  readonly errors: $ReadOnlyArray<ErrorBoundary>,
 |};
 
 /** A URL matched against the table. */
@@ -154,7 +200,40 @@ export type RouteMatch = {|
   readonly params: RouteParams,
 |};
 
-/** A match whose modules are loaded and whose loader has run. */
+/**
+ * Why the router is rendering an error boundary instead of a page.
+ *
+ * One union rather than one file convention per status. `forbidden()` and
+ * `unauthorized()` are not different *kinds* of file to write; they are
+ * different sentences an error page says, and `match` over this is where a
+ * page says all three and the checker confirms it covered them. Deciding it
+ * the other way — `_uf.forbidden.js` and `_uf.unauthorized.js` beside
+ * `_uf.error.js`, which is what Next.js does — is three files per segment to
+ * express one thing, and nothing would check that any of them handled the
+ * case it was named for.
+ *
+ * The thrown value is carried but deliberately not rendered by the default
+ * boundary: a server exception's message is written for the person who
+ * deployed the application, not for whoever asks for the page.
+ */
+export type RouteError =
+  | {| readonly kind: "thrown", readonly error: mixed |}
+  | {| readonly kind: "unauthorized" |}
+  | {| readonly kind: "forbidden" |};
+
+/** The status a `RouteError` answers with. */
+export function routeErrorStatus(error: RouteError): 401 | 403 | 500 {
+  return match (error) {
+    {kind: "unauthorized"} => 401,
+    {kind: "forbidden"} => 403,
+    {kind: "thrown"} => 500,
+  };
+}
+
+/**
+ * A match whose modules are loaded and whose loader has run — or, when `error`
+ * is set, the error page that stands in for it.
+ */
 export type ResolvedRoute = {|
   readonly pathname: string,
   readonly search: string,
@@ -165,7 +244,26 @@ export type ResolvedRoute = {|
   readonly layouts: $ReadOnlyArray<LayoutModule>,
   readonly data: mixed,
   readonly metadata: Metadata,
-  readonly status: 200 | 404,
+  readonly status: 200 | 401 | 403 | 404 | 500,
+  /**
+   * Set when this resolution *is* the error page: the loader threw, or the
+   * server render did and the renderer resolved again. `null` on the ordinary
+   * path.
+   */
+  readonly error: ?RouteError,
+  /**
+   * The boundary that would catch a throw while rendering this route.
+   *
+   * Always present, because every route has an answer for a throw: `module`
+   * is `null` when the project declares no `_uf.error.js` above the path, and
+   * the framework's own error page renders instead. `above` is how many of
+   * `layouts` are outside the boundary — the ones that stay mounted, which is
+   * what "the rest of the document is still interactive" means.
+   */
+  readonly errorBoundary: {|
+    readonly module: ?ErrorModule,
+    readonly above: number,
+  |},
 |};
 
 /** Thrown by `notFound()`; the renderer answers with the not-found page. */
@@ -173,6 +271,22 @@ export class NotFoundError extends Error {
   constructor() {
     super("not found");
     this.name = "NotFoundError";
+  }
+}
+
+/** Thrown by `unauthorized()`; the renderer answers with the error boundary. */
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("unauthorized");
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** Thrown by `forbidden()`; the renderer answers with the error boundary. */
+export class ForbiddenError extends Error {
+  constructor() {
+    super("forbidden");
+    this.name = "ForbiddenError";
   }
 }
 
@@ -289,6 +403,60 @@ export function matchRoute(routes: $ReadOnlyArray<RouteRecord>, pathname: string
   return best;
 }
 
+/**
+ * Whether a boundary declared at `segments` is at or above `parts`.
+ *
+ * The same segment kinds as [`matchSegments`], stopping when the boundary's
+ * own segments run out instead of requiring the path to: `/guide` covers
+ * `/guide/nope`, and `/guide` covers `/guide` itself.
+ */
+function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>): boolean {
+  let index = 0;
+  for (const segment of segments) {
+    const next = match (segment) {
+      {kind: "static", value: const value} => parts[index] === value ? index + 1 : -1,
+      {kind: "param"} => index < parts.length ? index + 1 : -1,
+      {kind: "catchAll"} => parts.length,
+    };
+    if (next === -1) {
+      return false;
+    }
+    index = next;
+  }
+  return true;
+}
+
+/**
+ * The nearest boundary above `pathname`, or `null` when none covers it.
+ *
+ * The one rule both `_uf.not-found.js` and `_uf.error.js` are resolved by, and
+ * the same one layouts already follow: nearest means the longest path that
+ * covers the URL. It is decided here rather than by the table's order — the
+ * table is sorted by path so the generated module is stable, and a resolver
+ * that read "nearest" as "first" would silently depend on that sort. Two
+ * boundaries can share a path (a route group's directory does not appear in
+ * the URL), and then the first in the table wins.
+ */
+function nearestBoundary<TBoundary: { readonly path: string, ... }>(
+  boundaries: $ReadOnlyArray<TBoundary>,
+  pathname: string,
+): ?TBoundary {
+  const parts = pathname.split("/").filter((part) => part !== "");
+  let best: ?TBoundary = null;
+  let bestDepth = -1;
+  for (const boundary of boundaries) {
+    const segments = compile(boundary.path);
+    if (!covers(segments, parts)) {
+      continue;
+    }
+    if (segments.length > bestDepth) {
+      best = boundary;
+      bestDepth = segments.length;
+    }
+  }
+  return best;
+}
+
 /** Split a URL into its pathname and search string. */
 export function splitUrl(url: string): {| readonly pathname: string, readonly search: string |} {
   const hash = url.indexOf("#");
@@ -342,8 +510,36 @@ function loadOnce<T>(load: () => Promise<T>): Promise<T> {
  * `data` is what the loader returned; on the client after hydration it is the
  * value the server embedded, so the loader does not run twice for the first
  * page.
+ *
+ * # This resolves or redirects; it does not reject
+ *
+ * Everything a route can go wrong with is a route to render: no match and
+ * `notFound()` are the not-found boundary, a loader that threw and
+ * `forbidden()`/`unauthorized()` are the error boundary. Only `redirect()`
+ * comes back out, because a redirect is a response rather than a page and the
+ * caller is what has one to send.
+ *
+ * That guarantee is the point rather than a convenience. `hydrate` awaits this
+ * before `hydrateRoot`, so a rejection there is not an error page — it is no
+ * `hydrateRoot` call at all, and the document the server sent stays on screen
+ * with nothing attached to it.
  */
 export async function resolveMatch(
+  table: RouteTable,
+  url: string,
+  options?: {| readonly data?: mixed, readonly skipLoader?: boolean |},
+): Promise<ResolvedRoute> {
+  try {
+    return await resolveRoute(table, url, options);
+  } catch (error) {
+    if (error instanceof RedirectError) {
+      throw error;
+    }
+    return resolveFailure(table, url, error);
+  }
+}
+
+async function resolveRoute(
   table: RouteTable,
   url: string,
   options?: {| readonly data?: mixed, readonly skipLoader?: boolean |},
@@ -360,17 +556,14 @@ export async function resolveMatch(
     loadOnce(matched.route.page),
     ...matched.route.layouts.map((layout) => loadOnce(layout)),
   ]);
+  // Started here and awaited at the end: the boundary's module does not depend
+  // on the loader, so importing it alongside costs a navigation nothing. It
+  // never rejects, so an early throw below leaves no unhandled rejection.
+  const boundary = resolveErrorBoundary(table, pathname, matched.route.layouts.length);
 
   let data: mixed = options?.data;
   if (options?.skipLoader !== true && typeof page.loader === "function") {
-    try {
-      data = await page.loader({ params: matched.params, searchParams, pathname });
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        return resolveNotFound(table, pathname, search, searchParams);
-      }
-      throw error;
-    }
+    data = await page.loader({ params: matched.params, searchParams, pathname });
   }
 
   const metadata = await resolveMetadata(page, layouts, {
@@ -389,16 +582,168 @@ export async function resolveMatch(
     data,
     metadata,
     status: 200,
+    error: null,
+    errorBoundary: await boundary,
   };
 }
 
+/**
+ * The route to render after something threw.
+ *
+ * Two callers, one behaviour: [`resolveMatch`] when a loader or a module
+ * import threw, and `createRenderer` when the *render* did — React's error
+ * boundaries do not run in `renderToString`, so the server has to catch it
+ * itself and resolve again.
+ */
+export async function resolveFailure(
+  table: RouteTable,
+  url: string,
+  error: mixed,
+): Promise<ResolvedRoute> {
+  const { pathname, search } = splitUrl(url);
+  const searchParams = parseSearch(search);
+  if (error instanceof NotFoundError) {
+    try {
+      return await resolveNotFound(table, pathname, search, searchParams);
+    } catch (failure) {
+      // The not-found page itself would not load. Falling through to the error
+      // boundary rather than rethrowing is what keeps the promise above: the
+      // page a project wrote to explain a 404 is not more load-bearing than
+      // the document staying on screen.
+      return resolveError(table, pathname, search, searchParams, routeErrorFor(failure));
+    }
+  }
+  return resolveError(table, pathname, search, searchParams, routeErrorFor(error));
+}
+
+/** What a thrown value means to the router. */
+function routeErrorFor(error: mixed): RouteError {
+  if (error instanceof UnauthorizedError) {
+    return { kind: "unauthorized" };
+  }
+  if (error instanceof ForbiddenError) {
+    return { kind: "forbidden" };
+  }
+  return { kind: "thrown", error };
+}
+
+/**
+ * The error boundary a route renders inside, loaded with the route rather than
+ * when it is needed.
+ *
+ * React decides to show a boundary's fallback synchronously, during the render
+ * that threw. A module that still has to be imported is a module that is not
+ * there at the only moment it can be used, so this is one more dynamic import
+ * per navigation and not a lazy one.
+ *
+ * `above` is the boundary's own layout count, clamped to the route's. The
+ * first attempt compared the two layout arrays for a shared prefix, which is
+ * more precise when a `(group)` directory puts a boundary beside a route
+ * rather than above it — and it worked by *reference identity* of the loader
+ * functions, which holds only because `routesModuleSource` deduplicates them
+ * by file. A rule that depends on an invisible property of the generated
+ * module is a rule that reads as zero the moment a table is built any other
+ * way, and it did: it put the boundary outside the layouts it was written
+ * inside. Nesting a boundary per group needs parallel-route trees (#267);
+ * until then this is the honest approximation, and it is stated rather than
+ * inferred.
+ */
+async function resolveErrorBoundary(
+  table: RouteTable,
+  pathname: string,
+  layoutCount: number,
+): Promise<{| readonly module: ?ErrorModule, readonly above: number |}> {
+  const boundary = nearestBoundary(table.errors, pathname);
+  if (boundary == null) {
+    return { module: null, above: 0 };
+  }
+  // Clamped, because a route group can leave a route with fewer layouts than
+  // the boundary covering it, and an `above` past the end would compose the
+  // layouts out of nothing.
+  const above = Math.min(boundary.layouts.length, layoutCount);
+  try {
+    return { module: await loadOnce(boundary.module), above };
+  } catch {
+    // A boundary whose module will not load cannot be the answer to a throw,
+    // and this is why the field is nullable: containment must not itself
+    // depend on an import working.
+    return { module: null, above: 0 };
+  }
+}
+
+/**
+ * The error page for `pathname`, inside the layouts above the boundary that
+ * answers it.
+ *
+ * The layouts are the boundary's, for the same reason [`resolveNotFound`]
+ * gives: they are what stays mounted around the error, and the layouts below
+ * the boundary belong to the subtree that just stopped.
+ */
+async function resolveError(
+  table: RouteTable,
+  pathname: string,
+  search: string,
+  searchParams: SearchParams,
+  routeError: RouteError,
+): Promise<ResolvedRoute> {
+  const boundary = nearestBoundary(table.errors, pathname);
+  let module: ?ErrorModule = null;
+  let layouts: $ReadOnlyArray<LayoutModule> = [];
+  if (boundary != null) {
+    try {
+      [module, layouts] = await Promise.all([
+        loadOnce(boundary.module),
+        Promise.all(boundary.layouts.map((layout) => loadOnce(layout))),
+      ]);
+    } catch {
+      // See `resolveErrorBoundary`: the framework's own page answers instead.
+      module = null;
+      layouts = [];
+    }
+  }
+
+  const declared = await resolveMetadata(
+    module?.metadata != null ? { metadata: module.metadata } : {},
+    layouts,
+    { params: {}, searchParams, data: undefined },
+  );
+  return {
+    pathname,
+    search,
+    path: "*",
+    params: {},
+    searchParams,
+    page: { default: ResolvedErrorPage },
+    layouts,
+    data: undefined,
+    metadata: declared.title != null ? declared : { ...declared, title: errorTitle(routeError) },
+    status: routeErrorStatus(routeError),
+    error: routeError,
+    // All of the boundary's layouts are above it, and no inner boundary is
+    // inserted around a page that already is one; see `RouteView`.
+    errorBoundary: { module, above: layouts.length },
+  };
+}
+
+/**
+ * The not-found page for `pathname`, inside the layouts above the boundary
+ * that answers it.
+ *
+ * The layouts are the *boundary's*, not the ones the URL had already matched.
+ * Taking the matched route's layouts was the other candidate and it is wrong
+ * in both directions: for an unmatched URL there is no matched route to take
+ * them from, and for `notFound()` thrown from a page they would keep the
+ * layouts *below* the boundary — so `app/guide/[slug]/_uf.layout.js` would
+ * wrap a 404 that `app/guide/_uf.not-found.js` answered, which is the layout
+ * of the page that just said it does not exist.
+ */
 async function resolveNotFound(
   table: RouteTable,
   pathname: string,
   search: string,
   searchParams: SearchParams,
 ): Promise<ResolvedRoute> {
-  const record = table.notFound;
+  const record = nearestBoundary(table.notFound, pathname);
   if (record == null) {
     return {
       pathname,
@@ -411,6 +756,8 @@ async function resolveNotFound(
       data: undefined,
       metadata: { title: "Not found" },
       status: 404,
+      error: null,
+      errorBoundary: await resolveErrorBoundary(table, pathname, 0),
     };
   }
   const [page, ...layouts] = await Promise.all([
@@ -433,6 +780,9 @@ async function resolveNotFound(
     data: undefined,
     metadata,
     status: 404,
+    error: null,
+    // A not-found page is a page: one that throws is contained like any other.
+    errorBoundary: await resolveErrorBoundary(table, pathname, layouts.length),
   };
 }
 
@@ -472,6 +822,157 @@ component DefaultNotFound() {
       <p>This page does not exist.</p>
     </main>
   );
+}
+
+/** The document title an error page gets when nothing declared one. */
+function errorTitle(error: RouteError): string {
+  return match (error) {
+    {kind: "unauthorized"} => "Sign in required",
+    {kind: "forbidden"} => "Not allowed",
+    {kind: "thrown"} => "Something went wrong",
+  };
+}
+
+/**
+ * The framework's error page, for a project that declares no `_uf.error.js`.
+ *
+ * It says which of the three happened and offers the reset, and it does *not*
+ * print the thrown error: on the server that message is written for whoever
+ * deployed the application — a query, a path, a token in a stack — and this
+ * markup is sent to whoever asked for the page. `uf dev` reports the throw in
+ * the terminal and `uf build` fails the route, which are the places the person
+ * who can act on it is looking.
+ */
+component DefaultRouteError(error: RouteError, reset: () => void) {
+  const title = errorTitle(error);
+  const detail = match (error) {
+    {kind: "unauthorized"} => "This page needs you to be signed in.",
+    {kind: "forbidden"} => "You do not have access to this page.",
+    {kind: "thrown"} => "This page could not be rendered.",
+  };
+  return (
+    <main>
+      <title>{title}</title>
+      <h1>{title}</h1>
+      <p>{detail}</p>
+      <button type="button" onClick={reset}>
+        Try again
+      </button>
+    </main>
+  );
+}
+
+/** The component an error module renders: `default`, or the named `Error`. */
+function errorComponent(module: ErrorModule): React.ComponentType<ErrorRenderProps> {
+  const component = module.default ?? module.Error;
+  if (component == null) {
+    throw new Error(
+      "@uniflowed/router: an error module must export a component as `default` or `Error`",
+    );
+  }
+  return renderable(component);
+}
+
+/** The props an error boundary's component receives. */
+type ErrorRenderProps = {|
+  readonly error: RouteError,
+  readonly reset: () => void,
+|};
+
+/**
+ * The error UI, from whichever module is in scope.
+ *
+ * One component for both ways in — the class boundary below, which catches a
+ * throw while the browser renders, and `ResolvedErrorPage`, which is what the
+ * server renders because React's boundaries do not run in `renderToString`.
+ * Two paths to the same screen is exactly the pair that drifts.
+ */
+component RouteErrorView(module: ?ErrorModule, error: RouteError, reset: () => void) {
+  if (module == null) {
+    return <DefaultRouteError error={error} reset={reset} />;
+  }
+  const Boundary = errorComponent(module);
+  return <Boundary error={error} reset={reset} />;
+}
+
+/**
+ * The page of a route that resolved to an error.
+ *
+ * A resolved error route carries the error and the module on the route itself,
+ * so this is a static component rather than a closure the resolver builds:
+ * `RouteView` composes it in its layouts exactly like a page, which is what
+ * makes "inside the layouts above the boundary" one code path and not two.
+ *
+ * `reset()` here is `router.refresh()` — this route resolved to an error
+ * because a loader or an import threw, so re-running the resolution is what
+ * trying again means. On the server `refresh` does nothing, which is correct:
+ * a static render has nothing to re-run.
+ */
+component ResolvedErrorPage() {
+  const { resolved, router } = useRouterState();
+  const reset = useCallback(() => {
+    router.refresh().catch(() => {});
+  }, [router]);
+
+  if (resolved.error == null) {
+    // Unreachable: this module is only ever the page of a resolved error route.
+    return null;
+  }
+  return (
+    <RouteErrorView module={resolved.errorBoundary.module} error={resolved.error} reset={reset} />
+  );
+}
+
+type RouteErrorBoundaryProps = {|
+  readonly module: ?ErrorModule,
+  readonly resetKey: string,
+  readonly children: React.Node,
+|};
+
+type RouteErrorBoundaryState = {| readonly error: ?RouteError |};
+
+/**
+ * The boundary that catches a throw while the browser renders the subtree.
+ *
+ * A class, because `getDerivedStateFromError` is React's contract for this and
+ * there is no hook that does it — this is the one place in the router where
+ * following React's public contract means not using a function component.
+ *
+ * Recovering on navigation is `componentDidUpdate` watching `resetKey`, not
+ * `key={pathname}` on the boundary. Keying it remounts the subtree on *every*
+ * navigation, error or not, and everything below the boundary goes with it —
+ * which is the layouts, whose whole purpose is to survive navigation with
+ * their scroll position and their open sections intact.
+ */
+class RouteErrorBoundary extends React.Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+  constructor(props: RouteErrorBoundaryProps) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: mixed): RouteErrorBoundaryState {
+    return { error: routeErrorFor(error) };
+  }
+
+  componentDidUpdate(previous: RouteErrorBoundaryProps) {
+    if (this.state.error != null && previous.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
+  render(): React.Node {
+    const { error } = this.state;
+    if (error == null) {
+      return this.props.children;
+    }
+    return (
+      <RouteErrorView
+        module={this.props.module}
+        error={error}
+        reset={() => this.setState({ error: null })}
+      />
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -705,21 +1206,49 @@ export hook useLoaderData(): mixed {
 /**
  * Renders the matched page inside its layouts, innermost last, with the
  * document metadata as hoistable head elements.
+ *
+ * # Where the error boundaries go
+ *
+ * Two, and they are not the same thing twice. The inner one is the project's
+ * `_uf.error.js`, placed at the depth the file sits at, so the layouts above
+ * it stay mounted and interactive while the subtree below is replaced — that
+ * placement *is* the feature. The outer one has no module and so renders the
+ * framework's page; it is what stands between a throw in a root layout, or in
+ * the error component itself, and an unmounted document. A single boundary
+ * cannot be both: put it outside and a page's throw takes the navigation down
+ * with it; put it inside and nothing catches the layout above.
  */
 export component RouteView() {
   const { resolved } = useRouterState();
+  const { module, above } = resolved.errorBoundary;
   const Page = pageComponent(resolved.page);
   let element: React.Node = (
     <Page params={resolved.params} searchParams={resolved.searchParams} data={resolved.data} />
   );
-  for (let index = resolved.layouts.length - 1; index >= 0; index -= 1) {
+  for (let index = resolved.layouts.length - 1; index >= above; index -= 1) {
+    const Layout = layoutComponent(resolved.layouts[index]);
+    element = <Layout params={resolved.params}>{element}</Layout>;
+  }
+  // Not around a route that already resolved to its error page: that page is
+  // the boundary's own component, and wrapping it in the same boundary would
+  // answer a throw inside it with itself.
+  if (module != null && resolved.error == null) {
+    element = (
+      <RouteErrorBoundary module={module} resetKey={resolved.pathname}>
+        {element}
+      </RouteErrorBoundary>
+    );
+  }
+  for (let index = above - 1; index >= 0; index -= 1) {
     const Layout = layoutComponent(resolved.layouts[index]);
     element = <Layout params={resolved.params}>{element}</Layout>;
   }
   return (
     <>
       <Head metadata={resolved.metadata} />
-      {element}
+      <RouteErrorBoundary module={null} resetKey={resolved.pathname}>
+        {element}
+      </RouteErrorBoundary>
     </>
   );
 }
@@ -887,6 +1416,16 @@ export function routerView(root: string): React.ComponentType<AppProps> {
 /** Stop rendering the current page and show the not-found page instead. */
 export function notFound(): empty {
   throw new NotFoundError();
+}
+
+/** Stop rendering the current page and show the error boundary, as a 401. */
+export function unauthorized(): empty {
+  throw new UnauthorizedError();
+}
+
+/** Stop rendering the current page and show the error boundary, as a 403. */
+export function forbidden(): empty {
+  throw new ForbiddenError();
 }
 
 /** Stop rendering the current page and send the visitor elsewhere. */
