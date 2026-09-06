@@ -13,11 +13,13 @@ nine of them, and three are a demonstration you delete.
 
 ## Scaffold
 
-<div className="command"><code>uf create app react my-site</code></div>
+<div className="command"><code>uf create app my-site</code></div>
 
-`react` is the template and `my-site` is the directory. Both are positional, and
-the template is not optional today even though `react` is the only one — a bare
-`uf create app my-site` is rejected, because `my-site` is read as the template.
+`my-site` is the directory. The full form is `uf create app TEMPLATE PATH`, and
+`react` is the only template today, so naming it is optional — a single argument
+is the template when it names one and the directory when it does not. That means
+`uf create app react` scaffolds into the current directory, and a project that
+really wants to be called `react` is written out as `uf create app react react`.
 
 `uf create` writes a project and nothing else — no `node_modules`, no lockfile,
 no git history. What it writes is:
