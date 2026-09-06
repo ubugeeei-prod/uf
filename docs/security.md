@@ -148,7 +148,10 @@ file at the wrong location.
 - `persist-credentials: false` on every checkout, so a compromised build step
   cannot reuse the workflow token.
 - Publishing is tokenless OIDC trusted publishing on a `uf@*` tag push; the
-  first publish is local and manual.
+  first publish is local and manual. So is moving the `latest` dist-tag after a
+  prerelease release: npm exchanges the workflow's id-token for `npm publish`
+  and nothing else, and putting a token in this repository's secrets to widen
+  that would give away the property. See `tools/release/promote-latest.sh`.
 - `upstream/flow` is pinned to a specific commit and is subject to the same
   review as any other dependency bump.
 - `cargo-fuzz` builds on every pull request that touches the workspace, and

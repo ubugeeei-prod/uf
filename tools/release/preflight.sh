@@ -12,6 +12,13 @@
 # trust list` reads them as the *user*, and an unauthenticated read returns
 # nothing — so it reports what is on the registry instead. A name that is not
 # there yet is a name to confirm is bound, not proof that it is not.
+#
+# It reports the dist-tags too, and that half was missing for seven releases.
+# This counted *versions* — is the name on the registry, is the version on it —
+# and a version on the registry is not the same thing as a version
+# `npm install @uniflowed/react` gives you. With alpha.7 published it gave
+# `0.0.0-alpha.1` on five names and `0.0.0-alpha.2` on twelve, and nothing
+# between the release and a user looked at a tag. See ubugeeei-prod/uf#408.
 set -eu
 
 repo_root="$(CDPATH= cd "$(dirname "$0")/../.." && pwd)"
@@ -64,3 +71,13 @@ MESSAGE
 fi
 
 printf 'every listed package is on the registry\n'
+echo
+
+# And where each name's `latest` points, which is a different question from
+# whether the version is there. `publish.yml` publishes a prerelease on the
+# prerelease tag and never moves `latest`, so while these packages have no
+# stable release `latest` only moves when somebody moves it — and this is the
+# place a release that skipped that step is caught, before the next one adds to
+# the drift. `--check` reads the registry and writes nothing, so it needs no
+# npm session; the move itself does, and `promote-latest.sh` says why.
+tools/release/promote-latest.sh --check

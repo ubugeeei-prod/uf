@@ -332,6 +332,13 @@ jobs:
       # round trip and blocks a release — it has cost three. Stubs, so this
       # needs no npm session and no network.
       - run: ./target/release/uf run release:trust:test
+      # And the step that moves `latest` after the release, which is run by
+      # hand for the same reason: npm exchanges this repository's OIDC
+      # id-token for `npm publish` and nothing else. Its guards cannot be
+      # exercised against the registry as it is — no `@uniflowed/*` package
+      # has a stable release to protect yet, and none is past alpha.9 — so
+      # stubs are the only thing that runs them.
+      - run: ./target/release/uf run release:promote:test
       # And the bump that every release starts with. Its mistakes are all in
       # the second run — resuming a release, or writing the changelog in the
       # wrong order — so the release that went right does not catch them.
