@@ -45,6 +45,7 @@ import {
   provide,
   provideService,
   race,
+  repeat,
   retry,
   runFork,
   runPromise,
@@ -1274,6 +1275,95 @@ describe("retry counts", () => {
     expect(flaky.attempts()).toBe(2);
   });
 
+  it("stops at the first failure the predicate rules out", async () => {
+    // `isRetriable` draws the line the runtime knows: a defect is a bug, an
+    // interruption is a decision. It cannot draw the line the application
+    // knows — a 429 is worth another attempt and a 400 is not, and both are
+    // typed failures.
+    let attempts = 0;
+    const forbidden = suspend(() => {
+      attempts += 1;
+      return fail({ kind: "forbidden" });
+    });
+
+    await runPromiseExit(
+      retry(
+        forbidden,
+        { kind: "recurs", times: 3 },
+        { while: (error) => error.kind === "timeout" },
+      ),
+    );
+    expect(attempts).toBe(1);
+  });
+
+  it("keeps retrying the failure the predicate allows", async () => {
+    let attempts = 0;
+    const timingOut = suspend(() => {
+      attempts += 1;
+      return fail({ kind: "timeout" });
+    });
+
+    await runPromiseExit(
+      retry(
+        timingOut,
+        { kind: "recurs", times: 3 },
+        { while: (error) => error.kind === "timeout" },
+      ),
+    );
+    expect(attempts).toBe(4);
+  });
+
+  it("stops once until is satisfied", async () => {
+    let attempts = 0;
+    const failing = suspend(() => {
+      attempts += 1;
+      return fail({ kind: attempts >= 2 ? "forbidden" : "timeout" });
+    });
+
+    await runPromiseExit(
+      retry(
+        failing,
+        { kind: "recurs", times: 5 },
+        { until: (error) => error.kind === "forbidden" },
+      ),
+    );
+    // One attempt, one retry that failed with `forbidden`, and no more.
+    expect(attempts).toBe(2);
+  });
+
+  it("keeps the failure the predicate refused rather than replacing it", async () => {
+    const result = await runPromiseExit(
+      retry(fail({ kind: "forbidden" }), { kind: "recurs", times: 3 }, { while: () => false }),
+    );
+
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("forbidden");
+    } else {
+      throw new Error("expected the original typed failure");
+    }
+  });
+
+  it("turns a predicate that throws into a defect", async () => {
+    // A predicate is a caller's code; a bug in it is a bug, not one more
+    // attempt and not a silent stop.
+    const result = await runPromiseExit(
+      retry(
+        fail("no"),
+        { kind: "recurs", times: 3 },
+        {
+          while: () => {
+            throw new Error("bad predicate");
+          },
+        },
+      ),
+    );
+
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
   it("does not retry after the fiber has been interrupted", async () => {
     let attempts = 0;
     const always = effect(function* () {
@@ -1346,6 +1436,52 @@ describe("schedules", () => {
     expect(scheduleDelay(schedule, 1)).toBe(40);
   });
 
+  it("spreads a wait over a range, and the midpoint leaves it alone", () => {
+    const schedule = { kind: "jittered", schedule: { kind: "spaced", millis: 100 } };
+    // The factor is an argument, so the whole range is testable without a seed
+    // and without hoping about `Math.random`.
+    expect(scheduleDelay(schedule, 0, 0)).toBe(80);
+    expect(scheduleDelay(schedule, 0, 0.5)).toBe(100);
+    expect(scheduleDelay(schedule, 0, 1)).toBe(120);
+    // Two arguments means the midpoint, so a jittered schedule stays as
+    // deterministic as every other arm when nobody asks for a factor.
+    expect(scheduleDelay(schedule, 0)).toBe(100);
+  });
+
+  it("honours a jitter range given as percentages", () => {
+    const schedule = {
+      kind: "jittered",
+      schedule: { kind: "spaced", millis: 200 },
+      minPercent: 50,
+      maxPercent: 150,
+    };
+    expect(scheduleDelay(schedule, 0, 0)).toBe(100);
+    expect(scheduleDelay(schedule, 0, 1)).toBe(300);
+  });
+
+  it("jitters the schedule it wraps rather than replacing it", () => {
+    // A jittered exponential still grows.
+    const schedule = { kind: "jittered", schedule: { kind: "exponential", baseMillis: 10 } };
+    expect(scheduleDelay(schedule, 0, 1)).toBe(12);
+    expect(scheduleDelay(schedule, 3, 1)).toBe(96);
+  });
+
+  it("does not revive a schedule that has stopped by jittering it", () => {
+    // Jitter is about *when*, and `null` is not a when.
+    expect(scheduleDelay({ kind: "jittered", schedule: { kind: "upTo", millis: 5 } }, 1, 1)).toBe(
+      null,
+    );
+    expect(scheduleDelay({ kind: "jittered", schedule: { kind: "recurs", times: 1 } }, 1, 1)).toBe(
+      null,
+    );
+  });
+
+  it("clamps a factor outside the unit interval rather than escaping the range", () => {
+    const schedule = { kind: "jittered", schedule: { kind: "spaced", millis: 100 } };
+    expect(scheduleDelay(schedule, 0, -1)).toBe(80);
+    expect(scheduleDelay(schedule, 0, 4)).toBe(120);
+  });
+
   it("caps a delay without reviving a schedule that has stopped", () => {
     expect(
       scheduleDelay(
@@ -1356,6 +1492,105 @@ describe("schedules", () => {
     expect(
       scheduleDelay({ kind: "maxDelay", schedule: { kind: "upTo", millis: 5 }, millis: 100 }, 1),
     ).toBe(null);
+  });
+});
+
+describe("repeat", () => {
+  it("runs again while the schedule says to, and the first run is not a repeat", async () => {
+    let runs = 0;
+    const counting = sync(() => {
+      runs += 1;
+      return runs;
+    });
+
+    await expect(runPromise(repeat(counting, { kind: "recurs", times: 2 }))).resolves.toBe(3);
+    expect(runs).toBe(3);
+  });
+
+  it("gives back the effect's last value", async () => {
+    const values: Array<number> = [];
+    const collecting = sync(() => {
+      values.push(values.length);
+      return `run ${values.length}`;
+    });
+
+    await expect(runPromise(repeat(collecting, { kind: "upTo", millis: 1 }))).resolves.toBe(
+      "run 2",
+    );
+  });
+
+  it("ends on a failure and reports it rather than polling through it", async () => {
+    // Swallowing the failure to keep polling would hide the outage the poll
+    // exists to notice.
+    let runs = 0;
+    const failsThird = suspend(() => {
+      runs += 1;
+      return runs === 3 ? fail("down") : succeed(runs);
+    });
+
+    const result = await runPromiseExit(repeat(failsThird, { kind: "recurs", times: 10 }));
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error).toBe("down");
+    } else {
+      throw new Error("expected the failure that ended the repetition");
+    }
+    expect(runs).toBe(3);
+  });
+
+  it("stops when the fiber is interrupted rather than at the end of the schedule", async () => {
+    // A `spaced` schedule never stops on its own, so nothing but the
+    // interruption can end this.
+    let runs = 0;
+    const polling = effect(function* () {
+      runs += 1;
+      yield* sleep(5);
+      return runs;
+    });
+
+    const outcome = await runPromise(
+      effect(function* () {
+        const fiber = yield* fork(repeat(polling, { kind: "spaced", millis: 5 }));
+        yield* sleep(40);
+        return yield* interrupt(fiber);
+      }),
+    );
+
+    expect(outcome.kind).toBe("failure");
+    if (outcome.kind === "failure") {
+      expect(outcome.cause.kind).toBe("interrupt");
+    }
+
+    const seen = runs;
+    await runPromise(sleep(60));
+    expect(runs).toBe(seen);
+  });
+
+  it("composes with retry: tolerate a blip, stop on a real failure", async () => {
+    let attempts = 0;
+    const flaky = suspend(() => {
+      attempts += 1;
+      // One blip in the middle of a poll, recovered by the retry; then a
+      // failure that stays failed, which no number of retries will settle.
+      if (attempts === 2) {
+        return fail("blip");
+      }
+      if (attempts >= 5) {
+        return fail("down");
+      }
+      return succeed(attempts);
+    });
+
+    const result = await runPromiseExit(
+      repeat(retry(flaky, { kind: "recurs", times: 1 }), { kind: "recurs", times: 5 }),
+    );
+
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      // The blip was retried away; the second failure survived its one retry
+      // and ended the repetition.
+      expect(result.cause.error).toBe("down");
+    } else {
+      throw new Error("expected the failure that outlasted its retry");
+    }
   });
 });
 

@@ -221,11 +221,74 @@ from `@uniflowed/effect/schedule` and testable with no runtime at all.
 | `{ kind: "intersect", left, right }` | While both would, the longer wait |
 | `{ kind: "union", left, right }` | While either would, the shorter wait |
 | `{ kind: "maxDelay", schedule, millis }` | The inner schedule, capped |
+| `{ kind: "jittered", schedule, minPercent?, maxPercent? }` | The inner schedule, spread |
+
+Reach for `jittered` on anything a crowd of clients runs. Without it, every
+client that failed at the same moment retries at the same moment, for ever, and
+`maxDelay` does not help — it caps the wait, it does not spread it. The default
+range is 80% to 120% of what the inner schedule said.
+
+The random factor is an argument to `scheduleDelay`, not something the module
+reads, which is what keeps a policy testable across its whole range without a
+seed:
+
+```js
+const backoff = { kind: "jittered", schedule: { kind: "exponential", baseMillis: 100 } };
+scheduleDelay(backoff, 0, 0); // 80  — the bottom of the range
+scheduleDelay(backoff, 0, 1); // 120 — the top
+scheduleDelay(backoff, 0); //    100 — the midpoint, when nobody asks
+```
+
+### Which failures are worth another attempt
+
+A schedule says *when*, never *whether*. `retry` takes an optional third
+argument for the second question, because a 429 is worth retrying and a 400 is
+not and both are typed failures:
+
+```js
+retry(request, backoff, { while: (error) => error.kind !== "forbidden" });
+```
+
+`while` keeps going only while the predicate holds; `until` stops as soon as it
+does. Both compose with the line the runtime already draws — a defect is a bug
+and an interruption is a decision already taken, so neither is ever retried. A
+predicate that throws becomes a defect rather than one more attempt.
+
+Effect takes `{ schedule, while, until, times }` in one argument. Flow's objects
+are exact, so a union of a schedule and an options object cannot be refined by
+reading a property one of them lacks; a third parameter is the shape the checker
+can follow. `times` is absent for a different reason: it is `intersect` with
+`recurs`, which the schedule union already says.
+
+### repeat
+
+The other half of what a schedule is for: run again on *success*, on a
+timetable. A poll, a heartbeat, a cache refresh.
+
+```js
+const poll = repeat(retry(checkHealth, backoff), { kind: "spaced", millis: 1000 });
+const fiber = runFork(poll);
+// …later
+await runPromise(interrupt(fiber));
+```
+
+A failure ends the repetition and is the result — an effect that failed produced
+no value to repeat from, and swallowing it to keep polling would hide the outage
+the poll exists to notice. `retry` is what tolerates a blip; the two compose.
+
+Interruption is checked before each wait and after it, so a fiber polling once a
+minute stops when it is cancelled rather than at the top of the next minute.
+
+Effect's `repeat` returns the schedule's output. This one returns the effect's
+last value, because this `Schedule` is arithmetic over an attempt count and has
+no output channel to return.
 
 ## What is not here
 
 `Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM; streams; `forkScoped`
-and `forkIn`; a fiber scheduler of its own — this runs on the host's microtask
+and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
+Effect's input and output combinators (`whileInput`, `fixed`, `cron`,
+`compose`) are defined over; a fiber scheduler of its own — this runs on the host's microtask
 queue and its `sleep` is `setTimeout`; tracing, spans and metrics; a typed
 defect channel; and a heterogeneous `all`, which in Effect-TS keeps a tuple's
 element types and here takes and returns one array type.

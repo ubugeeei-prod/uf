@@ -88,7 +88,8 @@
 // generators; `runSync`, `runPromise` and the `Exit`-returning `runSyncExit`,
 // `runPromiseExit`, `exit`; typed failures kept distinct from defects and from
 // interruption, with `catchAll`, `catchTag`, `orElse`, `either` and `orDie`;
-// `retry` over a `Schedule`; `timeout`; `acquireRelease` with `scoped`, and
+// `retry` over a `Schedule`, narrowed by a predicate over the error, and
+// `repeat` over the same schedules; `timeout`; `acquireRelease` with `scoped`, and
 // `ensuring`, both of which release on success, failure, defect and
 // interruption and both of which keep a synchronous program synchronous; `all` and `forEach` with a concurrency limit and a synchronous
 // form when every element has one, `race`, and
@@ -1535,24 +1536,94 @@ export function either<A, E, R>(
 }
 
 /**
+ * Which typed failures another attempt is worth making for.
+ *
+ * A separate parameter rather than a `{ schedule, while, until }` union in
+ * `retry`'s second position, which is what Effect takes. Flow's objects are
+ * exact, so a union of `Schedule` and an options object cannot be refined by
+ * reading a property one of them does not have, and the trick that makes it
+ * possible would be a worse thing to explain than a third parameter. Effect's
+ * `times` is not here either: it is `intersect` with `recurs`, which the
+ * schedule union already says, and two ways to say one thing is the cost of
+ * copying an API rather than reading it.
+ *
+ * The predicates see the first typed failure in the cause, which is the same
+ * error `catchAll` would hand a recovery function.
+ */
+export type RetryOptions<in E> = {
+  readonly while?: (error: E) => boolean,
+  readonly until?: (error: E) => boolean,
+};
+
+/**
+ * Whether another attempt is worth making.
+ *
+ * `isRetriable` draws the line the runtime knows about — a defect is a bug and
+ * an interruption is a decision already taken — and the predicates draw the
+ * line only the application knows: a 429 is worth retrying and a 400 is not,
+ * and both are typed failures.
+ *
+ * Total apart from the caller's predicate, which is why the call site catches:
+ * a predicate that throws is a bug in the predicate, and it becomes a defect
+ * rather than an extra attempt or a silent stop.
+ */
+function worthRetrying<E>(cause: Cause<E>, options: ?RetryOptions<E>): boolean {
+  if (!isRetriable(cause)) {
+    return false;
+  }
+  if (options == null) {
+    return true;
+  }
+  const found = failureNode(cause);
+  if (found == null) {
+    return false;
+  }
+  const whilePredicate = options.while;
+  if (whilePredicate != null && !whilePredicate(found.error)) {
+    return false;
+  }
+  const untilPredicate = options.until;
+  return untilPredicate == null || !untilPredicate(found.error);
+}
+
+/**
  * Try again on a typed failure, on the schedule's timetable.
  *
  * The first run is not a retry, so `{ kind: "recurs", times: 2 }` runs the
  * effect three times. Only a typed failure is worth another attempt: a defect
  * is a bug, so running it again runs the bug again, and an interruption is a
  * decision already taken.
+ *
+ * `options` narrows that further to the failures the *application* thinks are
+ * worth repeating. Without it a policy retries every typed failure, which
+ * means a permanently rejected request is retried on an exponential backoff
+ * until the schedule gives up — slower than failing and no more likely to
+ * work.
+ *
+ * The random factor a `jittered` schedule needs is drawn here, once per wait,
+ * and passed in: `scheduleDelay` stays a pure function of its arguments, which
+ * is what lets a policy be tested without a clock or a seed.
  */
-export function retry<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effect<A, E, R> {
+export function retry<A, E, R>(
+  self: Effect<A, E, R>,
+  schedule: Schedule,
+  options?: RetryOptions<E>,
+): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
       let attempt = 0;
       let settled = await runKernel(self, runContext);
-      while (
-        settled.kind === "failure" &&
-        isRetriable(settled.cause) &&
-        !isInterrupted(runContext)
-      ) {
-        const millis = scheduleDelay(schedule, attempt);
+      while (settled.kind === "failure" && !isInterrupted(runContext)) {
+        let worthIt;
+        try {
+          worthIt = worthRetrying(settled.cause, options);
+        } catch (error) {
+          return defect(error);
+        }
+        if (!worthIt) {
+          return settled;
+        }
+        const millis = scheduleDelay(schedule, attempt, Math.random());
         if (millis == null) {
           return settled;
         }
@@ -1560,6 +1631,57 @@ export function retry<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effec
         await pause(millis, runContext);
         if (isInterrupted(runContext)) {
           return settled;
+        }
+        settled = await runKernel(self, runContext);
+      }
+      return settled;
+    },
+  });
+}
+
+/**
+ * Run again on *success*, on the schedule's timetable: a poll, a heartbeat, a
+ * cache refresh.
+ *
+ * The other half of what a schedule is for, and the half that was missing
+ * entirely rather than approximated. The first run is not a repetition, so
+ * `{ kind: "recurs", times: 2 }` runs the effect three times, and
+ * `{ kind: "spaced", millis: 1000 }` runs it until something stops it.
+ *
+ * A failure ends the repetition and is the result. That is not a policy
+ * choice: an effect that failed produced no value to repeat *from*, and
+ * swallowing the failure to keep polling would hide the outage the poll exists
+ * to notice. `retry` is what wraps an unreliable step, and the two compose —
+ * `repeat(retry(poll, backoff), everySecond)` is a poll that tolerates a blip
+ * and stops on a real failure.
+ *
+ * Interruption is checked before each wait and after it, so a fiber polling
+ * once a minute stops when it is cancelled rather than at the top of the next
+ * minute, and reports an interruption rather than the last value it happened
+ * to have. That is the bug `pause` exists to prevent, on the other side.
+ *
+ * Effect's `repeat` returns the *schedule's* output. This one returns the
+ * effect's last value, because this `Schedule` is arithmetic over an attempt
+ * count and has no output channel to return. A `Schedule<Out, In>` with a
+ * state and a step would change that; it is filed rather than half-built.
+ */
+export function repeat<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effect<A, E, R> {
+  return makeEffect({
+    run: async (runContext) => {
+      let attempt = 0;
+      let settled = await runKernel(self, runContext);
+      while (settled.kind === "success") {
+        if (isInterrupted(runContext)) {
+          return interruptedExit();
+        }
+        const millis = scheduleDelay(schedule, attempt, Math.random());
+        if (millis == null) {
+          return settled;
+        }
+        attempt += 1;
+        await pause(millis, runContext);
+        if (isInterrupted(runContext)) {
+          return interruptedExit();
         }
         settled = await runKernel(self, runContext);
       }

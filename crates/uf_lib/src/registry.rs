@@ -245,6 +245,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "either",
                 "orDie",
                 "retry",
+                "repeat",
                 "timeout",
                 "acquireRelease",
                 "scoped",
