@@ -15,7 +15,21 @@
 // not at all under a bare `click` event, and a test that only fires `click`
 // would pass while the feature was broken.
 
+import { bodyOf, documentOf } from "./dom.js";
+import { displayValue } from "./queries.js";
 import { actively } from "./render.js";
+
+/**
+ * What a caller wants the event to carry.
+ *
+ * An indexer, because which properties are meaningful is decided by the event's
+ * *interface* and the interface is decided by the name — `{ key: "Escape" }`
+ * for a `keydown`, `{ clientX: 40 }` for a `pointermove` — and the name is a
+ * string a caller computes. There is no type that says "the initialisers of
+ * whichever interface `name` maps to", so this says what is true: names in,
+ * and what each one means is the DOM's business.
+ */
+export type EventInit = { readonly [string]: mixed };
 
 /** Event constructors by DOM event name, with the right interface for each. */
 const EVENT_TYPES: { readonly [string]: string } = {
@@ -66,20 +80,69 @@ const ALSO_BUBBLES: { readonly [string]: string } = {
   blur: "focusout",
 };
 
-function construct(name: string, init: { readonly [string]: mixed }): Event {
-  const interfaceName = EVENT_TYPES[name] ?? "Event";
-  const Constructor = (globalThis as any)[interfaceName] ?? globalThis.Event;
-  const options = {
-    bubbles: !NON_BUBBLING.has(name),
-    cancelable: true,
-    ...init,
-  };
+/**
+ * The event a name asks for, built by the document's own class for it.
+ *
+ * # Why `Constructor` is `any`
+ *
+ * Neither half of this can be typed.
+ *
+ * Reading it: `globalThis` is a namespace to the checker rather than an
+ * object, and the value under a computed name is `mixed`, which cannot be
+ * `new`ed — refining a `mixed` with `typeof x === "function"` gives a function
+ * whose signature Flow says it does not know.
+ *
+ * Calling it: this is the half that is not uf's to fix. Flow's library
+ * definitions declare every event initialiser dictionary with *writable*
+ * properties — `MouseEvent$MouseEventInit` has `clientX?: number`, not
+ * `readonly clientX?: number` — so those properties are invariant, and no
+ * value whose type was computed rather than written inline can be passed to
+ * one. `{ readonly [string]: mixed }` fails on variance before it fails on
+ * anything else:
+ *
+ *     error[incompatible-variance]: property `bubbles` is read-only in
+ *     `EventInit` but writable in `Event$Init`
+ *     error[incompatible-type]: in property `clientX`: `unknown` is not
+ *     exactly the same as `number`
+ *
+ * — twelve of those for `MouseEvent` alone, and Flow's own advice in the
+ * message is to make the library definition's property readonly. So an
+ * `EventInit` cannot reach an event constructor under any spelling, and this
+ * stays one cast at one line rather than a dozen errors at every call.
+ */
+function construct(name: string, init: EventInit): Event {
+  // One cast, covering the lookup and both constructions; see above.
+  const classes: any = globalThis;
+  const Constructor = classes[EVENT_TYPES[name] ?? "Event"] ?? classes.Event;
+  const options = optionsFor(name, init);
   try {
     return new Constructor(name, options);
   } catch {
     // A host whose constructor is stricter than the init we were handed.
-    return new globalThis.Event(name, options);
+    return new classes.Event(name, options);
   }
+}
+
+/**
+ * The defaults an event is built with, under whatever the caller asked for.
+ *
+ * Written as a loop rather than `{ bubbles, cancelable, ...init }` because
+ * spreading an indexer is something Flow declines to compute a type for —
+ * "the indexer `string` may overwrite properties with explicit keys in a way
+ * that Flow cannot track", which is precisely what this is for. Its
+ * suggestion, spreading `init` first, would reverse the precedence and stop a
+ * caller from passing `bubbles: false`; the loop keeps the caller on top,
+ * which is what the spread said.
+ */
+function optionsFor(name: string, init: EventInit): EventInit {
+  const options: { [string]: mixed } = {
+    bubbles: !NON_BUBBLING.has(name),
+    cancelable: true,
+  };
+  for (const key of Object.keys(init)) {
+    options[key] = init[key];
+  }
+  return options;
 }
 
 /**
@@ -89,11 +152,7 @@ function construct(name: string, init: { readonly [string]: mixed }): Event {
  * `preventDefault`, which is what `dispatchEvent` reports and what a test
  * asserting "the form did not submit" needs.
  */
-export function dispatch(
-  target: EventTarget,
-  name: string,
-  init?: { readonly [string]: mixed },
-): boolean {
+export function dispatch(target: EventTarget, name: string, init?: EventInit): boolean {
   const event = construct(name, init ?? {});
   const paired = ALSO_BUBBLES[name];
   let ran = true;
@@ -114,19 +173,57 @@ export function dispatch(
  * A proxy rather than a written-out table: the set of DOM events is long,
  * grows, and every entry would be the same line. `fireEvent(target, name)`
  * also works, for an event whose name is computed.
+ *
+ * # Why the type is still `any`, and what was tried
+ *
+ * The type this wants is a function that also answers to every event name.
+ * Written with an indexer:
+ *
+ *     type FireEvent = {
+ *       (target: EventTarget, name: string, init?: EventInit): boolean,
+ *       readonly [string]: (target: EventTarget, init?: EventInit) => boolean,
+ *     };
+ *
+ * Flow declines the indexer, and is right to. As an `interface`, so the
+ * assignment gets far enough to say why, it reads "an unknown property that
+ * may exist on the inexact function is incompatible with `Firer`" — the value
+ * is a function, a function has `name`, `length`, `call`, `apply` and `bind`,
+ * and the trap below hands those back as themselves because `property in base`
+ * is true for them. None of the five is a DOM event, so the lie is unreachable
+ * from any real call, but a type is not something to be right about on
+ * average.
+ *
+ * The written-out table the runtime deliberately is not — a call signature
+ * plus a named property per event — fails earlier and for a reason no list of
+ * names would fix:
+ *
+ *     error[incompatible-type]: Cannot assign `new Proxy(...)` to `fireEvent`
+ *     because `(target: EventTarget, name: string, init?: EventInit) =>
+ *     boolean` is incompatible with `FireEvent`.
+ *     Functions without statics are not compatible with objects.
+ *
+ * A `Proxy` over a function *is* a function, and Flow will not treat a
+ * function with no statics as an object with properties whatever those
+ * properties are. So no type at all can be assigned to this value: typing
+ * `fireEvent` means changing what it is — a function carrying real static
+ * properties, one per event name, which is a table of a hundred-odd entries
+ * that stops answering to the hundred-and-first. That is a design decision
+ * about a published API and not a cast to remove in passing.
+ *
+ * Left as `any` rather than renamed to `$FlowFixMe`, which would move it out
+ * of `flow/unclear-type`'s sight without moving it out of the package.
  */
 export const fireEvent: any = new Proxy(
-  (target: EventTarget, name: string, init?: { readonly [string]: mixed }) =>
-    dispatch(target, name, init),
+  (target: EventTarget, name: string, init?: EventInit) => dispatch(target, name, init),
   {
     get(base, property) {
       if (typeof property !== "string") {
-        return (base as any)[property];
+        return Reflect.get(base, property);
       }
       if (property in base) {
-        return (base as any)[property];
+        return Reflect.get(base, property);
       }
-      return (target: EventTarget, init?: { readonly [string]: mixed }) =>
+      return (target: EventTarget, init?: EventInit) =>
         dispatch(target, property.toLowerCase(), init);
     },
   },
@@ -134,16 +231,23 @@ export const fireEvent: any = new Proxy(
 
 /** Set a control's value the way a browser does, so React sees the change. */
 function setValue(element: HTMLElement, value: string): void {
-  const target: any = element;
   // React tracks the last value it wrote on the node and skips an `input`
   // event whose value it believes it already knows. Writing through the
   // prototype's setter is what a browser does and what clears that.
-  const prototype = Object.getPrototypeOf(target);
-  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-  if (descriptor?.set != null) {
-    descriptor.set.call(target, value);
-  } else {
-    target.value = value;
+  const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+  const set = descriptor?.set;
+  if (set != null) {
+    set.call(element, value);
+  } else if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  ) {
+    // The fallback, for a host whose control classes keep `value` as an own
+    // property rather than an accessor on the prototype. The three classes are
+    // the ones `displayValue` reads, so what a test writes is what a
+    // `ByDisplayValue` query can find.
+    element.value = value;
   }
 }
 
@@ -170,12 +274,46 @@ function describeKey(key: string): {| key: string, code: string, text: string | 
   return { key, code: `Key${key.toUpperCase()}`, text: key };
 }
 
-/** Elements the tab order includes, in document order. */
+/**
+ * Elements the tab order includes, in document order.
+ *
+ * `instanceof HTMLElement` rather than a cast, and it is not only the
+ * checker's question: the next thing done to one of these is `focus`, and
+ * `focus` is a method of `HTMLElement`. The declared return type has always
+ * said `HTMLElement` while the selector could match an `Element` — Flow said
+ * so, "in array element: `Element` is incompatible with `HTMLElement`" — and
+ * anything that reached here without being one would have been handed to a
+ * `(element as any).focus?.()` that silently did nothing, swallowing the Tab.
+ */
 function tabbable(): Array<HTMLElement> {
   const selector =
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(globalThis.document.querySelectorAll(selector)).filter(
-    (element: any) => element.getAttribute("aria-hidden") !== "true",
+  const order = [];
+  for (const element of documentOf().querySelectorAll(selector)) {
+    if (element instanceof HTMLElement && element.getAttribute("aria-hidden") !== "true") {
+      order.push(element);
+    }
+  }
+  return order;
+}
+
+/**
+ * Whether a control is disabled, for the elements that can be.
+ *
+ * The classes rather than `(element as any).disabled === true`, which was the
+ * same question asked in a way that answered `any`. `disabled` belongs to the
+ * form controls and to `fieldset`; on a `div` it is an attribute React put in
+ * the markup and not a property, which is why the old test was `=== true`
+ * rather than truthiness, and why the answer for one is still `false`.
+ */
+function isDisabled(element: HTMLElement): boolean {
+  return (
+    (element instanceof HTMLButtonElement ||
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLFieldSetElement) &&
+    element.disabled
   );
 }
 
@@ -190,8 +328,8 @@ function tabbable(): Array<HTMLElement> {
  */
 export const userEvent = {
   /** Press and release, with the events a real click produces, in order. */
-  async click(element: HTMLElement, init?: { readonly [string]: mixed }): Promise<void> {
-    if ((element as any).disabled === true) {
+  async click(element: HTMLElement, init?: EventInit): Promise<void> {
+    if (isDisabled(element)) {
       return;
     }
     dispatch(element, "pointerdown", init);
@@ -224,8 +362,11 @@ export const userEvent = {
     for (const character of text) {
       const { key, code, text: printable } = describeKey(character);
       dispatch(element, "keydown", { key, code });
-      if (printable != null && printable !== "\n") {
-        setValue(element, `${(element as any).value ?? ""}${printable}`);
+      // Nothing is typed into an element that shows no value; see `keyboard`
+      // for what that used to do instead.
+      const current = displayValue(element);
+      if (printable != null && printable !== "\n" && current != null) {
+        setValue(element, `${current}${printable}`);
         dispatch(element, "input", { data: printable });
       }
       dispatch(element, "keyup", { key, code });
@@ -243,12 +384,22 @@ export const userEvent = {
 
   /** Press keys at whatever has focus. Named keys go in braces: `{Enter}`. */
   async keyboard(sequence: string): Promise<void> {
-    const target: any = globalThis.document.activeElement ?? globalThis.document.body;
+    const target = documentOf().activeElement ?? bodyOf();
     for (const token of parseKeys(sequence)) {
       const { key, code, text } = describeKey(token);
       dispatch(target, "keydown", { key, code });
-      if (text != null && text !== "\n" && target.value !== undefined) {
-        setValue(target, `${target.value ?? ""}${text}`);
+      // `displayValue` rather than `target.value !== undefined`.
+      //
+      // The two agree about every control a person can type into, and differ
+      // about `<button>`, `<option>`, `<progress>` and the rest of the
+      // elements that have a `value` property without showing one: pressing
+      // Space at a focused button used to write `button.value = " "` and
+      // dispatch an `input` event at it, which no browser does — Space on a
+      // button is a click. Nothing in this repository's suite depended on it,
+      // and `ui.test.js` presses Space at a switch on the way past.
+      const current = displayValue(target);
+      if (text != null && text !== "\n" && current != null) {
+        setValue(target, `${current}${text}`);
         dispatch(target, "input", { data: text });
       }
       dispatch(target, "keyup", { key, code });
@@ -262,8 +413,10 @@ export const userEvent = {
     if (order.length === 0) {
       return;
     }
-    const active: any = globalThis.document.activeElement;
-    const at = order.indexOf(active);
+    const active = documentOf().activeElement;
+    // `indexOf` needs an element; a document with nothing focused is the same
+    // "not in the order" that `indexOf` answers `-1` to, said in front.
+    const at = active == null ? -1 : order.indexOf(active);
     const shift = options?.shift ?? false;
     const next =
       at < 0
@@ -281,9 +434,14 @@ export const userEvent = {
     values: string | $ReadOnlyArray<string>,
   ): Promise<void> {
     const wanted = typeof values === "string" ? [values] : values;
-    const select: any = element;
-    for (const option of Array.from(select.options ?? [])) {
-      (option as any).selected = wanted.includes((option as any).value);
+    // Only a `select` has options; anything else has none, which is what
+    // `select.options ?? []` used to say. The events are dispatched either
+    // way, because a component listening for `change` on something that is not
+    // a select is a component under test and not this function's business.
+    if (element instanceof HTMLSelectElement) {
+      for (const option of Array.from(element.options)) {
+        option.selected = wanted.includes(option.value);
+      }
     }
     dispatch(element, "input");
     dispatch(element, "change");
@@ -293,20 +451,19 @@ export const userEvent = {
   /** Move focus away, which is what makes a blur-validated field validate. */
   async tabAway(element: HTMLElement): Promise<void> {
     dispatch(element, "blur");
-    (element as any).blur?.();
+    element.blur();
     await settle();
   },
 };
 
 function focus(element: HTMLElement): void {
-  const previous: any = globalThis.document.activeElement;
-  if (previous === element) {
+  if (documentOf().activeElement === element) {
     return;
   }
   actively(() => {
-    (element as any).focus?.();
+    element.focus();
   });
-  if (globalThis.document.activeElement !== element) {
+  if (documentOf().activeElement !== element) {
     // A host whose `focus` does not move `activeElement`; the events are what
     // components listen for, so dispatch them regardless.
     dispatch(element, "focus");

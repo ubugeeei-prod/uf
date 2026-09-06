@@ -14,6 +14,22 @@
 // The distinction matters because `getBy` failing with "found none" is a much
 // better test failure than `queryBy` returning null and the assertion failing
 // three lines later on `null.textContent`.
+//
+// # Where a query looks
+//
+// `Element`. Every function here used to say `ParentNode`, which reads as the
+// right name — "something with children to search" is exactly what a root is —
+// and is not a type: the DOM specification has a `ParentNode` mixin, and Flow
+// folds it into `Document`, `DocumentFragment` and `Element` as comments
+// rather than declaring anything by that name. So it was twelve
+// `cannot-resolve-name` errors between here and `internal/screen.js`, and an
+// unresolvable name is `any`: `root` answered every question, which is why the
+// casts below it existed at all.
+//
+// `Element` is what the two callers actually pass — the document's body, and
+// an element a test already found — and it carries `querySelector`,
+// `querySelectorAll` and `innerHTML`, which is everything this module asks of
+// a root.
 
 /** What a query will accept as a description of the thing to find. */
 export type Matcher = string | RegExp | ((content: string, element: Element) => boolean);
@@ -21,6 +37,20 @@ export type Matcher = string | RegExp | ((content: string, element: Element) => 
 /** How exactly a string matcher has to match. */
 export type MatcherOptions = {|
   /** `false` matches a substring, case-insensitively. Defaults to `true`. */
+  readonly exact?: boolean,
+|};
+
+/**
+ * How to narrow a role query.
+ *
+ * A role is shared by every button on the page, so `name` is the option that
+ * makes the query mean something: "the button called Save", which is how a
+ * person would say it and what a screen reader announces.
+ */
+export type RoleOptions = {|
+  /** The accessible name the element must have. */
+  readonly name?: Matcher,
+  /** `false` matches a substring of the name. Defaults to `true`. */
   readonly exact?: boolean,
 |};
 
@@ -58,13 +88,13 @@ export function textOf(element: Element): string {
   return normalize(element.textContent ?? "");
 }
 
-function candidates(root: ParentNode, selector: string): Array<Element> {
+function candidates(root: Element, selector: string): Array<Element> {
   return Array.from(root.querySelectorAll(selector));
 }
 
 /** Elements whose own visible text matches. */
 export function allByText(
-  root: ParentNode,
+  root: Element,
   matcher: Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
@@ -82,11 +112,7 @@ export function allByText(
 }
 
 /** Elements with this ARIA role, whether written down or implied by the tag. */
-export function allByRole(
-  root: ParentNode,
-  role: string,
-  options?: {| readonly name?: Matcher, readonly exact?: boolean |},
-): Array<Element> {
+export function allByRole(root: Element, role: string, options?: RoleOptions): Array<Element> {
   const found = candidates(root, "*").filter((element) => roleOf(element) === role);
   const name = options?.name;
   if (name == null) {
@@ -99,7 +125,7 @@ export function allByRole(
 
 /** Form controls labelled by this text. */
 export function allByLabelText(
-  root: ParentNode,
+  root: Element,
   matcher: Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
@@ -125,7 +151,7 @@ export function allByLabelText(
 
 /** Elements with this placeholder. */
 export function allByPlaceholderText(
-  root: ParentNode,
+  root: Element,
   matcher: Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
@@ -136,7 +162,7 @@ export function allByPlaceholderText(
 
 /** Elements marked for tests, which is the query of last resort. */
 export function allByTestId(
-  root: ParentNode,
+  root: Element,
   matcher: Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
@@ -147,13 +173,45 @@ export function allByTestId(
 
 /** Elements whose value matches, for inputs and selects. */
 export function allByDisplayValue(
-  root: ParentNode,
+  root: Element,
   matcher: Matcher,
   options?: MatcherOptions,
 ): Array<Element> {
   return candidates(root, "input, textarea, select").filter((element) =>
-    matches(normalize((element as any).value ?? ""), element, matcher, options),
+    matches(normalize(displayValue(element) ?? ""), element, matcher, options),
   );
+}
+
+/**
+ * The value a control is showing, or `null` for an element that has none.
+ *
+ * The three classes rather than `element.value`, because `value` is not a
+ * property of `Element` — it belongs to each control class — and the selector
+ * that produced this element is a string the checker cannot read. An
+ * `instanceof` is the same fact stated where the checker can see it, and it is
+ * true of the elements this is called with for the reason `internal/dom.js`
+ * installs the document's own classes as the global ones: every element in the
+ * document under test is an instance of them.
+ *
+ * A cast was the other answer, and it is what was here. `(element as any).value`
+ * types this function's whole result as `any`, which then flows into
+ * `normalize` and out through `accessibleName` — a published function whose
+ * return type stopped being checked because of an expression three calls away.
+ *
+ * Exported so that `internal/events.js` asks the same question the same way:
+ * typing into a control and finding a control by its value have to agree about
+ * which elements have one, or `userEvent.type` would write a value that
+ * `getByDisplayValue` could not then find.
+ */
+export function displayValue(element: Element): string | null {
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  ) {
+    return element.value;
+  }
+  return null;
 }
 
 /**
@@ -162,10 +220,10 @@ export function allByDisplayValue(
  * `for` first, because it is explicit; then a control nested inside the label,
  * which is the other way HTML allows it.
  */
-function controlFor(root: ParentNode, label: Element): Element | null {
+function controlFor(root: Element, label: Element): Element | null {
   const id = label.getAttribute("for");
   if (id != null && id !== "") {
-    const byId = (root as any).querySelector?.(`#${cssEscape(id)}`);
+    const byId = root.querySelector(`#${cssEscape(id)}`);
     if (byId != null) {
       return byId;
     }
@@ -263,11 +321,17 @@ export function accessibleName(element: Element): string {
 
   const labelledBy = element.getAttribute("aria-labelledby");
   if (labelledBy != null && labelledBy !== "") {
-    const parts = labelledBy
-      .split(/\s+/)
-      .map((id) => element.ownerDocument?.getElementById(id))
-      .filter(Boolean)
-      .map((target) => textOf(target as any));
+    // A loop rather than `.map().filter(Boolean).map()`: `filter(Boolean)`
+    // removes the nulls at runtime and not from the type, so the second `map`
+    // saw `HTMLElement | null` and the cast that hid it also hid whether
+    // `textOf` was being handed an element at all.
+    const parts = [];
+    for (const id of labelledBy.split(/\s+/)) {
+      const target = element.ownerDocument.getElementById(id);
+      if (target != null) {
+        parts.push(textOf(target));
+      }
+    }
     if (parts.length > 0) {
       return normalize(parts.join(" "));
     }
@@ -284,7 +348,7 @@ export function accessibleName(element: Element): string {
   if (element.tagName.toLowerCase() === "input") {
     const type = (element.getAttribute("type") ?? "").toLowerCase();
     if (type === "submit" || type === "button" || type === "reset") {
-      return normalize((element as any).value ?? "");
+      return normalize(displayValue(element) ?? "");
     }
   }
 
@@ -292,19 +356,14 @@ export function accessibleName(element: Element): string {
 }
 
 /** Why a query failed, with enough of the DOM to see why. */
-export function queryFailure(
-  kind: string,
-  matcher: Matcher,
-  root: ParentNode,
-  found: number,
-): Error {
+export function queryFailure(kind: string, matcher: Matcher, root: Element, found: number): Error {
   const description =
     typeof matcher === "function"
       ? "the given predicate"
       : matcher instanceof RegExp
         ? String(matcher)
         : JSON.stringify(matcher);
-  const html = (root as any).innerHTML ?? "";
+  const html = root.innerHTML;
   const shown = html.length > 2000 ? `${html.slice(0, 2000)}\n…` : html;
   const count = found === 0 ? "found nothing" : `found ${found} elements and needed exactly one`;
   return new Error(`${kind} ${description}: ${count}\n\n${shown}`);

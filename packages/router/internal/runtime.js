@@ -30,10 +30,57 @@ export type RouteParams = { readonly [string]: string | $ReadOnlyArray<string> }
 /** The query string, as a read-only map. */
 export type SearchParams = { readonly [string]: string };
 
+/**
+ * A component found in a route module.
+ *
+ * `React.ComponentType<empty>` is "some React component", and it is a claim
+ * rather than a shrug. `ComponentType` is contravariant in its props — Flow's
+ * library definition writes it `component(...P)` with `in P` — so `empty` is
+ * the *top* of the component types: every component is one, and nothing may be
+ * passed to one until a caller has said which props it is passing. That is
+ * exactly what is known here. The router finds these by dynamic import, and
+ * nobody has told it what a page's props are.
+ *
+ * It cannot be `React.ComponentType<PageRenderProps>`, the props the router
+ * actually passes, because Flow's `component` syntax gives a component *exact*
+ * props and a page is free to want none of them. This repository's own pages
+ * and layouts are `component NotFound()` and
+ * `component Layout(children: React.Node)`, and against the props the router
+ * hands them that reads:
+ *
+ *     error[incompatible-type]: property `data`, property `params`, and
+ *     property `searchParams` are extra in `PageRenderProps` but missing in
+ *     `props of component NotFound`. Exact objects do not accept extra props.
+ *
+ * React passing a component a prop it did not declare is allowed and always
+ * has been. `renderable` is the one line that says so.
+ */
+type RouteComponent = React.ComponentType<empty>;
+
+/**
+ * The props `RouteView` gives the page it renders.
+ *
+ * The same three as the public `PageProps` in `../index.js`, at the arguments
+ * the runtime instantiates it with: the runtime knows the parameters as
+ * strings and the loader's data as `mixed`, and a page narrows both by
+ * annotating its own props.
+ */
+type PageRenderProps = {|
+  readonly params: RouteParams,
+  readonly searchParams: SearchParams,
+  readonly data: mixed,
+|};
+
+/** The props `RouteView` gives each layout, outermost first. */
+type LayoutRenderProps = {|
+  readonly params: RouteParams,
+  readonly children: React.Node,
+|};
+
 /** What a page module may export. The component is `default` or `Page`. */
 export type PageModule = {
-  readonly default?: React.ComponentType<any>,
-  readonly Page?: React.ComponentType<any>,
+  readonly default?: RouteComponent,
+  readonly Page?: RouteComponent,
   readonly loader?: (args: LoaderArgs) => mixed | Promise<mixed>,
   readonly metadata?: Metadata,
   readonly generateMetadata?: (args: MetadataArgs) => Metadata | Promise<Metadata>,
@@ -46,8 +93,8 @@ export type PageModule = {
 
 /** What a layout module may export. The component is `default` or `Layout`. */
 export type LayoutModule = {
-  readonly default?: React.ComponentType<any>,
-  readonly Layout?: React.ComponentType<any>,
+  readonly default?: RouteComponent,
+  readonly Layout?: RouteComponent,
   readonly metadata?: Metadata,
   ...
 };
@@ -631,10 +678,28 @@ export hook useRouter(): Router {
   return useRouterState().router;
 }
 
-/** The current page's loader data. */
-export hook useLoaderData<T>(): T {
-  // $FlowFixMe[unclear-type] loader data is typed by the page that declares the loader.
-  return useRouterState().resolved.data as any;
+/**
+ * The current page's loader data.
+ *
+ * `mixed`, so the page that reads it says what it is and the checker watches
+ * it do so. This was `useLoaderData<T>(): T`, which looks like inference and
+ * is a cast a caller writes at a distance: `useLoaderData<Post>()` asserted
+ * that a loader three files away returned a `Post` and nothing anywhere
+ * checked it, so a loader that changed shape produced a `Post`-shaped
+ * `undefined` at the first property read rather than an error where the shape
+ * was decided.
+ *
+ * Narrowing is a line at the top of the page — `if (typeof data !== "object"
+ * || data == null) { … }`, or the page's own validator schema, which is what
+ * `@uniflowed/validator` is for at exactly this boundary.
+ *
+ * The type that would need no narrowing is a *generated* one: the route table
+ * already produces `RoutePath` and `RouteParams` from the `app/` directory
+ * (`crates/uf_router/src/lib.rs`), and a loader's return type belongs in the
+ * same file, keyed by route. Until it is there, this says what is true.
+ */
+export hook useLoaderData(): mixed {
+  return useRouterState().resolved.data;
 }
 
 /**
@@ -663,25 +728,47 @@ export component RouteView() {
  * The component a page module renders: its default export, or the named
  * `Page` that `uf create` scaffolds. An MDX page always has a default export.
  */
-function pageComponent(module: PageModule): React.ComponentType<any> {
+function pageComponent(module: PageModule): React.ComponentType<PageRenderProps> {
   const component = module.default ?? module.Page;
   if (component == null) {
     throw new Error(
       "@uniflowed/router: a page module must export a component as `default` or `Page`",
     );
   }
-  return component;
+  return renderable(component);
 }
 
 /** The component a layout module renders: `default`, or the named `Layout`. */
-function layoutComponent(module: LayoutModule): React.ComponentType<any> {
+function layoutComponent(module: LayoutModule): React.ComponentType<LayoutRenderProps> {
   const component = module.default ?? module.Layout;
   if (component == null) {
     throw new Error(
       "@uniflowed/router: a layout module must export a component as `default` or `Layout`",
     );
   }
-  return component;
+  return renderable(component);
+}
+
+/**
+ * A route module's component, as the router is about to render it.
+ *
+ * # The one cast in this file, and why it is here rather than in six places
+ *
+ * A `RouteComponent` is a component about whose props nothing was claimed, and
+ * `RouteView` is about to pass it three. React allows that — a component
+ * receives the props its parent wrote and ignores the ones it did not declare
+ * — but Flow cannot be told it: a page's props are exact, so no props type but
+ * that page's own is assignable, and the router does not know which page it
+ * has. `React.ComponentType<any>` on the module types was this same
+ * unsoundness spread over six declarations, where it also stopped anyone from
+ * checking that `RouteView` passes the props a page is documented to receive.
+ * Here it is one line, and everything on either side of it is checked: what a
+ * module may export, and what a page is handed.
+ */
+function renderable<TProps extends { ... }>(
+  component: RouteComponent,
+): React.ComponentType<TProps> {
+  return component as any;
 }
 
 component Head(metadata: Metadata) {

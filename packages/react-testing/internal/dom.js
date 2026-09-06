@@ -15,6 +15,67 @@
 import { Window } from "happy-dom";
 
 /**
+ * A function this module found on a window and knows nothing else about.
+ *
+ * `mixed` in and `mixed` out is the whole contract: these are copied across
+ * for React and for components to call, and nothing here ever calls one.
+ */
+type HostFunction = (...args: $ReadOnlyArray<mixed>) => mixed;
+
+/**
+ * Values kept by name, which is all this module knows about a window, the
+ * global object, or a Storage.
+ *
+ * The indexer is the honest shape rather than a placeholder for a type nobody
+ * wrote: the work this module does is to read names out of a list and hand the
+ * values to `Object.defineProperty`. It does not call them, construct them, or
+ * look inside them, so `mixed` is the amount it knows.
+ */
+type Named = { readonly [string]: mixed };
+
+/**
+ * A window, as this module uses one.
+ *
+ * A table of globals to copy, plus the three functions that are *bound* rather
+ * than copied — and those are named because binding is the one thing an
+ * indexer cannot describe. `typeof win[name] === "function"` refines a `mixed`
+ * to a function whose parameters Flow does not know, and `.bind` is not
+ * something that can be done to one of those:
+ *
+ *     error[incompatible-use]: Cannot call `value.bind` because
+ *     `unknown function` is not a function type.
+ *
+ * So the list of functions to bind, which used to be a `FUNCTIONS` array
+ * beside the other three arrays, is this part of the type instead. One list
+ * rather than two, and it is the one the checker reads.
+ *
+ * `happy-dom` ships TypeScript rather than Flow, so `new Window(…)` is `any`.
+ * This annotation is the first statement anywhere about what comes back, not a
+ * cast that discards one.
+ */
+type HostWindow = {
+  readonly getComputedStyle?: HostFunction,
+  readonly requestAnimationFrame?: HostFunction,
+  readonly cancelAnimationFrame?: HostFunction,
+  readonly [string]: mixed,
+};
+
+/**
+ * The global object, under the one description this module has of it.
+ *
+ * `globalThis` is a namespace to the checker rather than an object, so
+ * `globalThis[name]` is not an expression that can be written —
+ * `Cannot access namespace globalThis with computed property using string` —
+ * and reading an installed global by a name from a list is what deciding
+ * whether to install one requires. Naming the same object as a table says what
+ * those reads are: a name in, and no claim at all about what comes out.
+ *
+ * Writes still go through `define`, because they have to be
+ * `Object.defineProperty`; see the reason there.
+ */
+const globals: Named = globalThis;
+
+/**
  * The document's own classes, which always replace whatever the host had.
  *
  * A document rejects an event built by a different implementation, and Node
@@ -22,6 +83,14 @@ import { Window } from "happy-dom";
  * "parameter 1 is not of type 'Event'" for every event this module had no more
  * specific constructor for. Whatever the host already had, the document's own
  * classes are the ones that work with the document.
+ *
+ * The list is also the list of questions the rest of the package can ask.
+ * `internal/queries.js` and `internal/events.js` narrow an `Element` with
+ * `instanceof HTMLInputElement` rather than reading `.value` off a cast, and
+ * an `instanceof` against a name that was never installed is not a `false` —
+ * it is `ReferenceError: HTMLFieldSetElement is not defined`, from a line
+ * about clicking a tab. So a class this package needs to *recognise* belongs
+ * here as much as one the document needs to accept.
  */
 const CLASSES = [
   "Node",
@@ -31,6 +100,7 @@ const CLASSES = [
   "HTMLTextAreaElement",
   "HTMLSelectElement",
   "HTMLButtonElement",
+  "HTMLFieldSetElement",
   "HTMLAnchorElement",
   "SVGElement",
   "Event",
@@ -46,11 +116,6 @@ const CLASSES = [
   "ResizeObserver",
   "IntersectionObserver",
 ];
-
-/**
- * Functions that read the window they came from, so they are bound to it.
- */
-const FUNCTIONS = ["getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"];
 
 /**
  * Objects a page has, installed only where the host has none.
@@ -90,7 +155,7 @@ function isUsableStorage(value: mixed): boolean {
   if (value == null || typeof value !== "object") {
     return false;
   }
-  const storage: { [string]: mixed } = value as any;
+  const storage: Named = value;
   return (
     typeof storage.getItem === "function" &&
     typeof storage.setItem === "function" &&
@@ -99,7 +164,7 @@ function isUsableStorage(value: mixed): boolean {
   );
 }
 
-let installed: mixed = null;
+let installed: HostWindow | null = null;
 
 /**
  * Install a DOM on the global object, once.
@@ -109,7 +174,7 @@ let installed: mixed = null;
  * not replace the document — replacing it mid-process would strand every React
  * root already mounted in the old one.
  */
-export function installDom(): mixed {
+export function installDom(): HostWindow {
   installActEnvironment();
   if (installed != null) {
     return installed;
@@ -122,31 +187,29 @@ export function installDom(): mixed {
     return installed;
   }
 
-  const win = new Window({ url: "http://localhost/" });
+  const win: HostWindow = new Window({ url: "http://localhost/" });
 
   for (const name of CLASSES) {
-    const value = (win as any)[name];
+    const value = win[name];
     if (value !== undefined) {
       define(name, value);
     }
   }
-  for (const name of FUNCTIONS) {
-    const value = (win as any)[name];
-    if (typeof value === "function") {
-      define(name, value.bind(win));
-    }
-  }
+  // The three by name rather than from a list: see `HostWindow`.
+  defineBound("getComputedStyle", win.getComputedStyle, win);
+  defineBound("requestAnimationFrame", win.requestAnimationFrame, win);
+  defineBound("cancelAnimationFrame", win.cancelAnimationFrame, win);
   for (const name of OBJECTS) {
-    const value = (win as any)[name];
-    if (value !== undefined && globalThis[name] === undefined) {
+    const value = win[name];
+    if (value !== undefined && globals[name] === undefined) {
       define(name, value);
     }
   }
   for (const name of STORAGE) {
-    if (isUsableStorage(globalThis[name])) {
+    if (isUsableStorage(globals[name])) {
       continue;
     }
-    const value = (win as any)[name];
+    const value = win[name];
     if (isUsableStorage(value)) {
       define(name, value);
     }
@@ -154,8 +217,8 @@ export function installDom(): mixed {
 
   // React reads these to decide it is in a browser and to pick its event
   // system, and they must be the objects the elements belong to.
-  define("window", win as any);
-  define("document", (win as any).document);
+  define("window", win);
+  define("document", win.document);
 
   installed = win;
   return installed;
@@ -216,8 +279,34 @@ function define(name: string, value: mixed): void {
   });
 }
 
+/** Install one of the window's own functions, still reading that window. */
+function defineBound(name: string, fn: HostFunction | void, win: HostWindow): void {
+  if (typeof fn === "function") {
+    define(name, fn.bind(win));
+  }
+}
+
 /** The document tests query, installing one if the process has none. */
 export function documentOf(): Document {
   installDom();
-  return globalThis.document as any;
+  return globalThis.document;
+}
+
+/**
+ * The body a test renders into and queries, installing a document first.
+ *
+ * Separate from `documentOf` because `Document.body` is `HTMLBodyElement |
+ * null` — a document with no `<body>` is a document a parser can produce — and
+ * both callers want the element rather than the question. A document this
+ * module installed has a body, and a document the host already had is a page,
+ * which also has one; the throw is for the third case, and it says what is
+ * missing rather than leaving `Cannot read properties of null (reading
+ * 'appendChild')` to be read at a line about rendering.
+ */
+export function bodyOf(): HTMLElement {
+  const body = documentOf().body;
+  if (body == null) {
+    throw new Error("@uniflowed/react-testing: the document has no <body> to render into");
+  }
+  return body;
 }
