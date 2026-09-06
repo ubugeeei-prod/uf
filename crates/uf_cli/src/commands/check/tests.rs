@@ -99,7 +99,7 @@ fn statuses_are_stable() {
 
 #[test]
 fn a_build_with_a_checker_reports_it_and_one_without_says_so() {
-    let types = type_check(&[]);
+    let types = type_check(&[], std::path::Path::new("."));
 
     #[cfg(feature = "upstream-typecheck")]
     if uf_check::is_available() {

@@ -15,8 +15,8 @@ use camino::Utf8Path;
 use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
 use uf_check::{
-    CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic, active_backend, backend_name,
-    check_sources,
+    CheckCache, CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic, active_backend,
+    backend_name, check_sources_cached,
 };
 use uf_lint::{LintReport, Severity, SourceFile};
 use uf_term::Status;
@@ -24,8 +24,8 @@ use uf_term::Status;
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
-    LintCommand, group_by_path, lint_payload, render_file_summary, render_group, render_unreadable,
-    render_verdict, run_lint, severity_count,
+    LintCommand, LintRun, group_by_path, lint_payload, render_file_summary, render_group,
+    render_unreadable, render_verdict, run_lint, severity_count,
 };
 use crate::support::plural;
 #[cfg(feature = "upstream-typecheck")]
@@ -117,9 +117,14 @@ fn type_backend_name() -> String {
 pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool, paths: &[String]) -> Result<()> {
     let mut progress = ui.progress();
     progress.draw("scanning sources");
-    let (lint, sources, unreadable) = run_lint(cwd, paths)?;
+    let LintRun {
+        report: lint,
+        sources,
+        unreadable,
+        root,
+    } = run_lint(cwd, paths)?;
     progress.draw("type checking");
-    let types = type_check(&sources);
+    let types = type_check(&sources, root.as_std_path());
     progress.finish();
     drop(progress);
 
@@ -157,13 +162,17 @@ pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool, paths: &[String]) -
 /// run, but `uf lint` has already reported the same syntax error with its own
 /// rule id, and printing it twice helps nobody.
 #[cfg(feature = "upstream-typecheck")]
-fn type_check(sources: &[SourceFile]) -> TypeCheck {
+fn type_check(sources: &[SourceFile], root: &std::path::Path) -> TypeCheck {
     let inputs: Vec<Source<'_>> = sources
         .iter()
         .map(|source| Source::new(&source.path, &source.source))
         .collect();
 
-    match check_sources(&inputs, &CheckLimits::default()) {
+    // Under the project root, because that is what the cache is about: the same
+    // sources checked from two roots are two projects, and `.uf/` is where uf
+    // already keeps per-project state that `.gitignore` covers.
+    let cache = CheckCache::open(root);
+    match check_sources_cached(&inputs, &CheckLimits::default(), cache.as_ref()) {
         Ok(mut report) => {
             report
                 .diagnostics
@@ -176,7 +185,7 @@ fn type_check(sources: &[SourceFile]) -> TypeCheck {
 }
 
 #[cfg(not(feature = "upstream-typecheck"))]
-fn type_check(_sources: &[SourceFile]) -> TypeCheck {
+fn type_check(_sources: &[SourceFile], _root: &std::path::Path) -> TypeCheck {
     TypeCheck::Unavailable
 }
 
@@ -203,6 +212,7 @@ fn type_check_payload(types: &TypeCheck) -> Value {
     if let Some(report) = types.report() {
         value["filesChecked"] = json!(report.files_checked);
         value["filesSkipped"] = json!(report.files_skipped);
+        value["filesFromCache"] = json!(report.files_from_cache);
         value["elapsedMs"] = json!(report.elapsed.as_secs_f64() * 1000.0);
         value["builtinsMs"] = json!(report.builtins.cold_elapsed.as_secs_f64() * 1000.0);
         value["builtinsCold"] = json!(report.builtins.cold);
@@ -389,11 +399,17 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             // Only shown when it happened. A project with nothing opted out
             // should not have to read a line saying so.
             let skipped = report.files_skipped.to_string();
+            // Only shown when the cache answered something: a project being
+            // checked for the first time should not have to read a zero.
+            let cached = format!("{} of {files}", report.files_from_cache);
             let mut rows = vec![
                 KeyValue::toned("types checked", &files, Tone::Number),
                 KeyValue::toned("inference", &inference, Tone::Muted),
                 KeyValue::toned("builtins", &builtins, Tone::Muted),
             ];
+            if report.files_from_cache > 0 {
+                rows.insert(1, KeyValue::toned("unchanged", &cached, Tone::Muted));
+            }
             if report.files_skipped > 0 {
                 rows.insert(1, KeyValue::toned("@noflow", &skipped, Tone::Muted));
             }

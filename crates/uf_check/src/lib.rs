@@ -32,6 +32,7 @@
 
 #![deny(missing_docs)]
 
+mod cache;
 mod diagnostic;
 mod error;
 mod limits;
@@ -39,6 +40,7 @@ mod report;
 #[cfg(feature = "upstream-typecheck")]
 mod upstream;
 
+pub use crate::cache::CheckCache;
 pub use crate::diagnostic::{
     DiagnosticKind, MessageFeatures, MessageSegment, Position, RelatedLocation, RelatedLocations,
     Severity, Span, TypeDiagnostic,
@@ -114,13 +116,27 @@ pub fn check_sources(
     sources: &[Source<'_>],
     limits: &CheckLimits,
 ) -> Result<CheckReport, CheckError> {
+    check_sources_cached(sources, limits, None)
+}
+
+/// Type check a batch of files, answering from `cache` whatever it still knows.
+///
+/// The report is the same report [`check_sources`] would have produced — the
+/// cache decides how much work that took and nothing else. Passing [`None`]
+/// checks everything, which is what a caller with no project on disk (an
+/// editor holding unsaved buffers, say) wants.
+pub fn check_sources_cached(
+    sources: &[Source<'_>],
+    limits: &CheckLimits,
+    cache: Option<&CheckCache>,
+) -> Result<CheckReport, CheckError> {
     #[cfg(feature = "upstream-typecheck")]
     {
-        upstream::check_sources(sources, limits)
+        upstream::check_sources(sources, limits, cache)
     }
     #[cfg(not(feature = "upstream-typecheck"))]
     {
-        let _ = (sources, limits);
+        let _ = (sources, limits, cache);
         Err(CheckError::Unavailable)
     }
 }
