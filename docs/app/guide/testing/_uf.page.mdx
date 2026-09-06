@@ -39,6 +39,113 @@ transform a build uses.
 are there, with `.only`, `.skip`, `.todo` and `.each` on `it` and `describe`.
 `expect` has 25 matchers, `.not`, `.resolves`, `.rejects`, and `fn()` for spies.
 
+## Replacing a module
+
+`fn()` and `uft.spyOn` replace a method on an object a test can reach. A
+component that imports a client and calls it while it is being evaluated has no
+such object — the import is the only seam — so `uft.mock` replaces the whole
+module.
+
+```js
+// @flow
+import typeof * as ClientModule from "./client.js";
+import { describe, expect, it, uft } from "@uniflowed/test";
+
+describe("the dashboard", () => {
+  it("renders what the client returned", async () => {
+    await uft.mock<ClientModule>("./client.js", () => ({
+      send: uft.fn(() => ({ total: 420 })),
+    }));
+
+    const { summary } = await import("./dashboard.js");
+
+    expect(summary()).toBe("420");
+  });
+});
+```
+
+### When a mock takes effect
+
+**Nothing is hoisted.** Vitest lifts `vi.mock` above the importing file's
+`import` declarations with a Babel pass. uf has no Babel in its pipeline and is
+not adding one for a test helper, so the rule is Bun's:
+
+- every `import` declaration runs before the first statement in the file, so a
+  static import is **never** affected by a `uft.mock` written below it — it
+  already holds the real module;
+- a mock takes effect for every import that begins after the promise
+  `uft.mock` returns settles;
+- so `await import("./client.js")` is how a test reaches the stand-in.
+
+A synchronous factory is installed before `uft.mock` returns, so the rule holds
+whether or not you await. Await anyway: an automatic stand-in has to read the
+real module first, and cannot be installed synchronously at all.
+
+**A mock affects the next import, not the last one.** Nothing can rewrite a
+module the host has already evaluated and linked into its importers. Bun's
+engine can do that and Node's cannot, and one call meaning two things on two
+hosts is worse than it meaning the narrower one on both.
+
+**Registering or removing a mock starts a new module epoch.** A module that
+imported the mocked one computed its own exports from it, so it is evaluated
+again on the next import too. Modules reached by a path (`./client.js`) are;
+packages are not, because a second copy of `@uniflowed/test` would be a second
+registry and a second set of spies.
+
+### The bindings
+
+| Binding | What it does |
+| --- | --- |
+| `uft.mock(specifier, factory)` | Register what the module exports. The factory runs once, immediately; it may be `async` |
+| `uft.mock(specifier)` | Register an automatic stand-in: functions become spies that record and return `undefined`, arrays are emptied, objects are followed, primitives are kept |
+| `uft.doMock` | `uft.mock`. Vitest's two names differ only in hoisting, and uf hoists neither |
+| `uft.unmock(specifier)` | Stop standing in, for imports that begin after the call |
+| `uft.doUnmock` | `uft.unmock`, for the same reason |
+| `uft.importActual(specifier)` | The real module, even while it is mocked — this is how a partial mock keeps the exports it did not name. It reaches past the stand-in for the module it names and for no other, so the modules *that* one imports are still mocked |
+| `uft.importMock(specifier)` | The automatic stand-in, handed back rather than registered |
+| `uft.resetModules()` | Evaluate path-imported modules again on the next import. It does not run a mock's factory again — register the mock again for that |
+
+A partial mock is `importActual` and a spread:
+
+```js
+await uft.mock<ClientModule>("./client.js", async () => ({
+  ...(await uft.importActual<ClientModule>("./client.js")),
+  send: uft.fn(() => ({ total: 420 })),
+}));
+```
+
+`uft.clearAllMocks`, `resetAllMocks` and `restoreAllMocks` reach the *spies* a
+factory put in a module's exports, and none of them unmocks anything:
+`clearAllMocks` forgets the calls, `resetAllMocks` forgets the implementations
+too, `restoreAllMocks` puts back what `uft.spyOn` took. `uft.unmock` is the one
+that puts the module back.
+
+### The factory is type checked
+
+`import typeof * as ClientModule from "./client.js"` names the module's shape,
+and `uft.mock<ClientModule>` checks the factory against it. A stand-in whose
+`BASE` is a number, for a module whose `BASE` is a string, is an error at the
+call rather than a `TypeError` three tests later:
+
+```
+error[incompatible-type]: Cannot call uft.mock with function bound to factory
+because in the return value: Either in property BASE: 42 [1] is incompatible
+with string [2].
+```
+
+The factory is checked as a `Partial` of the module, so naming a subset of the
+exports is fine and misspelling one of them is not.
+
+### Which hosts
+
+Node only. Interception needs synchronous, in-thread module customization hooks
+— `node:module`'s `registerHooks` — because a mock is a value the test built and
+a loader running on a thread of its own cannot see it. Bun's `node:module` has
+no such hook and Deno has no uf loader at all
+([#246](https://github.com/ubugeeei-prod/uf/issues/246)), so on either host all
+seven bindings raise `UnsupportedError` naming the host, the hook and what to do
+instead. None of them silently does nothing.
+
 ## Running them
 
 <div className="command"><code>uf test</code></div>
@@ -126,7 +233,8 @@ between runs and a pre-bundled worker. Neither exists yet.
 
 ## Not there yet
 
-- No snapshots, no coverage, and no concurrent cases within a single file.
+- No coverage, and no concurrent cases within a single file.
+- Module mocking is Node-only; see "Which hosts" above.
 - `@uniflowed/react-testing` needs a DOM and says so when called; component
   tests need one supplied.
 - Deno has no Flow loader, so `uf test` refuses it with a message rather than
