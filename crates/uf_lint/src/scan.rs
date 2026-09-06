@@ -153,10 +153,32 @@ impl<'a> FileScan<'a> {
             offset += raw.len() + 1;
         }
 
-        facts.declares_component = source.contains("component ");
-        facts.has_use_client = source.contains("\"use client\"") || source.contains("'use client'");
-        facts.mentions_react = source.contains("React");
-        facts.mentions_react_native = source.contains("react-native");
+        // Read from the code and not from the whole file. These four decide
+        // which rules run at all, and `source` includes every comment: a file
+        // whose header explains the `component` syntax, or mentions the
+        // "server-component analysis", was treated as declaring one, and
+        // `react/no-default-export-component` then reported a plugin factory.
+        // `Line::code` is the line with its comments removed and its string
+        // literals kept, which is what each of these wants — `use client` is a
+        // string by construction, and a name is only a mention where it could
+        // be read.
+        //
+        // A `component ` inside a string is not a declaration either, so that
+        // one asks `in_string` as well. The other three do not: a package name
+        // in an import specifier is exactly how `react-native` and `React`
+        // reach a file, and both of those are strings.
+        facts.declares_component = lines.iter().any(|line| {
+            let code = line.code();
+            code.match_indices("component ")
+                .any(|(at, _)| !line.in_string(at))
+        });
+        facts.has_use_client = lines.iter().any(|line| {
+            line.code().contains("\"use client\"") || line.code().contains("'use client'")
+        });
+        facts.mentions_react = lines.iter().any(|line| line.code().contains("React"));
+        facts.mentions_react_native = lines
+            .iter()
+            .any(|line| line.code().contains("react-native"));
         facts.has_esm_import = lines.iter().any(|line| {
             let code = line.code().trim_start();
             code.starts_with("import ") || code.starts_with("import{")
