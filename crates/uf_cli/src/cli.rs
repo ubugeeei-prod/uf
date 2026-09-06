@@ -104,12 +104,24 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: EnvCommand,
     },
-    /// Run a package's binary without installing it. Also `ufx`.
+    /// Run a package's binary, fetching it only with `--yes`. Also `ufx`.
     Exec {
-        /// The package to fetch and run, for example `@uniflowed/create`.
+        /// Fetch a package the project has not installed, and run it.
+        ///
+        /// Off by default: fetching an unpinned name and executing it is the
+        /// most dangerous thing a package manager does, and uf already refuses
+        /// to run a dependency's install scripts without being asked.
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// The package to run, for example `@uniflowed/create`.
         package: String,
         /// Everything after the package name, handed to it untouched.
-        #[arg(trailing_var_arg = true)]
+        ///
+        /// `allow_hyphen_values` because "untouched" has to include `--fix`:
+        /// without it `ufx eslint --fix` was `error: unexpected argument
+        /// '--fix' found`, which is uf reading an argument that was never
+        /// addressed to it.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
     /// Say what a command will do, and which provider does each part.

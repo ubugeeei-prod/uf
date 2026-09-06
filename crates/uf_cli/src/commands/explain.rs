@@ -16,8 +16,10 @@ use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::json;
 use uf_config::{ResolvedConfig, load_config};
+use uf_pm::{Operation, command_for, detect_package_manager};
 use uf_term::KeyValue;
 
+use crate::commands::task::fetchable;
 use crate::support::project_label;
 use crate::ui::Ui;
 
@@ -36,8 +38,8 @@ struct Stage {
 /// are absent on purpose: there is no provider to name, and an entry saying
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
-    "dev", "build", "doc", "test", "fmt", "lint", "check", "run", "install", "upgrade", "use",
-    "env", "prepare", "publish", "release", "lsp",
+    "dev", "build", "doc", "test", "fmt", "lint", "check", "run", "exec", "install", "upgrade",
+    "use", "env", "prepare", "publish", "release", "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -51,6 +53,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         "lint" => lint_stages(&resolved),
         "check" => check_stages(&resolved),
         "run" => run_stages(&resolved),
+        "exec" => exec_stages(&resolved),
         "install" => install_stages(&resolved),
         "upgrade" => upgrade_stages(&resolved),
         "use" | "env" => runtime_stages(&resolved),
@@ -182,6 +185,43 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 /// `uf install`, whose whole question is which resolver decides a tree.
+/// `uf exec`, which is three different commands wearing one name.
+///
+/// Worth explaining precisely because of that: the answer to "what will
+/// `ufx foo` do" is one of three things, and which one depends on a directory
+/// listing the reader cannot see. It used to be a fourth — write a JSON file
+/// and exit 0 — which is the thing nobody could have guessed.
+fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    vec![
+        Stage {
+            name: "uf's own packages",
+            provider: "uf".to_string(),
+            detail: "@uniflowed/create, @uniflowed/test and @uniflowed/pm run in this process"
+                .to_string(),
+        },
+        Stage {
+            name: "installed binaries",
+            provider: "the project".to_string(),
+            detail: format!(
+                "anything in {}, run directly with your arguments and its exit status",
+                resolved.root.join("node_modules/.bin")
+            ),
+        },
+        Stage {
+            name: "everything else",
+            provider: command_for(
+                fetchable(detect_package_manager(&resolved.root).package_manager),
+                Operation::DlxExec,
+            )
+            .to_string(),
+            detail: format!(
+                "refused unless --yes: fetching a name {} does not pin runs code the project never asked for",
+                resolved.config.pm.lockfile
+            ),
+        },
+    ]
+}
+
 fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {

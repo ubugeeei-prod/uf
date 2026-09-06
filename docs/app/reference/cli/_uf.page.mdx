@@ -104,7 +104,19 @@ everything after the script name.
 
 ### uf exec PACKAGE [ARGS...]
 
-Runs a package's binary on the resolved host, the way `npx` would.
+Runs a package's binary, forwarding everything after the name to it and
+exiting with its status. Also spelled `ufx`.
+
+An installed binary — anything in this project's `node_modules/.bin` — runs
+without ceremony. A package uf implements itself, such as `@uniflowed/create`,
+runs in this process.
+
+A package the project has **not** installed is refused, and `uf exec` says so
+and exits non-zero. Fetching an unpinned name from a registry and executing it
+is the most dangerous thing a package manager does, and uf already refuses to
+run a dependency's install scripts without being asked; `--yes` is how you ask
+here, and it delegates to whichever package manager the project uses (`npx
+--yes`, `pnpm dlx`, `yarn dlx`, `bunx`).
 
 ## Correctness
 

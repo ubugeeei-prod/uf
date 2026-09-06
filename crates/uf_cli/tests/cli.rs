@@ -5,7 +5,7 @@ mod support;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
-use support::{assert_plain, binary, create_app, uf};
+use support::{Project, assert_plain, binary, create_app, uf};
 
 #[test]
 fn uf_prints_help() {
@@ -780,14 +780,107 @@ fn ufx_alias_runs_uniflowed_create_package() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("ufx \u{b7} @uniflowed/create"), "{stdout}");
-    assert!(stdout.contains("UfNative"));
-    assert!(stdout.contains("exec-cache"));
     assert!(stdout.contains("created 9 files"));
     assert!(dir.path().join("app.js").exists());
+    // `.uf/exec-cache/` used to be written here, and by every other `ufx`
+    // invocation. Nothing ever read one back: the directory was named a cache
+    // and cached nothing, and it existed so that a command with nothing to do
+    // had something to write. See ubugeeei-prod/uf#274.
+    assert!(!dir.path().join(".uf/exec-cache").exists());
+}
+
+/// A binary the project has installed runs, with its arguments and its status.
+///
+/// `uf exec` used to write a JSON file, print "cached execution request for
+/// registry resolution", and exit 0 without running anything at all — so a CI
+/// step spelled `ufx some-codegen` went green having generated nothing.
+/// See ubugeeei-prod/uf#274.
+#[test]
+fn exec_runs_an_installed_binary_and_forwards_its_arguments_and_status() {
+    let project = Project::new(&[]);
+    let bin = project.path().join("node_modules/.bin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("uf-fixture-tool");
+    fs::write(
+        &script,
+        "#!/bin/sh\necho \"tool saw: $*\"\nexit \"${UF_FIXTURE_EXIT:-0}\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "uf-fixture-tool", "--flag", "value"])
+        .output()
+        .unwrap();
+
     assert!(
-        dir.path()
-            .join(".uf/exec-cache/_uniflowed_create.json")
-            .exists()
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        stdout, "tool saw: --flag value\n",
+        "the binary owns stdout; uf must not render onto it"
+    );
+
+    // And its failure is uf's failure, or a red step would go green.
+    let failed = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .env("UF_FIXTURE_EXIT", "3")
+        .args(["exec", "uf-fixture-tool"])
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+    assert!(
+        String::from_utf8_lossy(&failed.stderr).contains("uf-fixture-tool exited with"),
+        "{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
+}
+
+/// A package the project never installed is refused, loudly.
+///
+/// Fetching an unpinned name from a registry and executing its binary is the
+/// most dangerous thing a package manager does, and uf already refuses to run
+/// a dependency's install scripts without being asked. `--yes` is how you ask;
+/// without it this is an error and not a shrug. See ubugeeei-prod/uf#274.
+#[test]
+fn exec_refuses_to_fetch_a_package_the_project_has_not_installed() {
+    let project = Project::new(&[]);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "uf-nonexistent-fixture-package", "hello"])
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "stdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    for expected in [
+        "uf-nonexistent-fixture-package is not installed",
+        "uf.lock",
+        "uf exec --yes uf-nonexistent-fixture-package",
+        // Naming the command it would run, with the arguments forwarded, so
+        // the reader can decide by reading rather than by trusting.
+        "uf-nonexistent-fixture-package hello",
+    ] {
+        assert!(
+            stderr.contains(expected),
+            "missing {expected:?} in:\n{stderr}"
+        );
+    }
+    assert!(
+        !stderr.contains("cached execution request"),
+        "the old shrug is still there:\n{stderr}"
     );
 }
 
@@ -883,16 +976,11 @@ fn explain_says_which_commands_it_knows() {
 /// The other half of {@link explain_describes_every_command_that_delegates}:
 /// the test asks `uf` itself for its commands, so a new one has to land in
 /// one list or the other. `help` and `completion` are clap's; `create`,
-/// `explain`, `info`, `inspect` and `exec` are uf's own work start to finish.
-const SELF_CONTAINED: &[&str] = &[
-    "completion",
-    "create",
-    "exec",
-    "explain",
-    "help",
-    "info",
-    "inspect",
-];
+/// `explain`, `info` and `inspect` are uf's own work start to finish.
+///
+/// `exec` left this list when it started running things: two of its three
+/// paths hand control to something else, so there is a provider to name.
+const SELF_CONTAINED: &[&str] = &["completion", "create", "explain", "help", "info", "inspect"];
 
 /// Every command `uf` has is either explained or classified.
 ///

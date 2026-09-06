@@ -57,7 +57,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("dev", "vite.rs and cli.rs: binds a socket"),
     ("doc", "here, and cli.rs for the generated Markdown"),
     ("env", "here, and env.rs for the store"),
-    ("exec", "cli.rs: fetches and runs a package"),
+    ("exec", "cli.rs: runs a package, or refuses to fetch one"),
     ("explain", "here, and cli.rs for what it says"),
     ("fmt", "here, and cli.rs for what it rewrites"),
     ("info", "here, and output.rs for the brand surface"),
