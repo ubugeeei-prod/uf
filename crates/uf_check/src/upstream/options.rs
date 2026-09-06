@@ -32,6 +32,28 @@ const REACT_RULES: [ReactRule; 4] = [
 /// How many tokens of a file's header are scanned for a docblock.
 const MAX_HEADER_TOKENS: i32 = 10;
 
+/// The `package.json` field a package with no `exports` map is entered through.
+///
+/// Flow's own default, and Node's. Stated rather than left to
+/// `Options::default()`, whose list is empty — with an empty list `main` is
+/// never read, and a package that has no `exports` map would resolve to
+/// nothing at all.
+const NODE_MAIN_FIELDS: [&str; 1] = ["main"];
+
+/// The `exports` conditions a package subpath is resolved under.
+///
+/// uf checks the module an ESM `import` loads, because that is the only module
+/// a uf project has: every package here is `"type": "module"`, and the
+/// transform, the dev server and the bundler all reach a package through
+/// `import`. Upstream honours `default` on top of whatever is listed, so a
+/// package with no conditions at all still resolves.
+///
+/// Listing more would be worse, not more permissive: conditions are matched in
+/// the order the *manifest* writes them, so adding `require` here would hand a
+/// dual package its CommonJS entry whenever it happened to list that first —
+/// the checker would then be typing a file the runtime never loads.
+const EXPORT_CONDITIONS: [&str; 1] = ["import"];
+
 /// Build the checker options for one run.
 ///
 /// Flow lints are left entirely off: `uf_lint` owns lint rules and reports them
@@ -47,6 +69,12 @@ pub(super) fn options(limits: &CheckLimits) -> Options {
         hook_compatibility: true,
         lint_severities: LintSettings::<Severity>::empty_severities(),
         max_header_tokens: MAX_HEADER_TOKENS,
+        node_main_fields: NODE_MAIN_FIELDS.iter().copied().map(String::from).collect(),
+        node_package_export_conditions: EXPORT_CONDITIONS
+            .iter()
+            .copied()
+            .map(String::from)
+            .collect(),
         react_rules: Arc::from(REACT_RULES),
         react_runtime: ReactRuntime::Automatic,
         recursion_limit: recursion_limit(limits.recursion_limit),
@@ -134,6 +162,16 @@ mod tests {
         assert_eq!(*options.lint_severities.get_default(), Severity::Off);
         assert!(!options.lint_severities.is_enabled(LintKind::UnclearType));
         assert!(!options.lint_severities.is_enabled(LintKind::UntypedImport));
+    }
+
+    #[test]
+    fn a_package_is_entered_the_way_an_es_module_import_enters_it() {
+        let options = options(&CheckLimits::default());
+
+        assert_eq!(&*options.node_package_export_conditions, ["import"]);
+        // Without this the `main` of a package with no `exports` map is never
+        // read, and such a package resolves to nothing.
+        assert_eq!(&*options.node_main_fields, ["main"]);
     }
 
     #[test]
