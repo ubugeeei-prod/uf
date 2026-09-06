@@ -21,25 +21,58 @@
 // # Why this is its own module
 //
 // Two callers need it and neither owns it: `worker.js` installs the capture at
-// start-up, and `run.js` says which case is running so a chunk can be named.
-// "Who printed this" is also state with a lifetime of its own — set around a
-// case's body and hooks, cleared between them — exactly like the snapshot key
-// in `snapshot.js`, and for the same reason it lives beside the thing it
-// describes rather than inside either caller.
+// start-up, and `run.js` runs each case inside the ownership kept here, so a
+// chunk can be named. "Who printed this" is also state with a lifetime of its
+// own — one case's hooks and body — exactly like the snapshot key in
+// `snapshot.js`, and for the same reason it lives beside the thing it describes
+// rather than inside either caller.
 //
 // # What "the test that printed it" means
 //
-// The name a chunk carries is the case the *worker* is running when the chunk
-// arrives, which is not the same as the case whose code produced it. A
-// `setTimeout` a test leaves behind prints while the next case is running and
-// is filed under that one; a chunk from no case at all is filed under the
-// file.
+// The case whose *asynchronous context* the write happened in, which is the
+// case whose code produced it.
 //
-// Getting this exactly right needs the printing to be tied to the asynchronous
-// context the case ran in — `AsyncLocalStorage` and everything under it — and
-// that is a bigger change than this module, because it has to reach the
-// scheduler that runs the cases. It is written down here rather than left to
-// be discovered from a confusing report. See ubugeeei-prod/uf#207.
+// The obvious answer was a module-level variable the runner set before a case
+// and cleared after it, and it was wrong in one shape that matters: the name a
+// chunk carried was whatever the worker happened to be running when the chunk
+// arrived. A `setTimeout` a test left behind fires while the *next* case is
+// running, so the line it printed was reported under that next case — a test
+// accused of printing something it never printed, which is worse than not
+// naming it at all, because a reader chasing the message finds it under code
+// that does not contain it. See ubugeeei-prod/uf#207.
+//
+// So the owner is an `AsyncLocalStorage`, and what `run.js` calls is
+// `runInTest` rather than an `enterTest` / `exitTest` pair: the store is only
+// carried by work started *inside* the case, so the case's setup, body and
+// teardown have to run within it. Everything they schedule inherits it,
+// whenever it eventually runs.
+//
+// # When there is no owner
+//
+// `getStore()` answers nothing outside a case, and a chunk with no owner is
+// filed under the file — which is right for an import, a `beforeAll`, or a
+// straggler from a case that is long gone.
+//
+// It is also the answer on a host whose storage does not reach the callback.
+// Deno 1.31 has `AsyncLocalStorage` and propagates it across `await`, but not
+// through `setTimeout`, so a detached callback there is filed under the file
+// rather than under the case that scheduled it. That degradation is the point:
+// of the two ways to be less than exact, naming the file says less, and naming
+// the next case says something false.
+//
+// `node:async_hooks` itself is not guarded for, because a guard could not run.
+// Node, Deno and Bun all provide it under the `node:` specifier, and a host
+// that had no `node:` builtins could not start this worker at all — `node:util`
+// is imported below, `node:readline` and `node:url` by `worker.js`. A `typeof`
+// check around the constructor would only ever execute on a host where this
+// module had already linked.
+//
+// The one thing this does not answer is a straggler that outlives its *file*:
+// the worker runs the next file in the same process, and a chunk still carrying
+// a name from the file before is a name the next file's report has no test for.
+// The host files it under the file it arrived in, which is honest but not
+// exact, and closing it properly needs the file's generation in the protocol.
+// That is ubugeeei-prod/uf#203, and it is not this module's to fix.
 
 // # Bounds
 //
@@ -49,6 +82,7 @@
 // nothing after it is kept. The budget starts over for each file, so a chatty
 // file does not silence the next one in the same worker.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { format, inspect } from "node:util";
 
 import { userFrames } from "./frames.js";
@@ -95,9 +129,16 @@ const DECODER = new TextDecoder();
 /** What a stream's `write` calls when it has taken the chunk. */
 type WriteCallback = () => mixed;
 
+/**
+ * The case a write belongs to, kept in the asynchronous context it ran in.
+ *
+ * Full names rather than a record, because that is the whole of what a chunk
+ * needs to say and the protocol carries it as a string either way.
+ */
+const owner: AsyncLocalStorage<string> = new AsyncLocalStorage();
+
 let sink: OutputSink | null = null;
 let raw: ((chunk: string) => void) | null = null;
-let current: string | null = null;
 let captured = 0;
 let stopped = false;
 
@@ -159,7 +200,7 @@ function capture(stream: OutputStream, text: string): void {
     stopped = true;
   }
   captured += kept.length;
-  to({ stream, test: current, text: kept });
+  to({ stream, test: owner.getStore() ?? null, text: kept });
 }
 
 /** A stand-in for `process.stdout.write` / `process.stderr.write`. */
@@ -236,25 +277,33 @@ export function install(to: OutputSink): (chunk: string) => void {
 }
 
 /**
- * Say which case is running, so what it prints can be named.
+ * Run `body` as `name`, so what it prints — and what it leaves behind to print
+ * later — is filed under that case.
  *
- * The runner calls this around a case's body and hooks and clears it between
- * them: output written while the module is being imported, from a `beforeAll`,
- * or after the last case finished belongs to the file, not to whichever case
- * happened to run last.
+ * The runner wraps one case's `beforeEach`, body and `afterEach` in a single
+ * call, because those are the one case's work. Whatever `body` returns is
+ * returned unchanged, so an `await` on this is an `await` on the case.
+ *
+ * Nothing here needs an "and now nothing is running" counterpart. Output from
+ * an import, a `beforeAll` or a case that has already been reported was never
+ * inside this call, so it has no owner and is the file's — which is the
+ * property the previous module-level variable had to be reset to keep, and
+ * kept only for as long as nothing straggled.
  */
-export function enterTest(name: string): void {
-  current = name;
+export function runInTest<T>(name: string, body: () => T): T {
+  return owner.run(name, body);
 }
 
-/** Say that no case is running. */
-export function exitTest(): void {
-  current = null;
-}
-
-/** Start one file's output budget over, with no case running. */
+/**
+ * Start one file's output budget over.
+ *
+ * Only the budget: there is no current case to clear, because a case's
+ * ownership lives in the callbacks it started rather than in this module. A
+ * straggler from the file before still carries the name it was written under,
+ * which the host cannot match to a test of the new file and files under that
+ * file instead. See ubugeeei-prod/uf#203.
+ */
 export function startFile(): void {
   captured = 0;
   stopped = false;
-  current = null;
 }
