@@ -1,5 +1,25 @@
 # Changelog
 
+## uf@0.0.0-alpha.6
+
+_2026-09-06_
+
+### Added
+
+- **dev**: `uf dev --port` binds that port or says why it cannot (#239)
+
+### Fixed
+
+- **release**: the npm check waits for the registry to catch up (#243)
+
+### Documentation
+
+- uf@0.0.0-alpha.5 contains twenty-one pull requests, not twelve (#244)
+
+### Internal
+
+- **check**: keep the reproduction for a match over a generic in the repository (#226)
+
 ## uf@0.0.0-alpha.5
 
 _2026-09-06_
