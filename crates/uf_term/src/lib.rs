@@ -21,7 +21,8 @@
 //!   table with per-column alignment, a rule, status marks, phase timings, and
 //!   a rustc-shaped [`CodeFrame`].
 //! * [`Progress`] is a spinner that writes nothing unless the stream is an
-//!   interactive terminal, so CI logs stay clean.
+//!   interactive terminal, so CI logs stay clean, and [`Live`] is the same
+//!   promise for a block of several lines redrawn where they stand.
 //!
 //! # Alignment
 //!
@@ -70,13 +71,13 @@ pub use crate::capability::{Capabilities, ColorChoice, ColorLevel, GlyphSet, Ter
 pub use crate::diagnostic::{CodeFrame, DiagnosticLevel};
 pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
 pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
-pub use crate::progress::{DEFAULT_TICK, Progress};
+pub use crate::progress::{DEFAULT_TICK, LIVE_WIDTH, Live, Progress};
 pub use crate::render::{KeyValue, Renderer};
 pub use crate::style::{Attributes, Color, Style};
 pub use crate::table::{Cell, Column, Table};
 pub use crate::text::{
     Align, char_width, display_width, push_padded, push_repeat, push_repeat_str, push_spaces,
-    push_u32, push_usize, truncate_to_width,
+    push_truncated, push_u32, push_usize, truncate_to_width,
 };
 pub use crate::theme::{Theme, Tone};
 pub use crate::timing::{Phase, PhaseTimer, format_duration, push_duration};

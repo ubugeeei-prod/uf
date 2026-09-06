@@ -52,6 +52,8 @@ import {
   serverModuleSource,
 } from "./internal/routes.js";
 import { TransformService, isFlowModule } from "@uniflowed/host/transform";
+import { send, toRequest } from "./internal/http.js";
+import { withRequest } from "./internal/serve.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
@@ -316,20 +318,47 @@ function flowPlugin({ routerRoot, appEntry, command }) {
           if (!wantsDocument(request)) return next();
           try {
             const url = request.url ?? "/";
-            const { render } = await importServerEntry(devServer);
-            const result = await render(url, {
-              scripts: [devUrlFor(VIRTUAL.client)],
-              styles: [],
-              preloads: [],
+            const entry = await importServerEntry(devServer);
+            const asRequest = await toRequest(request, devServer.config);
+
+            // One request, owned here and settled once the document has been
+            // written — the same lifecycle `driver.js` gives `uf dev` and
+            // `internal/serve.js` gives `uf preview` and `uf start`. A project
+            // driving Vite itself must not get a different answer about when
+            // `after()` runs than the same project run through `uf dev`; see
+            // `internal/serve.js` and ubugeeei-prod/uf#389.
+            //
+            // Only document requests reach here, so unlike `driver.js` there is
+            // no path where uf hands the response back to Vite's chain: what is
+            // below either writes it or throws.
+            await withRequest(entry, asRequest, async () => {
+              // Before the page: a middleware guards a subtree, and a page
+              // rendered while the guard on it had not run is the whole of
+              // ubugeeei-prod/uf#260. Only document requests reach here, so this
+              // is the page half of the guarantee; `driver.js` makes the same
+              // call above the route handlers, for every method.
+              const guarded = await entry.runMiddleware(asRequest);
+              if (guarded != null) {
+                await send(response, guarded);
+                return;
+              }
+
+              const result = await entry.render(
+                url,
+                { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
+                { onError: (error) => reportRenderError(devServer, url, error) },
+              );
+              if (result.error != null) reportRenderError(devServer, url, result.error);
+              // Collected rather than piped, for the reason `driver.js` gives at
+              // step 4: `transformIndexHtml` is a whole-document hook.
+              const html = await devServer.transformIndexHtml(url, await result.text());
+              response.statusCode = result.status;
+              response.setHeader("Content-Type", "text/html; charset=utf-8");
+              for (const [name, value] of Object.entries(result.headers ?? {})) {
+                response.setHeader(name, value);
+              }
+              response.end(html);
             });
-            if (result.error != null) reportRenderError(devServer, url, result.error);
-            const html = await devServer.transformIndexHtml(url, result.html);
-            response.statusCode = result.status;
-            response.setHeader("Content-Type", "text/html; charset=utf-8");
-            for (const [name, value] of Object.entries(result.headers ?? {})) {
-              response.setHeader(name, value);
-            }
-            response.end(html);
           } catch (error) {
             devServer.ssrFixStacktrace(error);
             next(error);

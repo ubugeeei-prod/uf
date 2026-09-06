@@ -114,9 +114,25 @@ type-check anything itself: Flow is the type system, and reimplementing it
 would only create a second opinion about your code, which is the thing this
 whole toolchain exists to avoid.
 
-uf reads one module at a time today: an import is typed as `any`, and the
-command says which ones at the end of its report rather than leaving you to
-work it out. Checking across modules is [issue #199](https://github.com/ubugeeei-prod/uf/issues/199).
+uf types across modules. An import of a relative path is the type that file
+exports, and an import of a package is resolved through the `package.json` that
+publishes it — `exports` map, conditions and all, using Flow's own resolver
+rather than a second opinion about what a specifier means:
+
+```js
+// money.js
+export function dollars(cents: number): Money { ... }
+
+// index.js
+import { dollars } from "./money.js";
+const wrong: Money = dollars("twelve");
+//                           ^^^^^^^^ "twelve" is incompatible with number
+```
+
+What it still cannot type is a module that is not in the batch — a package that
+is not part of this project, a file the scan did not walk. Those are `any`, and
+the command names them at the end of its report rather than leaving you to work
+it out.
 
 ## In CI
 

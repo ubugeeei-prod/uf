@@ -8,6 +8,7 @@
 //   <host> driver.js dev     --root <dir> [--host <h>] [--port <n>] [--strict-port]
 //   <host> driver.js build   --root <dir> [--out-dir <dir>] [--mode <m>]
 //   <host> driver.js compile --root <dir> [--out-dir <dir>] --assets <file> --bundle <dir>
+//   <host> driver.js deploy  --root <dir> [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
 //   <host> driver.js preview --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js start   --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js config  --root <dir>
@@ -29,6 +30,7 @@ import { pathToFileURL } from "node:url";
 
 import { emit, errorEvent, eventLogger, reportRenderError } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
+import { send, toRequest } from "./internal/http.js";
 import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
 import {
@@ -36,8 +38,7 @@ import {
   createServeHandler,
   loadBuild,
   nodeListener,
-  send,
-  toRequest,
+  withRequest,
 } from "./internal/serve.js";
 
 function argument(name) {
@@ -71,7 +72,7 @@ process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();
 
-const commands = { dev, build, compile, preview, start, config: printConfig };
+const commands = { dev, build, compile, deploy, preview, start, config: printConfig };
 const run = commands[command];
 if (run == null) {
   emit("error", { message: `unknown driver command ${JSON.stringify(command)}` });
@@ -169,10 +170,18 @@ async function viteConfig(config, mode) {
  *
  *   1. load the server entry through `ssrLoadModule`, so it is transformed the
  *      same way the browser's copy is and picks up edits without a restart;
- *   2. render the URL, pointing the client script at the dev entry rather than
+ *   2. run the middleware guarding this path, which may answer instead;
+ *   3. render the URL, pointing the client script at the dev entry rather than
  *      at a built asset;
- *   3. hand the HTML to `transformIndexHtml`, which is what injects the HMR
+ *   4. hand the HTML to `transformIndexHtml`, which is what injects the HMR
  *      client and lets any Vite plugin see the document.
+ *
+ * Step 4 is why `uf dev` collects the stream instead of piping it: Vite's HTML
+ * hook takes a whole document and any plugin may rewrite any part of it, so
+ * there is no first byte to send until it has run. `uf start` and `uf preview`
+ * have no such hook and stream — see `internal/serve.js` — and it is worth
+ * being clear that this is a property of the development server rather than of
+ * the renderer. Streaming through the transform is ubugeeei-prod/uf#374.
  *
  * Anything Vite already serves — a module, a public file — never reaches this,
  * because the middleware runs after Vite's own.
@@ -189,33 +198,77 @@ async function dev() {
 
   server.middlewares.use(async (request, response, next) => {
     const url = request.originalUrl ?? request.url ?? "/";
+    // Declared out here so the catch below can still settle: a request that
+    // failed is a request that happened, and a middleware that logged its
+    // arrival is owed its callback either way.
+    let lifecycle = null;
     try {
       const entry = await server.ssrLoadModule(VIRTUAL.server);
+      const asRequest = await toRequest(request, server.config);
 
-      // Route handlers first, and for every method: a handler is the only
-      // thing that answers a POST, and it may also answer a GET for a path
-      // that has no page.
-      const handled = await entry.dispatch(await toRequest(request, server.config));
-      if (handled != null) {
-        await send(response, handled);
-        return;
-      }
+      // The request begins here and ends when the document has been written,
+      // which is what `after()` promises and what `uf preview`, `uf start` and
+      // a compiled binary all do too — a middleware that logs a response's
+      // status has to mean the same thing in development as in production.
+      // `entry.beginRequest` rather than an import: the storage that holds the
+      // request belongs to the application's own copy of `@uniflowed/server`.
+      // See `internal/serve.js` and ubugeeei-prod/uf#389.
+      lifecycle = entry.beginRequest(asRequest);
+      const answered = await lifecycle.run(async () => {
+        // Middleware first, above everything: it guards a subtree, so it has to
+        // run for a page, for a route handler, and for a path under it that
+        // matches neither. Running it inside the dispatcher and again inside the
+        // renderer would have left `/dashboard/typo` unguarded and run it twice
+        // for a path that is both.
+        const guarded = await entry.runMiddleware(asRequest);
+        if (guarded != null) {
+          await send(response, guarded);
+          return true;
+        }
 
-      // Only a navigation reaches the renderer. A page cannot answer a POST,
-      // and letting one try would turn a missing handler into a rendered page
-      // with a 200 rather than a 404.
-      if (request.method !== "GET" && request.method !== "HEAD") {
+        // Route handlers next, and for every method: a handler is the only
+        // thing that answers a POST, and it may also answer a GET for a path
+        // that has no page.
+        const handled = await entry.dispatch(asRequest);
+        if (handled != null) {
+          await send(response, handled);
+          return true;
+        }
+
+        // Only a navigation reaches the renderer. A page cannot answer a POST,
+        // and letting one try would turn a missing handler into a rendered page
+        // with a 200 rather than a 404.
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return false;
+        }
+
+        const result = await entry.render(url, assets, {
+          // A boundary that threw after the shell went out. `result.error` cannot
+          // carry it — the caller already has the result by then — so the
+          // terminal hears about it here or not at all.
+          onError: (error) => reportRenderError(server, url, error),
+        });
+        if (result.error != null) reportRenderError(server, url, result.error);
+        const html = await server.transformIndexHtml(url, await result.text());
+        response.statusCode = result.status ?? 200;
+        response.setHeader("content-type", "text/html; charset=utf-8");
+        response.end(html);
+        return true;
+      });
+
+      if (!answered) {
+        // The one path where uf is not the one writing the response: a
+        // non-navigation nothing claimed goes back to Vite's chain. The guard
+        // has still run and may have deferred work, so `close` — the socket
+        // saying the response is over, however it ended — is the only honest
+        // signal left that the bytes are out.
+        response.once("close", lifecycle.settle);
         next();
         return;
       }
-
-      const result = await entry.render(url, assets);
-      if (result.error != null) reportRenderError(server, url, result.error);
-      const html = await server.transformIndexHtml(url, result.html);
-      response.statusCode = result.status ?? 200;
-      response.setHeader("content-type", "text/html; charset=utf-8");
-      response.end(html);
+      await lifecycle.settle();
     } catch (error) {
+      if (lifecycle != null) await lifecycle.settle();
       // Map the stack back onto the Flow source before it reaches the overlay.
       if (error instanceof Error) server.ssrFixStacktrace(error);
       next(error);
@@ -231,6 +284,7 @@ async function dev() {
       (route) => route.path,
     ),
   });
+  watchSources(server);
 
   const shutdown = async () => {
     await server.close();
@@ -238,6 +292,43 @@ async function dev() {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+/**
+ * Tell the Rust side when a module under the project root changed.
+ *
+ * `uf dev` answers questions Vite does not: whether a module is a Server
+ * Component, and whether a Server Component reaches for something that only
+ * exists in a browser. Those are whole-project answers, so they go stale on
+ * any edit and there is no module to recompute them *for* — which is why this
+ * event carries no path. What it carries is "ask again".
+ *
+ * Vite's watcher is the only watcher. A second one over the same tree, in
+ * Rust, would be a second answer to "did this file change", and two watchers
+ * disagree exactly when an editor writes through a temporary file — which is
+ * every editor, and which is not a thing anybody tests.
+ *
+ * Debounced, because a `git checkout` is one intention and several hundred
+ * `change` events, and unrefed so a pending timer cannot keep this process
+ * alive after the server has closed.
+ */
+function watchSources(server) {
+  let timer = null;
+  const changed = () => {
+    if (timer != null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      emit("source-changed");
+    }, 50);
+    timer.unref?.();
+  };
+  const isSource = (file) =>
+    (file.endsWith(".js") || file.endsWith(".jsx")) && !file.includes("node_modules");
+  for (const event of ["add", "change", "unlink"]) {
+    server.watcher.on(event, (file) => {
+      if (isSource(file)) changed();
+    });
+  }
 }
 
 /**
@@ -274,7 +365,16 @@ async function preview() {
   const handle = createServeHandler(build);
   server.middlewares.use(async (request, response, next) => {
     try {
-      await send(response, await handle(await toRequest(request, server.config)));
+      const asRequest = await toRequest(request, server.config);
+      // The same lifecycle `uf start` gets from `nodeListener`, spelled out
+      // because this door is Vite's connect chain rather than a bare
+      // `node:http` server: the whole request runs inside it, and it settles
+      // once `send` has returned. A preview whose `after()` fired at a
+      // different moment from the production server's would be a preview that
+      // is checked and believed and wrong.
+      await withRequest(build.entry, asRequest, async () => {
+        await send(response, await handle(asRequest));
+      });
     } catch (error) {
       next(error);
     }
@@ -327,7 +427,7 @@ async function start() {
 
   const host = argument("--host") ?? process.env.HOST ?? "0.0.0.0";
   const port = Number(argument("--port") ?? process.env.PORT ?? 3000);
-  const server = createHttpServer(nodeListener(createServeHandler(build)));
+  const server = createHttpServer(nodeListener(createServeHandler(build), build.entry));
 
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -410,6 +510,12 @@ async function build() {
   // `createRenderer` renders the error boundary and reports the exception on
   // the result — so both are checked here. Neither writes a file: an error
   // page written into `dist/` is a build that shipped its own failure.
+  //
+  // `prerender`, not `render`: a build wants the document React produces once
+  // every boundary has resolved, with the content where the fallback was. The
+  // streaming renderer would write a file whose slow parts are `<template>`
+  // elements waiting for a script — correct in a browser, blank to a crawler
+  // and to `curl`, which is most of what a static file is for.
   const failures = [];
   const failed = (url, error) => {
     failures.push(url);
@@ -418,7 +524,7 @@ async function build() {
   for (const url of pages) {
     let result;
     try {
-      result = await server.render(url, assets);
+      result = await server.prerender(url, assets);
     } catch (error) {
       failed(url, error);
       continue;
@@ -447,16 +553,40 @@ async function build() {
   // `_uf.not-found.js` is in `app/guide/` would otherwise get a `404.html`
   // rendered from the framework's bare default, which is worse than the file
   // it used to write, which was none.
+  //
+  // Through the same two checks as the loop, and for the same reason. A
+  // not-found boundary is a component like any other: it can throw, and when it
+  // does `prerender` answers with the *error* page's HTML and a non-null
+  // `error` rather than rejecting. Writing that HTML and emitting `page` was a
+  // build publishing its own failure as `404.html` and exiting 0 — the static
+  // host would then serve uf's error page to every visitor who mistyped a URL,
+  // and nothing between the throw and the deploy would have mentioned it.
+  let attempted = pages.length;
   if (server.notFound.some((boundary) => boundary.path === "/")) {
-    const result = await server.render("/__uf_not_found__", assets);
-    const file = path.join(outDir, "404.html");
-    writeFileSync(file, result.html);
-    emit("page", {
-      url: "/404",
-      file: path.relative(root, file),
-      status: 404,
-      bytes: Buffer.byteLength(result.html),
-    });
+    attempted += 1;
+    // `/404` rather than `/__uf_not_found__`: the internal path is how the
+    // router is asked, and the file the reader is looking for is `404.html`.
+    let result;
+    try {
+      result = await server.prerender("/__uf_not_found__", assets);
+    } catch (error) {
+      failed("/404", error);
+      result = null;
+    }
+    if (result != null && result.error != null) {
+      failed("/404", result.error);
+      result = null;
+    }
+    if (result != null) {
+      const file = path.join(outDir, "404.html");
+      writeFileSync(file, result.html);
+      emit("page", {
+        url: "/404",
+        file: path.relative(root, file),
+        status: 404,
+        bytes: Buffer.byteLength(result.html),
+      });
+    }
   }
 
   if (failures.length > 0) {
@@ -467,9 +597,12 @@ async function build() {
     // as the headline and the one a CI log's last line will be. It read
     // `... failed:` with the routes below it, and the headline was then a
     // sentence ending in a colon and nothing.
+    // `attempted`, not `pages.length`: the root 404 is prerendered too, and
+    // counting a failure of it against a total that excludes it produced
+    // "1 of 12" for a build that rendered thirteen things.
     emit("error", {
-      message: `${failures.length} of ${pages.length} prerendered ${plural(
-        pages.length,
+      message: `${failures.length} of ${attempted} prerendered ${plural(
+        attempted,
         "route",
       )} failed\n${failures.map((url) => `  ${url}`).join("\n")}`,
     });
@@ -572,6 +705,204 @@ async function compile() {
 
   emit("done", { outDir: path.relative(root, bundleDir), pages: 0 });
   process.exit(0);
+}
+
+/**
+ * Link the application into a directory that can be copied, for
+ * `uf build --adapter`.
+ *
+ * `uf start` serves a build and `uf build --compile` puts one inside an
+ * executable, and between them is the shape most hosts actually want: a
+ * directory you copy onto a machine that has a JavaScript runtime and nothing
+ * else — no `node_modules`, no checkout, no `uf`. That is what this writes.
+ *
+ * It differs from the server build in [`build`] in one way, and that one way
+ * is the whole of the difference between a build artefact and a checkout:
+ * `ssr.noExternal: true`. The ordinary server build leaves `react`,
+ * `react-dom` and every other dependency as bare imports, because the host it
+ * runs on has `node_modules` beside it; a copied directory does not, so they
+ * come in. (`@uniflowed/*` was never external — `index.js` sets
+ * `ssr.noExternal: [/^@uniflowed\//]` because Node cannot import Flow — which
+ * is why serving a build has never needed `uf transform` alive, and why the
+ * blocker ubugeeei-prod/uf#335 records was not one.)
+ *
+ * # Two entries, because an adapter is exactly one of them
+ *
+ * `handler.js` is the application as a Web-standard `fetch` export: a
+ * `Request` in, a `Response` out, no filesystem, no socket, no `node:` import
+ * that a worker does not already have. That is the seam — every other target
+ * in `app.runtime.deploy.adapters` is this file with a different thing wrapped
+ * around it.
+ *
+ * `server.js` is the wrapper for *this* target: `node:http`, with the build's
+ * files served from `static/` beside it. It is thirty lines, and that is the
+ * point — the work is in the handler, and what a second adapter has to write
+ * is the thirty lines, not the application.
+ *
+ * Both are ordinary entries of one Rolldown build, so `server.js` imports the
+ * emitted `handler.js` rather than a second copy of the application.
+ *
+ * The `static/` directory is *not* written here. `uf` copies it (see
+ * `uf_cli`'s `commands::deploy`), because walking an output directory and
+ * copying every file in it is bulk work over the whole build, which belongs in
+ * Rust rather than in the host process — the same division `--compile` makes
+ * with its embedded assets.
+ */
+async function deploy() {
+  const vite = await import("vite");
+  const config = await loadConfig();
+  const inline = await viteConfig(config, argument("--mode") ?? "production");
+  const outDir = path.resolve(root, inline.build.outDir);
+  const adapter = argument("--adapter");
+  const workArgument = argument("--work");
+  const outputArgument = argument("--output");
+  if (adapter == null || workArgument == null || outputArgument == null) {
+    throw new Error("uf: `driver.js deploy` needs --adapter, --work and --output");
+  }
+  // The Rust side has already refused every adapter it has no implementation
+  // for, by name and with the issue that tracks it. This is the second half of
+  // that fact rather than a duplicate of it: the driver may be spawned by a
+  // future `uf` that knows an adapter this copy does not, and answering "one
+  // moment, here is a directory" for a target nobody wrote would be the silent
+  // wrong answer the whole issue is about.
+  if (adapter !== "node") {
+    throw new Error(
+      `uf: this driver implements the \`node\` adapter and was asked for ${JSON.stringify(
+        adapter,
+      )}`,
+    );
+  }
+  const work = path.resolve(root, workArgument);
+  const output = path.resolve(root, outputArgument);
+
+  emit("phase", { name: adapter });
+
+  // Written to disk rather than served as virtual modules: they are generated
+  // per build — `handler.js` names this build's hashed assets — and a real
+  // file is the version a person can open when a deployed directory
+  // misbehaves.
+  mkdirSync(work, { recursive: true });
+  const document = assetsFromManifest(readManifest(outDir));
+  writeFileSync(path.join(work, "handler.js"), handlerEntrySource(document));
+  writeFileSync(path.join(work, "server.js"), nodeEntrySource("./handler.js"));
+
+  await vite.build({
+    ...inline,
+    customLogger: eventLogger("warn"),
+    plugins: [...inline.plugins, nativeAddonGuard()],
+    ssr: { ...(inline.ssr ?? {}), noExternal: true },
+    build: {
+      ...inline.build,
+      manifest: false,
+      // The map would describe this bundle rather than the source, and nothing
+      // downstream reads it. Off is a smaller directory to copy and one less
+      // file to explain.
+      sourcemap: false,
+      ssr: true,
+      outDir: output,
+      // `uf` has already removed the directory, and `static/` is copied in
+      // after this returns; letting Vite empty it would be Vite deciding when
+      // that happens.
+      emptyOutDir: false,
+      rollupOptions: {
+        input: {
+          handler: path.join(work, "handler.js"),
+          server: path.join(work, "server.js"),
+        },
+        output: {
+          entryFileNames: "[name].js",
+          // Route modules are lazy `import()`s, so the server bundle splits
+          // whether or not anything asks it to, and the chunks have to land
+          // somewhere. `chunks/` rather than the default `assets/`, because
+          // `static/assets/` beside it is the *client's* — two directories
+          // with one name in a directory whose whole purpose is to be copied
+          // and read by a stranger.
+          chunkFileNames: "chunks/[name]-[hash].js",
+          format: "es",
+        },
+      },
+    },
+  });
+
+  emit("done", { outDir: path.relative(root, output), pages: 0 });
+  process.exit(0);
+}
+
+/**
+ * The source of `handler.js`: the application, as one `fetch` export.
+ *
+ * `export default { fetch }` as well as the named export, because those are
+ * the two spellings the hosts this shape exists for actually read — a worker
+ * and Deno Deploy want the default export's `fetch`, and a Node or Bun entry
+ * wants the name. Writing both costs a line and removes the one thing that
+ * would make an otherwise portable file not portable.
+ *
+ * `beginRequest` is exported beside it, and it is not decoration. `fetch`
+ * answers with a `Response`; it does not know when that response reached
+ * anybody, and `after()` promises a callback once it has. So the host owns the
+ * request: begin it, run `fetch` inside `run`, and `settle` when the bytes are
+ * out — `server.js` below does exactly that through
+ * `@uniflowed/server/node`, and a worker hands `settle` to `ctx.waitUntil`.
+ * It comes from the bundle rather than from the host's own
+ * `@uniflowed/server`, because the request lives in an `AsyncLocalStorage`
+ * belonging to a module instance and the instance the application reads is the
+ * one inlined here. See ubugeeei-prod/uf#389.
+ *
+ * The document's script and stylesheet URLs are baked in here because they
+ * come from the client manifest, which exists at this moment and not in the
+ * directory that gets copied.
+ */
+function handlerEntrySource(document) {
+  return `// Generated by \`uf build --adapter\`. Not checked in, not edited.
+import { createFetchHandler } from "@uniflowed/server/fetch";
+import * as app from ${JSON.stringify(VIRTUAL.server)};
+
+export const fetch = createFetchHandler({ app, document: ${JSON.stringify(document)} });
+export const beginRequest = app.beginRequest;
+
+export default { fetch, beginRequest };
+`;
+}
+
+/**
+ * The source of `server.js`: the Node socket around that handler.
+ *
+ * Everything host-specific about serving a build is in
+ * `@uniflowed/server/node`, which is the same module `uf start` reaches
+ * through `./internal/serve.js` — so a request answered here and the same
+ * request answered by `uf start` go through one implementation, not two that
+ * agree today.
+ */
+function nodeEntrySource(handlerSpecifier) {
+  return `// Generated by \`uf build --adapter node\`. Not checked in, not edited.
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { serve } from "@uniflowed/server/node";
+
+// \`beginRequest\` comes from the handler beside this file rather than from
+// \`@uniflowed/server/node\` above, because the request has to be established in
+// the storage the *application* reads, which is the copy bundled into
+// \`handler.js\`. See ubugeeei-prod/uf#389.
+import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
+
+// Resolved from this file and not from the working directory: a process
+// manager, a container entrypoint and a person in a shell each start a server
+// from wherever they happen to be, and a directory that only served its own
+// assets when it was started from inside itself would be a deployment with a
+// trap in it.
+const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
+
+// Not \`await serve(...)\` at the top level: Node runs top-level \`await\` happily
+// and the Flow parser uf vendors does not (ubugeeei-prod/uf#204), so the generated
+// entry would fail its own transform. \`.catch\` is the better spelling anyway —
+// a server that cannot take its port should say so and exit non-zero, rather
+// than die as an unhandled rejection.
+serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
+  process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
+  process.exit(1);
+});
+`;
 }
 
 /**

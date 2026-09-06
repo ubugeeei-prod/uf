@@ -13,7 +13,7 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Six names are reserved. Everything else in `app/` is an ordinary module.
+Seven names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
@@ -21,7 +21,8 @@ Six names are reserved. Everything else in `app/` is an ordinary module.
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
 | `_uf.error.js` | Rendered when something under this path throws. |
-| `_uf.middleware.js` | Runs before the route resolves — redirects, auth, headers. |
+| `_uf.loading.js` | Rendered while something under this path is still resolving. |
+| `_uf.middleware.js` | Runs before anything under this path answers — auth, redirects, logging. |
 | `_uf.route.js` | Answers a request instead of rendering a page. |
 
 A page, a layout and a not-found may be `.mdx` instead of `.js`. A directory whose name starts with
@@ -45,6 +46,13 @@ captures the rest:
 app/posts/[slug]/_uf.page.js      →  /posts/anything
 app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
 ```
+
+"The rest" is the whole rest, so a spread is the last routing directory on the
+way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
+reach — `[...path]` has already taken every segment, and there is none left to
+be `edit` — so `uf build` and `uf dev` refuse it by name rather than serving a
+route that never answers. A `(group)` below a spread is fine: it is not a
+segment.
 
 Parameters arrive as props:
 
@@ -134,6 +142,56 @@ A route that throws during `uf build` fails *that route*: the build reports the
 URL, writes every route that did render, and then exits non-zero. It does not
 write an error page into `dist/`.
 
+## While a page is still resolving
+
+`_uf.loading.js` is a `<Suspense>` boundary around this segment's page and
+everything under it. Its default export is a component that takes no props —
+there is nothing to hand it, because what it stands in for has not happened yet.
+
+```js
+// @flow
+// app/guide/_uf.loading.js
+export default component Loading() {
+  return <p aria-busy="true">Loading…</p>;
+}
+```
+
+It is not resolved by the nearest-ancestor rule the other two boundaries use,
+and the difference is what a fallback is. A not-found or an error boundary is
+*chosen*: one of them renders. Loading boundaries **nest** — `app/_uf.loading.js`
+and `app/guide/_uf.loading.js` are two boundaries on one route, one inside the
+other — so a route carries every one declared above it, and the deepest is
+closest to the page.
+
+The boundary goes inside its own segment's layout and outside everything below
+it, which is what makes the shell arrive first: the server sends the layouts and
+the fallback while the page is still resolving, and the page replaces the
+fallback when it is ready. That is the whole reason the renderer streams.
+
+```
+app/_uf.layout.js          the masthead — sent immediately
+app/guide/_uf.layout.js    the sidebar — sent immediately
+app/guide/_uf.loading.js   the fallback — sent immediately
+app/guide/[slug]/_uf.page.js   arrives when it resolves
+```
+
+`uf build` writes the resolved page rather than the fallback. A prerendered file
+has nothing to wait for, so it contains the finished document — which is what
+makes it readable by a crawler and by `curl` rather than only by a browser
+running scripts.
+
+A segment with no `_uf.loading.js` gets no boundary at all. uf does not insert an
+invisible one: a page that suspends with nothing above it fails the way React
+says it should, rather than rendering as a blank document.
+
+What suspends today is a page that waits **while rendering** — `use()` on a
+promise, or a component that suspends. A page's `loader` is still awaited before
+the render begins, so a slow loader shows its fallback for no time; deferring it
+is [#373](https://github.com/ubugeeei-prod/uf/issues/373). `uf dev` also
+collects the document rather than streaming it, because Vite's HTML transform
+takes a whole one — [#374](https://github.com/ubugeeei-prod/uf/issues/374).
+`uf start`, `uf preview` and the deploy adapters stream.
+
 What none of this covers is a route handler. `_uf.route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting
 to see — "Route handlers", below, says why.
@@ -172,6 +230,60 @@ import { Link } from "@uniflowed/router";
 `useRoute()` gives the current path, params and search — which is what the
 sidebar on this page uses to mark the open entry.
 
+## Middleware
+
+`app/dashboard/_uf.middleware.js` runs before anything under `/dashboard`
+answers — the pages, the route handlers, and the paths under it that match
+nothing at all:
+
+```js
+// @flow
+import { cookies } from "@uniflowed/server";
+
+export default function middleware(request: Request): Response | void {
+  if (cookies().get("session") == null) {
+    return Response.redirect(new URL("/sign-in", request.url), 302);
+  }
+}
+```
+
+**Returning a `Response` is the answer.** Nothing after it runs: no page is
+resolved, no handler is called, and no middleware deeper in the tree runs
+either. **Returning nothing continues.** Both halves matter — a middleware that
+could only observe could not reject, and one that had to answer could not be a
+logger.
+
+There is no `matcher` to write. The directory the file sits in is the path it
+guards, and middleware composes down the tree exactly the way layouts do: a
+root `app/_uf.middleware.js` runs for every request, then the one in
+`app/dashboard/`, then the one in `app/dashboard/admin/`. Root first, and the
+first one to return a `Response` wins.
+
+A middleware runs inside the request, so `cookies()`, `headers()` and `after()`
+work without anything being threaded through. Its own path parameters arrive as
+`context.params` — `app/[org]/_uf.middleware.js` guarding `/acme/settings` gets
+`{ org: "acme" }`, which is what a tenant check needs.
+
+A middleware module never reaches the browser. It is loaded from the server
+entry and from nothing the client imports, which is the point: it is where the
+check you do not want a reader to be able to read belongs.
+
+What it deliberately cannot do yet is rewrite the request. That needs a
+spelling — a returned `Request`, or a `next(request)` argument — and one picked
+badly is harder to undo than one not yet picked. Answering and continuing are
+what exist, and they are enough for authentication, redirects and logging.
+
+### A prerendered page is not a guarded page
+
+A middleware runs on a server, when a request arrives. `uf build` prerenders
+every route without parameters to an HTML file, and a static host serves that
+file without asking anyone: there is no request for a middleware to run for,
+so the guard is not there. Keep a guarded path off the prerender — give it a
+parameter, or serve the build's server bundle rather than only `dist/` — and
+treat anything you can open in `dist/` as public. `uf preview` and `uf start`
+serve that bundle and run middleware for every request they answer, exactly as
+`uf dev` does; a static host handed `dist/` alone has nothing to run.
+
 ## Route handlers
 
 A path can answer a request instead of rendering. `app/api/users/[id]/_uf.route.js`
@@ -197,6 +309,13 @@ A handler takes a `Request` and returns a `Response` — the platform's own
 types, not a framework's wrapper. That is what runs unchanged on Node.js, Bun,
 Deno and a Cloudflare Worker, which is the whole point of treating the host as
 a capability rather than a target.
+
+**A handler needs something serving.** `uf dev`, `uf preview`, `uf start` and a
+binary from `uf build --compile` all dispatch to it; a `dist/` handed to a
+plain static file server does not, because there is nothing there to run. That
+is the one thing to know before designing an application around handlers, and
+it is why `uf preview` exists: it is where you find out that what answered in
+development also answers from the build.
 
 One export per method: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
 `OPTIONS`. Anything else a module exports is a helper, not a method — a

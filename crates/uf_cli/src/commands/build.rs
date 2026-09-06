@@ -4,12 +4,17 @@
 //! JavaScript host (see [`super::vite`]): a client bundle, a server bundle,
 //! and every static route prerendered to HTML. uf's own phases run around it:
 //! the config, the route table and its generated types, the server-component
-//! analysis, and — once Vite has written `dist/` — the shipped-size report and
-//! the budgets it enforces.
+//! analysis and its diagnostics, and — once Vite has written `dist/` — the
+//! shipped-size report and the budgets it enforces.
+//!
+//! Two of those phases can fail the build: an RSC contract violation, before
+//! Vite runs, and a bundle-size budget, after it.
 //!
 //! `--compile` adds one more phase after all of that, in [`super::compile`]:
 //! the whole application, linked with an embedded copy of the output directory
-//! and a JavaScript runtime, as one executable file.
+//! and a JavaScript runtime, as one executable file. `--adapter` adds the
+//! phase between the two, in [`super::deploy`]: a directory that runs on a
+//! host with a JavaScript runtime and nothing else.
 
 use std::fs;
 
@@ -21,15 +26,22 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::load_config;
+use uf_config::{DeployAdapter, load_config};
 use uf_router::{Route, discover_routes, write_router_manifest};
-use uf_rsc::{BuildId, ProjectScanOptions, analyze_project};
-use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
+use uf_rsc::{BuildId, ProjectScanOptions, RscDiagnostic, RscSeverity, analyze_project};
+use uf_term::{
+    Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, PhaseTimer, Status, Table, Tone, Tree,
+    format_duration,
+};
 
 use crate::commands::compile;
+use crate::commands::deploy;
+use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
-use crate::support::{plural, project_label, relative_to, write_json_file};
+use crate::support::{plural, problem_summary, project_label, relative_to, write_json_file};
 use crate::ui::Ui;
+
+mod guards;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
@@ -48,6 +60,7 @@ pub(crate) fn build(
     ui: &mut Ui,
     size_report: bool,
     standalone: bool,
+    requested_adapter: Option<DeployAdapter>,
 ) -> Result<()> {
     let mut timer = PhaseTimer::start();
     let mut progress = ui.progress();
@@ -76,6 +89,29 @@ pub(crate) fn build(
         )
     })?;
 
+    // Before Vite, not after: a module that breaks the RSC contract is not
+    // going to be fixed by bundling it, and a build that spends thirty seconds
+    // on the bundle before saying so is thirty seconds of the wrong answer.
+    // The count in the summary below is what this used to be — `rsc
+    // diagnostics 5`, exit 0, and the messages in a JSON file nobody reads.
+    // See ubugeeei-prod/uf#281.
+    if !rsc.graph.diagnostics().is_empty() {
+        progress.finish();
+        render_rsc_diagnostics(ui, &root, rsc.graph.diagnostics());
+        if rsc.graph.has_errors() {
+            let errors = rsc
+                .graph
+                .diagnostics()
+                .iter()
+                .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
+                .count();
+            bail!(
+                "{}",
+                plural(errors, "React Server Components contract violation")
+            );
+        }
+    }
+
     progress.tick("resolving the JavaScript host");
     let host = resolve_host(&resolved.config)?;
     let package = package_dir(&root)?;
@@ -88,6 +124,9 @@ pub(crate) fn build(
     } else {
         None
     };
+    // The same rule for the same reason: an adapter nobody has written is a
+    // sentence, and a sentence is cheaper before the bundle than after it.
+    let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -127,8 +166,12 @@ pub(crate) fn build(
                     let _ = driver.finish("uf build");
                     return Err(failure);
                 }
+                // A build has no watcher, so `SourceChanged` never reaches
+                // it; it is in the match because the driver's channel is one
+                // vocabulary and every reader has to know the whole of it.
                 Event::ConfigLoaded { .. }
                 | Event::Listening { .. }
+                | Event::SourceChanged
                 | Event::Done { .. }
                 | Event::Config { .. } => {}
             }
@@ -136,6 +179,12 @@ pub(crate) fn build(
         driver.finish("the Vite build")?;
         Ok(report)
     })?;
+
+    // Which of the documents Vite just wrote are under a `_uf.middleware.js`.
+    // Answerable only here, because the pages are what the prerender produced
+    // rather than what the route table said it might; the reason it is a
+    // report and not a refusal is argued in [`guards`].
+    let unguarded = guards::unguarded_pages(&resolved.root, &routes, &vite.pages);
 
     // Written after Vite so `emptyOutDir` cannot sweep them away, and so the
     // manifest describes the build that actually happened.
@@ -153,6 +202,15 @@ pub(crate) fn build(
             "params": route.params.iter().map(|param| param.name.as_str()).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "pages": vite.pages.iter().map(|(url, file)| json!({ "url": url, "file": file })).collect::<Vec<_>>(),
+        // The same list the summary warns about, as data: which deployment of
+        // `dist/` is happening is a fact the build does not have, and a deploy
+        // step that does have it needs somewhere to read this from that is not
+        // a terminal.
+        "prerenderedUnderMiddleware": unguarded.iter().map(|page| json!({
+            "url": page.url,
+            "file": page.file,
+            "middleware": page.middleware,
+        })).collect::<Vec<_>>(),
         "runtime": {
             "default": resolved.config.app.runtime.default,
             "capabilityJsHost": &resolved.config.app.runtime.capability_js_host,
@@ -184,6 +242,21 @@ pub(crate) fn build(
             progress.tick("compiling a standalone binary");
             Some(timer.measure("compile", || {
                 compile::compile(ui, runtime, &host, &package, &root, &out_dir)
+            })?)
+        }
+        None => None,
+    };
+    // After the binary, so that a build asked for both copies the binary's
+    // exclusion rather than the binary itself: `--compile` writes into
+    // `dist/`, and `deploy` copies `dist/`.
+    let deployed = match adapter {
+        Some(adapter) => {
+            progress.tick(&format!(
+                "writing the {} adapter's output",
+                adapter.as_str()
+            ));
+            Some(timer.measure("adapter", || {
+                deploy::deploy(ui, adapter, &host, &package, &root, &out_dir)
             })?)
         }
         None => None,
@@ -222,6 +295,9 @@ pub(crate) fn build(
     if let Some(compiled) = &compiled {
         outputs.push(relative_to(&resolved.root, &compiled.binary));
     }
+    if let Some(deployed) = &deployed {
+        outputs.push(relative_to(&resolved.root, &deployed.directory));
+    }
     outputs.sort();
     outputs.dedup();
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
@@ -250,7 +326,45 @@ pub(crate) fn build(
         Vec::new()
     };
     let warnings = vite.warnings.clone();
+    let guarded_rows: Vec<(String, String, String)> = unguarded
+        .iter()
+        .map(|page| {
+            (
+                page.url.clone(),
+                page.file.clone(),
+                page.middleware.join(", "),
+            )
+        })
+        .collect();
+    let guarded_summary = format!(
+        "{} prerendered to {} a host serves without running the middleware that guards {}",
+        plural(guarded_rows.len(), "route"),
+        if guarded_rows.len() == 1 {
+            "a document"
+        } else {
+            "documents"
+        },
+        if guarded_rows.len() == 1 {
+            "it"
+        } else {
+            "them"
+        },
+    );
     let host_name = host.name();
+    let adapter_summary = deployed.as_ref().map(|deployed| {
+        let directory = relative_to(&resolved.root, &deployed.directory);
+        (
+            deployed.adapter.as_str(),
+            directory.clone(),
+            deployed.files.to_string(),
+            ByteSize::from_bytes(deployed.bytes).to_string(),
+            // The command, spelled out, because the whole claim of this
+            // directory is that nothing else is needed to run it — and a
+            // reader who has to guess whether it is `node server.js` or
+            // `npm start` does not yet believe that claim.
+            format!("cd {directory} && node server.js"),
+        )
+    });
     let binary = compiled.as_ref().map(|compiled| {
         (
             relative_to(&resolved.root, &compiled.binary),
@@ -313,6 +427,22 @@ pub(crate) fn build(
         }
         renderer.blank(out);
 
+        if let Some((adapter, directory, files, bytes, run)) = &adapter_summary {
+            renderer.heading(out, 2, "adapter");
+            renderer.key_values(
+                out,
+                4,
+                &[
+                    KeyValue::toned("target", adapter, Tone::Muted),
+                    KeyValue::toned("directory", directory, Tone::Path),
+                    KeyValue::toned("files", files, Tone::Number),
+                    KeyValue::toned("bytes", bytes, Tone::Accent),
+                    KeyValue::new("run", run),
+                ],
+            );
+            renderer.blank(out);
+        }
+
         if let Some((path, bytes, files, embedded)) = &binary {
             renderer.heading(out, 2, "standalone");
             renderer.key_values(
@@ -336,13 +466,162 @@ pub(crate) fn build(
             &Tree::from_paths(&project, output_paths.iter().copied()),
         );
         renderer.blank(out);
+
+        if !guarded_rows.is_empty() {
+            renderer.heading(out, 2, "guards");
+            let mut table = Table::new(vec![
+                Column::left("route"),
+                Column::left("document"),
+                Column::left("middleware"),
+            ]);
+            for (url, file, middleware) in &guarded_rows {
+                table.push(vec![
+                    Cell::toned(url, Tone::Accent),
+                    Cell::toned(file, Tone::Path),
+                    Cell::toned(middleware, Tone::Path),
+                ]);
+            }
+            renderer.table(out, 4, &table);
+            renderer.blank(out);
+        }
+
         for warning in &warnings {
             renderer.status(out, Status::Warn, warning);
+        }
+        if !guarded_rows.is_empty() {
+            renderer.status(out, Status::Warn, &guarded_summary);
         }
         renderer.status(out, Status::Success, &summary);
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)
+}
+
+/// Print the RSC analysis's diagnostics, grouped by module.
+///
+/// The same shape `uf lint` and `uf check` print — a path, then a code frame
+/// per diagnostic — because a person should not have to learn two diagnostic
+/// formats to read two of uf's commands. `uf_rsc` accumulates violations as
+/// typed data precisely so that a reporter can be written once against them,
+/// and until now none had been: the build turned the whole list into
+/// `diagnostics.len()` and printed the number.
+///
+/// A module that cannot be read still gets its header and its message, with no
+/// source line under it. That is a diagnostic about the module's *content*,
+/// so refusing to report it because the file has since moved would lose the
+/// finding to a race.
+fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagnostic]) {
+    ui.render(|renderer, out| {
+        renderer.blank(out);
+    });
+
+    for group in group_by_module(diagnostics) {
+        let module = group[0].module().to_string();
+        let source = diagnostic_source(root, &module, &group);
+        let lines: Vec<&str> = source.lines().collect();
+        let errors = group
+            .iter()
+            .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
+            .count();
+        let header = problem_summary(errors, group.len() - errors);
+        let rendered: Vec<(DiagnosticLevel, &'static str, String, usize, usize)> = group
+            .iter()
+            .map(|diagnostic| {
+                let level = match diagnostic.severity() {
+                    RscSeverity::Error => DiagnosticLevel::Error,
+                    RscSeverity::Warn => DiagnosticLevel::Warning,
+                };
+                (
+                    level,
+                    diagnostic.rule(),
+                    diagnostic.to_string(),
+                    diagnostic.line() as usize,
+                    diagnostic.column() as usize,
+                )
+            })
+            .collect();
+
+        ui.render(|renderer, out| {
+            renderer.theme().path.paint(renderer.color(), &module, out);
+            out.push_str("  ");
+            renderer.theme().muted.paint(renderer.color(), &header, out);
+            out.push('\n');
+            renderer.blank(out);
+
+            for (level, rule, message, line, column) in &rendered {
+                let mut frame =
+                    CodeFrame::new(*level, message, &module, *line, *column).with_rule(rule);
+                if let Some(source_line) = lines.get(line.saturating_sub(1)).copied() {
+                    frame = frame
+                        .with_source_line(source_line)
+                        .with_span(identifier_span(source_line, *column));
+                }
+                renderer.code_frame_at(out, &frame, 2);
+                renderer.blank(out);
+            }
+        });
+    }
+}
+
+/// The diagnostics of one module at a time, in the order they were found.
+///
+/// Grouped rather than sorted: `uf_rsc` returns them in graph order, which is
+/// the order the modules were reached, and re-sorting would lose that for no
+/// gain — the reason a module is in the client graph at all is the module
+/// before it.
+/// The source of `module`, when reading it is both any use and inside the
+/// project.
+///
+/// Two conditions, and they are not the same question asked twice.
+///
+/// *Any use*: a code frame needs a line to underline, and `line() == 0` is how
+/// a diagnostic says it has none. Reading a file to throw it away is only
+/// wasted work — except that the one variant with no line is
+/// `ModulePathOutsideProject`, whose `module` is by definition a path
+/// `is_inside_project` has just rejected: absolute, climbing out with `..`, or
+/// carrying a drive letter or a URL scheme.
+///
+/// *Inside the project*: `Utf8Path::join` with an absolute right-hand side
+/// *replaces* the root rather than extending it. So `root.join(module)` for
+/// that same diagnostic resolved to the outside path itself, the file was read,
+/// and — because `line().saturating_sub(1)` is `0` for a line of `0` —
+/// `lines.get(0)` put its first line into the build output. The diagnostic
+/// whose entire content is "this path is not in your project" was the one that
+/// made uf read it.
+///
+/// Lexical, and deliberately not `canonicalize`: the check is about what `join`
+/// does with the string, the scanner produces relative paths and does not
+/// follow symlinks (`collect_module_paths`), and a `stat` per module to
+/// re-establish something already true by construction would buy nothing. This
+/// is the belt on top of the braces, and it costs no syscall.
+///
+/// An empty string means "no source line", which is what the reporter already
+/// does with a file that has since moved: the header and the message still
+/// print. A diagnostic about a module's *content* must not be lost because the
+/// file could not be read.
+fn diagnostic_source(root: &Utf8Path, module: &str, group: &[&RscDiagnostic]) -> String {
+    if group.iter().all(|diagnostic| diagnostic.line() == 0) {
+        return String::new();
+    }
+    let path = Utf8Path::new(module);
+    if path.is_absolute() || path.components().any(|part| part.as_str() == "..") {
+        return String::new();
+    }
+    fs::read_to_string(root.join(path)).unwrap_or_default()
+}
+
+fn group_by_module(diagnostics: &[RscDiagnostic]) -> Vec<Vec<&RscDiagnostic>> {
+    let mut groups: Vec<Vec<&RscDiagnostic>> = Vec::new();
+    for diagnostic in diagnostics {
+        match groups
+            .iter_mut()
+            .find(|group| group[0].module() == diagnostic.module())
+        {
+            Some(group) => group.push(diagnostic),
+            None => groups.push(vec![diagnostic]),
+        }
+    }
+    groups
 }
 
 /// Attribute the client entry to every route.
@@ -415,4 +694,75 @@ fn enforce_budgets(ui: &mut Ui, report: &BundleReport, budgets: &BundleBudgets) 
         "bundle size exceeded {}",
         plural(outcome.violations.len(), "budget")
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `ClientOnlyApiInServerModule` for `module` at `line`, which is the
+    /// ordinary shape: a diagnostic that points somewhere.
+    fn positioned(module: &str, line: u32) -> RscDiagnostic {
+        RscDiagnostic::ClientOnlyApiInServerModule {
+            module: Utf8PathBuf::from(module),
+            api: "localStorage",
+            line,
+            column: 3,
+        }
+    }
+
+    #[test]
+    fn a_diagnostic_with_a_line_gets_its_source() {
+        let root = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(root.path()).unwrap();
+        fs::write(root.join("page.js"), "// @flow\nlocalStorage.clear();\n").unwrap();
+
+        let diagnostic = positioned("page.js", 2);
+        let source = diagnostic_source(root, "page.js", &[&diagnostic]);
+
+        assert!(source.contains("localStorage.clear();"), "{source:?}");
+    }
+
+    #[test]
+    fn a_diagnostic_with_no_line_reads_nothing() {
+        // `ModulePathOutsideProject` is the only variant whose `line()` is `0`,
+        // and it is also the only one whose `module` is a path the graph has
+        // *rejected* — so this is not merely an optimisation. Without the skip,
+        // `root.join(module)` on an absolute path drops the root entirely,
+        // `line.saturating_sub(1)` is `0`, and `lines.get(0)` puts the first
+        // line of somebody else's file into the build output.
+        let outside = tempfile::tempdir().unwrap();
+        let outside = Utf8Path::from_path(outside.path()).unwrap();
+        let secret = outside.join("elsewhere.txt");
+        fs::write(&secret, "the first line of a file uf was not asked about\n").unwrap();
+
+        let root = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(root.path()).unwrap();
+
+        let diagnostic = RscDiagnostic::ModulePathOutsideProject {
+            module: secret.clone(),
+        };
+        let source = diagnostic_source(root, secret.as_str(), &[&diagnostic]);
+
+        assert_eq!(source, "", "a diagnostic with no line read a file anyway");
+    }
+
+    #[test]
+    fn a_module_path_that_climbs_out_of_the_project_reads_nothing() {
+        // The same hole reached the other way, and with a line on it so the
+        // skip above cannot be what closes it. `RscGraphBuilder` keeps a
+        // caller-supplied path, and a relative one that climbs is still
+        // outside.
+        let outside = tempfile::tempdir().unwrap();
+        let outside = Utf8Path::from_path(outside.path()).unwrap();
+        fs::write(outside.join("elsewhere.txt"), "not this project's\n").unwrap();
+        let root = outside.join("project");
+        fs::create_dir_all(&root).unwrap();
+
+        let module = "../elsewhere.txt";
+        let diagnostic = positioned(module, 1);
+        let source = diagnostic_source(&root, module, &[&diagnostic]);
+
+        assert_eq!(source, "", "a climbing module path read a file anyway");
+    }
 }

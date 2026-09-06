@@ -15,9 +15,42 @@
 // to nest one request inside another.
 //
 // It is a subpath rather than `internal/` because a sibling package cannot
-// reach another's internals: `@uniflowed/router` is where a request begins, and
-// it is a different npm package.
+// reach another's internals: `@uniflowed/router` renders and dispatches inside
+// a request, and it is a different npm package.
+//
+// # `beginRequest` is the one a host calls
+//
+// The other exports are what it is made of, and they are public because the
+// suite drives them one at a time and because a host with an unusual shape may
+// need them. A host that reaches for them separately is nonetheless doing the
+// thing that produced ubugeeei-prod/uf#389: `@uniflowed/router` used to build a
+// context in its middleware runner and drain it there, and build a second one
+// in its dispatcher, so a request had up to two contexts and `after()` ran
+// before the response existed. One request is one `beginRequest`, and the pair
+// it returns is deliberately awkward to call from a single place — `run` wraps
+// deciding the response, `settle` follows writing it.
+//
+// # Which module's copy
+//
+// This one holds an `AsyncLocalStorage`, so the context is only shared by code
+// that resolved to the *same* copy of it. A host that serves a bundled
+// application must therefore take `beginRequest` from that bundle —
+// `virtual:uf/server` re-exports it for exactly this reason — and not from its
+// own `node_modules`, where it would be a second storage that sees nothing.
 
-export type { CookieStore, DraftMode, HeaderStore, RequestContext } from "./internal/context.js";
+export type {
+  CookieStore,
+  DraftMode,
+  HeaderStore,
+  RequestContext,
+  RequestLifecycle,
+} from "./internal/context.js";
 
-export { contextFor, drainDeferred, parseCookies, runWithContext } from "./internal/context.js";
+export {
+  beginRequest,
+  contextFor,
+  drainDeferred,
+  insideRequest,
+  parseCookies,
+  runWithContext,
+} from "./internal/context.js";

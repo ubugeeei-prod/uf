@@ -11,6 +11,7 @@
 
 import * as React from "react";
 import {
+  Suspense,
   createContext,
   startTransition,
   useCallback,
@@ -115,6 +116,21 @@ export type ErrorModule = {
   ...
 };
 
+/**
+ * What a loading module may export. The component is `default` or `Loading`.
+ *
+ * No `metadata`, and that is the type saying something true rather than an
+ * omission. A fallback renders while the route is still resolving, and the
+ * route's metadata was decided before the first byte — a title on a file that
+ * renders after the head has gone could never be used. `packages/web/head.js`
+ * documents the same constraint from the other side.
+ */
+export type LoadingModule = {
+  readonly default?: RouteComponent,
+  readonly Loading?: RouteComponent,
+  ...
+};
+
 /** Document metadata a page or layout declares. */
 export type Metadata = {
   readonly title?: string,
@@ -148,6 +164,28 @@ export type RouteRecord = {|
   readonly file: string,
   readonly page: () => Promise<PageModule>,
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
+  /**
+   * The `<Suspense>` boundaries this route renders inside, root first.
+   *
+   * Optional because a table written before `_uf.loading.js` existed — a
+   * hand-written one in a test, a server bundle built by an older `uf` —
+   * is still a table this router can render, and a route with no boundary is
+   * exactly what it had before.
+   */
+  readonly loading?: $ReadOnlyArray<LoadingRecord>,
+|};
+
+/**
+ * One `_uf.loading.js`, as the route table carries it.
+ *
+ * `above` is how many of the route's `layouts` are outside the boundary, which
+ * is the same number `ResolvedRoute["errorBoundary"].above` means and is
+ * spelled the same way on purpose: both answer "where in the stack of layouts
+ * does this thing sit", and there is no second vocabulary for it.
+ */
+export type LoadingRecord = {|
+  readonly above: number,
+  readonly module: () => Promise<LoadingModule>,
 |};
 
 /**
@@ -264,6 +302,16 @@ export type ResolvedRoute = {|
     readonly module: ?ErrorModule,
     readonly above: number,
   |},
+  /**
+   * The loading boundaries around this route, root first, already imported.
+   *
+   * Imported rather than lazy: React decides to render a fallback
+   * synchronously, during the render that suspended, so a module that is still
+   * being fetched is a module that is not there at the only moment it is
+   * wanted. Empty for a route with no `_uf.loading.js` above it, which is the
+   * ordinary case and renders exactly the tree it did before.
+   */
+  readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
 |};
 
 /** Thrown by `notFound()`; the renderer answers with the not-found page. */
@@ -560,9 +608,24 @@ async function resolveRoute(
   // on the loader, so importing it alongside costs a navigation nothing. It
   // never rejects, so an early throw below leaves no unhandled rejection.
   const boundary = resolveErrorBoundary(table, pathname, matched.route.layouts.length);
+  // Started alongside for the same reason, and awaited at the end: a fallback
+  // depends on nothing the loader produces.
+  const loading = resolveLoading(matched.route, matched.route.layouts.length);
 
   let data: mixed = options?.data;
   if (options?.skipLoader !== true && typeof page.loader === "function") {
+    // Awaited here, so a route's time to first byte is still its slowest
+    // loader. A page that suspends while *rendering* streams — that is what the
+    // `<Suspense>` boundaries below are for — but a page waiting on its loader
+    // has already waited by the time React sees the tree, so its fallback shows
+    // for no time at all.
+    //
+    // Deferring it means handing the page a promise and unwrapping it inside
+    // the boundary, and the obstacle is not the awaiting: it is that
+    // `generateMetadata` reads `data` and metadata goes in the head, and that
+    // the loader data is embedded in the head too, for hydration. Both are
+    // decisions about the document rather than about the route.
+    // ubugeeei-prod/uf#373 has the design.
     data = await page.loader({ params: matched.params, searchParams, pathname });
   }
 
@@ -584,7 +647,44 @@ async function resolveRoute(
     status: 200,
     error: null,
     errorBoundary: await boundary,
+    loading: await loading,
   };
+}
+
+/**
+ * The route's loading boundaries, imported.
+ *
+ * A boundary whose module will not load is dropped rather than thrown for, and
+ * this is the same judgement `resolveErrorBoundary` makes one function above: a
+ * fallback is what the router shows while it does not yet have the page, so a
+ * broken fallback must not become a broken page. The route renders without that
+ * boundary — the next one out, or the shell, waits for it instead — and the
+ * import error surfaces where it belongs, when the module is next asked for.
+ */
+async function resolveLoading(
+  route: RouteRecord,
+  layoutCount: number,
+): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
+  const records = route.loading ?? [];
+  if (records.length === 0) {
+    return [];
+  }
+  const loaded = await Promise.all(
+    records.map(async (record) => {
+      try {
+        return {
+          // Clamped exactly as the error boundary's is, and for the same
+          // reason: a `(group)` directory can leave a route with fewer layouts
+          // than the boundary that covers it.
+          above: Math.min(record.above, layoutCount),
+          module: await loadOnce(record.module),
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return loaded.filter(Boolean);
 }
 
 /**
@@ -722,6 +822,10 @@ async function resolveError(
     // All of the boundary's layouts are above it, and no inner boundary is
     // inserted around a page that already is one; see `RouteView`.
     errorBoundary: { module, above: layouts.length },
+    // An error page has nothing left to wait for: it renders the value it was
+    // resolved with. A fallback around it would be a boundary that can never
+    // show, which is worse than none.
+    loading: [],
   };
 }
 
@@ -758,6 +862,7 @@ async function resolveNotFound(
       status: 404,
       error: null,
       errorBoundary: await resolveErrorBoundary(table, pathname, 0),
+      loading: [],
     };
   }
   const [page, ...layouts] = await Promise.all([
@@ -783,6 +888,10 @@ async function resolveNotFound(
     error: null,
     // A not-found page is a page: one that throws is contained like any other.
     errorBoundary: await resolveErrorBoundary(table, pathname, layouts.length),
+    // A not-found boundary is matched, not nested: `nearestBoundary` picked one
+    // record and the loading files are a property of the route that was walked
+    // to, which this URL never reached. Nothing to wait for, so no boundary.
+    loading: [],
   };
 }
 
@@ -1207,6 +1316,15 @@ export hook useLoaderData(): mixed {
  * Renders the matched page inside its layouts, innermost last, with the
  * document metadata as hoistable head elements.
  *
+ * # One walk down the layouts, not three
+ *
+ * The layouts, the error boundary and the `<Suspense>` boundaries all have to
+ * be threaded into the same stack at the depth each was declared at, so this
+ * is one descending loop over that depth rather than a pass per kind. `depth`
+ * counts the layouts still *outside* the element built so far, which is what
+ * `above` means on both a route's `errorBoundary` and each of its `loading`
+ * entries — one number, one meaning, one place it is compared.
+ *
  * # Where the error boundaries go
  *
  * Two, and they are not the same thing twice. The inner one is the project's
@@ -1217,6 +1335,22 @@ export hook useLoaderData(): mixed {
  * the error component itself, and an unmounted document. A single boundary
  * cannot be both: put it outside and a page's throw takes the navigation down
  * with it; put it inside and nothing catches the layout above.
+ *
+ * # Where the loading boundaries go
+ *
+ * Inside the layout of the segment that declared the file and outside
+ * everything under it, which is what makes the shell arrive first: a renderer
+ * streaming this tree can send every layout down to the boundary, and the
+ * fallback, before whatever the page is waiting for has resolved. A segment
+ * with no `_uf.loading.js` contributes no boundary at all — it is not wrapped
+ * in a `<Suspense fallback={null}>` on the way past — so a project that
+ * declares none renders the tree it rendered before this existed, and a page
+ * that suspends without a boundary above it still fails the way React says it
+ * should rather than silently rendering nothing.
+ *
+ * The error boundary goes *outside* the fallback at the same depth. A throw
+ * while the page is resolving has to reach a boundary that is still mounted,
+ * and the `<Suspense>` is part of what the throw came out of.
  */
 export component RouteView() {
   const { resolved } = useRouterState();
@@ -1225,23 +1359,34 @@ export component RouteView() {
   let element: React.Node = (
     <Page params={resolved.params} searchParams={resolved.searchParams} data={resolved.data} />
   );
-  for (let index = resolved.layouts.length - 1; index >= above; index -= 1) {
-    const Layout = layoutComponent(resolved.layouts[index]);
-    element = <Layout params={resolved.params}>{element}</Layout>;
-  }
-  // Not around a route that already resolved to its error page: that page is
-  // the boundary's own component, and wrapping it in the same boundary would
-  // answer a throw inside it with itself.
-  if (module != null && resolved.error == null) {
-    element = (
-      <RouteErrorBoundary module={module} resetKey={resolved.pathname}>
-        {element}
-      </RouteErrorBoundary>
-    );
-  }
-  for (let index = above - 1; index >= 0; index -= 1) {
-    const Layout = layoutComponent(resolved.layouts[index]);
-    element = <Layout params={resolved.params}>{element}</Layout>;
+
+  for (let depth = resolved.layouts.length; depth >= 0; depth -= 1) {
+    // Backwards over a root-first list, so the deepest segment's fallback ends
+    // up closest to the page. Two segments land on the same depth whenever the
+    // inner one declares no layout of its own, and then this order is the only
+    // thing that keeps them nested the way the directories are.
+    for (let index = resolved.loading.length - 1; index >= 0; index -= 1) {
+      const boundary = resolved.loading[index];
+      if (boundary.above !== depth) {
+        continue;
+      }
+      const Fallback = loadingComponent(boundary.module);
+      element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
+    }
+    // Not around a route that already resolved to its error page: that page is
+    // the boundary's own component, and wrapping it in the same boundary would
+    // answer a throw inside it with itself.
+    if (depth === above && module != null && resolved.error == null) {
+      element = (
+        <RouteErrorBoundary module={module} resetKey={resolved.pathname}>
+          {element}
+        </RouteErrorBoundary>
+      );
+    }
+    if (depth > 0) {
+      const Layout = layoutComponent(resolved.layouts[depth - 1]);
+      element = <Layout params={resolved.params}>{element}</Layout>;
+    }
   }
   return (
     <>
@@ -1262,6 +1407,24 @@ function pageComponent(module: PageModule): React.ComponentType<PageRenderProps>
   if (component == null) {
     throw new Error(
       "@uniflowed/router: a page module must export a component as `default` or `Page`",
+    );
+  }
+  return renderable(component);
+}
+
+/**
+ * The component a loading module renders: `default`, or the named `Loading`.
+ *
+ * No props, unlike a page or a layout. A fallback is what the router shows
+ * when it does not have the route's answer yet, so there is nothing it could
+ * be handed that would be true — not `data`, which is the thing being waited
+ * for, and not `children`, because it renders instead of them.
+ */
+function loadingComponent(module: LoadingModule): React.ComponentType<{||}> {
+  const component = module.default ?? module.Loading;
+  if (component == null) {
+    throw new Error(
+      "@uniflowed/router: a loading module must export a component as `default` or `Loading`",
     );
   }
   return renderable(component);

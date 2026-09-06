@@ -93,6 +93,32 @@ pub enum RscDiagnostic {
         /// The offending path, as supplied.
         module: Utf8PathBuf,
     },
+    /// A hook the client-only check has no answer for.
+    ///
+    /// Not a violation: a statement that the analysis stopped. The check
+    /// matches identifiers against two name lists, so `useState` in a Server
+    /// Component is caught and `useRoute` — which is built on `useContext` —
+    /// is not, and neither is any hook a user writes. Deciding it properly
+    /// means binding an export to the APIs its body reaches, or reading the
+    /// React Compiler's purity analysis, and both are larger than the rule
+    /// they fix (ubugeeei-prod/uf#388). Until one of them exists the honest
+    /// output is the question rather than silence: silence reads as "checked
+    /// and fine", which is the one thing it is not.
+    #[error(
+        "server module `{module}` calls `{hook}` at line {line}:{column}, and the client-only \
+         check cannot say whether it is a client hook: it matches names, and `{hook}` is not one \
+         of them"
+    )]
+    UnclassifiedHookInServerModule {
+        /// The server module.
+        module: Utf8PathBuf,
+        /// Name of the hook as called.
+        hook: CompactString,
+        /// 1-based line.
+        line: u32,
+        /// 1-based column.
+        column: u32,
+    },
     /// A rejected directive, lifted from the directive pass.
     #[error("in `{module}`: {issue}")]
     Directive {
@@ -113,13 +139,24 @@ impl RscDiagnostic {
             Self::ServerActionNotFunction { .. } => "rsc/server-action-not-a-function",
             Self::ImportEscapesProjectRoot { .. } => "rsc/import-escapes-project-root",
             Self::ModulePathOutsideProject { .. } => "rsc/module-outside-project-root",
+            Self::UnclassifiedHookInServerModule { .. } => "rsc/unclassified-hook-in-server",
             Self::Directive { issue, .. } => issue.rule(),
         }
     }
 
-    /// Severity of the diagnostic. Every RSC contract violation is an error.
+    /// Severity of the diagnostic.
+    ///
+    /// Every RSC contract *violation* is an error: the contract has no
+    /// tolerances, and a module that breaks it does not work once the split
+    /// lands. [`Self::UnclassifiedHookInServerModule`] is the one variant that
+    /// is not a violation — it says the analysis could not reach a verdict —
+    /// so it is a warning, and it is the first thing in this crate that has
+    /// ever been one.
     pub fn severity(&self) -> RscSeverity {
-        RscSeverity::Error
+        match self {
+            Self::UnclassifiedHookInServerModule { .. } => RscSeverity::Warn,
+            _ => RscSeverity::Error,
+        }
     }
 
     /// Module the diagnostic belongs to.
@@ -130,6 +167,7 @@ impl RscDiagnostic {
             | Self::ServerActionNotAsync { module, .. }
             | Self::ServerActionNotFunction { module, .. }
             | Self::ImportEscapesProjectRoot { module, .. }
+            | Self::UnclassifiedHookInServerModule { module, .. }
             | Self::ModulePathOutsideProject { module }
             | Self::Directive { module, .. } => module,
         }
@@ -142,9 +180,25 @@ impl RscDiagnostic {
             | Self::ClientOnlyApiInServerModule { line, .. }
             | Self::ServerActionNotAsync { line, .. }
             | Self::ServerActionNotFunction { line, .. }
-            | Self::ImportEscapesProjectRoot { line, .. } => *line,
+            | Self::ImportEscapesProjectRoot { line, .. }
+            | Self::UnclassifiedHookInServerModule { line, .. } => *line,
             Self::ModulePathOutsideProject { .. } => 0,
             Self::Directive { issue, .. } => issue.line(),
+        }
+    }
+
+    /// 1-based column the diagnostic points at.
+    ///
+    /// Only the client-only API check records one — it is the only variant
+    /// that points at an expression rather than at a statement — so the rest
+    /// answer with the first column, which is where a reporter's caret goes
+    /// when the whole line is at fault. A reporter cannot ask "is there a
+    /// column?" and do something sensible with `None`, so it is not offered
+    /// one.
+    pub fn column(&self) -> u32 {
+        match self {
+            Self::ClientOnlyApiInServerModule { column, .. } => *column,
+            _ => 1,
         }
     }
 }

@@ -55,6 +55,26 @@ export type RequestContext = {
   readonly deferred: Array<() => mixed | Promise<mixed>>,
 };
 
+/**
+ * One request, from the moment a host has one to the moment its bytes are gone.
+ *
+ * Two functions rather than one, because they are called from two places and
+ * that is the whole point rather than an inconvenience. `run` wraps everything
+ * that *decides* the response — the guard, the dispatcher, the render — and
+ * `settle` happens after the response has been *written*, which in every host
+ * uf has is a different line in a different module. A single
+ * `handle(request, body)` that drained when `body` returned would be the bug
+ * this exists to fix, spelled once instead of twice.
+ */
+export type RequestLifecycle = {|
+  /** The context `run` establishes, for a host that needs to read it. */
+  readonly context: RequestContext,
+  /** Run the whole request inside it. */
+  readonly run: <T>(body: () => Promise<T>) => Promise<T>,
+  /** The response has gone: run what `after()` deferred. */
+  readonly settle: () => Promise<void>,
+|};
+
 const storage: AsyncLocalStorage<RequestContext> = new AsyncLocalStorage();
 
 /**
@@ -66,6 +86,19 @@ const storage: AsyncLocalStorage<RequestContext> = new AsyncLocalStorage();
  */
 export function currentContext(): RequestContext | null {
   return storage.getStore() ?? null;
+}
+
+/**
+ * Whether a request has been established around this call.
+ *
+ * For a caller that is not a server function and has nothing to answer about
+ * the request — the router's dispatcher and its middleware runner, which need
+ * to know that a host established one *before* anything they call asks for
+ * cookies. They must not be handed the context itself: a module that can reach
+ * it can drain it, which is how the drain came to be in the wrong place.
+ */
+export function insideRequest(): boolean {
+  return storage.getStore() != null;
 }
 
 /**
@@ -84,10 +117,19 @@ export function runWithContext<T>(context: RequestContext, body: () => T): T {
  * touches `cookies().get(…)` as often as it has components that care, and
  * re-parsing the cookie header each time would be the kind of cost nobody
  * looks for.
+ *
+ * Parsed on the first read rather than here, and that changed when the host
+ * became the thing that begins a request: a host begins one before it knows
+ * whether the path is an embedded chunk or a page, so every asset a compiled
+ * binary serves now builds a context. Splitting a `Cookie` header for a
+ * request that never asks about cookies is exactly the cost the paragraph
+ * above refuses to pay per read, and there is no reason to pay it per request
+ * either.
  */
 export function contextFor(request: Request): RequestContext {
   const headers = request.headers;
-  const cookies = parseCookies(headers.get("cookie"));
+  let cookies: { [string]: string } | null = null;
+  const parsed = () => (cookies ??= parseCookies(headers.get("cookie")));
 
   return {
     headers: {
@@ -95,12 +137,43 @@ export function contextFor(request: Request): RequestContext {
       has: (name) => headers.has(name),
     },
     cookies: {
-      get: (name) => (Object.hasOwn(cookies, name) ? cookies[name] : null),
-      has: (name) => Object.hasOwn(cookies, name),
+      get: (name) => (Object.hasOwn(parsed(), name) ? parsed()[name] : null),
+      has: (name) => Object.hasOwn(parsed(), name),
     },
     draft: false,
     deferred: [],
   };
+}
+
+/**
+ * Begin a request, and hand back the two halves of owning it.
+ *
+ * The one function a host calls. `contextFor`, `runWithContext` and
+ * `drainDeferred` are still here because they are what this is made of and
+ * because the suite drives them one at a time, but a *host* reaching for them
+ * separately is how uf got two contexts on one request and a drain that ran
+ * before the response: the middleware runner built one and drained it, and the
+ * dispatcher underneath it built another. See ubugeeei-prod/uf#389.
+ *
+ * `settle` runs once. A host learns that a response is finished more than once
+ * — the body stream closed, and then the socket did — and draining twice would
+ * run whatever the first drain's callbacks registered, at a moment nothing
+ * asked for.
+ */
+export function beginRequest(request: Request): RequestLifecycle {
+  const context = contextFor(request);
+  let settling: Promise<void> | null = null;
+
+  function run<T>(body: () => Promise<T>): Promise<T> {
+    return runWithContext(context, body);
+  }
+
+  function settle(): Promise<void> {
+    settling ??= drainDeferred(context);
+    return settling;
+  }
+
+  return { context, run, settle };
 }
 
 /**
