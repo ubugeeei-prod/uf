@@ -104,6 +104,44 @@ pub fn truncate_to_width(text: &str, max: usize) -> &str {
     text
 }
 
+/// Append as much of `text` as fits in `max` columns, keeping its styling
+/// intact.
+///
+/// [`truncate_to_width`] cannot be used on text that has already been styled:
+/// it slices on a byte offset, and an escape sequence cut in half leaves the
+/// terminal reading the rest of the line as a command. This copies every escape
+/// through whole and charges it no width, then closes with a reset whenever
+/// anything was dropped — a colour opened inside the part that survived would
+/// otherwise run down the rest of the screen.
+///
+/// Grapheme clusters are measured one scalar at a time here, unlike
+/// [`display_width`], so a line ending in an emoji sequence may lose a column
+/// it could have kept. Stopping a column early is invisible; overrunning the
+/// width by one wraps the line, and a wrapped line is what breaks a redrawn
+/// region.
+pub fn push_truncated(out: &mut String, text: &str, max: usize) {
+    let mut width = 0usize;
+    let mut styled = false;
+    let mut chars = text.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            out.push(ch);
+            take_escape(&mut chars, |ch| out.push(ch));
+            styled = true;
+            continue;
+        }
+        let next = width + char_width(ch);
+        if next > max {
+            if styled {
+                out.push_str("\x1b[0m");
+            }
+            return;
+        }
+        width = next;
+        out.push(ch);
+    }
+}
+
 /// Append `text` padded to `width` columns, using the string's display width.
 ///
 /// Text wider than `width` is written in full rather than truncated: losing a
@@ -198,13 +236,26 @@ pub fn floor_char_boundary(text: &str, offset: usize) -> usize {
 
 /// Consume the remainder of an ANSI escape sequence, having seen the `ESC`.
 fn skip_escape(chars: &mut std::str::Chars<'_>) {
+    take_escape(chars, |_| {});
+}
+
+/// Consume the escape sequence `chars` sits inside, handing every scalar of it
+/// to `sink`.
+///
+/// One rule, two readers: [`display_width`] throws the sequence away and
+/// [`push_truncated`] copies it out. Written once because a measurement that
+/// ends an escape a byte before the copy does is how a truncated line starts
+/// printing its own colour codes.
+fn take_escape(chars: &mut std::str::Chars<'_>, mut sink: impl FnMut(char)) {
     let Some(introducer) = chars.next() else {
         return;
     };
+    sink(introducer);
     match introducer {
         // CSI: parameters and intermediates, then one final byte.
         '[' => {
             for ch in chars.by_ref() {
+                sink(ch);
                 if ('\u{40}'..='\u{7e}').contains(&ch) {
                     return;
                 }
@@ -213,6 +264,7 @@ fn skip_escape(chars: &mut std::str::Chars<'_>) {
         // OSC: runs until BEL or ST.
         ']' => {
             for ch in chars.by_ref() {
+                sink(ch);
                 if ch == '\u{7}' || ch == '\u{1b}' {
                     return;
                 }

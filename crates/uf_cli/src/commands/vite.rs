@@ -192,6 +192,14 @@ pub(crate) enum Event {
     /// named. A page that throws is one page's problem until the build is
     /// over, and the reader needs the whole list rather than the first item.
     PageFailed { url: String, error: DriverError },
+    /// A source module under the project root was added, changed or removed.
+    ///
+    /// Vite's watcher is the one that sees it, and it is deliberately the only
+    /// one: `uf dev` recomputes whole-project answers on this rather than
+    /// keeping a watcher of its own over the same tree. It carries no path
+    /// because nothing that listens is incremental — a second answer to "which
+    /// file" would be a promise the recompute does not keep.
+    SourceChanged,
     /// A build finished.
     Done { out_dir: String, pages: u64 },
     /// The JSON projection of the config, from `driver config`.
@@ -280,6 +288,7 @@ impl Event {
                 url: text("url").unwrap_or_default(),
                 error: failure(),
             },
+            Some("source-changed") => Self::SourceChanged,
             Some("done") => Self::Done {
                 out_dir: text("outDir").unwrap_or_default(),
                 pages: number("pages").unwrap_or(0),

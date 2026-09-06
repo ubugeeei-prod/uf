@@ -20,7 +20,7 @@ mod exports;
 mod imports;
 pub mod lexer;
 
-pub(crate) use client_api::client_api_uses_from_tokens;
+pub(crate) use client_api::{client_api_uses_from_tokens, hook_calls_from_tokens};
 pub(crate) use exports::exports_from_tokens;
 pub(crate) use imports::imports_from_tokens;
 pub use lexer::{Token, TokenKind, matching_close, matching_open, starts_statement, tokenize};
@@ -33,6 +33,9 @@ pub type ExportList = InlineVec<ModuleExport, 8>;
 
 /// Inline list of client-only API uses found in one module.
 pub type ClientApiUseList = InlineVec<ClientApiUse, 4>;
+
+/// Inline list of calls to hooks the name lists do not know.
+pub type HookCallList = InlineVec<HookCall, 4>;
 
 /// Longest source accepted by the scanner, in bytes.
 ///
@@ -139,6 +142,24 @@ pub struct ModuleExport {
     pub line: u32,
 }
 
+/// One call to a hook the client-only name lists do not know.
+///
+/// Not a violation and not evidence of one: it is the record of a question the
+/// scanner asked and could not answer, because `useRoute` is client-only if
+/// and only if something in its body is, and its body is in another module.
+/// The alternative to recording it is a graph that silently reports nothing
+/// for every hook anybody wrote — see ubugeeei-prod/uf#348.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookCall {
+    /// The name as written.
+    pub name: CompactString,
+    /// 1-based line of the call.
+    pub line: u32,
+    /// 1-based column of the call.
+    pub column: u32,
+}
+
 /// One use of a client-only API inside a module.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -170,6 +191,13 @@ pub fn scan_client_api_uses(source: &str) -> ClientApiUseList {
     let tokens = tokenize(source);
     let index = LineIndex::new(source);
     client_api_uses_from_tokens(source, &tokens, &index)
+}
+
+/// Collect calls to hooks that [`CLIENT_ONLY_APIS`] does not name.
+pub fn scan_hook_calls(source: &str) -> HookCallList {
+    let tokens = tokenize(source);
+    let index = LineIndex::new(source);
+    hook_calls_from_tokens(source, &tokens, &index)
 }
 
 /// Clamp a `usize` position into the `u32` used by diagnostics.

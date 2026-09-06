@@ -8,7 +8,9 @@
 //! instead of forcing a migration.
 
 pub mod command;
+pub mod delta;
 pub mod detect;
+pub mod progress;
 pub mod run;
 
 use std::collections::BTreeMap;
@@ -23,6 +25,9 @@ use thiserror::Error;
 use uf_config::UniflowedConfig;
 
 pub use crate::command::{Invocation, InvocationArgs, Operation, PROGRAMS, command_for};
+pub use crate::delta::{
+    ChangeKind, LockedEntry, LockfileDelta, LockfileSnapshot, MAX_LOCKFILE_BYTES, PackageChange,
+};
 pub use crate::detect::{
     Detection, DetectionCandidate, DetectionCandidates, DetectionIssue, DetectionIssues,
     DetectionOptions, DetectionOutcome, DetectionSource, Lockfile, LockfileList,
@@ -31,7 +36,14 @@ pub use crate::detect::{
     WorkspaceMarker, YarnEdition, detect_package_manager, detect_package_manager_with,
     parse_package_manager_field, scan_lockfiles, yarn_edition_in,
 };
-pub use crate::run::{InstallRun, InstallRunError, run_install};
+pub use crate::progress::{
+    InstallPhase, InstallWatch, LINKING_IDLE, MAX_LABEL, ManagerEvent, PhaseProgress, PhaseState,
+    Reader, safe_label,
+};
+pub use crate::run::{
+    InstallObserver, InstallRun, InstallRunError, ManagerStream, installable, run_install,
+    run_install_watched,
+};
 
 /// JSON object keys that must never be treated as data.
 ///

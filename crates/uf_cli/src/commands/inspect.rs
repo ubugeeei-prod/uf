@@ -169,6 +169,13 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
     let routes = discover_routes(&resolved.root, &resolved.config)?
         .into_iter()
         .map(|route| {
+            // `hasMiddleware` keeps meaning what it has always meant — this
+            // directory declares one — and `middleware` is the chain that
+            // actually runs, inherited from every directory above it. They are
+            // different answers for every route below the one that declares a
+            // guard, and only the second one tells a reader whether the route
+            // is guarded.
+            let has_own_middleware = route.has_own_middleware();
             json!({
                 "path": route.path,
                 "page": route.page,
@@ -179,7 +186,8 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
                     })
                 }).collect::<Vec<_>>(),
                 "hasLayout": route.has_layout,
-                "hasMiddleware": route.has_middleware,
+                "hasMiddleware": has_own_middleware,
+                "middleware": route.middleware,
             })
         })
         .collect::<Vec<_>>();
