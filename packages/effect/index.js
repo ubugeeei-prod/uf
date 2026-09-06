@@ -79,7 +79,7 @@
 // What this does *not* have is `forkScoped` and `forkIn`: a child tied to a
 // `Scope` rather than to a fiber. `Scope` is already an ordinary member of `R`
 // so they are expressible, and they are the right way to say "outlive this
-// fiber, die with this request". They are filed rather than guessed at.
+// fiber, die with this request". Filed as #325 rather than guessed at.
 //
 // # Readiness
 //
@@ -113,7 +113,7 @@
 //
 // **Not implemented.** `Queue`, `Hub` and STM — the first two are the same
 // waiting mechanism `Deferred` and `Semaphore` are built on with a buffer in
-// front, and STM is a transaction log and a retry-on-conflict scheduler,
+// front (#328), and STM is a transaction log and a retry-on-conflict scheduler,
 // which is larger than everything above it put together and has no use that a
 // serialised `Ref` cannot serve at a cost worth measuring first; `Channel`,
 // `Sink`, `GroupBy` and `Chunk`, which `./stream.js` explains being without
@@ -121,7 +121,7 @@
 // queue and its `sleep` is `setTimeout`); tracing, spans, metrics and the
 // logging layer; a `Runtime` or `ManagedRuntime` that builds a layer once and
 // runs many effects against it, so a layer handed to two `provide`s is still
-// built twice — the memo lives for one build and not for the process; a typed
+// built twice — the memo lives for one build and not for the process (#326); a typed
 // defect channel; a heterogeneous `all`, which in Effect-TS keeps a tuple's
 // element types and here takes and returns one array type; and Effect's
 // `"inherit"` concurrency, because no enclosing limit is tracked to inherit.
@@ -1768,7 +1768,7 @@ export function retry<A, E, R>(
  * Effect's `repeat` returns the *schedule's* output. This one returns the
  * effect's last value, because this `Schedule` is arithmetic over an attempt
  * count and has no output channel to return. A `Schedule<Out, In>` with a
- * state and a step would change that; it is filed rather than half-built.
+ * state and a step would change that; filed as #327 rather than half-built.
  */
 export function repeat<A, E, R>(self: Effect<A, E, R>, schedule: Schedule): Effect<A, E, R> {
   return makeEffect({

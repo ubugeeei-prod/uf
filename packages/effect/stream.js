@@ -69,10 +69,11 @@
 // which is why `streamFromReadableStream` is here; producing one means
 // constructing a host `ReadableStream` and deciding how the runtime is entered
 // from a callback the host calls — a design question rather than a missing
-// function, so it is filed rather than guessed at.
+// function, so it is filed as #329 rather than guessed at.
 //
 // `merge`, `zip`, `buffer` and `fromQueue`, which all want a bounded queue
-// with back pressure. There is no `Queue` yet; see the package header.
+// with back pressure. There is no `Queue` yet (#328), and these should follow
+// it rather than lead it (#329).
 
 import {
   andThen,

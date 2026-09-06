@@ -37,7 +37,8 @@
 // The same argument rules out Effect's `*Effect` schedule combinators —
 // `whileInputEffect`, `mapEffect` — which put an `Effect` inside a schedule
 // and drag the runtime back in here. They are deliberately absent rather than
-// smuggled in behind a `mixed` callback.
+// smuggled in behind a `mixed` callback, and the state machine that would make
+// the rest of Effect's schedule surface expressible is filed as #327.
 //
 // # Randomness is an argument, not an import
 //
