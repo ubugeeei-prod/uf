@@ -1,194 +1,153 @@
 // @flow
 //
-// `@uniflowed/tui`.
+// `@uniflowed/tui`: a React renderer whose host is a terminal.
+//
+// It follows OpenTUI, which is the terminal-UI library uf's declaration named
+// as its standard: the same component vocabulary, the same flexbox defaults
+// (`flexDirection` starts at `"column"`), the same canonical key names
+// (`"return"`, not `"enter"`), the same rule that focus is a prop rather than
+// a Tab traversal the library performs for you, and the same split between a
+// root that owns a React tree and a renderer that owns a terminal. A component
+// written against OpenTUI's documentation behaves the same way here, which is
+// the only thing "compatible with a standard" can usefully mean.
+//
+// # The decision: this is JavaScript, and the declaration used to say Rust
+//
+// The declaration this package replaced said `engine:
+// "uf-native-open-tui-compatible"` and `renderer: "cell-diff-native"`, which
+// is a promise that the renderer would be Rust with a binding. It is not, and
+// this is the argument, because "faster than Ink" and "no native bindings"
+// genuinely pull in opposite directions and the reason to pick one belongs in
+// the source rather than in a pull request nobody will read again.
+//
+// **Rust was rejected for three reasons, in order of weight.**
+//
+// *First, there is no bridge, and building one is a bigger and different
+// project than this.* Every `nativeRuntimeRequired` in `packages/` is a
+// promise of a JavaScript-to-native boundary that this repository does not
+// have: no Node-API addon, no FFI, no prebuilt platform binaries, no loader.
+// Choosing Rust here would have meant that the first deliverable was that
+// bridge and the second was a renderer, and until both existed
+// `@uniflowed/tui` would still have been a declaration. Replacing one
+// declaration with a differently-worded declaration is exactly the outcome
+// ubugeeei-prod/uf#247 exists to prevent.
+//
+// *Second, the rule that keeps Effect and Validator in Flow applies here for
+// its own reason rather than by its letter.* `ubugeeei-redundancy.md` names
+// Effect, Validator, state, immutable updates, forms, hooks and UI, and does
+// not name the TUI — but the reason it names them is that application-facing
+// libraries get *deployed*, to browsers and edge workers where a Rust binary
+// cannot go. A terminal application is the one case where that argument is
+// weakest: it runs where a terminal is, and a machine with a terminal can run
+// a binary. What survives is the smaller version of the same point. A native
+// dependency means prebuilt binaries for every platform uf supports, a
+// fallback for the ones it does not, and an `npm install` that can fail in a
+// way a Flow package cannot — for a library whose whole job runs at human
+// reading speed.
+//
+// *Third, and most concretely: the thing that makes a terminal UI slow is not
+// JavaScript.* The guide's native-hot-path rule is about "repeated,
+// repository-wide or CPU-intensive work", and says the execution phase decides
+// the boundary. This executes in one process, at one terminal's size, at the
+// rate a person presses keys. An 80×24 terminal is 1,920 cells; a large one is
+// 12,000. Laying out and painting that is microseconds in any language. What
+// costs milliseconds is the bytes handed to the terminal, because the emulator
+// on the other end parses and re-renders them — which is why React Ink,
+// written in JavaScript and using WebAssembly Yoga for the part that is
+// supposedly slow, is slow for a reason neither of those explains: it renders
+// to a *string* and reprints from the first changed line to the bottom of the
+// frame. `diff.js` writes the cells that changed and nothing else, and that is
+// an algorithm, not a language.
+//
+// The honest cost of this decision is written down rather than hidden: this
+// package depends on `react-reconciler`, which React publishes for custom
+// renderers and calls experimental, and which pins itself to a React minor.
+// `internal/host.js` says what that means for a React upgrade.
+//
+// # What is here, and what is not
+//
+// Implemented, tested, and true: a component tree, flexbox layout in whole
+// cells, a cell buffer with correct wide-grapheme handling, a diff that emits
+// only changed cells, keyboard input with OpenTUI's key names and propagation
+// rules, declarative focus, terminal capability detection that agrees with the
+// CLI's, and an in-memory renderer that runs the same code the terminal one
+// does.
+//
+// Not here: mouse input, text selection, scroll boxes, images, the rich
+// content components, and everything under OpenTUI's "application APIs". They
+// are ubugeeei-prod/uf#314, and they are absent rather than present as
+// functions that throw — because a stub is what this package used to be.
+//
+// Also not here, and worth saying because ubugeeei-prod/uf#247 asked for it:
+// uf's own CLI does not draw through this. It cannot — `crates/uf_term` is
+// Rust, this is JavaScript, and there is no way to run a Flow program in this
+// repository outside `uf test`, `uf dev` and `uf build`. ubugeeei-prod/uf#316
+// is that gap, what would close it, and why the two renderers are each right
+// for their own caller in the meantime.
+//
+// # How the package is laid out
+//
+// Bottom to top, each module named for the one question it answers:
+//
+// - `widths.js` — how many columns a grapheme occupies.
+// - `cells.js` — what a frame is: the grid, the colours, the continuation cell.
+// - `layout.js` — flexbox, in whole cells.
+// - `diff.js` — two frames, as the bytes that turn one into the other.
+// - `keys.js` — terminal bytes, as key events.
+// - `capability.js` — what this terminal can render, by the CLI's own rules.
+// - `terminal.js` — a real terminal, and the in-memory one tests use.
+// - `components.js` — `Box`, `Text`, `Input`, and the hooks.
+//
+// `internal/` holds the three that a consumer must not be able to reach past:
+// `tree.js` (props become a layout style once, here), `paint.js` (both passes
+// must break lines the same way) and `host.js` (one React root, one terminal,
+// one owner). Each says so in its own header. There is no `internal/util.js`:
+// a module that cannot say what it is about does not belong in this package.
 
-import type * as React from "@uniflowed/react";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export type {
+  BorderGlyphs,
+  BorderStyle,
+  Capabilities,
+  ColorChoice,
+  ColorLevel,
+  GlyphSet,
+  TerminalEnv,
+  Tty,
+} from "./capability.js";
+export { borderGlyphs, detectCapabilities, plainCapabilities } from "./capability.js";
 
-const MODULE = "@uniflowed/core/tui";
+export type { Color, Frame, Rect, Style } from "./cells.js";
+export { Attributes, INHERIT, frameRow, frameText, parseColor } from "./cells.js";
 
-export type TuiEngine = "uf-native-open-tui-compatible";
-export type TuiStandard = "open-tui";
-export type TuiRenderer = "cell-diff-native";
-export type TuiLayoutEngine = "flexbox-yoga-compatible";
-export type TuiInputModel = "keyboard-mouse-focus-selection";
-export type TuiRuntimeBinding = "flow-react";
-export type TuiPerformanceTarget = "faster-than-react-ink";
+export type {
+  AlignItems,
+  AlignSelf,
+  Dimension,
+  FlexDirection,
+  JustifyContent,
+  LayoutStyle,
+  Overflow,
+} from "./layout.js";
 
-export type TuiFeature =
-  | "flexbox"
-  | "cell-diff"
-  | "keyboard"
-  | "mouse"
-  | "focus"
-  | "selection"
-  | "scrollback"
-  | "keymap"
-  | "in-memory-testing"
-  | "snapshot-testing"
-  | "terminal-automation"
-  | "rich-text"
-  | "code-highlight"
-  | "markdown"
-  | "images"
-  | "audio"
-  | "three-d"
-  | "ssh"
-  | "qr-code"
-  | "embedded-terminal"
-  | "clipboard"
-  | "notifications"
-  | "animations";
+export type { WrapMode } from "./internal/paint.js";
 
-export type TuiComponentKind =
-  | "display"
-  | "input"
-  | "selection"
-  | "scrolling"
-  | "rich-content"
-  | "graphics"
-  | "application"
-  | "testing"
-  | "integration";
+export type { Update } from "./diff.js";
 
-export type TuiComponent = {
-  readonly name: string,
-  readonly parts: $ReadOnlyArray<string>,
-  readonly kind: TuiComponentKind,
-  readonly serverComponentSafe: boolean,
-  readonly interactive: boolean,
-  readonly feature: TuiFeature,
-};
+export type { KeyEvent, KeySource } from "./keys.js";
+export { decodeKeys } from "./keys.js";
 
-export type ReactInkTarget = {
-  readonly replacementReady: true,
-  readonly nativeRenderer: true,
-  readonly typedComponents: true,
-  readonly richMedia: true,
-  readonly inMemoryTests: true,
-  readonly performanceTarget: TuiPerformanceTarget,
-};
+export type { Renderer, Root } from "./internal/host.js";
 
-export type TuiFrameworkContract = {
-  readonly engine: TuiEngine,
-  readonly standard: TuiStandard,
-  readonly renderer: TuiRenderer,
-  readonly layout: TuiLayoutEngine,
-  readonly input: TuiInputModel,
-  readonly runtimeBinding: TuiRuntimeBinding,
-  readonly features: $ReadOnlyArray<TuiFeature>,
-  readonly components: $ReadOnlyArray<TuiComponent>,
-  readonly reactInkTarget: ReactInkTarget,
-};
+export type { Handle, InputStream, OutputStream, RenderOptions, TestHandle } from "./terminal.js";
+export { render, testRender } from "./terminal.js";
 
-export type TuiProps = {
-  readonly children?: React.Node,
-  readonly id?: string,
-  readonly width?: number | string,
-  readonly height?: number | string,
-  readonly grow?: number,
-  readonly shrink?: number,
-  readonly focusable?: boolean,
-};
-
-export type TuiComponentFn = component(
-  children?: React.Node,
-  id?: string,
-  width?: number | string,
-  height?: number | string,
-  grow?: number,
-  shrink?: number,
-  focusable?: boolean,
-) renders React.Node;
-
-export type SelectComponent = {
-  readonly Root: TuiComponentFn,
-  readonly Item: TuiComponentFn,
-  readonly Group: TuiComponentFn,
-  readonly Empty: TuiComponentFn,
-};
-
-export type ScrollBoxComponent = {
-  readonly Root: TuiComponentFn,
-  readonly Viewport: TuiComponentFn,
-  readonly Content: TuiComponentFn,
-};
-
-export type FrameBufferComponent = {
-  readonly Root: TuiComponentFn,
-  readonly Layer: TuiComponentFn,
-};
-
-export type RenderTuiHandle = {
-  readonly stop: () => void,
-  readonly snapshot: () => string,
-};
-
-export type RenderTuiOptions = {
-  readonly stdin?: mixed,
-  readonly stdout?: mixed,
-  readonly testing?: boolean,
-};
-
-/**
- * Build the placeholder for one native terminal component.
- *
- * Rendering it raises and names the binding; importing it does not, so a
- * bundler is free to drop the components an application never mounts. Every
- * call site carries a pure annotation for exactly that reason: without it a
- * bundler must assume a top-level call could have side effects and keeps all
- * of them.
- */
-function tuiComponent(binding: string): TuiComponentFn {
-  return function TuiBinding(props: TuiProps): empty {
-    return nativeRuntimeRequired(MODULE, binding);
-  };
-}
-
-export function contract(): TuiFrameworkContract {
-  return nativeRuntimeRequired(MODULE, "contract");
-}
-
-export function renderTui(node: React.Node, options?: RenderTuiOptions): RenderTuiHandle {
-  return nativeRuntimeRequired(MODULE, "renderTui");
-}
-
-export const Box: TuiComponentFn = /*#__PURE__*/ tuiComponent("Box");
-export const Text: TuiComponentFn = /*#__PURE__*/ tuiComponent("Text");
-export const Input: TuiComponentFn = /*#__PURE__*/ tuiComponent("Input");
-export const Textarea: TuiComponentFn = /*#__PURE__*/ tuiComponent("Textarea");
-export const Select: SelectComponent = {
-  Root: /*#__PURE__*/ tuiComponent("Select.Root"),
-  Item: /*#__PURE__*/ tuiComponent("Select.Item"),
-  Group: /*#__PURE__*/ tuiComponent("Select.Group"),
-  Empty: /*#__PURE__*/ tuiComponent("Select.Empty"),
-};
-export const TabSelect: TuiComponentFn = /*#__PURE__*/ tuiComponent("TabSelect");
-export const Slider: TuiComponentFn = /*#__PURE__*/ tuiComponent("Slider");
-export const ScrollBox: ScrollBoxComponent = {
-  Root: /*#__PURE__*/ tuiComponent("ScrollBox.Root"),
-  Viewport: /*#__PURE__*/ tuiComponent("ScrollBox.Viewport"),
-  Content: /*#__PURE__*/ tuiComponent("ScrollBox.Content"),
-};
-export const ScrollBar: TuiComponentFn = /*#__PURE__*/ tuiComponent("ScrollBar");
-export const Code: TuiComponentFn = /*#__PURE__*/ tuiComponent("Code");
-export const Markdown: TuiComponentFn = /*#__PURE__*/ tuiComponent("Markdown");
-export const LineNumbers: TuiComponentFn = /*#__PURE__*/ tuiComponent("LineNumbers");
-export const Diff: TuiComponentFn = /*#__PURE__*/ tuiComponent("Diff");
-export const TextTable: TuiComponentFn = /*#__PURE__*/ tuiComponent("TextTable");
-export const AsciiFont: TuiComponentFn = /*#__PURE__*/ tuiComponent("AsciiFont");
-export const FrameBuffer: FrameBufferComponent = {
-  Root: /*#__PURE__*/ tuiComponent("FrameBuffer.Root"),
-  Layer: /*#__PURE__*/ tuiComponent("FrameBuffer.Layer"),
-};
-export const Image: TuiComponentFn = /*#__PURE__*/ tuiComponent("Image");
-export const QrCode: TuiComponentFn = /*#__PURE__*/ tuiComponent("QrCode");
-export const EmbeddedTerminal: TuiComponentFn = /*#__PURE__*/ tuiComponent("EmbeddedTerminal");
-export const Clipboard: TuiComponentFn = /*#__PURE__*/ tuiComponent("Clipboard");
-export const Notification: TuiComponentFn = /*#__PURE__*/ tuiComponent("Notification");
-export const Audio: TuiComponentFn = /*#__PURE__*/ tuiComponent("Audio");
-export const Timeline: TuiComponentFn = /*#__PURE__*/ tuiComponent("Timeline");
-export const Keymap: TuiComponentFn = /*#__PURE__*/ tuiComponent("Keymap");
-export const SshHost: TuiComponentFn = /*#__PURE__*/ tuiComponent("SshHost");
-export const ThreeCanvas: TuiComponentFn = /*#__PURE__*/ tuiComponent("ThreeCanvas");
-export const TestRenderer: TuiComponentFn = /*#__PURE__*/ tuiComponent("TestRenderer");
+export type {
+  BoxLayoutProps,
+  BoxProps,
+  ColorValue,
+  InputProps,
+  TextProps,
+  TextStyleProps,
+  TitleAlignment,
+} from "./components.js";
+export { Box, Input, Text, useKeyboard, useRenderer, useTerminalSize } from "./components.js";

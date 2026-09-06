@@ -160,7 +160,8 @@ enables:
 - query, effect, ORM, Relay, validator, atom state, and cell builtin modules
   usable from `.js` Flow source without user plugin registration
 - React Compiler-safe motion primitives with reduced-motion defaults
-- OpenTUI-aligned native TUI framework targeting a React Ink replacement
+- OpenTUI-aligned TUI framework: Flow React on a cell-diff renderer that sends
+  only the cells that changed
 - React-minded hooks inspired by VueUse without render-time impurity
 - headless RSC-compatible UI primitives with preset styles, shaped to replace
   shadcn's copy-and-edit workflow with typed imports

@@ -1,6 +1,6 @@
 [package]
 name = "uf_tui"
-description = "Native OpenTUI-compatible TUI framework contracts exposed as @uniflowed/tui."
+description = "What @uniflowed/tui is, as the toolchain describes it."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,6 @@ authors.workspace = true
 compact_str.workspace = true
 serde.workspace = true
 smallvec.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

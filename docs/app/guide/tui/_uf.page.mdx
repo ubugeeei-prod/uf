@@ -1,0 +1,211 @@
+---
+title: "Terminal UI · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Terminal UI
+
+<div className="lede">
+`@uniflowed/tui` is React with a terminal for a host. The same components,
+hooks, state and effects you write for a page, laid out with flexbox and drawn
+as cells — and a diff that sends only the cells that changed.
+</div>
+
+## A whole application
+
+```js
+// @flow
+import { useState } from "@uniflowed/react";
+import { Box, Text, render, useKeyboard } from "@uniflowed/tui";
+
+component Workers() {
+  const [running, setRunning] = useState<number>(3);
+
+  useKeyboard((key) => {
+    if (key.name === "up") {
+      setRunning((n) => n + 1);
+    }
+    if (key.name === "down") {
+      setRunning((n) => Math.max(0, n - 1));
+    }
+  });
+
+  return (
+    <Box border={true} borderStyle="rounded" padding={1} title=" uf test " titleAlignment="center" width={28}>
+      <Text bold={true}>Workers</Text>
+      <Box flexDirection="row" justifyContent="space-between">
+        <Text fg="gray">running</Text>
+        <Text>{String(running)}</Text>
+      </Box>
+    </Box>
+  );
+}
+
+const app = render(<Workers />);
+process.on("SIGINT", () => app.stop());
+```
+
+That draws this, and the arrow keys change the number:
+
+```text
+╭──────── uf test ─────────╮
+│                          │
+│ Workers                  │
+│ running                3 │
+│                          │
+╰──────────────────────────╯
+```
+
+The frame above is not a screenshot. `tests/library/tui.test.js` renders the
+component on this page and asserts it comes out character for character, so a
+change to the renderer that would make this picture a lie fails the build
+instead.
+
+## It follows OpenTUI
+
+[OpenTUI](https://opentui.com) is the terminal-UI library uf follows, and
+following it means the things a reader has to know are the same:
+`flexDirection` starts at `"column"` rather than `"row"`, because a terminal is
+a stack of lines; `alignItems` starts at `"stretch"`; `flexShrink` starts at
+`0` for a child whose width you gave as a number, so forty columns stays forty
+columns; keys are named `"return"` and `"escape"` rather than `"enter"` and
+`"esc"`; and focus is a prop rather than something the library moves for you.
+
+What is different is underneath. OpenTUI's core is Zig, reached over an FFI
+boundary. uf's is Flow — the argument is at the bottom of this page.
+
+## Only the cells that changed
+
+A terminal program is not slow because laying out boxes is slow. An 80×24
+terminal is 1,920 cells and laying that out is microseconds in any language.
+It is slow because of the bytes handed to the terminal, which an emulator on
+the other side of a pipe has to parse and re-render.
+
+So `@uniflowed/tui` keeps the last frame it drew, compares the next one against
+it cell by cell, and writes the difference. For the application above, in the
+28×6 box it occupies:
+
+| | cells sent | bytes |
+| --- | --- | --- |
+| the first frame | 168 | 239 |
+| pressing the up arrow | 1 | 8 |
+
+Eight bytes: a cursor move, and the digit. A renderer that diffs *lines*
+instead — which is how React Ink works — has to resend every line from the
+change to the bottom of the frame. Both numbers are asserted in
+`tests/library/tui.test.js`; a measured comparison against Ink itself is
+[#315](https://github.com/ubugeeei-prod/uf/issues/315).
+
+## Keyboard, and what has focus
+
+`useKeyboard` sees every key before anything else does, in the order the
+components registered — that is where a global quit key goes. A `Box` that is
+`focusable` and `focused` gets what is left, through `onKeyDown`.
+
+The two ways to interrupt that are separate on purpose, and they are OpenTUI's:
+
+- `key.stopPropagation()` silences the handlers registered after this one *and*
+  the focused box.
+- `key.preventDefault()` lets the other global handlers run, and skips the
+  focused box.
+
+Focus itself is state. There is no automatic <kbd>Tab</kbd> traversal, here or
+in OpenTUI, because what <kbd>Tab</kbd> should do is the application's
+question — in a form it moves to the next field, in an editor it inserts a tab.
+
+```js
+component Login() {
+  const [field, setField] = useState<"user" | "password">("user");
+  useKeyboard((key) => {
+    if (key.name === "tab") {
+      setField((current) => (current === "user" ? "password" : "user"));
+    }
+  });
+  return (
+    <Box>
+      <Input focused={field === "user"} placeholder="username" />
+      <Input focused={field === "password"} placeholder="password" />
+    </Box>
+  );
+}
+```
+
+## Terminals that cannot do what yours can
+
+Capability is resolved once, before the first frame, from the same inputs and
+in the same precedence order the uf CLI uses — `--color`, then `NO_COLOR`,
+`FORCE_COLOR`, `CLICOLOR_FORCE`, `TERM=dumb`, `CLICOLOR`, whether the stream is
+a terminal, and finally `COLORTERM` and `TERM`. Sharing that order is the point:
+a project whose CLI and whose TUI disagree about this terminal is a project
+that gets sent a screenshot of one of them being wrong.
+
+- **No truecolour.** A 24-bit colour is downgraded to the 256-colour cube, and
+  then to the sixteen base colours, rather than dropped. One theme, everywhere.
+- **No colour at all** — `NO_COLOR`, `TERM=dumb`, or a redirected stream. No
+  escape sequences are written, including bold and underline, because they are
+  the same mechanism. The layout, the borders and the text still arrive.
+- **No Unicode.** Box borders are drawn with `+`, `-` and `|`. Every glyph in
+  the ASCII vocabulary is one column wide, exactly like the one it replaces, so
+  a box does not change size when its characters do.
+- **Nobody watching.** A stream that is not a terminal gets no cursor
+  addressing and no incremental updates at all — an editor's worth of
+  `ESC[12;40H` in a CI log helps nobody. The final frame is written once, as
+  plain lines, when the application stops.
+
+Text is measured in grapheme clusters and terminal columns, not in
+`String.length`. `界` occupies two cells, a family emoji occupies two cells and
+a dozen code points, and a combining mark occupies none — so a table of
+Japanese paths lines up. The width tables are the CLI's own, and a test asserts
+the two copies are identical data.
+
+## Testing without a terminal
+
+`testRender` mounts the same tree through the same reconciler as `render`; the
+only difference is where the frames go and who presses the keys.
+
+```js
+import { testRender } from "@uniflowed/tui";
+
+const app = testRender(<Workers />, { width: 28, height: 6 });
+app.press("\u001b[A"); // the bytes a terminal sends for the up arrow
+expect(app.text()).toContain("running                4");
+```
+
+Keys arrive as the bytes a terminal actually sends, so the escape-sequence
+decoder is exercised by every input test rather than bypassed by one that
+hands the renderer a `{ name: "up" }` somebody typed.
+
+## Why this is JavaScript and not Rust
+
+uf's rule is that anything which can become a bottleneck belongs in Rust, and
+the declaration this package replaced promised exactly that: a native engine
+and a native cell diff. It is Flow instead, and the reasons are in
+`packages/tui/index.js` beside the code, in short:
+
+The work is bounded by a terminal. It is not repository-wide, it does not scale
+with the size of a project, and it happens at the rate somebody presses keys.
+What is expensive is the write, and writing less is an algorithm rather than a
+language.
+
+A native renderer also means prebuilt binaries for every platform uf supports
+and an `npm install` that can fail in ways a Flow package cannot — and, more
+immediately, uf has no JavaScript-to-native bridge at all today. Choosing Rust
+would have meant building that first and shipping the renderer second, and in
+the meantime `@uniflowed/tui` would still have been a contract with nothing
+behind it, which is the thing this was fixing.
+
+## What is not here yet
+
+Mouse input, text selection, scroll boxes, images, the rich-content components
+(`Code`, `Markdown`, `Diff`, `TextTable`) and OpenTUI's application APIs —
+clipboard, notifications, audio, animation — are not implemented. They are
+[#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
+rather than present as functions that throw: `uf inspect` reports three
+components because there are three.
+
+Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
+JavaScript, and the two cannot meet without either a native bridge uf does not
+have or a way to run a Flow entry point as a command —
+[#316](https://github.com/ubugeeei-prod/uf/issues/316) is that gap and what
+would close it.
