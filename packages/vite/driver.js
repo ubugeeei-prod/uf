@@ -2,10 +2,12 @@
 //
 // Plain JavaScript: the host runs this file directly.
 //
-// The driver `uf dev`, `uf build`, `uf preview` and `uf start` spawn.
+// The driver `uf dev`, `uf build`, `uf build --compile`, `uf preview` and
+// `uf start` spawn.
 //
 //   <host> driver.js dev     --root <dir> [--host <h>] [--port <n>] [--strict-port]
 //   <host> driver.js build   --root <dir> [--out-dir <dir>] [--mode <m>]
+//   <host> driver.js compile --root <dir> [--out-dir <dir>] --assets <file> --bundle <dir>
 //   <host> driver.js preview --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js start   --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js config  --root <dir>
@@ -68,7 +70,7 @@ process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();
 
-const commands = { dev, build, preview, start, config: printConfig };
+const commands = { dev, build, compile, preview, start, config: printConfig };
 const run = commands[command];
 if (run == null) {
   emit("error", { message: `unknown driver command ${JSON.stringify(command)}` });
@@ -332,6 +334,11 @@ async function preview() {
  * because that is how every process manager and container platform says which
  * socket to take, and a production server that could only be told on the
  * command line would need a wrapper script everywhere it ran.
+ *
+ * It is not the only thing that can be deployed. `uf build --compile` puts
+ * this same application behind this same resolution order inside a single
+ * executable, for a host that should not have to have a JavaScript runtime
+ * installed at all; see [`compile`] for what that costs and what it shares.
  */
 async function start() {
   const config = await loadConfig();
@@ -501,6 +508,162 @@ async function build() {
 
   emit("done", { outDir: path.relative(root, outDir), pages: pages.length });
   process.exit(0);
+}
+
+/**
+ * Link the whole application into one JavaScript file, for `uf build --compile`.
+ *
+ * This runs after `build`, on a `dist/` that is already complete, and produces
+ * the module a runtime is wrapped around. It differs from the server build in
+ * `build()` in exactly three ways, and each of them is what "one file" means:
+ *
+ *   * `ssr.noExternal: true` — the server build leaves `react`, `react-dom`
+ *     and every other dependency as bare imports, because the host it runs on
+ *     has `node_modules` beside it. A binary does not, so they come in.
+ *   * `codeSplitting: false` — a route is a lazy `import()` so that the browser
+ *     can fetch one chunk per page. On the server that split buys nothing and
+ *     costs everything: chunks are separate files, and separate files are the
+ *     one thing this output may not have.
+ *   * the native-addon guard below, which turns "cannot resolve" into a
+ *     sentence naming the package that cannot be compiled.
+ *
+ * The embedded copy of `dist/` is *not* built here. `uf` writes it (see
+ * `uf_bundle::embed`) and passes its path in `--assets`, because walking an
+ * output directory and encoding every file in it is bulk work over the whole
+ * build, which belongs in Rust rather than in the host process.
+ *
+ * # Three front doors onto one build, and why they are not one function
+ *
+ * `preview` and `start` above serve `dist/` from disk, and they share a single
+ * handler in `./internal/serve.js` for the express purpose of being unable to
+ * answer differently. What is linked here is a third front door onto the same
+ * build, and it deliberately does *not* import that module. Two reasons, and
+ * either would be enough: `internal/serve.js` answers by opening files under
+ * `dist/`, and a compiled binary has no `dist/` to open — it carries the bytes
+ * — so the half that reads a request would arrive with a half that cannot run;
+ * and it lives in `@uniflowed/vite`, so linking it would put the package named
+ * after the bundler inside the artefact a deployment runs, which is the one
+ * thing `start` exists to avoid.
+ *
+ * What a binary uses instead is `@uniflowed/server/standalone`, and the thing
+ * that is shared between the three is not code but the *answer*: an asset or a
+ * prerendered document first, then a route handler, then a render for whatever
+ * is left. That order is not a preference. `preview` cannot deviate from it —
+ * Vite's preview server runs its own file middleware before anything uf mounts
+ * behind it — so `start` matches Vite, and the binary matches `start`. A
+ * compiled application that resolved a collision the other way would be the
+ * trap `preview` exists to prevent, one deployment further along, and the only
+ * copy nobody can check with `uf preview` first.
+ */
+async function compile() {
+  const vite = await import("vite");
+  const config = await loadConfig();
+  const inline = await viteConfig(config, argument("--mode") ?? "production");
+  const outDir = path.resolve(root, inline.build.outDir);
+  const assetsArgument = argument("--assets");
+  const bundleArgument = argument("--bundle");
+  if (assetsArgument == null || bundleArgument == null) {
+    throw new Error("uf: `driver.js compile` needs both --assets and --bundle");
+  }
+  const assets = path.resolve(root, assetsArgument);
+  const bundleDir = path.resolve(root, bundleArgument);
+
+  emit("phase", { name: "standalone" });
+
+  // The entry is written to disk rather than served as another virtual module:
+  // it is generated per build (it names this build's asset file), and a real
+  // file is the version a person can open when a compiled binary misbehaves.
+  const entry = path.join(bundleDir, "entry.js");
+  mkdirSync(bundleDir, { recursive: true });
+  const specifier = `./${path.relative(bundleDir, assets)}`;
+  writeFileSync(entry, entrySource(specifier, assetsFromManifest(readManifest(outDir))));
+
+  await vite.build({
+    ...inline,
+    customLogger: eventLogger("warn"),
+    plugins: [...inline.plugins, nativeAddonGuard()],
+    ssr: { ...(inline.ssr ?? {}), noExternal: true },
+    build: {
+      ...inline.build,
+      manifest: false,
+      // The map would describe this intermediate bundle rather than the
+      // binary, and nothing downstream reads it. Turning it off is a smaller
+      // `.uf/` and one less file to explain.
+      sourcemap: false,
+      ssr: true,
+      outDir: bundleDir,
+      emptyOutDir: false,
+      rollupOptions: {
+        input: { server: entry },
+        output: { entryFileNames: "server.js", format: "es", codeSplitting: false },
+      },
+    },
+  });
+
+  emit("done", { outDir: path.relative(root, bundleDir), pages: 0 });
+  process.exit(0);
+}
+
+/**
+ * The source of the module a runtime gets wrapped around.
+ *
+ * Three imports and one call: the shim that serves, the application, and the
+ * bytes of `dist/`. The document's script and stylesheet URLs are baked in
+ * here because they come from the client manifest, which exists at this moment
+ * and not inside the binary.
+ */
+function entrySource(assetsSpecifier, document) {
+  // Not `await serve(...)` at the top level. Node runs top-level `await`
+  // happily and the Flow parser uf vendors does not parse it (ubugeeei-prod/uf#204),
+  // so the generated entry would fail its own transform. `.catch` is the better
+  // spelling anyway: a binary that cannot take its port should say which port
+  // and exit non-zero, rather than die as an unhandled rejection.
+  return `// Generated by \`uf build --compile\`. Not checked in, not edited.
+import { serve } from "@uniflowed/server/standalone";
+import { assets } from ${JSON.stringify(assetsSpecifier)};
+import * as app from ${JSON.stringify(VIRTUAL.server)};
+
+serve({ app, assets, document: ${JSON.stringify(document)} }).catch((error) => {
+  process.stderr.write(\`uf: \${error?.message ?? String(error)}\n\`);
+  process.exit(1);
+});
+`;
+}
+
+/**
+ * Refuse a native addon by name instead of by stack trace.
+ *
+ * A `.node` file is a compiled shared object for one platform: it cannot be
+ * inlined into a JavaScript bundle, and a binary that carried one would stop
+ * being a single file. Without this, `ssr.noExternal: true` hands the addon to
+ * Rolldown and the build fails somewhere inside the bundler with a message
+ * about an unexpected character — which is true, and useless. Failing here
+ * with the addon's path and the importer that reached it is the difference
+ * between a feature and a trap.
+ *
+ * It catches what can be caught: a static `import` or `require` that resolves
+ * to a `.node` file. An addon loaded through a runtime string — `process.dlopen`,
+ * or `require(variable)` — is not visible to any bundler, so such a project
+ * still compiles and still fails on the first request that reaches the addon.
+ * That limit is real, it is not fixable from inside a bundler, and it is
+ * written down in the CLI reference rather than papered over.
+ */
+function nativeAddonGuard() {
+  return {
+    name: "uf:no-native-addons",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!source.endsWith(".node")) return null;
+      const from = importer == null ? "the application" : path.relative(root, importer);
+      throw new Error(
+        `${from} loads the native addon ${source}, and \`uf build --compile\` cannot put one ` +
+          "inside a single executable: a `.node` file is a shared object built for one " +
+          "platform, and embedding it would make the output two files rather than one. " +
+          "Build without `--compile` and deploy `dist/` with a runtime, or replace the " +
+          "dependency with one that has no native addon.",
+      );
+    },
+  };
 }
 
 /** `word`, pluralised for `count`. */

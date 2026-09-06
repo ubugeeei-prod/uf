@@ -101,6 +101,13 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
+      # `uf build --compile` embeds the build in a Bun runtime, and the two
+      # tests that exercise it fail rather than skip when Bun is absent: a
+      # single-file build nobody runs is a single-file build nobody has.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - run: bun --version
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -361,6 +368,13 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
+      # `uf build --compile` embeds the build in a Bun runtime, and the two
+      # tests that exercise it fail rather than skip when Bun is absent: a
+      # single-file build nobody runs is a single-file build nobody has.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - run: bun --version
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings

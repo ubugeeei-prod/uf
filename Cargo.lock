@@ -3294,6 +3294,7 @@ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 name = "uf_bundle"
 version = "0.0.0-alpha.6"
 dependencies = [
+ "base64",
  "brotli",
  "camino",
  "compact_str",

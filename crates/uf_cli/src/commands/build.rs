@@ -9,6 +9,10 @@
 //!
 //! Two of those phases can fail the build: an RSC contract violation, before
 //! Vite runs, and a bundle-size budget, after it.
+//!
+//! `--compile` adds one more phase after all of that, in [`super::compile`]:
+//! the whole application, linked with an embedded copy of the output directory
+//! and a JavaScript runtime, as one executable file.
 
 use std::fs;
 
@@ -17,8 +21,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde_json::json;
 use uf_bundle::{
-    BudgetMetric, BundleBudgets, BundleReport, ReportOptions, build_report, collect_assets,
-    evaluate, write_report,
+    BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
+    collect_assets, evaluate, write_report,
 };
 use uf_config::load_config;
 use uf_router::{Route, discover_routes, write_router_manifest};
@@ -28,6 +32,7 @@ use uf_term::{
     format_duration,
 };
 
+use crate::commands::compile;
 use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
 use crate::support::{plural, problem_summary, project_label, relative_to, write_json_file};
@@ -45,7 +50,12 @@ struct ViteBuild {
     warnings: Vec<String>,
 }
 
-pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()> {
+pub(crate) fn build(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    size_report: bool,
+    standalone: bool,
+) -> Result<()> {
     let mut timer = PhaseTimer::start();
     let mut progress = ui.progress();
 
@@ -99,6 +109,15 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     progress.tick("resolving the JavaScript host");
     let host = resolve_host(&resolved.config)?;
     let package = package_dir(&root)?;
+
+    // Asked for before anything is built. `--compile` on a machine without Bun
+    // fails either way; failing now costs the user nothing, and failing after
+    // the bundle costs them the build.
+    let runtime = if standalone {
+        Some(timer.measure("runtime", compile::runtime)?)
+    } else {
+        None
+    };
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -187,6 +206,19 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
         let path = write_report(&out_dir, &report)?;
         Ok((report, path))
     })?;
+    // After the size report and not before it: the binary is written into the
+    // output directory, and an executable counted among the shipped assets
+    // would put every budget in `uf.config.js` permanently over.
+    let compiled = match &runtime {
+        Some(runtime) => {
+            progress.tick("compiling a standalone binary");
+            Some(timer.measure("compile", || {
+                compile::compile(ui, runtime, &host, &package, &root, &out_dir)
+            })?)
+        }
+        None => None,
+    };
+
     progress.finish();
     drop(progress);
 
@@ -217,6 +249,9 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     for (_, file) in &vite.pages {
         outputs.push(file.clone());
     }
+    if let Some(compiled) = &compiled {
+        outputs.push(relative_to(&resolved.root, &compiled.binary));
+    }
     outputs.sort();
     outputs.dedup();
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
@@ -246,6 +281,14 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
     };
     let warnings = vite.warnings.clone();
     let host_name = host.name();
+    let binary = compiled.as_ref().map(|compiled| {
+        (
+            relative_to(&resolved.root, &compiled.binary),
+            ByteSize::from_bytes(compiled.bytes).to_string(),
+            compiled.embedded.files.to_string(),
+            ByteSize::from_bytes(compiled.embedded.bytes).to_string(),
+        )
+    });
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf build", Some(&project));
@@ -299,6 +342,22 @@ pub(crate) fn build(cwd: &Utf8Path, ui: &mut Ui, size_report: bool) -> Result<()
             renderer.table(out, 4, &table);
         }
         renderer.blank(out);
+
+        if let Some((path, bytes, files, embedded)) = &binary {
+            renderer.heading(out, 2, "standalone");
+            renderer.key_values(
+                out,
+                4,
+                &[
+                    KeyValue::toned("binary", path, Tone::Path),
+                    KeyValue::toned("runtime", "bun", Tone::Muted),
+                    KeyValue::toned("bytes", bytes, Tone::Accent),
+                    KeyValue::toned("embedded assets", files, Tone::Number),
+                    KeyValue::toned("embedded bytes", embedded, Tone::Number),
+                ],
+            );
+            renderer.blank(out);
+        }
 
         renderer.heading(out, 2, "output");
         renderer.tree(
