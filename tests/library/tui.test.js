@@ -737,6 +737,201 @@ describe("the width tables match the CLI's", () => {
   });
 });
 
+describe("the capability precedence matches the CLI's", () => {
+  // `packages/tui/capability.js` says its precedence list is
+  // `crates/uf_term/src/capability.rs`'s, "variable for variable". That claim
+  // is the whole reason the duplication is allowed, and until now nothing
+  // checked it — ubugeeei-prod/uf#316 asks for the same treatment the width
+  // tables get: read both files and compare the rules, rather than believe a
+  // sentence about them.
+  //
+  // What is compared is the *order the two decision functions consult their
+  // inputs in*, recovered from the source on each side rather than from the
+  // prose above it. Both sides reach their inputs through small helpers, so
+  // the helpers are resolved first: a Rust predicate is reduced to the
+  // `TerminalEnv` fields it reads and those fields to the variables
+  // `from_process` fills them from, and a JavaScript local is reduced to the
+  // expression it was bound to. Swap two checks on either side and the two
+  // lists stop matching.
+  //
+  // Colour only. The two files also disagree about glyphs — `NO_COLOR`
+  // downgrades them in the CLI and not in the library — which is
+  // ubugeeei-prod/uf#393, filed rather than quietly asserted either way here.
+
+  const rust = (): string =>
+    fs.readFileSync(path.join(REPO, "crates/uf_term/src/capability.rs"), "utf8");
+  const js = (): string => fs.readFileSync(path.join(REPO, "packages/tui/capability.js"), "utf8");
+
+  /** The body of `fn <name>` / `function <name>`, to its closing brace. */
+  const body = (source: string, opener: string): string => {
+    const start = source.indexOf(opener);
+    expect(start).toBeGreaterThan(-1);
+    let depth = 0;
+    for (let index = source.indexOf("{", start); index < source.length; index += 1) {
+      if (source[index] === "{") depth += 1;
+      if (source[index] === "}") {
+        depth -= 1;
+        if (depth === 0) return source.slice(start, index);
+      }
+    }
+    throw new Error(`unbalanced braces after ${opener}`);
+  };
+
+  /** Drop consecutive repeats, so `choice` tested twice is still one rule. */
+  const runs = (items: Array<string>): Array<string> =>
+    items.filter((item, index) => item !== items[index - 1]);
+
+  /**
+   * Which environment variables each `TerminalEnv` field is filled from.
+   *
+   * `locale` is filled from three, in their own precedence order, and that
+   * order is part of what is being compared.
+   */
+  const rustFields = (source: string): { [string]: Array<string> } => {
+    const out: { [string]: Array<string> } = {};
+    let field = null;
+    for (const line of body(source, "fn from_process()").split("\n")) {
+      const named = line.match(/^\s{12}(\w+): /);
+      if (named != null) {
+        field = named[1];
+        out[field] = [];
+      }
+      if (field == null) continue;
+      for (const variable of line.matchAll(/var\("([A-Z_]+)"\)/g)) {
+        out[field].push(variable[1]);
+      }
+    }
+    return out;
+  };
+
+  /** Which variables each `impl TerminalEnv` predicate reads, in order. */
+  const rustHelpers = (source: string): { [string]: Array<string> } => {
+    const fields = rustFields(source);
+    const out: { [string]: Array<string> } = {};
+    for (const match of source.matchAll(/\n    fn (\w+)\(&self\)/g)) {
+      const name = match[1];
+      const read = [];
+      for (const use of body(source, `fn ${name}(&self)`).matchAll(/self\.(\w+)/g)) {
+        read.push(...(fields[use[1]] ?? []));
+      }
+      out[name] = runs(read);
+    }
+    return out;
+  };
+
+  /** Which variables a JavaScript helper reads, in order. */
+  const jsHelpers = (source: string): { [string]: Array<string> } => {
+    const out: { [string]: Array<string> } = {};
+    for (const match of source.matchAll(/\nfunction (\w+)\(env: TerminalEnv\)/g)) {
+      const name = match[1];
+      const read = [];
+      for (const use of body(source, `function ${name}(env: TerminalEnv)`).matchAll(
+        /env\.([A-Z_]+)/g,
+      )) {
+        read.push(use[1]);
+      }
+      out[name] = runs(read);
+    }
+    return out;
+  };
+
+  it("consults the same inputs in the same order", () => {
+    const rustSource = rust();
+    const jsSource = js();
+
+    const helpers = rustHelpers(rustSource);
+    const rustInputs = (expression: string): Array<string> => {
+      const found = [];
+      for (const token of expression.matchAll(/env\.(\w+)\(\)|(ColorChoice|Tty)::|\bchoice\b/g)) {
+        if (token[1] != null) found.push(...(helpers[token[1]] ?? []));
+        else if (token[2] === "Tty") found.push("tty");
+        else found.push("choice");
+      }
+      return found;
+    };
+    // Every guard in `detect_color`, in order: a `match` on its scrutinee and
+    // an `if` on its condition. A `return` payload is a result and not a rule.
+    const rustOrder = [];
+    for (const line of body(rustSource, "fn detect_color(").split("\n")) {
+      const guard = line.match(/^\s+(?:match|if) (.+?) \{\s*$/);
+      if (guard != null) rustOrder.push(...rustInputs(guard[1]));
+    }
+
+    const functions = jsHelpers(jsSource);
+    // `dumb` is computed in `detectCapabilities` and passed in, so the
+    // parameter has to be resolved to the variable behind it.
+    const bindings: { [string]: Array<string> } = {
+      dumb: [(jsSource.match(/const dumb = env\.([A-Z_]+)/) ?? [])[1] ?? "?"],
+    };
+    const jsInputs = (expression: string): Array<string> => {
+      const found = [];
+      for (const token of expression.matchAll(/env\.([A-Z_]+)|\b(\w+)\b/g)) {
+        if (token[1] != null) found.push(token[1]);
+        else if (functions[token[2]] != null) found.push(...functions[token[2]]);
+        else if (bindings[token[2]] != null) found.push(...bindings[token[2]]);
+        else if (token[2] === "choice" || token[2] === "tty") found.push(token[2]);
+      }
+      return found;
+    };
+    const jsOrder = [];
+    for (const line of body(jsSource, "function detectColor(").split("\n")) {
+      const bound = line.match(/^\s+const (\w+) = (.+);\s*$/);
+      if (bound != null) {
+        bindings[bound[1]] = jsInputs(bound[2]);
+        continue;
+      }
+      const guard = line.match(/^\s+if \((.+)\) \{\s*$/);
+      if (guard != null) jsOrder.push(...jsInputs(guard[1]));
+    }
+
+    // The order the docs on both sides claim, spelled out so a failure says
+    // which rule moved rather than only that something did.
+    expect(runs(rustOrder)).toEqual([
+      "choice",
+      "NO_COLOR",
+      "FORCE_COLOR",
+      "CLICOLOR_FORCE",
+      "TERM",
+      "CLICOLOR",
+      "tty",
+    ]);
+    expect(runs(jsOrder)).toEqual(runs(rustOrder));
+  });
+
+  it("falls back to the same two variables when no switch applies", () => {
+    // The bottom of both functions: whatever `COLORTERM` and `TERM` advertise.
+    // A side that stopped asking would pass the order check above, because the
+    // fallback is not a guard.
+    expect(rustHelpers(rust()).declared_level).toEqual(["COLORTERM", "TERM"]);
+    expect(jsHelpers(js()).declaredLevel).toEqual(["COLORTERM", "TERM"]);
+
+    const tail = (source: string, opener: string): string => {
+      const lines = body(source, opener)
+        .split("\n")
+        .filter((line) => line.trim() !== "");
+      return lines[lines.length - 1].trim();
+    };
+    expect(tail(rust(), "fn detect_color(")).toContain("env.declared_level()");
+    expect(tail(js(), "function detectColor(")).toContain("declaredLevel(env)");
+  });
+
+  it("reads the same environment variables in the first place", () => {
+    // A variable added to one side and not the other is a disagreement the
+    // order check cannot see, because a rule that only one file has is a rule
+    // only one file consults.
+    const rustNames = new Set();
+    for (const names of Object.values(rustFields(rust()))) {
+      for (const name of names) rustNames.add(name);
+    }
+    const jsNames = new Set(
+      [...body(js(), "export type TerminalEnv = ").matchAll(/readonly ([A-Z_]+)\?/g)].map(
+        (match) => match[1],
+      ),
+    );
+    expect([...jsNames].sort()).toEqual([...rustNames].sort());
+  });
+});
+
 describe("the manual is not a screenshot", () => {
   /**
    * The application `docs/app/guide/tui/_uf.page.mdx` shows, transcribed.
