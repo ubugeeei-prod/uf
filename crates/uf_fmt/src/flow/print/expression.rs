@@ -122,7 +122,20 @@ impl<'a> Printer<'a> {
             E::Sequence { inner, .. } => self.print_sequence(inner),
             E::Super { .. } => self.s("super"),
             E::TaggedTemplate { inner, .. } => self.print_tagged_template(inner),
-            E::TemplateLiteral { inner, .. } => self.print_template_literal(inner),
+            E::TemplateLiteral { inner, .. } => {
+                // Prettier's `embed` runs on the template literal itself,
+                // so an untagged template is GraphQL only because of where
+                // it sits: `graphql(`…`)`, or a `/* GraphQL */` in front.
+                let embedded = if self.template_is_graphql(expression) {
+                    self.print_graphql_template(inner)
+                } else {
+                    None
+                };
+                match embedded {
+                    Some(doc) => doc,
+                    None => self.print_template_literal(inner),
+                }
+            }
             E::This { .. } => self.s("this"),
             E::TypeCast { inner, .. } => {
                 let value = self.print_expression(&inner.expression);

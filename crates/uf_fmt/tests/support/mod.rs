@@ -36,6 +36,27 @@
 //!   `{" "}` containers, so children are reduced to the sequence React
 //!   itself would render: Babel's `cleanJSXElementLiteralChild`, with
 //!   `{" "}` read as the text it stands for and adjacent text merged.
+//! * **the text of a template literal that is GraphQL** — the formatter
+//!   reformats the inside of a `graphql`/`gql` template, which rewrites a
+//!   string literal's contents, so comparing that text byte for byte would
+//!   report the feature as a broken tree on every file that uses it. What
+//!   must not change is what the template *says*, and for GraphQL that is
+//!   its token sequence: commas and whitespace are nothing to the grammar,
+//!   and a string value is reprinted from its value rather than from the
+//!   source spelling. So a quasi that lexes as GraphQL is compared by
+//!   [`uf_fmt::graphql::token_signature`] and one that does not is
+//!   compared as text.
+//!
+//!   This is deliberately not keyed on the tag. A template uf does not
+//!   format comes out byte-identical, so its signature is identical too
+//!   and nothing is lost by canonicalising it; keying on the tag instead
+//!   would mean two lists of recognised tags that have to agree, and the
+//!   `/* GraphQL */` form cannot be seen from a tree with the comments
+//!   already taken out of it. What the guarantee now says is exactly the
+//!   licence the formatter takes: *a template's text may be respelled, and
+//!   only as the same GraphQL document*. A dropped directive, a reordered
+//!   selection or a changed number is still a different token sequence and
+//!   still fails.
 //!
 //! What survives is everything that decides what the program *does*, which
 //! is exactly what a formatter may not change.
@@ -188,6 +209,25 @@ fn normalize(value: Value) -> Value {
                     .collect(),
             )
         }
+        Value::Object(fields) if is_template_text(&fields) => {
+            // A template quasi: `{ raw, cooked }`. `raw` is dropped as a
+            // spelling; `cooked` is what the source says, and for GraphQL
+            // the formatter is allowed to respell it.
+            let cooked = fields
+                .get("cooked")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let mut out = Map::new();
+            match uf_fmt::graphql::token_signature(cooked) {
+                Some(signature) => {
+                    out.insert("graphql".to_owned(), Value::String(signature));
+                }
+                None => {
+                    out.insert("cooked".to_owned(), Value::String(cooked.to_owned()));
+                }
+            }
+            Value::Object(out)
+        }
         Value::Object(fields) if is_comment_container(&fields) => {
             // A node whose *only* content is its comments — a `null`
             // literal is one — carries the container inline rather than
@@ -256,6 +296,16 @@ fn normalize(value: Value) -> Value {
         }
         other => other,
     }
+}
+
+/// Whether `fields` is a serialized template literal `Value`: the `raw`
+/// and `cooked` spellings of one run of text between two `${}`.
+///
+/// Nothing else in the tree has exactly those two keys, and both string.
+fn is_template_text(fields: &Map<String, Value>) -> bool {
+    fields.len() == 2
+        && fields.get("raw").is_some_and(Value::is_string)
+        && fields.get("cooked").is_some_and(Value::is_string)
 }
 
 /// Whether `fields` is a serialized `Syntax`: the comment container.
