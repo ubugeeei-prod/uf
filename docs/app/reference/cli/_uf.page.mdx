@@ -94,10 +94,11 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 ### uf build
 
 Builds the client and server bundles and prerenders what can be prerendered.
-`--size-report` prints the cost of each chunk. `--compile` writes one more
-thing — a single executable file that serves the whole application — which is
-described under [uf build --compile](#uf-build---compile) below, beside the two
-other ways to serve a build.
+`--size-report` prints the cost of each chunk. Two flags write something you
+can take away with you: `--adapter TARGET` writes a directory that runs on a
+host with a JavaScript runtime and nothing else, and `--compile` writes a
+single executable file that needs not even that. Both are described below,
+beside the two ways to serve a build in place.
 
 ### Serving a build
 
@@ -108,16 +109,21 @@ the request.
 | Command | Server | The host needs | Use it to |
 | --- | --- | --- | --- |
 | `uf preview` | Vite's preview server | the project, its dependencies and Vite | check a build on your own machine |
-| `uf start` | uf's own `node:http` server | a JavaScript host, `node_modules`, and the build | deploy to a host you install onto |
+| `uf start` | uf's own `node:http` server | a JavaScript host, `node_modules`, and the build | serve from the checkout you built in |
+| `uf build --adapter node` | that server, inside the output | a JavaScript runtime | copy a directory to a host |
 | `uf build --compile` | that server, inside the executable | nothing at all | deploy one file |
 
 What they must *not* differ in is the answer, and they do not: an asset or a
 prerendered document is served first, then a route handler is offered the
 request for any method, and anything left is rendered. That order is Vite's
 rather than a preference — its preview server runs its own file middleware
-before anything uf mounts behind it — so `uf start` matches `uf preview` and a
-compiled binary matches both. A route that works when you check it works when
-you deploy it, whichever of the three you deployed with.
+before anything uf mounts behind it — so `uf start` matches `uf preview`, and
+the adapter's output and a compiled binary match both. A route that works when
+you check it works when you deploy it, whichever of the four you deployed with.
+
+The first three are the same code, not merely the same idea: the application is
+`@uniflowed/server/fetch` and the socket and the files are
+`@uniflowed/server/node`, in every one of them.
 
 ### uf preview
 
@@ -154,6 +160,43 @@ is how a container or a process manager says which socket to take. `--host` and
 `--port` override both, and the port you name is the port it binds or it does
 not start.
 
+### uf build --adapter TARGET
+
+Writes `.uf/deploy/TARGET/`, a directory you can copy to a machine that has a
+JavaScript runtime and nothing else — no `node_modules`, no checkout, no `uf`.
+`cd` into the copy and `node server.js`; `--port` and `PORT` choose the port,
+`--host` and `HOST` the address, the same way `uf start` reads them.
+
+It holds five things:
+
+| | |
+| --- | --- |
+| `handler.js` | the application, as `export default { fetch }` — a `Request` in, a `Response` out |
+| `server.js` | `node:http` around that handler, serving `static/` |
+| `chunks/` | the route modules, which the router loads lazily |
+| `static/` | a copy of the output directory |
+| `package.json` | `{"type": "module"}`, so `node server.js` reads what is beside it as ES modules |
+
+The difference from `uf start` is what the host must already have. `uf start`
+reads `dist/` and `.uf/build/server` and needs the project's `node_modules`
+around them, because the server bundle leaves `react` and `react-dom` as bare
+imports. An adapter's output links them in, so the directory is the whole of
+what has to travel.
+
+**`node` is the only target implemented.** `bun`, `deno`, `edge`,
+`serverless`, `static` and `container` are names in `DeployAdapter` and nothing
+else; asking for one is an error that says so and names
+[#391](https://github.com/ubugeeei-prod/uf/issues/391), which is where the
+design for each of them is written down. `app.runtime.deploy.adapters` lists
+what this toolchain can actually produce, and `uf explain build` names the
+adapter a build will run.
+
+`handler.js` is the seam those six plug into: it is
+`@uniflowed/server/fetch`'s handler over your server bundle, it touches no
+filesystem, and it is the same function `uf preview` and `uf start` answer
+through. What a second adapter has to write is `server.js` and an answer for
+where `static/` lives — not the application.
+
 ### uf build --compile
 
 Writes `dist/NAME`, a single executable file that serves the application, in
@@ -164,11 +207,11 @@ so the file can be copied into an empty directory on an empty machine and
 started. `--port` and `PORT` choose the port, `--host` and `HOST` the address,
 the same way `uf start` reads them.
 
-The difference from `uf start` is only what the host must already have. `uf
-start` reads `dist/` and `.uf/build/server` from disk and needs a JavaScript
-host to run on; a compiled binary carries both, and needs nothing — which is
-also the trade, because the copy inside it is fixed at build time and changing
-a single asset means building again.
+The difference from `uf build --adapter node` is one more step down: that
+writes a directory and needs a JavaScript runtime to run it, and this carries
+the runtime too and needs nothing — which is also the trade, because the copy
+inside it is fixed at build time and changing a single asset means building
+again.
 
 Producing one needs `bun` on PATH, because Bun's runtime is what gets embedded;
 running one needs nothing. A project that imports a native `.node` addon cannot

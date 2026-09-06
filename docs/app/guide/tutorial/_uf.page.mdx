@@ -808,9 +808,13 @@ lines removed from any output on this page.
 `dist/` is static files, and any static host serves them. None of the three JSON
 files uf writes beside the HTML is needed at run time: `uf-build-manifest.json`,
 `uf-bundle-report.json` and `uf-rsc-manifest.json` are for you and for tooling.
-There is no deployment guide on this site yet — the portable-output work is
-[issue #245](https://github.com/ubugeeei-prod/uf/issues/245) and the runtime
-coverage is [issue #246](https://github.com/ubugeeei-prod/uf/issues/246).
+There is no deployment guide on this site yet. What exists is described in the
+[CLI reference](/reference/cli#serving-a-build): `uf build --adapter node`
+writes a directory you can copy to a host with a JavaScript runtime, and
+`uf build --compile` writes a single executable. The other six deploy targets
+are [issue #391](https://github.com/ubugeeei-prod/uf/issues/391) and the
+runtime coverage is
+[issue #246](https://github.com/ubugeeei-prod/uf/issues/246).
 
 `uf dev` runs the same application with hot reload. It is the one command on
 this page with no transcript: the sandbox this was written in cannot bind a

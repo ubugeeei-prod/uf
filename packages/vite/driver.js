@@ -8,6 +8,7 @@
 //   <host> driver.js dev     --root <dir> [--host <h>] [--port <n>] [--strict-port]
 //   <host> driver.js build   --root <dir> [--out-dir <dir>] [--mode <m>]
 //   <host> driver.js compile --root <dir> [--out-dir <dir>] --assets <file> --bundle <dir>
+//   <host> driver.js deploy  --root <dir> [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
 //   <host> driver.js preview --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js start   --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js config  --root <dir>
@@ -70,7 +71,7 @@ process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();
 
-const commands = { dev, build, compile, preview, start, config: printConfig };
+const commands = { dev, build, compile, deploy, preview, start, config: printConfig };
 const run = commands[command];
 if (run == null) {
   emit("error", { message: `unknown driver command ${JSON.stringify(command)}` });
@@ -629,6 +630,188 @@ async function compile() {
 
   emit("done", { outDir: path.relative(root, bundleDir), pages: 0 });
   process.exit(0);
+}
+
+/**
+ * Link the application into a directory that can be copied, for
+ * `uf build --adapter`.
+ *
+ * `uf start` serves a build and `uf build --compile` puts one inside an
+ * executable, and between them is the shape most hosts actually want: a
+ * directory you copy onto a machine that has a JavaScript runtime and nothing
+ * else — no `node_modules`, no checkout, no `uf`. That is what this writes.
+ *
+ * It differs from the server build in [`build`] in one way, and that one way
+ * is the whole of the difference between a build artefact and a checkout:
+ * `ssr.noExternal: true`. The ordinary server build leaves `react`,
+ * `react-dom` and every other dependency as bare imports, because the host it
+ * runs on has `node_modules` beside it; a copied directory does not, so they
+ * come in. (`@uniflowed/*` was never external — `index.js` sets
+ * `ssr.noExternal: [/^@uniflowed\//]` because Node cannot import Flow — which
+ * is why serving a build has never needed `uf transform` alive, and why the
+ * blocker ubugeeei-prod/uf#335 records was not one.)
+ *
+ * # Two entries, because an adapter is exactly one of them
+ *
+ * `handler.js` is the application as a Web-standard `fetch` export: a
+ * `Request` in, a `Response` out, no filesystem, no socket, no `node:` import
+ * that a worker does not already have. That is the seam — every other target
+ * in `app.runtime.deploy.adapters` is this file with a different thing wrapped
+ * around it.
+ *
+ * `server.js` is the wrapper for *this* target: `node:http`, with the build's
+ * files served from `static/` beside it. It is thirty lines, and that is the
+ * point — the work is in the handler, and what a second adapter has to write
+ * is the thirty lines, not the application.
+ *
+ * Both are ordinary entries of one Rolldown build, so `server.js` imports the
+ * emitted `handler.js` rather than a second copy of the application.
+ *
+ * The `static/` directory is *not* written here. `uf` copies it (see
+ * `uf_cli`'s `commands::deploy`), because walking an output directory and
+ * copying every file in it is bulk work over the whole build, which belongs in
+ * Rust rather than in the host process — the same division `--compile` makes
+ * with its embedded assets.
+ */
+async function deploy() {
+  const vite = await import("vite");
+  const config = await loadConfig();
+  const inline = await viteConfig(config, argument("--mode") ?? "production");
+  const outDir = path.resolve(root, inline.build.outDir);
+  const adapter = argument("--adapter");
+  const workArgument = argument("--work");
+  const outputArgument = argument("--output");
+  if (adapter == null || workArgument == null || outputArgument == null) {
+    throw new Error("uf: `driver.js deploy` needs --adapter, --work and --output");
+  }
+  // The Rust side has already refused every adapter it has no implementation
+  // for, by name and with the issue that tracks it. This is the second half of
+  // that fact rather than a duplicate of it: the driver may be spawned by a
+  // future `uf` that knows an adapter this copy does not, and answering "one
+  // moment, here is a directory" for a target nobody wrote would be the silent
+  // wrong answer the whole issue is about.
+  if (adapter !== "node") {
+    throw new Error(
+      `uf: this driver implements the \`node\` adapter and was asked for ${JSON.stringify(
+        adapter,
+      )}`,
+    );
+  }
+  const work = path.resolve(root, workArgument);
+  const output = path.resolve(root, outputArgument);
+
+  emit("phase", { name: adapter });
+
+  // Written to disk rather than served as virtual modules: they are generated
+  // per build — `handler.js` names this build's hashed assets — and a real
+  // file is the version a person can open when a deployed directory
+  // misbehaves.
+  mkdirSync(work, { recursive: true });
+  const document = assetsFromManifest(readManifest(outDir));
+  writeFileSync(path.join(work, "handler.js"), handlerEntrySource(document));
+  writeFileSync(path.join(work, "server.js"), nodeEntrySource("./handler.js"));
+
+  await vite.build({
+    ...inline,
+    customLogger: eventLogger("warn"),
+    plugins: [...inline.plugins, nativeAddonGuard()],
+    ssr: { ...(inline.ssr ?? {}), noExternal: true },
+    build: {
+      ...inline.build,
+      manifest: false,
+      // The map would describe this bundle rather than the source, and nothing
+      // downstream reads it. Off is a smaller directory to copy and one less
+      // file to explain.
+      sourcemap: false,
+      ssr: true,
+      outDir: output,
+      // `uf` has already removed the directory, and `static/` is copied in
+      // after this returns; letting Vite empty it would be Vite deciding when
+      // that happens.
+      emptyOutDir: false,
+      rollupOptions: {
+        input: {
+          handler: path.join(work, "handler.js"),
+          server: path.join(work, "server.js"),
+        },
+        output: {
+          entryFileNames: "[name].js",
+          // Route modules are lazy `import()`s, so the server bundle splits
+          // whether or not anything asks it to, and the chunks have to land
+          // somewhere. `chunks/` rather than the default `assets/`, because
+          // `static/assets/` beside it is the *client's* — two directories
+          // with one name in a directory whose whole purpose is to be copied
+          // and read by a stranger.
+          chunkFileNames: "chunks/[name]-[hash].js",
+          format: "es",
+        },
+      },
+    },
+  });
+
+  emit("done", { outDir: path.relative(root, output), pages: 0 });
+  process.exit(0);
+}
+
+/**
+ * The source of `handler.js`: the application, as one `fetch` export.
+ *
+ * `export default { fetch }` as well as the named export, because those are
+ * the two spellings the hosts this shape exists for actually read — a worker
+ * and Deno Deploy want the default export's `fetch`, and a Node or Bun entry
+ * wants the name. Writing both costs a line and removes the one thing that
+ * would make an otherwise portable file not portable.
+ *
+ * The document's script and stylesheet URLs are baked in here because they
+ * come from the client manifest, which exists at this moment and not in the
+ * directory that gets copied.
+ */
+function handlerEntrySource(document) {
+  return `// Generated by \`uf build --adapter\`. Not checked in, not edited.
+import { createFetchHandler } from "@uniflowed/server/fetch";
+import * as app from ${JSON.stringify(VIRTUAL.server)};
+
+export const fetch = createFetchHandler({ app, document: ${JSON.stringify(document)} });
+
+export default { fetch };
+`;
+}
+
+/**
+ * The source of `server.js`: the Node socket around that handler.
+ *
+ * Everything host-specific about serving a build is in
+ * `@uniflowed/server/node`, which is the same module `uf start` reaches
+ * through `./internal/serve.js` — so a request answered here and the same
+ * request answered by `uf start` go through one implementation, not two that
+ * agree today.
+ */
+function nodeEntrySource(handlerSpecifier) {
+  return `// Generated by \`uf build --adapter node\`. Not checked in, not edited.
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { serve } from "@uniflowed/server/node";
+
+import { fetch } from ${JSON.stringify(handlerSpecifier)};
+
+// Resolved from this file and not from the working directory: a process
+// manager, a container entrypoint and a person in a shell each start a server
+// from wherever they happen to be, and a directory that only served its own
+// assets when it was started from inside itself would be a deployment with a
+// trap in it.
+const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
+
+// Not \`await serve(...)\` at the top level: Node runs top-level \`await\` happily
+// and the Flow parser uf vendors does not (ubugeeei-prod/uf#204), so the generated
+// entry would fail its own transform. \`.catch\` is the better spelling anyway —
+// a server that cannot take its port should say so and exit non-zero, rather
+// than die as an unhandled rejection.
+serve({ handle: fetch, staticDir }).catch((error) => {
+  process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
+  process.exit(1);
+});
+`;
 }
 
 /**

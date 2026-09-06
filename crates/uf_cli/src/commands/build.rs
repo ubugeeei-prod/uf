@@ -12,7 +12,9 @@
 //!
 //! `--compile` adds one more phase after all of that, in [`super::compile`]:
 //! the whole application, linked with an embedded copy of the output directory
-//! and a JavaScript runtime, as one executable file.
+//! and a JavaScript runtime, as one executable file. `--adapter` adds the
+//! phase between the two, in [`super::deploy`]: a directory that runs on a
+//! host with a JavaScript runtime and nothing else.
 
 use std::fs;
 
@@ -24,7 +26,7 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::load_config;
+use uf_config::{DeployAdapter, load_config};
 use uf_router::{Route, discover_routes, write_router_manifest};
 use uf_rsc::{BuildId, ProjectScanOptions, RscDiagnostic, RscSeverity, analyze_project};
 use uf_term::{
@@ -33,6 +35,7 @@ use uf_term::{
 };
 
 use crate::commands::compile;
+use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
 use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
 use crate::support::{plural, problem_summary, project_label, relative_to, write_json_file};
@@ -55,6 +58,7 @@ pub(crate) fn build(
     ui: &mut Ui,
     size_report: bool,
     standalone: bool,
+    requested_adapter: Option<DeployAdapter>,
 ) -> Result<()> {
     let mut timer = PhaseTimer::start();
     let mut progress = ui.progress();
@@ -118,6 +122,9 @@ pub(crate) fn build(
     } else {
         None
     };
+    // The same rule for the same reason: an adapter nobody has written is a
+    // sentence, and a sentence is cheaper before the bundle than after it.
+    let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -218,6 +225,21 @@ pub(crate) fn build(
         }
         None => None,
     };
+    // After the binary, so that a build asked for both copies the binary's
+    // exclusion rather than the binary itself: `--compile` writes into
+    // `dist/`, and `deploy` copies `dist/`.
+    let deployed = match adapter {
+        Some(adapter) => {
+            progress.tick(&format!(
+                "writing the {} adapter's output",
+                adapter.as_str()
+            ));
+            Some(timer.measure("adapter", || {
+                deploy::deploy(ui, adapter, &host, &package, &root, &out_dir)
+            })?)
+        }
+        None => None,
+    };
 
     progress.finish();
     drop(progress);
@@ -252,6 +274,9 @@ pub(crate) fn build(
     if let Some(compiled) = &compiled {
         outputs.push(relative_to(&resolved.root, &compiled.binary));
     }
+    if let Some(deployed) = &deployed {
+        outputs.push(relative_to(&resolved.root, &deployed.directory));
+    }
     outputs.sort();
     outputs.dedup();
     let output_paths = outputs.iter().map(String::as_str).collect::<Vec<_>>();
@@ -281,6 +306,20 @@ pub(crate) fn build(
     };
     let warnings = vite.warnings.clone();
     let host_name = host.name();
+    let adapter_summary = deployed.as_ref().map(|deployed| {
+        let directory = relative_to(&resolved.root, &deployed.directory);
+        (
+            deployed.adapter.as_str(),
+            directory.clone(),
+            deployed.files.to_string(),
+            ByteSize::from_bytes(deployed.bytes).to_string(),
+            // The command, spelled out, because the whole claim of this
+            // directory is that nothing else is needed to run it — and a
+            // reader who has to guess whether it is `node server.js` or
+            // `npm start` does not yet believe that claim.
+            format!("cd {directory} && node server.js"),
+        )
+    });
     let binary = compiled.as_ref().map(|compiled| {
         (
             relative_to(&resolved.root, &compiled.binary),
@@ -342,6 +381,22 @@ pub(crate) fn build(
             renderer.table(out, 4, &table);
         }
         renderer.blank(out);
+
+        if let Some((adapter, directory, files, bytes, run)) = &adapter_summary {
+            renderer.heading(out, 2, "adapter");
+            renderer.key_values(
+                out,
+                4,
+                &[
+                    KeyValue::toned("target", adapter, Tone::Muted),
+                    KeyValue::toned("directory", directory, Tone::Path),
+                    KeyValue::toned("files", files, Tone::Number),
+                    KeyValue::toned("bytes", bytes, Tone::Accent),
+                    KeyValue::new("run", run),
+                ],
+            );
+            renderer.blank(out);
+        }
 
         if let Some((path, bytes, files, embedded)) = &binary {
             renderer.heading(out, 2, "standalone");

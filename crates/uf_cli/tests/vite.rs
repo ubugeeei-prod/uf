@@ -21,6 +21,12 @@
 //! `uf build --compile` needs Bun as well, and skips on the same terms; see
 //! [`bun_ready`].
 //!
+//! Two tests here assert about an *artefact* rather than about a server: the
+//! directory `uf build --adapter node` writes and the file `uf build
+//! --compile` writes are each copied somewhere with nothing else in it and
+//! asked. Both keep the half that needs no socket unconditional, because that
+//! half is the one that says whether the copy carries the application.
+//!
 //! One test here never reaches Vite:
 //! [`a_contract_violation_fails_the_build_before_vite_runs`]. It belongs with
 //! the others because what it asserts about is `uf build`, and because the
@@ -97,6 +103,20 @@ static DIST: Mutex<()> = Mutex::new(());
 /// second failure here would only bury the first one under this one.
 fn dist_lock() -> std::sync::MutexGuard<'static, ()> {
     DIST.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The same, for the served fixture, which now has two tests building it.
+///
+/// `preview_and_start_serve_the_whole_of_a_build` was the only one, so it
+/// needed no lock. `the_node_adapter_writes_a_directory_that_serves_from_an_
+/// empty_one` builds the same `dist/` and the same `.uf/`, and on a machine
+/// that can bind a socket the two run at once.
+static SERVED: Mutex<()> = Mutex::new(());
+
+fn served_lock() -> std::sync::MutexGuard<'static, ()> {
+    SERVED
+        .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
@@ -791,6 +811,7 @@ fn preview_and_start_serve_the_whole_of_a_build() {
     if !fixture_ready() || !loopback_ready() {
         return;
     }
+    let _served = served_lock();
     let root = served_app_root();
 
     let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
@@ -817,6 +838,213 @@ fn preview_and_start_serve_the_whole_of_a_build() {
 
     for command in ["preview", "start"] {
         serve_and_assert(&root, command);
+    }
+}
+
+/// The script the deployed directory is asked with, when no socket may be had.
+///
+/// It is written *beside* the copied directory rather than inside it, and
+/// imports it by a relative path — which is the assertion, not the setup. A
+/// probe living inside the artefact could be resolving something the artefact
+/// happens to sit next to; one outside it can only reach what was copied.
+const ASK_THE_ARTEFACT: &str = r#"import handler from "./app/handler.js";
+
+const ask = async (label, url, init) => {
+  const response = await handler.fetch(new Request(`http://127.0.0.1${url}`, init));
+  const body = (await response.text()).replace(/\s+/g, " ");
+  process.stdout.write(`${label} ${response.status} ${body}\n`);
+};
+
+await ask("handler-get", "/api/health");
+await ask("handler-post", "/api/health", { method: "POST", body: JSON.stringify({ name: "uf" }) });
+await ask("rendered", "/posts/hello-world");
+await ask("missing", "/definitely-not-a-page/");
+"#;
+
+/// `uf build --adapter node`, copied somewhere that is not a checkout.
+///
+/// This is the assertion ubugeeei-prod/uf#335 asks for and the one that
+/// distinguishes an artefact from a build: the directory is copied to a
+/// temporary directory with no `node_modules` anywhere above it and no `uf`
+/// anywhere near it, and it still answers a route handler and still renders a
+/// route the build wrote no file for.
+///
+/// The blocker recorded in that issue — that the server bundle keeps
+/// `@uniflowed/router/server` external, so serving it needs `uf transform`
+/// alive — was not one. `packages/vite/index.js` has set
+/// `ssr.noExternal: [/^@uniflowed\//]` since the plugin was written, because
+/// Node cannot import Flow; the dependencies the ordinary server build leaves
+/// external are `react` and `react-dom`, which are ordinary JavaScript. What
+/// the adapter adds is `ssr.noExternal: true`, so those come in too and the
+/// directory needs no `node_modules` at all.
+///
+/// Written to prove as much as the machine allows, like the `--compile` test
+/// below. The half that needs no socket runs everywhere and is the half that
+/// matters: whether the copied directory carries the application. Where a
+/// socket can be bound, `server.js` is started from the copy and asked
+/// everything `uf preview` and `uf start` are asked, by the same function — so
+/// a deployment that answered differently from the command it was checked with
+/// would fail here.
+#[test]
+fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
+    if !fixture_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--adapter", "node"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_plain(&stdout);
+    for expected in ["adapter", ".uf/deploy/node", "node server.js"] {
+        assert!(
+            stdout.contains(expected),
+            "the summary must say what was written and how to run it; missing {expected:?} in:\n{stdout}"
+        );
+    }
+
+    // Copied out rather than driven in place, because in place proves nothing:
+    // `dist/`, `node_modules` and the source are all still there, and an
+    // artefact quietly reading one of them would pass.
+    let empty = tempfile::tempdir().unwrap();
+    let deployed = empty.path().join("app");
+    copy_tree(&root.join(".uf/deploy/node"), &deployed);
+    for ancestor in deployed.ancestors() {
+        assert!(
+            !ancestor.join("node_modules").exists(),
+            "this test means nothing with a node_modules at {}",
+            ancestor.display()
+        );
+    }
+
+    // The static half came along: the prerendered documents and the hashed
+    // client assets, which are what `server.js` serves before it renders
+    // anything. And the route that was *not* prerendered is still not there,
+    // which is what makes the render assertion below a render.
+    assert!(deployed.join("static/index.html").is_file());
+    assert!(deployed.join("static/guide/index.html").is_file());
+    assert!(
+        !deployed.join("static/posts").exists(),
+        "a route with parameters and no `generateStaticParams` must reach the copy unprerendered"
+    );
+    assert!(
+        deployed.join("package.json").is_file(),
+        "`node server.js` reads `.js` as CommonJS without it"
+    );
+
+    let ask = empty.path().join("ask.mjs");
+    fs::write(&ask, ASK_THE_ARTEFACT).unwrap();
+    let answered = Command::new("node")
+        .arg("ask.mjs")
+        .current_dir(empty.path())
+        .output()
+        .unwrap();
+    let said = format!(
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&answered.stdout),
+        String::from_utf8_lossy(&answered.stderr)
+    );
+    assert!(answered.status.success(), "{said}");
+    let answers = String::from_utf8_lossy(&answered.stdout).into_owned();
+    for expected in [
+        // A route handler, which is the clearest thing a build could not serve.
+        "handler-get 200 {\"status\":\"ok\"}",
+        // With a body, so the assertion is that the request reached the module
+        // rather than that something answered 200.
+        "handler-post 200 {\"echoed\":\"uf\"}",
+    ] {
+        assert!(
+            answers.contains(expected),
+            "missing {expected:?} in:\n{said}"
+        );
+    }
+    let rendered = answers
+        .lines()
+        .find(|line| line.starts_with("rendered "))
+        .unwrap_or_else(|| panic!("no rendered line in:\n{said}"));
+    assert!(
+        rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
+        "a route with no prerendered file has to be rendered per request:\n{rendered}"
+    );
+    let missing = answers
+        .lines()
+        .find(|line| line.starts_with("missing "))
+        .unwrap_or_else(|| panic!("no missing line in:\n{said}"));
+    assert!(
+        missing.starts_with("missing 404") && missing.contains("served-app has no such page"),
+        "an unrouted path is the project's own 404, not somebody else's page:\n{missing}"
+    );
+
+    if !loopback_ready() {
+        return;
+    }
+
+    // And the whole of it, through the socket `server.js` takes: the static
+    // half, the application half, and the streaming — asked by the function
+    // that asks `uf preview` and `uf start`, because "the deployment answers
+    // what the preview answered" is the only interesting thing left to say.
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut command = Command::new("node");
+            command
+                .arg("server.js")
+                .args(["--host", "127.0.0.1", "--port", &port.to_string()])
+                .current_dir(&deployed);
+            let mut server = Server::spawn(command, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_served(&mut server, port, &said, &body, "build --adapter node");
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the deployed directory never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Copy `from` to `to`, recursively.
+///
+/// The point of the copy is that the destination has nothing else in it, so
+/// this is deliberately not a merge and deliberately not `cp -r`: a test that
+/// shelled out would be asserting about the machine's coreutils on one of the
+/// three platforms uf supports.
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).unwrap();
+        }
     }
 }
 

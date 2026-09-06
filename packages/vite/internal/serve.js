@@ -4,14 +4,11 @@
 //
 // Serving what `uf build` wrote — one request handler, behind two front doors.
 //
-// `uf build` writes three things and, until this module existed, nothing could
-// answer a request with any of them: a client bundle and prerendered HTML in
+// `uf build` writes three things: a client bundle and prerendered HTML in
 // `dist/`, and a server bundle in `.uf/build/server/server.js` that exports
 // `render`, `dispatch`, `runMiddleware`, `routes`, `middleware`, `notFound`
-// and `errors`. The prerendered half could be put on a static host; the other
-// half could only be reached from `uf dev`, so a route handler, a middleware
-// and a route with parameters and no `generateStaticParams` worked in
-// development and did not exist in a build.
+// and `errors`. This module finds them, reads the client manifest, and hands
+// both to the handler `uf preview` and `uf start` mount.
 //
 // `uf preview` and `uf start` are the two front doors, and they share
 // everything below on purpose. A preview whose answers differ from the
@@ -27,66 +24,52 @@
 //             running a production build should not need Vite installed to
 //             answer a request.
 //
-// # Why this is JavaScript
+// # Where the answering actually happens
 //
-// The rest of uf's hot paths are Rust, and this one deliberately is not: it
-// runs in the deployed application rather than in the build, and
-// `ubugeeei-redundancy.md` is explicit that a deployment must not inherit a
-// native dependency from the toolchain that produced it. An edge or serverless
-// target that cannot run a Rust binary still has to be able to run this.
+// Not here, any more. Every decision about *what* a request is answered with
+// lives in `@uniflowed/server` — `@uniflowed/server/fetch` for the application
+// half and `@uniflowed/server/node` for the files and the socket — and this
+// module is the part that is genuinely Vite's: finding the build on disk and
+// reading the manifest a Vite build wrote.
 //
-// # The seam the adapters need
+// It moved because of `uf build --adapter`. `tests/library/serve.test.js` said
+// what was wrong with the old arrangement while it was still the only one:
+// "`internal/serve.js` is the seam a deploy adapter will need, and naming it
+// in `exports` before one exists would be promising an interface nothing has
+// used yet." An adapter exists now, and it may not import this package —
+// `@uniflowed/vite` is the bundler, and the whole claim of deployable output
+// is that the host needs neither the bundler nor the toolchain. So the seam is
+// a package export of `@uniflowed/server`, and `uf preview`, `uf start` and
+// every adapter now answer out of one implementation instead of copies that
+// agree until they do not.
 //
-// [`createApplicationHandler`] takes a `Request` and returns a `Response` and
-// touches no filesystem, so it is the part that ports to a worker unchanged.
-// [`createStaticHandler`] reads files and is therefore host-specific, which is
-// exactly the split a deploy adapter has to make: on a CDN-backed target the
-// static half is not the application's job at all.
+// # Why those imports are dynamic
+//
+// `@uniflowed/server` is Flow, and `driver.js` registers the loader hooks that
+// make Flow importable *in its body* — after every static import in this graph
+// has already been evaluated. So they are reached the same way the server
+// bundle is: with `await import`, from [`loadBuild`], which is the point at
+// which this process stops being plain JavaScript and starts being the
+// project's.
 
-import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 
-// The Node-to-platform translation lives in one module and is re-exported
-// here, because `nodeListener` needs it and every host that serves a build
-// reaches for it through this one. Two copies is how the dev server and the
-// production server would come to disagree about a request.
-import { send, toRequest } from "./http.js";
-
-export { send, toRequest };
-
 /**
- * Content types for what a uf build emits.
+ * `@uniflowed/server`'s two halves, loaded once.
  *
- * A closed table rather than a dependency, and deliberately short: every entry
- * is an extension `uf build` actually writes or a project actually puts in
- * `public/`. Anything else is `application/octet-stream`, which a browser
- * downloads rather than executes — the safe answer for a file whose type we do
- * not know, and the reason this is not a guess based on the bytes.
+ * Cached as the promise rather than the modules, so two concurrent callers
+ * share one import rather than racing to start two.
  */
-const CONTENT_TYPES = Object.freeze({
-  ".avif": "image/avif",
-  ".css": "text/css; charset=utf-8",
-  ".gif": "image/gif",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webmanifest": "application/manifest+json",
-  ".webp": "image/webp",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".xml": "application/xml; charset=utf-8",
-});
+let deploymentModules = null;
+function deployment() {
+  deploymentModules ??= Promise.all([
+    import("@uniflowed/server/fetch"),
+    import("@uniflowed/server/node"),
+  ]).then(([application, host]) => ({ ...application, ...host }));
+  return deploymentModules;
+}
 
 /**
  * Everything a served build consists of.
@@ -94,6 +77,11 @@ const CONTENT_TYPES = Object.freeze({
  * Read once at startup rather than per request: the manifest does not change
  * while the server runs, and importing the server bundle again per request
  * would re-evaluate every module in the application.
+ *
+ * `@uniflowed/server` is loaded here too, and not lazily on the first request:
+ * a missing or broken install should fail the command that starts the server,
+ * with the message the import raises, rather than a minute later inside
+ * whichever request happened to arrive first.
  *
  * @param {{root: string, outDir: string, serverDir: string}} build
  */
@@ -110,6 +98,7 @@ export async function loadBuild({ root, outDir, serverDir }) {
 
   const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
   const entry = await import(pathToFileURL(entryFile).href);
+  await deployment();
   return { entry, assets: assetsFromManifest(manifest), distDir };
 }
 
@@ -139,6 +128,11 @@ async function readable(file, message) {
  *
  * The entry is found by its `isEntry` flag rather than by key, because a
  * virtual module's manifest key is an implementation detail of the bundler.
+ *
+ * This is the one piece of serving a build that is genuinely Vite's — a Vite
+ * manifest, read the way Vite writes it — which is why it stayed behind when
+ * the rest moved to `@uniflowed/server`. `uf build --adapter` calls it too,
+ * at build time, and bakes the answer into what it emits.
  */
 export function assetsFromManifest(manifest) {
   const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
@@ -179,118 +173,33 @@ export function assetsFromManifest(manifest) {
 /**
  * The application half: route handlers, then rendering.
  *
- * Touches no filesystem and holds no Node types, so this is the function a
- * deploy adapter for a worker or a serverless function wraps. Returns `null`
- * for nothing, ever — a request that matches no handler and no route is a
- * rendered 404, because the renderer is what knows what the project's
- * `_uf.not-found` page says.
- *
- * The order is the dev server's, and has to stay the dev server's: middleware
- * first, then handlers for every method, because a handler is the only thing
- * that can answer a `POST` and it may also answer a `GET` for a path that has
- * no page. A page cannot answer a `POST`, so a non-navigation that no handler
- * claimed is a 404 rather than a rendered page with a 200.
- *
- * Middleware above both, and not inside either: it guards a path, so it has to
- * run for a page, for a route handler, and for a path under it that matches
- * neither — `/dashboard/typo` is a 404 that the guard on `/dashboard` still
- * answers. `entry.runMiddleware` is called rather than tested for, so a server
- * bundle without it is a `TypeError` on the first request instead of an
- * application whose auth check quietly stopped running once it was built.
- * That is the whole of ubugeeei-prod/uf#260, and `uf preview` and `uf start`
- * are two more places it could have happened.
+ * `@uniflowed/server/fetch`'s `createFetchHandler`, reached through the
+ * dynamic import above. Kept as a function here — rather than making every
+ * caller await the module — because the two servers construct their handler
+ * before they take a socket, and an `await` in that position would put the
+ * import between the port and the first request rather than before both.
  *
  * @param {{entry: object, assets: object}} build
  */
 export function createApplicationHandler({ entry, assets }) {
+  const ready = deployment().then(({ createFetchHandler }) =>
+    createFetchHandler({ app: entry, document: assets }),
+  );
   return async function handle(request) {
-    const guarded = await entry.runMiddleware(request);
-    if (guarded != null) return guarded;
-
-    const handled = await entry.dispatch(request);
-    if (handled != null) return handled;
-
-    const method = request.method.toUpperCase();
-    if (method !== "GET" && method !== "HEAD") {
-      return new Response(null, { status: 404 });
-    }
-
-    const url = new URL(request.url);
-    const result = await entry.render(url.pathname + url.search, assets, {
-      // Nothing better than the console here: this is the handler a worker or a
-      // serverless function wraps, and it has no terminal of its own. Losing a
-      // boundary's exception entirely would be worse — it is the only trace a
-      // page that failed after its first byte leaves anywhere.
-      onError: (error) => {
-        console.error(error);
-      },
-    });
-    const headers = new Headers(result.headers ?? {});
-    headers.set("content-type", "text/html; charset=utf-8");
-    // A `HEAD` gets the status and the headers and no body, which is what the
-    // renderer cannot know to do for itself. The stream is cancelled rather
-    // than dropped, so the render behind it stops instead of filling its queue
-    // and waiting for a reader that is never coming.
-    if (method === "HEAD") {
-      await result.stream().cancel();
-      return new Response(null, { status: result.status ?? 200, headers });
-    }
-    // The body is a stream, so the layouts and any `<Suspense>` fallback reach
-    // the browser while the page they surround is still resolving.
-    return new Response(result.stream(), { status: result.status ?? 200, headers });
+    return (await ready)(request);
   };
 }
 
 /**
  * The static half: a file under `root`, or `null` for the caller to carry on.
  *
- * `GET` and `HEAD` only. A `POST` to a path that happens to have a file under
- * it belongs to a route handler, and answering it with the file's bytes would
- * be the same mistake as rendering a page for it.
- *
- * # The path is checked once, after it is resolved
- *
- * `docs/security.md` rule 2: never authorize against a raw request string or a
- * partially decoded path. The pathname is decoded first, then resolved against
- * the root, and *then* checked to be inside it — so `%2e%2e%2f`, a backslash
- * on Windows, and a symlinked directory all reduce to the same question, asked
- * once, of the value that is actually opened.
+ * `@uniflowed/server/node`'s, for the same reason as above: what a deployment
+ * runs and what `uf start` runs have to be the same code, not the same idea.
  */
 export function createStaticHandler({ root }) {
-  const distDir = path.resolve(root);
-
+  const ready = deployment().then(({ createStaticHandler: create }) => create({ root }));
   return async function serveStatic(request) {
-    const method = request.method.toUpperCase();
-    if (method !== "GET" && method !== "HEAD") return null;
-
-    const pathname = decodePathname(new URL(request.url).pathname);
-    if (pathname == null) return null;
-
-    const resolved = path.resolve(distDir, `.${pathname}`);
-    if (resolved !== distDir && !resolved.startsWith(distDir + path.sep)) return null;
-
-    // `/guide/` and `/guide` are the same prerendered document, and neither
-    // spelling is the one a person types. `<path>.html` is last because a
-    // build writes `guide/index.html`, and only a hand-placed file in
-    // `public/` is ever `guide.html`.
-    const candidates = pathname.endsWith("/")
-      ? [path.join(resolved, "index.html")]
-      : [resolved, path.join(resolved, "index.html"), `${resolved}.html`];
-
-    for (const candidate of candidates) {
-      const info = await statFile(candidate);
-      if (info == null || !info.isFile()) continue;
-      const headers = {
-        "content-type":
-          CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream",
-        "content-length": String(info.size),
-      };
-      if (method === "HEAD") return new Response(null, { headers });
-      // Streamed rather than read into memory, so serving a large asset costs
-      // a buffer rather than the file.
-      return new Response(Readable.toWeb(createReadStream(candidate)), { headers });
-    }
-    return null;
+    return (await ready)(request);
   };
 }
 
@@ -314,52 +223,16 @@ export function createServeHandler({ entry, assets, distDir }) {
   };
 }
 
-function decodePathname(pathname) {
-  try {
-    const decoded = decodeURIComponent(pathname);
-    // A NUL truncates the name every C-level `open` sees, so a path holding
-    // one is refused rather than normalised into something shorter.
-    return decoded.includes("\0") ? null : decoded;
-  } catch {
-    // A percent escape that is not one. There is no file behind it.
-    return null;
-  }
-}
-
-async function statFile(file) {
-  try {
-    return await stat(file);
-  } catch {
-    return null;
-  }
-}
-
 /**
  * A `Request`/`Response` handler as a Node request listener.
  *
- * The handler contract is the platform's, so this adapter belongs here rather
- * than in every host that wants to run one — `uf dev`'s middleware, `uf
- * preview`'s, and `uf start`'s own server all reach for the same two halves.
- *
- * A handler that throws is answered with a bare 500 and reported on stderr:
- * the body must not carry the stack, because the body goes to whoever asked,
- * and stderr is where the operator is already looking. It is not an event on
- * stdout because a request failing is the application's news, not the driver's
- * — the driver's stdout says what the *server* is doing.
+ * `@uniflowed/server/node`'s, which is also what the `server.js` an adapter
+ * writes runs — so a request reaching `uf start` and the same request reaching
+ * a deployed directory go through one translation rather than two.
  */
 export function nodeListener(handle) {
+  const ready = deployment().then(({ nodeListener: create }) => create(handle));
   return async function listener(incoming, outgoing) {
-    try {
-      await send(outgoing, await handle(await toRequest(incoming)));
-    } catch (error) {
-      console.error(error);
-      if (outgoing.headersSent) {
-        outgoing.destroy();
-        return;
-      }
-      outgoing.statusCode = 500;
-      outgoing.setHeader("content-type", "text/plain; charset=utf-8");
-      outgoing.end("500 Internal Server Error\n");
-    }
+    return (await ready)(incoming, outgoing);
   };
 }
