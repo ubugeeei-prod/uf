@@ -34,6 +34,7 @@ import {
   allByRole,
   allByTestId,
   allByText,
+  atCallSite,
   queryFailure,
 } from "./queries.js";
 import type { Matcher, MatcherOptions, RoleOptions } from "./queries.js";
@@ -165,22 +166,40 @@ function forms<TTarget extends Matcher, TOptions>(
       }
       return found[0] ?? null;
     },
-    find: (target, options) =>
-      waitFor(() => {
-        const found = all(target, options);
-        if (found.length !== 1) {
-          throw queryFailure(`findBy${name}`, target, root(), found.length);
-        }
-        return found[0];
-      }),
-    findAll: (target, options) =>
-      waitFor(() => {
-        const found = all(target, options);
-        if (found.length === 0) {
-          throw queryFailure(`findAllBy${name}`, target, root(), 0);
-        }
-        return found;
-      }),
+    // The two waiting forms build an error at the call and hand it to the
+    // failure on the way out. A wait keeps the *last* attempt's failure, and
+    // the last attempt runs from a timer: by then the stack under it is the
+    // poll loop and nothing else, so the failure has no line of the test left
+    // in it to report. The synchronous four need none of this — they throw
+    // while the caller is still on the stack.
+    find: async (target, options) => {
+      const asked = new Error("asked here");
+      try {
+        return await waitFor(() => {
+          const found = all(target, options);
+          if (found.length !== 1) {
+            throw queryFailure(`findBy${name}`, target, root(), found.length);
+          }
+          return found[0];
+        });
+      } catch (error) {
+        throw atCallSite(error, asked);
+      }
+    },
+    findAll: async (target, options) => {
+      const asked = new Error("asked here");
+      try {
+        return await waitFor(() => {
+          const found = all(target, options);
+          if (found.length === 0) {
+            throw queryFailure(`findAllBy${name}`, target, root(), 0);
+          }
+          return found;
+        });
+      } catch (error) {
+        throw atCallSite(error, asked);
+      }
+    },
   };
 }
 

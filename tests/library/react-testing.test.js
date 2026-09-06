@@ -5,6 +5,11 @@
 // A DOM, a real React root, and the queries a test actually reaches for.
 
 import * as React from "@uniflowed/react";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
 import { useState } from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/test";
 import {
@@ -657,4 +662,210 @@ describe("the act environment", () => {
     expect(insideOuterWait).toBe(false);
     expect(globalThis.IS_REACT_ACT_ENVIRONMENT).toBe(true);
   });
+});
+
+// Where a failing query is reported, driven through a real worker.
+//
+// `uf test` prints a failure as `path:line:column`, and it takes the path from
+// the file it asked the worker to run — the number is all the worker sends. So
+// the two halves can disagree, and for every `getBy…` they did: the error is
+// built inside `@uniflowed/react-testing`, whose frames the runner did not
+// trim, and the first frame of `internal/queries.js` was reported under the
+// test file's path. A nine-line file was told to look at line 369
+// (ubugeeei-prod/uf#319).
+//
+// Nothing inside a test can see this. The position belongs to the protocol
+// between the worker and `uf`, and by the time a case could look at its own
+// report the case is the thing being reported. So this drives a worker the way
+// `crates/uf_test/src/host.rs` does — one request on stdin, one JSON event per
+// line back — and reads the `site` off the failures, exactly as
+// `output-owner.test.js` reads the `test` field off `output` events, and for
+// the same reason: a promise made on a wire is checked on that wire.
+//
+// The fixture is written to a temporary directory rather than kept beside this
+// file, because a file in this workspace that registers cases *is* a test of
+// this repository and would be collected by the very suite meant to run it.
+// Nothing out there has a `node_modules` to resolve `@uniflowed/…` from, so it
+// reaches the packages by path; `createElement` rather than JSX for the same
+// reason, since the transform's JSX import is a bare specifier.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repository = path.resolve(here, "..", "..");
+
+function entry(name: string): string {
+  return pathToFileURL(path.join(repository, "packages", name, "index.js")).href;
+}
+
+const REPRODUCTION = `import { createElement } from "${entry("react")}";
+import { describe, it } from "${entry("test")}";
+import { render, screen } from "${entry("react-testing")}";
+
+describe("a query that finds nothing", () => {
+  it("reports the line it was called on", () => {
+    render(createElement("p", null, "hello"));
+    screen.getByRole("banner");
+  });
+
+  it("reports the line it was called on after waiting", async () => {
+    render(createElement("p", null, "hello"));
+    await screen.findByRole("banner");
+  });
+});
+`;
+
+/** One line the worker wrote back, in the shape `host.rs` reads. */
+type Event = {
+  event: string,
+  name?: string,
+  status?: string,
+  message?: string,
+  site?: {| line: number, column: number |} | null,
+};
+
+/**
+ * How this host starts a worker, mirroring `HostCommand::with_flow_loader`.
+ *
+ * The worker imports Flow — `@uniflowed/test` is Flow source — so it needs the
+ * host's loader. Deno has none in `@uniflowed/host` yet, so it cannot run this
+ * at all; a named failure is better than a skip that reads like a pass.
+ */
+function loaderArguments(): Array<string> {
+  const host = path.basename(process.execPath);
+  if (host.startsWith("node")) {
+    const register = path.join(repository, "packages", "host", "register.js");
+    return ["--enable-source-maps", "--import", pathToFileURL(register).href];
+  }
+  if (host.startsWith("bun")) {
+    return ["--preload", path.join(repository, "packages", "host", "bun-preload.js")];
+  }
+  throw new Error(`no Flow loader for ${host}: this test drives the worker uf would have started`);
+}
+
+/**
+ * Run the reproduction in a worker of its own and collect every event it wrote.
+ *
+ * The fixture is written to a temporary directory rather than kept beside this
+ * file, because a file in this workspace that registers cases *is* a test of
+ * this repository: `uf test` discovers by reading a file rather than by naming
+ * it, so a fixture here would be collected and run by the very suite that is
+ * supposed to be running it.
+ */
+function runInWorker(): Promise<Array<Event>> {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-query-site-"));
+  const file = path.join(directory, "lines.test.js");
+  fs.writeFileSync(file, REPRODUCTION);
+
+  return new Promise((resolve, reject) => {
+    const worker = path.join(repository, "packages", "test", "worker.js");
+    const child = spawn(process.execPath, [...loaderArguments(), worker], {
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    let written = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      written += String(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", () => {
+      fs.rmSync(directory, { recursive: true, force: true });
+      try {
+        resolve(
+          written
+            .split("\n")
+            .filter((line) => line !== "")
+            .map((line) => JSON.parse(line)),
+        );
+      } catch (error) {
+        reject(new Error(`the worker wrote something that is not an event: ${String(error)}`));
+      }
+    });
+    // Generous, because the second case waits a second before it gives up and
+    // a loaded machine must not turn that into a timeout instead.
+    child.stdin.end(`${JSON.stringify({ file, timeoutMs: 20000 })}\n`);
+  });
+}
+
+let started: Promise<Array<Event>> | null = null;
+
+/**
+ * The run, started on first use and shared by the cases that read it.
+ *
+ * Not a `beforeAll`: a hook is charged against the budget of the case it runs
+ * before, and a whole worker — a Node.js start, the Flow loader, React, a DOM
+ * and a second of waiting — does not fit in one case's five. Awaited by each
+ * case instead, which is where the longer budget can be asked for.
+ */
+function reports(): Promise<Array<Event>> {
+  if (started == null) {
+    started = runInWorker();
+  }
+  return started;
+}
+
+/** The one-based line of the fixture that contains `text`. */
+function lineContaining(text: string): number {
+  const index = REPRODUCTION.split("\n").findIndex((line) => line.includes(text));
+  if (index < 0) {
+    throw new Error(`the fixture has no line containing ${JSON.stringify(text)}`);
+  }
+  return index + 1;
+}
+
+/** The failure reported for the case whose name ends in `ending`. */
+function failureOf(events: Array<Event>, ending: string): Event {
+  const found = events.filter(
+    (event) => event.event === "test" && String(event.name).endsWith(ending),
+  );
+  if (found.length !== 1) {
+    throw new Error(`expected one report for ${ending} and the worker sent ${found.length}`);
+  }
+  return found[0];
+}
+
+/** How long one of these cases may take, worker and all. */
+const WORKER_BUDGET = { timeout: 30000 };
+
+describe("where a failing query is reported", () => {
+  it(
+    "names the line of the test that called it",
+    async () => {
+      const failed = failureOf(await reports(), "reports the line it was called on");
+      expect(failed.status).toBe("failed");
+      expect(failed.message).toContain("getByRole");
+      // The whole of the bug in one assertion: the number is stamped onto the
+      // fixture's path, so it has to be a line of the fixture — and the right
+      // one. It used to be 369, the line where `queryFailure` builds the error.
+      expect(failed.site?.line).toBe(lineContaining('screen.getByRole("banner")'));
+    },
+    WORKER_BUDGET,
+  );
+
+  it(
+    "names the line of the test that waited, not the poll that gave up",
+    async () => {
+      const failed = failureOf(await reports(), "reports the line it was called on after waiting");
+      expect(failed.status).toBe("failed");
+      expect(failed.message).toContain("findByRole");
+      // A wait keeps the last attempt's failure, and the last attempt runs
+      // from a timer with none of the test underneath it. Trimming the
+      // library's frames alone would leave this one with no position at all,
+      // which is why `findBy…` carries its call site in.
+      expect(failed.site?.line).toBe(lineContaining('screen.findByRole("banner")'));
+    },
+    WORKER_BUDGET,
+  );
+
+  it(
+    "never names a line the file does not have",
+    async () => {
+      const lines = REPRODUCTION.split("\n").length;
+      for (const event of await reports()) {
+        if (event.event !== "test" || event.status !== "failed") {
+          continue;
+        }
+        const line = event.site?.line;
+        expect(line == null || (line >= 1 && line <= lines)).toBe(true);
+      }
+    },
+    WORKER_BUDGET,
+  );
 });

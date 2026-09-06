@@ -364,6 +364,32 @@ export function accessibleName(element: Element): string {
   return textOf(element);
 }
 
+/**
+ * `error`, reported where the query was written rather than where it gave up.
+ *
+ * A `findBy…` polls, and the attempt whose failure it keeps is the last one —
+ * which runs from a timer, with nothing of the test on the stack under it. The
+ * error is the right error; only its position is missing, and a failure with
+ * no position is the one thing `ubugeeei-prod/uf#319` was about. `asked` is an
+ * error built at the call, so its frames are the caller's; rebuilding the
+ * stack from the name and message is what the engine itself would have written
+ * had the failure been raised there.
+ *
+ * `mixed` rather than `Error` because a wait rethrows whatever the body threw,
+ * and a body may throw a string. One that is not an error carries no stack to
+ * correct and is handed back untouched.
+ */
+export function atCallSite(error: mixed, asked: Error): mixed {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+  const frames = (asked.stack ?? "").split("\n").slice(1);
+  if (frames.length > 0) {
+    error.stack = [`${error.name}: ${error.message}`, ...frames].join("\n");
+  }
+  return error;
+}
+
 /** Why a query failed, with enough of the DOM to see why. */
 export function queryFailure(kind: string, matcher: Matcher, root: Element, found: number): Error {
   const description =
