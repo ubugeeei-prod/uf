@@ -157,8 +157,26 @@ export default defineConfig({
     //
     // `release:preflight` is the one to run before tagging: a name `npm trust`
     // has not bound fails the publish job *after* the names before it have
-    // gone out, which half-sends a release.
+    // gone out, which half-sends a release. It also reports where each name's
+    // `latest` points, which is the other half of #408 and is checked here
+    // because nothing in the pipeline can see it.
     "release:preflight": "tools/release/preflight.sh",
+    // And the step that moves `latest`, after the release. `publish.yml` sends
+    // a prerelease on the `alpha` tag — right, and it stays that way, because
+    // a prerelease must not displace a stable release — so while these
+    // packages have no stable release nothing moves `latest` at all: it sat
+    // where the first publish left it — `0.0.0-alpha.1` on five names,
+    // `0.0.0-alpha.2` on twelve — through seven releases, and that is what
+    // `npm install @uniflowed/react` gave a person.
+    //
+    // It cannot be a step in the publish job. That job authenticates with the
+    // OIDC id-token GitHub mints for it, and npm exchanges that token for
+    // `npm publish` and nothing else — `npm dist-tag add` is an authenticated
+    // `PUT` that asks a 2FA account for a one-time password. So it is a
+    // person's step, like `release:bootstrap` and the `npm trust` bind beside
+    // it, and the script says so at length.
+    "release:promote": "tools/release/promote-latest.sh",
+    "release:promote:test": "tools/release/test-promote-latest.sh",
     // What actually reached npm, read from the registry. `publish.yml` runs
     // it after publishing, because `uf@0.0.0-alpha.2` had a tag, a GitHub
     // release and nothing on npm, and nothing noticed. See #142.
@@ -252,6 +270,7 @@ export default defineConfig({
         "publishable",
         "publishable:test",
         "release:trust:test",
+        "release:promote:test",
         "release:bump:test",
         "release:changelog",
         "release:changelog:test",
