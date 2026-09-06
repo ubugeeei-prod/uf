@@ -1,0 +1,819 @@
+---
+title: "Build a reading list · uf"
+---
+
+<p className="eyebrow">Getting started</p>
+
+# Build a reading list
+
+<div className="lede">
+One application, from `uf create` to a directory you can upload: routing, a
+layout, a loader, shared state, an accessible tab list, a validated form, and
+the tests for all of it. Every command on this page was run, and every block of
+terminal output is what it printed.
+</div>
+
+## What you are building
+
+A page listing articles somebody means to read, a page per article, a tab list
+that filters by topic, a save button whose count appears in the header, and a
+form that adds a suggestion. Eleven files, three of which are tests.
+
+The point is not the application. It is that routing, data, state, forms, UI
+primitives, type checking, formatting, testing and the build are one toolchain
+with one config file — and this page is the evidence, because nothing below
+installs a plugin, writes a second config, or configures a transform.
+
+## Before you start
+
+The `@uniflowed/*` packages are **not on npm yet**, so `uf install` in a fresh
+project cannot fetch them; see
+[publishing status](/reference/packages). This application was written and run
+inside uf's own repository, where the packages resolve through the npm
+workspace. Everything else here — the commands, the code, the output — is what
+a published toolchain gives you, and the day the packages land, the only step
+that changes is the one that installs them.
+
+You need [uf installed](/guide/install) and a JavaScript host. The transcripts
+below are `uf 0.0.0-alpha.5` on Node v25.8.1.
+
+## Scaffold it
+
+<div className="command"><code>uf create app react reading-list</code></div>
+
+<figure className="terminal">
+
+```
+uf create · reading-list
+────────────────────────
+
+  reading-list
+  ├─ app
+  │  ├─ Counter.js
+  │  ├─ _uf.layout.js
+  │  ├─ _uf.page.js
+  │  ├─ _uf.page.test.js
+  │  └─ useCounter.js
+  ├─ .gitignore
+  ├─ app.js
+  ├─ package.json
+  └─ uf.config.js
+
+  next steps
+    1. cd reading-list
+    2. uf install
+    3. uf dev
+
+✓ created 9 files in /private/tmp/claude-501/cap/reading-list
+```
+
+</figure>
+
+`react` is the template and `reading-list` is the directory. Both are
+positional, and the template is not optional today even though there is only one
+of it.
+
+Nine files, and no `vite.config.ts`, `babel.config.js`, `.eslintrc`,
+`tsconfig.json` or `vitest.config.ts` among them. The config is this, entire:
+
+```js
+// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  tasks: {
+    dev: { command: "uf dev" },
+    build: { command: "uf build" },
+    check: { command: "uf check" },
+    lint: { command: "uf lint" },
+    fmt: { command: "uf fmt" },
+    test: { command: "uf test" },
+  },
+});
+```
+
+Nothing in it describes the application. `app/` is the route root and `app.js`
+is the entry because those are the defaults; the `tasks` block is there so
+`uf run build` and CI say the same thing. Every option is in
+[the config reference](/reference/config).
+
+Delete the three files the template wrote as a demonstration —
+`app/Counter.js`, `app/useCounter.js` and `app/_uf.page.test.js` — and start.
+
+## The data
+
+Plain Flow, no framework in it. This is the module everything else reads:
+
+```js
+// @flow
+
+/// The subject of an article. A union rather than a set of loose strings, so
+/// the `match` in `topicLabel` is exhaustive: adding a topic stops the project
+/// compiling until every place that reads one has been updated.
+export type Topic = "flow" | "react" | "rust";
+
+/// One saved article. `slug` is the URL segment, so it is also the identity:
+/// two articles with the same slug would be one page.
+export type Article = {
+  readonly slug: string,
+  readonly title: string,
+  readonly author: string,
+  readonly minutes: number,
+  readonly topic: Topic,
+};
+
+const ARTICLES: $ReadOnlyArray<Article> = [
+  {
+    slug: "component-syntax",
+    title: "Component syntax, and what it removes",
+    author: "Ada",
+    minutes: 6,
+    topic: "flow",
+  },
+  {
+    slug: "the-compiler-is-not-magic",
+    title: "The React Compiler is not magic",
+    author: "Grace",
+    minutes: 11,
+    topic: "react",
+  },
+  {
+    slug: "one-parse",
+    title: "One parse, five tools",
+    author: "Alan",
+    minutes: 4,
+    topic: "rust",
+  },
+];
+
+export function listArticles(): $ReadOnlyArray<Article> {
+  return ARTICLES;
+}
+
+export function findArticle(slug: string): Article | null {
+  return ARTICLES.find((article) => article.slug === slug) ?? null;
+}
+
+export function topicLabel(topic: Topic): string {
+  return match (topic) {
+    "flow" => "Flow",
+    "react" => "React",
+    "rust" => "Rust",
+  };
+}
+```
+
+`match` is an expression, and over a union of string literals it is exhaustive:
+add `"go"` to `Topic` and `uf check` fails here rather than rendering
+`undefined` in production. [Flow, the modern parts](/guide/flow) is the longer
+version of that argument.
+
+One thing to copy from this file rather than from habit: `readonly` on an
+object property, not `+`. The variance sigil is deprecated in modern Flow, and
+`uf check` reports it as an error rather than a style note.
+
+## The list page
+
+A page is `_uf.page.js`, and a page that needs data exports a `loader` that runs
+before it renders:
+
+```js
+// @flow
+import { Link } from "@uniflowed/router";
+
+import { AddArticle } from "./AddArticle.js";
+import { type Article, listArticles } from "./articles.js";
+import { TopicTabs } from "./TopicTabs.js";
+
+export async function loader(): Promise<{ readonly articles: $ReadOnlyArray<Article> }> {
+  return { articles: listArticles() };
+}
+
+export component Page(data: { readonly articles: $ReadOnlyArray<Article> }) {
+  return (
+    <>
+      <h1>Reading list</h1>
+      <TopicTabs articles={data.articles} />
+      <h2>Everything</h2>
+      <ul>
+        {data.articles.map((article) => (
+          <li key={article.slug}>
+            <Link to={`/articles/${article.slug}`}>{article.title}</Link>
+          </li>
+        ))}
+      </ul>
+      <AddArticle />
+    </>
+  );
+}
+```
+
+The router hands every page three props — `params`, `searchParams` and `data` —
+and a `component` declaration takes the ones it wants, by name. Here that is
+`data`, whose type is the loader's return type written a second time: uf does
+not infer one from the other.
+
+Export it as `Page`, not as a default. Both work — the router looks for
+`module.default ?? module.Page` — but `uf check` warns on a default-exported
+component, on the grounds that a route wired by name is easier to find than one
+wired by position.
+
+## The article page
+
+A directory in brackets is a parameter, so
+`app/articles/[slug]/_uf.page.js` serves `/articles/one-parse`:
+
+```js
+// @flow
+import { notFound } from "@uniflowed/router";
+
+import { type Article, findArticle, listArticles, topicLabel } from "../../articles.js";
+
+export function generateStaticParams(): $ReadOnlyArray<{ readonly slug: string }> {
+  return listArticles().map((article) => ({ slug: article.slug }));
+}
+
+export async function loader({
+  params,
+}: {
+  readonly params: { readonly slug: string },
+}): Promise<{ readonly article: Article }> {
+  const article = findArticle(params.slug);
+  if (article == null) {
+    throw notFound();
+  }
+  return { article };
+}
+
+export component Page(data: { readonly article: Article }) {
+  return (
+    <article>
+      <h1>{data.article.title}</h1>
+      <p>
+        {data.article.author} · {topicLabel(data.article.topic)} · {data.article.minutes} min
+      </p>
+    </article>
+  );
+}
+```
+
+`generateStaticParams` is what makes a parameterised route prerenderable: the
+build asks it which parameter sets exist and writes one HTML file for each.
+Without it, a dynamic route is skipped by `uf build` — no page, and no warning
+saying so — which is the one thing on this page that cost a rebuild to discover.
+
+`notFound()` is written `throw notFound()` here. It does throw on its own, and
+[the routing page](/guide/routing) describes it that way; the `throw` is for the
+type checker, which cannot yet see through an import to a package
+([issue #248](https://github.com/ubugeeei-prod/uf/issues/248)) and so still
+believes `article` may be `null` on the next line.
+
+## The layout
+
+`app/_uf.layout.js` renders the document and receives the page as `children`:
+
+```js
+// @flow
+import { Link } from "@uniflowed/router";
+
+import { SavedCount } from "./SavedCount.js";
+
+export component Layout(children: mixed) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Reading list</title>
+      </head>
+      <body>
+        <header>
+          <Link to="/">Reading list</Link>
+          <SavedCount />
+        </header>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+`children: mixed`, not `React.Node`, and that is not a stylistic choice.
+`uf check` resolves a type imported from a relative module — the `Article` above
+proves it — and does not yet resolve one imported by a package name, so
+`React.Node` from `@uniflowed/react` is an any-typed value and using it as an
+annotation is an error. `mixed` is what the scaffold writes, for the same
+reason. [Issue #248](https://github.com/ubugeeei-prod/uf/issues/248) is the work
+that changes this line back.
+
+A layout stays mounted while you navigate between pages under it, so the
+header's count survives navigation without being lifted anywhere.
+
+## State two components share
+
+`@uniflowed/state` is atoms: a value declared at module scope, read and written
+from anywhere, with no provider to mount and no context to thread.
+
+```js
+"use client";
+// @flow
+import { action, atom, selector } from "@uniflowed/state";
+
+/// The slugs the reader has saved. One atom, written from the list and read
+/// from the header, with nothing passed between them.
+export const savedSlugs = atom<$ReadOnlyArray<string>>([]);
+
+/// Derived, so the header re-renders when the count changes and not when the
+/// list is rewritten with the same length.
+export const savedCount = selector<number>((get) => get(savedSlugs).length);
+
+/// A write-only atom: `useSetAtom(toggleSaved)` gives a component the setter
+/// without subscribing it to the list.
+export const toggleSaved = action<string>((get, set, slug) => {
+  const saved = get(savedSlugs);
+  set(savedSlugs, saved.includes(slug) ? saved.filter((each) => each !== slug) : [...saved, slug]);
+});
+
+/// Titles the reader typed into the form on this page. Client-side only: this
+/// is what the form writes, and it is thrown away on reload.
+export const suggestions = atom<$ReadOnlyArray<string>>([]);
+
+export const suggest = action<string>((get, set, title) => {
+  set(suggestions, [...get(suggestions), title]);
+});
+```
+
+The header reads the derived count and nothing else:
+
+```js
+"use client";
+// @flow
+import { useAtomValue } from "@uniflowed/state";
+
+import { savedCount } from "./state.js";
+
+export component SavedCount() {
+  const count = useAtomValue(savedCount);
+  return <span aria-live="polite">{count} saved</span>;
+}
+```
+
+If you have used Jotai the shape is familiar and the naming is not:
+`atom(value)`, `atom(read)`, `atom(read, write)` and `atom(null, write)` are
+four separate functions here — `atom`, `selector`, `writableSelector` and
+`action` — because Flow resolves an overload set worse than TypeScript does, and
+because `atom(f)` cannot tell a derived atom from a primitive one holding a
+function. [The state guide](/guide/state) has the rest of the differences,
+including the one that will surprise you: an async atom is a `Loadable` value,
+not something a component suspends on.
+
+`"use client"` marks the module as the browser's. State at module scope is
+per-process on a server, so an application that renders per request should hand
+each request its own store with `Provider`; a prerender like this one does not.
+
+## A tab list you can use with a keyboard
+
+`@uniflowed/ui` ships behaviour and no styles. This is the whole filter:
+
+```js
+"use client";
+// @flow
+import { useAtomValue, useSetAtom } from "@uniflowed/state";
+import { Tabs } from "@uniflowed/ui";
+
+import { type Article, type Topic, topicLabel } from "./articles.js";
+import { savedSlugs, toggleSaved } from "./state.js";
+
+const TOPICS: $ReadOnlyArray<Topic> = ["flow", "react", "rust"];
+
+component SaveButton(slug: string) {
+  const saved = useAtomValue(savedSlugs);
+  const toggle = useSetAtom(toggleSaved);
+  const isSaved = saved.includes(slug);
+  return (
+    <button type="button" aria-pressed={isSaved} onClick={() => toggle(slug)}>
+      {isSaved ? "Saved" : "Save"}
+    </button>
+  );
+}
+
+export component TopicTabs(articles: $ReadOnlyArray<Article>) {
+  return (
+    <Tabs.Root defaultValue="flow">
+      <Tabs.List aria-label="Topics">
+        {TOPICS.map((topic) => (
+          <Tabs.Tab key={topic} value={topic}>
+            {topicLabel(topic)}
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
+      {TOPICS.map((topic) => (
+        <Tabs.Panel key={topic} value={topic}>
+          <ul>
+            {articles
+              .filter((article) => article.topic === topic)
+              .map((article) => (
+                <li key={article.slug}>
+                  {article.title} <SaveButton slug={article.slug} />
+                </li>
+              ))}
+          </ul>
+        </Tabs.Panel>
+      ))}
+    </Tabs.Root>
+  );
+}
+```
+
+What that bought, without a line of it being written here: `role="tablist"`,
+`role="tab"` and `role="tabpanel"` wired to each other in both directions,
+exactly one tab in the page's tab order, arrow keys that move along the list and
+wrap, `Home` and `End`, and `ArrowDown` deliberately left alone so it still
+scrolls the page. Each of those is an assertion in `tests/library/ui.test.js`,
+and [the UI guide](/guide/ui) maps every key of every component to the test that
+holds it.
+
+`className` passes through every part, so these take a stylesheet, CSS Modules,
+or uf's own presets — [styling](/guide/styling) covers the last of those, and
+what about it does not work yet.
+
+## The form
+
+```js
+"use client";
+// @flow
+import { useForm } from "@uniflowed/form";
+import { useAtomValue, useSetAtom } from "@uniflowed/state";
+
+import { suggestions, suggest } from "./state.js";
+
+export component AddArticle() {
+  const { register, handleSubmit, errorProps, formState, reset } = useForm({
+    defaultValues: { title: "", minutes: "" },
+  });
+  const add = useSetAtom(suggest);
+  const added = useAtomValue(suggestions);
+
+  return (
+    <section>
+      <h2>Suggest an article</h2>
+      <form
+        onSubmit={handleSubmit((values) => {
+          add(values.title);
+          reset();
+        })}
+      >
+        <label htmlFor="title">Title</label>
+        <input id="title" {...register("title", { required: "A title is required" })} />
+        {formState.errors.title != null && (
+          <p {...errorProps("title")}>{formState.errors.title.message}</p>
+        )}
+
+        <label htmlFor="minutes">Minutes</label>
+        <input
+          id="minutes"
+          {...register("minutes", {
+            required: "How long is it?",
+            valueAsNumber: true,
+            min: { value: 1, message: "At least a minute" },
+          })}
+        />
+        {formState.errors.minutes != null && (
+          <p {...errorProps("minutes")}>{formState.errors.minutes.message}</p>
+        )}
+
+        <button type="submit" disabled={formState.isSubmitting}>
+          Add
+        </button>
+      </form>
+      <ul>
+        {added.map((title) => (
+          <li key={title}>{title}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+```
+
+The inputs are uncontrolled: `register` gives each one a `name`, a `ref` and —
+once it has failed — `aria-invalid="true"` and an `aria-describedby` pointing at
+the message. `errorProps("title")` supplies the other half, the matching `id` and
+`role="alert"`, so the wiring is a pair of calls rather than a convention you
+have to remember. Neither attribute is emitted while the field is valid, because
+an `aria-describedby` pointing at an element that is not there makes a screen
+reader announce nothing at all.
+
+Coming from React Hook Form, three differences matter here and
+[the form guide](/guide/form) has the rest. Errors are flat, keyed by the string
+you registered — `errors["profile.city"]`, not `errors.profile.city`. Field
+paths are `string` and values are `mixed`, because Flow has no template-literal
+types and a `FieldPath<T>` that is really `string` would be a type pretending to
+check something. And reading `formState` where you called `useForm` costs one
+render when `isDirty` first turns on and two per submit, rather than the zero
+React Hook Form buys with a `Proxy` — a technique that depends on a render
+having happened, which is exactly what the React Compiler is allowed to skip.
+
+## Test it
+
+Three files: one that needs nothing, and two that render.
+
+```js
+// @flow
+import { describe, expect, it } from "@uniflowed/test";
+
+import { findArticle, listArticles, topicLabel } from "./articles.js";
+
+describe("the reading list", () => {
+  it("finds an article by its slug", () => {
+    expect(findArticle("one-parse")?.author).toBe("Alan");
+  });
+
+  it("answers null for a slug nothing matches", () => {
+    expect(findArticle("nope")).toBe(null);
+  });
+
+  it("gives every topic a label", () => {
+    for (const article of listArticles()) {
+      expect(topicLabel(article.topic)).not.toBe("");
+    }
+  });
+});
+```
+
+A component test imports the runner and the DOM helpers from one place,
+`@uniflowed/testing`, and needs no setup file: a DOM is installed on the first
+render, on whichever host is running.
+
+```js
+// @flow
+import { describe, expect, it, render, screen, userEvent } from "@uniflowed/testing";
+
+import { listArticles } from "./articles.js";
+import { TopicTabs } from "./TopicTabs.js";
+
+describe("TopicTabs", () => {
+  it("shows one topic at a time", () => {
+    render(<TopicTabs articles={listArticles()} />);
+    expect(screen.getByRole("tabpanel").textContent).toContain("Component syntax");
+    expect(screen.queryByText(/One parse/)).toBe(null);
+  });
+
+  it("moves between topics with the arrow keys", async () => {
+    render(<TopicTabs articles={listArticles()} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Flow" }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tabpanel").textContent).toContain("React Compiler");
+  });
+});
+```
+
+The form's test asserts the accessibility wiring rather than trusting it:
+
+```js
+// @flow
+import { describe, expect, fireEvent, it, render, screen, userEvent } from "@uniflowed/testing";
+
+import { AddArticle } from "./AddArticle.js";
+
+describe("AddArticle", () => {
+  it("reports a missing title, and wires the message to the input", async () => {
+    const { container } = render(<AddArticle />);
+    fireEvent.submit(container.querySelector("form"));
+
+    const message = await screen.findByText("A title is required");
+    expect(message.getAttribute("role")).toBe("alert");
+
+    const title = screen.getByLabelText("Title");
+    expect(title.getAttribute("aria-invalid")).toBe("true");
+    expect(title.getAttribute("aria-describedby")).toBe(message.getAttribute("id"));
+  });
+
+  it("adds the article once both fields are answered", async () => {
+    render(<AddArticle />);
+    await userEvent.type(screen.getByLabelText("Title"), "Reading the Flow parser");
+    await userEvent.type(screen.getByLabelText("Minutes"), "9");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByText("Reading the Flow parser")).toBeInTheDocument();
+  });
+});
+```
+
+<div className="command"><code>uf test</code></div>
+
+<figure className="terminal">
+
+```
+uf test · reading-list
+──────────────────────
+
+  ✓ app/AddArticle.test.js  AddArticle > reports a missing title, and wires the message to the input
+  ✓ app/AddArticle.test.js  AddArticle > adds the article once both fields are answered
+  ✓ app/TopicTabs.test.js   TopicTabs > shows one topic at a time
+  ✓ app/TopicTabs.test.js   TopicTabs > moves between topics with the arrow keys
+  ✓ app/articles.test.js    the reading list > finds an article by its slug
+  ✓ app/articles.test.js    the reading list > answers null for a slug nothing matches
+  ✓ app/articles.test.js    the reading list > gives every topic a label
+
+  output
+  app/AddArticle.test.js
+    (node:7271) Warning: `--localstorage-file` was provided without a valid path
+    (Use `node --trace-warnings ...` to show where the warning was created)
+  app/TopicTabs.test.js
+    (node:7273) Warning: `--localstorage-file` was provided without a valid path
+    (Use `node --trace-warnings ...` to show where the warning was created)
+
+  slowest files
+  file                    duration
+  app/TopicTabs.test.js      1.38s
+  app/AddArticle.test.js     1.38s
+  app/articles.test.js       267ms
+
+  run   ························ 1.39s
+  total ························ 1.39s
+
+  passed    7
+  failed    0
+  skipped   0
+  todo      0
+  files     3
+  workers   12
+  schedule  3 recorded, 0 by size
+  timings   .uf/test-timings.json
+  host      node
+
+✓ 7 passed, 0 failed in 1.39s
+```
+
+</figure>
+
+Those two Node warnings are noise from installing the DOM, not from your test:
+[issue #308](https://github.com/ubugeeei-prod/uf/issues/308). They are left in
+the transcript because a clean one would have to be invented, and a page whose
+whole claim is that these are real cannot start there.
+
+## Check and format
+
+<div className="command"><code>uf check</code></div>
+
+<figure className="terminal">
+
+```
+uf check
+────────
+
+  files checked  15
+  errors         0
+  warnings       0
+  rules skipped  16
+
+  › these rules need Flow type inference, which uf does not implement yet
+    - flow/default-import-access
+    - flow/invalid-import-star-use
+    - flow/invalid-this-arg
+    - flow/libdef-override
+    - flow/nonstrict-import
+    - and 11 more
+
+✓ no problems
+
+  types checked  15
+  inference      28.0ms
+  builtins       54.7ms (cold)
+
+  › these imports are typed as any; uf resolved no module for them
+    - @uniflowed/config
+    - @uniflowed/form
+    - @uniflowed/router
+    - @uniflowed/state
+    - @uniflowed/test
+    - and 2 more
+```
+
+</figure>
+
+The last paragraph is the honest part, and it is where `children: mixed` came
+from. Nothing above is checked *against* the router's or the form's real types
+yet — [issue #248](https://github.com/ubugeeei-prod/uf/issues/248) is the work
+that changes that, and `flow` itself checks what uf cannot.
+
+`uf fmt --check` exits 0 on every file in this page, which is how they were
+written: the code here was formatted by the tool rather than by hand.
+
+## Build it
+
+<div className="command"><code>uf build --size-report</code></div>
+
+<figure className="terminal">
+
+```
+uf build · reading-list
+───────────────────────
+
+  config       ························ 122.6µs
+  routes       ························ 192.3µs
+  router types ························ 300.3µs
+  rsc analysis ························     1ms
+  vite         ························   3.49s
+  manifest     ························ 726.5µs
+  rsc manifest ························ 272.9µs
+  bundle size  ························   2.95s
+  total        ························   6.45s
+
+  engine             vite
+  host               node
+  entries            app.js
+  routes             2
+  prerendered pages  4
+  modules            11
+  client components  3
+  server actions     0
+  rsc diagnostics    0
+
+  shipped
+    assets  17
+    raw     245.35 kB
+    gzip    80.11 kB
+    brotli  69.45 kB
+
+    asset                                          kind             gzip        raw
+    assets/client-Ck9fJOtz.js.map                  source-map  176.63 kB  881.84 kB
+    assets/client-Ck9fJOtz.js                      javascript   63.64 kB  202.42 kB
+    assets/_uf.page-CCpsAGfo.js.map                source-map   58.84 kB  213.07 kB
+    assets/state-C5bwrBVn.js.map                   source-map   29.72 kB   98.43 kB
+    assets/_uf.page-CCpsAGfo.js                    javascript   10.10 kB   28.65 kB
+    assets/state-C5bwrBVn.js                       javascript    2.58 kB    6.56 kB
+    assets/articles-DzlNJoIc.js.map                source-map      911 B    2.00 kB
+    assets/_uf.page-Dk6TuWlb.js.map                source-map      803 B    1.97 kB
+    index.html                                     html            801 B    1.95 kB
+    assets/_uf.layout-DVv7YWPk.js.map              source-map      743 B    1.92 kB
+    assets/_uf.layout-DVv7YWPk.js                  javascript      522 B      914 B
+    assets/_uf.page-Dk6TuWlb.js                    javascript      522 B      933 B
+    assets/articles-DzlNJoIc.js                    javascript      415 B      651 B
+    articles/the-compiler-is-not-magic/index.html  html            407 B      676 B
+    articles/component-syntax/index.html           html            406 B      671 B
+    articles/one-parse/index.html                  html            393 B      634 B
+    .vite/manifest.json                            json            323 B    1.27 kB
+
+  output
+    reading-list
+    ├─ dist
+    │  ├─ articles
+    │  │  ├─ component-syntax
+    │  │  │  └─ index.html
+    │  │  ├─ one-parse
+    │  │  │  └─ index.html
+    │  │  └─ the-compiler-is-not-magic
+    │  │     └─ index.html
+    │  ├─ index.html
+    │  ├─ uf-build-manifest.json
+    │  ├─ uf-bundle-report.json
+    │  └─ uf-rsc-manifest.json
+    └─ router.js
+```
+
+</figure>
+
+Two routes, four prerendered pages: `/`, and one per `generateStaticParams`
+entry. The tab list is in the HTML with its ARIA already on it, the loader ran
+during the build, and 63.6 kB of the 80 kB gzipped is React itself.
+
+Thirty-eight lines are cut from that transcript, all of them the same warning:
+`! [plugin uf:flow] a function: This value cannot be modified` and two variants
+of it, from React Compiler passes over code inside `@uniflowed/form` and
+`@uniflowed/state`. They name no file, no line and no function, there is nothing
+an application author can do about them, and they are
+[issue #307](https://github.com/ubugeeei-prod/uf/issues/307). They are the only
+lines removed from any output on this page.
+
+`dist/` is static files, and any static host serves them. None of the three JSON
+files uf writes beside the HTML is needed at run time: `uf-build-manifest.json`,
+`uf-bundle-report.json` and `uf-rsc-manifest.json` are for you and for tooling.
+There is no deployment guide on this site yet — the portable-output work is
+[issue #245](https://github.com/ubugeeei-prod/uf/issues/245) and the runtime
+coverage is [issue #246](https://github.com/ubugeeei-prod/uf/issues/246).
+
+`uf dev` runs the same application with hot reload. It is the one command on
+this page with no transcript: the sandbox this was written in cannot bind a
+port, and output nobody produced does not belong here.
+
+## What did not work
+
+Four things, found while writing this page, left visible rather than written
+around.
+
+| What | Where it bites | Tracked |
+| --- | --- | --- |
+| `stylex.create` compiles to class names and no stylesheet reaches `dist/` | Styling this application with uf's own default | [#306](https://github.com/ubugeeei-prod/uf/issues/306) |
+| React Compiler diagnostics say `a function:` and name no file | 38 warnings in the build above, none actionable | [#307](https://github.com/ubugeeei-prod/uf/issues/307) |
+| A component test prints Node's `--localstorage-file` warning | The `uf test` transcript above | [#308](https://github.com/ubugeeei-prod/uf/issues/308) |
+| A type imported by package name is `any` | `children: mixed`, `throw notFound()` | [#248](https://github.com/ubugeeei-prod/uf/issues/248) |
+
+## Where to go next
+
+[Routing](/guide/routing) for middleware, route handlers and typed links.
+[The UI guide](/guide/ui) for the other six primitives and their keyboard maps.
+[State](/guide/state), [forms](/guide/form) and [effects](/guide/effect) for the
+libraries this application only touched. [Testing](/guide/testing) for watch
+mode, and for where the runner stands against Bun.

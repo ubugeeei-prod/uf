@@ -71,6 +71,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "From an empty directory to a built site.",
       },
       {
+        href: "/guide/tutorial",
+        title: "Build a reading list",
+        blurb: "One application end to end: routes, data, state, a form, tests, the build.",
+      },
+      {
         href: "/guide/migrate",
         title: "Migrating to uf",
         blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
