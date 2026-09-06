@@ -9,6 +9,7 @@ use uf_infra::InlineVec;
 use uf_rsc::{Token, TokenKind, matching_close, matching_open};
 
 use crate::bindings::is_reference;
+use crate::scope::ident_at;
 
 /// Parameter names of one function. Four covers almost every component.
 pub type ParamList = InlineVec<CompactString, 4>;
@@ -418,6 +419,38 @@ pub fn compound_assignment(tokens: &[Token], index: usize) -> bool {
                 TokenKind::Punct(b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^')
             )
         })
+}
+
+/// Whether the contextual keyword at `index` is followed by a declaration.
+///
+/// `component` and `hook` are contextual keywords: both are ordinary
+/// identifiers everywhere they are not immediately followed by a name and a
+/// parameter list. React's own Fast Refresh runtime holds the DevTools global
+/// in a variable called `hook` and writes to it at the start of a line — where
+/// there is no preceding identifier to say otherwise — and the walk read
+/// `hook.inject = …` as a hook declaration. The body it then opened swallowed
+/// the rest of the enclosing function, so every write to module state inside it
+/// was reported as a write during render.
+///
+/// A name and then `(`, or `<` for a generic. Nothing else is either keyword.
+pub fn names_a_declaration(source: &str, tokens: &[Token], index: usize) -> bool {
+    let punct = |at: usize, byte: u8| tokens.get(at).is_some_and(|token| token.is_punct(byte));
+    ident_at(source, tokens, index + 1).is_some()
+        && (punct(index + 2, b'(') || punct(index + 2, b'<'))
+}
+
+/// The identifier immediately before `index` on the same line, if there is one.
+///
+/// The walk carries this as it goes, under the name `previous`, and this is the
+/// same answer computed from a standing token vector: a preceding identifier,
+/// with any other token — or a line break — clearing it. The line break matters
+/// and is not an accident of the walk's bookkeeping: it is what keeps a name at
+/// the start of a line from being read as the tail of the statement above it.
+pub fn previous_word<'a>(source: &'a str, tokens: &[Token], index: usize) -> Option<&'a str> {
+    if tokens.get(index)?.newline_before {
+        return None;
+    }
+    ident_at(source, tokens, index.checked_sub(1)?)
 }
 
 #[cfg(test)]
