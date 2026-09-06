@@ -257,67 +257,99 @@ impl Drop for DevServer {
     }
 }
 
+/// How many ports to try before giving up on getting one to ourselves.
+///
+/// The port is chosen by binding zero and letting the listener go, so between
+/// choosing it and `uf dev` binding it, anything on the machine can take it —
+/// and Vite's default is to move to the next free port rather than fail, so a
+/// lost race is a server that is up somewhere this test is not asking about.
+/// That is the shape of both CI failures so far: one where nothing ever
+/// answered, and one where something answered and then went away.
+///
+/// Retrying is honest here because the subject is "the dev server serves the
+/// docs site", not "binding a port works first time". It is capped, it only
+/// covers the window *before* the first answer, and every attempt's output is
+/// reported if the last one fails — so a genuinely broken dev server fails
+/// three times and prints three servers' reasons, which is more than the one
+/// line this used to give.
+const PORT_ATTEMPTS: usize = 3;
+
 #[test]
 fn dev_serves_the_docs_site_through_vite() {
     if !fixture_ready() || !loopback_ready() {
         return;
     }
     let root = docs_root();
-    let port = free_port();
-    let said = Mutex::new(String::new());
+    let mut refused = Vec::new();
 
-    std::thread::scope(|scope| {
-        // Wait for the port to answer rather than for a line of the banner to
-        // look a particular way. Parsing the rendered banner made this test
-        // depend on colour and on the exact wording, and a parse that quietly
-        // found nothing ended the test before it asserted anything — which is
-        // how a dev server that answered every request with "Cannot GET /"
-        // passed it.
-        let mut server = DevServer::start(&root, port, scope, &said);
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
 
-        let body = wait_for_http(port, "/", Duration::from_secs(90)).unwrap_or_else(|| {
-            panic!(
-                "the dev server never answered on port {port}\n{}",
+        let served = std::thread::scope(|scope| {
+            // Wait for the port to answer rather than for a line of the banner
+            // to look a particular way. Parsing the rendered banner made this
+            // test depend on colour and on the exact wording, and a parse that
+            // quietly found nothing ended the test before it asserted anything
+            // — which is how a dev server that answered every request with
+            // "Cannot GET /" passed it.
+            let mut server = DevServer::start(&root, port, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_page(&mut server, port, &said, &body);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
                 server.evidence(&said)
-            )
+            ));
+            // Inside the scope on purpose: the drain threads end when the
+            // pipes close, and the pipes close when the child does.
+            drop(server);
+            false
         });
 
-        assert!(
-            body.starts_with("HTTP/1.1 200"),
-            "the dev server must render the page, not 404:\n{body}"
-        );
-        assert!(body.contains("<!doctype html>"), "{body}");
-        assert!(
-            body.contains("Unified Toolchain for Flow"),
-            "the page did not render:\n{body}"
-        );
-        assert!(
-            body.contains("/@vite/client"),
-            "Vite's client was not injected:\n{body}"
-        );
-        assert!(
-            body.contains("@react-refresh"),
-            "the refresh preamble was not injected:\n{body}"
-        );
+        if served {
+            return;
+        }
+    }
 
-        // A nested route proves the router ran, not just that something
-        // answered.
-        let guide = get(&mut server, port, "/guide/", &said);
-        assert!(guide.starts_with("HTTP/1.1 200"), "{guide}");
-        assert!(guide.contains("What uf is"), "{guide}");
+    panic!(
+        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
 
-        // And a path with no route must not be answered with somebody else's
-        // page.
-        let missing = get(&mut server, port, "/definitely-not-a-page/", &said);
-        assert!(
-            missing.starts_with("HTTP/1.1 404"),
-            "an unrouted path must be a 404:\n{missing}"
-        );
+/// Everything the served page and the routes have to be, once one is served.
+fn assert_page(server: &mut DevServer, port: u16, said: &Mutex<String>, body: &str) {
+    assert!(
+        body.starts_with("HTTP/1.1 200"),
+        "the dev server must render the page, not 404:\n{body}"
+    );
+    assert!(body.contains("<!doctype html>"), "{body}");
+    assert!(
+        body.contains("Unified Toolchain for Flow"),
+        "the page did not render:\n{body}"
+    );
+    assert!(
+        body.contains("/@vite/client"),
+        "Vite's client was not injected:\n{body}"
+    );
+    assert!(
+        body.contains("@react-refresh"),
+        "the refresh preamble was not injected:\n{body}"
+    );
 
-        // Inside the scope on purpose: the drain threads end when the pipes
-        // close, and the pipes close when the child does.
-        drop(server);
-    });
+    // A nested route proves the router ran, not just that something answered.
+    let guide = get(server, port, "/guide/", said);
+    assert!(guide.starts_with("HTTP/1.1 200"), "{guide}");
+    assert!(guide.contains("What uf is"), "{guide}");
+
+    // And a path with no route must not be answered with somebody else's page.
+    let missing = get(server, port, "/definitely-not-a-page/", said);
+    assert!(
+        missing.starts_with("HTTP/1.1 404"),
+        "an unrouted path must be a 404:\n{missing}"
+    );
 }
 
 /// One request to a server that has already answered once, with the server's
