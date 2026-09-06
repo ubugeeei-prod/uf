@@ -97,7 +97,9 @@
 // `Tag` and `Layer` for services, with `layerProvide` feeding one layer into
 // another, `layerScoped` for a layer that acquires something, and one
 // memoised build per `provide`, so a layer reached twice in one graph is
-// built once and `runSync` still answers for a program that uses one.
+// built once and `runSync` still answers for a program that uses one; and
+// `Ref`, `Deferred` and `Semaphore` for the things two fibers have to share,
+// each of which a blocked fiber can be interrupted out of.
 //
 // **Experimental.** Requirement subtraction, for the reason above: `provide`,
 // `provideService` and `scoped` state the service they remove and let Flow
@@ -107,8 +109,12 @@
 // variable by a string compared at run time. `layerProvide` and `layerScoped`
 // subtract requirements the same way and carry the same caveat.
 //
-// **Not implemented.** `Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM;
-// streams; a fiber scheduler of its own (this runs on the host's microtask
+// **Not implemented.** `Queue`, `Hub` and STM — the first two are the same
+// waiting mechanism `Deferred` and `Semaphore` are built on with a buffer in
+// front, and STM is a transaction log and a retry-on-conflict scheduler,
+// which is larger than everything above it put together and has no use that a
+// serialised `Ref` cannot serve at a cost worth measuring first; streams;
+// a fiber scheduler of its own (this runs on the host's microtask
 // queue and its `sleep` is `setTimeout`); tracing, spans, metrics and the
 // logging layer; a `Runtime` or `ManagedRuntime` that builds a layer once and
 // runs many effects against it, so a layer handed to two `provide`s is still
@@ -260,6 +266,57 @@ type ScopeState = {
   readonly finalizers: Array<() => Effect<void, mixed, empty>>,
 };
 
+type RefCarrier<A> = {
+  readonly __kind: "Ref",
+  value: A,
+};
+
+/**
+ * A one-shot handshake: a value that has not been produced yet, and everyone
+ * waiting for it.
+ *
+ * `settled` is the `Exit` once there is one and `null` before, which is why
+ * it is not a plain `?A`: a `Deferred<?string>` completed with `null` is done,
+ * and telling that from "not yet" is the whole job.
+ */
+type DeferredState<A, E> = {
+  settled: ?Exit<A, E>,
+  readonly waiters: Set<(Exit<A, E>) => void>,
+};
+
+type DeferredCarrier<A, E> = {
+  readonly __kind: "Deferred",
+  readonly state: DeferredState<A, E>,
+};
+
+/** One fiber queued for permits, and how to tell it whether it got them. */
+type SemaphoreWaiter = {
+  readonly permits: number,
+  readonly settle: (taken: boolean) => void,
+};
+
+/**
+ * Permits, and the fibers queued for them in the order they asked.
+ *
+ * `capacity` is kept so that a request for more permits than exist can be a
+ * defect rather than a fiber that waits for ever: nothing will ever release
+ * enough, and a hang is the least debuggable way to say so.
+ *
+ * The queue is served strictly from the head. Letting a later small request
+ * past a waiting large one would raise throughput and starve the large one,
+ * and a semaphore nobody can rely on for the widest request is not a bound.
+ */
+type SemaphoreState = {
+  available: number,
+  readonly capacity: number,
+  readonly waiters: Array<SemaphoreWaiter>,
+};
+
+type SemaphoreCarrier = {
+  readonly __kind: "Semaphore",
+  readonly state: SemaphoreState,
+};
+
 /**
  * The interruption state one fiber shares with everything running inside it.
  *
@@ -313,6 +370,41 @@ export opaque type Tag<out Service>: Effect<Service, empty, Service> = TagCarrie
 
 /** A recipe for building services, itself possibly failing. */
 export opaque type Layer<out Out, out E = empty, out In = empty> = LayerCarrier<Out, E, In>;
+
+/**
+ * A place two fibers can both read and write.
+ *
+ * Invariant in `A`, unlike `Effect` and `Fiber`: a `Ref` is written as well as
+ * read, so a `Ref<string>` is not a `Ref<mixed>` — writing a number through
+ * the second would break the first.
+ *
+ * The operations are flat monomorphic functions — `refGet`, `refUpdate` — and
+ * not methods or a `Ref` namespace object. That is this package's convention
+ * rather than a preference expressed once more: there is no `pipe` with
+ * inference to lose, nothing to dispatch at run time, and a bundler can drop
+ * the eleven of these a program does not call. It is stated here because
+ * `Ref` is the first type where a namespace would have looked natural.
+ */
+export opaque type Ref<A> = RefCarrier<A>;
+
+/**
+ * A value one fiber will produce and others are waiting for.
+ *
+ * `Fiber` covers "wait for the thing this fiber returns". This covers the
+ * other one: waiting for a value nobody has promised yet — a one-shot
+ * handshake, a lazy singleton, "the first caller does the work and the rest
+ * wait".
+ */
+export opaque type Deferred<A, E = empty> = DeferredCarrier<A, E>;
+
+/**
+ * Permission to run, in a fixed number of copies.
+ *
+ * `all`'s `concurrency` bounds one call. This bounds a budget shared across
+ * call sites, which is what a rate-limited API needs: two independent
+ * `forEach`es against the same host can hold one of these between them.
+ */
+export opaque type Semaphore = SemaphoreCarrier;
 
 /**
  * The lifetime a resource is released at.
@@ -2244,6 +2336,348 @@ export function interrupt<A, E>(fiber: Fiber<A, E>): Effect<Exit<A, E>> {
       return success(await fiber.__promise);
     },
   });
+}
+
+/**
+ * A place two fibers can both read and write, starting at `initial`.
+ *
+ * An `Effect` rather than a value, so that making one is part of the program:
+ * a `Ref` built at module scope is shared by every run of that program, which
+ * is rarely what anybody wants and never what they meant to write.
+ *
+ * Every operation has a synchronous kernel, so a program that uses a `Ref` can
+ * still be answered by `runSync`.
+ */
+export function ref<A>(initial: A): Effect<Ref<A>> {
+  return sync(() => {
+    const made: RefCarrier<A> = { __kind: "Ref", value: initial };
+    return made;
+  });
+}
+
+/** What the ref holds now. */
+export function refGet<A>(self: Ref<A>): Effect<A> {
+  const step = (): Exit<A, empty> => success(self.value);
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Replace what the ref holds. */
+export function refSet<A>(self: Ref<A>, value: A): Effect<void> {
+  const step = (): Exit<void, empty> => {
+    self.value = value;
+    return success(undefined);
+  };
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/**
+ * Read, compute a new value and an answer, and write, without yielding.
+ *
+ * The one place a `Ref` is read and written, and the reason the rest of these
+ * are one line each. It needs no lock: `transform` runs between two property
+ * accesses in one step, and nothing in this runtime interleaves fibers except
+ * at an `await`. That is also the guarantee's boundary — a transform that
+ * returned an `Effect` would yield, and serialising *that* is what a semaphore
+ * is for. See `refUpdateEffect`.
+ *
+ * A transform that throws leaves the ref alone and becomes a defect, because
+ * half of a read-modify-write is worse than none of it.
+ */
+export function refModify<A, B>(self: Ref<A>, transform: (value: A) => [B, A]): Effect<B> {
+  const step = (): Exit<B, empty> => {
+    try {
+      const [answer, next] = transform(self.value);
+      self.value = next;
+      return success(answer);
+    } catch (error) {
+      return defect(error);
+    }
+  };
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Apply a function to what the ref holds. */
+export function refUpdate<A>(self: Ref<A>, transform: (value: A) => A): Effect<void> {
+  return refModify(self, (value) => [undefined, transform(value)]);
+}
+
+/** Apply a function, and give back what it produced. */
+export function refUpdateAndGet<A>(self: Ref<A>, transform: (value: A) => A): Effect<A> {
+  return refModify(self, (value) => {
+    const next = transform(value);
+    return [next, next];
+  });
+}
+
+/** Apply a function, and give back what was there before it. */
+export function refGetAndUpdate<A>(self: Ref<A>, transform: (value: A) => A): Effect<A> {
+  return refModify(self, (value) => [value, transform(value)]);
+}
+
+/** Replace what the ref holds, and give back what was there before. */
+export function refGetAndSet<A>(self: Ref<A>, value: A): Effect<A> {
+  return refModify(self, (current) => [current, value]);
+}
+
+/**
+ * Update a ref with an effect, one fiber at a time.
+ *
+ * This is Effect's `SynchronizedRef`, and it is a `Ref` and a `Semaphore` held
+ * together rather than a third opaque type. Passing the lock in is what makes
+ * the serialisation visible at the call site, and it lets two refs that must
+ * move together share one — which a bundled lock could not express.
+ *
+ * `refModify` needs no lock because it cannot yield. This can, so it must
+ * have one: without it, two fibers read the same value, both compute from it,
+ * and the second write silently discards the first.
+ */
+export function refUpdateEffect<A, E, R>(
+  self: Ref<A>,
+  lock: Semaphore,
+  transform: (value: A) => Effect<A, E, R>,
+): Effect<A, E, R> {
+  // Written with `flatMap` rather than the generator form: the runtime does
+  // not otherwise use its own `effect`, and a combinator that did would be the
+  // one place where a bug in the driver could not be debugged with the driver.
+  return withPermits(
+    lock,
+    1,
+    flatMap(refGet(self), (current) =>
+      flatMap(transform(current), (next) => as(refSet(self, next), next)),
+    ),
+  );
+}
+
+/**
+ * A value that has not been produced yet, and can be waited for.
+ *
+ * Completed at most once: the first `deferredSucceed` or `deferredFail` wins
+ * and says so by returning `true`, and every later one returns `false` rather
+ * than overwriting an answer somebody may already have acted on.
+ */
+export function deferred<A, E = empty>(): Effect<Deferred<A, E>> {
+  return sync(() => {
+    const made: DeferredCarrier<A, E> = {
+      __kind: "Deferred",
+      state: { settled: null, waiters: new Set() },
+    };
+    return made;
+  });
+}
+
+/**
+ * Wait for the value, and take its outcome as this effect's outcome.
+ *
+ * Interruptible, by the protocol `pause` uses for a `sleep`: a waker goes on
+ * the fiber's list, and cancelling the fiber ends the wait now. Getting this
+ * wrong is how a handshake becomes a fiber `interrupt` cannot stop, which is
+ * the whole reason a hand-written `Promise` and a `let` are not good enough
+ * for this.
+ *
+ * No synchronous kernel: waiting for a value nobody has produced is what this
+ * is, and an effect that pretended otherwise would have to answer for a value
+ * that does not exist. `deferredIsDone` is the question with a synchronous
+ * answer.
+ */
+export function deferredAwait<A, E>(self: Deferred<A, E>): Effect<A, E> {
+  return makeEffect({
+    run: (runContext) =>
+      new Promise((resolve) => {
+        const state = self.state;
+        const already = state.settled;
+        if (already != null) {
+          resolve(already);
+          return;
+        }
+        if (isInterrupted(runContext)) {
+          resolve(interruptedExit());
+          return;
+        }
+        const finish = (outcome: Exit<A, E>) => {
+          state.waiters.delete(deliver);
+          runContext.fiber.wakers.delete(wake);
+          resolve(outcome);
+        };
+        const deliver = (outcome: Exit<A, E>) => finish(outcome);
+        const wake = () => finish(interruptedExit());
+        state.waiters.add(deliver);
+        runContext.fiber.wakers.add(wake);
+      }),
+  });
+}
+
+/** Complete it with a value. `true` if this call was the one that did. */
+export function deferredSucceed<A, E>(self: Deferred<A, E>, value: A): Effect<boolean> {
+  const settled: Exit<A, E> = success(value);
+  const step = (): Exit<boolean, empty> => success(completeDeferred(self.state, settled));
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Complete it with a typed failure. `true` if this call was the one that did. */
+export function deferredFail<A, E>(self: Deferred<A, E>, error: E): Effect<boolean> {
+  const settled: Exit<A, E> = failure(failCause(error));
+  const step = (): Exit<boolean, empty> => success(completeDeferred(self.state, settled));
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/** Whether it has been completed, without waiting to find out. */
+export function deferredIsDone<A, E>(self: Deferred<A, E>): Effect<boolean> {
+  const step = (): Exit<boolean, empty> => success(self.state.settled != null);
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
+/**
+ * Settle a deferred and hand the outcome to everyone waiting.
+ *
+ * Deleting from the set inside the loop is safe for the reason `interruptFiber`
+ * gives: a `Set` iteration tolerates removal of entries it has reached, and a
+ * waiter only resolves a promise, which cannot add another before this
+ * returns. The `clear` afterwards is for waiters that were added and never
+ * reached, which cannot happen today and costs one call to keep true.
+ */
+function completeDeferred<A, E>(state: DeferredState<A, E>, outcome: Exit<A, E>): boolean {
+  if (state.settled != null) {
+    return false;
+  }
+  state.settled = outcome;
+  for (const waiter of state.waiters) {
+    waiter(outcome);
+  }
+  state.waiters.clear();
+  return true;
+}
+
+/**
+ * A budget of permits, shared by whoever holds this.
+ *
+ * `permits` is the capacity and the starting count. Asking for more than the
+ * capacity later is a defect rather than a wait, because nothing will ever
+ * release enough and a permanent hang is the least debuggable way to say so.
+ */
+export function semaphore(permits: number): Effect<Semaphore> {
+  return sync(() => {
+    const capacity = Math.max(0, Math.floor(permits));
+    const made: SemaphoreCarrier = {
+      __kind: "Semaphore",
+      state: { available: capacity, capacity, waiters: [] },
+    };
+    return made;
+  });
+}
+
+/** Run `body` holding one permit. */
+export function withPermit<A, E, R>(self: Semaphore, body: Effect<A, E, R>): Effect<A, E, R> {
+  return withPermits(self, 1, body);
+}
+
+/**
+ * Run `body` holding `permits` of them, and give them back however it ends.
+ *
+ * The same guarantee `ensuring` gives, and for the same reason: a permit that
+ * is not returned when the fiber holding it is interrupted is a budget that
+ * shrinks every time somebody cancels a request, until nothing can run at all.
+ * `finally` rather than a finalizer effect, because releasing is a counter and
+ * an array splice — it cannot fail, and it must not be interruptible.
+ *
+ * A fiber interrupted while *queued* never took a permit, so it returns
+ * without releasing one it does not hold.
+ */
+export function withPermits<A, E, R>(
+  self: Semaphore,
+  permits: number,
+  body: Effect<A, E, R>,
+): Effect<A, E, R> {
+  return makeEffect({
+    run: async (runContext) => {
+      const wanted = Math.max(0, Math.floor(permits));
+      if (wanted > self.state.capacity) {
+        return defect(
+          `withPermits asked for ${wanted} permits of a semaphore that has ${self.state.capacity}`,
+        );
+      }
+      const taken = await acquirePermits(self.state, wanted, runContext);
+      if (!taken) {
+        return interruptedExit();
+      }
+      try {
+        return await runKernel(body, runContext);
+      } finally {
+        releasePermits(self.state, wanted);
+      }
+    },
+  });
+}
+
+/**
+ * Take `wanted` permits, or wait for them. `false` means interrupted instead.
+ *
+ * A fiber that could be served immediately still queues when anybody is ahead
+ * of it, which is what keeps the order the one people asked in.
+ */
+function acquirePermits(
+  state: SemaphoreState,
+  wanted: number,
+  runContext: Context,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (isInterrupted(runContext)) {
+      resolve(false);
+      return;
+    }
+    if (state.waiters.length === 0 && state.available >= wanted) {
+      state.available -= wanted;
+      resolve(true);
+      return;
+    }
+    const waiter: SemaphoreWaiter = {
+      permits: wanted,
+      settle: (taken: boolean) => {
+        const queued = state.waiters.indexOf(waiter);
+        if (queued >= 0) {
+          state.waiters.splice(queued, 1);
+        }
+        runContext.fiber.wakers.delete(wake);
+        resolve(taken);
+      },
+    };
+    const wake = () => waiter.settle(false);
+    state.waiters.push(waiter);
+    runContext.fiber.wakers.add(wake);
+  });
+}
+
+/**
+ * Give permits back, and serve whoever the queue owes them to.
+ *
+ * Strictly from the head. Serving a later small request that happens to fit
+ * would raise throughput and starve a large one for ever, and a bound that the
+ * widest caller cannot rely on is not a bound.
+ */
+function releasePermits(state: SemaphoreState, permits: number): void {
+  state.available += permits;
+  while (state.waiters.length > 0 && state.available >= state.waiters[0].permits) {
+    const next = state.waiters[0];
+    state.available -= next.permits;
+    next.settle(true);
+  }
 }
 
 /**

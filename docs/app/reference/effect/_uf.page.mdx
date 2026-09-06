@@ -118,6 +118,97 @@ that is asleep for a minute takes effect now rather than in a minute.
 `interrupt` returns the fiber's `Exit` rather than `void`, so a caller can tell
 "cancelled in time" from "too late, it had finished".
 
+## What two fibers can share
+
+Starting and stopping fibers is the easy half of concurrency. Three types cover
+the coordinating half, and all three are the same waiting mechanism with a
+different list attached — which is why a fiber blocked on any of them can still
+be interrupted.
+
+| | |
+| --- | --- |
+| `Ref<A>` | A place two fibers can both read and write |
+| `Deferred<A, E>` | A value one fiber will produce and others are waiting for |
+| `Semaphore` | Permission to run, in a fixed number of copies |
+
+The operations are flat functions — `refGet`, `deferredAwait`, `withPermit` —
+rather than methods or namespaces, which is this package's convention
+throughout: nothing to dispatch at run time, and a bundler drops what you do
+not call.
+
+### Ref
+
+```js
+const total = effect(function* () {
+  const counter = yield* ref(0);
+  yield* forEach(items, (item) => refUpdate(counter, (n) => n + item), { concurrency: 4 });
+  return yield* refGet(counter);
+});
+```
+
+`ref`, `refGet`, `refSet`, `refModify`, `refUpdate`, `refUpdateAndGet`,
+`refGetAndUpdate`, `refGetAndSet` — all with synchronous kernels, so a program
+that uses a `Ref` can still be answered by `runSync`.
+
+`refModify` reads, computes and writes without yielding, so it needs no lock. A
+transform that throws leaves the ref alone and becomes a defect: half of a
+read-modify-write is worse than none of it.
+
+An *effectful* update does yield, so it needs one. `refUpdateEffect(ref, lock,
+transform)` is Effect's `SynchronizedRef` — a `Ref` and a `Semaphore` held
+together rather than a third type. Passing the lock in makes the serialisation
+visible, and lets two refs that must move together share one.
+
+### Deferred
+
+`Fiber` covers "wait for what this fiber returns". `Deferred` covers the other
+one: waiting for a value nobody has promised yet.
+
+```js
+const handshake = yield* deferred();
+yield* fork(effect(function* () {
+  yield* deferredSucceed(handshake, yield* openConnection());
+}));
+const connection = yield* deferredAwait(handshake); // interruptible
+```
+
+It completes at most once: the first `deferredSucceed` or `deferredFail` returns
+`true` and every later one returns `false`, rather than overwriting an answer
+somebody may already have acted on. `deferredIsDone` asks without waiting.
+
+`deferredAwait` registers a waker, the same way a pending `sleep` does, so
+interrupting a fiber blocked on a handshake stops it now. A hand-written
+`Promise` in the same place would not — which is the reason this type exists
+rather than the convenience.
+
+### Semaphore
+
+`all`'s `concurrency` bounds one call. A `Semaphore` bounds a budget shared
+across call sites, which is what a rate-limited API needs:
+
+```js
+const budget = yield* semaphore(2);
+const request = (item) => withPermit(budget, fetchItem(item));
+// Two forEaches, one budget of two between them.
+yield* all([forEach(pageOne, request), forEach(pageTwo, request)]);
+```
+
+`withPermit` and `withPermits` give the permits back however the body ends —
+success, failure, defect, interruption — with the same guarantee `ensuring`
+gives. A permit that leaked on cancellation would shrink the budget every time
+somebody cancelled a request, until nothing could run at all.
+
+The queue is served strictly from the head, so a later small request cannot
+overtake a waiting large one. Asking for more permits than the semaphore has is
+a defect rather than a wait, because nothing will ever release enough and a
+permanent hang is the least debuggable way to say so.
+
+`Queue` and `PubSub` are the same mechanism with a buffer in front, and are not
+here yet. STM is deliberately not planned: it needs a transaction log and a
+retry-on-conflict scheduler, which is larger than everything above put together,
+and its uses can be written with a serialised `Ref` at a cost worth measuring
+before it is paid.
+
 ## Resources
 
 `acquireRelease` puts `Scope` in the requirement channel, so an effect that
@@ -285,8 +376,7 @@ no output channel to return.
 
 ## What is not here
 
-`Ref`, `Deferred`, `Queue`, `Hub`, `Semaphore` and STM; streams; `forkScoped`
-and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
+`Queue`, `Hub` and STM; streams; `forkScoped` and `forkIn`; a `Schedule<Out, In>` with a state and a step, which is what
 Effect's input and output combinators (`whileInput`, `fixed`, `cron`,
 `compose`) are defined over; a fiber scheduler of its own — this runs on the host's microtask
 queue and its `sleep` is `setTimeout`; tracing, spans and metrics; a typed

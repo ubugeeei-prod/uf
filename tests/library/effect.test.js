@@ -17,6 +17,11 @@ import {
   as,
   catchAll,
   catchTag,
+  deferred,
+  deferredAwait,
+  deferredFail,
+  deferredIsDone,
+  deferredSucceed,
   die,
   effect,
   either,
@@ -45,6 +50,15 @@ import {
   provide,
   provideService,
   race,
+  ref,
+  refGet,
+  refGetAndSet,
+  refGetAndUpdate,
+  refModify,
+  refSet,
+  refUpdate,
+  refUpdateAndGet,
+  refUpdateEffect,
   repeat,
   retry,
   runFork,
@@ -53,6 +67,7 @@ import {
   runSync,
   runSyncExit,
   scoped,
+  semaphore,
   sleep,
   succeed,
   suspend,
@@ -62,6 +77,8 @@ import {
   tapError,
   timeout,
   tryPromise,
+  withPermit,
+  withPermits,
   zip,
 } from "@uniflowed/effect";
 import { scheduleDelay } from "@uniflowed/effect/schedule";
@@ -1591,6 +1608,285 @@ describe("repeat", () => {
     } else {
       throw new Error("expected the failure that outlasted its retry");
     }
+  });
+});
+
+describe("what two fibers can share", () => {
+  it("lands on the right total when four fibers count into one ref", async () => {
+    // A closure over a `let` would land on the right number too, and it would
+    // not be interruption-aware and would not survive an `await` between the
+    // read and the write. This is the shape that does.
+    const program = effect(function* () {
+      const counter = yield* ref(0);
+      yield* forEach(
+        [1, 2, 3, 4, 5, 6, 7, 8],
+        (item) =>
+          effect(function* () {
+            yield* sleep(1);
+            yield* refUpdate(counter, (total) => total + item);
+          }),
+        { concurrency: 4 },
+      );
+      return yield* refGet(counter);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(36);
+  });
+
+  it("answers synchronously, so a program with a ref keeps runSync", () => {
+    const program = effect(function* () {
+      const held = yield* ref("first");
+      const previous = yield* refGetAndSet(held, "second");
+      yield* refUpdate(held, (value) => `${value}!`);
+      return `${previous} then ${yield* refGet(held)}`;
+    });
+
+    expect(runSync(program)).toBe("first then second!");
+  });
+
+  it("reads, computes and writes without letting another fiber in", async () => {
+    // `refModify` cannot yield, so the increment either happens whole or not
+    // at all. Two hundred fibers racing on it land exactly on two hundred.
+    const program = effect(function* () {
+      const counter = yield* ref(0);
+      const items = Array.from({ length: 200 }, (unused, index) => index);
+      yield* forEach(items, () => refModify(counter, (total) => [total, total + 1]), {
+        concurrency: "unbounded",
+      });
+      return yield* refGet(counter);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(200);
+  });
+
+  it("leaves the ref alone when the transform throws", () => {
+    const program = effect(function* () {
+      const held = yield* ref("kept");
+      const outcome = yield* exit(
+        refUpdate(held, () => {
+          throw new Error("bad transform");
+        }),
+      );
+      return { outcome, value: yield* refGet(held) };
+    });
+
+    const settled = runSync(program);
+    expect(settled.outcome.kind).toBe("failure");
+    if (settled.outcome.kind === "failure") {
+      expect(settled.outcome.cause.kind).toBe("die");
+    }
+    // Half of a read-modify-write is worse than none of it.
+    expect(settled.value).toBe("kept");
+  });
+
+  it("gives every operation the value it names", () => {
+    const program = effect(function* () {
+      const held = yield* ref(1);
+      const updated = yield* refUpdateAndGet(held, (value) => value + 1);
+      const before = yield* refGetAndUpdate(held, (value) => value * 10);
+      const after = yield* refGet(held);
+      yield* refSet(held, 0);
+      const modified = yield* refModify(held, (value) => [`was ${value}`, value + 5]);
+      return [updated, before, after, modified, yield* refGet(held)];
+    });
+
+    expect(runSync(program)).toEqual([2, 2, 20, "was 0", 5]);
+  });
+
+  it("hands a deferred's value to everyone waiting for it", async () => {
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const first = yield* fork(deferredAwait(handshake));
+      const second = yield* fork(deferredAwait(handshake));
+      yield* sleep(5);
+      const won = yield* deferredSucceed(handshake, "ready");
+      const again = yield* deferredSucceed(handshake, "ignored");
+      return [yield* join(first), yield* join(second), won, again];
+    });
+
+    await expect(runPromise(program)).resolves.toEqual(["ready", "ready", true, false]);
+  });
+
+  it("puts a deferred's failure in the error channel of whoever waited", async () => {
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const waiting = yield* fork(deferredAwait(handshake));
+      yield* deferredFail(handshake, { kind: "unavailable" });
+      return yield* exit(join(waiting));
+    });
+
+    const result = await runPromise(program);
+    if (result.kind === "failure" && result.cause.kind === "fail") {
+      expect(result.cause.error.kind).toBe("unavailable");
+    } else {
+      throw new Error("expected the deferred's typed failure");
+    }
+  });
+
+  it("answers a deferred that is already done without waiting", async () => {
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const before = yield* deferredIsDone(handshake);
+      yield* deferredSucceed(handshake, 7);
+      const after = yield* deferredIsDone(handshake);
+      return [before, after, yield* deferredAwait(handshake)];
+    });
+
+    await expect(runPromise(program)).resolves.toEqual([false, true, 7]);
+  });
+
+  it("stops a fiber blocked on a deferred rather than hanging", async () => {
+    // Nothing will ever complete this one. A hand-written promise would make
+    // the fiber uninterruptible, which is the bug the waker protocol exists
+    // to prevent — the same one `never` is written the way it is to avoid.
+    const program = effect(function* () {
+      const handshake = yield* deferred();
+      const waiting = yield* fork(deferredAwait(handshake));
+      yield* sleep(5);
+      return yield* interrupt(waiting);
+    });
+
+    const result = await runPromise(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("interrupt");
+    }
+  });
+
+  it("limits concurrency across two independent call sites", async () => {
+    // `all`'s concurrency bounds one call. Two `forEach`es against the same
+    // rate-limited host need one budget between them, and this is it.
+    let inFlight = 0;
+    let peak = 0;
+    const program = effect(function* () {
+      const budget = yield* semaphore(2);
+      const request = (item: number) =>
+        withPermit(
+          budget,
+          effect(function* () {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            yield* sleep(5);
+            inFlight -= 1;
+            return item;
+          }),
+        );
+
+      return yield* all(
+        [
+          forEach([1, 2, 3], request, { concurrency: "unbounded" }),
+          forEach([4, 5, 6], request, { concurrency: "unbounded" }),
+        ],
+        { concurrency: "unbounded" },
+      );
+    });
+
+    await expect(runPromise(program)).resolves.toEqual([
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+    expect(peak).toBe(2);
+  });
+
+  it("gives a permit back when the fiber holding it is interrupted", async () => {
+    // A permit that leaks on cancellation is a budget that shrinks every time
+    // somebody cancels a request, until nothing can run at all.
+    const program = effect(function* () {
+      const budget = yield* semaphore(1);
+      const holder = yield* fork(withPermit(budget, sleep(400)));
+      yield* sleep(10);
+      yield* interrupt(holder);
+      // If the permit had leaked, this would never finish.
+      return yield* withPermit(budget, succeed("took it"));
+    });
+
+    await expect(runPromise(timeout(program, 300))).resolves.toBe("took it");
+  });
+
+  it("gives a permit back when the body fails", async () => {
+    const program = effect(function* () {
+      const budget = yield* semaphore(1);
+      yield* exit(withPermit(budget, fail("body")));
+      return yield* withPermit(budget, succeed("took it"));
+    });
+
+    await expect(runPromise(timeout(program, 300))).resolves.toBe("took it");
+  });
+
+  it("serves the queue in the order it was asked in", async () => {
+    // A later small request that happens to fit must not overtake a waiting
+    // large one, or the widest caller can be starved for ever.
+    const order = [];
+    const program = effect(function* () {
+      const budget = yield* semaphore(2);
+      // Holds one of two, so one permit stays free the whole time.
+      const holder = yield* fork(
+        withPermit(
+          budget,
+          effect(function* () {
+            yield* sleep(20);
+            order.push("holder");
+          }),
+        ),
+      );
+      yield* sleep(5);
+      // Wants both, so it has to wait for the holder.
+      const wide = yield* fork(
+        withPermits(
+          budget,
+          2,
+          sync(() => order.push("wide")),
+        ),
+      );
+      yield* sleep(5);
+      // Would fit right now — the free permit is there — and must not take it.
+      const narrow = yield* fork(
+        withPermit(
+          budget,
+          sync(() => order.push("narrow")),
+        ),
+      );
+      yield* join(holder);
+      yield* join(wide);
+      yield* join(narrow);
+      return order;
+    });
+
+    await expect(runPromise(program)).resolves.toEqual(["holder", "wide", "narrow"]);
+  });
+
+  it("refuses more permits than the semaphore has rather than waiting for ever", async () => {
+    const program = effect(function* () {
+      const budget = yield* semaphore(2);
+      return yield* exit(withPermits(budget, 3, succeed("never")));
+    });
+
+    const result = await runPromise(program);
+    expect(result.kind).toBe("failure");
+    if (result.kind === "failure") {
+      expect(result.cause.kind).toBe("die");
+    }
+  });
+
+  it("serialises an effectful update so the second write does not lose the first", async () => {
+    // Two fibers read, both await, both write. Without the lock the second
+    // write is computed from a value the first has already replaced.
+    const program = effect(function* () {
+      const held = yield* ref(0);
+      const lock = yield* semaphore(1);
+      const increment = () =>
+        refUpdateEffect(held, lock, (value) =>
+          effect(function* () {
+            yield* sleep(5);
+            return value + 1;
+          }),
+        );
+
+      yield* all([increment(), increment(), increment()], { concurrency: "unbounded" });
+      return yield* refGet(held);
+    });
+
+    await expect(runPromise(program)).resolves.toBe(3);
   });
 });
 
