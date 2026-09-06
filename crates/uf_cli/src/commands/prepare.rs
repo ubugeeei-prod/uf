@@ -23,6 +23,22 @@
 //! and then the other. Whatever happens, `.uf/prepare.json` records what each
 //! step actually did, including the steps that never started — a record that
 //! says a check passed when it never ran is worse than no record.
+//!
+//! # `--fix`, and why it still fails
+//!
+//! With `--fix` the two check steps write instead of only reporting: the lint
+//! step applies [`FixMode::Safe`] fixes and the format step formats. Safe
+//! only, never `--fix-unsafe`: a hook that runs on every commit is the last
+//! place an edit that can change what the program does should arrive
+//! unasked-for, and the flag to ask for one is on `uf lint`.
+//!
+//! **A run that changed a file fails, even when nothing is wrong any more.**
+//! What was rewritten is in the working tree and not in the index, so the
+//! commit git is about to make is not the code uf just fixed. Failing stops
+//! that commit and hands the developer a diff to read and stage. The
+//! alternative — staging it here — would mean `uf prepare` adding content to a
+//! commit somebody has already written the message for, which is the kind of
+//! helpfulness that gets a hook uninstalled.
 
 use std::fs;
 
@@ -45,6 +61,7 @@ use uf_rsc::{
 use uf_term::{KeyValue, Status, Tone, push_spaces};
 
 use crate::commands::lint::{group_by_path, render_group, severity_count};
+use crate::fix::files::{FixMode, fix_files};
 use crate::support::{
     enabled, plural, problem_summary, project_label, relative_to, unreadable_lines,
     write_json_file, yes_no,
@@ -114,6 +131,15 @@ const fn halts_the_run(step: PrepareStep) -> bool {
 /// The state one run of the plan accumulates.
 struct Run<'a> {
     resolved: &'a ResolvedConfig,
+    /// Whether the two check steps write what they can rather than only
+    /// reporting it.
+    fix: bool,
+    /// Whether anything this run wrote is now unstaged in the working tree.
+    ///
+    /// Set by either check step. It is what turns a `--fix` run that found
+    /// nothing left to complain about into a failing one; see the module
+    /// header.
+    rewrote: bool,
     /// What git said, once the first step has asked.
     staged: StagedFiles,
     /// Files the generated ones are checked alongside, read once and shared by
@@ -134,11 +160,13 @@ struct Run<'a> {
     diagnostics: Option<(LintReport, Vec<SourceFile>)>,
 }
 
-pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui) -> Result<()> {
+pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
     let plan = default_plan();
     let mut run = Run {
         resolved: &resolved,
+        fix,
+        rewrote: false,
         // Replaced by the first step. Until then "no staged set" is the
         // widest, and so the safest, thing to believe.
         staged: StagedFiles::Unavailable(NoStagedSet::NotAWorkingTree),
@@ -208,13 +236,23 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui) -> Result<()> {
         // The step is named, and it is the *first* one that failed: a reader
         // fixing a commit starts at the top of the list, and a message that
         // named the last failure would send them to the end of it.
+        //
+        // A run that rewrote something always has a failed step to name —
+        // each check step fails when it writes — so the staging instruction is
+        // a clause on that message rather than one instead of it. Both halves
+        // matter: which step, and what is now left to do.
         bail!(
-            "uf prepare failed at {}{}",
+            "uf prepare failed at {}{}{}",
             first.name(),
             if failed.len() > 1 {
                 format!(" ({} steps failed)", failed.len())
             } else {
                 String::new()
+            },
+            if run.rewrote {
+                " — it rewrote files; review them, stage them, and commit again"
+            } else {
+                ""
             }
         );
     }
@@ -344,6 +382,20 @@ impl Run<'_> {
             .with_lines(self.unreadable.clone());
         }
 
+        // Fixing first, so that what is linted is what is now on disk and the
+        // count a reader is shown is what a second `uf prepare` would find.
+        let mut fixed = Vec::new();
+        if self.fix {
+            let resolved = self.resolved;
+            match fix_files(resolved, &mut self.sources, FixMode::Safe) {
+                Ok(summary) => {
+                    self.rewrote |= !summary.changed.is_empty();
+                    fixed = summary.changed;
+                }
+                Err(error) => return StepReport::failed(step, error.to_string()),
+            }
+        }
+
         let sources: Vec<SourceFile> = self
             .sources
             .iter()
@@ -363,25 +415,28 @@ impl Run<'_> {
         };
         let errors = severity_count(&report, Severity::Error);
         let warnings = severity_count(&report, Severity::Warn);
-        let detail = format!(
+        let mut detail = format!(
             "{} checked, {}",
             plural(report.files_checked, "file"),
             problem_summary(errors, warnings)
         );
+        if !fixed.is_empty() {
+            detail = format!("{detail}, fixed {}", plural(fixed.len(), "file"));
+        }
         // Kept for the report to draw with their code frames, exactly as
         // `uf lint` draws them: a pre-commit hook that says "2 errors" and
         // makes the reader run a second command has not saved anybody a step.
         if !report.diagnostics.is_empty() {
             self.diagnostics = Some((report.clone(), sources));
         }
-        if errors > 0 {
-            StepReport::failed(step, detail)
+        if errors > 0 || !fixed.is_empty() {
+            StepReport::failed(step, detail).with_lines(fixed)
         } else {
             StepReport::ok(step, detail)
         }
     }
 
-    /// Check that the staged files are formatted.
+    /// Check that the staged files are formatted, or format them.
     fn run_format_check(&mut self) -> StepReport {
         let step = PrepareStep::RunFormatCheck;
         if let Err(error) = self.scan() {
@@ -404,41 +459,71 @@ impl Run<'_> {
         }
 
         let scanned = flow.len();
+        let fix = self.fix;
         let mut unformatted = Vec::new();
-        let mut unparseable = Vec::new();
+        let mut unprintable = Vec::new();
         for file in flow {
             match format_source(&file.source, &self.resolved.config.fmt) {
-                Ok(result) if result.changed => unformatted.push(file.relative_path.clone()),
+                Ok(result) if result.changed => {
+                    // A file that could not be written joins the list of files
+                    // that could not be printed: both mean "this one is still
+                    // unformatted, and here is why", which is what the step
+                    // has to say either way.
+                    if fix && let Err(error) = fs::write(&file.absolute_path, &result.output) {
+                        unprintable.push(format!("{}: {error}", file.relative_path));
+                        continue;
+                    }
+                    unformatted.push(file.relative_path.clone());
+                }
                 Ok(_) => {}
                 // The formatter prints from a syntax tree and there is no tree
                 // to print when the source does not parse. `uf fmt` reports
                 // that and leaves the file alone; so does this.
-                Err(error) => unparseable.push(format!("{}: {error}", file.relative_path)),
+                Err(error) => unprintable.push(format!("{}: {error}", file.relative_path)),
             }
         }
+        self.rewrote |= fix && !unformatted.is_empty();
 
         // The other formatter, over the other pile — and only when there is a
         // pile: a commit of Flow files must not need Biome installed.
         let mut lines = unformatted.clone();
-        lines.extend(unparseable.iter().cloned());
-        let mut failed = !unformatted.is_empty() || !unparseable.is_empty();
-        let mut detail = format!(
-            "{} of {} {} formatting",
-            plural(unformatted.len(), "file"),
-            scanned,
-            if unformatted.len() == 1 {
-                "needs"
-            } else {
-                "need"
-            }
-        );
+        lines.extend(unprintable.iter().cloned());
+        // A `--fix` run that formatted something still fails; see the module
+        // header. What changed is in the working tree and not in the index.
+        let mut failed = !unformatted.is_empty() || !unprintable.is_empty();
+        let mut detail = if fix {
+            format!(
+                "formatted {} of {}",
+                plural(unformatted.len(), "file"),
+                scanned
+            )
+        } else {
+            format!(
+                "{} of {} {} formatting",
+                plural(unformatted.len(), "file"),
+                scanned,
+                if unformatted.len() == 1 {
+                    "needs"
+                } else {
+                    "need"
+                }
+            )
+        };
+        // Which non-Flow files the other formatter rewrote, if it wrote at all.
+        // Applied below rather than here: the `Err` arm replaces `detail`, and
+        // an arm that both replaced and appended to it would have to know
+        // which of the two happened.
+        let mut rewritten = Vec::new();
         match uf_fmt::non_flow::run(
             &self.resolved.root,
             &non_flow,
-            true,
+            // Its check mode, unless this run is fixing. In writing mode it
+            // formats rather than reporting, so the `Unformatted` arm below is
+            // unreachable under `--fix` rather than wrong there.
+            !fix,
             &self.resolved.config.fmt,
         ) {
-            Ok(NonFlowOutcome::Formatted) => {}
+            Ok(NonFlowOutcome::Formatted { rewritten: written }) => rewritten = written,
             Ok(NonFlowOutcome::Unformatted) => {
                 failed = true;
                 lines.push(format!(
@@ -459,6 +544,22 @@ impl Run<'_> {
                 failed = true;
                 detail = error.to_string();
             }
+        }
+
+        // The module header's rule, for the other half of the project. It has
+        // to be asked rather than inferred: a formatter in write mode exits 0
+        // whether it rewrote every file or none of them, so a `--fix` run that
+        // reformatted a staged `.json` used to pass the hook while the bytes
+        // git was about to commit were the ones from before the rewrite.
+        if !rewritten.is_empty() {
+            self.rewrote = true;
+            failed = true;
+            detail = format!(
+                "{detail}, {} rewritten by {}",
+                plural(rewritten.len(), "non-Flow file"),
+                self.resolved.config.fmt.non_flow.formatter.as_str()
+            );
+            lines.extend(rewritten);
         }
 
         // The lines go under the step either way: a step that passed while

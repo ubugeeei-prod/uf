@@ -409,10 +409,80 @@ here, and it delegates to whichever package manager the project uses (`npx
 ### uf check
 
 Type-checks the project with Flow. `--json` for the machine-readable report.
+`--fix` and `--fix-unsafe` are `uf lint`'s, and mean the same thing here: they
+apply the *lint* fixes. Type inference has no fix catalogue — a type error is
+not something uf knows how to rewrite.
 
 ### uf lint
 
 Runs uf's rules and Flow's built-in lints. `--json` for the report.
+
+| Flag | Meaning |
+| --- | --- |
+| `--fix` | Rewrite the files, applying every fix that cannot change what the program does |
+| `--fix-unsafe` | Also apply the fixes whose correctness rests on something the rule could not check |
+| `--json` | The whole report on stdout, machine-readable |
+
+Without a `--fix` flag nothing is written. That is the `--check`-like use, and
+it is what CI and a git hook run.
+
+#### What "safe" and "unsafe" mean here
+
+The catalogue lives in `crates/uf_cli/src/fix.rs` and carries the distinction
+itself, so every caller — the command line, `uf prepare`, and the language
+server — draws the line in the same place.
+
+A **safe** fix is one where the program after the edit means what the program
+before it meant: the replacement is a synonym the language already treats as
+the original. `bool` → `boolean` (`flow/deprecated-type`) is the one uf has.
+Nothing is being decided on your behalf, so `--fix` applies it without asking.
+
+An **unsafe** fix is the edit the rule is asking for, spelled correctly, whose
+*correctness* rests on something the rule could not check. `export let count =
+0` → `export const count = 0` (`flow/non-const-var-export`) is the one uf has:
+the file still parses and still formats, and it throws at run time if anything
+reassigns the binding. It is not a guess at intent — a fix uf cannot spell at
+all is in neither tier — but it can change what the program does, so it waits
+to be asked for by name. Read the diff before committing it.
+
+Most rules have no fix in either tier, and that is deliberate rather than
+unfinished: `flow/unclear-type` has three plausible answers, which is none, and
+the module header lists the rest with the reason for each.
+
+#### What `--fix` guarantees
+
+- **What is written parses.** Every candidate goes back through the formatter,
+  which prints from a syntax tree and fails on text the parser refuses. A file
+  whose fixed form does not parse is left exactly as it was and named in the
+  report.
+- **`uf fmt --check` still passes.** A file the formatter was content with is
+  reprinted around the edit, because four bytes is enough to push a line past
+  the print width. A file `uf fmt` already wanted to change is written as the
+  edit left it — imposing a layout is a different command.
+- **Twice is once.** Each file is linted, fixed and linted again until its text
+  stops changing, so a second `uf lint --fix` writes nothing.
+- **Two fixes over the same bytes cannot corrupt each other.** One of an
+  overlapping pair is applied and the other is dropped; the loop above lints
+  the result and plans the dropped one again against text that now exists.
+
+`uf lint --fix` does not format. The answer to `uniflowed/no-tabs` is `uf fmt`,
+and findings like it are counted in the report rather than quietly reformatted.
+
+#### Exit status
+
+**The status describes what is left, never what was done.** A run that fixed
+forty findings and left one error fails; a run that fixed nothing and left none
+passes.
+
+| Status | Meaning |
+| --- | --- |
+| `0` | No errors remain. Warnings may — they do not fail `uf lint` with or without `--fix` |
+| `1` | Errors remain, a file could not be read, or writing a fix failed |
+
+There is no third status for "fixed everything": the two the command has are
+the two a shell script branches on, and `uf lint --fix; uf lint` cannot
+disagree with itself, because the report `--fix` prints comes from linting the
+project it has just rewritten.
 
 ### uf fmt
 
@@ -424,6 +494,12 @@ which uf runs rather than ships. A formatter uf chose and the project does not
 have is reported, with the files it left alone, and does not change the exit
 code; one the project named in `uf.config.js` is an error, because the project
 asked for it.
+
+`uf fmt` stays a separate command rather than folding into `uf check` the way
+some toolchains fold their formatter into one pass. Three commands where
+another tool has one is the trade uf makes on purpose: `uf fmt --check` is the
+cheapest of the three and the one a hook wants first, and a `uf check` that
+also rewrote files would be a type checker that writes.
 
 ### uf test [PATH...]
 
@@ -462,6 +538,19 @@ in order, and every one of them does something:
 | `generate-server-action-types` | Writes `server-actions.js`: every callable server action, keyed by `module#export`, with its real type read off the declaring module |
 | `run-lint` | `uf lint` over the staged files |
 | `run-format-check` | `uf fmt --check` over the staged files |
+
+With `--fix` those last two write instead of only reporting: the lint step
+applies `uf lint`'s **safe** fixes and the format step formats. Safe only,
+never the unsafe tier — a hook that runs on every commit is the last place an
+edit that can change what the program does should arrive unasked-for, and
+`uf lint --fix-unsafe` is how you ask.
+
+**A `--fix` run that changed a file fails, even when nothing is wrong any
+more.** What it wrote is in the working tree and not in the index, so the
+commit git is about to make is not the code uf just fixed. Failing stops that
+commit and leaves you a diff to read and stage; `uf prepare` does not stage it
+for you, because adding content to a commit whose message is already written is
+how a hook gets uninstalled.
 
 The record of the run goes to `.uf/prepare.json`, including the steps that did
 not run: a generation failure stops the run, and the checks after it are

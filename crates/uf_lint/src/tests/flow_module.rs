@@ -58,6 +58,19 @@ fn non_const_var_export_rejects_mutable_exports() {
     assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 8));
 }
 
+/// Code a module *prints* is not code it runs. uf's own generators build Flow
+/// source in template literals, and a line of one that reads `export let` is a
+/// string rather than a mutable export of the module holding it.
+#[test]
+fn non_const_var_export_ignores_a_declaration_inside_a_template_literal() {
+    let diagnostics = lint_js(
+        "flow/non-const-var-export",
+        "// @flow\nexport const source = `\nexport let generated = 0;\n`;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
 #[test]
 fn non_const_var_export_accepts_const_exports() {
     let diagnostics = lint_js(

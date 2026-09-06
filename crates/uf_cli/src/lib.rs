@@ -8,6 +8,7 @@ mod brand;
 mod changelog;
 mod cli;
 mod commands;
+mod fix;
 mod menu;
 mod suggest;
 mod support;
@@ -164,6 +165,21 @@ fn report_startup_error(error: &anyhow::Error) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// The two `--fix` flags as the one thing they mean.
+///
+/// Clap gives the flags; the tier they select is a fact about the catalogue,
+/// so the enum lives with it. `--fix-unsafe` conflicts with `--fix` at the
+/// parser, so both being set cannot happen — and if it ever could, the wider
+/// tier is the one somebody asked for out loud.
+const fn fix_mode(fix: bool, fix_unsafe: bool) -> crate::fix::files::FixMode {
+    use crate::fix::files::FixMode;
+    match (fix, fix_unsafe) {
+        (_, true) => FixMode::Unsafe,
+        (true, false) => FixMode::Safe,
+        (false, false) => FixMode::Report,
+    }
+}
+
 fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
     let cwd = resolve_cwd(cli.cwd)?;
     let cwd = match target {
@@ -201,7 +217,12 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             compile,
             adapter.map(Into::into),
         ),
-        Commands::Check { json, paths } => commands::check::check(&cwd, ui, json, &paths),
+        Commands::Check {
+            json,
+            fix,
+            fix_unsafe,
+            paths,
+        } => commands::check::check(&cwd, ui, json, fix_mode(fix, fix_unsafe), &paths),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
             Ok(())
@@ -223,9 +244,19 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Transform => commands::transform::transform_service(&cwd),
         Commands::Assets => commands::assets::assets_service(&cwd),
         Commands::Install { frozen_lockfile } => commands::pm::install(&cwd, ui, frozen_lockfile),
-        Commands::Lint { json, paths } => {
-            commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json, &paths)
-        }
+        Commands::Lint {
+            json,
+            fix,
+            fix_unsafe,
+            paths,
+        } => commands::lint::lint_command(
+            &cwd,
+            ui,
+            commands::lint::LintCommand::Lint,
+            json,
+            fix_mode(fix, fix_unsafe),
+            &paths,
+        ),
         Commands::Lsp => commands::dev::lsp(&cwd),
         Commands::Preview { host, port, mode } => {
             commands::serve::preview(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
@@ -233,7 +264,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Start { host, port, mode } => {
             commands::serve::start(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }
-        Commands::Prepare => commands::prepare::prepare(&cwd, ui),
+        Commands::Prepare { fix } => commands::prepare::prepare(&cwd, ui, fix),
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
         Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),

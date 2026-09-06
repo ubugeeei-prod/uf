@@ -84,7 +84,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     // file, and it does not decide the exit code. See ubugeeei-prod/uf#441.
     let mut non_flow_skipped = None;
     match uf_fmt::non_flow::run(&resolved.root, &non_flow, check, &resolved.config.fmt) {
-        Ok(uf_fmt::NonFlowOutcome::Formatted) => {}
+        // Which files it rewrote is deliberately not read here: `uf fmt` was
+        // asked to write, so a rewrite is the command doing its job rather
+        // than something to report against. `uf prepare --fix` is the caller
+        // that has to know, because there the rewrite lands outside the index.
+        Ok(uf_fmt::NonFlowOutcome::Formatted { .. }) => {}
         Ok(uf_fmt::NonFlowOutcome::Unformatted) => non_flow_unformatted = true,
         Ok(uf_fmt::NonFlowOutcome::Skipped { formatter, paths }) => {
             non_flow_skipped = Some((
