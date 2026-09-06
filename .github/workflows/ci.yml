@@ -298,6 +298,11 @@ jobs:
       # the second run — resuming a release, or writing the changelog in the
       # wrong order — so the release that went right does not catch them.
       - run: ./target/release/uf run release:bump:test
+      # And that a released version's changelog says what the release contains.
+      # alpha.5 went out with twenty-two commits in it and twelve in its notes:
+      # the section is written before the branch stops waiting for CI.
+      - run: ./target/release/uf run release:changelog
+      - run: ./target/release/uf run release:changelog:test
 
   upstream-integrations:
     name: Upstream Integrations
