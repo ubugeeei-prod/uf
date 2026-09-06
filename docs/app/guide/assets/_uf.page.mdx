@@ -1,0 +1,209 @@
+---
+title: "Images and fonts · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Images and fonts
+
+<div className="lede">
+Import an image and it is resized to the widths your layout asks for. Import a
+font and it is self-hosted, declared, and paired with a fallback that occupies
+exactly the same space. Both happen in `uf` itself, at build time, and this page
+is as clear about what the pipeline cannot do as about what it can.
+</div>
+
+## An image
+
+Import it, and hand the whole import to `Image`:
+
+```js
+import * as React from "@uniflowed/react";
+import { Image } from "@uniflowed/web";
+
+import hero from "./hero.jpg";
+
+export component Page() {
+  return <Image src={hero} alt="The bridge at dusk" sizes="(max-width: 640px) 100vw, 640px" />;
+}
+```
+
+`hero` is not a URL. It is what `uf assets` produced when it decoded the file:
+the intrinsic width and height, every variant it wrote, and a blur placeholder.
+`Image` turns that into markup — a `srcset` naming each width, the intrinsic
+dimensions that reserve the box before the bytes arrive, `loading="lazy"` and
+`decoding="async"`.
+
+That is the difference from writing `<img>` yourself, and it is not a small one:
+a `srcset` can only be written by something that knows what other sizes exist,
+and until you have made them, nothing does.
+
+### What ends up in `dist/`
+
+One variant per declared width that is **not wider than the source** — uf never
+upscales — plus one at the source's own width, so there is always a largest.
+Each is content-hashed, so its name changes exactly when its bytes do and never
+otherwise: a rebuild that changed nothing invalidates nothing.
+
+### The blur placeholder
+
+A tiny version of the image is inlined into the document as a `background-image`
+and the real one paints over it. It costs one decode uf was doing anyway, and no
+element — so there is nothing to remove when the image lands, and nothing extra
+for a screen reader to announce.
+
+An image with transparency gets none, and that is deliberate: the placeholder is
+painted *under* the image, so under a logo with a transparent background it
+would stay visible through it forever. Set `placeholder={false}` to turn it off
+for an opaque image too.
+
+### The one above the fold
+
+```js
+<Image src={hero} alt="…" priority={true} />
+```
+
+`priority` makes the image eager, gives it `fetchpriority="high"`, and emits a
+`<link rel="preload">` asking for the same variant the `<img>` will. A `srcset`
+behind a lazy `<img>` is discovered late, and for the largest image on the page
+that is most of the Largest Contentful Paint. Everything else stays lazy, which
+is the right default for the images nobody has scrolled to yet.
+
+### `sizes`
+
+Set it. A `srcset` with `w` descriptors and no `sizes` means `100vw` to the
+browser, so it fetches a variant wide enough for the whole viewport however
+small the image is drawn. When you say nothing, uf writes
+`(max-width: <intrinsic>px) 100vw, <intrinsic>px`, which at least never asks for
+more pixels than exist — but it is a guess about a layout uf cannot see, and
+yours is better.
+
+## A font
+
+```js
+import { Font } from "@uniflowed/web";
+
+import inter from "./Inter.woff2";
+
+export component Layout(children: React.Node) {
+  return (
+    <div style={{ fontFamily: inter.fontFamily }}>
+      <Font src={inter} />
+      {children}
+    </div>
+  );
+}
+```
+
+Three things happen. The file is **self-hosted** — copied into your build under
+a content hash, so no request goes to a third party at runtime. It is
+**declared**, with `font-display: swap` and the right `format()`. And it is
+paired with a **metric-matched fallback**: a second `@font-face` over a font the
+reader already has, carrying `size-adjust`, `ascent-override`,
+`descent-override` and `line-gap-override` computed from your font's own `head`,
+`hhea` and `OS/2` tables.
+
+That last one is the reason to bother. `font-display: swap` shows text
+immediately in a fallback and then swaps, and the swap moves every line, because
+the two faces are different sizes. Scale the fallback until it occupies the same
+space and the swap moves nothing.
+
+Use `inter.fontFamily` rather than writing the family name yourself: it is the
+real face, then the matched fallback, then the local face that was scaled. Name
+only the real family and you get the download and none of the metric matching.
+
+## Configuration
+
+```js
+export default defineConfig({
+  app: {
+    builtins: {
+      images: {
+        widths: [640, 750, 828, 1080, 1200, 1440, 1920],
+        quality: 75,
+        placeholder: true,
+      },
+      fonts: { display: "swap", fallback: "Arial" },
+    },
+  },
+});
+```
+
+Those are the defaults. `fallback` is the local face uf scales, and it has to be
+one uf has measured — `Arial`, `Times New Roman` or `Courier New`. A face uf
+cannot measure is a face uf declines to scale, and it says so rather than
+guessing: a confident, wrong `size-adjust` moves text just as much as none.
+
+`uf explain build` prints what the stage will do with your settings.
+
+## Development and the build agree
+
+There is one pipeline. `uf dev` and `uf build` both drive `uf assets` with the
+same parameters, both write to the same cache under `.uf/cache/assets`, and both
+get the same files under the same names. A dev session warms a cache the build
+reuses. The only thing that differs is the URL prefix they are served under.
+
+## What this does not do
+
+The encoders in `uf` are pure Rust — no C library, no native toolchain, nothing
+to install. That has a price, and it is worth stating plainly rather than
+letting you discover it in a Lighthouse report:
+
+- **No AVIF.** It needs an AV1 encoder. A pure-Rust one exists and is not
+  bundled: it is around eighty more crates compiled under a whole-program-LTO
+  release profile, which is a decision to make deliberately rather than as a
+  side effect of an asset pipeline.
+- **No lossy WebP.** There is no pure-Rust encoder for it; `libwebp` is C.
+
+So the modern format uf can emit is **lossless** WebP, and where that wins is
+not obvious: a logo or a gradient comes out roughly half the size of the PNG, a
+photograph comes out about the same or worse, and a UI screenshot resampled to a
+narrow width comes out *seven times larger*, because resampling turns hard edges
+into rings of near-colours that PNG's adaptive filtering absorbs and this encoder
+does not.
+
+uf therefore does not guess. It encodes both at every width, and offers the WebP
+only when it is smaller at **every** width — all the rungs or none of them,
+because a `<picture>` source carrying only the wide rungs sends a phone a wide
+one. When the WebP loses, no WebP file is written, and the byte counts that
+decided it are on the import as `declined`.
+
+A photograph therefore gets several JPEG widths and no `<source>`. That is the
+correct answer, and you can see the numbers behind it.
+
+- **Fonts are not subsetted.** Reading three fixed-size tables and rebuilding a
+  font from a glyph closure are different jobs by orders of magnitude. Your font
+  is self-hosted at the size you supplied it.
+- **One weight per import.** Every imported font is declared at
+  `font-weight: 400; font-style: normal`, and the family is the file's stem. So
+  `Inter-Bold.woff2` becomes the family `Inter-Bold` rather than `Inter` at 700,
+  and `font-weight: bold` will not switch to it — use its own `fontFamily`. A
+  variable font, which is one file covering the range, is unaffected. The
+  `uf assets` protocol already carries `weight` and `style`; what is missing is
+  a way for an import to say them.
+- **There is no request-time endpoint**, so a remote or user-supplied image is
+  not handled. That is deliberate: an endpoint that resizes whatever a query
+  string names is a denial-of-service amplifier, and the allow-list that makes
+  one safe belongs in its first commit rather than after it. See
+  [security](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
+
+An image uf has no decoder for — a GIF, an existing AVIF — is copied through
+unchanged, and the import says so in its `note` rather than pretending it was
+resized. An existing WebP is copied through as well but *is* measured, so the
+page still gets the intrinsic size that reserves its box.
+
+`.svg` is not claimed at all. uf could only ever copy one through — it is already
+resolution independent — and claiming the extension would take it away from
+`vite-plugin-svgr` and everything like it. An SVG import stays Vite's, and
+`<Image src={url} width={…} height={…} />` renders one.
+
+## Reaching past it
+
+An import with a query is Vite's, not uf's:
+
+```js
+import url from "./hero.png?url";
+```
+
+uf claims the plain form and leaves every Vite asset convention — `?url`,
+`?raw`, `?inline` — exactly where it was.
