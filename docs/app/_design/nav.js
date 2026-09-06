@@ -75,6 +75,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Styling and content",
         blurb: "CSS, Markdown and MDX, all on by default.",
       },
+      {
+        href: "/guide/state",
+        title: "State",
+        blurb: "Atoms are declarations; a store holds the values; React reads them safely.",
+      },
     ],
   },
   {

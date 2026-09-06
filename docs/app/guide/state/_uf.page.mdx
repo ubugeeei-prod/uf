@@ -1,0 +1,182 @@
+---
+title: "State · uf"
+---
+
+<p className="eyebrow">Writing code</p>
+
+# State
+
+<div className="lede">
+`@uniflowed/state` is atoms over `@uniflowed/cell`'s reactive graph, read from
+React through `useSyncExternalStore`. An atom is a declaration, not a value;
+the value lives in a store, so one process can render two requests and one page
+can hold a draft of itself.
+</div>
+
+## Four constructors, four names
+
+Jotai spells all of this `atom(...)` and works out what was meant from the
+arguments. In Flow the honest version of that is an intersection of function
+types the checker resolves poorly, and it is ambiguous at run time as well —
+`atom(f)` cannot tell a derived atom from a primitive one holding a function.
+So the kinds are named:
+
+```js
+// @flow
+import { action, atom, selector, writableSelector } from "@uniflowed/state";
+
+const first = atom("Ada");
+const last = atom("Lovelace");
+
+const full = selector((get) => `${get(first)} ${get(last)}`);
+
+const name = writableSelector(
+  (get) => `${get(first)} ${get(last)}`,
+  (get, set, next: string) => {
+    const [given, family] = next.split(" ");
+    set(first, given);
+    set(last, family);
+  },
+);
+
+const reset = action((get, set) => {
+  set(first, "Ada");
+  set(last, "Lovelace");
+});
+```
+
+A `selector` has no dependency array. The read discovers what it depends on by
+running, and rebuilds that list every time it runs — so a read that branches
+depends on the branch it took, and writing to the other one recomputes nothing.
+A read that returns an unchanged value does not re-render its readers at all.
+
+## Stores hold the values
+
+Declaring an atom allocates nothing. The value appears the first time a store
+is asked for one, which is what makes it safe to declare atoms at module scope
+in a file a server imports.
+
+```js
+import { Provider, createStore, read, subscribe, write } from "@uniflowed/state";
+
+const store = createStore();
+write(first, "Grace", store);
+read(first, store); // "Grace"
+read(first); // "Ada" — the default store is a different store
+```
+
+`read`, `write` and `subscribe` are free functions taking an optional store, so
+a route handler, an event handler outside React and a test all reach state
+without rendering anything. Inside React, `<Provider store={store}>` gives a
+subtree its own; with no `store` prop it creates one, which is the shortest way
+to isolate a test.
+
+## Reading in React
+
+```js
+import { useAtom, useAtomValue, useSetAtom } from "@uniflowed/state";
+
+component Name() {
+  const shown = useAtomValue(full);
+  return <output>{shown}</output>;
+}
+
+component Clear() {
+  // Subscribes to nothing, so it never re-renders for what it writes.
+  const dispatch = useSetAtom(reset);
+  return <button onClick={() => dispatch()}>Reset</button>;
+}
+```
+
+The subscription is per atom rather than per store, so a component reading three
+atoms re-renders when any of the three changes and not when a fourth does. The
+callbacks handed to React are cached on the store, so the thousandth reader of
+an atom allocates nothing and a memoised child holding a setter never re-renders
+for its identity.
+
+## Asynchronous atoms
+
+An `asyncAtom` reads a promise. Its value is a `Loadable` — `loading`,
+`hasData` or `hasError` — rather than a promise a component suspends on:
+
+```js
+import { asyncAtom, unwrap, useAtomValue } from "@uniflowed/state";
+
+const userId = atom(1);
+
+const user = asyncAtom((get, { signal }) =>
+  fetch(`/users/${get(userId)}`, { signal }).then((response) => response.json()),
+);
+
+component Profile() {
+  const state = useAtomValue(user);
+  return match (state) {
+    {state: "loading", ...} => <Spinner />,
+    {state: "hasError", error: const error, ...} => <Failed error={error} />,
+    {state: "hasData", data: const person, ...} => <Card person={person} />,
+  };
+}
+```
+
+The load is tracked, so it runs again when `userId` changes — and the load
+already in flight for the previous id is discarded rather than allowed to win a
+race and deliver the wrong user.
+
+Discarded, and also **stopped**. The load's second argument carries an
+`AbortSignal`, aborted when a newer load supersedes this one, when `refresh`
+asks for another, and when the atom loses its last subscriber. Ignoring it is
+still correct — whether a result is adopted is decided by the store either way
+— but on a search box that reloads per keystroke, ignoring it is one live
+request per keystroke. An aborted load's rejection never becomes the atom's
+`hasError`: it is the answer to a question the atom stopped asking.
+
+`unwrap(user, fallback)` is there for the component that has nothing useful to
+render while a load is in flight and does not want to say so three times in one
+file. It keeps the failure quiet, which is the trade.
+
+### Asking again
+
+An `asyncAtom` otherwise reloads only when something it read changes, and
+writing a dependency the value it already holds is dropped by the equality
+cutoff — correctly, and it leaves "fetch that again" with no expression at all.
+That is the ordinary case after a mutation, and it is the Retry button on the
+error state `Loadable` exists to make renderable:
+
+```js
+import { refresh } from "@uniflowed/state";
+
+await save(draft);
+refresh(user); // or refresh(user, store)
+```
+
+The atom passes through `{ state: "loading" }` on the way, so a list that shows
+a spinner while it refetches gets one without asking. `refresh` is a free
+function rather than a write, unlike Jotai's `atomWithRefresh`: `WritableAtom<T,
+A>` promises that `A` is the argument type, and an atom that is suddenly
+writable with no argument muddies that — and a free function works from a route
+handler and a test, neither of which has a component to hold a setter.
+
+Only an `asyncAtom` can be refreshed, and Flow enforces it: `refresh` takes the
+`AsyncAtom<T>` that `asyncAtom` returns, so a `selector` that happens to produce
+a `Loadable` is rejected at the call site rather than at run time.
+
+### Why not Suspense
+
+Suspense is not available to a `useSyncExternalStore` reader without throwing a
+promise from inside a snapshot, which is neither supported nor safe under
+concurrent rendering. So this package makes the loading state a value the caller
+renders rather than a control-flow trick. That is a deliberate difference from
+Jotai and not a missing feature.
+
+## The layer below
+
+`@uniflowed/cell` is the reactive core underneath all of this: dependency
+tracking, memoisation, the equality cutoff, batching, glitch-free propagation.
+It has no opinion about React and no concept of a store. There is no second
+dependency graph in `@uniflowed/state` — a derived atom is instantiated into a
+`computed` cell whose read is bound to a store, and every question about *when*
+it recomputes is answered one layer down.
+
+An application can reach it directly when it has something to react to that is
+not application state — a route loader hands out cells — and `useCell` renders
+one without wrapping it in an atom.

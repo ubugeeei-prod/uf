@@ -27,6 +27,7 @@ import {
   createStore,
   getDefaultStore,
   read,
+  refresh,
   selector,
   subscribe,
   unwrap,
@@ -52,6 +53,33 @@ function memoryStorage(seed?: { [string]: string }): {
     setItem: (key, value) => {
       entries.set(key, value);
     },
+  };
+}
+/**
+ * A load whose promises the test settles by hand, one per key.
+ *
+ * `settle` throws rather than returning `undefined` when nothing is waiting
+ * for the key: a test that settles a load which was never started is not
+ * testing what its name says, and the failure it would otherwise produce —
+ * a value that never arrives — points at the library rather than at itself.
+ */
+function controlled(): {
+  settle: (key: string, value: string) => void,
+  load: (key: string) => Promise<string>,
+} {
+  const waiting: Map<string, (value: string) => void> = new Map();
+  return {
+    settle: (key, value) => {
+      const resolve = waiting.get(key);
+      if (resolve === undefined) {
+        throw Error(`no load is waiting for ${key}`);
+      }
+      resolve(value);
+    },
+    load: (key) =>
+      new Promise((resolve) => {
+        waiting.set(key, resolve);
+      }),
   };
 }
 
@@ -270,28 +298,13 @@ describe("action", () => {
 });
 
 describe("asyncAtom", () => {
-  /** A load whose promises are settled by the test, one per key. */
-  function controlled() {
-    const settle = new Map();
-    const fail = new Map();
-    return {
-      settle,
-      fail,
-      load: (key) =>
-        new Promise((resolve, reject) => {
-          settle.set(key, resolve);
-          fail.set(key, reject);
-        }),
-    };
-  }
-
   it("is loading until the promise settles, then holds the data", async () => {
     const { settle, load } = controlled();
     const user = asyncAtom(() => load("only"));
     subscribe(user, () => {});
     expect(read(user)).toEqual({ state: "loading" });
 
-    settle.get("only")("Ada");
+    settle("only", "Ada");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(user)).toEqual({ state: "hasData", data: "Ada" });
@@ -314,14 +327,14 @@ describe("asyncAtom", () => {
     const user = asyncAtom((get) => load(get(id)));
     subscribe(user, () => {});
 
-    settle.get("a")("value a");
+    settle("a", "value a");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(user)).toEqual({ state: "hasData", data: "value a" });
 
     write(id, "b");
     expect(read(user)).toEqual({ state: "loading" });
-    settle.get("b")("value b");
+    settle("b", "value b");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(user)).toEqual({ state: "hasData", data: "value b" });
@@ -336,16 +349,119 @@ describe("asyncAtom", () => {
 
     // The second load starts while the first is still in flight.
     write(id, "fast");
-    settle.get("fast")("fast value");
+    settle("fast", "fast value");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(user)).toEqual({ state: "hasData", data: "fast value" });
 
     // The load it superseded settles last, which is the race this loses safely.
-    settle.get("slow")("slow value");
+    settle("slow", "slow value");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(user)).toEqual({ state: "hasData", data: "fast value" });
+  });
+
+  it("hands the load a signal and aborts the one it abandons", async () => {
+    const id = atom("slow");
+    const signals = [];
+    const { settle, load } = controlled();
+    const user = asyncAtom((get, context) => {
+      signals.push(context.signal);
+      return load(get(id));
+    });
+    subscribe(user, () => {});
+    expect(signals[0].aborted).toBe(false);
+
+    write(id, "fast");
+    expect(signals).toHaveLength(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+
+    settle("fast", "fast value");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "fast value" });
+  });
+
+  it("does not let an abandoned load's rejection become the atom's error", async () => {
+    // The load a real `fetch` rejects when its signal fires, which is the
+    // shape that makes this worth a test of its own: the rejection is folded
+    // into a `Loadable` before the store ever sees it, so by then it is an
+    // ordinary `hasError` value and nothing about it says "abandoned".
+    const id = atom("first");
+    const user = asyncAtom(
+      (get, context) =>
+        new Promise((resolve, reject) => {
+          const key = get(id);
+          context.signal.addEventListener("abort", () => {
+            reject(Error("The operation was aborted"));
+          });
+          if (key === "second") {
+            resolve("second user");
+          }
+        }),
+    );
+    subscribe(user, () => {});
+    write(id, "second");
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(read(user)).toEqual({ state: "hasData", data: "second user" });
+  });
+
+  it("aborts the load in flight when the last subscriber leaves", async () => {
+    const signals = [];
+    const { load } = controlled();
+    const user = asyncAtom((get, context) => {
+      signals.push(context.signal);
+      return load("only");
+    });
+    const stop = subscribe(user, () => {});
+    expect(signals[0].aborted).toBe(false);
+
+    stop();
+    expect(signals[0].aborted).toBe(true);
+    expect(String(signals[0].reason)).toContain("unwatched");
+  });
+
+  it("starts a load the last unsubscribe abandoned for the next subscriber", async () => {
+    let served = 0;
+    const { settle, load } = controlled();
+    const user = asyncAtom(() => {
+      served += 1;
+      return load(`load ${served}`);
+    });
+
+    const first = subscribe(user, () => {});
+    expect(served).toBe(1);
+    first();
+
+    subscribe(user, () => {});
+    expect(served).toBe(2);
+    expect(read(user)).toEqual({ state: "loading" });
+    settle("load 2", "second value");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "second value" });
+  });
+
+  it("keeps the load in one store out of another", async () => {
+    const signals = [];
+    const { load } = controlled();
+    const user = asyncAtom((get, context) => {
+      signals.push(context.signal);
+      return load("only");
+    });
+    const a = createStore();
+    const b = createStore();
+    const stop = subscribe(user, () => {}, a);
+    subscribe(user, () => {}, b);
+    expect(signals).toHaveLength(2);
+
+    stop();
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
   });
 
   it("unwraps to a fallback until the data arrives", async () => {
@@ -355,10 +471,109 @@ describe("asyncAtom", () => {
     subscribe(name, () => {});
     expect(read(name)).toBe("anonymous");
 
-    settle.get("only")("Ada");
+    settle("only", "Ada");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(name)).toBe("Ada");
+  });
+});
+
+describe("refresh", () => {
+  it("loads again with the dependencies it already has", async () => {
+    // Writing the dependency the value it already holds is dropped by the
+    // equality cutoff, correctly — so "ask again" has no other expression.
+    const id = atom("a");
+    let served = 0;
+    const { settle, load } = controlled();
+    const user = asyncAtom((get) => {
+      served += 1;
+      return load(`${get(id)}${served}`);
+    });
+    subscribe(user, () => {});
+    settle("a1", "first answer");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "first answer" });
+
+    write(id, "a");
+    expect(served).toBe(1);
+
+    refresh(user);
+    expect(served).toBe(2);
+    settle("a2", "second answer");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "second answer" });
+  });
+
+  it("passes through loading on the way, so a spinner has something to read", async () => {
+    const { settle, load } = controlled();
+    let served = 0;
+    const user = asyncAtom(() => {
+      served += 1;
+      return load(`load ${served}`);
+    });
+    const listener = fn();
+    subscribe(user, listener);
+    settle("load 1", "first");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "first" });
+    listener.mockClear();
+
+    refresh(user);
+    expect(read(user)).toEqual({ state: "loading" });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let the load it abandoned disturb the value that replaced it", async () => {
+    const { settle, load } = controlled();
+    let served = 0;
+    const user = asyncAtom(() => {
+      served += 1;
+      return load(`load ${served}`);
+    });
+    subscribe(user, () => {});
+    refresh(user);
+    expect(served).toBe(2);
+
+    settle("load 2", "second");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "second" });
+
+    // The abandoned first load settles last, after the newer one already
+    // answered. It has nothing to say.
+    settle("load 1", "first");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(user)).toEqual({ state: "hasData", data: "second" });
+  });
+
+  it("reloads in the store it was given and not in a sibling", async () => {
+    let served = 0;
+    const { load } = controlled();
+    const user = asyncAtom(() => {
+      served += 1;
+      return load(`load ${served}`);
+    });
+    const a = createStore();
+    const b = createStore();
+    subscribe(user, () => {}, a);
+    subscribe(user, () => {}, b);
+    expect(served).toBe(2);
+
+    refresh(user, a);
+    expect(served).toBe(3);
+    expect(read(user, b)).toEqual({ state: "loading" });
+  });
+
+  it("names the atom when it is asked to reload one that has no load", () => {
+    // Flow rejects this at the call site: `refresh` takes an `AsyncAtom`, and
+    // only `asyncAtom` makes one. The type is gone at run time, so the guard
+    // stays — and says which atom rather than doing nothing.
+    const settled = selector(() => ({ state: "hasData", data: 1 }));
+    expect(() => refresh(settled as $FlowFixMe)).toThrow("is not an asynchronous atom");
   });
 });
 

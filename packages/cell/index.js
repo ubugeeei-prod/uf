@@ -46,6 +46,7 @@ import type {
   ResourceStatus,
   Unsubscribe,
 } from "./internal/graph.js";
+import type { LoadContext } from "./internal/resource.js";
 import {
   peekNode,
   readNode,
@@ -55,7 +56,15 @@ import {
   writeNode,
 } from "./internal/graph.js";
 
-export type { Cell, CellOptions, CellScope, CellSnapshot, ResourceStatus, Unsubscribe };
+export type {
+  Cell,
+  CellOptions,
+  CellScope,
+  CellSnapshot,
+  LoadContext,
+  ResourceStatus,
+  Unsubscribe,
+};
 
 export { batch } from "./internal/schedule.js";
 export { cell } from "./internal/source.js";
