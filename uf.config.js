@@ -157,6 +157,19 @@ export default defineConfig({
     // The offline half of it: a published package whose dependency is not
     // published resolves to nothing. No network, so `ci` runs it.
     "release:closure": "tools/release/verify-npm.sh --closure-only",
+    // And that a package somebody implemented is on its way to npm at all.
+    // Ten were not, `@uniflowed/state` and `@uniflowed/effect` among them:
+    // about 22,000 lines of Flow that `npm install` answered `ETARGET` for.
+    // A list somebody adds to is a list somebody forgets, so the rule is
+    // stated from the other side — a package that never calls
+    // `nativeRuntimeRequired` has to be named in one of the two manifests.
+    publishable: "tools/ci/publishable.sh",
+    "publishable:test": "tools/ci/test-publishable.sh",
+    // Not in `ci.dependsOn` here, and that is a sequencing detail rather than
+    // an exception: the release branch rewrites that list wholesale to close
+    // an eight-task gap between it and the pipeline, and adding two names to
+    // the old list would conflict with it for nothing. They go in with that
+    // list, which cannot name a task that does not exist yet.
     "install:test": "tools/release/test-install.sh",
     // The bootstrap is run by hand, once, by one person, and every mistake
     // in it costs a round trip and blocks a release. It has cost three, each
