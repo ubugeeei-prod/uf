@@ -498,6 +498,22 @@ hydrate({ App, routes, notFound, errors });
  * `render` and `prerender` are two exports rather than one with a flag, because
  * a host is one or the other: a server streams, a build writes files. See the
  * header of `packages/router/server.js` for why React needs both told apart.
+ *
+ * `beginRequest` is the fourth, and it is re-exported rather than imported by
+ * the host for a reason that is easy to get wrong: `@uniflowed/server` keeps
+ * the request in an `AsyncLocalStorage` held by *its module*, and a bundled
+ * application has its own copy of that module inlined. A host that imported
+ * `beginRequest` from its own `node_modules` would establish a request in a
+ * second storage, and every `cookies()` in the application would still be
+ * outside one. So the bundle hands the host the entry point that belongs to
+ * the bundle. `uf preview`, `uf start`, `uf dev` and the compiled binary all
+ * take it from here; see ubugeeei-prod/uf#389.
+ *
+ * Through `@uniflowed/router/server` rather than `@uniflowed/server/host`,
+ * because this source is resolved from the *project's* directory and a project
+ * depends on the router, not on the router's own dependency. It is also the
+ * shorter proof of the paragraph above: the copy the router dispatches and
+ * renders with is by construction the copy the host is handed.
  */
 export function serverModuleSource(appEntry) {
   return `import {
@@ -508,6 +524,7 @@ export function serverModuleSource(appEntry) {
 import { routes, handlers, middleware, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
 export { routes, handlers, middleware, notFound, errors };
+export { beginRequest } from "@uniflowed/router/server";
 const renderer = createRenderer({ App, routes, notFound, errors });
 export const render = renderer.render;
 export const prerender = renderer.prerender;

@@ -22,6 +22,26 @@
 // instead of from a directory; its header says why it is a second
 // implementation rather than a caller of this one.
 //
+// # Who owns the request
+//
+// This module does, for every host that reaches it: [`nodeListener`] begins
+// the request, runs the whole of answering it inside `run`, and settles it on
+// the line after the last byte — after its own 500, when it wrote one. That is
+// what `after()` promises and it is not something a `Request` → `Response`
+// handler can promise for itself, because such a handler has a `Response` in
+// hand and not a response on the wire.
+//
+// `beginRequest` is passed in rather than imported from `./internal/context.js`
+// beside this file, and that is the one thing about this module that looks
+// wrong and is not. The request lives in an `AsyncLocalStorage` belonging to a
+// module *instance*, and the instance the application reads is the one bundled
+// into `.uf/build/server/server.js` — not the one this file resolves from the
+// host's `node_modules`. A host that began a request in the wrong storage
+// would fail silently: the guard would run, the page would render, and every
+// `cookies()` in it would throw as though no host had run at all. So the
+// bundle hands it out, `@uniflowed/router/server` re-exports it, and a caller
+// passes it here. See ubugeeei-prod/uf#389.
+//
 // # The order is Vite's
 //
 // Static files first, then the application. That is a compatibility
@@ -37,6 +57,10 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
+
+import type { RequestLifecycle } from "./internal/context.js";
+
+export type { RequestLifecycle } from "./internal/context.js";
 
 /**
  * Content types for what a uf build emits.
@@ -241,26 +265,48 @@ async function statFile(file: string) {
  * The handler contract is the platform's, so this adapter belongs here rather
  * than in every host that wants to run one.
  *
+ * `beginRequest` is required, and it comes from the application bundle for the
+ * reason in "Who owns the request" above. A listener built without one fails on
+ * its first request, which is the same trade `createFetchHandler` makes about
+ * `app.runMiddleware`: an optional lifecycle is a lifecycle somebody forgets,
+ * and what is lost when they do is every `after()` in the application.
+ *
  * A handler that throws is answered with a bare 500 and reported on stderr:
  * the body must not carry the stack, because the body goes to whoever asked,
- * and stderr is where the operator is already looking.
+ * and stderr is where the operator is already looking. The drain is in a
+ * `finally` below the `catch`, so a middleware that logged the request sees its
+ * callback run once that 500 is on the wire rather than once the handler gave
+ * up — and a request that failed is still a request that happened, which is why
+ * it is drained at all.
  */
 export function nodeListener(
   handle: (request: Request) => Promise<Response>,
-  options?: {| readonly secure?: boolean |},
+  options: {|
+    readonly beginRequest: (request: Request) => RequestLifecycle,
+    readonly secure?: boolean,
+  |},
 ): (incoming: NodeRequest, outgoing: NodeResponse) => Promise<void> {
   return async function listener(incoming: NodeRequest, outgoing: NodeResponse): Promise<void> {
+    // Declared out here because `toRequest` is inside the `try`: a request that
+    // could not even be built has no lifecycle to settle.
+    let lifecycle: RequestLifecycle | null = null;
     try {
-      await send(outgoing, await handle(toRequest(incoming, options)));
+      const request = toRequest(incoming, options);
+      lifecycle = options.beginRequest(request);
+      await lifecycle.run(async () => {
+        await send(outgoing, await handle(request));
+      });
     } catch (error) {
       console.error(error);
       if (outgoing.headersSent) {
         outgoing.destroy();
-        return;
+      } else {
+        outgoing.statusCode = 500;
+        outgoing.setHeader("content-type", "text/plain; charset=utf-8");
+        outgoing.end("500 Internal Server Error\n");
       }
-      outgoing.statusCode = 500;
-      outgoing.setHeader("content-type", "text/plain; charset=utf-8");
-      outgoing.end("500 Internal Server Error\n");
+    } finally {
+      if (lifecycle != null) await lifecycle.settle();
     }
   };
 }
@@ -300,6 +346,14 @@ export function createServeHandler(options: {|
 export async function serve(options: {|
   readonly staticDir: string,
   readonly handle: (request: Request) => Promise<Response>,
+  /**
+   * The application bundle's own `beginRequest`.
+   *
+   * The generated `handler.js` re-exports it beside `fetch` so that
+   * `server.js` has one to pass; see "Who owns the request" above for why it
+   * cannot be imported here instead.
+   */
+  readonly beginRequest: (request: Request) => RequestLifecycle,
   readonly host?: string,
   readonly port?: number,
 |}): Promise<{|
@@ -309,6 +363,7 @@ export async function serve(options: {|
 |}> {
   const listener = nodeListener(
     createServeHandler({ staticDir: options.staticDir, handle: options.handle }),
+    { beginRequest: options.beginRequest },
   );
   const server = createServer((request, response) => {
     void listener(request, response);

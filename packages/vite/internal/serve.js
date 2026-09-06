@@ -51,6 +51,25 @@
 // bundle is: with `await import`, from [`loadBuild`], which is the point at
 // which this process stops being plain JavaScript and starts being the
 // project's.
+//
+// # Who owns the request
+//
+// The host does, and none of the three handlers below: each of them has a
+// `Response` in hand rather than a response on the wire, and what `after()`
+// promises is the wire. [`withRequest`] is the shape for a caller that writes
+// into a Node response itself — `uf dev` and `uf preview` — and
+// `@uniflowed/server/node`'s `nodeListener` does the same thing for `uf start`
+// and for the `server.js` an adapter writes. Each of them begins the request
+// with `entry.beginRequest`, runs the whole of answering it inside `run`, and
+// settles it on the line after the last byte.
+//
+// It has to be the *entry's* `beginRequest` rather than one imported here: the
+// request lives in an `AsyncLocalStorage` belonging to one copy of
+// `@uniflowed/server`, and the copy that matters is the one inside the
+// application bundle. A host that resolved its own would begin a request the
+// application cannot see, and nothing would fail loudly — the guard would run,
+// the page would render, and every `cookies()` in it would throw as though no
+// host had run at all. See ubugeeei-prod/uf#389.
 
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -171,6 +190,41 @@ export function assetsFromManifest(manifest) {
 }
 
 /**
+ * Answer one request inside it, and settle it when the answer has been written.
+ *
+ * `body` is everything that decides the response *and writes it*; this is the
+ * line after. `settle` is in a `finally` because a request that failed is
+ * still a request that happened: a middleware that logged the arrival is owed
+ * its callback whether the render threw or not, and `drainDeferred` already
+ * reports a failing task rather than propagating it.
+ *
+ * `entry.beginRequest` and not an import: the request lives in an
+ * `AsyncLocalStorage` belonging to one copy of `@uniflowed/server`, and the
+ * copy that matters is the one inside the application bundle. See
+ * `serverModuleSource` in `./routes.js`.
+ *
+ * The one case this cannot be exact about is a request uf hands back rather
+ * than answers: a caller whose `catch` is `next(error)` gives the response to
+ * Vite's chain, which writes a 500 at a moment nothing here can observe, so
+ * such a request settles when uf lets go of it. `nodeListener` and the
+ * compiled binary write their own failures and settle after them. It is worth
+ * naming rather than papering over, and it is the failure path of a request
+ * that already went wrong — not the ordinary one this exists for.
+ *
+ * @param {{beginRequest: (request: Request) => {run: <T>(body: () => Promise<T>) => Promise<T>, settle: () => Promise<void>}}} entry
+ * @param {Request} request
+ * @param {() => Promise<mixed>} body
+ */
+export async function withRequest(entry, request, body) {
+  const { run, settle } = entry.beginRequest(request);
+  try {
+    return await run(body);
+  } finally {
+    await settle();
+  }
+}
+
+/**
  * The application half: route handlers, then rendering.
  *
  * `@uniflowed/server/fetch`'s `createFetchHandler`, reached through the
@@ -178,6 +232,11 @@ export function assetsFromManifest(manifest) {
  * caller await the module — because the two servers construct their handler
  * before they take a socket, and an `await` in that position would put the
  * import between the port and the first request rather than before both.
+ *
+ * It must be called inside a request its caller began; it begins none, because
+ * it has a `Response` in hand and not a response on the wire. A caller that
+ * forgets is not left to discover it: `entry.runMiddleware` refuses outside a
+ * request and names what establishes one. See "Who owns the request" above.
  *
  * @param {{entry: object, assets: object}} build
  */
@@ -228,10 +287,21 @@ export function createServeHandler({ entry, assets, distDir }) {
  *
  * `@uniflowed/server/node`'s, which is also what the `server.js` an adapter
  * writes runs — so a request reaching `uf start` and the same request reaching
- * a deployed directory go through one translation rather than two.
+ * a deployed directory go through one translation rather than two, and settle
+ * at one moment rather than at two.
+ *
+ * `entry` is the second argument rather than something this reaches for: it is
+ * the application bundle's own `beginRequest` that has to own the request, for
+ * the reason in "Who owns the request" above. It is required, and a listener
+ * built without one fails on its first request — the same trade
+ * `createFetchHandler` makes about `app.runMiddleware`, and for the same
+ * reason: an optional lifecycle is a lifecycle somebody forgets, and what is
+ * lost when they do is every `after()` in the application.
  */
-export function nodeListener(handle) {
-  const ready = deployment().then(({ nodeListener: create }) => create(handle));
+export function nodeListener(handle, entry) {
+  const ready = deployment().then(({ nodeListener: create }) =>
+    create(handle, { beginRequest: entry.beginRequest }),
+  );
   return async function listener(incoming, outgoing) {
     return (await ready)(incoming, outgoing);
   };

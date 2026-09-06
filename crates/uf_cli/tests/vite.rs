@@ -265,6 +265,16 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 /// bundle, the runner — is exercised either way, and this way the test needs
 /// no socket, so it runs in the sandboxes where `TcpListener::bind` is
 /// refused. `tests/library/middleware.test.js` owns the runner's own rules.
+///
+/// The probe is a host, so it owns the request the way the four real ones do:
+/// `beginRequest` from the bundle, `run` around the guard, `settle` after the
+/// answer. That is not ceremony to satisfy an assertion — it is the second
+/// thing this test now proves. A built bundle has its own inlined copy of
+/// `@uniflowed/server`, so a host that established a request in any other copy
+/// would leave every `cookies()` in the application outside one; taking
+/// `beginRequest` from the bundle is what makes that impossible, and only a
+/// real build can show it. And the `after()` below does not run until `settle`,
+/// which is what the router used to get wrong. See ubugeeei-prod/uf#389.
 #[test]
 fn a_middleware_guards_the_path_it_sits_under() {
     if !fixture_ready() {
@@ -278,7 +288,7 @@ fn a_middleware_guards_the_path_it_sits_under() {
     ));
     files.push((
         "app/dashboard/_uf.middleware.js",
-        "// @flow\nconst SECRET_COOKIE_NAME = \"uf-fixture-session\";\n\nexport default function middleware(request: Request): Response | void {\n  const cookie = request.headers.get(\"cookie\") ?? \"\";\n  if (!cookie.includes(SECRET_COOKIE_NAME)) {\n    return Response.redirect(new URL(\"/sign-in\", request.url), 302);\n  }\n}\n",
+        "// @flow\nimport { after } from \"@uniflowed/server\";\n\nconst SECRET_COOKIE_NAME = \"uf-fixture-session\";\n\nexport default function middleware(request: Request): Response | void {\n  after(() => {\n    globalThis.__ufAudited = (globalThis.__ufAudited ?? 0) + 1;\n  });\n  const cookie = request.headers.get(\"cookie\") ?? \"\";\n  if (!cookie.includes(SECRET_COOKIE_NAME)) {\n    return Response.redirect(new URL(\"/sign-in\", request.url), 302);\n  }\n}\n",
     ));
     let project = Project::new(&files);
 
@@ -302,13 +312,28 @@ fn a_middleware_guards_the_path_it_sits_under() {
     fs::write(
         &probe,
         format!(
-            r#"const {{ runMiddleware }} = await import({server:?});
+            r#"const {{ beginRequest, runMiddleware }} = await import({server:?});
+// A host: begin the request, let the guard decide, "write" the answer, settle.
+// `duringAnswer` is what `globalThis.__ufAudited` was before `settle` ran, so
+// the probe can say whether the callback waited for the response or not.
 const at = async (path, init) => {{
-  const answer = await runMiddleware(new Request(`http://localhost${{path}}`, init));
-  return answer == null ? null : {{ status: answer.status, location: answer.headers.get("location") }};
+  const request = new Request(`http://localhost${{path}}`, init);
+  const {{ run, settle }} = beginRequest(request);
+  let duringAnswer = null;
+  try {{
+    const answer = await run(() => runMiddleware(request));
+    duringAnswer = globalThis.__ufAudited ?? 0;
+    return answer == null
+      ? {{ duringAnswer }}
+      : {{ status: answer.status, location: answer.headers.get("location"), duringAnswer }};
+  }} finally {{
+    await settle();
+  }}
 }};
+const guarded = await at("/dashboard");
 console.log(JSON.stringify({{
-  guarded: await at("/dashboard"),
+  guarded,
+  auditedAfterSettle: globalThis.__ufAudited ?? 0,
   nested: await at("/dashboard/reports/2026"),
   missing: await at("/dashboard/typo"),
   withCookie: await at("/dashboard", {{ headers: {{ cookie: "uf-fixture-session=1" }} }}),
@@ -345,9 +370,26 @@ console.log(JSON.stringify({{
     assert_eq!(answers["nested"]["status"], 302, "{answers}");
     assert_eq!(answers["missing"]["status"], 302, "{answers}");
     // And it lets a request through when its own check passes, rather than
-    // being a wall.
-    assert!(answers["withCookie"].is_null(), "{answers}");
-    assert!(answers["home"].is_null(), "{answers}");
+    // being a wall. `null` is gone from the shape — a declining guard now
+    // answers with what the probe observed rather than with nothing — so the
+    // check is that no status came back.
+    assert!(answers["withCookie"]["status"].is_null(), "{answers}");
+    assert!(answers["home"]["status"].is_null(), "{answers}");
+
+    // What `after()` promises, through a real build: the callback the guard
+    // registered had not run while the guard's answer was being decided, and
+    // had run once the host settled the request. The runner used to drain
+    // before returning, so the first of these was 1 — a denial audited before
+    // it was sent, and, on a request the chain let through, before there was a
+    // response to audit at all. See ubugeeei-prod/uf#389.
+    assert_eq!(
+        answers["guarded"]["duringAnswer"], 0,
+        "a middleware's after() ran before the response: {answers}"
+    );
+    assert_eq!(
+        answers["auditedAfterSettle"], 1,
+        "a middleware's after() did not run when the host settled: {answers}"
+    );
 
     // Server-only, and not by convention: a middleware in the browser bundle
     // would ship the check to the reader it is meant to keep out.
@@ -849,10 +891,23 @@ fn preview_and_start_serve_the_whole_of_a_build() {
 /// happens to sit next to; one outside it can only reach what was copied.
 const ASK_THE_ARTEFACT: &str = r#"import handler from "./app/handler.js";
 
+// The probe is the host, so it owns the request the way `server.js` does:
+// `beginRequest` from the artefact's own handler, `run` around answering, and
+// `settle` once the body has been read — which for a `Response` a host only
+// returns is the moment it has been sent. That the artefact hands out a
+// `beginRequest` at all is half of what this asserts: it is the copy inlined
+// into `handler.js`, and a host that used any other would establish a request
+// the application cannot see. See ubugeeei-prod/uf#389.
 const ask = async (label, url, init) => {
-  const response = await handler.fetch(new Request(`http://127.0.0.1${url}`, init));
-  const body = (await response.text()).replace(/\s+/g, " ");
-  process.stdout.write(`${label} ${response.status} ${body}\n`);
+  const request = new Request(`http://127.0.0.1${url}`, init);
+  const { run, settle } = handler.beginRequest(request);
+  try {
+    const response = await run(() => handler.fetch(request));
+    const body = (await response.text()).replace(/\s+/g, " ");
+    process.stdout.write(`${label} ${response.status} ${body}\n`);
+  } finally {
+    await settle();
+  }
 };
 
 await ask("handler-get", "/api/health");

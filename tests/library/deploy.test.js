@@ -34,6 +34,7 @@ import path from "node:path";
 import { describe, expect, it } from "@uniflowed/test";
 
 import { createFetchHandler } from "@uniflowed/server/fetch";
+import { beginRequest } from "@uniflowed/server/host";
 import { createServeHandler, createStaticHandler } from "@uniflowed/server/node";
 
 // The other front door, for the comparison. Reached by path rather than by
@@ -74,6 +75,11 @@ function appWith(options: {
     middleware: [],
     notFound: [],
     errors: [],
+    // The real one, because a bundle's own is what a host must be handed: the
+    // request lives in an `AsyncLocalStorage` belonging to a module instance,
+    // and `handler.js` re-exports this beside `fetch` so `server.js` has the
+    // right copy to pass. `request-lifecycle.test.js` owns what it is for.
+    beginRequest,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
     dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {

@@ -10,11 +10,15 @@
 //
 // Like the dispatcher, the runner takes a table and a `Request` and returns a
 // `Response`, so every decision it makes is testable without a server, a port
-// or a build.
+// or a build. Not without a *request*, though, and that is the one thing that
+// changed: the host owns the context now, so every call below goes through
+// `hosted` — see `request-lifecycle.test.js` for what that buys and
+// ubugeeei-prod/uf#389 for what it cost to leave it here.
 
 import { describe, expect, it } from "@uniflowed/test";
 import { createMiddlewareRunner } from "@uniflowed/router/middleware";
-import { after, cookies, headers } from "@uniflowed/server";
+import { beginRequest } from "@uniflowed/router/server";
+import { cookies, headers } from "@uniflowed/server";
 
 /** A table entry whose module is given inline. */
 const record = (path, module) => ({
@@ -25,20 +29,43 @@ const record = (path, module) => ({
 
 const get = (url, init) => new Request(`http://localhost${url}`, init);
 
+/**
+ * The runner, as a host calls it: inside a request the host owns and settles.
+ *
+ * Every test below goes through this rather than calling the runner directly,
+ * because that is now the only way it runs at all — the runner refuses outside
+ * a request, and `cookies()` in a guard reads the host's context rather than
+ * one the runner built for itself. What that is for is
+ * `request-lifecycle.test.js`; here it is scaffolding, and the point of having
+ * it in one line is that no test below has to think about it.
+ */
+const hosted = (runner) => async (request) => {
+  const { run, settle } = beginRequest(request);
+  try {
+    return await run(() => runner(request));
+  } finally {
+    await settle();
+  }
+};
+
 describe("matching", () => {
   it("runs for the path it guards", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
+      }),
+    );
 
     const response = await run(get("/dashboard"));
     expect(response?.status).toBe(401);
   });
 
   it("runs for everything under the path it guards", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
+      }),
+    );
 
     // The subtree, not the one path: a guard on `/dashboard` that only ran for
     // `/dashboard` itself would leave every page under it open.
@@ -47,9 +74,11 @@ describe("matching", () => {
   });
 
   it("runs for a path under it that matches no route at all", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
+      }),
+    );
 
     // `/dashboard/typo` is a 404, and a 404 rendered without the guard having
     // run is how a per-route middleware array leaks: the router has no record
@@ -58,9 +87,11 @@ describe("matching", () => {
   });
 
   it("does not run for a sibling path", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/dashboard", { default: () => new Response("no", { status: 401 }) })],
+      }),
+    );
 
     // `null` rather than a response: the caller carries on to the page or the
     // handler, which is how a middleware gets out of the way.
@@ -70,35 +101,41 @@ describe("matching", () => {
   });
 
   it("guards the whole application from the root", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/", { default: () => new Response("no", { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/", { default: () => new Response("no", { status: 401 }) })],
+      }),
+    );
 
     expect((await run(get("/")))?.status).toBe(401);
     expect((await run(get("/anything/at/all")))?.status).toBe(401);
   });
 
   it("captures the parameters of the directory it guards", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/:org", {
-          default: (request, context) => Response.json({ org: context.params.org }),
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/:org", {
+            default: (request, context) => Response.json({ org: context.params.org }),
+          }),
+        ],
+      }),
+    );
 
     // Which is what an authorisation check needs: the tenant is in the path.
     expect(await (await run(get("/acme/settings")))?.json()).toEqual({ org: "acme" });
   });
 
   it("hands the query string over parsed", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/", {
-          default: (request, context) => new Response(context.searchParams.get("token") ?? ""),
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/", {
+            default: (request, context) => new Response(context.searchParams.get("token") ?? ""),
+          }),
+        ],
+      }),
+    );
 
     expect(await (await run(get("/private?token=abc")))?.text()).toBe("abc");
   });
@@ -107,25 +144,27 @@ describe("matching", () => {
 describe("composition", () => {
   it("runs root first, then the deeper guard", async () => {
     const order = [];
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/dashboard/admin", {
-          default: () => {
-            order.push("admin");
-          },
-        }),
-        record("/", {
-          default: () => {
-            order.push("root");
-          },
-        }),
-        record("/dashboard", {
-          default: () => {
-            order.push("dashboard");
-          },
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/dashboard/admin", {
+            default: () => {
+              order.push("admin");
+            },
+          }),
+          record("/", {
+            default: () => {
+              order.push("root");
+            },
+          }),
+          record("/dashboard", {
+            default: () => {
+              order.push("dashboard");
+            },
+          }),
+        ],
+      }),
+    );
 
     // Sorted by the runner, not by the order the table happens to be in: the
     // application-wide check runs before the one guarding a section of it.
@@ -135,16 +174,18 @@ describe("composition", () => {
 
   it("stops at the first middleware that answers", async () => {
     let reached = false;
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/", { default: () => new Response("no", { status: 403 }) }),
-        record("/dashboard", {
-          default: () => {
-            reached = true;
-          },
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/", { default: () => new Response("no", { status: 403 }) }),
+          record("/dashboard", {
+            default: () => {
+              reached = true;
+            },
+          }),
+        ],
+      }),
+    );
 
     expect((await run(get("/dashboard")))?.status).toBe(403);
     // A rejected request must not go on running the checks below it.
@@ -153,15 +194,17 @@ describe("composition", () => {
 
   it("continues when a middleware returns nothing", async () => {
     const seen = [];
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/", {
-          default: (request) => {
-            seen.push(new URL(request.url).pathname);
-          },
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/", {
+            default: (request) => {
+              seen.push(new URL(request.url).pathname);
+            },
+          }),
+        ],
+      }),
+    );
 
     // A logger is a middleware too, and one that had to answer could not be.
     expect(await run(get("/about"))).toBe(null);
@@ -169,34 +212,38 @@ describe("composition", () => {
   });
 
   it("awaits an async middleware", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/", {
-          default: async () => {
-            await Promise.resolve();
-            return new Response("no", { status: 401 });
-          },
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/", {
+            default: async () => {
+              await Promise.resolve();
+              return new Response("no", { status: 401 });
+            },
+          }),
+        ],
+      }),
+    );
 
     expect((await run(get("/")))?.status).toBe(401);
   });
 
   it("loads a module only when its path is asked for", async () => {
     let loaded = 0;
-    const run = createMiddlewareRunner({
-      middleware: [
-        {
-          path: "/dashboard",
-          file: "app/dashboard/_uf.middleware.js",
-          load: async () => {
-            loaded += 1;
-            return { default: () => new Response("no", { status: 401 }) };
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          {
+            path: "/dashboard",
+            file: "app/dashboard/_uf.middleware.js",
+            load: async () => {
+              loaded += 1;
+              return { default: () => new Response("no", { status: 401 }) };
+            },
           },
-        },
-      ],
-    });
+        ],
+      }),
+    );
 
     await run(get("/about"));
     expect(loaded).toBe(0);
@@ -207,62 +254,64 @@ describe("composition", () => {
 
 describe("inside a request", () => {
   it("reads the request's cookies", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/dashboard", {
-          default: () =>
-            cookies().get("session") == null ? new Response("sign in", { status: 401 }) : undefined,
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/dashboard", {
+            default: () =>
+              cookies().get("session") == null
+                ? new Response("sign in", { status: 401 })
+                : undefined,
+          }),
+        ],
+      }),
+    );
 
     // The check an application actually writes: `cookies()` takes no argument,
-    // so it only works if the runner established the request context first.
+    // so it only works if the request the host began is the one this runs in.
     expect((await run(get("/dashboard")))?.status).toBe(401);
     expect(await run(get("/dashboard", { headers: { cookie: "session=abc" } }))).toBe(null);
   });
 
   it("reads the request's headers", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/api", {
-          default: () =>
-            headers().get("authorization") == null
-              ? new Response(null, { status: 401 })
-              : undefined,
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/api", {
+            default: () =>
+              headers().get("authorization") == null
+                ? new Response(null, { status: 401 })
+                : undefined,
+          }),
+        ],
+      }),
+    );
 
     expect((await run(get("/api/things")))?.status).toBe(401);
     expect(await run(get("/api/things", { headers: { authorization: "Bearer t" } }))).toBe(null);
   });
 
-  it("runs deferred work rather than dropping it", async () => {
-    const audited = [];
+  it("refuses to run outside a request, naming what establishes one", async () => {
     const run = createMiddlewareRunner({
-      middleware: [
-        record("/dashboard", {
-          default: () => {
-            after(() => audited.push("denied"));
-            return new Response(null, { status: 403 });
-          },
-        }),
-      ],
+      middleware: [record("/", { default: () => undefined })],
     });
 
-    expect((await run(get("/dashboard")))?.status).toBe(403);
-    // `after()` in a middleware that rejects is how a denial gets audited, and
-    // a callback the runner never drained would be one more silent drop.
-    expect(audited).toEqual(["denied"]);
+    // Not `cookies()` failing somewhere inside somebody's guard with a message
+    // about static prerenders and client components — three places to look,
+    // none of them the host that forgot. And not silence: an application with
+    // no `cookies()` anywhere would otherwise run its whole request with no
+    // context and lose every `after()` on it.
+    await expect(run(get("/"))).rejects.toThrow("runMiddleware() was called outside a request");
   });
 });
 
 describe("errors", () => {
   it("says so when a middleware module exports no middleware", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { helper: () => new Response("not a middleware") })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/dashboard", { helper: () => new Response("not a middleware") })],
+      }),
+    );
 
     // The failure mode this whole module exists to stop: a file named
     // `_uf.middleware.js` that the router quietly ignores.
@@ -272,23 +321,29 @@ describe("errors", () => {
   });
 
   it("takes the function from `middleware` when there is no default", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { middleware: () => new Response(null, { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/dashboard", { middleware: () => new Response(null, { status: 401 }) }),
+        ],
+      }),
+    );
 
     expect((await run(get("/dashboard")))?.status).toBe(401);
   });
 
   it("lets a middleware's error out rather than turning it into a 500", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [
-        record("/dashboard", {
-          default: () => {
-            throw new Error("bug in the middleware");
-          },
-        }),
-      ],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [
+          record("/dashboard", {
+            default: () => {
+              throw new Error("bug in the middleware");
+            },
+          }),
+        ],
+      }),
+    );
 
     // Same rule as a route handler: swallowing it would hide a bug from the
     // host's own error reporting, and — worse here — turn a guard that
@@ -297,14 +352,16 @@ describe("errors", () => {
   });
 
   it("does nothing at all when an application has no middleware", async () => {
-    const run = createMiddlewareRunner({ middleware: [] });
+    const run = hosted(createMiddlewareRunner({ middleware: [] }));
     expect(await run(get("/"))).toBe(null);
   });
 
   it("cannot be skipped by anything the client sends", async () => {
-    const run = createMiddlewareRunner({
-      middleware: [record("/dashboard", { default: () => new Response(null, { status: 401 }) })],
-    });
+    const run = hosted(
+      createMiddlewareRunner({
+        middleware: [record("/dashboard", { default: () => new Response(null, { status: 401 }) })],
+      }),
+    );
 
     // CVE-2025-29927 is the whole reason this test exists: sending
     // `x-middleware-subrequest` made Next skip middleware entirely, and every

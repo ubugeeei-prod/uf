@@ -70,6 +70,26 @@ export type FetchHandlerOptions = {|
  * application whose auth check quietly stopped running once it was built.
  * That is the whole of ubugeeei-prod/uf#260, and every host that reaches this
  * function is one more place it could have happened.
+ *
+ * # It must be called inside a request, and does not begin one
+ *
+ * `after()` says "once the response has been sent", and this function has a
+ * `Response` in hand rather than a response on the wire — for a streamed body
+ * those are a document apart. So the host begins the request with
+ * `app.beginRequest`, runs this inside `run`, and settles it after the bytes:
+ * `./node.js`'s `nodeListener` does that for `uf start` and for the `server.js`
+ * an adapter writes, and `@uniflowed/vite`'s `withRequest` does it for `uf dev`
+ * and `uf preview`.
+ *
+ * A worker-shaped host is the one uf does not write, and it has the same two
+ * halves to place. `settle` is what to hand `ctx.waitUntil` where there is one;
+ * without one, the honest moment is when the response body stream closes — and
+ * a runtime that tears the isolate down at that moment drops the callback,
+ * which is worth saying out loud rather than leaving to be discovered.
+ *
+ * A caller that forgets is not left to discover *that*, at least:
+ * `app.runMiddleware` refuses outside a request and names what establishes one.
+ * See ubugeeei-prod/uf#389.
  */
 export function createFetchHandler(
   options: FetchHandlerOptions,

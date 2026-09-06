@@ -116,6 +116,27 @@ export type RenderOptions = {|
 /** The two ids the server writes and the client reads. */
 export { DATA_ID, ROOT_ID } from "./internal/document.js";
 
+/**
+ * How a host begins the request everything below runs inside.
+ *
+ * Re-exported rather than left to the host to import, and the reason is the
+ * one thing about `@uniflowed/server` that is easy to get wrong: the request
+ * lives in an `AsyncLocalStorage` belonging to *that module instance*. A host
+ * that resolved `@uniflowed/server/host` for itself — from its own
+ * `node_modules`, or from outside the bundle a build produced — would begin a
+ * request in a second storage, and every `cookies()` in the application would
+ * still be outside one, silently. Handing it out from here makes the copy the
+ * host begins with the copy this module dispatches and renders with, because
+ * it is the same import.
+ *
+ * `run` wraps everything that decides the response; `settle` is called once
+ * the response has been *written*, which is a different line in every host.
+ * `createMiddlewareRunner` and `createDispatcher` refuse to run outside it.
+ * See ubugeeei-prod/uf#389.
+ */
+export type { RequestLifecycle } from "@uniflowed/server/host";
+export { beginRequest } from "@uniflowed/server/host";
+
 export type { Handler, HandlerContext, HandlerModule, HandlerRecord } from "./handler.js";
 export { createDispatcher } from "./handler.js";
 

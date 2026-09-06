@@ -32,6 +32,24 @@
 // one badly is harder to undo than not having it, so it is not spelled here
 // yet. What exists answers or continues, and says so.
 //
+// # The request it runs inside
+//
+// The runner does not establish one. The host does — `beginRequest` in
+// `@uniflowed/server/host`, once per request, around everything that answers
+// it — and the guard, the handler or page underneath it, and the render all
+// see that one context. So `cookies()` in a guard and `cookies()` in the page
+// it guards are the same cookies, `draftMode().enable()` in a guard is visible
+// to what it guards, and every `after()` on the request is one ordered list
+// the host drains after the response has gone.
+//
+// It used to be the other way, and it is worth saying why that was wrong
+// rather than merely different: this module built its own context and drained
+// it before returning, which is early in both outcomes. When the chain
+// answered, the caller was several lines from writing a byte; when it
+// declined, there was no response at all yet and the dispatcher below was
+// about to build a second context nothing here could see. `after()` says "once
+// the response has been sent". See ubugeeei-prod/uf#389.
+//
 // # Server only
 //
 // This module is imported by `virtual:uf/server` and by nothing the browser
@@ -41,7 +59,7 @@
 // `routesModuleSource` keeps the middleware table in an export the client
 // never imports, for the same reason it does that with route handlers.
 
-import { contextFor, drainDeferred, runWithContext } from "@uniflowed/server/host";
+import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
 
 /** What a middleware is given besides the request. */
@@ -94,15 +112,24 @@ export function createMiddlewareRunner(options: {|
   );
 
   return async function runMiddleware(request: Request): Promise<Response | null> {
+    // Checked rather than assumed, and checked before the table so that a host
+    // is caught on its first request whether or not this project happens to
+    // have a middleware. `createApplicationHandler` makes the same argument
+    // about `entry.runMiddleware` itself — called rather than tested for, so a
+    // server bundle without it is a `TypeError` on the first request instead of
+    // an application whose auth check quietly stopped running. The same
+    // argument applies to the request this runs inside: without one, the first
+    // `cookies()` in somebody's guard would throw "called outside a request …
+    // a static prerender, a module's top level, or a client component", which
+    // is three wrong places to look, and an application with no `cookies()`
+    // anywhere would reach its render with no context at all and lose every
+    // `after()` to a different exception later.
+    requireRequest("runMiddleware");
     if (table.length === 0) {
       return null;
     }
 
     const url = new URL(request.url);
-    // One context for the whole chain, so two middleware on the same path see
-    // the same cookies without parsing the header twice.
-    const context = contextFor(request);
-    let answer: Response | null = null;
 
     for (const record of table) {
       const params = matchPrefix(record.path, url.pathname);
@@ -111,29 +138,18 @@ export function createMiddlewareRunner(options: {|
       }
 
       const middleware = pick(await record.load(), record.file);
-      const result = await runWithContext(context, () =>
-        middleware(request, { params, searchParams: url.searchParams }),
-      );
+      // In the host's context, not one of this module's own. Two middleware on
+      // the same path see the same cookies, and so does the handler or the page
+      // underneath them: `draftMode().enable()` in a guard is visible to what
+      // it guards, and every `after()` on the request lands in one ordered list
+      // that the host drains once, after the response has gone.
+      const result = await middleware(request, { params, searchParams: url.searchParams });
       if (result != null) {
-        answer = result;
-        break;
+        return result;
       }
     }
 
-    // Early in both outcomes, and known to be. `after()` says "once the
-    // response has been sent", and here the response has at best been decided:
-    // the caller is several lines from writing a byte of it, and when the chain
-    // declined there is no response at all yet — the handler or the render that
-    // continues has not run, and establishes a context of its own besides.
-    //
-    // The structural fix is to move the context to whoever owns the request,
-    // which is the host: four of them, three router modules, and a semantic
-    // question about what "sent" means for a streamed body on a host that may
-    // not outlive the response. That is ubugeeei-prod/uf#389, with the design
-    // written out. Running the callback early is at least a thing that happens,
-    // which losing it silently would not be, and this is the trade until then.
-    await drainDeferred(context);
-    return answer;
+    return null;
   };
 }
 

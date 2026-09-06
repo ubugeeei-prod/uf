@@ -38,6 +38,7 @@ import {
   createServeHandler,
   loadBuild,
   nodeListener,
+  withRequest,
 } from "./internal/serve.js";
 
 function argument(name) {
@@ -197,50 +198,77 @@ async function dev() {
 
   server.middlewares.use(async (request, response, next) => {
     const url = request.originalUrl ?? request.url ?? "/";
+    // Declared out here so the catch below can still settle: a request that
+    // failed is a request that happened, and a middleware that logged its
+    // arrival is owed its callback either way.
+    let lifecycle = null;
     try {
       const entry = await server.ssrLoadModule(VIRTUAL.server);
       const asRequest = await toRequest(request, server.config);
 
-      // Middleware first, above everything: it guards a subtree, so it has to
-      // run for a page, for a route handler, and for a path under it that
-      // matches neither. Running it inside the dispatcher and again inside the
-      // renderer would have left `/dashboard/typo` unguarded and run it twice
-      // for a path that is both.
-      const guarded = await entry.runMiddleware(asRequest);
-      if (guarded != null) {
-        await send(response, guarded);
-        return;
-      }
+      // The request begins here and ends when the document has been written,
+      // which is what `after()` promises and what `uf preview`, `uf start` and
+      // a compiled binary all do too — a middleware that logs a response's
+      // status has to mean the same thing in development as in production.
+      // `entry.beginRequest` rather than an import: the storage that holds the
+      // request belongs to the application's own copy of `@uniflowed/server`.
+      // See `internal/serve.js` and ubugeeei-prod/uf#389.
+      lifecycle = entry.beginRequest(asRequest);
+      const answered = await lifecycle.run(async () => {
+        // Middleware first, above everything: it guards a subtree, so it has to
+        // run for a page, for a route handler, and for a path under it that
+        // matches neither. Running it inside the dispatcher and again inside the
+        // renderer would have left `/dashboard/typo` unguarded and run it twice
+        // for a path that is both.
+        const guarded = await entry.runMiddleware(asRequest);
+        if (guarded != null) {
+          await send(response, guarded);
+          return true;
+        }
 
-      // Route handlers next, and for every method: a handler is the only
-      // thing that answers a POST, and it may also answer a GET for a path
-      // that has no page.
-      const handled = await entry.dispatch(asRequest);
-      if (handled != null) {
-        await send(response, handled);
-        return;
-      }
+        // Route handlers next, and for every method: a handler is the only
+        // thing that answers a POST, and it may also answer a GET for a path
+        // that has no page.
+        const handled = await entry.dispatch(asRequest);
+        if (handled != null) {
+          await send(response, handled);
+          return true;
+        }
 
-      // Only a navigation reaches the renderer. A page cannot answer a POST,
-      // and letting one try would turn a missing handler into a rendered page
-      // with a 200 rather than a 404.
-      if (request.method !== "GET" && request.method !== "HEAD") {
+        // Only a navigation reaches the renderer. A page cannot answer a POST,
+        // and letting one try would turn a missing handler into a rendered page
+        // with a 200 rather than a 404.
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return false;
+        }
+
+        const result = await entry.render(url, assets, {
+          // A boundary that threw after the shell went out. `result.error` cannot
+          // carry it — the caller already has the result by then — so the
+          // terminal hears about it here or not at all.
+          onError: (error) => reportRenderError(server, url, error),
+        });
+        if (result.error != null) reportRenderError(server, url, result.error);
+        const html = await server.transformIndexHtml(url, await result.text());
+        response.statusCode = result.status ?? 200;
+        response.setHeader("content-type", "text/html; charset=utf-8");
+        response.end(html);
+        return true;
+      });
+
+      if (!answered) {
+        // The one path where uf is not the one writing the response: a
+        // non-navigation nothing claimed goes back to Vite's chain. The guard
+        // has still run and may have deferred work, so `close` — the socket
+        // saying the response is over, however it ended — is the only honest
+        // signal left that the bytes are out.
+        response.once("close", lifecycle.settle);
         next();
         return;
       }
-
-      const result = await entry.render(url, assets, {
-        // A boundary that threw after the shell went out. `result.error` cannot
-        // carry it — the caller already has the result by then — so the
-        // terminal hears about it here or not at all.
-        onError: (error) => reportRenderError(server, url, error),
-      });
-      if (result.error != null) reportRenderError(server, url, result.error);
-      const html = await server.transformIndexHtml(url, await result.text());
-      response.statusCode = result.status ?? 200;
-      response.setHeader("content-type", "text/html; charset=utf-8");
-      response.end(html);
+      await lifecycle.settle();
     } catch (error) {
+      if (lifecycle != null) await lifecycle.settle();
       // Map the stack back onto the Flow source before it reaches the overlay.
       if (error instanceof Error) server.ssrFixStacktrace(error);
       next(error);
@@ -299,7 +327,16 @@ async function preview() {
   const handle = createServeHandler(build);
   server.middlewares.use(async (request, response, next) => {
     try {
-      await send(response, await handle(await toRequest(request, server.config)));
+      const asRequest = await toRequest(request, server.config);
+      // The same lifecycle `uf start` gets from `nodeListener`, spelled out
+      // because this door is Vite's connect chain rather than a bare
+      // `node:http` server: the whole request runs inside it, and it settles
+      // once `send` has returned. A preview whose `after()` fired at a
+      // different moment from the production server's would be a preview that
+      // is checked and believed and wrong.
+      await withRequest(build.entry, asRequest, async () => {
+        await send(response, await handle(asRequest));
+      });
     } catch (error) {
       next(error);
     }
@@ -352,7 +389,7 @@ async function start() {
 
   const host = argument("--host") ?? process.env.HOST ?? "0.0.0.0";
   const port = Number(argument("--port") ?? process.env.PORT ?? 3000);
-  const server = createHttpServer(nodeListener(createServeHandler(build)));
+  const server = createHttpServer(nodeListener(createServeHandler(build), build.entry));
 
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -762,6 +799,17 @@ async function deploy() {
  * wants the name. Writing both costs a line and removes the one thing that
  * would make an otherwise portable file not portable.
  *
+ * `beginRequest` is exported beside it, and it is not decoration. `fetch`
+ * answers with a `Response`; it does not know when that response reached
+ * anybody, and `after()` promises a callback once it has. So the host owns the
+ * request: begin it, run `fetch` inside `run`, and `settle` when the bytes are
+ * out — `server.js` below does exactly that through
+ * `@uniflowed/server/node`, and a worker hands `settle` to `ctx.waitUntil`.
+ * It comes from the bundle rather than from the host's own
+ * `@uniflowed/server`, because the request lives in an `AsyncLocalStorage`
+ * belonging to a module instance and the instance the application reads is the
+ * one inlined here. See ubugeeei-prod/uf#389.
+ *
  * The document's script and stylesheet URLs are baked in here because they
  * come from the client manifest, which exists at this moment and not in the
  * directory that gets copied.
@@ -772,8 +820,9 @@ import { createFetchHandler } from "@uniflowed/server/fetch";
 import * as app from ${JSON.stringify(VIRTUAL.server)};
 
 export const fetch = createFetchHandler({ app, document: ${JSON.stringify(document)} });
+export const beginRequest = app.beginRequest;
 
-export default { fetch };
+export default { fetch, beginRequest };
 `;
 }
 
@@ -793,7 +842,11 @@ import { fileURLToPath } from "node:url";
 
 import { serve } from "@uniflowed/server/node";
 
-import { fetch } from ${JSON.stringify(handlerSpecifier)};
+// \`beginRequest\` comes from the handler beside this file rather than from
+// \`@uniflowed/server/node\` above, because the request has to be established in
+// the storage the *application* reads, which is the copy bundled into
+// \`handler.js\`. See ubugeeei-prod/uf#389.
+import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
 
 // Resolved from this file and not from the working directory: a process
 // manager, a container entrypoint and a person in a shell each start a server
@@ -807,7 +860,7 @@ const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "stati
 // entry would fail its own transform. \`.catch\` is the better spelling anyway —
 // a server that cannot take its port should say so and exit non-zero, rather
 // than die as an unhandled rejection.
-serve({ handle: fetch, staticDir }).catch((error) => {
+serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
   process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
   process.exit(1);
 });

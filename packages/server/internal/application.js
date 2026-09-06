@@ -14,6 +14,10 @@
 // disagree about what `render` returns, which is a disagreement no test sees
 // until a deployment answers differently from the preview it was checked with.
 
+import type { RequestLifecycle } from "./context.js";
+
+export type { RequestLifecycle } from "./context.js";
+
 /**
  * Where a document is written, when the host has a Node stream.
  *
@@ -67,4 +71,20 @@ export type Application = {|
    * running once it was built. See ubugeeei-prod/uf#260.
    */
   readonly runMiddleware: (request: Request) => Promise<Response | null>,
+  /**
+   * Begin the request everything above runs inside.
+   *
+   * A host calls this, runs the whole of answering the request inside `run`,
+   * and calls `settle` once the response has been written — which is what
+   * `after()` means by "sent" and is a different line in every host.
+   *
+   * It is on the bundle rather than importable beside this type, and that is
+   * the one thing about it that looks wrong and is not: the request lives in an
+   * `AsyncLocalStorage` belonging to a module *instance*, and the instance the
+   * application reads is the one bundled into its own `server.js`. A host that
+   * began a request in any other copy would fail silently — the guard would
+   * run, the page would render, and every `cookies()` in it would throw as
+   * though no host had run at all. See ubugeeei-prod/uf#389.
+   */
+  readonly beginRequest: (request: Request) => RequestLifecycle,
 |};

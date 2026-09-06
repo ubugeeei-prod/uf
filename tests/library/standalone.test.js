@@ -26,6 +26,7 @@
 import { Buffer } from "node:buffer";
 
 import { describe, expect, it } from "@uniflowed/testing";
+import { beginRequest } from "@uniflowed/server/host";
 import { createHandler } from "@uniflowed/server/standalone";
 
 /** A file as the build embeds it. */
@@ -85,6 +86,12 @@ function rendered(status: number, html: string) {
 function application() {
   const asked = { rendered: [], dispatched: [], guarded: [] };
   const app = {
+    // The real one, because there is nothing to fake: a compiled binary gets
+    // this export from the bundle beside it, and the whole reason it comes
+    // from there rather than from the shim's own import is that the request
+    // has to land in the storage the application reads. A stub here would
+    // prove the shim calls *something*.
+    beginRequest,
     render: async (url: string) => {
       asked.rendered.push(url);
       return url.startsWith("/nowhere")
@@ -290,6 +297,7 @@ describe("route handlers", () => {
     const dispatched = [];
     const handle = createHandler({
       app: {
+        beginRequest,
         render: async () => rendered(200, "<!doctype html><p>rendered</p>"),
         runMiddleware: async () => null,
         dispatch: async (request: Request) => {
@@ -347,6 +355,7 @@ describe("writing a handler's body to the socket", () => {
     const state = { pulls: 0, cancelled: false };
     const handle = createHandler({
       app: {
+        beginRequest,
         render: async () => rendered(200, "<p>unused</p>"),
         runMiddleware: async () => null,
         dispatch: async () =>
@@ -465,6 +474,7 @@ describe("a render that fails after the shell", () => {
     try {
       const handle = createHandler({
         app: {
+          beginRequest,
           render: async () => failingRender(error),
           runMiddleware: async () => null,
           dispatch: async () => null,

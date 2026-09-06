@@ -140,6 +140,24 @@ export type StandaloneApp = {|
    * about `uf preview` and `uf start`.
    */
   readonly runMiddleware: (request: Request) => Promise<Response | null>,
+  /**
+   * Begin the request everything above runs inside.
+   *
+   * From the application bundle rather than from this module's own import of
+   * `@uniflowed/server/host`, and that is not a stylistic choice: the request
+   * lives in an `AsyncLocalStorage` belonging to one module instance, and the
+   * instance that matters is the one the bundled router, middleware and pages
+   * resolved to. Beginning a request in a second storage would leave every
+   * `cookies()` in the application outside one, silently.
+   *
+   * `run` wraps everything that decides the response; `settle` is called after
+   * the last byte, which here is after `send`, after `sendBytes`, and after
+   * `pipe` resolves. See ubugeeei-prod/uf#389.
+   */
+  readonly beginRequest: (request: Request) => {|
+    readonly run: <T>(body: () => Promise<T>) => Promise<T>,
+    readonly settle: () => Promise<void>,
+  |},
 |};
 
 /** Everything an application needs to answer a request, all of it built in. */
@@ -329,90 +347,113 @@ export function createHandler(
       }
     }
 
-    // Middleware above the dispatcher and above the render, and below the two
-    // lookups on purpose. It guards a path, so it must run for a page, for a
-    // route handler, and for a path under it that matches neither — but an
-    // embedded asset and a prerendered document are answered before it, which
-    // is exactly what `uf preview` does, because Vite's file middleware runs
-    // before anything mounted behind it. The three front doors have to give
-    // one answer; that a prerendered page under a guard ships unguarded is
-    // true of all of them and is ubugeeei-prod/uf#342.
-    const asRequest = toRequest(request, url);
-    const guarded = await app.runMiddleware(asRequest);
-    if (guarded != null) {
-      await send(response, method, guarded);
-      return;
-    }
-
-    const handled = await app.dispatch(asRequest);
-    if (handled != null) {
-      await send(response, method, handled);
-      return;
-    }
-
-    if (method !== "GET" && method !== "HEAD") {
-      // A page supports exactly `GET` and `HEAD`, which is why the `Allow` the
-      // specification requires on every 405 can be written here even though
-      // this side of the handler knows nothing about methods. A *handler* path
-      // with the wrong method never reaches this line: the dispatcher answers
-      // that one itself, with the methods that module really exports.
-      response.setHeader("allow", "GET, HEAD");
-      sendBytes(
-        response,
-        method,
-        405,
-        "text/plain; charset=utf-8",
-        DOCUMENT_CACHE_CONTROL,
-        Buffer.from("method not allowed\n"),
-      );
-      return;
-    }
-
-    const rendered = await app.render(url.pathname + url.search, document, {
-      // There is no terminal to render into: this is a binary somebody started
-      // with `./app`, possibly under a supervisor. The console is where a
-      // supervisor looks, and losing a boundary's exception entirely would be
-      // worse — it is the only trace a page that failed after its first byte
-      // leaves anywhere.
-      onError: (error) => {
-        console.error(error);
-      },
-    });
-    response.statusCode = rendered.status;
-    response.setHeader("content-type", "text/html; charset=utf-8");
-    response.setHeader("cache-control", DOCUMENT_CACHE_CONTROL);
-    for (const name of Object.keys(rendered.headers ?? {})) {
-      response.setHeader(name, (rendered.headers ?? {})[name]);
-    }
-    // No `content-length`: the length is not known until the last byte, and
-    // waiting for it is the whole of what streaming is not. `HEAD` gets the
-    // status and the headers, and the stream is cancelled rather than dropped
-    // so the render behind it stops instead of filling its queue and waiting
-    // for a reader that is never coming.
-    if (method === "HEAD") {
-      await rendered.stream().cancel();
-      response.end();
-      return;
-    }
-    // Awaited, because `pipe` rejects: React hands a post-shell failure to the
-    // destination's `destroy(error)`, `ChunkQueue.fail` records it, and the
-    // generator `pipe` is iterating rethrows it. Called and dropped, that
-    // rejection escapes this handler — `serve`'s `handle(…).catch` has already
-    // resolved — and lands on the process, where `--unhandled-rejections=throw`
-    // is the default and a binary someone started with `./app` exits in the
-    // middle of a request that was otherwise recoverable.
+    // The request begins here rather than at the top of the handler, and the
+    // two lookups above are why: an embedded chunk and a prerendered document
+    // are answered without any application code running at all, so there is
+    // nothing that could ask for cookies and nothing that could defer work.
+    // What is below is the application, and it is what a request is for.
     //
-    // It cannot become a 500. The shell went out with its status and headers
-    // long before this, and `pipe`'s own `finally` has already called `end()`.
-    // What is left is to say so where a supervisor looks, and to drop the
-    // socket: a chunked response that is closed cleanly is a client being told
-    // a truncated document is the whole document, which is the failure this
-    // pull request is named after.
+    // `app.beginRequest` and not this module's own import: the storage that
+    // holds a request belongs to one copy of `@uniflowed/server`, and the copy
+    // that matters is the one linked into the bundle beside this file.
+    //
+    // `settle` is in a `finally` and it is the last thing the handler does, so
+    // every `after()` runs after the response has been written — after `send`,
+    // after `sendBytes`, and after `pipe` resolves — which is what `after()`
+    // promises and what the other three hosts do. A request that failed is
+    // still a request that happened, so the drain is owed either way; see
+    // ubugeeei-prod/uf#389.
+    const asRequest = toRequest(request, url);
+    const { run, settle } = app.beginRequest(asRequest);
     try {
-      await rendered.pipe(response);
-    } catch (error) {
-      process.stderr.write(`uf: ${String(error?.stack ?? error)}\n`);
-      response.destroy(error);
+      await run(async () => {
+        // Middleware above the dispatcher and above the render, and below the two
+        // lookups on purpose. It guards a path, so it must run for a page, for a
+        // route handler, and for a path under it that matches neither — but an
+        // embedded asset and a prerendered document are answered before it, which
+        // is exactly what `uf preview` does, because Vite's file middleware runs
+        // before anything mounted behind it. The three front doors have to give
+        // one answer; that a prerendered page under a guard ships unguarded is
+        // true of all of them and is ubugeeei-prod/uf#342.
+        const guarded = await app.runMiddleware(asRequest);
+        if (guarded != null) {
+          await send(response, method, guarded);
+          return;
+        }
+
+        const handled = await app.dispatch(asRequest);
+        if (handled != null) {
+          await send(response, method, handled);
+          return;
+        }
+
+        if (method !== "GET" && method !== "HEAD") {
+          // A page supports exactly `GET` and `HEAD`, which is why the `Allow` the
+          // specification requires on every 405 can be written here even though
+          // this side of the handler knows nothing about methods. A *handler* path
+          // with the wrong method never reaches this line: the dispatcher answers
+          // that one itself, with the methods that module really exports.
+          response.setHeader("allow", "GET, HEAD");
+          sendBytes(
+            response,
+            method,
+            405,
+            "text/plain; charset=utf-8",
+            DOCUMENT_CACHE_CONTROL,
+            Buffer.from("method not allowed\n"),
+          );
+          return;
+        }
+
+        const rendered = await app.render(url.pathname + url.search, document, {
+          // There is no terminal to render into: this is a binary somebody started
+          // with `./app`, possibly under a supervisor. The console is where a
+          // supervisor looks, and losing a boundary's exception entirely would be
+          // worse — it is the only trace a page that failed after its first byte
+          // leaves anywhere.
+          onError: (error) => {
+            console.error(error);
+          },
+        });
+        response.statusCode = rendered.status;
+        response.setHeader("content-type", "text/html; charset=utf-8");
+        response.setHeader("cache-control", DOCUMENT_CACHE_CONTROL);
+        for (const name of Object.keys(rendered.headers ?? {})) {
+          response.setHeader(name, (rendered.headers ?? {})[name]);
+        }
+        // No `content-length`: the length is not known until the last byte, and
+        // waiting for it is the whole of what streaming is not. `HEAD` gets the
+        // status and the headers, and the stream is cancelled rather than dropped
+        // so the render behind it stops instead of filling its queue and waiting
+        // for a reader that is never coming.
+        if (method === "HEAD") {
+          await rendered.stream().cancel();
+          response.end();
+          return;
+        }
+        // Awaited, because `pipe` rejects: React hands a post-shell failure to the
+        // destination's `destroy(error)`, `ChunkQueue.fail` records it, and the
+        // generator `pipe` is iterating rethrows it. Called and dropped, that
+        // rejection escapes this handler — `serve`'s `handle(…).catch` has already
+        // resolved — and lands on the process, where `--unhandled-rejections=throw`
+        // is the default and a binary someone started with `./app` exits in the
+        // middle of a request that was otherwise recoverable.
+        //
+        // It cannot become a 500. The shell went out with its status and headers
+        // long before this, and `pipe`'s own `finally` has already called `end()`.
+        // What is left is to say so where a supervisor looks, and to drop the
+        // socket: a chunked response that is closed cleanly is a client being told
+        // a truncated document is the whole document, which is the failure this
+        // pull request is named after.
+        try {
+          await rendered.pipe(response);
+        } catch (error) {
+          process.stderr.write(`uf: ${String(error?.stack ?? error)}\n`);
+          response.destroy(error);
+        }
+      });
+    } finally {
+      await settle();
     }
   };
 }

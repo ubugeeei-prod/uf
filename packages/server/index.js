@@ -95,6 +95,14 @@ export function draftMode(): DraftMode {
  * view, flushing a metric, warming a cache. Registered work runs in the order
  * it was registered, and one task failing does not stop the others — deferred
  * work is by definition not what the response depended on.
+ *
+ * "Sent" is the host's word to keep, and it keeps it: the request is drained
+ * after `uf dev` has written the document, after `uf preview` and `uf start`
+ * have returned from `send`, and after a compiled binary's `pipe` has resolved
+ * on the last byte. One list per request, whether the callback was registered
+ * by a middleware, a route handler or a page. It was not always so — see
+ * ubugeeei-prod/uf#389 for what it meant before, and
+ * `@uniflowed/server/host`'s `beginRequest` for the half a host supplies.
  */
 export function after(callback: () => mixed | Promise<mixed>): void {
   require$Context("after").deferred.push(callback);
