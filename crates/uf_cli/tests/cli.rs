@@ -1198,7 +1198,10 @@ fn explain_says_which_commands_it_knows() {
         stderr.contains("dev, build, preview, start, doc, test, fmt, lint, check"),
         "{stderr}"
     );
-    assert!(stderr.contains("install, upgrade"), "{stderr}");
+    assert!(
+        stderr.contains("install, add, remove, update, why, upgrade"),
+        "{stderr}"
+    );
 }
 
 /// Commands that do their whole job in this binary, so there is no provider

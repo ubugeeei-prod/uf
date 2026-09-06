@@ -191,6 +191,7 @@ pub(crate) fn deploy(
             directory.to_string(),
         ],
         env,
+        &[],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

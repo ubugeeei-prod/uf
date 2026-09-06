@@ -3,6 +3,7 @@
 use camino::Utf8PathBuf;
 use clap::{Subcommand, ValueEnum};
 use uf_config::DeployAdapter;
+use uf_pm::DependencyKind;
 use uf_term::ColorChoice;
 
 /// The `--color` flag, mapped to [`ColorChoice`].
@@ -71,8 +72,57 @@ impl From<ColorOption> for ColorChoice {
     }
 }
 
+/// Which `package.json` field `uf add` writes a package into.
+///
+/// A flag apiece rather than `--save <kind>`: `--dev` is what every manager
+/// this delegates to spells it, and a person who types `uf add --dev` has
+/// already typed it four other ways this week.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AddTarget {
+    /// `devDependencies`.
+    pub(crate) dev: bool,
+    /// `optionalDependencies`.
+    pub(crate) optional: bool,
+    /// `peerDependencies`.
+    pub(crate) peer: bool,
+}
+
+impl From<AddTarget> for DependencyKind {
+    fn from(target: AddTarget) -> Self {
+        // clap has already refused any two of them together, so the order here
+        // decides nothing; production is what remains when none was asked for.
+        match target {
+            AddTarget { dev: true, .. } => Self::Dev,
+            AddTarget { optional: true, .. } => Self::Optional,
+            AddTarget { peer: true, .. } => Self::Peer,
+            _ => Self::Prod,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum Commands {
+    /// Add dependencies with the project's own package manager.
+    ///
+    /// `uf add react react-dom@^19` resolves, installs, and writes both the
+    /// manifest and the lockfile, with lifecycle scripts refused unless
+    /// `pm.allowLifecycleScripts` says otherwise. A specifier is passed to the
+    /// manager exactly as written, so a range, a tag, an alias or a path all
+    /// mean what they mean there.
+    Add {
+        /// Record them in `devDependencies`.
+        #[arg(long, conflicts_with_all = ["optional", "peer"])]
+        dev: bool,
+        /// Record them in `optionalDependencies`.
+        #[arg(long, conflicts_with = "peer")]
+        optional: bool,
+        /// Record them in `peerDependencies`.
+        #[arg(long)]
+        peer: bool,
+        /// The packages: `react`, `react@^19`, `./packages/ui`.
+        #[arg(value_name = "SPEC", required = true)]
+        specs: Vec<String>,
+    },
     /// Build the project for production.
     ///
     /// Runs Vite through `@uniflowed/vite`, with every module transformed by
@@ -217,7 +267,16 @@ pub(crate) enum Commands {
     },
     /// Install the project's dependencies. Also `uf i`.
     #[command(visible_alias = "i")]
-    Install,
+    Install {
+        /// Install exactly what the lockfile pins, and fail when it is stale.
+        ///
+        /// What CI runs: `npm ci`, `pnpm install --frozen-lockfile`, `yarn
+        /// install --immutable`, `bun install --frozen-lockfile`. A lockfile
+        /// that has drifted from the manifests is the failure, rather than
+        /// being quietly resolved away.
+        #[arg(long)]
+        frozen_lockfile: bool,
+    },
     /// Serve uf's module transform over stdin/stdout, for the Vite plugin.
     ///
     /// Not a command a person runs: `@uniflowed/vite` spawns it once per build
@@ -264,6 +323,16 @@ pub(crate) enum Commands {
         /// How far to move the version.
         #[arg(value_enum)]
         bump: ReleaseBump,
+    },
+    /// Remove dependencies with the project's own package manager.
+    ///
+    /// Takes them out of every dependency field that lists them, out of the
+    /// lockfile, and out of `node_modules`. A name the manifest never listed is
+    /// not an error: the project ends up the way it was asked to be either way.
+    Remove {
+        /// The packages, by name.
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
     },
     /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
@@ -338,12 +407,34 @@ pub(crate) enum Commands {
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
     },
-    /// Upgrade the project's dependencies and the toolchain.
+    /// Update dependencies to the newest version their range allows.
+    ///
+    /// The ranges in `package.json` are not touched; the lockfile is. Name
+    /// packages to hold the rest still, or name none to update everything.
+    Update {
+        /// The packages to update; all of them when none is named.
+        #[arg(value_name = "PACKAGE")]
+        packages: Vec<String>,
+    },
+    /// Re-read the workspace and record the package and runtime plan.
+    ///
+    /// It fetches nothing and it does not replace the uf binary, in spite of
+    /// its name: `uf update` moves your dependencies and `uf use` moves the
+    /// toolchain. See ubugeeei-prod/uf#287.
     Upgrade,
     /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
     Use {
         /// The toolchain to activate.
         runtime: String,
+    },
+    /// Explain why a package is in the dependency tree.
+    ///
+    /// Answered by the manager that resolved it, from its own lockfile, so the
+    /// chain it prints is the chain that was actually installed.
+    Why {
+        /// The package to explain.
+        #[arg(value_name = "NAME")]
+        package: String,
     },
 }
 

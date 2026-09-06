@@ -4,7 +4,7 @@ use super::*;
 fn the_crate_reexports_the_public_surface() {
     assert_eq!(module_environment(""), ModuleEnvironment::Server);
     assert_eq!(RSC_MANIFEST_FILE_NAME, "uf-rsc-manifest.json");
-    assert_eq!(RSC_MANIFEST_VERSION, 1);
+    assert_eq!(RSC_MANIFEST_VERSION, 2);
     assert_eq!(ACTION_ID_HEX_LEN, 64);
 }
 

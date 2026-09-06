@@ -614,7 +614,9 @@ fn exec_uniflowed_virtual_package(
             Ok(true)
         }
         "@uniflowed/pm" | "uf/pm" => {
-            pm::install(cwd, ui)?;
+            // `ufx @uniflowed/pm` is the package, not the flag surface: the
+            // frozen install is `uf install --frozen-lockfile`.
+            pm::install(cwd, ui, false)?;
             Ok(true)
         }
         _ => Ok(false),

@@ -179,6 +179,7 @@ pub(crate) fn compile(
             work.to_string(),
         ],
         env,
+        &[],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

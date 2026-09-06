@@ -37,7 +37,7 @@ you need the production-server row, uf cannot serve you at all yet.
 | --- | --- | --- |
 | Test throughput | `bun test` | 0.20 s against **0.06 s** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
 | Deployment targets | Next.js | `uf build --adapter node` writes a directory you can copy, and it is the only one of the seven adapters that exists; `edge`, `serverless` and the rest are names ([#391](https://github.com/ubugeeei-prod/uf/issues/391)) |
-| Server Components | Next.js | the analysis is complete and nothing reads it — every page module ships to the browser ([#252](https://github.com/ubugeeei-prod/uf/issues/252)) |
+| Server Components | Next.js | the split is route-level: a route with no `"use client"` boundary in it keeps its page out of the client bundle, and every page above a boundary still ships whole ([#252](https://github.com/ubugeeei-prod/uf/issues/252), [#350](https://github.com/ubugeeei-prod/uf/issues/350)) |
 | The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
 | Being installable | everything | `@uniflowed/*` is not on npm ([#210](https://github.com/ubugeeei-prod/uf/issues/210)) |
 | Runtime coverage | Bun, Next.js | Node.js and Bun load Flow; Deno is a name in an enum and edge runtimes have no host ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
@@ -106,7 +106,7 @@ the fully static case. In uf, the static case is the only case.
 | File-system routing, nested layouts | yes | yes ([Routing](/guide/routing)) |
 | Data loading before render | yes | `loader` exports |
 | Route handlers | yes | written, dispatched **only under `uf dev`** ([#250](https://github.com/ubugeeei-prod/uf/issues/250)) |
-| Server Components, server actions | yes | analysed, never executed ([#252](https://github.com/ubugeeei-prod/uf/issues/252)) |
+| Server Components, server actions | yes | routes with no client boundary leave the client bundle; nothing above a boundary does, and no server action is callable ([#252](https://github.com/ubugeeei-prod/uf/issues/252)) |
 | Streaming, Suspense boundaries | yes | `renderToString`, so no ([#254](https://github.com/ubugeeei-prod/uf/issues/254)) |
 | ISR, caching, revalidation | yes | four booleans in a manifest ([#277](https://github.com/ubugeeei-prod/uf/issues/277)) |
 | Middleware | yes | reserved, discovered, never called ([#260](https://github.com/ubugeeei-prod/uf/issues/260)) |
@@ -144,12 +144,14 @@ snapshots, coverage and a
 than `vitest run` on that suite (1.96 s), it runs on Node.js as well as Bun,
 and it runs Flow — `bun test` has no `component` or `hook` syntax at all.
 
-**Package management.** `uf install` does not implement one: it detects the
-project's package manager and runs it, refusing a manifest that declares npm
-scripts. `uf_pm`'s operation table names ten commands and the CLI ships one —
-no `uf add`, no `uf remove`, no frozen install for CI
-([#287](https://github.com/ubugeeei-prod/uf/issues/287)). Bun's installer is a
-finished product; uf's is a policy in front of yours.
+**Package management.** uf does not implement one: `uf install`, `uf add`,
+`uf remove`, `uf update` and `uf why` each detect the project's package manager
+and run it, refusing a manifest that declares npm scripts and passing
+`--ignore-scripts` to whatever runs. `uf install --frozen-lockfile` is the CI
+install. Bun's installer is a finished product — a resolver, a global cache, a
+lockfile format, `bun outdated`, `bun audit`, `bun patch`, catalogs; uf's is a
+policy in front of yours, and deliberately: writing a resolver would make uf
+the chokepoint every ecosystem upgrade has to pass through.
 
 ## And Vite+
 

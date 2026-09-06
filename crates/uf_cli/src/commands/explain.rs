@@ -17,7 +17,7 @@ use camino::Utf8Path;
 use serde_json::json;
 use uf_config::env_files;
 use uf_config::{ResolvedConfig, load_config};
-use uf_pm::{Operation, command_for, detect_package_manager};
+use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
 use uf_term::KeyValue;
 
 use crate::commands::task::fetchable;
@@ -40,7 +40,8 @@ struct Stage {
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
     "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
-    "install", "upgrade", "use", "env", "prepare", "publish", "release", "lsp",
+    "install", "add", "remove", "update", "why", "upgrade", "use", "env", "prepare", "publish",
+    "release", "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -58,6 +59,24 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         "run" => run_stages(&resolved),
         "exec" => exec_stages(&resolved),
         "install" => install_stages(&resolved),
+        "add" => dependency_stages(
+            &resolved,
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            "writes the specifiers into dependencies, the lockfile and node_modules",
+        ),
+        "remove" => dependency_stages(
+            &resolved,
+            Operation::Remove,
+            "takes the names out of every dependency field, the lockfile and node_modules",
+        ),
+        "update" => dependency_stages(
+            &resolved,
+            Operation::Update,
+            "moves the lockfile to the newest versions the manifest ranges already allow",
+        ),
+        "why" => why_stages(&resolved),
         "upgrade" => upgrade_stages(&resolved),
         "use" | "env" => runtime_stages(&resolved),
         "prepare" => prepare_stages(&resolved),
@@ -267,6 +286,63 @@ fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             },
         },
     ]
+}
+
+/// `uf add`, `uf remove` and `uf update`, which differ only in the row above.
+///
+/// The provider is the manager that will actually run, spelled as the command
+/// line it will be spawned as — `command_for` with the detection, so a pnpm
+/// project is told `pnpm add` and a Bun project `bun add`. That is the whole
+/// point of asking: these three delegate, and a plan that hid the delegate
+/// would document the opposite of what happens.
+fn dependency_stages(
+    resolved: &ResolvedConfig,
+    operation: Operation<'_>,
+    what: &str,
+) -> Vec<Stage> {
+    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    vec![
+        Stage {
+            name: "workspace discovery",
+            provider: "uf_pm".to_string(),
+            detail: "every package.json this project owns, before anything is fetched".to_string(),
+        },
+        Stage {
+            name: "lifecycle scripts",
+            provider: "uf".to_string(),
+            detail: if resolved.config.pm.allow_lifecycle_scripts {
+                "allowed by pm.allowLifecycleScripts".to_string()
+            } else {
+                "refused; --ignore-scripts is passed to the manager below".to_string()
+            },
+        },
+        Stage {
+            name: "resolution and install",
+            provider: command_for(manager, operation).to_string(),
+            detail: what.to_string(),
+        },
+        Stage {
+            name: "uf's own lockfile",
+            provider: resolver_name(resolved).to_string(),
+            detail: format!(
+                "rewrites {} and the store under {} from the manifests the manager changed",
+                resolved.config.pm.lockfile, resolved.config.pm.store_dir
+            ),
+        },
+    ]
+}
+
+/// `uf why`, which changes nothing and therefore has one stage.
+fn why_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    vec![Stage {
+        name: "the answer",
+        provider: command_for(manager, Operation::Why).to_string(),
+        detail: format!(
+            "the manager reads its own lockfile and prints the chain; uf writes nothing, not even {}",
+            resolved.config.pm.lockfile
+        ),
+    }]
 }
 
 fn upgrade_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
