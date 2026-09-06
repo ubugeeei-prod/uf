@@ -128,4 +128,44 @@ printf '# pending\nkoru\n' > "$work/ghost-pending/tools/release/pending-packages
 run ghost-pending
 refuses "a pending name with no package behind it" "packages/koru does not exist"
 
+# --- a published package may not need an unpublished one --------------------
+# The failure that started the check, reached from the other direction: the
+# tarball for a published name would ask npm for a version of a name npm does
+# not have. It installs from this workspace and nowhere else, and the only
+# person who finds out is a user typing `npm install`.
+scratch depends-on-pending
+printf '{ "name": "@uniflowed/core", "version": "0.0.0", "dependencies": { "@uniflowed/state": "0.0.0" } }\n' \
+  > "$work/depends-on-pending/packages/core/package.json"
+run depends-on-pending
+refuses "a published package depending on a pending one" "would answer ETARGET"
+
+# A peer dependency reaches the same registry and counts the same way.
+scratch peer-on-pending
+printf '{ "name": "@uniflowed/core", "version": "0.0.0", "peerDependencies": { "@uniflowed/state": "0.0.0" } }\n' \
+  > "$work/peer-on-pending/packages/core/package.json"
+run peer-on-pending
+refuses "a published package peer-depending on a pending one" "would answer ETARGET"
+
+# And a declaration is in neither list *because* it will never be published,
+# so depending on one is the same ETARGET by a different route. Stating the
+# rule over "is it pending" rather than "is it published" would have missed
+# this one entirely.
+scratch depends-on-declaration
+printf '{ "name": "@uniflowed/core", "version": "0.0.0", "dependencies": { "@uniflowed/orm": "0.0.0" } }\n' \
+  > "$work/depends-on-declaration/packages/core/package.json"
+run depends-on-declaration
+refuses "a published package depending on a declaration" "is not in either release manifest"
+
+# --- and the edges that are fine stay fine ----------------------------------
+# A pending package may depend on a published one — that is the ordinary
+# direction — and a dev dependency is not installed for a consumer at all.
+scratch allowed-edges
+printf '{ "name": "@uniflowed/state", "version": "0.0.0", "dependencies": { "@uniflowed/core": "0.0.0" } }\n' \
+  > "$work/allowed-edges/packages/state/package.json"
+printf '{ "name": "@uniflowed/core", "version": "0.0.0", "devDependencies": { "@uniflowed/state": "0.0.0" } }\n' \
+  > "$work/allowed-edges/packages/core/package.json"
+run allowed-edges
+[ "$status" -eq 0 ] || fail "an ordinary dependency direction was refused: $out"
+pass "pending may depend on published, and a devDependency is not a consumer's"
+
 echo "test-publishable: all checks passed"
