@@ -15,7 +15,7 @@ export const ufBrand = {
   name: "uf",
   fullName: "uniflowed",
   headline: "Unified Toolchain for Flow",
-  tagline: "All-in-one toolchain for Flow and React.",
+  tagline: "Build the strongest React development experience with Modern Flow.",
 };
 
 export const ufBrandAssets = {
