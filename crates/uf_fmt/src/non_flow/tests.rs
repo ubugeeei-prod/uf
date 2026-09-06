@@ -4,6 +4,22 @@ fn config() -> FmtConfig {
     FmtConfig::default()
 }
 
+/// A `FmtConfig` that names `formatter` the way a project's `uf.config.js`
+/// does — which is the difference between a requirement and uf's suggestion.
+fn asked_for(formatter: NonFlowFormatter) -> FmtConfig {
+    let mut config = FmtConfig::default();
+    config.non_flow.formatter = formatter;
+    config.non_flow.chosen_by_project = true;
+    config
+}
+
+/// A `FmtConfig` uf filled in, because the project said nothing.
+fn defaulted_to(formatter: NonFlowFormatter) -> FmtConfig {
+    let mut config = FmtConfig::default();
+    config.non_flow.formatter = formatter;
+    config
+}
+
 #[test]
 fn none_runs_nothing() {
     assert_eq!(invocation(NonFlowFormatter::None, false, &config()), None);
@@ -48,12 +64,12 @@ fn formatting_nothing_runs_nothing() {
     let root = Utf8Path::new(".");
 
     assert_eq!(
-        run(NonFlowFormatter::Biome, root, &[], false, &config()),
-        Ok(true)
+        run(root, &[], false, &asked_for(NonFlowFormatter::Biome)),
+        Ok(NonFlowOutcome::Formatted)
     );
     assert_eq!(
-        run(NonFlowFormatter::Prettier, root, &[], true, &config()),
-        Ok(true)
+        run(root, &[], true, &asked_for(NonFlowFormatter::Prettier)),
+        Ok(NonFlowOutcome::Formatted)
     );
 }
 
@@ -63,14 +79,74 @@ fn none_is_success_even_with_files_to_format() {
 
     assert_eq!(
         run(
-            NonFlowFormatter::None,
             Utf8Path::new("."),
             &files,
             false,
-            &config()
+            &asked_for(NonFlowFormatter::None)
         ),
-        Ok(true)
+        Ok(NonFlowOutcome::Formatted)
     );
+}
+
+/// A skip is a third answer, not a quiet "formatted".
+///
+/// Whether the spawn fails cannot be arranged from a unit test without
+/// rewriting the process's own `PATH`, which every other test in this binary
+/// would then be running under; the missing binary is driven end to end in
+/// `crates/uf_cli/tests/cli.rs`. What is pinned here is the shape of the
+/// decision: the two configurations that reach `run` differ in exactly the one
+/// bit that decides it, and files nobody looked at are not files that are
+/// formatted.
+#[test]
+fn a_skip_is_neither_formatted_nor_unformatted() {
+    let skipped = NonFlowOutcome::Skipped {
+        formatter: "biome".into(),
+        paths: vec!["data.json".to_string()],
+    };
+
+    assert!(!skipped.is_formatted());
+    assert!(NonFlowOutcome::Formatted.is_formatted());
+    assert!(!NonFlowOutcome::Unformatted.is_formatted());
+    let uf_chose = defaulted_to(NonFlowFormatter::Biome);
+    let project_chose = asked_for(NonFlowFormatter::Biome);
+    assert_eq!(
+        uf_chose.non_flow.formatter,
+        project_chose.non_flow.formatter
+    );
+    assert!(!uf_chose.non_flow.chosen_by_project);
+    assert!(project_chose.non_flow.chosen_by_project);
+}
+
+/// "1 non-Flow files were left alone" was the first sentence a new project
+/// ever saw from uf. See ubugeeei-prod/uf#441.
+#[test]
+fn the_count_and_its_verb_agree() {
+    assert!(
+        skipped_message("biome", 1).contains("1 non-Flow file was skipped"),
+        "{}",
+        skipped_message("biome", 1)
+    );
+    assert!(
+        skipped_message("biome", 4).contains("4 non-Flow files were skipped"),
+        "{}",
+        skipped_message("biome", 4)
+    );
+    let one = NonFlowError::NotInstalled {
+        formatter: "prettier".into(),
+        count: 1,
+    };
+    assert!(one.to_string().contains("1 non-Flow file was"), "{one}");
+}
+
+/// Both ways out, in the sentence that says something was skipped: install it,
+/// or say this project does not want one.
+#[test]
+fn the_skip_names_the_formatter_and_both_fixes() {
+    let message = skipped_message("biome", 2);
+
+    assert!(message.contains("biome"), "{message}");
+    assert!(message.contains("fmt.nonFlow.formatter"), "{message}");
+    assert!(message.contains("\"none\""), "{message}");
 }
 
 /// "No such file or directory" sends a reader looking for the source file

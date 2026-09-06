@@ -359,8 +359,19 @@ Non-Flow files (JSON, JSONC, CSS, TypeScript) go to the formatter named by
 `fmt.nonFlow.formatter`, as a subprocess: `uf fmt` collects them, hands them
 to that command, and reports what it did. The default is Biome, resolved
 from the project's `node_modules/.bin` before `PATH` so a project gets the
-version it installed. `"none"` turns it off, and a formatter that is not
-installed is an error that names it rather than a silent skip.
+version it installed. `"none"` turns it off.
+
+A formatter that is not installed is never a silent skip: it is named, once,
+with the files nobody looked at listed under it. Whether it ends the run
+depends on who chose it. A project that wrote `fmt.nonFlow.formatter` down
+stated a requirement, and an unmet requirement is an error. uf's default is a
+suggestion, and a suggestion that is not installed is a warning: the exit code
+goes on answering the question `uf fmt --check` is asked in CI, which is
+whether the files uf can format are formatted. Until that split existed, the
+first `uf fmt` in a project uf had just scaffolded exited 1 over a JSON file
+nothing was wrong with, because uf's own default and uf's own scaffold
+disagreed — see ubugeeei-prod/uf#441. A project that wants CI to insist on the
+non-Flow half says so by naming the formatter.
 
 Not linked in, because linking Biome would make uf's release depend on
 Biome's — red line 5. Running the binary a project already has means the

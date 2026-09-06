@@ -329,6 +329,49 @@ fn running_twice_generates_the_same_bytes() {
     similar_asserts::assert_eq!(first, second);
 }
 
+/// A commit is not the place to discover uf's default formatter is missing.
+///
+/// The same decision `uf fmt` makes, in the command that runs on somebody's
+/// commit: a formatter uf chose and the project never named is a suggestion,
+/// so the format step says which files it did not look at and passes. A hook
+/// that refuses a clean commit over a tool the project never asked for is a
+/// hook that gets uninstalled. See ubugeeei-prod/uf#441.
+#[test]
+fn a_missing_default_formatter_does_not_fail_the_commit() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    create_app(dir.path());
+    fs::write(dir.path().join("package-lock.json"), "{\n  \"a\": 1\n}\n")
+        .expect("a lockfile, as `uf install` leaves one");
+
+    // Neither the formatter nor git is on this `PATH`, so nothing about the
+    // outcome depends on what happens to be installed on this machine: with no
+    // staged set, `uf prepare` checks every file, the lockfile included.
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["--color", "never", "prepare"])
+        .env("PATH", dir.path().join("no-tools"))
+        .env("UF_STORE", dir.path().join(".uf/store"))
+        .env("UF_ROOTS", dir.path().join(".uf/roots"))
+        .output()
+        .expect("uf started");
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    assert_eq!(
+        output.status.code().unwrap_or(-1),
+        SUCCESS,
+        "a clean commit failed over a formatter the project never named\n{stdout}{stderr}"
+    );
+    assert!(
+        stdout.contains("biome is not installed"),
+        "the step must still say what it did not look at:\n{stdout}"
+    );
+    assert!(stdout.contains("1 non-Flow file was skipped"), "{stdout}");
+    assert!(stdout.contains("package-lock.json"), "{stdout}");
+    assert_eq!(status_of(&record(dir.path()), "run-format-check"), "ok");
+}
+
 /// Give `root` a server action a client boundary can reach.
 ///
 /// The page already imports `Counter`, which is a `"use client"` module, so
