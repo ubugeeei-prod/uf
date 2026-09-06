@@ -31,8 +31,14 @@ pub(crate) fn run_flow_unclear_type(
         return;
     };
 
+    let mut enclosing = Enclosing::default();
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
+        // What the *previous* lines left open, so a word on a continuation line
+        // is judged by the call it stands in rather than by the fragment it
+        // shares a line with.
+        let outer = enclosing;
+        enclosing = enclosing.after(code);
         for (needle, message) in UNCLEAR_TYPES {
             for at in find_words(code, needle) {
                 // A sentence is not an annotation: `it("treats Object as any
@@ -40,7 +46,7 @@ pub(crate) fn run_flow_unclear_type(
                 if line.in_string(at) {
                     continue;
                 }
-                if names_a_value(code, at, needle.len()) {
+                if names_a_value(code, at, needle.len(), outer) {
                     continue;
                 }
                 push_in_code(diagnostics, scan, rule, severity, position, at, message);
@@ -83,7 +89,7 @@ pub(crate) fn run_flow_unclear_type(
 /// shape does not occur here; it is the price of telling `expect.any(Object)`
 /// from `(Object) => void` without a parser, and it is stated rather than
 /// discovered.
-fn names_a_value(code: &str, at: usize, len: usize) -> bool {
+fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     let before = prev_non_space(code, at);
     let after = next_non_space(code, at + len);
 
@@ -121,7 +127,7 @@ fn names_a_value(code: &str, at: usize, len: usize) -> bool {
 
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
-    is_a_bare_argument(code, at, len)
+    is_a_bare_argument(code, at, len, outer)
 }
 
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
@@ -143,18 +149,93 @@ fn follows_an_equality_operator(code: &str, at: usize) -> bool {
 /// The word has to be the *whole* argument, which is what keeps a type inside
 /// one out: `Map<string, any>` is reached with a `<` or a `,` in front and a `>`
 /// behind, and `(node: any)` with a `:` in front.
-fn is_a_bare_argument(code: &str, at: usize, len: usize) -> bool {
-    if !prev_non_space(code, at).is_some_and(|(_, byte)| matches!(byte, b'(' | b',')) {
+fn is_a_bare_argument(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
+    // What stands before it, on this line or — for the first word on a
+    // continuation line — at the end of the last one.
+    let before = match prev_non_space(code, at) {
+        Some((_, byte)) => Some(byte),
+        None => outer.last_byte,
+    };
+    if !before.is_some_and(|byte| matches!(byte, b'(' | b',')) {
         return false;
     }
     if !next_non_space(code, at + len).is_some_and(|(_, byte)| matches!(byte, b')' | b',')) {
         return false;
     }
-    let Some(open) = enclosing_open_paren(code, at) else {
-        return false;
-    };
-    prev_non_space(code, open)
-        .is_some_and(|(_, byte)| is_word_byte(byte) || byte == b')' || byte == b']')
+    match enclosing_open_paren(code, at) {
+        Some(open) => prev_non_space(code, open)
+            .is_some_and(|(_, byte)| is_word_byte(byte) || byte == b')' || byte == b']'),
+        // The list was opened on an earlier line, so the question "is this a
+        // call or a function type" was answered there and carried here.
+        None => outer.kind == Some(Opener::Call),
+    }
+}
+
+/// What an argument list looked like when the line above ended.
+///
+/// The scan reads one line at a time, and until this existed a call spread over
+/// several lines was invisible to it: `enclosing_open_paren` found no opener on
+/// the continuation line and the word was reported as a type. `expect.any(\n
+/// Function,\n)` is exactly the shape `@uniflowed/test` is written in, and
+/// `check:lib` is an error-level gate on CI now, so a false positive there is a
+/// red build for correct code.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct Enclosing {
+    /// The innermost delimiter still open, or `None` at the top level.
+    kind: Option<Opener>,
+    /// The last byte of code before this line, which is what tells `(` from
+    /// `,` for the first word on a continuation line.
+    last_byte: Option<u8>,
+}
+
+/// Which kind of bracket is open. Only `(` needs telling apart, and only into
+/// the two kinds that decide this rule.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Opener {
+    /// `f(` or `new C(` — an argument list, where a bare `Function` is a value.
+    Call,
+    /// `(` after anything else, `[` or `{` — a group, a function type, an
+    /// array or an object, where a bare `Function` may well be a type.
+    Other,
+}
+
+impl Enclosing {
+    /// This state, advanced over one line of code.
+    ///
+    /// Strings and comments are already blanked out of `code` by the scan, so
+    /// a bracket here is a bracket in the program.
+    fn after(self, code: &str) -> Self {
+        let mut stack: Vec<Opener> = match self.kind {
+            Some(kind) => vec![kind],
+            None => Vec::new(),
+        };
+        let bytes = code.as_bytes();
+        let mut last = self.last_byte;
+        for (index, byte) in bytes.iter().enumerate() {
+            match byte {
+                b'(' => {
+                    let call = prev_non_space(code, index).is_some_and(|(_, previous)| {
+                        is_word_byte(previous) || previous == b')' || previous == b']'
+                    });
+                    stack.push(if call { Opener::Call } else { Opener::Other });
+                }
+                b'[' | b'{' => stack.push(Opener::Other),
+                b')' | b']' | b'}' => {
+                    stack.pop();
+                }
+                _ => {}
+            }
+            if !byte.is_ascii_whitespace() {
+                last = Some(*byte);
+            }
+        }
+        Self {
+            // Only the innermost one is ever asked about, so only it is kept —
+            // a deeper stack would be state nothing reads.
+            kind: stack.last().copied(),
+            last_byte: last,
+        }
+    }
 }
 
 /// The `(` that opens the list the byte at `at` stands in, within this line.

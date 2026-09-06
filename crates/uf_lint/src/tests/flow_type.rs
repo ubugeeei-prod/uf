@@ -289,3 +289,46 @@ fn ambiguous_object_type_ignores_object_literals() {
 
     assert!(diagnostics.is_empty());
 }
+
+#[test]
+fn unclear_type_ignores_a_bare_argument_written_over_several_lines() {
+    // The scan reads one line at a time, so until the enclosing delimiter was
+    // carried across lines the continuation line held a lone `Function,` with
+    // no opener in front of it — and the rule, finding no argument list, read
+    // it as a type. `expect.any(…)` is written this way whenever the formatter
+    // decides the call is too long for one line, and `check:lib` is an
+    // error-level gate on CI, so this was a red build for correct code.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nexpect(handler).toHaveBeenCalledWith(\n  expect.any(\n    Function,\n  ),\n  expect.any(Object),\n);\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_still_reads_a_type_in_a_list_opened_on_an_earlier_line() {
+    // And the half that proves the carry is a *question* rather than a licence:
+    // a function type's parameter list is opened on an earlier line just the
+    // same, and a bare `Object` inside one is still an annotation.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Sink = (\n  Object,\n) => void;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 3);
+}
+
+#[test]
+fn unclear_type_still_reads_an_annotation_on_a_continued_parameter_list() {
+    // A call and a declaration are told apart by what stands before the `(`,
+    // and a declaration's parameters carry annotations however they are laid
+    // out.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nfunction handle(\n  node: any,\n  rest: Object,\n) {\n  return node;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+}
