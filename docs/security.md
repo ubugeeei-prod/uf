@@ -140,6 +140,30 @@ class above, and the source rewriting `uf` performed to feed a parser that
 predated `component` syntax — which had put every diagnostic in a rewritten
 file at the wrong location.
 
+## Image and font transformation
+
+`uf assets` decodes image and font files at build time. They arrive from the
+project *and from its dependencies*, so every one of them is attacker-authored
+input to a decoder, and a decoder is the classic place for a memory-safety bug.
+
+| Risk | Structural decision in `uf` | Test |
+| --- | --- | --- |
+| A memory-safety bug in an image codec | Every decoder and encoder is pure Rust with no `unsafe` of uf's own and no C library linked: `png`, `zune-jpeg` and `image-webp` by way of `image`, chosen with `default-features = false` so no codec uf does not emit is compiled in at all | `uf_assets::image` |
+| A decompression bomb — a small file declaring an enormous image | Dimensions are read from the header and checked against `MAX_SOURCE_PIXELS` *before* the buffer is allocated, and the file itself against `MAX_SOURCE_BYTES` | `uf_assets::image` |
+| A font declaring a table directory or a table stream larger than the machine | `MAX_FONT_BYTES` and `MAX_TABLES`, and every decompression is `take`-bounded rather than trusted | `uf_assets::font` |
+| A malformed WOFF2 length moving the reader off the entry boundary | `UIntBase128` refuses a leading zero, a value over 32 bits and a run longer than five bytes, exactly as the specification requires | `uf_assets::font` |
+| A font family or file name breaking out of the generated CSS | Family names are emitted as escaped CSS strings; emitted file names are reduced to `[A-Za-z0-9_-]` and are one path segment by construction | `uf_assets::font`, `uf_assets::name` |
+| A dev-server request reading outside the asset cache | The middleware serves one path segment and refuses any name containing a separator or `..`, rather than resolving a path and then checking where it landed | `@uniflowed/vite` |
+
+**There is no request-time resize endpoint, and that is a decision rather than
+an omission.** An endpoint that resizes whatever URL or dimensions a query
+string names is a denial-of-service amplifier — a handful of requests can pin
+every core on the machine — which is why Next.js pairs its optimizer with
+`remotePatterns` as an allow-list. uf transforms only files a module actually
+imports, at widths the project declared, at build time. A request-time path is
+worth having for user-supplied and remote images, and when it is added it needs
+the allow-list in the first commit rather than after one.
+
 ## Supply chain of `uf` itself
 
 - Every GitHub Action is pinned to a commit SHA whose version comment resolves

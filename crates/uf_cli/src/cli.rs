@@ -304,6 +304,14 @@ pub(crate) enum Commands {
     /// per-file `uf` invocation would have paid startup for thousands of times.
     #[command(hide = true)]
     Transform,
+    /// Serve uf's image and font pipeline over stdin/stdout, for the Vite plugin.
+    ///
+    /// Not a command a person runs, and the same arrangement as `transform`
+    /// for the same reason: decoding and re-encoding every image in a project
+    /// is native work driven from a JavaScript plugin, and one long-lived
+    /// process is what keeps it from paying start-up once per asset.
+    #[command(hide = true)]
+    Assets,
     /// Lint the project without type checking it.
     Lint {
         /// Emit machine-readable JSON on stdout.
@@ -512,7 +520,11 @@ impl Commands {
             // `uf completion` is piped into `eval` and `uf __complete` into a
             // completion list; a banner on either is a syntax error in
             // somebody's shell.
-            Self::Complete { .. } | Self::Completion { .. } | Self::Lsp | Self::Transform => true,
+            Self::Complete { .. }
+            | Self::Completion { .. }
+            | Self::Lsp
+            | Self::Transform
+            | Self::Assets => true,
             Self::Run { script, .. } => script.is_some(),
             _ => false,
         }
