@@ -1,5 +1,49 @@
 # Changelog
 
+## uf@0.0.0-alpha.9
+
+_2026-09-07_
+
+The release where several things uf claimed became things uf does. `Image` and
+`Font` had been the markup and none of the pipeline; they now resize, re-encode,
+`srcset`, self-host a font and match its fallback metrics. `uf lint --fix`
+writes the fixes a catalogue had been holding for the language server alone.
+`uf test --coverage` measures the author's Flow lines rather than the JavaScript
+they compile to. And `@uniflowed/ui` grew a positioning engine and the three
+overlay components that need one.
+
+Two of the fixes are worth reading as a pair, because both were a value decided
+once and then wrong for everyone after. `packages/router` latched "is there a
+document?" at module scope, so a process that loaded the router before a DOM
+existed got a router whose navigation silently did nothing — which is what made
+one test fail eight times in twenty and pass alone. `uf_term` assumed every
+terminal was 72 columns, so `uf install`'s ladder wrapped on a narrower one and
+walked down the screen.
+
+### Added
+
+- **test**: coverage in the author's Flow lines, with thresholds and a reporter CI can read (#456)
+- **assets, web, vite**: Image and Font get the pipeline they were markup for (#454)
+- **tui, term**: a scroll box, a real terminal size, and React Ink measured (#449)
+- **ui**: an overlay that flips and slides, and the three components on it (#421)
+- **cli, server, vite**: three more deploy adapters through the one handler (#447)
+- **config, cli, vite**: `.env` files are read, and only the prefixed half reaches the browser (#423)
+
+### Fixed
+
+- **lint**: the facts that decide which rules run are read from code (#450)
+- **router**: decide there is a document by the navigation, not by the import (#453)
+- **install**: the banner fits the terminal it is printed to (#452)
+- **fmt**: a formatter uf chose and nobody installed is a warning, not an error (#446)
+- **flow, fmt, check, transform**: a module may await at its top level (#204) (#434)
+- **release**: the release verification parses under the shell that runs it (#444)
+- **test**: the packaging check brings its own npm cache (#429)
+
+### Documentation
+
+- sharpen Modern Flow React tagline (#448)
+- a README for somebody who has never heard of uf (#442)
+
 ## uf@0.0.0-alpha.8
 
 _2026-09-07_

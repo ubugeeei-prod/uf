@@ -18,6 +18,7 @@ integrated feature coverage.
 
 - `uf_cli`: command router for `uf`
 - `uf_config`: zero-config defaults and `uf.config.js` loading
+- `uf_assets`: image resizing and re-encoding, and the font metrics behind `Image` and `Font`
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
@@ -581,6 +582,40 @@ running.
 | A retry | Re-runs the *file* with a filter naming one case, so the retry sees the module state a first run would |
 | `.only` | Decided per file after the module body has run, because a file's `.only` can appear after the tests it excludes |
 | A failing assertion's position | The matcher's own message, and the line from the stack — which points at the Flow source because the transform emits a source map and the worker runs with it enabled |
+
+### Coverage
+
+`uf test --coverage` instruments nothing. V8 counts execution on its own, Node
+writes those counts out when a worker exits (`NODE_V8_COVERAGE`), and `uf_test`
+maps them back through the same source map the transform already produces. The
+alternative — rewriting the Flow to count itself — would mean the suite tests a
+program that is not the one being shipped.
+
+Three properties of the existing design made that the cheap answer. The Node
+host is already started with `--enable-source-maps`, which is what makes Node
+keep a source-map cache; Node writes that cache into the coverage document
+beside the counts, with the generated file's line lengths, so an offset into
+JavaScript is addressable without reading the JavaScript back. The loader
+already attaches an inline map to every module it transforms. And the worker
+already ends by closing its stdin, so there is an exit to flush at — a run that
+collects coverage waits for its workers rather than killing them, which is the
+one behaviour this feature added to the runner.
+
+The counting rule is the source map invariant above, used as a filter: **a
+generated position that maps to nothing the author wrote is not counted at
+all.** That is what keeps a `match` lowering's guards, a `component`'s props
+preamble, the enum runtime and the React Compiler's memo blocks out of both the
+numerator and the denominator — they are not the author's branches, so they are
+not branches. A line is counted when a generated position maps back to it and
+covered when the innermost V8 range over that position ran; a function is one
+per generated function whose body holds a mapped position; a branch is one per
+V8 block range whose first mapped position exists.
+
+Every count is keyed by a position in the author's source, never by a generated
+offset or a script id, which is what makes merging several workers' documents
+addition. Reports are LCOV, Cobertura and a terminal table; thresholds live in
+`uf.config.js` and fail the run. It is Node-only: Bun implements no
+`NODE_V8_COVERAGE` and Deno has no Flow loader.
 
 ### Measured
 

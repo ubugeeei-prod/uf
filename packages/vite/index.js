@@ -24,6 +24,13 @@
 //                 markdown, front matter, heading ids and build-time syntax
 //                 highlighting, so `.mdx` works with
 //                 no configuration.
+// * `uf:asset`  — an imported image is decoded, resized to the widths the
+//                 project declares and re-encoded by `uf assets`, and an
+//                 imported font is self-hosted with the `@font-face` and the
+//                 metric-matched fallback that stop the swap moving the page.
+//                 The import evaluates to what `Image` and `Font` need — the
+//                 intrinsic size, every emitted variant, the placeholder —
+//                 rather than to a URL string. See `internal/assets.js`.
 //
 // `uniflowed(options)` returns the array; a project that wants to add a plugin
 // declares it in `uf.config.js` and the driver appends it after these.
@@ -34,6 +41,7 @@ import path from "node:path";
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
 
+import { assetPlugin } from "./internal/assets.js";
 import { emit, reportRenderError } from "./internal/events.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import remarkFrontmatter from "remark-frontmatter";
@@ -99,8 +107,17 @@ export default function uniflowed(options = {}) {
   const routerRoot = app.router?.root ?? "app";
   const appEntry = app.router?.entry ?? ufConfig.build?.entries?.[0] ?? "app.js";
   const markdown = app.builtins?.markdown ?? {};
+  const builtins = app.builtins ?? {};
 
-  return [flowPlugin({ routerRoot, appEntry, command: options.command }), mdxPlugin(markdown)];
+  return [
+    flowPlugin({ routerRoot, appEntry, command: options.command }),
+    mdxPlugin(markdown),
+    assetPlugin({
+      images: builtins.images ?? {},
+      fonts: builtins.fonts ?? {},
+      command: options.command,
+    }),
+  ];
 }
 
 function flowPlugin({ routerRoot, appEntry, command }) {

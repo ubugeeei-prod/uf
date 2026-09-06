@@ -284,6 +284,14 @@ pub(crate) enum Commands {
     /// per-file `uf` invocation would have paid startup for thousands of times.
     #[command(hide = true)]
     Transform,
+    /// Serve uf's image and font pipeline over stdin/stdout, for the Vite plugin.
+    ///
+    /// Not a command a person runs, and the same arrangement as `transform`
+    /// for the same reason: decoding and re-encoding every image in a project
+    /// is native work driven from a JavaScript plugin, and one long-lived
+    /// process is what keeps it from paying start-up once per asset.
+    #[command(hide = true)]
+    Assets,
     /// Lint the project without type checking it.
     Lint {
         /// Emit machine-readable JSON on stdout.
@@ -403,6 +411,27 @@ pub(crate) enum Commands {
         /// How often `--watch` looks for changes, in milliseconds.
         #[arg(long, value_name = "MS")]
         watch_interval: Option<u64>,
+        /// Measure which of the project's Flow lines the suite executed.
+        ///
+        /// Counted by V8 and mapped back through the transform's source map,
+        /// so the numbers are about the file you wrote and not about the
+        /// JavaScript uf printed. Node only.
+        #[arg(long)]
+        coverage: bool,
+        /// Write this coverage report; repeat for more than one.
+        ///
+        /// Overrides `test.coverage.reporters` in `uf.config.js`.
+        #[arg(long = "coverage-reporter", value_name = "FORMAT", value_enum)]
+        coverage_reporters: Vec<CoverageReporterArg>,
+        /// Write coverage reports here instead of `test.coverage.directory`.
+        #[arg(long, value_name = "DIR")]
+        coverage_dir: Option<String>,
+        /// Also write the run's results in this machine-readable format.
+        #[arg(long, value_name = "FORMAT", value_enum, requires = "reporter_outfile")]
+        reporter: Option<ResultReporterArg>,
+        /// Where `--reporter` writes.
+        #[arg(long, value_name = "FILE")]
+        reporter_outfile: Option<String>,
         /// Only run files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -438,6 +467,29 @@ pub(crate) enum Commands {
     },
 }
 
+/// A coverage report `--coverage-reporter` can ask for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum CoverageReporterArg {
+    /// A table on the terminal, and nothing on disk.
+    Text,
+    /// `lcov.info`, which every code-host coverage integration reads.
+    Lcov,
+    /// `cobertura-coverage.xml`, which the JVM-shaped half of CI reads.
+    Cobertura,
+}
+
+/// A machine-readable shape for the run's *results*, as opposed to its
+/// coverage.
+///
+/// One value, and the reason there is only one: `uf test --json` is already
+/// uf's own document and carries more than any of these could. What JUnit adds
+/// is that no CI system has to be taught it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum ResultReporterArg {
+    /// JUnit XML, which every CI system parses for test results.
+    Junit,
+}
+
 impl Commands {
     /// Whether this invocation must emit pure JSON on stdout.
     pub(crate) fn wants_json(&self) -> bool {
@@ -462,7 +514,11 @@ impl Commands {
             // `uf completion` is piped into `eval` and `uf __complete` into a
             // completion list; a banner on either is a syntax error in
             // somebody's shell.
-            Self::Complete { .. } | Self::Completion { .. } | Self::Lsp | Self::Transform => true,
+            Self::Complete { .. }
+            | Self::Completion { .. }
+            | Self::Lsp
+            | Self::Transform
+            | Self::Assets => true,
             Self::Run { script, .. } => script.is_some(),
             _ => false,
         }

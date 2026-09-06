@@ -3,6 +3,7 @@
 //! Each module owns both the work and the way that work is rendered, so the
 //! shape of `uf build` on screen lives next to what `uf build` actually does.
 
+pub(crate) mod assets;
 pub(crate) mod build;
 pub(crate) mod check;
 pub(crate) mod compile;

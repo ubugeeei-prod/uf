@@ -6,6 +6,42 @@
 
 use serde_json::{Value, json};
 
+/// Take every position off `node` and everything under it.
+///
+/// The builders above synthesise nodes without one, but a lowering that reaches
+/// for a *parsed* runtime — `enums.rs` prepends one, because a page of helper
+/// JavaScript reads better as JavaScript than as node constructors — gets nodes
+/// whose `loc` is a position in **that** text. The printer cannot tell the two
+/// apart, so those positions were recorded against the author's file: the enum
+/// runtime's fourth line became the author's line 4, and one of its long lines
+/// became column 157 of a line the author's file does not have.
+///
+/// That is a source map pointing at the wrong place rather than at no place,
+/// which is the one thing `docs/architecture.md` promises never happens — a
+/// debugger stepping into `$$ufEnum` landed on an unrelated line of the user's
+/// module, and a coverage report counted the runtime's helpers as the author's
+/// uncovered functions. Forgetting the positions restores the invariant the
+/// rest of this module already keeps.
+pub fn forget_positions(node: &mut Value) {
+    match node {
+        Value::Object(fields) => {
+            fields.remove("loc");
+            fields.remove("range");
+            fields.remove("start");
+            fields.remove("end");
+            for value in fields.values_mut() {
+                forget_positions(value);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                forget_positions(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// `name`
 #[must_use]
 pub fn ident(name: &str) -> Value {

@@ -110,7 +110,8 @@ the fully static case. In uf, the static case is the only case.
 | Streaming, Suspense boundaries | yes | `renderToString`, so no ([#254](https://github.com/ubugeeei-prod/uf/issues/254)) |
 | ISR, caching, revalidation | yes | four booleans in a manifest ([#277](https://github.com/ubugeeei-prod/uf/issues/277)) |
 | Middleware | yes | reserved, discovered, never called ([#260](https://github.com/ubugeeei-prod/uf/issues/260)) |
-| Image optimisation | yes | markup only: no resizing, no formats, no `srcset` ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
+| Image optimisation | yes, plus a request-time optimizer | build time only: an imported image is resized to the declared widths and gets a real `srcset`, `sizes`, intrinsic dimensions and a blur placeholder. **No AVIF and no lossy WebP** — neither has a pure-Rust encoder uf ships — and no request-time endpoint ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
+| Font self-hosting | yes, downloaded and subsetted at build time | an imported font is self-hosted, content-hashed, declared with `font-display` and paired with a `size-adjust` fallback computed from its own metrics. **Not subsetted**, and not downloaded from a provider ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
 | Error boundaries | yes | none ([#257](https://github.com/ubugeeei-prod/uf/issues/257)) |
 | Deployment adapters | many | none |
 

@@ -50,7 +50,7 @@
 //
 // One name, one home. Import routing from the router.
 
-export type { Loading, Source } from "./media.js";
+export type { FontAsset, ImageAsset, Loading, Source } from "./media.js";
 export { Font, Image, Picture } from "./media.js";
 
 export type { TimeFormat } from "./time.js";

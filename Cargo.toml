@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/uf_assets",
   "crates/uf_bundle",
   "crates/uf_check",
   "crates/uf_cli",
@@ -36,7 +37,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ubugeeei-prod/uf"
 rust-version = "1.98"
-version = "0.0.0-alpha.8"
+version = "0.0.0-alpha.9"
 
 [workspace.dependencies]
 anyhow = "1.0.104"
@@ -75,6 +76,12 @@ flow_typing_type = { path = "upstream/flow/rust_port/crates/flow_typing_type" }
 flow_typing_utils = { path = "upstream/flow/rust_port/crates/flow_typing_utils" }
 flow_utils_concurrency = { path = "upstream/flow/rust_port/crates/flow_utils_concurrency" }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+# Decoding, resizing and re-encoding images, for `uf_assets`. `default-features
+# = false` is the whole point of the line: the default set drags in codecs uf
+# does not emit, and the three named here are pure Rust with no C toolchain and
+# no native library to find at build time. See `crates/uf_assets/src/image.rs`
+# for what each one can and cannot do.
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
 ignore = "0.4.25"
 indexmap = "2"
 json5 = "1.3.1"
