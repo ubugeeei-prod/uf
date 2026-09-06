@@ -93,13 +93,14 @@ pub(super) fn parse_file(
         &file_key,
         flow_typing_context::mk_context_metadata(options, Arc::default()),
     );
-    let (ast, parse_errors) = flow_parser::parse_program_file::<()>(
-        false,
-        None,
-        Some(PERMISSIVE_PARSE_OPTIONS),
-        file_key.dupe(),
-        Ok(content),
-    );
+    // Through `uf_flow::module` rather than the port directly. A module that
+    // awaits at its top level is ES2022 and the port has no way to be told
+    // so; the one place that answers that question answers it for every
+    // command, because a file that parses for the formatter and not for the
+    // checker is worse than one that parses for neither. See
+    // ubugeeei-prod/uf#204.
+    let (ast, parse_errors) =
+        uf_flow::module::parse(content, &PERMISSIVE_PARSE_OPTIONS, Some(&file_key.dupe()));
     let file_sig = Arc::new(FileSig::from_program(
         &file_key,
         &ast,
