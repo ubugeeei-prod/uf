@@ -12,13 +12,19 @@
   },
   "exports": {
     ".": "./index.js",
+    "./accordion": "./accordion.js",
     "./checkbox": "./checkbox.js",
+    "./collapsible": "./collapsible.js",
     "./combobox": "./combobox.js",
     "./dialog": "./dialog.js",
     "./field": "./field.js",
     "./menu": "./menu.js",
+    "./navigation-menu": "./navigation-menu.js",
+    "./radio-group": "./radio-group.js",
     "./switch": "./switch.js",
-    "./tabs": "./tabs.js"
+    "./tabs": "./tabs.js",
+    "./toggle": "./toggle.js",
+    "./toggle-group": "./toggle-group.js"
   },
   "files": [
     "*.js",
