@@ -1,5 +1,6 @@
 //! Tests for the React Compiler syntax-mode validator, one file per rule.
 
+mod convention;
 mod hooks;
 mod mutation;
 mod official;

@@ -236,8 +236,16 @@ fn a_custom_hook_body_is_render_position() {
 
 #[test]
 fn a_use_prefixed_function_body_is_render_position() {
+    // The import is what makes the convention mean anything: a `useX` function
+    // is render position in a module that has something to do with React, and
+    // this test used to assert it of a module with nothing React about it at
+    // all. That premise was the bug — it is the shape of `@uniflowed/test`'s
+    // `useFakeTimers`, which is not a hook — so the module now says which of
+    // the two it is. See `super::convention` for the other half.
     assert_eq!(
-        findings("function useNow(): number {\n  return Date.now();\n}\n"),
+        findings(
+            "import { useState } from \"react\";\nfunction useNow(): number {\n  return Date.now();\n}\n"
+        ),
         [Finding::UnstableReadDuringRender]
     );
 }
