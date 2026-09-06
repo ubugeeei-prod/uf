@@ -5,13 +5,19 @@
 // The driver `uf dev`, `uf build`, `uf build --compile`, `uf preview` and
 // `uf start` spawn.
 //
-//   <host> driver.js dev     --root <dir> [--host <h>] [--port <n>] [--strict-port]
-//   <host> driver.js build   --root <dir> [--out-dir <dir>] [--mode <m>]
-//   <host> driver.js compile --root <dir> [--out-dir <dir>] --assets <file> --bundle <dir>
-//   <host> driver.js deploy  --root <dir> [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
-//   <host> driver.js preview --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
+//   <host> driver.js dev     --root <dir> [--mode <m>] [--host <h>] [--port <n>] [--strict-port]
+//   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
+//   <host> driver.js compile --root <dir> [--mode <m>] [--out-dir <dir>] --assets <file> --bundle <dir>
+//   <host> driver.js deploy  --root <dir> [--mode <m>] [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
+//   <host> driver.js preview --root <dir> [--mode <m>] [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js start   --root <dir> [--out-dir <dir>] [--host <h>] [--port <n>]
 //   <host> driver.js config  --root <dir>
+//
+// `--mode` is what `uf` resolved from `--mode`, `.uniflowed/profile` and
+// `env.active`; it is Vite's mode, so it is `import.meta.env.MODE`. The `.env`
+// files it selected have already been read, by `uf`, into this process's
+// environment — see `viteConfig` below and `crates/uf_config/src/env_files.rs`.
+// `start` has no Vite in it and therefore no mode.
 //
 // `uf` in Rust owns the terminal; this process owns Vite. They talk over
 // stdout, one JSON event per line (see `./internal/events.js`), and the driver
@@ -107,12 +113,23 @@ async function viteConfig(config, mode) {
   // merely passes on — `allowedHosts` gates binding a routable address, and
   // `manifest` is how the prerender finds its assets.
   //
-  // `envDir: false` rather than `envFile: false`: Vite 8 deprecated the second
-  // spelling and prints a line saying so on every dev server and every build,
-  // twice in the docs site's. A project turns the loader back on with
-  // `vite: { envDir: "." }`, which is the default directory — the project's own
-  // configuration is merged over this one, so it wins. See #259 for why uf
-  // switches it off at all.
+  // `envDir: false` turns off Vite's *file* loading, and only that. uf reads
+  // the `.env` cascade itself, in Rust, before this process starts — one
+  // parser, one precedence, one answer for `uf dev`, `uf build`, `uf start`,
+  // `uf test` and `uf run` — and sets what it read in this process's
+  // environment. Vite's `loadEnv` still runs with `envDir: false` and still
+  // picks every `envPrefix`-matching name out of `process.env`, so the client
+  // half is Vite's own, unchanged: the prefixed subset becomes
+  // `import.meta.env.*` in the browser bundle and nothing else does. See
+  // `crates/uf_config/src/env_files.rs`, `docs/app/guide/env` and #259.
+  //
+  // A project that would rather Vite read the files can still say
+  // `vite: { envDir: "." }` — its own configuration is merged over this one —
+  // and then both parsers run, uf's answer still standing. `loadEnv` takes the
+  // prefixed names out of the files it read and then copies every prefixed name
+  // in `process.env` over the top, and uf put its own there before this process
+  // started; so the second parser adds prefixed names uf did not set and
+  // changes none that it did.
   const generated = {
     root,
     configFile: false,
@@ -189,7 +206,10 @@ async function viteConfig(config, mode) {
 async function dev() {
   const { createServer } = await import("vite");
   const config = await loadConfig();
-  const inline = await viteConfig(config, "development");
+  // The mode is uf's to decide, not this file's: `uf dev` resolves `--mode`,
+  // the profile `uf env use` wrote and `env.active` before it starts anything,
+  // and always passes the answer. The fallback is for a driver started by hand.
+  const inline = await viteConfig(config, argument("--mode") ?? "development");
   const server = await createServer({ ...inline, appType: "custom" });
 
   // In dev the browser loads the client entry from Vite, not from a manifest;
@@ -354,7 +374,7 @@ function watchSources(server) {
 async function preview() {
   const { preview: startPreview } = await import("vite");
   const config = await loadConfig();
-  const inline = await viteConfig(config, "production");
+  const inline = await viteConfig(config, argument("--mode") ?? "production");
   const build = await loadBuild({
     root,
     outDir: inline.build.outDir,
