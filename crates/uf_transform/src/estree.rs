@@ -56,8 +56,11 @@ pub fn parse(source: &str) -> Result<Value, TransformError> {
 
     // JavaScript columns: UTF-16 code units, which is what source maps count.
     let offsets = OffsetTable::make_with_kind(OffsetKind::JavaScript, source);
+    // Through `uf_flow::module` rather than the port directly, so a module
+    // that awaits at its top level transforms here for the same reason it
+    // formats and checks: one file, one reading, whichever command asked.
     let (ast, errors): (_, Vec<(Loc, ParseError)>) =
-        flow_parser::parse_program_without_file(false, None, Some(PARSE_OPTIONS), Ok(source));
+        uf_flow::module::parse(source, &PARSE_OPTIONS, None);
 
     if let Some((loc, error)) = errors.first() {
         // Through `uf_flow` so a module that fails to transform is refused in
@@ -97,8 +100,31 @@ mod tests {
     }
 
     #[test]
-    fn refuses_top_level_await_in_the_same_words_as_the_linter() {
-        // The same module, the same sentence, whichever command reached it.
+    fn renders_a_module_that_awaits_at_its_top_level() {
+        // A module — it exports — so `await` is the operator ES2022 says it
+        // is, and the transform is handed the same tree `uf fmt` and
+        // `uf check` are handed.
+        let program = parse("// @flow\nexport const value = await load();\n").unwrap();
+        let body = program["body"].as_array().unwrap();
+        let declaration = &body[0]["declaration"]["declarations"][0]["init"];
+        assert_eq!(declaration["type"], "AwaitExpression");
+        assert_eq!(declaration["argument"]["type"], "CallExpression");
+    }
+
+    #[test]
+    fn renders_a_top_level_for_await() {
+        let program =
+            parse("// @flow\nexport const rows = [];\nfor await (const row of stream()) {}\n")
+                .unwrap();
+        let statement = &program["body"].as_array().unwrap()[1];
+        assert_eq!(statement["type"], "ForOfStatement");
+        assert_eq!(statement["await"], true);
+    }
+
+    #[test]
+    fn refuses_await_outside_async_in_the_same_words_as_the_linter() {
+        // A script, which is where `await` is still an identifier: the same
+        // file, the same sentence, whichever command reached it.
         let source = "// @flow\nconst value = await load();\n";
         let TransformError::Syntax { message, line, .. } = parse(source).unwrap_err() else {
             panic!("expected a syntax error");

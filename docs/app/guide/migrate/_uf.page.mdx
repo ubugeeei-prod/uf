@@ -86,9 +86,11 @@ through the constructs. Most of them are a one-line change:
 Two things that will surprise you. **`uf check` resolves no modules yet**: every
 import is `any` and the report names them, so a converted file can look clean
 and still be wrong across a boundary
-([#248](https://github.com/ubugeeei-prod/uf/issues/248)). And **top-level
-`await` does not parse**, so a module using it cannot be checked, formatted,
-transformed or built ([#204](https://github.com/ubugeeei-prod/uf/issues/204)).
+([#248](https://github.com/ubugeeei-prod/uf/issues/248)). And **a file with no
+`import` and no `export` is read as a script**, where `await` is an ordinary
+identifier rather than an operator, so a top-level `await` in one is refused;
+uf decides the goal symbol from the file's own syntax
+([#204](https://github.com/ubugeeei-prod/uf/issues/204)).
 
 ## From `create-react-app`
 
