@@ -16,7 +16,7 @@ strengths tells you nothing you could not have guessed from the home page.
 
 | | `create-react-app` | Vite + React | Next.js | Bun | uf |
 | --- | --- | --- | --- | --- | --- |
-| Status | [deprecated by React](https://react.dev/blog/2025/02/14/sunsetting-create-react-app) (Feb 2025) | maintained | maintained | maintained | `0.0.0-alpha`, not on npm |
+| Status | [deprecated by React](https://react.dev/blog/2025/02/14/sunsetting-create-react-app) (Feb 2025) | maintained | maintained | maintained | `0.0.0-alpha` prereleases |
 | Language | TypeScript or JS | TypeScript or JS | TypeScript or JS | TypeScript or JS | **Flow** |
 | `component` / `hook` / `renders` / `match` | Babel preset | Babel preset | Babel preset | no | **native** |
 | Dev server and build | webpack | Vite | Turbopack (or webpack) | `bun build` | **Vite 8** |
@@ -39,7 +39,7 @@ you need the production-server row, uf cannot serve you at all yet.
 | Deployment targets | Next.js | `uf build --adapter node` writes a directory you can copy, and it is the only one of the seven adapters that exists; `edge`, `serverless` and the rest are names ([#391](https://github.com/ubugeeei-prod/uf/issues/391)) |
 | Server Components | Next.js | the split is route-level: a route with no `"use client"` boundary in it keeps its page out of the client bundle, and every page above a boundary still ships whole ([#252](https://github.com/ubugeeei-prod/uf/issues/252), [#350](https://github.com/ubugeeei-prod/uf/issues/350)) |
 | The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
-| Being installable | everything | `@uniflowed/*` is not on npm ([#210](https://github.com/ubugeeei-prod/uf/issues/210)) |
+| Being installable | everything | on npm as prereleases, and only the closure a project needs — `@uniflowed/state` and `@uniflowed/effect` are still workspace-only ([#210](https://github.com/ubugeeei-prod/uf/issues/210)) |
 | Runtime coverage | Bun, Next.js | Node.js and Bun load Flow; Deno is a name in an enum and edge runtimes have no host ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
 | Being three years old | all four | pre-release, no stability guarantee, interfaces move without warning |
 
