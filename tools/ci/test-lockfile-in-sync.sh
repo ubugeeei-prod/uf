@@ -38,7 +38,7 @@ scratch() {
   mkdir -p "$root/tools/ci" "$root/packages/core" "$root/packages/cli" "$root/docs"
   cp "$script" "$root/tools/ci/lockfile-in-sync.sh"
   cat > "$root/package.json" <<'JSON'
-{ "name": "uf-workspace", "workspaces": ["packages/*", "docs"] }
+{ "name": "uf-workspace", "workspaces": ["packages/*", "docs"], "devDependencies": { "biome": "^2.5.0" } }
 JSON
   cat > "$root/packages/core/package.json" <<'JSON'
 { "name": "@uniflowed/core", "version": "0.1.0", "dependencies": { "react": "^19.0.0" } }
@@ -54,7 +54,7 @@ JSON
   "name": "uf-workspace",
   "lockfileVersion": 3,
   "packages": {
-    "": { "name": "uf-workspace", "workspaces": ["packages/*", "docs"] },
+    "": { "name": "uf-workspace", "workspaces": ["packages/*", "docs"], "devDependencies": { "biome": "^2.5.0" } },
     "docs": { "name": "uf-docs", "dependencies": { "@uniflowed/core": "0.1.0" } },
     "packages/cli": { "name": "@uniflowed/cli", "version": "0.1.0", "dependencies": { "@uniflowed/core": "0.1.0" } },
     "packages/core": { "name": "@uniflowed/core", "version": "0.1.0", "dependencies": { "react": "^19.0.0" } },
@@ -103,10 +103,24 @@ scratch clean
 run clean
 [ "$status" -eq 0 ] || fail "a matching pair was refused: $out"
 case "$out" in
-  *"3 workspace manifests"*) ;;
+  *"4 manifests"*) ;;
   *) fail "the pass does not say how many manifests it checked: $out" ;;
 esac
-pass "a lock that describes its manifests passes, private workspace and all"
+pass "a lock that describes its manifests passes, root and private workspace and all"
+
+# --- and the root manifest is one of them ------------------------------------
+# `npm ci` reads the root first, and it was the one path this did not look at:
+# a changed range there passed here and was refused by every job that installs,
+# which is the failure the whole check exists to catch.
+scratch rootdep
+edit "$work/rootdep/package.json" 'json.devDependencies.biome = "^3.0.0"'
+run rootdep
+refuses "a root dependency the lock has not caught up with" "package.json"
+
+scratch rootadd
+edit "$work/rootadd/package.json" 'json.devDependencies.prettier = "^3.0.0"'
+run rootadd
+refuses "a root dependency the manifest has and the lock does not" "prettier"
 
 # --- a package that was added and never locked -------------------------------
 # The case that motivated the check: six jobs red over one missing entry.

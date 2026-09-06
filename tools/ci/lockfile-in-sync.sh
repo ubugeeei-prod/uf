@@ -34,50 +34,75 @@ const note = (where, what) => problems.push(`${where}: ${what}`);
 // The workspace directories, from the root manifest's own globs, so a new
 // `packages/*` is in scope the moment it exists rather than when someone
 // remembers to add it here.
-const directories = (root.workspaces ?? [])
+const workspaces = (root.workspaces ?? [])
   .flatMap((pattern) => (pattern.includes("*") ? fs.globSync(pattern) : [pattern]))
   .filter((dir) => fs.existsSync(`${dir}/package.json`))
   .sort();
 
+// The root manifest is a manifest too, and `npm ci` reads it first. Its lock
+// entry is the one keyed by the empty string, and leaving it out meant a
+// changed `devDependencies` range at the root passed this check and was then
+// refused by every job that installs — which is the failure this whole file
+// exists to catch, at the one path it did not look.
+const directories = ["", ...workspaces];
+const manifestOf = (dir) => (dir === "" ? "package.json" : `${dir}/package.json`);
+const label = (dir) => (dir === "" ? "package.json" : dir);
+
 const FIELDS = ["dependencies", "peerDependencies", "devDependencies", "optionalDependencies"];
 
 for (const dir of directories) {
-  const manifest = JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8"));
+  const manifest = JSON.parse(fs.readFileSync(manifestOf(dir), "utf8"));
   const entry = entries[dir];
   if (entry == null) {
-    note(dir, "the lock has no entry for this workspace");
+    note(label(dir), "the lock has no entry for this manifest");
     continue;
   }
 
   if (entry.name !== manifest.name) {
-    note(dir, `the lock calls it ${entry.name ?? "nothing"}, the manifest calls it ${manifest.name}`);
+    note(
+      label(dir),
+      `the lock calls it ${entry.name ?? "nothing"}, the manifest calls it ${manifest.name}`,
+    );
   }
 
   // npm records a version for a package it could publish and omits it for a
   // private one, so the lock having none is only wrong when the manifest is
   // publishable — which is every `packages/*`, and the case a release bump
   // that forgot the lock would land in.
-  if (manifest.private !== true && entry.version !== manifest.version) {
-    note(dir, `the lock says ${entry.version ?? "no version"}, the manifest says ${manifest.version}`);
+  // The root has no version to publish, so npm records none for it, and
+  // demanding one would fail on every clean checkout.
+  if (dir !== "" && manifest.private !== true && entry.version !== manifest.version) {
+    note(
+      label(dir),
+      `the lock says ${entry.version ?? "no version"}, the manifest says ${manifest.version}`,
+    );
   }
 
   for (const field of FIELDS) {
     const wanted = manifest[field] ?? {};
     const locked = entry[field] ?? {};
     for (const [name, range] of Object.entries(wanted)) {
-      if (!(name in locked)) note(dir, `${field}.${name} is in the manifest and not in the lock`);
-      else if (locked[name] !== range) {
-        note(dir, `${field}.${name} is ${locked[name]} in the lock and ${range} in the manifest`);
+      if (!(name in locked)) {
+        note(label(dir), `${field}.${name} is in the manifest and not in the lock`);
+      } else if (locked[name] !== range) {
+        note(
+          label(dir),
+          `${field}.${name} is ${locked[name]} in the lock and ${range} in the manifest`,
+        );
       }
     }
     for (const name of Object.keys(locked)) {
-      if (!(name in wanted)) note(dir, `${field}.${name} is in the lock and not in the manifest`);
+      if (!(name in wanted)) {
+        note(label(dir), `${field}.${name} is in the lock and not in the manifest`);
+      }
     }
   }
 
   // The link is how everything else in the tree resolves the package: without
   // it a sibling that depends on it reaches for the registry, where an
   // unreleased version does not exist.
+  // The root is not linked into its own `node_modules`; every workspace is.
+  if (dir === "") continue;
   const link = entries[`node_modules/${manifest.name}`];
   if (link == null) note(dir, `nothing links node_modules/${manifest.name} to it`);
   else if (link.resolved !== dir) {
@@ -89,7 +114,7 @@ for (const dir of directories) {
 // entry behind, which `npm ci` installs and nobody maintains.
 const known = new Set(directories);
 for (const key of Object.keys(entries)) {
-  if (key === "" || key.startsWith("node_modules/") || known.has(key)) continue;
+  if (key.startsWith("node_modules/") || known.has(key)) continue;
   note(key, "the lock has an entry for a workspace that does not exist");
 }
 
@@ -100,5 +125,5 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`package-lock.json matches all ${directories.length} workspace manifests`);
+console.log(`package-lock.json matches all ${directories.length} manifests`);
 EOF
