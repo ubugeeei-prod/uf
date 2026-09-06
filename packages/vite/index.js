@@ -209,15 +209,29 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       // business: Vite already injects a stylesheet in dev, extracts it in a
       // build, code-splits it per chunk, and replaces it over HMR. A module
       // whose styles are gone stops importing it, and Vite notices.
+      const styled = out.css != null && out.css !== "";
       let output = out.code;
-      if (out.css != null && out.css !== "") {
+      if (styled) {
         const styleId = `${STYLE_PREFIX}${cleanId(id)}.css`;
         styles.set(styleId, out.css);
         output = `import ${JSON.stringify(styleId)};\n${output}`;
       }
-      if (!refresh) return { code: output, map };
+      // A module that compiled a stylesheet has a side effect, whatever its
+      // package says. `@uniflowed/stylex` declares `sideEffects: false` and is
+      // right about its source: `tokens.stylex.js` only exports a token set.
+      // What it exports after this transform is a token set *and* a `:root`
+      // block, and the page that imports `ufTokens` no longer names it at
+      // runtime — the compiler turned every read into the `var(--…)` it minted.
+      // So the import was unused, a side-effect-free module with no used
+      // exports was dropped, and the custom properties every one of those
+      // `var()`s resolves against went with it: rules that referred to nothing.
+      // Declaring the side effect here rather than editing the package is
+      // deliberate — the side effect is one this plugin added, so it is this
+      // plugin's to admit to. See ubugeeei-prod/uf#306.
+      const moduleSideEffects = styled ? true : undefined;
+      if (!refresh) return { code: output, map, moduleSideEffects };
       const relative = path.relative(root, cleanId(id)).split(path.sep).join("/");
-      return addRefreshWrapper(output, map, relative);
+      return { ...addRefreshWrapper(output, map, relative), moduleSideEffects };
     },
 
     buildEnd() {
