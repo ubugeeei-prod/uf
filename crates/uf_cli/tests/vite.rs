@@ -17,6 +17,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use support::{assert_plain, uf, uf_path};
@@ -159,49 +160,167 @@ fn build_renders_the_docs_site_through_vite() {
     assert!(root.join("router.js").exists());
 }
 
-/// A dev server that must not outlive the test.
-struct DevServer(Child);
-
-impl Drop for DevServer {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+/// Whether a loopback socket can be bound here.
+///
+/// The same policy as [`fixture_ready`], for the same reason: a sandbox that
+/// refuses `bind` makes this test permanently red, and a suite with a known
+/// failure in it teaches everyone to read `1 failed` as `0 failed` — which is
+/// how a *genuinely* flaky one goes unnoticed. `UF_ALLOW_FIXTURE_SKIP=1` opts
+/// out on such a machine; CI sets nothing and so can never skip.
+fn loopback_ready() -> bool {
+    match std::net::TcpListener::bind(("127.0.0.1", 0)) {
+        Ok(_) => true,
+        Err(error) => {
+            assert!(
+                std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+                "this test needs a loopback socket and could not bind one: {error}"
+            );
+            eprintln!("skipping: cannot bind a loopback socket: {error}");
+            false
+        }
     }
 }
 
+/// A dev server that must not outlive the test, and says what it did.
+///
+/// Both streams are drained, by scoped threads borrowing the caller's buffer
+/// rather than sharing one — `Arc` is a disallowed type here, and the reason
+/// given for it ("prefer scoped references") is exactly this shape.
+///
+/// Draining is not only for the message: a piped stream nobody reads fills its
+/// buffer and wedges the child, so leaving `stderr` unread was a way to cause
+/// the failure as well as a way to be unable to explain it. The threads end
+/// when the pipes close, which is when the child does — so the server has to be
+/// dropped inside the scope, or the scope waits for a process nobody killed.
+struct DevServer {
+    child: Child,
+}
+
+impl DevServer {
+    /// Start `uf dev` on `port`, draining what it says into `said`.
+    fn start<'scope, 'env: 'scope>(
+        root: &Path,
+        port: u16,
+        scope: &'scope std::thread::Scope<'scope, 'env>,
+        said: &'env Mutex<String>,
+    ) -> Self {
+        let mut child = Command::new(uf_path())
+            .arg("--cwd")
+            .arg(root)
+            .args(["dev", "--port", &port.to_string()])
+            .env_remove("NO_COLOR")
+            .env("TERM", "xterm-256color")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        for stream in [
+            Box::new(child.stdout.take().unwrap()) as Box<dyn Read + Send>,
+            Box::new(child.stderr.take().unwrap()),
+        ] {
+            scope.spawn(move || {
+                for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    let Ok(mut said) = said.lock() else { return };
+                    said.push_str(&line);
+                    said.push('\n');
+                }
+            });
+        }
+
+        Self { child }
+    }
+
+    /// Everything the server has said, and whether it is still running.
+    ///
+    /// This is the whole point of the change: the failure that sent me here was
+    /// `ConnectionRefused` and nothing else — no exit status, no output — so
+    /// the only way to act on it was to guess. See ubugeeei-prod/uf#234.
+    fn evidence(&mut self, said: &Mutex<String>) -> String {
+        let status = match self.child.try_wait() {
+            Ok(Some(status)) => format!("the server exited: {status}"),
+            Ok(None) => "the server is still running".to_owned(),
+            Err(error) => format!("could not ask whether the server is running: {error}"),
+        };
+        let said = said
+            .lock()
+            .map_or_else(|_| "<the reader thread panicked>".to_owned(), |s| s.clone());
+        format!("{status}\nwhat it said:\n{said}")
+    }
+}
+
+impl Drop for DevServer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// How many ports to try before giving up on getting one to ourselves.
+///
+/// The port is chosen by binding zero and letting the listener go, so between
+/// choosing it and `uf dev` binding it, anything on the machine can take it —
+/// and Vite's default is to move to the next free port rather than fail, so a
+/// lost race is a server that is up somewhere this test is not asking about.
+/// That is the shape of both CI failures so far: one where nothing ever
+/// answered, and one where something answered and then went away.
+///
+/// Retrying is honest here because the subject is "the dev server serves the
+/// docs site", not "binding a port works first time". It is capped, it only
+/// covers the window *before* the first answer, and every attempt's output is
+/// reported if the last one fails — so a genuinely broken dev server fails
+/// three times and prints three servers' reasons, which is more than the one
+/// line this used to give.
+const PORT_ATTEMPTS: usize = 3;
+
 #[test]
 fn dev_serves_the_docs_site_through_vite() {
-    if !fixture_ready() {
+    if !fixture_ready() || !loopback_ready() {
         return;
     }
     let root = docs_root();
-    let port = free_port();
+    let mut refused = Vec::new();
 
-    let mut child = Command::new(uf_path())
-        .arg("--cwd")
-        .arg(&root)
-        .args(["dev", "--port", &port.to_string()])
-        .env_remove("NO_COLOR")
-        .env("TERM", "xterm-256color")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let stdout = child.stdout.take().unwrap();
-    let server = DevServer(child);
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
 
-    // Wait for the port to answer rather than for a line of the banner to look
-    // a particular way. Parsing the rendered banner made this test depend on
-    // colour and on the exact wording, and a parse that quietly found nothing
-    // ended the test before it asserted anything — which is how a dev server
-    // that answered every request with "Cannot GET /" passed it.
-    let mut lines = BufReader::new(stdout).lines();
-    std::thread::spawn(move || while let Some(Ok(_)) = lines.next() {});
+        let served = std::thread::scope(|scope| {
+            // Wait for the port to answer rather than for a line of the banner
+            // to look a particular way. Parsing the rendered banner made this
+            // test depend on colour and on the exact wording, and a parse that
+            // quietly found nothing ended the test before it asserted anything
+            // — which is how a dev server that answered every request with
+            // "Cannot GET /" passed it.
+            let mut server = DevServer::start(&root, port, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_page(&mut server, port, &said, &body);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            // Inside the scope on purpose: the drain threads end when the
+            // pipes close, and the pipes close when the child does.
+            drop(server);
+            false
+        });
 
-    let body = wait_for_http(port, "/", Duration::from_secs(90))
-        .expect("the dev server never answered on its port");
+        if served {
+            return;
+        }
+    }
 
+    panic!(
+        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Everything the served page and the routes have to be, once one is served.
+fn assert_page(server: &mut DevServer, port: u16, said: &Mutex<String>, body: &str) {
     assert!(
         body.starts_with("HTTP/1.1 200"),
         "the dev server must render the page, not 404:\n{body}"
@@ -221,18 +340,32 @@ fn dev_serves_the_docs_site_through_vite() {
     );
 
     // A nested route proves the router ran, not just that something answered.
-    let guide = http_get("127.0.0.1", port, "/guide/");
+    let guide = get(server, port, "/guide/", said);
     assert!(guide.starts_with("HTTP/1.1 200"), "{guide}");
     assert!(guide.contains("What uf is"), "{guide}");
 
     // And a path with no route must not be answered with somebody else's page.
-    let missing = http_get("127.0.0.1", port, "/definitely-not-a-page/");
+    let missing = get(server, port, "/definitely-not-a-page/", said);
     assert!(
         missing.starts_with("HTTP/1.1 404"),
         "an unrouted path must be a 404:\n{missing}"
     );
+}
 
-    drop(server);
+/// One request to a server that has already answered once, with the server's
+/// own account of itself if it will not answer this time.
+///
+/// The failure in ubugeeei-prod/uf#234 was here: `/` was served and then the
+/// port stopped listening, and `http_get`'s bare `expect` reported
+/// `ConnectionRefused` and nothing about the process that had refused it.
+fn get(server: &mut DevServer, port: u16, path: &str, said: &Mutex<String>) -> String {
+    if TcpStream::connect(("127.0.0.1", port)).is_err() {
+        panic!(
+            "the dev server answered `/` and then stopped listening, before {path}\n{}",
+            server.evidence(said)
+        );
+    }
+    http_get("127.0.0.1", port, path)
 }
 
 /// A port nothing is listening on, released before the server binds it.
