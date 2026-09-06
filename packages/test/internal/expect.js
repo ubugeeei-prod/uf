@@ -617,6 +617,15 @@ function expectValue(received: mixed): $FlowFixMe {
  * than a negated assertion around the whole object, and is the form a suite
  * being ported will already have.
  */
+// `flow/unsafe-object-assign` asks for an object spread, and a spread cannot
+// produce this value: `expect` is a *function* with matchers hanging off it,
+// and `{ ...expectValue, ...matchers }` is a plain object that a test cannot
+// call. `Object.assign` onto a callable is the only expression that makes one,
+// and the alternative the rule is really warning about — `expect.any = …`
+// afterwards — is the top-level statement the comment above rules out. What it
+// mutates is a function this module declared six lines up and exports here; no
+// object belonging to anybody else is touched.
+// uf-lint-disable-next-line flow/unsafe-object-assign
 export const expect: $FlowFixMe = Object.assign(expectValue, {
   any: asymmetric.any,
   anything: asymmetric.anything,
