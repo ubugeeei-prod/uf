@@ -60,6 +60,98 @@ fn unclear_type_ignores_value_positions() {
 }
 
 #[test]
+fn unclear_type_ignores_a_case_label() {
+    // `case Object:` matches against the global constructor. Flow has no syntax
+    // that puts a type after `case`, so this is only ever a value.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nswitch (ctor) {\n  case Function:\n    return 1;\n  case Object:\n    return 2;\n}\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_ignores_an_equality_operand() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nconst plain = obj.constructor === Object || obj.constructor !== Function;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_still_reads_an_alias_after_a_single_equals() {
+    // The one `=` this rule exists for. `is_after_equality` must not swallow it.
+    let diagnostics = lint_js("flow/unclear-type", "// @flow\ntype Handler = Function;\n");
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 16));
+}
+
+#[test]
+fn unclear_type_ignores_a_property_named_any() {
+    // `expect.any` is the matcher's name in Jest, Vitest and `@uniflowed/test`,
+    // and the object that carries it has to spell it out.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nexport const expect = {\n  any: asymmetric.any,\n  not: { Object: 1 },\n};\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_still_reads_the_value_type_of_a_property() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Row = {\n  any: string,\n  value: any,\n};\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (4, 10));
+}
+
+#[test]
+fn unclear_type_ignores_a_constructor_passed_as_an_argument() {
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nexpect(fn).toEqual(expect.any(Function));\nexpect({}).toEqual(expect.any(Object));\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn unclear_type_still_reads_a_bare_type_in_a_function_type() {
+    // The same shape with a different opener: the `(` of `(Object) => void`
+    // follows an `=`, not a name, so nothing is being called and `Object` is
+    // the parameter's type.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\ntype Sink = (Object) => void;\ntype Sunk = Foo<(Function) => void>;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 14));
+    assert_eq!((diagnostics[1].line, diagnostics[1].column), (3, 18));
+}
+
+#[test]
+fn unclear_type_still_reads_a_type_argument_inside_a_call() {
+    // `any` here is inside `<>`, not an argument of the call around it.
+    let diagnostics = lint_js(
+        "flow/unclear-type",
+        "// @flow\nregister(new Map<string, any>(), (node: any) => node);\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 26));
+    assert_eq!((diagnostics[1].line, diagnostics[1].column), (2, 41));
+}
+
+#[test]
 fn unclear_type_ignores_identifiers_that_merely_contain_any() {
     let diagnostics = lint_js("flow/unclear-type", "// @flow\nconst company = 1;\n");
 

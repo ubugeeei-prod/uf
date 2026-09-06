@@ -6,7 +6,8 @@ use uf_config::UniflowedConfig;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
-    FileScan, find_words, identifier_len, next_non_space, prev_non_space, starts_word,
+    FileScan, find_words, identifier_len, is_word_byte, next_non_space, prev_non_space,
+    previous_word, starts_word,
 };
 use crate::{Diagnostic, Severity, push_at, push_in_code, severity};
 
@@ -39,20 +40,148 @@ pub(crate) fn run_flow_unclear_type(
                 if line.in_string(at) {
                     continue;
                 }
-                // `Object.keys(x)`, `x.any`, and `new Function(src)` are value
-                // positions, not type annotations.
-                if prev_non_space(code, at).is_some_and(|(_, byte)| byte == b'.') {
-                    continue;
-                }
-                if next_non_space(code, at + needle.len())
-                    .is_some_and(|(_, byte)| byte == b'.' || byte == b'(')
-                {
+                if names_a_value(code, at, needle.len()) {
                     continue;
                 }
                 push_in_code(diagnostics, scan, rule, severity, position, at, message);
             }
         }
     }
+}
+
+/// Whether the word at `at` is an expression rather than a type annotation.
+///
+/// None of the three names this rule looks for is reserved. `Object` and
+/// `Function` are global constructors, and all three are legal property names,
+/// so the same word is a type on one line and an ordinary value on the next:
+///
+/// ```js
+/// type Handler = Function;          // a type
+/// case Function:                    // the constructor, matched against
+/// expect.any(Function)              // the constructor, passed
+/// obj.constructor === Object        // the constructor, compared
+/// { any: asymmetric.any }           // a property called `any`
+/// ```
+///
+/// Flow's own lint walks an AST and never has to ask. This one reads source
+/// text — which is what `RuleRequirement::SourceText` records — so it asks the
+/// only question source text answers: what stands either side of the word.
+/// Each arm below is a shape a *type* cannot have, and every one of them was a
+/// finding this rule reported against code that was already right:
+/// `@uniflowed/test`'s `expect.any` is Jest's, Vitest's and Sinon's name for
+/// the matcher, and the module that implements it has to both name the
+/// property and switch on the constructor.
+///
+/// # What it still cannot see
+///
+/// A `(` that follows a name opens a call's argument list, a declaration's
+/// parameter list or an `if`'s condition, and all three hold expressions. The
+/// one place that is not true is `declare function f(Object): void`, where a
+/// bare name in a libdef's parameter list *is* the parameter's type — so an
+/// `Object` written that way is no longer reported. uf emits no libdefs and
+/// `flow/syntax` is the only rule that reads `.flow` sidecars at all, so the
+/// shape does not occur here; it is the price of telling `expect.any(Object)`
+/// from `(Object) => void` without a parser, and it is stated rather than
+/// discovered.
+fn names_a_value(code: &str, at: usize, len: usize) -> bool {
+    let before = prev_non_space(code, at);
+    let after = next_non_space(code, at + len);
+
+    // `x.any` reads a property; `Object.keys(x)` and `new Function(src)` reach
+    // for the global. A type is never on either side of a `.`, and never called.
+    if before.is_some_and(|(_, byte)| byte == b'.') {
+        return true;
+    }
+    if after.is_some_and(|(_, byte)| byte == b'.' || byte == b'(') {
+        return true;
+    }
+
+    // `case Object:` — Flow has no syntax that puts a type after `case`.
+    if previous_word(code, at).is_some_and(|(_, word)| word == "case") {
+        return true;
+    }
+
+    // `obj.constructor === Object` — the operand of an equality test. The lone
+    // `=` is deliberately not one of these: `type Handler = Function` is the
+    // shape this rule exists for.
+    if follows_an_equality_operator(code, at) {
+        return true;
+    }
+
+    // `{ any: … }` — a property key, which is the one place a *type* named in
+    // an object type is not what the colon introduces. The opener has to be
+    // named rather than assumed from the colon alone, because a conditional
+    // type's `? any : never` puts a real annotation in front of one too, and it
+    // arrives with a `?` in front instead.
+    if after.is_some_and(|(_, byte)| byte == b':')
+        && before.is_none_or(|(_, byte)| matches!(byte, b'{' | b',' | b';'))
+    {
+        return true;
+    }
+
+    // `expect.any(Function)` — the whole of an argument, in a list that is
+    // being called rather than one that describes a function type.
+    is_a_bare_argument(code, at, len)
+}
+
+/// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
+fn follows_an_equality_operator(code: &str, at: usize) -> bool {
+    let Some((end, b'=')) = prev_non_space(code, at) else {
+        return false;
+    };
+    end > 0 && matches!(code.as_bytes()[end - 1], b'=' | b'!')
+}
+
+/// Whether the word at `at` is an entire argument of a call.
+///
+/// `expect.any(Function)` passes the constructor; `type Sink = (Object) => void`
+/// names a parameter's type, and the two are told apart by what stands before
+/// the `(`. A `(` that follows a name, a `)` or a `]` belongs to something being
+/// called or declared; a `(` that follows anything else opens a group or a
+/// function type, which is where a bare type may stand.
+///
+/// The word has to be the *whole* argument, which is what keeps a type inside
+/// one out: `Map<string, any>` is reached with a `<` or a `,` in front and a `>`
+/// behind, and `(node: any)` with a `:` in front.
+fn is_a_bare_argument(code: &str, at: usize, len: usize) -> bool {
+    if !prev_non_space(code, at).is_some_and(|(_, byte)| matches!(byte, b'(' | b',')) {
+        return false;
+    }
+    if !next_non_space(code, at + len).is_some_and(|(_, byte)| matches!(byte, b')' | b',')) {
+        return false;
+    }
+    let Some(open) = enclosing_open_paren(code, at) else {
+        return false;
+    };
+    prev_non_space(code, open)
+        .is_some_and(|(_, byte)| is_word_byte(byte) || byte == b')' || byte == b']')
+}
+
+/// The `(` that opens the list the byte at `at` stands in, within this line.
+///
+/// `None` when the nearest unclosed opener is a `[` or a `{` — an array or an
+/// object literal is not an argument list — and when the line holds no opener
+/// at all, which is what a list continued from the line above looks like to a
+/// scanner that reads one line at a time.
+fn enclosing_open_paren(code: &str, at: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 0usize;
+    let mut index = at;
+    while index > 0 {
+        index -= 1;
+        match bytes[index] {
+            b')' | b']' | b'}' => depth += 1,
+            b'[' | b'{' => depth = depth.checked_sub(1)?,
+            b'(' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub(crate) fn run_flow_deprecated_type(
