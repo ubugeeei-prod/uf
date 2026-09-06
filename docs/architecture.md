@@ -218,13 +218,21 @@ Measured on that toolchain, optimized: builtins merge in **19 ms** cold and cost
 nothing warm; a dense Flow React component file checks in **4.3 ms**
 (230 files/s, one thread). Unoptimized those are 60 ms and 15 ms.
 
-What it does not do yet is resolve modules. Every file is checked against Flow's
-standard library — `react` and everything else the library definitions declare —
-but `uf` does not run Flow's merge service, so an import of another project file
-has no signature to check against. Those resolve to Flow's own *unchecked
-module*, which types the import as `any` and lets the rest of the file check, and
-the specifiers are reported in `CheckReport::untyped_modules` so the hole is
-stated rather than silent. Cross-module inference is the next step.
+Modules resolve against the batch, not against a filesystem. A relative
+specifier names another source `uf check` collected, and that module's
+*signature* — Flow's own annotation-only description of what it exports — is
+merged into the importing file exactly as `flow_services_inference` merges one
+from its heap. A bare specifier is resolved through the `package.json` files in
+the same batch: `@uniflowed/cell` is whatever the manifest publishing that name
+says it is, honouring its `exports` map with upstream's own implementation of
+it, so a package that moves a file internally does not take its consumers' types
+with it. Flow's standard library answers what is left — `react` and everything
+else the library definitions declare — and a specifier nothing answers resolves
+to Flow's *unchecked module*, which types the import as `any` and lets the rest
+of the file check. Those specifiers are reported in
+`CheckReport::untyped_modules`, so the hole is stated rather than silent: on this
+repository they are the third-party packages and the `node:` builtins that no
+manifest here publishes.
 
 Errors are never flattened into strings. `flow_common_errors`'s accessors give
 the code, kind, and primary location directly; the message tree itself is private
