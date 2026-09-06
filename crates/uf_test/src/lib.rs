@@ -61,6 +61,7 @@
 //! # Ok::<(), uf_test::RunError>(())
 //! ```
 
+mod coverage;
 mod discovery;
 mod filter;
 mod graph;
@@ -69,6 +70,7 @@ mod options;
 mod path;
 mod plan;
 mod report;
+mod reporters;
 mod retry_schedule;
 mod runner;
 mod runner_plan;
@@ -79,6 +81,12 @@ mod watch;
 
 use thiserror::Error;
 
+pub use crate::coverage::{
+    BranchCoverage, Coverage, CoverageError, CoverageScope, FileCoverage, FunctionCoverage,
+    MAX_COVERAGE_DOCUMENT_BYTES, MAX_FUNCTION_NAME_BYTES, MAX_RANGES_PER_SCRIPT,
+    MAX_SCRIPTS_PER_DOCUMENT, Metric, Position, Ratio, ThresholdViolation, Thresholds, Totals,
+    parse_document, read_directory, read_document,
+};
 pub use crate::discovery::{MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, discover_tests, merge_plans};
 pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
 pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
@@ -96,6 +104,7 @@ pub use crate::report::{
     AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, MAX_OUTPUT_BYTES_PER_FILE,
     OutputChunk, OutputStream, TestRecord, TestRunReport, TestStatus, TestSummary,
 };
+pub use crate::reporters::{CoverageRow, cobertura, junit, lcov, text_rows};
 pub use crate::retry_schedule::{Attempt, Decision, MAX_DELAY, Schedule};
 pub use crate::runner::{
     LockedObserver, RunError, RunObserver, SilentObserver, TestFile, TestRunner, run_tests,
@@ -131,6 +140,9 @@ pub enum TestError {
     /// Recorded timings could not be read or written.
     #[error(transparent)]
     Timings(#[from] TimingsError),
+    /// The coverage a run collected could not be read back.
+    #[error(transparent)]
+    Coverage(#[from] CoverageError),
 }
 
 #[cfg(test)]

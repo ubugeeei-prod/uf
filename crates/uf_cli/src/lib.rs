@@ -49,7 +49,7 @@ pub fn main() -> ExitCode {
     let (cli, target) = match parse_cli() {
         Ok(parsed) => parsed,
         Err(error) if is_bare_uf(&error) => match ask_what_to_run() {
-            Asked::Run(parsed) => parsed,
+            Asked::Run(parsed) => *parsed,
             Asked::Help => return report_startup_error(&error),
             // The reader opened the menu and closed it. Nothing happened, and
             // saying so would be one more line to dismiss.
@@ -74,9 +74,14 @@ pub fn main() -> ExitCode {
 }
 
 /// What asking the reader came back with.
+///
+/// The parsed command line is boxed because it is two orders of magnitude
+/// larger than the other two answers — `Commands` carries every flag of every
+/// subcommand — and this enum is returned by value on a path that mostly
+/// answers "help" or "nothing".
 enum Asked {
     /// Run this, as if it had been typed.
-    Run((Cli, Option<String>)),
+    Run(Box<(Cli, Option<String>)>),
     /// Print the help, which is what `uf` alone did before there was a menu.
     Help,
     /// The reader changed their mind.
@@ -122,7 +127,7 @@ fn ask_what_to_run() -> Asked {
     let mut args = vec!["uf".to_owned()];
     args.extend(words);
     match Cli::try_parse_from(&args) {
-        Ok(cli) => Asked::Run((cli, None)),
+        Ok(cli) => Asked::Run(Box::new((cli, None))),
         // Unreachable while the menu's entries are checked against the parser
         // in `menu::tests`, and the help is the honest answer if that ever
         // stops being true.
@@ -278,6 +283,11 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             update_snapshots,
             threads,
             watch_interval,
+            coverage,
+            coverage_reporters,
+            coverage_dir,
+            reporter,
+            reporter_outfile,
             paths,
         } => commands::test::test(
             &cwd,
@@ -293,6 +303,11 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 update_snapshots,
                 threads,
                 watch_interval,
+                coverage,
+                coverage_reporters,
+                coverage_dir,
+                reporter,
+                reporter_outfile,
                 paths,
             },
         ),
