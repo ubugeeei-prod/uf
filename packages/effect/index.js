@@ -622,6 +622,10 @@ function failureNode<E>(cause: Cause<E>): ?{ readonly kind: "fail", readonly err
  * `unknown` rather than as `E`, so `mapCause`'s `transform` cannot be called
  * with it and `firstFailure` cannot return it. `switch` on the tag refines
  * correctly, so that is what these use until the checker catches up.
+ *
+ * Filed as #205. The defect is in the vendored Flow port rather than in uf's
+ * embedding of it, so the wait is on upstream. The reproduction, and the line
+ * that drops the type, are in `crates/uf_check/tests/known_bugs.rs`.
  */
 function mapCause<E, F>(cause: Cause<E>, transform: (error: E) => F): Cause<F> {
   switch (cause.kind) {
