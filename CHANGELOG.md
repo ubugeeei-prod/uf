@@ -16,8 +16,14 @@ project is answered from a cache keyed on the compiler, the limits, the
 transitive signatures and how each specifier resolved — measured on this
 repository at 5.26s to 0.54s, reporting byte-identical diagnostics.
 
+And the Server Components analysis became load-bearing for the first time: a
+route no `"use client"` boundary reaches keeps its page out of the browser
+bundle. On a four-route application with no client boundary anywhere that is
+2,886 raw bytes and five chunks fewer.
+
 ### Added
 
+- **rsc**: keep a route with no client boundary out of the client bundle (#438)
 - **pm**: the four package-manager commands the operation table already named (#422)
 - **test, host**: `uft.mock` replaces a module, and seven bindings stop throwing (#415)
 - **install**: the install says what it is doing while it does it (#399)
