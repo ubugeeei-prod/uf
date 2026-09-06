@@ -36,12 +36,13 @@ upstream-typecheck = [
   "dep:flow_typing_type",
   "dep:flow_typing_utils",
   "dep:flow_utils_concurrency",
-  "dep:serde_json",
 ]
 
 [dependencies]
 compact_str.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 
@@ -65,7 +66,6 @@ flow_typing_errors = { workspace = true, optional = true }
 flow_typing_type = { workspace = true, optional = true }
 flow_typing_utils = { workspace = true, optional = true }
 flow_utils_concurrency = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
-serde_json.workspace = true
+tempfile.workspace = true

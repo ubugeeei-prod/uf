@@ -3335,7 +3335,9 @@ dependencies = [
  "flow_utils_concurrency",
  "serde",
  "serde_json",
+ "sha2",
  "smallvec",
+ "tempfile",
  "thiserror",
 ]
 

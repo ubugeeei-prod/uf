@@ -27,10 +27,21 @@ import {
   useWatch,
   validatorResolver,
 } from "@uniflowed/form";
+import type {
+  Control,
+  FieldErrors,
+  FieldPath,
+  FieldState,
+  FormState,
+  Mode,
+  Resolver,
+  ValidationRules,
+} from "@uniflowed/form";
 
-const submitForm = (container: mixed) => {
-  const form: any = (container as any).querySelector("form");
-  fireEvent.submit(form);
+import { controlIn, elementIn, elementsIn, valueIn } from "./dom.js";
+
+const submitForm = (container: Element) => {
+  fireEvent.submit(elementIn(container, "form"));
 };
 
 const settle = () => act(() => Promise.resolve());
@@ -122,9 +133,9 @@ describe("register: the keystroke that renders nothing", () => {
     let watcherRenders = 0;
     let controlledRenders = 0;
 
-    component TotalView(control: mixed) {
+    component TotalView(control: Control<{ title: string }>) {
       watcherRenders += 1;
-      const value = useWatch({ control: control as any, name: "title", defaultValue: "" });
+      const value = useWatch({ control, name: "title", defaultValue: "" });
       return <output>{String(value ?? "")}</output>;
     }
     // Memoised, so a render of the form for its own reasons is not counted as
@@ -179,12 +190,12 @@ describe("register: the keystroke that renders nothing", () => {
   });
 
   it("keeps the values even though nothing rendered", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Probe() {
       const { register, getValues } = useForm({
         defaultValues: { email: "", nested: { city: "" } },
       });
-      read = getValues as any;
+      read = getValues;
       return (
         <form>
           <input aria-label="email" {...register("email")} />
@@ -200,10 +211,10 @@ describe("register: the keystroke that renders nothing", () => {
   });
 
   it("reads a checkbox, a radio group and a multi-select as their own shapes", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Probe() {
       const { register, getValues } = useForm({ defaultValues: {} });
-      read = getValues as any;
+      read = getValues;
       return (
         <form>
           <input type="checkbox" aria-label="terms" {...register("terms")} />
@@ -220,7 +231,7 @@ describe("register: the keystroke that renders nothing", () => {
     const { container } = render(<Probe />);
     await userEvent.click(screen.getByLabelText("terms"));
     await userEvent.click(screen.getByLabelText("dog"));
-    const select: any = container.querySelector("select");
+    const select = elementIn(container, "select");
     await userEvent.selectOptions(select, ["two"]);
 
     expect(read()).toEqual({ terms: true, pet: "dog", tags: ["two"] });
@@ -244,7 +255,7 @@ describe("watch: one field, not the others", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
 
     // Visit and dirty both fields first. After that neither the touched set nor
     // the dirty set can move again, so what is counted below is the watch and
@@ -269,9 +280,9 @@ describe("watch: one field, not the others", () => {
     let formRenders = 0;
     let totalRenders = 0;
 
-    component TotalView(control: mixed) {
+    component TotalView(control: Control<{ price: string, note: string }>) {
       totalRenders += 1;
-      const price = useWatch({ control: control as any, name: "price", defaultValue: "" });
+      const price = useWatch({ control, name: "price", defaultValue: "" });
       return <output>{String(price)}</output>;
     }
     // Memoised, so that a render of the form for its own reasons — the blur
@@ -292,7 +303,7 @@ describe("watch: one field, not the others", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
 
     await userEvent.type(screen.getByLabelText("price"), "42");
     expect(output.textContent).toBe("42");
@@ -321,7 +332,7 @@ describe("watch: one field, not the others", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     await userEvent.type(screen.getByLabelText("city"), "Kyoto");
     expect(JSON.parse(output.textContent)).toEqual({ city: "Kyoto", street: "" });
   });
@@ -362,10 +373,10 @@ describe("watch: one field, not the others", () => {
 });
 
 describe("validation modes: quiet until they should not be", () => {
-  component Probe(mode: mixed) {
+  component Probe(mode: Mode) {
     const { register, handleSubmit, formState, errorProps } = useForm({
       defaultValues: { email: "" },
-      mode: mode as any,
+      mode,
     });
     return (
       <form onSubmit={handleSubmit(() => {})}>
@@ -452,14 +463,14 @@ describe("validation modes: quiet until they should not be", () => {
 });
 
 describe("built-in rules", () => {
-  const check = async (rules: mixed, typed: string) => {
+  const check = async (rules: ValidationRules, typed: string) => {
     let message = null;
     component Probe() {
       const { register, handleSubmit, formState } = useForm({ defaultValues: { field: "" } });
       message = formState.errors.field?.message ?? null;
       return (
         <form onSubmit={handleSubmit(() => {})}>
-          <input aria-label="field" {...register("field", rules as any)} />
+          <input aria-label="field" {...register("field", rules)} />
         </form>
       );
     }
@@ -516,11 +527,14 @@ describe("built-in rules", () => {
 });
 
 describe("handleSubmit", () => {
-  const InvalidForm = (onValid: mixed, onInvalid: mixed) => {
+  const InvalidForm = (
+    onValid: (values: mixed, event?: mixed) => mixed,
+    onInvalid?: (errors: FieldErrors, event?: mixed) => mixed,
+  ) => {
     component Probe() {
       const { register, handleSubmit } = useForm({ defaultValues: { email: "" } });
       return (
-        <form onSubmit={handleSubmit(onValid as any, onInvalid as any)}>
+        <form onSubmit={handleSubmit(onValid, onInvalid)}>
           <input aria-label="email" {...register("email", { required: "Required" })} />
         </form>
       );
@@ -538,9 +552,15 @@ describe("handleSubmit", () => {
       expect(onInvalid).toHaveBeenCalled();
     });
     expect(onValid).not.toHaveBeenCalled();
+    // Asserted through `objectContaining` rather than read off a cast: a spy
+    // hands its arguments back as `mixed`, and `expect.any`-style matchers are
+    // how this suite asks a question of one without claiming to know its type.
     const [errors] = onInvalid.mock.calls[0].args;
-    expect((errors as any).email.message).toBe("Required");
-    expect((errors as any).email.type).toBe("required");
+    expect(errors).toEqual(
+      expect.objectContaining({
+        email: expect.objectContaining({ message: "Required", type: "required" }),
+      }),
+    );
   });
 
   it("calls onValid with the values once they are valid", async () => {
@@ -555,7 +575,7 @@ describe("handleSubmit", () => {
   });
 
   it("reports isSubmitting across an async submit, and counts the submit", async () => {
-    let release = () => {};
+    let release: () => void = () => {};
     const seen: Array<boolean> = [];
     component Probe() {
       const { handleSubmit, formState } = useForm({ defaultValues: {} });
@@ -564,8 +584,8 @@ describe("handleSubmit", () => {
         <form
           onSubmit={handleSubmit(
             () =>
-              new Promise((resolve) => {
-                release = resolve as any;
+              new Promise<void>((resolve) => {
+                release = () => resolve();
               }),
           )}
         >
@@ -575,7 +595,7 @@ describe("handleSubmit", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
 
     submitForm(container);
     await waitFor(() => {
@@ -611,7 +631,7 @@ describe("handleSubmit", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     submitForm(container);
 
     await waitFor(() => {
@@ -722,8 +742,8 @@ describe("accessibility", () => {
         <Probe />
       </div>,
     );
-    for (const form of Array.from((container as any).querySelectorAll("form"))) {
-      fireEvent.submit(form as any);
+    for (const form of elementsIn(container, "form")) {
+      fireEvent.submit(form);
     }
     await waitFor(() => {
       expect(screen.getAllByRole("alert").length).toBe(2);
@@ -735,12 +755,23 @@ describe("accessibility", () => {
 
 describe("reset", () => {
   it("puts the defaults back, in the store and in the DOM, and forgets what happened", async () => {
-    let state = null;
+    // The latest render's state, kept behind an accessor so that reading it
+    // before anything rendered is a failure that says so rather than a
+    // `property of null`.
+    let state: FormState | null = null;
+    let read: () => mixed = () => null;
+    const stateOf = (): FormState => {
+      if (state == null) {
+        throw new Error("the probe has not rendered");
+      }
+      return state;
+    };
     component Probe() {
       const { register, reset, formState, getValues } = useForm({
         defaultValues: { email: "start" },
       });
-      state = { formState, getValues };
+      state = formState;
+      read = getValues;
       return (
         <form>
           <input aria-label="email" {...register("email")} />
@@ -752,28 +783,28 @@ describe("reset", () => {
     }
 
     render(<Probe />);
-    const field: any = screen.getByLabelText("email");
+    const field = screen.getByLabelText("email");
     await userEvent.type(field, "!");
     await userEvent.tabAway(field);
 
-    expect((state as any).formState.isDirty).toBe(true);
-    expect((state as any).formState.touchedFields.email).toBe(true);
+    expect(stateOf().isDirty).toBe(true);
+    expect(stateOf().touchedFields.email).toBe(true);
 
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
 
-    expect(field.value).toBe("start");
-    expect((state as any).getValues()).toEqual({ email: "start" });
-    expect((state as any).formState.isDirty).toBe(false);
-    expect((state as any).formState.dirtyFields).toEqual({});
-    expect((state as any).formState.touchedFields).toEqual({});
-    expect((state as any).formState.submitCount).toBe(0);
+    expect(valueIn(field)).toBe("start");
+    expect(read()).toEqual({ email: "start" });
+    expect(stateOf().isDirty).toBe(false);
+    expect(stateOf().dirtyFields).toEqual({});
+    expect(stateOf().touchedFields).toEqual({});
+    expect(stateOf().submitCount).toBe(0);
   });
 
   it("takes new defaults, which is what a loaded record needs", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Probe() {
       const { register, reset, getValues } = useForm({ defaultValues: { email: "" } });
-      read = getValues as any;
+      read = getValues;
       return (
         <form>
           <input aria-label="email" {...register("email")} />
@@ -786,7 +817,7 @@ describe("reset", () => {
 
     render(<Probe />);
     await userEvent.click(screen.getByRole("button", { name: "Load" }));
-    expect((screen.getByLabelText("email") as any).value).toBe("loaded@example.com");
+    expect(valueIn(screen.getByLabelText("email"))).toBe("loaded@example.com");
     expect(read()).toEqual({ email: "loaded@example.com" });
   });
 });
@@ -806,7 +837,7 @@ describe("setValue, setError, clearErrors and trigger", () => {
     }
     render(<Probe />);
     await userEvent.click(screen.getByRole("button", { name: "Set" }));
-    expect((screen.getByLabelText("email") as any).value).toBe("set@example.com");
+    expect(valueIn(screen.getByLabelText("email"))).toBe("set@example.com");
   });
 
   it("shows a manual error and clears it again", async () => {
@@ -888,7 +919,7 @@ describe("async validation", () => {
     }
 
     render(<Probe />);
-    const field: any = screen.getByLabelText("name");
+    const field = controlIn(screen.getByLabelText("name"));
 
     // "first" is slow and wrong; "second" is fast and right. Without the
     // sequence stamp the slow answer arrives last and wins.
@@ -925,7 +956,7 @@ describe("async validation", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     expect(output.textContent).toBe("false");
     await userEvent.type(screen.getByLabelText("name"), "x");
     expect(output.textContent).toBe("true");
@@ -978,12 +1009,10 @@ describe("useFieldArray", () => {
     );
   }
 
-  const keysIn = (container: mixed): Array<string> =>
-    Array.from((container as any).querySelectorAll("li")).map((node: any) =>
-      String(node.getAttribute("data-key")),
-    );
-  const textIn = (container: mixed): Array<string> =>
-    Array.from((container as any).querySelectorAll("input")).map((node: any) => String(node.value));
+  const keysIn = (container: Element): $ReadOnlyArray<string> =>
+    elementsIn(container, "li").map((node) => String(node.getAttribute("data-key")));
+  const textIn = (container: Element): $ReadOnlyArray<string> =>
+    elementsIn(container, "input").map(valueIn);
 
   it("keeps the keys of the rows that stayed when one is removed from the middle", async () => {
     const { container } = render(<Rows />);
@@ -1070,7 +1099,7 @@ describe("useFieldArray", () => {
     }
 
     const { container } = render(<WithErrors />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     submitForm(container);
     await waitFor(() => {
       expect(output.textContent).toBe("items.1.name");
@@ -1154,10 +1183,10 @@ describe("cross-field rules and re-validation", () => {
 
 describe("unregister, getFieldState and setFocus", () => {
   it("forgets a field's value and its state", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Probe() {
       const { register, unregister, getValues } = useForm({ defaultValues: { a: "", b: "" } });
-      read = getValues as any;
+      read = getValues;
       return (
         <form>
           <input aria-label="a" {...register("a")} />
@@ -1177,7 +1206,9 @@ describe("unregister, getFieldState and setFocus", () => {
   });
 
   it("answers what is true of one field", async () => {
-    let state = null;
+    let state: (name: FieldPath) => FieldState = () => {
+      throw new Error("the probe has not rendered");
+    };
     component Probe() {
       const { register, getFieldState } = useForm({ defaultValues: { a: "start" } });
       state = getFieldState;
@@ -1189,7 +1220,7 @@ describe("unregister, getFieldState and setFocus", () => {
     }
 
     render(<Probe />);
-    expect((state as any)("a")).toEqual({
+    expect(state("a")).toEqual({
       invalid: false,
       isDirty: false,
       isTouched: false,
@@ -1198,7 +1229,7 @@ describe("unregister, getFieldState and setFocus", () => {
 
     await userEvent.type(screen.getByLabelText("a"), "!");
     await userEvent.tabAway(screen.getByLabelText("a"));
-    const after: any = (state as any)("a");
+    const after = state("a");
     expect(after.isDirty).toBe(true);
     expect(after.isTouched).toBe(true);
   });
@@ -1229,13 +1260,21 @@ describe("the validator resolver", () => {
     age: pipe(string(), transform(Number)),
   });
 
-  component Probe(onValid: mixed) {
-    const { register, handleSubmit, formState } = useForm({
+  // Written out because they are the point of these tests: what the form holds
+  // is all strings, and what the schema hands `onValid` has `age` as a number.
+  // `Resolver<TIn, TOut>` is generic in both for exactly that reason, and
+  // `validatorResolver` cannot infer `TIn` from a schema — it describes the
+  // output — so the caller says it.
+  type AccountValues = { email: string, profile: { city: string }, age: string };
+  type AccountOutput = { email: string, profile: { city: string }, age: number };
+
+  component Probe(onValid: (values: AccountOutput, event?: mixed) => mixed) {
+    const { register, handleSubmit, formState } = useForm<AccountValues, AccountOutput>({
       defaultValues: { email: "", profile: { city: "" }, age: "0" },
-      resolver: validatorResolver(account) as any,
+      resolver: validatorResolver<AccountValues, AccountOutput>(account),
     });
     return (
-      <form onSubmit={handleSubmit(onValid as any)}>
+      <form onSubmit={handleSubmit(onValid)}>
         <input aria-label="email" {...register("email")} />
         <input aria-label="city" {...register("profile.city")} />
         <input aria-label="age" {...register("age")} />
@@ -1246,7 +1285,7 @@ describe("the validator resolver", () => {
 
   it("turns schema issues into field errors at the path the field is registered at", async () => {
     const { container } = render(<Probe onValid={() => {}} />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
 
     submitForm(container);
     await waitFor(() => {
@@ -1277,9 +1316,9 @@ describe("the validator resolver", () => {
 
   it("clears a field's error as soon as the schema accepts it", async () => {
     component Eager() {
-      const { register, formState } = useForm({
+      const { register, formState } = useForm<AccountValues, AccountOutput>({
         defaultValues: { email: "", profile: { city: "ok" }, age: "1" },
-        resolver: validatorResolver(account) as any,
+        resolver: validatorResolver<AccountValues, AccountOutput>(account),
         mode: "onChange",
       });
       return (
@@ -1291,7 +1330,7 @@ describe("the validator resolver", () => {
     }
 
     const { container } = render(<Eager />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     await userEvent.type(screen.getByLabelText("email"), "nope");
     await waitFor(() => {
       expect(output.textContent).not.toBe("none");
@@ -1316,10 +1355,10 @@ describe("useController and Controller", () => {
   }
 
   it("binds a component that owns its own value", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Probe() {
       const form = useForm({ defaultValues: { amount: "" }, mode: "onChange" });
-      read = form.getValues as any;
+      read = form.getValues;
       const { field, fieldState } = useController({
         control: form.control,
         name: "amount",
@@ -1333,9 +1372,9 @@ describe("useController and Controller", () => {
     }
 
     render(<Probe />);
-    const field: any = screen.getByLabelText("amount");
+    const field = screen.getByLabelText("amount");
     await userEvent.type(field, "12");
-    expect(field.value).toBe("12");
+    expect(valueIn(field)).toBe("12");
     expect(read()).toEqual({ amount: "12" });
   });
 
@@ -1357,7 +1396,7 @@ describe("useController and Controller", () => {
     }
 
     render(<Probe />);
-    const field: any = screen.getByLabelText("amount");
+    const field = screen.getByLabelText("amount");
     await userEvent.clear(field);
     await waitFor(() => {
       expect(screen.getByLabelText("amount")).toHaveAttribute("aria-invalid", "true");
@@ -1555,14 +1594,17 @@ describe("disabled", () => {
     // it straight back, and `handleSubmit` hands the resolver's answer to
     // `onValid` verbatim.
     const onValid = fn();
-    const withADefault = (values: any) => ({
+    type Coded = { email: string, code: string };
+    // No `errors` key rather than an empty one: `ResolverResult` is an exact
+    // union so that checking `errors` narrows `values`, and `errorsOf` reads a
+    // missing `errors` as none — which is what an empty object meant.
+    const withADefault: Resolver<Coded, Coded> = (values) => ({
       values: { ...values, code: "filled in by the schema" },
-      errors: {},
     });
     component Probe() {
-      const { register, handleSubmit } = useForm({
+      const { register, handleSubmit } = useForm<Coded, Coded>({
         defaultValues: { email: "a@b.com", code: "never shown" },
-        resolver: withADefault as any,
+        resolver: withADefault,
       });
       return (
         <form onSubmit={handleSubmit(onValid)}>
@@ -1652,11 +1694,19 @@ describe("disabled", () => {
   });
 });
 
+/** As much of `react-dom/server` as this file uses. */
+type ReactDomServer = {| readonly renderToStaticMarkup: (node: React.Node) => string |};
+
 describe("server rendering", () => {
   // Loaded the way `@uniflowed/react-testing` loads `react-dom/client`: through
   // a synchronous require, so a test file that never renders on the server does
   // not pay for the module.
-  const server: any = createRequire(import.meta.url)("react-dom/server");
+  //
+  // The annotation is the trust boundary, and it is one line wide for the
+  // reason `@uniflowed/react-testing` gives for its own: a synchronous require
+  // of a CommonJS build answers `any` whatever anyone writes, so the choice is
+  // between saying what is expected of the module and saying nothing.
+  const server: ReactDomServer = createRequire(import.meta.url)("react-dom/server");
 
   component Probe() {
     const { register, formState, errorProps } = useForm({
@@ -1761,10 +1811,10 @@ describe("server rendering", () => {
   });
 
   it("adopts the value the server put in the markup once it mounts", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Adopting() {
       const { register, getValues } = useForm({ defaultValues: {} });
-      read = getValues as any;
+      read = getValues;
       return (
         <form>
           <input aria-label="email" defaultValue="from-markup" {...register("email")} />
@@ -1782,10 +1832,10 @@ describe("server rendering", () => {
 
 describe("React semantics", () => {
   it("survives Strict Mode's second render without registering anything twice", async () => {
-    let read = () => ({});
+    let read: () => mixed = () => ({});
     component Probe() {
       const { register, getValues } = useForm({ defaultValues: { email: "" } });
-      read = getValues as any;
+      read = getValues;
       return (
         <form>
           <input aria-label="email" {...register("email", { required: "Required" })} />
@@ -1836,8 +1886,8 @@ describe("React semantics", () => {
       return <input aria-label="email" {...register("email", { required: "Required" })} />;
     }
 
-    component Message(control: mixed) {
-      const { errors } = useFormState({ control: control as any, name: "email" });
+    component Message(control: Control<{ email: string }>) {
+      const { errors } = useFormState({ control, name: "email" });
       return errors.email == null ? null : <p role="alert">{errors.email.message}</p>;
     }
 
@@ -1896,16 +1946,14 @@ describe("React semantics", () => {
     await userEvent.click(screen.getByRole("button", { name: "Unrelated" }));
     await userEvent.click(screen.getByRole("button", { name: "Remove middle" }));
 
-    expect(
-      Array.from((container as any).querySelectorAll("input")).map((node: any) => node.value),
-    ).toEqual(["a", "c"]);
+    expect(elementsIn(container, "input").map(valueIn)).toEqual(["a", "c"]);
   });
 
   it("scopes a useFormState subscription to the fields it named", async () => {
     let messageRenders = 0;
-    component MessageView(control: mixed) {
+    component MessageView(control: Control<{ a: string, b: string }>) {
       messageRenders += 1;
-      const { errors } = useFormState({ control: control as any, name: "a" });
+      const { errors } = useFormState({ control, name: "a" });
       return <output>{errors.a?.message ?? "none"}</output>;
     }
     // Memoised for the same reason as `Total` above: the claim is about what

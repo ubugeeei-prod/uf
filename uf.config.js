@@ -88,23 +88,43 @@ export default defineConfig({
 
     // The linter, over this repository's own Flow. uf is the only thing that
     // can lint uf's packages, so a regression here is invisible to every other
-    // check in the pipeline.
+    // check in the pipeline — which is why it is now in `ci` rather than
+    // described there.
     //
-    // Not in `ci` yet, and the reason is written down rather than left to be
-    // rediscovered: it reports 153 errors and 11 warnings over 280 files.
-    // `flow/unclear-type` is 139 of them — 81 in `tests/library`, 58 in
-    // shipped packages, which are not the same question — and
-    // `react/no-render-side-effects` is 8, all of them `packages/test`'s fake
-    // timers, where a `useX` name that is not a hook is read as one. The rest
-    // are one small fix each. ubugeeei-prod/uf#225 counts them and says what
-    // each group needs.
+    // Zero errors and 14 warnings over 322 files. `uf lint` fails on errors
+    // only, so the warnings are not a countdown to a broken build: they are
+    // `react/component-syntax`, `react/no-default-export-component`,
+    // `flow/unsafe-getters-setters` and `react-native/platform-split` — four
+    // rules whose own rows in the default table call them style preferences,
+    // migration aids, or patterns that are legitimate in some code, which is
+    // exactly what `warn` is for. A rule that should block belongs at `error`
+    // in `crates/uf_config/src/lint.rs`; a warning that nobody intends to act
+    // on belongs at `off` with the argument written on its row.
     //
-    // The numbers were wrong here for a while, which is its own lesson: this
-    // said 315 errors and named `flow/react-intrinsic-overlap` (89) and
-    // `react/hooks-rules` (86) as the largest groups, and both of those report
-    // nothing at all today — the first is one of sixteen rules that need type
-    // inference uf does not implement yet, so it is skipped rather than
-    // passing.
+    // Seven suppressions stand in the packages, each on the line, under the
+    // paragraph that argues it: `Node<any>` and `Cell<any>` where Flow has no
+    // existential and the types are invariant in their parameter, the event
+    // constructors that Flow's own libdef declares with writable init
+    // properties, `fireEvent`'s proxy (#401), `act`'s promise branch, the
+    // router's one cast, and `expect`'s matcher indexer (#402). Two have a fix
+    // somebody can go and do and are filed; the rest end in something Flow
+    // does not have. Two more suppressions stand outside that rule, and both
+    // are a rule being right in general: `Object.assign` onto a callable in
+    // `@uniflowed/test`, which an object spread cannot produce, and the theme
+    // bootstrap in the documentation layout, which has to be `__html` because
+    // React escapes a text child. Nine directives were added to reach zero, and
+    // `uniflowed/unknown-lint-suppression` keeps every suppression in the tree
+    // naming a rule that exists.
+    //
+    // The numbers were wrong here twice, which is its own lesson: this said
+    // 315 errors and named `flow/react-intrinsic-overlap` (89) and
+    // `react/hooks-rules` (86) as the largest groups when both reported
+    // nothing — the first is one of sixteen rules that need type inference uf
+    // does not implement yet, so it is skipped rather than passing — and then
+    // 153 errors including eight in `packages/test`'s fake timers, which #237
+    // had already fixed by teaching the compiler that a `useX` name is a hook
+    // only where the module says React. ubugeeei-prod/uf#225 has the count
+    // this replaces.
     "check:lib": {
       command: "./target/release/uf lint",
       dependsOn: ["build"],
@@ -242,6 +262,7 @@ export default defineConfig({
         "flow:clippy",
         "flow:test",
         "fmt:check",
+        "check:lib",
         "test:lib",
         "docs:build",
         "rust:metadata",

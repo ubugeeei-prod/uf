@@ -11,6 +11,8 @@ import * as React from "@uniflowed/react";
 import { useRef, useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
+
+import { bodyOf, elementIn, parentOf } from "./dom.js";
 import {
   useAnimationFrame,
   useAsync,
@@ -187,7 +189,7 @@ describe("useDebouncedValue", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     await userEvent.type(screen.getByLabelText("query"), "abc");
     // Still empty: the keystrokes have not settled, so nothing downstream of
     // the debounce has seen them.
@@ -436,7 +438,7 @@ describe("element hooks", () => {
       );
     }
     render(<Probe />);
-    const region: any = screen.getByRole("button").parentElement;
+    const region = parentOf(screen.getByRole("button"));
     fireEvent.pointerEnter(region);
     expect(screen.getByText(/hovered/)).toBeInTheDocument();
     fireEvent.pointerLeave(region);
@@ -528,7 +530,7 @@ describe("the state shapes", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     const press = (name: string) => userEvent.click(screen.getByRole("button", { name }));
 
     await press("push");
@@ -574,7 +576,7 @@ describe("the state shapes", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     expect(output.textContent).toBe("x false");
 
     await userEvent.click(screen.getByRole("button", { name: "toggle" }));
@@ -614,7 +616,7 @@ describe("the state shapes", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     expect(output.textContent).toBe("red 0 null -1");
 
     await userEvent.click(screen.getByRole("button", { name: "back" }));
@@ -664,7 +666,7 @@ describe("the state shapes", () => {
     }
 
     const { container } = render(<Probe />);
-    const output: any = container.querySelector("output");
+    const output = elementIn(container, "output");
     const press = (name: string) => userEvent.click(screen.getByRole("button", { name }));
     expect(output.textContent).toBe("one false false");
 
@@ -693,7 +695,7 @@ describe("the state shapes", () => {
 });
 
 describe("useScrollLock", () => {
-  const body: any = () => globalThis.document.body;
+  const body = bodyOf;
 
   it("locks while it is mounted and puts the page back afterwards", () => {
     component Probe() {
@@ -927,7 +929,7 @@ describe("more element hooks", () => {
     }
 
     const { unmount } = render(<Probe />);
-    const watched: any = screen.getByTestId("watched");
+    const watched = screen.getByTestId("watched");
     watched.appendChild(globalThis.document.createElement("span"));
     await waitFor(() => {
       expect(records > 0).toBe(true);
@@ -951,8 +953,8 @@ describe("more element hooks", () => {
       );
     }
     const { container } = render(<Probe />);
-    const pane: any = screen.getByTestId("pane");
-    const output: any = container.querySelector("output");
+    const pane = screen.getByTestId("pane");
+    const output = elementIn(container, "output");
     expect(output.textContent).toBe("0,0");
 
     pane.scrollTop = 40;
@@ -1377,7 +1379,7 @@ describe("the browser hooks that need a real browser", () => {
     await waitFor(() => {
       expect(screen.getByText("true yes")).toBeInTheDocument();
     });
-    const clipboard: any = globalThis.window.navigator.clipboard;
+    const clipboard = globalThis.window.navigator.clipboard;
     expect(await clipboard.readText()).toBe("copied text");
 
     // The tick resets itself, which is the only reason `copied` is state.
@@ -1405,9 +1407,11 @@ describe("the browser hooks that need a real browser", () => {
     const { unmount } = render(<Probe />);
     expect(screen.getByText("true")).toBeInTheDocument();
 
-    const other: any = new globalThis.BroadcastChannel("uf-hooks-broadcast");
+    const other = new globalThis.BroadcastChannel("uf-hooks-broadcast");
     const alsoHeard = [];
-    other.onmessage = (event: any) => alsoHeard.push(event.data);
+    other.onmessage = (event: MessageEvent) => {
+      alsoHeard.push(event.data);
+    };
     other.postMessage("from another tab");
 
     await waitFor(() => {
@@ -1558,8 +1562,10 @@ describe("Strict Mode, which renders and mounts everything twice", () => {
         <Probe />
       </React.StrictMode>,
     );
-    const other: any = new globalThis.BroadcastChannel("uf-hooks-strict");
-    other.onmessage = (event: any) => heard.push(event.data);
+    const other = new globalThis.BroadcastChannel("uf-hooks-strict");
+    other.onmessage = (event: MessageEvent) => {
+      heard.push(event.data);
+    };
 
     await userEvent.click(screen.getByRole("button"));
     // The first mount's cleanup closes the first channel; posting has to reach

@@ -212,8 +212,10 @@ export function actively<T>(body: () => T): T {
     // for every call would hand `act(() => {})` a floating promise, and
     // returning the scope itself would depend on React's thenable passing the
     // callback's value through, which is the assumption the comment above
-    // records going wrong. So the cast stays, visible to `flow/unclear-type`
-    // rather than renamed to `$FlowFixMe` to quiet it.
+    // records going wrong. So the cast stays, suppressed by name rather than
+    // renamed to `$FlowFixMe`: the directive says which rule it is escaping and
+    // this comment says why, which a rename says nothing about.
+    // uf-lint-disable-next-line flow/unclear-type
     return Promise.resolve(scope).then(() => result) as any;
   }
   return result;

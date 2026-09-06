@@ -33,6 +33,20 @@ import path from "node:path";
 
 import { describe, expect, it } from "@uniflowed/test";
 
+/**
+ * The half of a `ReadableStream` controller these fixtures use.
+ *
+ * `ReadableStream`'s own controller type is not among the libdefs uf ships,
+ * and the fixture below used to reach for `(controller: any)` — two casts,
+ * which `flow/unclear-type` rejects. Naming the two methods the fixture
+ * actually calls says more than `any` did and costs one line.
+ */
+type StreamController = {
+  readonly enqueue: (chunk: Uint8Array) => mixed,
+  readonly close: () => mixed,
+  ...
+};
+
 import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 import { createServeHandler, createStaticHandler } from "@uniflowed/server/node";
@@ -94,9 +108,9 @@ function appWith(options: {
         },
         stream: () =>
           new ReadableStream({
-            start(controller: mixed) {
-              (controller: any).enqueue(new TextEncoder().encode(answer.html));
-              (controller: any).close();
+            start(controller: StreamController) {
+              controller.enqueue(new TextEncoder().encode(answer.html));
+              controller.close();
             },
           }),
       };

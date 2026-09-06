@@ -73,7 +73,7 @@
 //! `a_type_defined_as_itself_across_files_resolves_to_any_instead_of_erroring`.
 
 use std::cell::{LazyCell, OnceCell, RefCell};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -102,9 +102,11 @@ use flow_typing_utils::type_sig_merge::{self, Exports};
 use flow_utils_concurrency::check_budget::CheckBudget;
 
 use super::assets;
+use super::graph::ModuleFacts;
 use super::packages::{PackageFile, WorkspacePackages};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
+use crate::cache::{CachedRequire, Digest, Fields, digest_of_hashable};
 use crate::{CheckLimits, Source};
 
 /// The resolver a file's context looks imports up through.
@@ -134,6 +136,14 @@ struct Signature {
     metadata: Metadata,
     type_sig: Arc<Module<Loc>>,
     aloc_table: LazyALocTable,
+    /// What a dependent has to notice about this file, in thirty-two bytes.
+    ///
+    /// Over the packed signature *and* the table of locations it was packed
+    /// with. Both, because a dependent's diagnostics can point into this file:
+    /// a declaration that moved down a line changes what the dependent renders
+    /// even when every exported type is untouched, and a cache that believed
+    /// otherwise would render a caret in the wrong place.
+    digest: Digest,
 }
 
 /// The batch, indexed for resolution, with the signatures it has been asked for.
@@ -162,12 +172,14 @@ pub(super) struct ProjectModules {
     /// exactly when `check_service` reaches for `unchecked_module_t`.
     signatures: RefCell<HashMap<usize, Option<Rc<Signature>>>>,
     merged: RefCell<HashMap<usize, (type_sig_merge::File<'static>, Context<'static>)>>,
-    /// Specifiers that resolved to nothing typed, shared across the batch.
+    /// One context, kept only to ask the merged builtins what they declare.
     ///
-    /// A `BTreeSet` rather than a counter: the same import in twenty files is
-    /// one hole, not twenty, and the sorted order keeps the report
-    /// deterministic.
-    untyped: RefCell<BTreeSet<CompactString>>,
+    /// Asking is a property of the builtin environment rather than of any file,
+    /// but the port only exposes it through a `Context`, so the batch keeps one
+    /// that belongs to no file. It resolves nothing — deliberately: a resolver
+    /// that reached back into the batch would make this context part of the
+    /// reference cycle [`Self::release`] exists to break.
+    probe: RefCell<Option<Context<'static>>>,
     /// Every aloc table the batch has built, the checked file's included.
     ///
     /// An error raised while merging a dependency is reported against the file
@@ -199,7 +211,7 @@ impl ProjectModules {
             file_timeout: limits.file_timeout,
             signatures: RefCell::new(HashMap::new()),
             merged: RefCell::new(HashMap::new()),
-            untyped: RefCell::new(BTreeSet::new()),
+            probe: RefCell::new(None),
             aloc_tables: RefCell::new(HashMap::new()),
         }
     }
@@ -243,9 +255,134 @@ impl ProjectModules {
         self.aloc_tables.borrow().clone()
     }
 
-    /// The specifiers that resolved to nothing typed, sorted and de-duped.
-    pub(super) fn untyped_modules(&self) -> Vec<CompactString> {
-        self.untyped.borrow().iter().cloned().collect()
+    /// Everything a cache key needs to know about the `index`th source.
+    ///
+    /// Parses the file, packs its signature — leaving it where the check phase
+    /// will find it, so the pack is not paid for twice — and reads its imports
+    /// out of the file signature rather than out of the packed module. The two
+    /// are not the same set: a packed module only refers to what its *exported*
+    /// types mention, while inference resolves every import the file has, and
+    /// it is inference whose answer is being cached.
+    pub(super) fn facts(&self, index: usize) -> ModuleFacts {
+        let (path, source) = &self.sources[index];
+        let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
+        let parsed = parse::parse_file(file_key, source, &self.options, false);
+        // The one place the batch decides what "skipped" means, because a file
+        // answered from the cache is never parsed again and has to be counted
+        // the same way as one that was: `@noflow` is skipped, and a file that
+        // does not parse is *not* — it is reported, which is not the same as
+        // being opted out of.
+        let skipped = !parsed.is_checked();
+        if !parsed.is_parseable() || !parsed.is_checked() {
+            // No signature, and no imports either: a file in this state is
+            // never checked, so nothing it names is ever resolved.
+            self.signatures.borrow_mut().insert(index, None);
+            return ModuleFacts {
+                signature: None,
+                requires: Vec::new(),
+                skipped,
+            };
+        }
+
+        let requires = parsed
+            .file_sig
+            .require_loc_map()
+            .keys()
+            .map(|specifier| {
+                let FlowImportSpecifier::Userland(userland) = specifier;
+                let name = userland.as_str();
+                CachedRequire {
+                    specifier: name.to_compact_string(),
+                    declared: self.declared_externally(name),
+                }
+            })
+            .collect();
+
+        let signature = self.pack(&parsed);
+        let digest = signature.digest;
+        self.signatures.borrow_mut().insert(index, Some(signature));
+        ModuleFacts {
+            signature: Some(digest),
+            requires,
+            skipped,
+        }
+    }
+
+    /// The batch source `specifier` names, without building its signature.
+    ///
+    /// The lookup half of [`Self::resolve`] and nothing else: whether the file
+    /// found can actually contribute a signature is the caller's question,
+    /// because the caller may already know the answer without packing anything.
+    pub(super) fn locate(&self, importer: &str, specifier: &str) -> Option<usize> {
+        if resolve::is_relative(specifier) {
+            self.index.resolve(importer, specifier)
+        } else {
+            self.resolve_package(specifier)
+        }
+    }
+
+    /// Whether anything outside the batch gives `specifier` a type.
+    ///
+    /// A bare specifier is asked of Flow's library definitions directly. A
+    /// relative one is asked only through [`assets`], which is what turns
+    /// `./styles.css` into the `declare module` uf ships for it — the same
+    /// order [`Self::resolve`] uses, and the reason the answer belongs beside
+    /// the specifier in a cache record: it is a property of the specifier and
+    /// of the compiler, so a run that reads every file from disk must not have
+    /// to merge the builtins to find out it did not need them.
+    fn declared_externally(&self, specifier: &str) -> bool {
+        let declared = if resolve::is_relative(specifier) {
+            match assets::declared_module_for(specifier) {
+                Some(declared) => declared,
+                None => return false,
+            }
+        } else {
+            specifier
+        };
+        let userland = Userland::from_smol_str(FlowSmolStr::new(declared));
+        self.probe().builtin_module_opt(&userland).is_some()
+    }
+
+    /// The context that exists only to hold the builtins, made once.
+    ///
+    /// Handed back by value rather than by reference: the port is called with
+    /// no `RefCell` borrow of this batch outstanding, which is the same rule
+    /// [`Self::signature`] and [`Self::merged_file`] follow.
+    fn probe(&self) -> Context<'static> {
+        if let Some(probe) = self.probe.borrow().as_ref() {
+            return probe.dupe();
+        }
+        let probe = self.make_probe();
+        *self.probe.borrow_mut() = Some(probe.dupe());
+        probe
+    }
+
+    fn make_probe(&self) -> Context<'static> {
+        let file_key = FileKey::new(FileKeyInner::SourceFile("<builtins>".to_owned()));
+        let table = Rc::new(aloc_representation_do_not_use::make_table(
+            file_key.dupe(),
+            Vec::new(),
+        ));
+        let aloc_table: LazyALocTable = Rc::new(LazyCell::new(
+            Box::new(move || table) as Box<dyn FnOnce() -> Rc<ALocTable>>
+        ));
+        let resolve_require: flow_typing_context::ResolveRequire<'static> =
+            Rc::new(|cx: &Context<'static>, _mref: &FlowImportSpecifier| {
+                ResolvedRequire::UncheckedModule(ALoc::of_loc(Loc {
+                    source: Some(cx.file().dupe()),
+                    ..LOC_NONE
+                }))
+            });
+        Context::make(
+            Rc::new(make_ccx()),
+            flow_typing_context::mk_context_metadata(&self.options, Arc::default()),
+            file_key,
+            Arc::default(),
+            aloc_table,
+            resolve_require,
+            self.mk_builtins.dupe(),
+            CheckBudget::new(self.file_timeout),
+        )
     }
 
     /// Drop everything the merged dependencies hold.
@@ -258,6 +395,9 @@ impl ProjectModules {
         for (file, cx) in self.merged.borrow_mut().drain().map(|(_, entry)| entry) {
             cx.post_inference_cleanup();
             file.drop_closures();
+        }
+        if let Some(probe) = self.probe.borrow_mut().take() {
+            probe.post_inference_cleanup();
         }
         self.signatures.borrow_mut().clear();
     }
@@ -311,7 +451,7 @@ impl ProjectModules {
 
     /// The batch's source for a package specifier, through the manifest that
     /// publishes it.
-    fn resolve_package(&self, specifier: &str) -> Option<usize> {
+    pub(super) fn resolve_package(&self, specifier: &str) -> Option<usize> {
         match self.packages.resolve(specifier)? {
             PackageFile::Exact(path) => self.index.lookup(&path),
             PackageFile::Implied(base) => self.index.resolve_file(&base),
@@ -324,10 +464,17 @@ impl ProjectModules {
     /// exists, this check simply has no signature for it, so the import becomes
     /// `any` and the file still checks. Reporting it as *missing* instead would
     /// be a lie, and would bury every real type error under one
-    /// `cannot-resolve-module` per import. The name goes into
-    /// [`crate::CheckReport::untyped_modules`] so the hole is stated.
+    /// `cannot-resolve-module` per import.
+    ///
+    /// The hole is stated in [`crate::CheckReport::untyped_modules`], which
+    /// [`super::graph`] builds from the same rules over the whole batch rather
+    /// than from what this function happened to be asked. It has to: a merge
+    /// forces an import at most once per batch, so which *file* was checked
+    /// when a hole was first noticed depends on the order files were checked
+    /// in — and a run that answers half its files from a cache checks them in a
+    /// different order than the run that filled it.
     fn unchecked(&self, cx: &Context<'static>, name: &str) -> ResolvedRequire<'static> {
-        self.untyped.borrow_mut().insert(name.to_compact_string());
+        let _ = name;
         ResolvedRequire::UncheckedModule(ALoc::of_loc(Loc {
             source: Some(cx.file().dupe()),
             ..LOC_NONE
@@ -431,6 +578,12 @@ impl ProjectModules {
         // against the code that caused it, so reporting them here as well would
         // attach a second copy to whoever imported it.
 
+        // Both halves, before `locs` is consumed: see [`Signature::digest`].
+        let mut fields = Fields::new("uf-check-signature-v1");
+        fields.push_digest(&digest_of_hashable(&type_sig));
+        fields.push_digest(&digest_of_hashable(&locs));
+        let digest = fields.finish();
+
         let table = Rc::new(aloc_representation_do_not_use::make_table(
             file_key.dupe(),
             locs.into_vec(),
@@ -447,6 +600,7 @@ impl ProjectModules {
             metadata: parsed.metadata.clone(),
             type_sig: Arc::new(type_sig),
             aloc_table,
+            digest,
         })
     }
 
