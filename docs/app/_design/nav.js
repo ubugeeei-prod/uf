@@ -36,6 +36,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "What Flow says about React that nothing else can, and what it costs.",
       },
       {
+        href: "/guide/typescript",
+        title: "Flow and TypeScript",
+        blurb: "The rows TypeScript wins, the four Flow wins, and why uf is possible.",
+      },
+      {
         href: "/guide/architecture",
         title: "Architecture",
         blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
