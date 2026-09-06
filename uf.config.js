@@ -247,6 +247,15 @@ export default defineConfig({
     // package was added and the lock was not regenerated, each reporting a
     // package none of those jobs is about. This says it once, where the
     // manifests are the subject.
+    // And that every shell script in the repository parses under the shell CI
+    // uses. `uf@0.0.0-alpha.8` published all seventeen packages and the release
+    // was reported as failed, because `verify-npm.sh` would not parse: an
+    // unquoted here-document whose body used backticks as punctuation, which a
+    // shell reads as command substitution. It had been correct for weeks —
+    // under bash, which is `/bin/sh` on a laptop, where dash is `/bin/sh` on
+    // the runner. `sh -n` reads and does not run, so this costs milliseconds.
+    "scripts:parse": "tools/ci/scripts-parse.sh",
+    "scripts:parse:test": "tools/ci/test-scripts-parse.sh",
     lockfile: "tools/ci/lockfile-in-sync.sh",
     // The check reads the lock rather than regenerating it, so every way a
     // lock can fall behind has to be written down as a case. Its first
@@ -287,6 +296,8 @@ export default defineConfig({
         "manifests",
         "lockfile",
         "lockfile:test",
+        "scripts:parse",
+        "scripts:parse:test",
         "release:closure",
         "publishable",
         "publishable:test",
