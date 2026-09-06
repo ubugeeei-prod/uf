@@ -32,6 +32,7 @@ use crate::ui::Ui;
 /// command tree build on a path that has to feel instant. The list is checked
 /// against clap's own in `tests`, so it cannot drift.
 const COMMANDS: &[&str] = &[
+    "add",
     "build",
     "check",
     "create",
@@ -51,11 +52,14 @@ const COMMANDS: &[&str] = &[
     "preview",
     "publish",
     "release",
+    "remove",
     "run",
     "start",
     "test",
+    "update",
     "upgrade",
     "use",
+    "why",
     "completion",
     "help",
 ];
@@ -73,8 +77,14 @@ const RELEASE_BUMPS: &[&str] = &["alpha", "patch", "minor", "major"];
 const CREATE_KINDS: &[&str] = &["app", "lib"];
 
 /// What `uf explain` knows how to describe.
+///
+/// A subset of `explain::KNOWN`, which is the list `uf explain` itself refuses
+/// an unknown name with. Completing a name is a convenience and the commands
+/// people reach for are here; the four package-manager ones are here because
+/// naming the manager that will run is the whole reason to ask.
 const EXPLAINABLE: &[&str] = &[
-    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check",
+    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "add", "remove",
+    "update", "why",
 ];
 
 /// Print the completion script for `shell`.

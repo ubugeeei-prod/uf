@@ -321,7 +321,20 @@ two checks are skipped.
 staged is checked as it is on disk; uf does not stash the unstaged half the way
 `lint-staged` does.
 
-## Environment
+## Dependencies
+
+Five commands, all of them the project's own package manager. uf's resolver
+reaches no registry yet, so each one detects whether the project is npm, pnpm,
+Yarn or Bun and runs that — while keeping the three things a bare `npm install`
+would skip: lifecycle scripts stay refused, a manifest that declares scripts of
+its own is rejected before anything is fetched, and `uf.lock` and the
+content-addressed store under `.uf/store` are rewritten from the manifests the
+manager just changed.
+
+Every one of them reports which manager ran, what named it, and the exact
+command it spawned. A command that delegates without saying to whom is the
+black box [red line 7](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md)
+forbids.
 
 ### uf install
 
@@ -341,6 +354,64 @@ to run next. An install that changed nothing says so in a line and stops.
 
 The manager's own output is passed through untouched, on the stream it wrote it
 to. A failed install still says why in the manager's words.
+
+### uf install --frozen-lockfile
+
+What CI runs. Installs exactly what the lockfiles pin, and **fails** rather than
+resolving a lockfile that has drifted from the manifests: `npm ci`, `pnpm
+install --frozen-lockfile`, `yarn install --immutable`, `bun install
+--frozen-lockfile`.
+
+Two lockfiles are checked, and they catch different drift. `uf.lock` is
+derived from the workspace's manifests, so uf checks it first and fails when
+rewriting it would change it — putting back the file it was handed, so the
+failing step can still print a diff of the real one. The manager's own lockfile
+is then checked by the manager, which is the case where `package.json` has not
+moved but `package-lock.json` no longer pins what it asks for.
+
+### uf add [--dev|--optional|--peer] SPEC...
+
+Adds dependencies: resolves them, installs them, and writes both the manifest
+and the lockfile.
+
+A specifier reaches the manager exactly as written, so `react`, `react@^19`,
+`react@next`, `react@npm:preact` and `./packages/ui` all mean what they mean
+there. It is passed as a single argument and never through a shell, so a range
+with a space in it — `uf add "react@>=18 <20"` — stays one specifier. A
+specifier that starts with `-` is refused before anything runs, because every
+manager would read it as a flag.
+
+`--dev`, `--optional` and `--peer` write `devDependencies`,
+`optionalDependencies` and `peerDependencies`; the three are mutually
+exclusive, and with none of them the package goes in `dependencies`. The
+summary names the field the package actually landed in, read back out of
+`package.json` rather than repeated from the flag.
+
+Running it twice changes nothing the second time, and says so in a line.
+
+### uf remove NAME...
+
+Takes packages out of every dependency field that lists them, out of the
+lockfile and out of `node_modules`. A name the manifest never listed is not an
+error: the project ends up the way it was asked to be either way.
+
+### uf update [PACKAGE...]
+
+Moves the lockfile to the newest versions the manifest's ranges already allow.
+The ranges themselves are not touched — widening one is `uf add`'s job. Name
+packages to hold the rest still, or name none to update everything.
+
+This is **not** `uf upgrade`, which is about the toolchain and the workspace
+plan rather than about your dependencies.
+
+### uf why NAME
+
+Explains why a package is in the tree, answered by the manager out of its own
+lockfile — `npm explain`, `pnpm why`, `yarn why`, `bun why` — so the chain
+printed is the chain that was actually installed. It writes nothing at all, not
+even `uf.lock`.
+
+## Environment
 
 ### uf use TOOLCHAIN
 
@@ -384,7 +455,12 @@ removes nothing.
 
 ### uf upgrade
 
-Replaces the uf binary with the newest release.
+Re-reads the workspace, rewrites `uf.lock` and the store, and records the
+package-resolver and runtime-manager plan in `.uf/upgrade.json`. It does not
+fetch anything and it does not replace the uf binary, in spite of its name; to
+move your dependencies use [`uf update`](#uf-update-package), and to move the
+toolchain use [`uf use`](#uf-use-toolchain)
+([#287](https://github.com/ubugeeei-prod/uf/issues/287)).
 
 ## Publishing
 
