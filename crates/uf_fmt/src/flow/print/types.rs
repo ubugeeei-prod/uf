@@ -84,12 +84,10 @@ fn same_type(a: &Type, b: &Type) -> bool {
 fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
     match &**ty {
         types::TypeInner::Object { .. } => true,
-        types::TypeInner::Generic { inner, .. } => inner.targs.as_ref().is_some_and(|targs| {
-            targs
-                .arguments
-                .iter()
-                .any(returns_a_shape_that_breaks)
-        }),
+        types::TypeInner::Generic { inner, .. } => inner
+            .targs
+            .as_ref()
+            .is_some_and(|targs| targs.arguments.iter().any(returns_a_shape_that_breaks)),
         types::TypeInner::Union { inner, .. } => {
             returns_a_shape_that_breaks(&inner.types.0)
                 || returns_a_shape_that_breaks(&inner.types.1)
