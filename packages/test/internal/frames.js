@@ -66,6 +66,49 @@ export function frameSite(frame: string): Site | null {
   return { line: line.value, column: column.value };
 }
 
+/**
+ * The file a stack frame names, or `null`.
+ *
+ * The same scan as [`frameSite`], stopping one step earlier: everything before
+ * the `:line:column` is where the code is, and what that is depends on how V8
+ * wrote the frame — `at name (/path:1:2)` when it has a function name, and
+ * `at /path:1:2` or `at async file:///path:1:2` when it does not.
+ *
+ * What comes back is whatever the frame said, a path or a URL, because those
+ * are the two things it can be and a caller resolving a module specifier
+ * against it has to tell them apart anyway.
+ */
+export function frameFile(frame: string): string | null {
+  let end = frame.length;
+  while (end > 0 && (frame[end - 1] === " " || frame[end - 1] === ")")) {
+    end -= 1;
+  }
+
+  const column = digitsBefore(frame, end);
+  if (column == null || column.start === 0 || frame[column.start - 1] !== ":") {
+    return null;
+  }
+  const line = digitsBefore(frame, column.start - 1);
+  if (line == null || line.start === 0 || frame[line.start - 1] !== ":") {
+    return null;
+  }
+
+  let text = frame.slice(0, line.start - 1);
+  const open = text.lastIndexOf("(");
+  if (open !== -1) {
+    text = text.slice(open + 1);
+  } else {
+    const at = text.lastIndexOf(" at ");
+    text = at === -1 ? text : text.slice(at + 4);
+  }
+  text = text.trim();
+  // `at async /path:1:2` — the marker belongs to the frame, not to the file.
+  if (text.startsWith("async ")) {
+    text = text.slice("async ".length).trim();
+  }
+  return text === "" ? null : text;
+}
+
 /** The run of digits ending at `end`, with where it starts. */
 function digitsBefore(
   text: string,

@@ -107,16 +107,19 @@ bundle and that is what uf builds.
 5. Convert the types, if the project had any.
 6. `uf fmt`, then `uf lint`, then `uf check`, then `uf test`.
 
-**What you lose.** Jest — `uf test` has the API but no snapshots, no coverage
-and no module mocking ([#280](https://github.com/ubugeeei-prod/uf/issues/280),
-[#283](https://github.com/ubugeeei-prod/uf/issues/283)), so a suite that leans
-on any of the three does not come across. `REACT_APP_*` environment variables
+**What you lose.** Jest — `uf test` has the API and no coverage
+([#280](https://github.com/ubugeeei-prod/uf/issues/280)), so a suite that
+reports coverage does not come across whole. `jest.mock` has a destination:
+`uft.mock` replaces a module on Node, though it is not hoisted, so a mock has to
+be written above the `await import(…)` that reaches it rather than anywhere in
+the file. `REACT_APP_*` environment variables
 do not arrive either, because uf turns Vite's `.env` loading off
 ([#259](https://github.com/ubugeeei-prod/uf/issues/259)); `vite: { envDir: "." }`
 turns it back on and the prefix becomes `VITE_`.
 
 **Cost.** The route and entry work is a day's shape regardless of size; the
-long pole is the test suite, in proportion to how much of it uses snapshots.
+long pole is the test suite, in proportion to how much of it reports coverage
+or leans on a hoisted `jest.mock`.
 
 ## From Vite + React
 
@@ -197,8 +200,9 @@ job is three numbers you can count today:
 1. **Modules to convert.** Mechanical, and mostly the table above.
 2. **Dependencies with no Flow libdef.** Each one is `any` at the boundary, and
    this is the number that decides whether the type system pays you back.
-3. **Tests using snapshots, coverage or module mocks.** These have no
-   destination yet.
+3. **Tests reporting coverage.** These have no destination yet. Tests using
+   snapshots or module mocks do, though a mock has to move above the import it
+   affects.
 
 And one number you can produce: convert a single leaf directory, run
 `uf check`, and read the count. That is the real conversion rate for your
