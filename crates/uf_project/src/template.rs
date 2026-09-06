@@ -70,22 +70,56 @@ node_modules/
     .to_string()
 }
 
+/// The version a scaffolded manifest names for every `@uniflowed/*` package:
+/// the version of the uf binary that wrote the manifest.
+///
+/// It used to be `"latest"`, and `latest` is a dist-tag rather than a version —
+/// a pointer the registry resolves at install time, to whatever it happens to
+/// point at that day. On npm it did not point at the current release. With
+/// `uf@0.0.0-alpha.7` out, `latest` was `0.0.0-alpha.1` on every name a
+/// template writes, which is where the very first publish left it: a
+/// prerelease is published on the `alpha` tag precisely so it cannot
+/// displace a stable release, so nothing had moved `latest` since. The first
+/// thing a new project installed was therefore five releases behind the binary
+/// that scaffolded it, and not even one release of its own —
+/// `@uniflowed/react` at alpha.1 beside a transitive `@uniflowed/host` at
+/// alpha.2. See ubugeeei-prod/uf#408.
+///
+/// An exact version rather than a range, because the packages and the binary
+/// are two halves of one release. uf parses the Flow, generates the router
+/// types and runs the tests; the packages are what that generated code and
+/// those tests import, published from this repository at this version on the
+/// same tag. Pinning is what makes a project reproducible later: the manifest
+/// records which uf wrote it.
+///
+/// A range would not narrow that to a pair, and it is wider than it reads.
+/// `^0.0.0-alpha.7` expands to `>=0.0.0-alpha.7 <0.0.1-0`, which matches every
+/// later `0.0.0-alpha.*` *and* `0.0.0` itself — so a project created by alpha.7
+/// would install alpha.12's packages against an alpha.7 binary on the first
+/// `npm install` after alpha.12 went out, which nobody ran on purpose.
+/// `~0.0.0-alpha.7` is wider still. Only the bare version is one version.
+///
+/// This is a starting point, not a ceiling: `uf create` writes the manifest
+/// once and the project owns it from then on.
+const UNIFLOWED_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn app_package_json(name: &str) -> String {
+    let uf = UNIFLOWED_VERSION;
     format!(
         r#"{{
   "name": "{name}",
   "private": true,
   "type": "module",
   "dependencies": {{
-    "@uniflowed/config": "latest",
-    "@uniflowed/react": "latest",
-    "@uniflowed/router": "latest",
-    "@uniflowed/vite": "latest",
+    "@uniflowed/config": "{uf}",
+    "@uniflowed/react": "{uf}",
+    "@uniflowed/router": "{uf}",
+    "@uniflowed/vite": "{uf}",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   }},
   "devDependencies": {{
-    "@uniflowed/test": "latest"
+    "@uniflowed/test": "{uf}"
   }}
 }}
 "#
@@ -100,7 +134,11 @@ fn app_package_json(name: &str) -> String {
 /// as well made every scaffolded library carry a dependency it never imports,
 /// and — until the first release that sends `@uniflowed/host` — one that
 /// `uf install` could not resolve at all.
+///
+/// Both names are pinned to `UNIFLOWED_VERSION`, for the reasons written
+/// there.
 fn lib_package_json(name: &str) -> String {
+    let uf = UNIFLOWED_VERSION;
     format!(
         r#"{{
   "name": "{name}",
@@ -109,8 +147,8 @@ fn lib_package_json(name: &str) -> String {
     ".": "./index.js"
   }},
   "devDependencies": {{
-    "@uniflowed/config": "latest",
-    "@uniflowed/test": "latest"
+    "@uniflowed/config": "{uf}",
+    "@uniflowed/test": "{uf}"
   }}
 }}
 "#
