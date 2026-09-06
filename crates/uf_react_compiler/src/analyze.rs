@@ -12,11 +12,13 @@ use uf_infra::LineIndex;
 use uf_rsc::{Token, TokenKind, tokenize};
 
 use crate::bindings::{Bindings, is_mutating_method};
+use crate::convention::{ReactSignal, is_hook_call, react_signal};
 use crate::error::{MAX_DIAGNOSTICS, MAX_SCOPE_DEPTH, MAX_SOURCE_BYTES, ReactCompilerError};
 use crate::rule::{Finding, ReactDiagnostic};
-use crate::scope::{ScopeKind, ScopeStack, ident_at, is_hook_name, starts_statement};
+use crate::scope::{ScopeKind, ScopeStack, ident_at, starts_statement};
 use crate::syntax::{
     ParamList, argument_names, compound_assignment, concise_body_end, is_assignment, member_root,
+    names_a_declaration,
 };
 
 /// Everything the walk carries between tokens.
@@ -29,6 +31,13 @@ pub(crate) struct Walk<'a> {
     pub diagnostics: Vec<ReactDiagnostic>,
     /// The previous identifier on this line, cleared by any other token.
     pub previous: Option<&'a str>,
+    /// What makes this module a React module, if anything does.
+    ///
+    /// Decided once, before the walk, because a `useX` declaration has to be
+    /// classified when it opens and the evidence may stand anywhere in the
+    /// file. See [`crate::convention`] for what counts and which way its doubt
+    /// runs.
+    react: Option<ReactSignal>,
     /// Parameters of a `component` whose body has not opened yet.
     pending_props: Option<ParamList>,
     /// Frames whose props go out of scope when they close.
@@ -60,6 +69,7 @@ pub fn validate(source: &str) -> Result<Vec<ReactDiagnostic>, ReactCompilerError
         bindings: Bindings::new(),
         diagnostics: Vec::new(),
         previous: None,
+        react: react_signal(source, &tokens),
         pending_props: None,
         props_frames: Vec::new(),
         concise_ends: Vec::new(),
@@ -191,22 +201,13 @@ impl<'a> Walk<'a> {
         self.stack.close();
     }
 
-    /// Whether the contextual keyword at `index` is followed by a declaration.
+    /// Whether a `useX` name in this module is evidence of a hook.
     ///
-    /// `component` and `hook` are contextual keywords: both are ordinary
-    /// identifiers everywhere they are not immediately followed by a name and
-    /// a parameter list. React's own Fast Refresh runtime holds the DevTools
-    /// global in a variable called `hook` and writes to it at the start of a
-    /// line — where there is no preceding identifier to say otherwise — and
-    /// the walk read `hook.inject = …` as a hook declaration. The body it then
-    /// opened swallowed the rest of the enclosing function, so every write to
-    /// module state inside it was reported as a write during render.
-    ///
-    /// A name and then `(`, or `<` for a generic. Nothing else is either
-    /// keyword.
-    fn names_a_declaration(&self, index: usize) -> bool {
-        self.ident(index + 1).is_some()
-            && (self.punct(index + 2, b'(') || self.punct(index + 2, b'<'))
+    /// A `component` and a `hook` declaration say what they are; the naming
+    /// convention only says so in a module that has something to do with
+    /// React. [`crate::convention`] holds the reasoning and the four signals.
+    pub(crate) fn use_names_are_hooks(&self) -> bool {
+        self.react.is_some()
     }
 
     /// Handle one identifier token.
@@ -215,10 +216,10 @@ impl<'a> Walk<'a> {
             || matches!(self.previous, Some("export" | "declare" | "default"));
 
         match word {
-            "component" if declaration && self.names_a_declaration(index) => {
+            "component" if declaration && names_a_declaration(self.source, self.tokens, index) => {
                 return self.declare_component(index);
             }
-            "hook" if declaration && self.names_a_declaration(index) => {
+            "hook" if declaration && names_a_declaration(self.source, self.tokens, index) => {
                 return self.declare_hook(index);
             }
             "function" => return self.declare_function(index),
@@ -249,7 +250,12 @@ impl<'a> Walk<'a> {
             return;
         }
 
-        if is_hook_name(word) && self.punct(index + 1, b'(') {
+        // The same predicate the module scan used, so that a module holding a
+        // hook call has always been classified as React: the rule can never be
+        // switched off by the very call it was about to report. The early
+        // returns above have already settled the parts about a declaration's
+        // name and a property read; asking again costs two token lookups.
+        if is_hook_call(self.source, self.tokens, index) {
             self.hook_call(index, word);
             return;
         }

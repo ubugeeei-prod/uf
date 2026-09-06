@@ -4,9 +4,10 @@
 //! one stack:
 //!
 //! * *Which function is this token in?* — the nearest [`ScopeKind::is_function`]
-//!   frame. A `component`, a `hook` and a `useX` function may call hooks; every
-//!   other function may not, and being inside one of them means a token is no
-//!   longer in render.
+//!   frame. A `component`, a `hook` and — in a module [`crate::convention`] has
+//!   found React in — a `useX` function may call hooks; every other function
+//!   may not, and being inside one of them means a token is no longer in
+//!   render.
 //! * *Is this token at the top level of that function?* — the frame's recorded
 //!   [`Frame::depth`] against the current one. A `{` that is not a JSX
 //!   container raises the depth, so a hook inside `if`, inside a loop, or
@@ -21,7 +22,12 @@ pub enum ScopeKind {
     Component,
     /// A Flow `hook` body.
     Hook,
-    /// A plain function whose name follows the `useSomething` convention.
+    /// A plain function whose name follows the `useSomething` convention, in a
+    /// module that has something to do with React.
+    ///
+    /// The second half is not decoration: the convention is only evidence in a
+    /// module that is React at all, which is [`crate::convention`]'s question
+    /// and the caller's to ask before it names a frame this.
     UseFunction,
     /// Any other function, arrow, or class body.
     Function,
@@ -338,11 +344,6 @@ fn is_function_head(source: &str, tokens: &[Token], open: usize) -> bool {
         Some(_) => open.checked_sub(2).and_then(word) == Some("function"),
         None => false,
     }
-}
-
-/// Whether an identifier follows the `useSomething` hook naming convention.
-pub fn is_hook_name(name: &str) -> bool {
-    name.len() > 3 && name.starts_with("use") && name.as_bytes()[3].is_ascii_uppercase()
 }
 
 /// Whether the token at `index` starts a statement.
