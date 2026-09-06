@@ -115,6 +115,23 @@ function flowPlugin({ routerRoot, appEntry, command }) {
    * hand, which is the part that goes wrong.
    */
   const styles = new Map();
+  /**
+   * The React Compiler findings already reported, so each is said once.
+   *
+   * `uf build` runs Vite twice — once for the browser bundle and once for the
+   * server one — over the same modules, so every finding was made twice and
+   * printed twice. An entry records which environment reported a module's
+   * findings first: a re-transform in *that* environment (a dev server, after
+   * an edit) clears it and reports again, and the other environment's pass over
+   * the same module stays quiet. Keying on the environment rather than on a
+   * flag is what keeps the second half true without making the first half
+   * false.
+   *
+   * @type {Map<string, { environment: string, signatures: Set<string> }>}
+   */
+  const reported = new Map();
+  /** Findings held back as a dependency's, waiting to be counted out loud. */
+  let suppressed = [];
 
   const ensureService = () => {
     service ??= new TransformService({ command, root });
@@ -196,9 +213,14 @@ function flowPlugin({ routerRoot, appEntry, command }) {
         sourceMap: true,
       });
       if (out == null) return null;
-      for (const diagnostic of out.diagnostics) {
-        this.warn?.(`${diagnostic.function ?? "a function"}: ${diagnostic.message}`);
-      }
+      reportDiagnostics(this, {
+        id: cleanId(id),
+        root,
+        diagnostics: out.diagnostics,
+        environment: ssr ? "ssr" : "client",
+        reported,
+        suppressed,
+      });
       const map = out.map == null ? null : JSON.parse(out.map);
       // StyleX. `uf transform` compiled the module's `stylex.create` calls into
       // class names and handed back the rules they declared; the rules become a
@@ -209,18 +231,34 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       // business: Vite already injects a stylesheet in dev, extracts it in a
       // build, code-splits it per chunk, and replaces it over HMR. A module
       // whose styles are gone stops importing it, and Vite notices.
+      const styled = out.css != null && out.css !== "";
       let output = out.code;
-      if (out.css != null && out.css !== "") {
+      if (styled) {
         const styleId = `${STYLE_PREFIX}${cleanId(id)}.css`;
         styles.set(styleId, out.css);
         output = `import ${JSON.stringify(styleId)};\n${output}`;
       }
-      if (!refresh) return { code: output, map };
+      // A module that compiled a stylesheet has a side effect, whatever its
+      // package says. `@uniflowed/stylex` declares `sideEffects: false` and is
+      // right about its source: `tokens.stylex.js` only exports a token set.
+      // What it exports after this transform is a token set *and* a `:root`
+      // block, and the page that imports `ufTokens` no longer names it at
+      // runtime — the compiler turned every read into the `var(--…)` it minted.
+      // So the import was unused, a side-effect-free module with no used
+      // exports was dropped, and the custom properties every one of those
+      // `var()`s resolves against went with it: rules that referred to nothing.
+      // Declaring the side effect here rather than editing the package is
+      // deliberate — the side effect is one this plugin added, so it is this
+      // plugin's to admit to. See ubugeeei-prod/uf#306.
+      const moduleSideEffects = styled ? true : undefined;
+      if (!refresh) return { code: output, map, moduleSideEffects };
       const relative = path.relative(root, cleanId(id)).split(path.sep).join("/");
-      return addRefreshWrapper(output, map, relative);
+      return { ...addRefreshWrapper(output, map, relative), moduleSideEffects };
     },
 
     buildEnd() {
+      summariseSuppressed(this, suppressed);
+      suppressed = [];
       // A dev server keeps its service for the whole session; a build is
       // done with it here.
       if (server == null) {
@@ -355,6 +393,124 @@ function wantsDocument(request) {
   // A request for a file — `/favicon.svg`, `/assets/x.js` — that no static
   // middleware answered is a 404, not a page.
   return !/\.[a-z0-9]+$/i.test(pathname);
+}
+
+/** The name of the environment variable that turns every finding back on. */
+const ALL_DIAGNOSTICS = "UF_REACT_COMPILER_DIAGNOSTICS";
+
+/**
+ * Report what the React Compiler said about one module.
+ *
+ * Every finding used to be printed as `a function: <message>` — no file, no
+ * line, no column, and the fallback string doing all the work because the
+ * compiler names an inner function about as often as not. The transform hook
+ * knows the module and the compiler gives a position for most findings, so
+ * both go into the message: Vite prints a plugin warning's `message` and
+ * nothing else, so a location that is not in the string is a location the
+ * reader never sees. `id` and `loc` go along for anything reading the log
+ * object rather than the line. See ubugeeei-prod/uf#307.
+ *
+ * A dependency's findings are held back. A React Compiler bailout inside
+ * `@uniflowed/form` is not something the person running the build can fix, and
+ * a channel carrying forty of them on every build is a channel people stop
+ * reading — which costs them the one finding that was theirs. They are counted
+ * and said once instead, and `UF_REACT_COMPILER_DIAGNOSTICS=all` prints every
+ * one for whoever is fixing the dependency.
+ */
+function reportDiagnostics(context, { id, root, diagnostics, environment, reported, suppressed }) {
+  if (diagnostics.length === 0) return;
+  // A module transformed again by the environment that first reported it has
+  // been edited; anything else is the second bundle passing over the same file.
+  const previous = reported.get(id);
+  const ledger =
+    previous != null && previous.environment !== environment
+      ? previous
+      : { environment, signatures: new Set() };
+  reported.set(id, ledger);
+
+  const file = relativeId(root, id);
+  const mine = isProjectModule(root, id) || process.env[ALL_DIAGNOSTICS] === "all";
+  for (const diagnostic of diagnostics) {
+    // Everything a reader would be shown, so two findings that would print as
+    // the same line collapse into one. The compiler reports "Cannot access refs
+    // during render" once per pass that noticed it — three times for one `ref`
+    // — and three identical lines are not three things to fix.
+    const signature = `${diagnostic.kind}\0${diagnostic.line}\0${diagnostic.column}\0${diagnostic.message}`;
+    if (ledger.signatures.has(signature)) continue;
+    ledger.signatures.add(signature);
+    if (!mine) {
+      suppressed.push(file);
+      continue;
+    }
+    // Two conventions, both honoured. uf's own frames count columns from one
+    // (`uf_term::diagnostic`) and so does every editor a reader will paste
+    // `file:line:column` into; Rollup's `loc.column` counts from zero, which is
+    // what the compiler already gave us. The string gets the reader's number
+    // and the log object gets Rollup's.
+    const at = diagnostic.line == null ? "" : `:${diagnostic.line}:${(diagnostic.column ?? 0) + 1}`;
+    const who = diagnostic.function == null ? "" : ` (in ${diagnostic.function})`;
+    context.warn?.({
+      message: `${file}${at}: ${diagnostic.message}${who}`,
+      id,
+      loc:
+        diagnostic.line == null
+          ? undefined
+          : { file: id, line: diagnostic.line, column: diagnostic.column ?? 0 },
+    });
+  }
+}
+
+/**
+ * Say how many findings were a dependency's, and whose.
+ *
+ * Held back is not the same as hidden: a build that quietly drops forty
+ * findings is a build that has decided for the reader that uf has no bugs. One
+ * line names the packages and how to see the rest.
+ */
+function summariseSuppressed(context, suppressed) {
+  if (suppressed.length === 0) return;
+  const packages = [...new Set(suppressed.map(packageOf))].sort();
+  const count = suppressed.length;
+  context.warn?.(
+    `${count} React Compiler ${count === 1 ? "finding" : "findings"} in ` +
+      `${packages.join(", ")} — not this application's to fix; ` +
+      `set ${ALL_DIAGNOSTICS}=all to see them`,
+  );
+}
+
+/**
+ * Whether a finding about this module is the application author's to act on.
+ *
+ * Inside the project root *and* outside `node_modules`, rather than
+ * `node_modules` alone: uf's own packages reach an application through a
+ * workspace link in this repository and through `node_modules` everywhere
+ * else, and they are no more the reader's code in one case than the other.
+ */
+function isProjectModule(root, id) {
+  const relative = path.relative(root, id);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
+  return !relative.split(path.sep).includes("node_modules");
+}
+
+/** A module's path as a reader would write it: relative, with forward slashes. */
+function relativeId(root, id) {
+  const relative = path.relative(root, id);
+  return relative === "" ? id : relative.split(path.sep).join("/");
+}
+
+/** The package a module belongs to, for the one line that names them. */
+function packageOf(file) {
+  const parts = file.split("/");
+  const at = parts.lastIndexOf("node_modules");
+  if (at !== -1) {
+    const scoped = parts[at + 1]?.startsWith("@");
+    return parts.slice(at + 1, at + (scoped ? 3 : 2)).join("/");
+  }
+  // No `node_modules` in the path: a workspace link, resolved to a checkout.
+  // The directory the module hangs off is the closest thing to a package name
+  // that is true without reading its `package.json` from a warning path.
+  const up = parts.lastIndexOf("packages");
+  return up === -1 ? parts.slice(0, -1).join("/") || file : parts.slice(up, up + 2).join("/");
 }
 
 function cleanId(id) {
