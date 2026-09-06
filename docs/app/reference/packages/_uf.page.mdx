@@ -62,7 +62,7 @@ on every file.
 | `@uniflowed/motion` | Animation |
 | `@uniflowed/stylex` | Static styles |
 | `@uniflowed/react-native` | React Native bindings |
-| `@uniflowed/tui` | Terminal interfaces |
+| `@uniflowed/tui` | Terminal interfaces — see [the guide](/guide/tui) |
 
 ## Testing
 
@@ -86,6 +86,51 @@ on every file.
 | `@uniflowed/prepare`, `@uniflowed/pwa` | Build preparation, progressive web apps |
 | `@uniflowed/brand` | The design tokens this site is built from |
 | `@uniflowed/temporal` | Dates and times |
+
+## What `@uniflowed/ui` ships today
+
+The registry in `crates/uf_lib/src/ui.rs` names every component the package is
+going to have. These are the ones that exist. Each implements the WAI-ARIA
+authoring practices pattern it is named after — the roles, the `aria-*` wiring,
+the focus management and the whole keyboard map — and ships no styles at all.
+
+| Component | Pattern | The part that is easy to leave out |
+| --- | --- | --- |
+| `Field` | — | The label, description, error and `aria-invalid` wiring, and never an `aria-describedby` pointing at an element that is not there |
+| `Switch`, `Checkbox`, `Toggle` | Switch, Checkbox, Button (`aria-pressed`) | Three components, because a reader hears "on", "checked" and "pressed" — a setting, an answer, an action that stays applied — and the third state and the `Enter` key differ between them |
+| `RadioGroup` | Radio Group | Arrows that check as they move, and a tab stop on the first item while nothing is chosen, without which an unanswered group cannot be reached by `Tab` at all |
+| `ToggleGroup` | Button, Radio Group | One tab stop for a row of toggle buttons. `type="single"` is a radio group drawn as segments, and is rendered by `RadioGroup` rather than written twice |
+| `Tabs` | Tabs | One tab stop for the whole list, and the choice between automatic and manual activation |
+| `Collapsible` | Disclosure | `aria-expanded`, and an `aria-controls` that names the content only while there is content to name |
+| `Accordion` | Accordion | The heading level is the caller's, each panel is a region named after its header, and the closed ones stay findable by the browser's find-in-page |
+| `NavigationMenu` | Disclosure Navigation Menu | A `<nav>` of links behind `aria-expanded` buttons — *not* `role="menu"`, which is for application commands and tells a reader the wrong thing about what they are looking at |
+| `Dialog` | Dialog (Modal) | A focus trap that cannot be escaped, focus given back, the page held still and made inert |
+| `Menu` | Menu | Arrow keys, `Home`/`End`, typeahead, submenus, and one `Escape` closing one level |
+| `Combobox` | Combobox | `aria-activedescendant` over a list the caller filters, and the count a reader is told |
+
+**The arrow keys follow the reader, not the compass.** In a page that reads
+right to left the first item of a row is the rightmost one, so `ArrowLeft` moves
+to the *next* tab and a submenu opens onto the left. Every set here asks the DOM
+which way the page reads at the moment a key is pressed, so putting `dir="rtl"`
+where you would have put it anyway is the whole configuration; a `dir="ltr"`
+island inside an RTL page keeps its own keys. `Home` and `End` are not mirrored:
+they name the first and last item in *reading* order.
+
+**Which arrow keys a set claims follows its `orientation`**, and the pair it does
+not claim is left to the page — `ArrowDown` in a horizontal set scrolls, as it
+does everywhere else. `aria-orientation` says which pair is live, so a reader is
+told rather than left to guess. This is a deliberate narrowing of the WAI-ARIA
+practices for `RadioGroup`, which list both pairs; the reasoning is in
+`packages/ui/radio-group.js`.
+
+**A closed section is hidden, not removed.** `Collapsible` and `Accordion` leave
+their panels in the document and mark them `hidden="until-found"`, so the
+browser's find-in-page can still reach the text inside a collapsed section,
+reveal it, and scroll to the match. Closed tab panels and closed navigation
+groups are removed instead, and both modules say why. React cannot express
+`hidden="until-found"` through the `hidden` prop — it is on React's list of
+boolean attributes, so the string is flattened to `hidden=""` — so the
+components upgrade the attribute after React commits it.
 
 ## Publishing status
 
