@@ -91,10 +91,21 @@ behaviour unless `dev.strictPort` says otherwise; it is a preference the project
 wrote down once, not an instruction you just gave. `--host HOST` binds a
 routable address, which requires a non-empty `dev.allowedHosts`.
 
+It also runs the server-component analysis, and runs it again whenever a module
+changes, so a Server Component that reaches for `useEffect` or `localStorage`
+is named where it was written rather than in a build days later. It is a report
+and not a gate: `uf dev` does not refuse to serve a module over it, and nothing
+here changes an exit code.
+
 ### uf build
 
 Builds the client and server bundles and prerenders what can be prerendered.
-`--size-report` prints the cost of each chunk. `--compile` writes one more
+`--size-report` prints the cost of each chunk. A route that a
+`_uf.middleware.js` guards and the prerender wrote a document for is listed
+under `guards`, and in `uf-build-manifest.json` as
+`prerenderedUnderMiddleware` — a static host serves that file without running
+the guard, and which half of `dist/` you deploy is the one thing the build
+cannot know. `--compile` writes one more
 thing — a single executable file that serves the whole application — which is
 described under [uf build --compile](#uf-build---compile) below, beside the two
 other ways to serve a build.
@@ -258,7 +269,22 @@ staged is checked as it is on disk; uf does not stash the unstaged half the way
 
 ### uf install
 
-Installs dependencies with the host's package manager.
+Installs dependencies with the host's package manager, and refuses lifecycle
+scripts while doing it — the manager is passed `--ignore-scripts`, and a
+manifest that declares scripts of its own fails before anything is fetched.
+
+On a terminal, the phases are drawn as they happen and redrawn where they
+stand: resolving, fetching, linking, auditing, each with what it is working on,
+how many it has done and how long it has taken. Off a terminal — a pipe, a
+file, a CI log — nothing is redrawn and nothing is animated.
+
+Afterwards it reports what changed rather than a count: the packages added,
+removed, updated and moved between the lockfile before the install and the one
+after, the time each phase took, which manager ran and what named it, and what
+to run next. An install that changed nothing says so in a line and stops.
+
+The manager's own output is passed through untouched, on the stream it wrote it
+to. A failed install still says why in the manager's words.
 
 ### uf use TOOLCHAIN
 

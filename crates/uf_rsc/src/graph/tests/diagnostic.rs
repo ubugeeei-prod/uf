@@ -196,3 +196,51 @@ fn diagnostics_are_ordered_deterministically() {
     assert_eq!(first, second);
     assert!(first[0].contains("a.js"));
 }
+
+/// A hook the name lists do not know, called by a module the server runs, is
+/// reported as unanswered rather than passed over.
+///
+/// This is ubugeeei-prod/uf#348: `rsc/client-only-api-in-server` matches
+/// identifiers against two sorted name lists, so a Server Component calling
+/// `useState` is caught and one calling a hook *built on* `useState` is
+/// invisible. `docs/app/_uf.layout.js` is that module in this repository. The
+/// graph cannot decide it — the answer is in another module's body — and
+/// deciding it wrongly is worse than saying so, so it says so.
+#[test]
+fn a_hook_the_name_lists_do_not_know_is_an_unanswered_question() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/_uf.layout.js",
+        "function Masthead() { const { pathname } = useRoute(); }",
+    );
+    builder.add_entry("app/_uf.layout.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let diagnostic = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.rule() == "rsc/unclassified-hook-in-server")
+        .unwrap_or_else(|| panic!("nothing was reported: {:#?}", graph.diagnostics()));
+    assert_eq!(diagnostic.severity(), RscSeverity::Warn);
+    assert!(diagnostic.to_string().contains("useRoute"), "{diagnostic}");
+    assert!(
+        !graph.has_errors(),
+        "not knowing is not a contract violation: {:#?}",
+        graph.diagnostics()
+    );
+}
+
+/// And it is a question about the *server*. A module in the client bundle runs
+/// in a browser, where every hook is legal, so there is nothing to ask.
+#[test]
+fn a_hook_in_a_client_module_is_not_a_question() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/Masthead.js",
+        "\"use client\";\nfunction Masthead() { useRoute(); }",
+    );
+    builder.add_entry("app/Masthead.js", EntryKind::Client);
+    let graph = builder.build();
+
+    assert!(graph.diagnostics().is_empty(), "{:#?}", graph.diagnostics());
+}

@@ -19,6 +19,7 @@
 
 mod fix;
 mod hover;
+mod rsc;
 
 use std::io::{BufRead, IsTerminal, Write};
 
@@ -37,6 +38,7 @@ use crate::support::{plural, project_label};
 use crate::ui::Ui;
 
 use fix::{FORMATTED_AWAY, Fix};
+use rsc::RscReport;
 
 /// What `uf dev` was asked to do.
 #[derive(Debug, Clone, Default)]
@@ -74,6 +76,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
 
     let driver_args = driver_args(args.host.as_deref(), args.port);
     let mut driver = Driver::spawn(&host, &package, &root, "dev", &driver_args)?;
+    let mut server_components = RscReport::new(&root);
 
     let host_name = host.name();
     let project = project_label(&root).to_string();
@@ -123,7 +126,12 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
                     renderer.blank(out);
                     renderer.status(out, Status::Success, "dev server ready");
                 });
+                server_components.report(ui);
             }
+            // Vite saw a module change. The RSC graph is a whole-project
+            // property, so there is nothing to patch and nothing to defer:
+            // rescan, and say something only if the answer moved.
+            Event::SourceChanged => server_components.report(ui),
             Event::Log { level, message } => render_log(ui, level, &message),
             Event::Error(error) => {
                 let failure = render_error(ui, &root, &error);

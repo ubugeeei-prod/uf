@@ -17,5 +17,10 @@ serde.workspace = true
 
 [dev-dependencies]
 camino.workspace = true
+# The registry claims to name what each package exports; the only honest way to
+# check that is to parse the package. uf ships a Flow parser, so a regular
+# expression here would be a second, worse answer to a question the repository
+# has already answered.
+uf_flow = { path = "../uf_flow" }
 serde_json.workspace = true
 walkdir.workspace = true
