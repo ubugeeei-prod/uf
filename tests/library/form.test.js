@@ -112,6 +112,72 @@ describe("register: the keystroke that renders nothing", () => {
     expect(renders).toBe(12);
   });
 
+  it("counts the owner, the watcher and a controlled input over the same six keystrokes", async () => {
+    // The table on the forms guide, in one place, because the interesting
+    // number is not the smallest of the three: a `useWatch` subscriber renders
+    // once per keystroke exactly like the controlled input does. What the
+    // subscription changes is *which* component that is — an `<output>` here,
+    // and the whole form in the controlled column.
+    let ownerRenders = 0;
+    let watcherRenders = 0;
+    let controlledRenders = 0;
+
+    component TotalView(control: mixed) {
+      watcherRenders += 1;
+      const value = useWatch({ control: control as any, name: "title", defaultValue: "" });
+      return <output>{String(value ?? "")}</output>;
+    }
+    // Memoised, so a render of the form for its own reasons is not counted as
+    // the subscription waking.
+    const Total = React.memo(TotalView);
+
+    component Owner() {
+      ownerRenders += 1;
+      const { register, control } = useForm({ defaultValues: { title: "" } });
+      return (
+        <form>
+          <input aria-label="title" {...register("title")} />
+          <Total control={control} />
+        </form>
+      );
+    }
+
+    component Controlled() {
+      controlledRenders += 1;
+      const [value, setValue] = useState("");
+      return (
+        <input
+          aria-label="controlled"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      );
+    }
+
+    // Both in one tree: `render` mounts into one container, so a second call
+    // would replace the first rather than stand beside it.
+    render(
+      <div>
+        <Owner />
+        <Controlled />
+      </div>,
+    );
+
+    await userEvent.type(screen.getByLabelText("title"), "abcdef");
+    // Read before moving on: leaving the field blurs it, and the blur that
+    // marks a field visited is a real change to `formState` and a third render
+    // of the owner. Six keystrokes into one field is what the guide's table
+    // measures, so the count is taken while the caret is still in it.
+    const ownerAfterSix = ownerRenders;
+    const watcherAfterSix = watcherRenders;
+
+    await userEvent.type(screen.getByLabelText("controlled"), "abcdef");
+
+    expect(ownerAfterSix).toBe(2); // mount, then pristine to dirty
+    expect(watcherAfterSix).toBe(7); // mount, then one per keystroke
+    expect(controlledRenders).toBe(7); // the same seven, over the whole component
+  });
+
   it("keeps the values even though nothing rendered", async () => {
     let read = () => ({});
     component Probe() {

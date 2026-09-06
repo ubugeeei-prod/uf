@@ -21,6 +21,28 @@ use crate::hook::{HookDispatch, PluginHook};
 /// The bundler engines uf drives internally and never names to a user.
 const HIDDEN_BUNDLER_ENGINE_NAMES: [&str; 2] = ["rolldown", "rollup"];
 
+/// Whether `line` names `engine`, rather than merely containing its letters.
+///
+/// `line` and `engine` are both lowercase. The boundary is the whole rule:
+/// shadcn's Select has a `ScrollUpButton` and a `ScrollDownButton`, and
+/// lowercased those are `sc·rollup·button` and `sc·rolldown·button`. A
+/// substring search reads both as this repository leaking the name of its
+/// bundler, in a paragraph about a component it deliberately does not ship.
+///
+/// So a match has to start and end at a word boundary: the characters on
+/// either side must not be alphanumeric or `_`. `import x from "rollup"` still
+/// matches, and so does `rollup.config.js` — a `.` is a boundary, because
+/// naming a file after the engine names the engine.
+fn names_engine(line: &str, engine: &str) -> bool {
+    let bytes = line.as_bytes();
+    let boundary = |index: usize| match bytes.get(index) {
+        None => true,
+        Some(byte) => !byte.is_ascii_alphanumeric() && *byte != b'_',
+    };
+    line.match_indices(engine)
+        .any(|(start, _)| (start == 0 || boundary(start - 1)) && boundary(start + engine.len()))
+}
+
 /// Source trees whose user-visible strings are checked.
 ///
 /// Everything that decides what a user reads: this crate, because every id it
@@ -121,7 +143,7 @@ fn no_user_visible_string_names_the_underlying_engines() {
         let checked = without_line_comments(&source).to_ascii_lowercase();
         for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             for (line_number, line) in checked.lines().enumerate() {
-                if line.contains(engine) {
+                if names_engine(line, engine) {
                     leaks.push(format!("{}:{}: {engine}", path.display(), line_number + 1));
                 }
             }
@@ -133,6 +155,26 @@ fn no_user_visible_string_names_the_underlying_engines() {
         "an engine name reached a user-visible string:\n{}",
         leaks.join("\n")
     );
+}
+
+#[test]
+fn an_engine_name_inside_a_longer_word_is_not_the_engine() {
+    // The cases that sent this rule looking for a bundler in a paragraph about
+    // a scroll button, and the ones it must still catch.
+    assert!(!names_engine(
+        "shadcn's select has a scrollupbutton",
+        "rollup"
+    ));
+    assert!(!names_engine("and a scrolldownbutton", "rolldown"));
+    assert!(!names_engine("rollups", "rollup"));
+    assert!(!names_engine("unrollup", "rollup"));
+    assert!(!names_engine("rollup_", "rollup"));
+
+    assert!(names_engine("import { rollup } from \"rollup\";", "rollup"));
+    assert!(names_engine("rollup", "rollup"));
+    assert!(names_engine("see rollup.config.js", "rollup"));
+    assert!(names_engine("(rollup)", "rollup"));
+    assert!(names_engine("bundled by rolldown, internally", "rolldown"));
 }
 
 /// The shipped `@uniflowed/*` modules are read in someone's `node_modules`, so
@@ -163,7 +205,7 @@ fn no_shipped_javascript_names_the_underlying_engines() {
         let source = fs::read_to_string(&path).expect("readable source");
         for engine in HIDDEN_BUNDLER_ENGINE_NAMES {
             for (line_number, line) in source.to_ascii_lowercase().lines().enumerate() {
-                if line.contains(engine) {
+                if names_engine(line, engine) {
                     leaks.push(format!("{}:{}: {engine}", path.display(), line_number + 1));
                 }
             }
