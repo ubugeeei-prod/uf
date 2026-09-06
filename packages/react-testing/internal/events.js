@@ -111,7 +111,10 @@ const ALSO_BUBBLES: { readonly [string]: string } = {
  * stays one cast at one line rather than a dozen errors at every call.
  */
 function construct(name: string, init: EventInit): Event {
-  // One cast, covering the lookup and both constructions; see above.
+  // One cast, covering the lookup and both constructions; see above. Suppressed
+  // rather than left to fail `check:lib`, because the half that would have to
+  // change is Flow's library definition for the event initialiser dictionaries.
+  // uf-lint-disable-next-line flow/unclear-type
   const classes: any = globalThis;
   const Constructor = classes[EVENT_TYPES[name] ?? "Event"] ?? classes.Event;
   const options = optionsFor(name, init);
@@ -210,9 +213,14 @@ export function dispatch(target: EventTarget, name: string, init?: EventInit): b
  * that stops answering to the hundred-and-first. That is a design decision
  * about a published API and not a cast to remove in passing.
  *
- * Left as `any` rather than renamed to `$FlowFixMe`, which would move it out
- * of `flow/unclear-type`'s sight without moving it out of the package.
+ * Suppressed by name rather than renamed to `$FlowFixMe`. The rename would
+ * move it out of `flow/unclear-type`'s sight and say nothing; the directive
+ * below names the rule it is escaping, is checked by
+ * `uniflowed/unknown-lint-suppression`, and can be counted — this is one of
+ * the seven in the packages, and ubugeeei-prod/uf#401 is the design decision
+ * that would remove it.
  */
+// uf-lint-disable-next-line flow/unclear-type
 export const fireEvent: any = new Proxy(
   (target: EventTarget, name: string, init?: EventInit) => dispatch(target, name, init),
   {

@@ -146,6 +146,9 @@ const NOTHING: mixed = Symbol("@uniflowed/cell nothing");
  * at a value — `readNode`, `writeNode`, `commit` — is generic in `T` and never
  * sees this type.
  */
+// Suppressed rather than left to fail `check:lib`: the reason above is the
+// whole argument, and it does not end in a change anyone can make to this file.
+// uf-lint-disable-next-line flow/unclear-type
 type AnyNode = Node<any>;
 
 type Node<T> = {

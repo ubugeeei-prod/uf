@@ -11,6 +11,8 @@
 // path that matched nothing, and what renders in place of a subtree that threw.
 // Both are segment files, resolved by the nearest one above the path.
 
+import * as React from "react";
+
 import type { RouteError } from "./internal/runtime.js";
 
 export type {
@@ -84,5 +86,5 @@ export type LayoutProps<
   TParams extends { readonly [string]: string | $ReadOnlyArray<string> } = {},
 > = {|
   readonly params: TParams,
-  readonly children: React$Node,
+  readonly children: React.Node,
 |};

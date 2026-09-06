@@ -104,10 +104,12 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  * `$FlowFixMe` and whose result's result is `expect`, also `$FlowFixMe`. The
  * type that makes any of this checked is a written-out matcher interface —
  * one signature per matcher, plus `.not`, `.resolves` and `.rejects` — which
- * is what `expect`'s own annotation is waiting for. Until that exists, a
- * narrower type here would be precision nobody can reach.
+ * is what `expect`'s own annotation is waiting for, and is
+ * ubugeeei-prod/uf#402. Until that exists, a narrower type here would be
+ * precision nobody can reach.
  */
 function verdicts(received: mixed): {
+  // uf-lint-disable-next-line flow/unclear-type
   readonly [string]: (...args: $ReadOnlyArray<any>) => Verdict,
 } {
   const shown = () => render(received);
@@ -617,6 +619,15 @@ function expectValue(received: mixed): $FlowFixMe {
  * than a negated assertion around the whole object, and is the form a suite
  * being ported will already have.
  */
+// `flow/unsafe-object-assign` asks for an object spread, and a spread cannot
+// produce this value: `expect` is a *function* with matchers hanging off it,
+// and `{ ...expectValue, ...matchers }` is a plain object that a test cannot
+// call. `Object.assign` onto a callable is the only expression that makes one,
+// and the alternative the rule is really warning about — `expect.any = …`
+// afterwards — is the top-level statement the comment above rules out. What it
+// mutates is a function this module declared six lines up and exports here; no
+// object belonging to anybody else is touched.
+// uf-lint-disable-next-line flow/unsafe-object-assign
 export const expect: $FlowFixMe = Object.assign(expectValue, {
   any: asymmetric.any,
   anything: asymmetric.anything,
