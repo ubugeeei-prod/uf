@@ -265,6 +265,10 @@ fn run_and_report(
         host,
         timing_note.as_deref(),
         record_note.as_deref(),
+        // Watch mode collects none: `uf test --watch --coverage` is refused,
+        // because a report over the files one edit invalidated is not the
+        // project's coverage.
+        None,
     );
 }
 

@@ -411,6 +411,27 @@ pub(crate) enum Commands {
         /// How often `--watch` looks for changes, in milliseconds.
         #[arg(long, value_name = "MS")]
         watch_interval: Option<u64>,
+        /// Measure which of the project's Flow lines the suite executed.
+        ///
+        /// Counted by V8 and mapped back through the transform's source map,
+        /// so the numbers are about the file you wrote and not about the
+        /// JavaScript uf printed. Node only.
+        #[arg(long)]
+        coverage: bool,
+        /// Write this coverage report; repeat for more than one.
+        ///
+        /// Overrides `test.coverage.reporters` in `uf.config.js`.
+        #[arg(long = "coverage-reporter", value_name = "FORMAT", value_enum)]
+        coverage_reporters: Vec<CoverageReporterArg>,
+        /// Write coverage reports here instead of `test.coverage.directory`.
+        #[arg(long, value_name = "DIR")]
+        coverage_dir: Option<String>,
+        /// Also write the run's results in this machine-readable format.
+        #[arg(long, value_name = "FORMAT", value_enum, requires = "reporter_outfile")]
+        reporter: Option<ResultReporterArg>,
+        /// Where `--reporter` writes.
+        #[arg(long, value_name = "FILE")]
+        reporter_outfile: Option<String>,
         /// Only run files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -444,6 +465,29 @@ pub(crate) enum Commands {
         #[arg(value_name = "NAME")]
         package: String,
     },
+}
+
+/// A coverage report `--coverage-reporter` can ask for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum CoverageReporterArg {
+    /// A table on the terminal, and nothing on disk.
+    Text,
+    /// `lcov.info`, which every code-host coverage integration reads.
+    Lcov,
+    /// `cobertura-coverage.xml`, which the JVM-shaped half of CI reads.
+    Cobertura,
+}
+
+/// A machine-readable shape for the run's *results*, as opposed to its
+/// coverage.
+///
+/// One value, and the reason there is only one: `uf test --json` is already
+/// uf's own document and carries more than any of these could. What JUnit adds
+/// is that no CI system has to be taught it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum ResultReporterArg {
+    /// JUnit XML, which every CI system parses for test results.
+    Junit,
 }
 
 impl Commands {
