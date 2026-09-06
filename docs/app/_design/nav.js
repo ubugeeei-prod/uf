@@ -51,6 +51,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "The refusals, and the gaps — the second list with issue numbers.",
       },
       {
+        href: "/guide/compare",
+        title: "uf compared",
+        blurb: "Against Next.js, Vite, Bun and CRA, including the rows uf loses.",
+      },
+      {
         href: "/guide/vite-plus",
         title: "uf and Vite+",
         blurb: "Where uf sits next to the toolchain it will be compared to.",
