@@ -76,7 +76,7 @@ tools/upstream/sync.sh && cargo build --release --bin uf
 - `uf publish`: Write local/trusted publish metadata
 - `uf release`: Compute release metadata and the next `uf@*` tag
 - `uf lsp`: Start the native JSON-RPC language server
-- `uf prepare`: Write generated route/codegen preparation metadata
+- `uf prepare`: Run the checks and code generation a commit should not go without
 - `ufx`: Execute known native `@uniflowed/*` package entrypoints
 
 ## Current Execution Surface
@@ -109,7 +109,9 @@ The current CLI already executes the first native vertical slice:
   manifests, including the next `uf@*` tag metadata.
 - `ufx @uniflowed/create app` runs the native create package entrypoint and
   records the exec-cache manifest.
-- `uf prepare` writes `.uf/prepare.json` and generated router metadata.
+- `uf prepare` asks git what is staged, writes `router.js` and
+  `server-actions.js`, lints and format-checks the staged files, and records
+  what each step did in `.uf/prepare.json`.
 - `uf lsp` answers JSON-RPC `initialize` over stdio with formatting and
   diagnostic capabilities.
 

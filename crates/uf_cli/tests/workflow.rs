@@ -1,4 +1,7 @@
 //! The commands that run tests, install packages, and write release plans.
+//!
+//! `uf prepare` was here when it wrote a plan and nothing else. It runs five
+//! steps now, and what they do is `prepare.rs`.
 
 mod support;
 
@@ -45,30 +48,6 @@ fn test_list_discovers_native_test_import_shape() {
 // filters, retries, bail — is covered in `testing.rs`, against a real host.
 // Those tests need the workspace's `node_modules`, so they build their
 // projects inside this repository rather than in a system temp directory.
-
-#[test]
-fn prepare_prints_lint_staged_and_codegen_plan() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .arg("prepare")
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("lint-staged compatible  yes"));
-    assert!(stdout.contains("GenerateRouterTypes"));
-    assert!(stdout.contains("GenerateValidatorTypes"));
-    assert!(stdout.contains("✓ prepare plan written"));
-    assert!(dir.path().join(".uf/prepare.json").exists());
-}
 
 #[test]
 fn publish_and_release_report_trusted_publish_plan() {

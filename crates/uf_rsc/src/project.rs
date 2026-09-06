@@ -10,7 +10,8 @@
 //!   cannot pull foreign files into the graph;
 //! * files above [`ProjectScanOptions::max_file_bytes`] are skipped rather than
 //!   read into memory;
-//! * generated and vendored directories are skipped by name.
+//! * generated and vendored directories are skipped by name;
+//! * a directory holding a `.git` is another repository and is skipped whole.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
@@ -140,11 +141,24 @@ fn collect_module_paths(
     // `WalkDir` does not follow symbolic links by default, which is what keeps a
     // link inside the project from pulling in files outside it.
     let walk = WalkDir::new(root).into_iter().filter_entry(|entry| {
-        entry.depth() == 0
-            || !options
-                .ignored_directories
-                .iter()
-                .any(|ignored| ignored.as_str() == entry.file_name().to_string_lossy())
+        if entry.depth() == 0 {
+            return true;
+        }
+        if options
+            .ignored_directories
+            .iter()
+            .any(|ignored| ignored.as_str() == entry.file_name().to_string_lossy())
+        {
+            return false;
+        }
+        // A directory holding a `.git` is another repository — a submodule, a
+        // vendored checkout, a worktree — and its modules are not this
+        // project's. `uf_project::scan_source_files` has drawn the line there
+        // since `uf fmt` reformatted the vendored Flow sources; the RSC scan
+        // had not, so `uf prepare` in this repository analysed React's and
+        // Relay's sources, found `"use server"` in them, and wrote a
+        // `server-actions.js` about somebody else's code.
+        !entry.file_type().is_dir() || !entry.path().join(".git").exists()
     });
 
     for entry in walk {

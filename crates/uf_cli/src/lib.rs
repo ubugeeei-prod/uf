@@ -191,7 +191,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             commands::lint::lint_command(&cwd, ui, commands::lint::LintCommand::Lint, json, &paths)
         }
         Commands::Lsp => commands::dev::lsp(&cwd),
-        Commands::Prepare => commands::release::prepare(&cwd, ui),
+        Commands::Prepare => commands::prepare::prepare(&cwd, ui),
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
         Commands::Run { script, args } => match script {
