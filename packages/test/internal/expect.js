@@ -104,10 +104,12 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  * `$FlowFixMe` and whose result's result is `expect`, also `$FlowFixMe`. The
  * type that makes any of this checked is a written-out matcher interface —
  * one signature per matcher, plus `.not`, `.resolves` and `.rejects` — which
- * is what `expect`'s own annotation is waiting for. Until that exists, a
- * narrower type here would be precision nobody can reach.
+ * is what `expect`'s own annotation is waiting for, and is
+ * ubugeeei-prod/uf#402. Until that exists, a narrower type here would be
+ * precision nobody can reach.
  */
 function verdicts(received: mixed): {
+  // uf-lint-disable-next-line flow/unclear-type
   readonly [string]: (...args: $ReadOnlyArray<any>) => Verdict,
 } {
   const shown = () => render(received);
