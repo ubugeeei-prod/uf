@@ -12,7 +12,7 @@
 import * as output from "./output.js";
 import * as snapshot from "./snapshot.js";
 import { AssertionError } from "./expect.js";
-import { firstUserSite, userFrames } from "./frames.js";
+import { type Site, firstUserSite, siteInFile, userFrames } from "./frames.js";
 import { type Body, type Case, type Suite, collected } from "./registry.js";
 
 /** How one case ended. */
@@ -102,7 +102,22 @@ async function withTimeout(body: Body, timeoutMs: number): Promise<void> {
   }
 }
 
-function failure(thrown: mixed): Outcome {
+/**
+ * Where to say a failure happened.
+ *
+ * The reported position is printed under the path of the file being run, so
+ * when that file is known the line has to come from it: `firstUserSite` will
+ * hand back the first frame of whatever library raised, and a library's line
+ * number wearing the test file's path sends the reader to the wrong place
+ * (ubugeeei-prod/uf#319). The fallback is for a caller that did not say which
+ * file it is running — `run` is driven directly by this repository's own
+ * tests as well as by the worker — and is what every failure used before.
+ */
+function siteOf(stack: string | null, file: string | null): Site | null {
+  return file == null || file === "" ? firstUserSite(stack, false) : siteInFile(stack, file);
+}
+
+function failure(thrown: mixed, file: string | null): Outcome {
   if (thrown instanceof AssertionError) {
     const stack = userFrames(thrown.stack);
     return {
@@ -111,7 +126,7 @@ function failure(thrown: mixed): Outcome {
       stack,
       expected: thrown.expected,
       received: thrown.received,
-      site: firstUserSite(stack, false),
+      site: siteOf(stack, file),
     };
   }
   if (thrown instanceof Error) {
@@ -122,7 +137,7 @@ function failure(thrown: mixed): Outcome {
       stack,
       expected: null,
       received: null,
-      site: firstUserSite(stack, false),
+      site: siteOf(stack, file),
     };
   }
   return {
@@ -209,7 +224,7 @@ async function runCase(
       }
       await withTimeout(test.body, timeoutMs);
     } catch (thrown) {
-      outcome = failure(thrown);
+      outcome = failure(thrown, options.file ?? null);
     }
     // Teardown runs whatever happened above, and only reports its own failure
     // when the body had not already failed.
@@ -218,7 +233,7 @@ async function runCase(
         await withTimeout(hook, timeoutMs);
       } catch (thrown) {
         if (outcome.status === "passed") {
-          outcome = failure(thrown);
+          outcome = failure(thrown, options.file ?? null);
         }
       }
     }
