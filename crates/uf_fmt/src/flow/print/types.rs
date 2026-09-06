@@ -59,6 +59,52 @@ fn same_type(a: &Type, b: &Type) -> bool {
     std::ptr::eq(&*a.0, &*b.0)
 }
 
+/// Whether a return type has an object inside it that the printer can break at.
+///
+/// This decides whether a single parameter keeps its own group, so that a
+/// return type which breaks does not drag the parameter list open with it.
+/// Prettier asks `willBreak(returnTypeDoc)`, and that question is not stable
+/// here: an object type is printed expanded whenever the author wrote a
+/// newline after its `{` (see `print_object_type`'s `should_break`). A run
+/// that expands one for width alone therefore *creates* that newline, so the
+/// next run answers differently and the file is formatted two ways —
+/// `packages/effect/stream.js`, at a line width of 40, was the first source
+/// to show it.
+///
+/// So the question is asked of the syntax instead, which both runs agree
+/// about. It is a weaker question — an object that fits stays flat and is
+/// counted here anyway — but a weaker question answered the same way twice
+/// beats a sharper one answered differently, and the shape it picks is the
+/// one the second run was already producing.
+///
+/// The walk goes through the constructs that hold a type without deciding
+/// anything about it: a generic's arguments, a union or intersection, and the
+/// wrappers. It stops at a function type, whose own parameters and return are
+/// a separate decision.
+fn returns_a_shape_that_breaks(ty: &types::Type<Loc, Loc>) -> bool {
+    match &**ty {
+        types::TypeInner::Object { .. } => true,
+        types::TypeInner::Generic { inner, .. } => inner
+            .targs
+            .as_ref()
+            .is_some_and(|targs| targs.arguments.iter().any(returns_a_shape_that_breaks)),
+        types::TypeInner::Union { inner, .. } => {
+            returns_a_shape_that_breaks(&inner.types.0)
+                || returns_a_shape_that_breaks(&inner.types.1)
+                || inner.types.2.iter().any(returns_a_shape_that_breaks)
+        }
+        types::TypeInner::Intersection { inner, .. } => {
+            returns_a_shape_that_breaks(&inner.types.0)
+                || returns_a_shape_that_breaks(&inner.types.1)
+                || inner.types.2.iter().any(returns_a_shape_that_breaks)
+        }
+        types::TypeInner::Nullable { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        types::TypeInner::Array { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        types::TypeInner::ReadOnly { inner, .. } => returns_a_shape_that_breaks(&inner.argument),
+        _ => false,
+    }
+}
+
 impl<'a> Printer<'a> {
     /// Any type, parenthesized where the grammar needs it, with its
     /// comments.
@@ -471,7 +517,8 @@ impl<'a> Printer<'a> {
         let count = function.params.params.len()
             + usize::from(function.params.rest.is_some())
             + usize::from(function.params.this.is_some());
-        count == 1 && (is_object_type(return_type) || crate::doc::will_break(return_doc))
+        count == 1
+            && (returns_a_shape_that_breaks(return_type) || crate::doc::will_break(return_doc))
     }
 
     /// The `(...)` of a function type.

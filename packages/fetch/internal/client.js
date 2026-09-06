@@ -81,9 +81,7 @@ function describe(url: string, failure: FetchFailure): string {
  * validator: `@uniflowed/validator`'s `parser(User)` is exactly this shape,
  * and so is a hand-written check.
  */
-export type Parse<T> = (
-  value: mixed,
-) =>
+export type Parse<T> = (value: mixed) =>
   | {| readonly ok: true, readonly value: T |}
   | {| readonly ok: false, readonly issues: $ReadOnlyArray<mixed> |};
 

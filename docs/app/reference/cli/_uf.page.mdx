@@ -22,10 +22,16 @@ before the subcommand; a subcommand's own flags come after it.
 
 ## Project
 
-### uf create app NAME
+### uf create app [TEMPLATE] PATH
 
 Scaffolds an application: `uf.config.js`, `app.js`, a layout, a page and a
 `package.json`. Writes files and nothing else — no install, no git.
+
+`react` is the only template today, so `uf create app my-site` is the usual
+form: a single argument is the template when it names one and the directory
+when it does not. With two arguments the first must be a template, and a name
+that is not one is refused rather than read as a directory — `uf create app
+raect my-site` scaffolding into `raect/` is a worse answer than an error.
 
 ### uf create lib NAME
 
@@ -88,7 +94,30 @@ routable address, which requires a non-empty `dev.allowedHosts`.
 ### uf build
 
 Builds the client and server bundles and prerenders what can be prerendered.
-`--size-report` prints the cost of each chunk.
+`--size-report` prints the cost of each chunk. `--compile` writes one more
+thing — a single executable file that serves the whole application — which is
+described under [uf build --compile](#uf-build---compile) below, beside the two
+other ways to serve a build.
+
+### Serving a build
+
+Three commands serve what `uf build` wrote. They are not alternatives you pick
+by taste; they differ in what has to be installed on the machine that answers
+the request.
+
+| Command | Server | The host needs | Use it to |
+| --- | --- | --- | --- |
+| `uf preview` | Vite's preview server | the project, its dependencies and Vite | check a build on your own machine |
+| `uf start` | uf's own `node:http` server | a JavaScript host, `node_modules`, and the build | deploy to a host you install onto |
+| `uf build --compile` | that server, inside the executable | nothing at all | deploy one file |
+
+What they must *not* differ in is the answer, and they do not: an asset or a
+prerendered document is served first, then a route handler is offered the
+request for any method, and anything left is rendered. That order is Vite's
+rather than a preference — its preview server runs its own file middleware
+before anything uf mounts behind it — so `uf start` matches `uf preview` and a
+compiled binary matches both. A route that works when you check it works when
+you deploy it, whichever of the three you deployed with.
 
 ### uf preview
 
@@ -124,6 +153,31 @@ Binds `0.0.0.0:3000`, and reads `HOST` and `PORT` from the environment, which
 is how a container or a process manager says which socket to take. `--host` and
 `--port` override both, and the port you name is the port it binds or it does
 not start.
+
+### uf build --compile
+
+Writes `dist/NAME`, a single executable file that serves the application, in
+addition to everything `uf build` already wrote. It answers with the
+prerendered documents, the hashed assets, the route handlers, and a fresh
+render for any route that could not be prerendered — all of it inside the file,
+so the file can be copied into an empty directory on an empty machine and
+started. `--port` and `PORT` choose the port, `--host` and `HOST` the address,
+the same way `uf start` reads them.
+
+The difference from `uf start` is only what the host must already have. `uf
+start` reads `dist/` and `.uf/build/server` from disk and needs a JavaScript
+host to run on; a compiled binary carries both, and needs nothing — which is
+also the trade, because the copy inside it is fixed at build time and changing
+a single asset means building again.
+
+Producing one needs `bun` on PATH, because Bun's runtime is what gets embedded;
+running one needs nothing. A project that imports a native `.node` addon cannot
+be a single file, and the build says which addon and which importer rather than
+producing something that fails on its first request — but an addon loaded
+through a runtime string, with `process.dlopen` or `require(variable)`, is
+invisible to any bundler and will still compile and still fail when a request
+reaches it. Building for a platform other than the one you are on is
+[#310](https://github.com/ubugeeei-prod/uf/issues/310).
 
 ### uf doc
 
