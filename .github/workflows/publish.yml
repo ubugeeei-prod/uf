@@ -36,6 +36,13 @@ jobs:
       # installed. Without this the publish job failed on a missing fixture
       # while the packages it was about to publish were fine.
       - run: npm ci --no-audit --no-fund
+      # And `uf build --compile` needs Bun, for the same reason: its two tests
+      # fail rather than skip without it, and a publish job that cannot run
+      # them is a publish job that cannot say the feature works.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - run: bun --version
       - run: cargo test --workspace
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the set that is implemented.

@@ -41,6 +41,16 @@ export type MatcherOptions = {|
 |};
 
 /**
+ * The keys of `MatcherOptions`, for the check that refuses the others.
+ *
+ * Written out beside the type rather than derived from it because Flow has no
+ * way to produce one from the other: `$Keys` of an exact object is a type, and
+ * this has to exist while the program runs. The two are short and adjacent so
+ * that a reader can check them against each other by eye.
+ */
+export const MATCHER_OPTION_KEYS: $ReadOnlyArray<string> = ["exact"];
+
+/**
  * How to narrow a role query.
  *
  * A role is shared by every button on the page, so `name` is the option that
@@ -52,7 +62,65 @@ export type RoleOptions = {|
   readonly name?: Matcher,
   /** `false` matches a substring of the name. Defaults to `true`. */
   readonly exact?: boolean,
+  /**
+   * `true` also returns what the accessibility tree does not expose.
+   *
+   * Defaults to `false`, which is the question a role query is asking. The
+   * other question — "is it in the document at all" — is a real one, and this
+   * is how a test says it means that one.
+   */
+  readonly hidden?: boolean,
+  /** The level a heading is announced at. Only a heading has one. */
+  readonly level?: number,
+  /**
+   * What `aria-current` has to say: one of its tokens, `true`, or `false` for
+   * the elements that are not the current one.
+   */
+  readonly current?: boolean | string,
 |};
+
+/** The keys of `RoleOptions`. See [`MATCHER_OPTION_KEYS`]. */
+export const ROLE_OPTION_KEYS: $ReadOnlyArray<string> = [
+  "current",
+  "exact",
+  "hidden",
+  "level",
+  "name",
+];
+
+/**
+ * Raise unless every key of `options` is one this query takes.
+ *
+ * An option a query does not understand is the failure this module was worst
+ * at: `getByRole("heading", { level: 3 })` read as an assertion about a
+ * heading level, asserted nothing at all, and nothing anywhere said so. A
+ * silently ignored option is worse than an unsupported one, because the test
+ * that passes because of it is the test nobody looks at again.
+ *
+ * This is the half that can be right without a checker. The option types are
+ * exact, so `uf check` will refuse the same key once ubugeeei-prod/uf#248
+ * stops typing this package as `any` — and a test written against a published
+ * build has no checker in the loop at all.
+ */
+export function rejectUnknownOptions(
+  query: string,
+  options: mixed,
+  known: $ReadOnlyArray<string>,
+): void {
+  if (options == null) {
+    return;
+  }
+  if (typeof options !== "object") {
+    throw new Error(`${query}: the options are ${String(options)}, and an object was expected`);
+  }
+  for (const key of Object.keys(options)) {
+    if (!known.includes(key)) {
+      throw new Error(
+        `${query}: "${key}" is not an option this query takes. It takes ${known.join(", ")}.`,
+      );
+    }
+  }
+}
 
 /**
  * Collapse whitespace the way a browser does when it lays text out.
@@ -113,7 +181,34 @@ export function allByText(
 
 /** Elements with this ARIA role, whether written down or implied by the tag. */
 export function allByRole(root: Element, role: string, options?: RoleOptions): Array<Element> {
-  const found = candidates(root, "*").filter((element) => roleOf(element) === role);
+  const level = options?.level;
+  if (level != null && role !== "heading") {
+    // Refused rather than ignored. An option a query accepts and does nothing
+    // with turns a test into a decoration: it reads as if it checks the thing
+    // it was written for and checks nothing.
+    throw new Error(
+      `getByRole("${role}", { level }): a level narrows a heading, and this query asked for "${role}"`,
+    );
+  }
+
+  // Elements the accessibility tree does not expose are dropped, because a
+  // role query asks what a reader is told and those are told to nobody: a
+  // closed accordion panel, a `display: none` menu, the page behind an open
+  // dialog. Returning them made "is this announced" unaskable, which is the
+  // one thing the query is for.
+  let found = candidates(root, "*").filter(
+    (element) => roleOf(element) === role && (options?.hidden === true || exposed(element)),
+  );
+
+  if (level != null) {
+    found = found.filter((element) => headingLevel(element) === level);
+  }
+
+  const current = options?.current;
+  if (current != null) {
+    found = found.filter((element) => currentOf(element) === current);
+  }
+
   const name = options?.name;
   if (name == null) {
     return found;
@@ -121,6 +216,106 @@ export function allByRole(root: Element, role: string, options?: RoleOptions): A
   return found.filter((element) =>
     matches(accessibleName(element), element, name, { exact: options?.exact ?? true }),
   );
+}
+
+/**
+ * Whether the accessibility tree exposes this element.
+ *
+ * Up the ancestors, because each of these hides a subtree: an element under a
+ * `display: none` parent is announced by nobody however plain its own style
+ * is.
+ *
+ * `packages/test/internal/expect.js` carries a walk that looks like this one
+ * and answers a different question. `toBeVisible` asks whether a reader would
+ * *see* the element, so it counts `opacity: 0` as hidden — and a screen reader
+ * announces an element at zero opacity, which is exactly why hiding text that
+ * way is a bug rather than a technique. The two rules part company there, and
+ * a role query wants this one. `aria-hidden` is the mirror image: the element
+ * is on the screen and out of the tree.
+ *
+ * `hidden` is taken in every spelling, `hidden="until-found"` included. That
+ * one applies `content-visibility: hidden`, whose subtree is not in the
+ * accessibility tree; find-in-page being able to reach it does not make it
+ * announced, and a closed accordion panel is the case that raised this.
+ */
+function exposed(element: Element): boolean {
+  let child: Element | null = null;
+  let current: Element | null = element;
+  while (current != null) {
+    if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
+      return false;
+    }
+    // A closed `<details>` renders its summary and nothing else, so the
+    // summary is still announced and everything beside it is not — the half
+    // that a walk looking only at the ancestor gets wrong.
+    if (
+      child != null &&
+      current.tagName.toLowerCase() === "details" &&
+      !current.hasAttribute("open") &&
+      child.tagName.toLowerCase() !== "summary"
+    ) {
+      return false;
+    }
+    const style = current.ownerDocument?.defaultView?.getComputedStyle?.(current);
+    if (style != null && (style.display === "none" || style.visibility === "hidden")) {
+      return false;
+    }
+    child = current;
+    current = current.parentElement;
+  }
+  return true;
+}
+
+/**
+ * The level a heading is announced at, or `null` when it has none.
+ *
+ * `aria-level` first, because the ARIA attribute overrides what the host
+ * language implies: `<h2 aria-level="4">` is a level four heading. Then the
+ * tag. Then two, which is what browsers fall back to when `role="heading"` is
+ * written without the `aria-level` ARIA requires with it — an authoring
+ * mistake, and a query has to answer the way a reader would be told rather
+ * than the way the author meant.
+ *
+ * `null` for an `aria-level` that is not a whole number of at least one, which
+ * is what ARIA says the value is. A level of "big" is not a level, and
+ * matching nothing says so.
+ */
+function headingLevel(element: Element): number | null {
+  const written = element.getAttribute("aria-level");
+  if (written != null && written.trim() !== "") {
+    const level = Number(written);
+    return Number.isInteger(level) && level >= 1 ? level : null;
+  }
+  const tag = element.tagName.toLowerCase();
+  return tag.length === 2 && tag[0] === "h" && tag[1] >= "1" && tag[1] <= "6" ? Number(tag[1]) : 2;
+}
+
+/** The tokens `aria-current` is defined for, beside `true` and `false`. */
+const CURRENT_TOKENS = ["date", "location", "page", "step", "time"];
+
+/**
+ * What `aria-current` says about this element.
+ *
+ * Absent, empty and `"false"` are one answer — not current — which is why the
+ * option's `false` has to mean "and carries no such attribute" rather than
+ * "and the attribute says false". Every element on a page is not-current.
+ *
+ * A token nobody has heard of is `true`. That is ARIA's rule rather than a
+ * guess: any value outside the list is treated as if `aria-current="true"` had
+ * been written, not as the default `false`. So a misspelt `aria-current="pge"`
+ * *is* announced as the current item, `{ current: true }` is the query that
+ * finds it, and `{ current: "pge" }` finds nothing — which is the answer a
+ * person looking for their typo needs.
+ */
+function currentOf(element: Element): boolean | string {
+  const written = element.getAttribute("aria-current");
+  if (written == null || written === "" || written === "false") {
+    return false;
+  }
+  if (written === "true") {
+    return true;
+  }
+  return CURRENT_TOKENS.includes(written) ? written : true;
 }
 
 /** Form controls labelled by this text. */
@@ -361,7 +556,68 @@ export function accessibleName(element: Element): string {
     }
   }
 
+  const naming = namingChild(element);
+  if (naming != null) {
+    return textOf(naming);
+  }
+
   return textOf(element);
+}
+
+/** The child that names its parent, for the three elements HTML-AAM gives one. */
+const NAMING_CHILDREN: { readonly [string]: string } = {
+  fieldset: "legend",
+  figure: "figcaption",
+  table: "caption",
+};
+
+/**
+ * The element that names this one from inside it, or `null`.
+ *
+ * A `<table>` is named by its `<caption>`, a `<fieldset>` by its `<legend>`
+ * and a `<figure>` by its `<figcaption>`. HTML-AAM says so and every browser
+ * does it, and without it "the element's own text" is what a table falls back
+ * to — which for a table is every cell in it, so `getByRole("table", { name:
+ * "People" })` was asking whether the name was `"People Name Born Ada Lovelace
+ * 1815 …"` and finding nothing.
+ *
+ * A direct child, which is what the three rules say: the `<caption>` of a
+ * table rather than of a table nested in one of its cells.
+ */
+function namingChild(element: Element): Element | null {
+  const wanted = NAMING_CHILDREN[element.tagName.toLowerCase()];
+  if (wanted == null) {
+    return null;
+  }
+  return (
+    Array.from(element.children).find((child) => child.tagName.toLowerCase() === wanted) ?? null
+  );
+}
+
+/**
+ * `error`, reported where the query was written rather than where it gave up.
+ *
+ * A `findBy…` polls, and the attempt whose failure it keeps is the last one —
+ * which runs from a timer, with nothing of the test on the stack under it. The
+ * error is the right error; only its position is missing, and a failure with
+ * no position is the one thing `ubugeeei-prod/uf#319` was about. `asked` is an
+ * error built at the call, so its frames are the caller's; rebuilding the
+ * stack from the name and message is what the engine itself would have written
+ * had the failure been raised there.
+ *
+ * `mixed` rather than `Error` because a wait rethrows whatever the body threw,
+ * and a body may throw a string. One that is not an error carries no stack to
+ * correct and is handed back untouched.
+ */
+export function atCallSite(error: mixed, asked: Error): mixed {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+  const frames = (asked.stack ?? "").split("\n").slice(1);
+  if (frames.length > 0) {
+    error.stack = [`${error.name}: ${error.message}`, ...frames].join("\n");
+  }
+  return error;
 }
 
 /** Why a query failed, with enough of the DOM to see why. */

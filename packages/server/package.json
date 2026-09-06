@@ -12,11 +12,13 @@
   },
   "exports": {
     ".": "./index.js",
-    "./host": "./host.js"
+    "./host": "./host.js",
+    "./standalone": "./standalone.js"
   },
   "files": [
     "index.js",
     "host.js",
+    "standalone.js",
     "internal/*.js"
   ]
 }
