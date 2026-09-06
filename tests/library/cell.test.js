@@ -20,6 +20,34 @@ import {
   write,
 } from "@uniflowed/cell";
 
+/**
+ * A load whose promises the test settles by hand, one per key.
+ *
+ * `settle` throws rather than returning `undefined` when nothing is waiting
+ * for the key: a test that settles a load which was never started is not
+ * testing what its name says, and the failure it would otherwise produce —
+ * a value that never arrives — points at the library rather than at itself.
+ */
+function controlled(): {
+  settle: (key: string, value: string) => void,
+  load: (key: string) => Promise<string>,
+} {
+  const waiting: Map<string, (value: string) => void> = new Map();
+  return {
+    settle: (key, value) => {
+      const resolve = waiting.get(key);
+      if (resolve === undefined) {
+        throw Error(`no load is waiting for ${key}`);
+      }
+      resolve(value);
+    },
+    load: (key) =>
+      new Promise((resolve) => {
+        waiting.set(key, resolve);
+      }),
+  };
+}
+
 describe("cell", () => {
   it("holds and replaces a value", () => {
     const count = cell(1);
@@ -689,32 +717,20 @@ describe("equals", () => {
 });
 
 describe("an asynchronous cell that reloads", () => {
-  /** A load whose promises are settled by the test, one per key. */
-  function controlled() {
-    const settle = new Map();
-    return {
-      settle,
-      load: (key) =>
-        new Promise((resolve) => {
-          settle.set(key, resolve);
-        }),
-    };
-  }
-
   it("reloads when what the load read changes", async () => {
     const id = cell("a");
     const { settle, load } = controlled();
     const loaded = resource(() => load(read(id)));
     subscribe(loaded, () => {});
 
-    settle.get("a")("value a");
+    settle("a", "value a");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(loaded)).toBe("value a");
 
     write(id, "b");
     expect(status(loaded)).toBe("pending");
-    settle.get("b")("value b");
+    settle("b", "value b");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(loaded)).toBe("value b");
@@ -729,14 +745,14 @@ describe("an asynchronous cell that reloads", () => {
 
     // The second load starts while the first is still in flight.
     write(id, "fast");
-    settle.get("fast")("fast value");
+    settle("fast", "fast value");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(loaded)).toBe("fast value");
 
     // The one it superseded settles last, which is exactly the race this
     // exists to lose safely.
-    settle.get("slow")("slow value");
+    settle("slow", "slow value");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(loaded)).toBe("fast value");
@@ -770,10 +786,139 @@ describe("an asynchronous cell that reloads", () => {
     expect(read(loaded)).toBe("written");
     expect(status(loaded)).toBe("success");
 
-    settle.get("only")("loaded");
+    settle("only", "loaded");
     await Promise.resolve();
     await Promise.resolve();
     expect(read(loaded)).toBe("written");
+  });
+
+  it("hands every load a signal, and aborts the one it supersedes", async () => {
+    // The generation already stopped the abandoned load's *result* from
+    // landing. This is the other half: the work itself stops.
+    const id = cell("slow");
+    const signals = [];
+    const { settle, load } = controlled();
+    const loaded = resource((context) => {
+      signals.push(context.signal);
+      return load(read(id));
+    });
+    subscribe(loaded, () => {});
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(false);
+
+    write(id, "fast");
+    expect(signals).toHaveLength(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(String(signals[0].reason)).toContain("superseded");
+    expect(signals[1].aborted).toBe(false);
+
+    settle("fast", "fast value");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("fast value");
+    // Settling did not abort the load that produced the value.
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it("aborts the load a write replaced", async () => {
+    // An optimistic update answers the question the load was asked, so the
+    // request is working for nobody. The graph is what knows a write happened.
+    const signals = [];
+    const { load } = controlled();
+    const loaded = resource((context) => {
+      signals.push(context.signal);
+      return load("only");
+    });
+    subscribe(loaded, () => {});
+    expect(signals[0].aborted).toBe(false);
+
+    write(loaded, "written");
+    expect(signals[0].aborted).toBe(true);
+    expect(String(signals[0].reason)).toContain("written over");
+  });
+
+  it("aborts the load in flight when the last watcher leaves", async () => {
+    const signals = [];
+    const { load } = controlled();
+    const loaded = resource((context) => {
+      signals.push(context.signal);
+      return load("only");
+    });
+    const stop = subscribe(loaded, () => {});
+    expect(signals[0].aborted).toBe(false);
+
+    stop();
+    expect(signals[0].aborted).toBe(true);
+    expect(String(signals[0].reason)).toContain("unwatched");
+  });
+
+  it("starts the load again for the watcher after the one that abandoned it", async () => {
+    // Abandoning leaves the node holding `"pending"` for a request that is not
+    // running. Without the mark on the way out, the next subscriber waits for
+    // a load nothing will ever start.
+    let served = 0;
+    const { settle, load } = controlled();
+    const loaded = resource(() => {
+      served += 1;
+      return load(`load ${served}`);
+    });
+
+    const first = subscribe(loaded, () => {});
+    expect(served).toBe(1);
+    first();
+
+    subscribe(loaded, () => {});
+    expect(served).toBe(2);
+    settle("load 2", "second value");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe("second value");
+    expect(status(loaded)).toBe("success");
+  });
+
+  it("does not reload for a watcher that arrives after the load settled", async () => {
+    // The mirror of the test above, and the reason it is conditional: nothing
+    // was in flight when the last watcher left, so the value it holds is
+    // still the right answer and refetching it would be waste.
+    let served = 0;
+    const load = fn(() => {
+      served += 1;
+      return Promise.resolve(served);
+    });
+    const loaded = resource(() => load());
+    const first = subscribe(loaded, () => {});
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe(1);
+
+    first();
+    subscribe(loaded, () => {});
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(read(loaded)).toBe(1);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not commit an abandoned load's rejection as a failure", async () => {
+    // What a real aborted `fetch` does: it rejects. Committing that turns a
+    // component's own cleanup into an error state on the next read.
+    const loaded = resource(
+      (context) =>
+        new Promise((resolve, reject) => {
+          context.signal.addEventListener("abort", () => {
+            reject(Error("The operation was aborted"));
+          });
+        }),
+    );
+    const stop = subscribe(loaded, () => {});
+    stop();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Reading starts a fresh load, which is the point: the cell is waiting
+    // for a request that exists, not holding the last one's cancellation.
+    expect(read(loaded)).toBe(null);
+    expect(status(loaded)).not.toBe("failure");
   });
 
   it("loads again on refresh, without anything it reads changing", async () => {
