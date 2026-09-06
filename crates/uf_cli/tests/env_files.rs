@@ -297,6 +297,26 @@ fn inspect_reports_the_mode_and_the_files_but_no_values() {
     );
 }
 
+/// `uf exec` runs a tool against this project, so it gets this project's values.
+///
+/// A path rather than an installed binary, which is the one of `uf exec`'s
+/// three paths that needs no `node_modules`; all three are given the same
+/// environment in the same place.
+#[cfg(unix)]
+#[test]
+fn exec_runs_a_command_with_the_projects_values() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = project(&[(".env", "GREETING=for the tool\n")]);
+    let script = dir.path().join("show.sh");
+    fs::write(&script, "#!/bin/sh\necho \"GREETING=[$GREETING]\"\n").unwrap();
+    fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let stdout = run(dir.path(), &["exec", "./show.sh"]);
+
+    assert!(stdout.contains("GREETING=[for the tool]"), "{stdout}");
+}
+
 /// `uf test`'s workers get the same values, from `.env.test`.
 ///
 /// The mode is `test`, not `development`: a suite that reaches for the
