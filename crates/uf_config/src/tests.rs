@@ -57,12 +57,34 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     // author change this line rather than inherit a claim.
     assert_eq!(
         config.app.runtime.deploy.adapters,
-        vec![DeployAdapter::Node]
+        vec![
+            DeployAdapter::Node,
+            DeployAdapter::Edge,
+            DeployAdapter::Serverless,
+            DeployAdapter::Container,
+        ]
     );
     assert_eq!(config.app.runtime.deploy.adapter, None);
     assert!(DeployAdapter::Node.is_implemented());
-    assert!(!DeployAdapter::Edge.is_implemented());
-    assert!(!DeployAdapter::Serverless.is_implemented());
+    assert!(DeployAdapter::Edge.is_implemented());
+    assert!(DeployAdapter::Serverless.is_implemented());
+    assert!(DeployAdapter::Container.is_implemented());
+    // And the three that are not, each of which is waiting for something
+    // named rather than for somebody's attention.
+    for adapter in [
+        DeployAdapter::Bun,
+        DeployAdapter::Deno,
+        DeployAdapter::Static,
+    ] {
+        assert!(!adapter.is_implemented(), "{}", adapter.as_str());
+        assert_eq!(adapter.tracking_issue(), Some(391));
+        assert!(
+            adapter.unimplemented_because().is_some(),
+            "{}",
+            adapter.as_str()
+        );
+    }
+    assert_eq!(DeployAdapter::Node.unimplemented_because(), None);
     assert!(!config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.route);
     assert!(config.app.rendering.modes.contains(&RenderingMode::Ppr));
@@ -77,6 +99,10 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(config.fmt.flow.parser, FlowFormatParser::OfficialFlowRust);
     assert_eq!(config.fmt.flow.printer, FlowFormatPrinter::UfRust);
     assert_eq!(config.fmt.non_flow.formatter, NonFlowFormatter::Biome);
+    assert!(
+        !config.fmt.non_flow.chosen_by_project,
+        "a default is uf's suggestion, not the project's requirement"
+    );
     assert_eq!(config.fmt.quotes, QuoteStyle::Double);
     assert!(config.fmt.semicolons);
     assert_eq!(config.server.engine, ServerEngine::NativeRust);
@@ -583,6 +609,10 @@ fn parses_runtime_agnostic_tooling_surface() {
     assert_eq!(parsed.fmt.flow.parser, FlowFormatParser::OfficialFlowRust);
     assert_eq!(parsed.fmt.flow.printer, FlowFormatPrinter::UfRust);
     assert_eq!(parsed.fmt.non_flow.formatter, NonFlowFormatter::Biome);
+    assert!(
+        parsed.fmt.non_flow.chosen_by_project,
+        "a project that wrote the formatter down asked for it"
+    );
     assert_eq!(parsed.lint.engine, LintEngine::Rust);
     assert_eq!(parsed.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
     assert_eq!(parsed.lint.flow.parser, FlowLintParser::OfficialFlowRust);
@@ -590,4 +620,54 @@ fn parses_runtime_agnostic_tooling_surface() {
         parsed.test.runner.runtime,
         NativeTestRuntimeConfig::CapabilityJsHost
     );
+}
+
+/// The same formatter, from two different places, is two different situations.
+///
+/// `biome` written down by a project is a requirement it stated; `biome`
+/// because uf's default is `biome` is uf's suggestion. Serde's `default` fills
+/// the field in either way, so the difference has to be kept as it is read or
+/// it cannot be recovered afterwards — and it decides whether a missing binary
+/// fails `uf fmt`. See ubugeeei-prod/uf#441.
+#[test]
+fn a_formatter_the_project_named_is_not_the_same_as_uf_s_default() {
+    let named = json5::from_str::<UniflowedConfig>(
+        &extract_config_object(
+            "export default defineConfig({ fmt: { nonFlow: { formatter: \"biome\" } } });",
+        )
+        .expect("object"),
+    )
+    .expect("config");
+    let silent = json5::from_str::<UniflowedConfig>(
+        &extract_config_object("export default defineConfig({ fmt: { indentWidth: 2 } });")
+            .expect("object"),
+    )
+    .expect("config");
+    let empty = json5::from_str::<UniflowedConfig>(
+        &extract_config_object("export default defineConfig({ fmt: { nonFlow: {} } });")
+            .expect("object"),
+    )
+    .expect("config");
+
+    assert_eq!(named.fmt.non_flow.formatter, NonFlowFormatter::Biome);
+    assert_eq!(silent.fmt.non_flow.formatter, NonFlowFormatter::Biome);
+    assert_eq!(empty.fmt.non_flow.formatter, NonFlowFormatter::Biome);
+    assert!(named.fmt.non_flow.chosen_by_project);
+    assert!(!silent.fmt.non_flow.chosen_by_project);
+    assert!(
+        !empty.fmt.non_flow.chosen_by_project,
+        "an empty `nonFlow` block names nothing"
+    );
+}
+
+/// Where the choice came from is uf's own bookkeeping, and `uf inspect --json`
+/// answers "which formatter will run" with one field, as it always has.
+#[test]
+fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
+    let mut config = FmtConfig::default();
+    config.non_flow.chosen_by_project = true;
+
+    let json = serde_json::to_value(&config.non_flow).expect("serializes");
+
+    assert_eq!(json, serde_json::json!({ "formatter": "biome" }));
 }

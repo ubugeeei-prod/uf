@@ -23,6 +23,18 @@ export default defineConfig({
     router: { enabled: false },
   },
 
+  fmt: {
+    nonFlow: {
+      // Named rather than left to the default, and the difference is the
+      // point: uf's default is a suggestion, and `uf fmt` warns when a
+      // suggested formatter is missing rather than failing. This repository
+      // installs Biome, its `uf fmt --check` is a required check, and a run
+      // that could not look at the JSON must not pass as if it had. Saying so
+      // here is how a project asks for that. See ubugeeei-prod/uf#441.
+      formatter: "biome",
+    },
+  },
+
   lint: {
     // `upstream/` is Meta's and React's source, vendored as submodules. It is
     // not ours to format or lint, and a diff there would be lost on the next

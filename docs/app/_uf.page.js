@@ -2,10 +2,9 @@
 //
 // The home page.
 //
-// The heading says what uf is for: the best React experience for Flow, with
-// the assembled toolchain collapsed into one command. That is the promise,
-// and everything under it is the evidence — one command, and what that
-// command really prints.
+// The heading says what uf is for: the strongest React development experience
+// with Modern Flow. Everything under it is evidence: one command, and what
+// that command really prints.
 //
 // Every claim below links to the page that backs it, and the ones uf loses
 // are on that list too.
@@ -48,13 +47,14 @@ export default component Home() {
         <div className="hero-copy">
           <Eyebrow>Unified toolchain for Flow</Eyebrow>
           <h1>
-            The best React experience,
+            Build the strongest React
             <br />
-            typed by Flow.
+            experience with Modern Flow.
           </h1>
           <Lede>
-            uf runs, builds, tests, formats and lints Flow and React from a single command. No Babel
-            in the pipeline, no plugin list to assemble, and one config file for all of it.
+            uf gives Flow-first React apps one native command for dev, builds, tests, formatting and
+            linting. The official Flow parser, React Compiler and oxc stay in the same toolchain,
+            with one config file for the whole path.
           </Lede>
         </div>
 
@@ -93,7 +93,8 @@ export default component Home() {
 
         <div className="notice">
           <strong>Pre-release.</strong> uf is at <code>0.0.0-alpha</code>. Interfaces move without
-          warning and the packages are not on npm yet. The guide says what works today and{" "}
+          warning, and every <code>@uniflowed/*</code> release on npm is a prerelease under the{" "}
+          <code>alpha</code> tag. The guide says what works today and{" "}
           <Link to="/guide/testing">where it loses</Link> to the tools it means to replace.
         </div>
       </section>

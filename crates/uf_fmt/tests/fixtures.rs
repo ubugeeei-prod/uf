@@ -16,6 +16,13 @@
 //! "Prettier compatible" a claim the test suite can check rather than a
 //! description of intent.
 //!
+//! One fixture is generated with `--parser babel-flow` instead:
+//! `top_level_await`, because the `hermes` parser refuses it — `SyntaxError:
+//! ';' expected`, which is the very thing ubugeeei-prod/uf#204 was about, and
+//! Hermes has the same gap the Flow port has. The parser decides only what
+//! tree Prettier is given; the layout is Prettier's one printer either way,
+//! so the expectation is still Prettier's own output.
+//!
 //! On top of the golden comparison every fixture is held to the printer's
 //! four guarantees: the output is a fixed point, formatting is idempotent,
 //! the tree survives, and so does every comment.
