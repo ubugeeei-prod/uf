@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/markdown",
-  "version": "0.0.0-alpha.8",
+  "version": "0.0.0-alpha.9",
   "description": "Flow declarations for @uniflowed/markdown, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.8",
-    "@uniflowed/react": "0.0.0-alpha.8"
+    "@uniflowed/core": "0.0.0-alpha.9",
+    "@uniflowed/react": "0.0.0-alpha.9"
   }
 }
