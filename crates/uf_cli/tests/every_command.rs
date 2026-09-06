@@ -50,6 +50,7 @@ const COULD_NOT_RUN: i32 = 2;
 /// convenient to run here. `every_command_the_help_lists_is_checked_here`
 /// fails when a command is added to the parser and not to this table.
 const COVERAGE: &[(&str, &str)] = &[
+    ("add", "dependencies.rs: runs the package manager"),
     ("build", "vite.rs and cli.rs: needs @uniflowed/vite"),
     ("check", "here, and typecheck.rs for the diagnostics"),
     ("completion", "here, and cli.rs for the script's shape"),
@@ -72,11 +73,14 @@ const COVERAGE: &[(&str, &str)] = &[
     ("preview", "vite.rs: builds, then binds a socket"),
     ("publish", "workflow.rs: names a registry"),
     ("release", "workflow.rs: writes a changelog"),
+    ("remove", "dependencies.rs: runs the package manager"),
     ("run", "here, and cli.rs for the task runner"),
     ("start", "vite.rs: serves a build over a socket"),
     ("test", "here, and testing.rs for the runner"),
+    ("update", "dependencies.rs: runs the package manager"),
     ("upgrade", "workflow.rs: resolves new versions"),
     ("use", "workflow.rs: rewrites the config"),
+    ("why", "dependencies.rs: asks the package manager"),
     // Last, because `uf --help` prints clap's own `help` last.
     ("help", "here"),
 ];
