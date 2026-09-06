@@ -93,6 +93,31 @@ describe("queries", () => {
     expect(screen.getByRole("button").textContent).toBe("Save");
   });
 
+  it("tells a column header and a row header apart by their scope", () => {
+    render(
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Born</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Ada Lovelace</th>
+            <td>1815</td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    // Every `<th>` used to be a `columnheader`, so `getByRole("rowheader")`
+    // found nothing in a table of records — where every row has one, and where
+    // it is the cell that makes a screen reader say "Ada Lovelace, 1815"
+    // rather than "1815".
+    expect(screen.getAllByRole("columnheader").length).toBe(2);
+    expect(screen.getByRole("rowheader").textContent).toBe("Ada Lovelace");
+  });
+
   it("finds by role and accessible name together", () => {
     render(
       <div>
