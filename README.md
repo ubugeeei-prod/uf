@@ -70,8 +70,10 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
   other six adapters are names in an enum
   ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - **Server Components.** `"use client"` and `"use server"` are scanned, graphed
-  and manifested; nothing that builds reads the result yet, so every page module
-  still ships to the browser
+  and manifested, and the build reads that: a route no client boundary reaches
+  keeps its page out of the browser bundle entirely. Nothing smaller than a
+  route is split, so a Server Component *above* a boundary still ships whole,
+  and server actions are analysed, keyed, typed and not yet callable
   ([#252](https://github.com/ubugeeei-prod/uf/issues/252)).
 - **Tests.** About nine times faster than Vitest on a 1,000-test suite, and about
   three times slower than Bun's runner, which
