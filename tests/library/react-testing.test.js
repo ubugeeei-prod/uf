@@ -496,6 +496,40 @@ describe("element matchers", () => {
   });
 });
 
+describe("the document's classes", () => {
+  it("installs every class the package narrows an element with", () => {
+    // A query decides what an element *is* with `instanceof` — which is why
+    // `internal/dom.js` installs the document's own classes as the global ones
+    // — and an `instanceof` against a class that was never installed is not
+    // `false`. It is `ReferenceError: HTMLFieldSetElement is not defined`,
+    // thrown from a line about clicking a tab, in a file with no fieldset
+    // anywhere in it. That is how `HTMLFieldSetElement` was found missing from
+    // the install list, while `userEvent.click` was asking it whether a
+    // control is disabled.
+    //
+    // So the install list and the narrowings are checked against each other
+    // here, by asking the question the package asks, of elements a render
+    // actually produced.
+    const { container } = render(
+      <fieldset>
+        <input defaultValue="a" />
+        <textarea defaultValue="b" />
+        <select defaultValue="c">
+          <option value="c">C</option>
+        </select>
+        <button type="button">press</button>
+      </fieldset>,
+    );
+
+    expect(container.querySelector("input") instanceof HTMLInputElement).toBe(true);
+    expect(container.querySelector("textarea") instanceof HTMLTextAreaElement).toBe(true);
+    expect(container.querySelector("select") instanceof HTMLSelectElement).toBe(true);
+    expect(container.querySelector("button") instanceof HTMLButtonElement).toBe(true);
+    expect(container.querySelector("fieldset") instanceof HTMLFieldSetElement).toBe(true);
+    expect(container.querySelector("button") instanceof HTMLElement).toBe(true);
+  });
+});
+
 describe("the act environment", () => {
   it("renders without React warning that the environment is not configured", () => {
     // React prints "The current testing environment is not configured to

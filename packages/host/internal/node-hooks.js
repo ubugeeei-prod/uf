@@ -25,39 +25,12 @@
 // debugging session while `@uniflowed/stylex`'s preset was being written.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isFlowModule, sharedService, transformFlow, ufBinaryIdentity } from "../transform.js";
-
-/**
- * Write `contents` to `target` so a concurrent reader never sees half of it.
- *
- * `uf test` runs one of these processes per core and they all import the same
- * few modules at once, so two writers and a reader meet on the same cache
- * entry constantly. `writeFileSync` is not atomic — a reader can observe a
- * truncated file and report a module that "does not provide an export" — so
- * the content goes to a private temporary name first and is then renamed,
- * which is atomic within a filesystem.
- *
- * A failure here is not a failure: a read-only checkout still runs, just
- * without the cache.
- */
-function writeAtomically(target, contents) {
-  const temporary = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}`;
-  try {
-    mkdirSync(cacheDirectory, { recursive: true });
-    writeFileSync(temporary, contents);
-    renameSync(temporary, target);
-  } catch {
-    try {
-      unlinkSync(temporary);
-    } catch {
-      // Nothing to clean up.
-    }
-  }
-}
+import { writeAtomically } from "../write-atomically.js";
 
 /**
  * Bumped whenever *this file's* framing of the output changes, to retire old
@@ -166,7 +139,9 @@ async function cachedTransform(source, filename) {
 
   const written = cacheEntryFor(sharedService(root).identity, source, filename);
   if (written) {
-    writeAtomically(written, output);
+    // Tolerant: a cache that cannot be written is a slower run, not a
+    // failed one — a read-only checkout still works.
+    writeAtomically(written, output, { tolerant: true });
   }
   return output;
 }

@@ -88,6 +88,24 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  *
  * Every entry returns a [`Verdict`] rather than throwing, which is what lets
  * `.not` reuse all of them.
+ *
+ * # The `any` in the indexer
+ *
+ * The entries do not agree about their arguments — `toBe` takes a `mixed`,
+ * `toHaveLength` takes a `number`, `toBeCloseTo` takes two — and [`bind`]
+ * applies whichever one it was asked for to a `$ReadOnlyArray<mixed>` it
+ * collected from a caller. Parameters are contravariant, so one indexer cannot
+ * describe both ends: `(...args: $ReadOnlyArray<mixed>)` rejects every entry
+ * that wants a `number`, and `(...args: $ReadOnlyArray<empty>)` accepts every
+ * entry and rejects the call.
+ *
+ * `mixed` with a cast at the call would move the same unsoundness one line
+ * without checking anything, because the caller is `bind`, whose result is
+ * `$FlowFixMe` and whose result's result is `expect`, also `$FlowFixMe`. The
+ * type that makes any of this checked is a written-out matcher interface —
+ * one signature per matcher, plus `.not`, `.resolves` and `.rejects` — which
+ * is what `expect`'s own annotation is waiting for. Until that exists, a
+ * narrower type here would be precision nobody can reach.
  */
 function verdicts(received: mixed): {
   readonly [string]: (...args: $ReadOnlyArray<any>) => Verdict,

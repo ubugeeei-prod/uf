@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import type * as React from "@uniflowed/react";
 import { act } from "@uniflowed/react";
 
-import { installActEnvironment, installDom, setActEnvironment } from "./dom.js";
+import { bodyOf, installActEnvironment, installDom, setActEnvironment } from "./dom.js";
 
 /** What `render` hands back. */
 export type RenderResult = {|
@@ -34,7 +34,7 @@ export type RenderResult = {|
 
 type Mounted = {|
   container: Element,
-  root: { render(node: React.Node): void, unmount(): void },
+  root: ReactRoot,
 |};
 
 const mounted: Array<Mounted> = [];
@@ -62,7 +62,7 @@ export function render(ui: React.Node, options?: {| readonly container?: Element
 
   return {
     container,
-    baseElement: globalThis.document.body as any,
+    baseElement: bodyOf(),
     rerender: (next: React.Node) => {
       act(() => {
         root.render(next);
@@ -98,7 +98,7 @@ export function cleanup(): void {
 
 function createContainer(): Element {
   const container = globalThis.document.createElement("div");
-  globalThis.document.body.appendChild(container);
+  bodyOf().appendChild(container);
   return container;
 }
 
@@ -114,14 +114,32 @@ function createContainer(): Element {
  * uf supports provide it, and React ships a CommonJS build for exactly this
  * kind of caller.
  */
-let client: mixed = null;
-function requireClient(): { createRoot: (Element) => any } {
+let client: ReactDomClient | null = null;
+function requireClient(): ReactDomClient {
   if (client == null) {
     const load = createRequire(import.meta.url);
-    client = load("react-dom/client") as any;
+    client = load("react-dom/client");
   }
-  return client as any;
+  return client;
 }
+
+/**
+ * As much of `react-dom/client` as this module uses.
+ *
+ * The annotation is the trust boundary and it is deliberately one line wide: a
+ * synchronous `require` of a CommonJS build returns `any` whatever anyone
+ * writes, so the choice is not between `any` and certainty, it is between
+ * saying what is expected of the module and saying nothing. `createRoot` and
+ * the two methods below are the whole of what is expected, and a React that
+ * stopped providing them would fail here rather than at
+ * `root.render is not a function` inside an unrelated test.
+ */
+type ReactDomClient = {|
+  readonly createRoot: (container: Element) => ReactRoot,
+|};
+
+/** A React root, as much of one as this module touches. */
+type ReactRoot = {| render(node: React.Node): void, unmount(): void |};
 
 /**
  * Run `body`, letting React flush everything it queues.
@@ -135,15 +153,32 @@ export function actively<T>(body: () => T): T {
   // — reaches `act` without going through `render`, and `act` still has to
   // know it is being called by a test.
   installActEnvironment();
-  let result: mixed;
+
+  // A box holding the body's result, rather than a `let result: T`.
+  //
+  // The result is produced inside a callback, and Flow cannot see that `act`
+  // called it: an annotated `let` written only there is
+  // `possibly uninitialized variable` on the way out, and a `T | void` would
+  // be wrong for the caller who wrote `act(() => {})` and whose `T` *is*
+  // `void`. A box distinguishes "not produced" from "produced `undefined`",
+  // and the check below states, at runtime, the invariant the checker cannot
+  // prove: `act` calls its scope, synchronously, always.
+  const produced: { current: {| value: T |} | null } = { current: null };
   const scope: mixed = act(() => {
-    result = body();
+    produced.current = { value: body() };
     // Handed back so React keeps the scope open until an async body settles.
     // Without this the scope closed on the first tick and every update the
     // body was still waiting for landed outside it, which React reports as
     // "an update was not wrapped in act(...)".
-    return result;
+    return produced.current.value;
   });
+
+  const held = produced.current;
+  if (held == null) {
+    throw new Error("act(...) did not run its scope, so there is no result to return");
+  }
+  const result = held.value;
+
   if (isThenable(result) && isThenable(scope)) {
     // `Promise.resolve`, not `scope.then(…)`: `act` hands back a bare thenable
     // — an object with a `then` and nothing else — whose `then` returns
@@ -153,14 +188,44 @@ export function actively<T>(body: () => T): T {
     // every later `act` nested inside the scope that was never closed and
     // flushed nothing. `render` after one of those returned an empty
     // container.
+    //
+    // # The one cast in this file, and why it is still here
+    //
+    // On this branch `T` *is* a promise — `isThenable(result)` is the runtime
+    // proof — so a promise that resolves to what `result` resolves to, once
+    // the scope has closed, is a `T`, and the signature above is true. Flow
+    // cannot follow the last step. Refining `result` says something about the
+    // value; the return type is about `T`, and there is no way to write "T is
+    // a promise here" in Flow:
+    //
+    //   * a type guard (`value is Promise<mixed>`) refines the value and
+    //     leaves `T` alone, so the helper it enables returns `Promise<mixed>`
+    //     and `Promise<unknown> is incompatible with T` in its place;
+    //   * a conditional return type (`T extends Promise<infer U> ? Promise<U>
+    //     : T`) — which this checker does support — is unevaluated while `T`
+    //     is generic, so the body cannot be checked against it either;
+    //   * overloading, which is how Flow's own `react` library definition
+    //     describes `act`, is available to a library definition and not to an
+    //     implementation.
+    //
+    // The remaining honest answers all change behaviour: returning `Promise<T>`
+    // for every call would hand `act(() => {})` a floating promise, and
+    // returning the scope itself would depend on React's thenable passing the
+    // callback's value through, which is the assumption the comment above
+    // records going wrong. So the cast stays, visible to `flow/unclear-type`
+    // rather than renamed to `$FlowFixMe` to quiet it.
     return Promise.resolve(scope).then(() => result) as any;
   }
-  return result as any;
+  return result;
 }
 
 /** Whether `value` is something to await. */
 function isThenable(value: mixed): boolean {
-  return value != null && typeof value === "object" && typeof (value as any).then === "function";
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+  const object: { readonly [string]: mixed } = value;
+  return typeof object.then === "function";
 }
 
 /**
