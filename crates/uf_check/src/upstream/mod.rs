@@ -25,6 +25,7 @@ mod builtins;
 mod convert;
 mod environments;
 mod options;
+mod packages;
 mod parse;
 mod project;
 mod resolve;

@@ -523,10 +523,10 @@ fn a_directory_specifier_resolves_to_its_index_file() {
 fn a_bare_package_specifier_is_still_unchecked_and_still_recorded() {
     require_checker!();
 
-    // The gap that remains, and the report that states it. A package name
-    // resolves through `node_modules` or a workspace, neither of which a batch
-    // of sources contains — and a file in the batch that happens to share the
-    // name must not be mistaken for it.
+    // The gap that remains, and the report that states it. No manifest in this
+    // batch publishes `some-package`, so it resolves through `node_modules`,
+    // which is not a place `uf check` collects sources from — and a file in the
+    // batch that happens to share the name must not be mistaken for it.
     let report = batch(&[
         Source::new("some-package.js", "// @flow\nexport type Mode = \"on\";\n"),
         Source::new(
@@ -690,4 +690,224 @@ fn checking_a_batch_twice_gives_the_same_answer() {
 
     assert_eq!(first.diagnostics, second.diagnostics);
     assert_eq!(first.untyped_modules, second.untyped_modules);
+}
+
+// ---------------------------------------------------------------------------
+// Checking across packages.
+//
+// The same batch, imported the way an application writes it: by the name the
+// package publishes rather than by the path it happens to live at. The manifest
+// that maps one onto the other is in the batch already — `uf check` collects
+// `package.json` alongside the Flow sources — which is what lets a workspace
+// resolve without a filesystem. See `upstream::packages`.
+// ---------------------------------------------------------------------------
+
+/// A package that publishes a root and one subpath, with the subpath
+/// deliberately not spelled like the file behind it.
+const CELL_MANIFEST: &str = r#"{
+  "name": "@uniflowed/cell",
+  "exports": {
+    ".": "./index.js",
+    "./schedule": "./internal/schedule.js"
+  }
+}"#;
+
+const CELL_INDEX: &str = "// @flow\nexport type Cell<T> = { readonly read: () => T };\n\
+     export function cell<T>(value: T): Cell<T> {\n  return { read: () => value };\n}\n";
+
+const CELL_SCHEDULE: &str = "// @flow\nexport type Task = {| readonly run: () => void |};\n";
+
+/// The whole package, as the batch holds it.
+fn cell_package() -> Vec<Source<'static>> {
+    vec![
+        Source::new("packages/cell/package.json", CELL_MANIFEST),
+        Source::new("packages/cell/index.js", CELL_INDEX),
+        Source::new("packages/cell/internal/schedule.js", CELL_SCHEDULE),
+    ]
+}
+
+fn batch_with_package(app: &str) -> CheckReport {
+    let mut sources = cell_package();
+    sources.push(Source::new("app.js", app));
+    batch(&sources)
+}
+
+/// What inference said, without what parsing a manifest said.
+///
+/// A `package.json` is in the batch so that a package can be resolved through
+/// it, and it is not JavaScript: parsing one as a program is a syntax error
+/// every time. `uf check` drops those before it renders anything — see
+/// `commands::check::type_check` — and a test about types must not become a
+/// test about that.
+fn inferred(report: &CheckReport) -> Vec<&str> {
+    report
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.kind != DiagnosticKind::Parse)
+        .map(|diagnostic| diagnostic.code.unwrap_or("<none>"))
+        .collect()
+}
+
+#[test]
+fn a_type_imported_by_its_published_name_is_that_type() {
+    require_checker!();
+
+    // Issue #248's own reproduction. By name the type used to arrive as an
+    // `any`-typed value, so `Cell<number>` was a `value-as-type` error and the
+    // body it annotates was never checked at all.
+    let report = batch_with_package(
+        "// @flow\nimport type { Cell } from \"@uniflowed/cell\";\n\
+         export function read(c: Cell<number>): number {\n  return c.read();\n}\n",
+    );
+
+    assert_eq!(inferred(&report), Vec::<&str>::new());
+    assert!(
+        report.untyped_modules.is_empty(),
+        "the batch publishes `@uniflowed/cell`, so nothing about it is untyped: {:?}",
+        report.untyped_modules
+    );
+}
+
+#[test]
+fn a_value_imported_by_its_published_name_has_the_type_the_package_gave_it() {
+    require_checker!();
+
+    let report = batch_with_package(
+        "// @flow\nimport { cell } from \"@uniflowed/cell\";\nconst n: number = cell(\"one\");\n",
+    );
+
+    assert_eq!(
+        inferred(&report),
+        ["incompatible-type"],
+        "resolving the import must give the real type, not a quieter `any`"
+    );
+}
+
+#[test]
+fn a_subpath_export_resolves_to_the_file_the_manifest_names() {
+    require_checker!();
+
+    // `./schedule` is not a file. Only the manifest knows it means
+    // `./internal/schedule.js`, which is the whole reason to read the manifest
+    // rather than to guess at a path.
+    let report = batch_with_package(
+        "// @flow\nimport type { Task } from \"@uniflowed/cell/schedule\";\n\
+         export const task: Task = { run: () => {} };\n",
+    );
+
+    assert_eq!(inferred(&report), Vec::<&str>::new());
+    assert!(
+        report.untyped_modules.is_empty(),
+        "{:?}",
+        report.untyped_modules
+    );
+}
+
+#[test]
+fn a_subpath_export_still_rejects_a_value_its_type_does_not_admit() {
+    require_checker!();
+
+    let report = batch_with_package(
+        "// @flow\nimport type { Task } from \"@uniflowed/cell/schedule\";\n\
+         export const task: Task = { run: () => {}, extra: 1 };\n",
+    );
+
+    assert_eq!(inferred(&report), ["incompatible-type"]);
+}
+
+#[test]
+fn a_path_the_exports_map_does_not_publish_stays_unresolved() {
+    require_checker!();
+
+    // `packages/cell/internal/schedule.js` is in the batch, and the manifest
+    // publishes it only as `./schedule`. Reaching past the map for it would
+    // type an import that the runtime refuses to load, and would make a
+    // package's internal layout its consumers' business.
+    let report = batch_with_package(
+        "// @flow\nimport type { Task } from \"@uniflowed/cell/internal/schedule.js\";\n\
+         export const task: Task = { run: () => {}, whatever: 1 };\n",
+    );
+
+    // What an unpublished path costs, stated rather than hidden: the import is
+    // `any`, so `Task` is an `any`-typed value and the file cannot use it as a
+    // type. That is the same answer any other module this check was not handed
+    // gets, and the specifier is named in the report.
+    assert_eq!(inferred(&report), ["value-as-type"]);
+    assert_eq!(
+        report.untyped_modules,
+        ["@uniflowed/cell/internal/schedule.js"]
+    );
+}
+
+#[test]
+fn the_published_name_and_the_relative_path_give_the_same_type() {
+    require_checker!();
+
+    // The two spellings must name one type, not two that happen to look alike:
+    // a package's own files import each other by path while its consumers
+    // import it by name, and a value that crossed both has to stay assignable.
+    let report = batch_with_package(
+        "// @flow\nimport type { Cell } from \"@uniflowed/cell\";\n\
+         import { cell } from \"./packages/cell/index.js\";\n\
+         export const ok: Cell<number> = cell(1);\n\
+         export const bad: Cell<string> = cell(2);\n",
+    );
+
+    assert_eq!(inferred(&report), ["incompatible-type"]);
+    let diagnostic = report
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == Some("incompatible-type"))
+        .expect("the mismatched line is reported");
+    assert_eq!(diagnostic.primary.path, "app.js");
+    // `export const bad: Cell<string> = cell(2);` — the fifth line.
+    assert_eq!(diagnostic.primary.start.line, 5);
+}
+
+#[test]
+fn a_package_whose_entry_file_is_not_in_the_batch_is_unchecked_and_recorded() {
+    require_checker!();
+
+    // The manifest is not a promise that the file was collected. `uf check
+    // packages/cell` narrows the batch to one directory, and a package outside
+    // it is exactly as untyped as it was before its manifest was read.
+    let report = batch(&[
+        Source::new("packages/cell/package.json", CELL_MANIFEST),
+        Source::new(
+            "app.js",
+            "// @flow\nimport { cell } from \"@uniflowed/cell\";\nconst n: number = cell(1);\n",
+        ),
+    ]);
+
+    assert_eq!(inferred(&report), Vec::<&str>::new());
+    assert_eq!(report.untyped_modules, ["@uniflowed/cell"]);
+}
+
+#[test]
+fn a_package_is_merged_once_however_it_is_spelled() {
+    require_checker!();
+
+    // Both spellings reach the same source, so both reach the same signature
+    // and the same location table. Were they two, a class defined in the
+    // package would stop being assignable to itself across the boundary.
+    let mut sources = cell_package();
+    sources.push(Source::new(
+        "by-name.js",
+        "// @flow\nimport { cell } from \"@uniflowed/cell\";\n\
+         export const one = cell(1);\n",
+    ));
+    sources.push(Source::new(
+        "by-path.js",
+        "// @flow\nimport type { Cell } from \"./packages/cell/index.js\";\n\
+         import { one } from \"./by-name.js\";\nexport const two: Cell<number> = one;\n",
+    ));
+
+    let report = batch(&sources);
+
+    assert_eq!(inferred(&report), Vec::<&str>::new());
+    assert!(
+        report.untyped_modules.is_empty(),
+        "{:?}",
+        report.untyped_modules
+    );
 }
