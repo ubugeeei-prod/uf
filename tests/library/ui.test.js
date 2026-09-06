@@ -36,11 +36,13 @@ import {
   Dialog,
   Field,
   Menu,
+  Pagination,
   Progress,
   Resizable,
   Select,
   Slider,
   Switch,
+  Table,
   Tabs,
   Toast,
   dismissAllToasts,
@@ -2758,6 +2760,276 @@ describe("Resizable", () => {
     expect(rule).not.toHaveAttribute("aria-valuenow");
     expect(splitter).toHaveAttribute("tabindex", "0");
     expect(splitter).toHaveAttribute("aria-valuenow");
+  });
+});
+
+describe("Table", () => {
+  const PEOPLE = [
+    { id: "ada", name: "Ada Lovelace", born: 1815 },
+    { id: "alan", name: "Alan Turing", born: 1912 },
+    { id: "grace", name: "Grace Hopper", born: 1906 },
+  ];
+
+  component Example(rowCount?: number | null = null, rowOffset?: number = 0) {
+    const [sort, setSort] = useState(null);
+    const [chosen, setChosen] = useState<$ReadOnlyArray<string>>([]);
+    const all = chosen.length === PEOPLE.length ? true : chosen.length === 0 ? false : "mixed";
+
+    return (
+      <Table.Root onSortChange={setSort} rowCount={rowCount} rowOffset={rowOffset} sort={sort}>
+        <Table.Caption>People</Table.Caption>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>
+              <Table.SelectAll
+                checked={all}
+                onCheckedChange={(on) => setChosen(on ? PEOPLE.map((each) => each.id) : [])}
+              />
+            </Table.Head>
+            <Table.Head column="name">Name</Table.Head>
+            <Table.Head column="born">Born</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {PEOPLE.map((person, at) => (
+            <Table.Row index={at} key={person.id}>
+              <Table.Cell>
+                <Table.RowSelect
+                  checked={chosen.includes(person.id)}
+                  label={`Select ${person.name}`}
+                  onCheckedChange={(on) =>
+                    setChosen((held) =>
+                      on ? [...held, person.id] : held.filter((each) => each !== person.id),
+                    )
+                  }
+                />
+              </Table.Cell>
+              <Table.RowHeader>{person.name}</Table.RowHeader>
+              <Table.Cell>{person.born}</Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table.Root>
+    );
+  }
+
+  it("is a table with named columns and a caption", () => {
+    render(<Example />);
+    // The caption is what gives a `<table>` its accessible name. A heading
+    // above the table looks the same and is not the table's name.
+    expect(screen.getByRole("table", { name: "People" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute("scope", "col");
+    // `scope="row"` is the other half: it is what lets a reader hear "Ada
+    // Lovelace, 1815" instead of "1815" while moving down the year column.
+    expect(screen.getByRole("rowheader", { name: "Ada Lovelace" })).toHaveAttribute("scope", "row");
+  });
+
+  it("marks only the sorted column", async () => {
+    render(<Example />);
+    const sortable = screen.getAllByRole("columnheader").filter((each) => each.textContent !== "");
+    for (const header of sortable) {
+      // Not `"none"` on the unsorted ones: eleven headers each announcing "not
+      // sorted" is eleven announcements of nothing on every pass.
+      expect(header).not.toHaveAttribute("aria-sort");
+    }
+
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    expect(document.querySelectorAll("[aria-sort]").length).toBe(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Born" }));
+    expect(screen.getByRole("columnheader", { name: "Born" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    expect(screen.getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
+    expect(document.querySelectorAll("[aria-sort]").length).toBe(1);
+  });
+
+  it("puts the sort in a button, so a keyboard can reach it", async () => {
+    render(<Example />);
+    // A `<th>` with an `onClick` is a sort half the readers do not have. The
+    // header's content is a real button, which is what puts it in the tab
+    // order and what makes `Enter` and `Space` the browser's job rather than
+    // this component's.
+    const header = screen.getByRole("columnheader", { name: "Name" });
+    expect(within(header).getByRole("button", { name: "Name" })).toBeInTheDocument();
+    // Tab reaches it: the select-all checkbox first, then this.
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(screen.getByRole("button", { name: "Name" })).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  it("says that it re-sorted, in a region that was already there", async () => {
+    render(<Example />);
+    // The rows change places and a screen reader is told nothing, so the
+    // sentence is the component's job — and the region has to have been in the
+    // document before the first sort or it announces nothing at all.
+    const status = screen.getByRole("status");
+    expect(status).toBeInTheDocument();
+    expect(status.textContent).toBe("");
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("status").textContent).toBe("Sorted by Name, descending.");
+  });
+
+  it("reports a partial selection as mixed and moves it to checked", async () => {
+    render(<Example />);
+    const all = screen.getByRole("checkbox", { name: "Select all rows" });
+    expect(all).toHaveAttribute("aria-checked", "false");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select Ada Lovelace" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select Alan Turing" }));
+    // `checkbox.js`'s documented case, finally asserted against the thing it
+    // describes: two of three rows chosen is not "unchecked".
+    expect(screen.getByRole("checkbox", { name: "Select all rows" })).toHaveAttribute(
+      "aria-checked",
+      "mixed",
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all rows" }));
+    // A half-selected "select all" that clears itself on the first click is
+    // the behaviour every table in every application gets wrong.
+    expect(screen.getByRole("checkbox", { name: "Select Grace Hopper" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("checkbox", { name: "Select all rows" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("names each row's checkbox after its row", () => {
+    render(<Example />);
+    // "Select row" forty times is forty identical announcements, with no way
+    // to tell which row a reader is on.
+    expect(screen.getByRole("checkbox", { name: "Select Ada Lovelace" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Grace Hopper" })).toBeInTheDocument();
+  });
+
+  it("counts the rows it is not showing", () => {
+    render(<Example rowCount={500} rowOffset={90} />);
+    // Five hundred data rows and one header row. The caller said 500, which is
+    // what an application knows; the header is the component's arithmetic.
+    expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "501");
+    const rows = screen.getAllByRole("row");
+    expect(rows[0]).toHaveAttribute("aria-rowindex", "1");
+    // Row 91 of the data, after one header row, is row 92 of the table — and a
+    // reader on page ten being told "row 1 of 10" looks exactly like a reader
+    // being told the truth.
+    expect(rows[1]).toHaveAttribute("aria-rowindex", "92");
+    expect(rows[3]).toHaveAttribute("aria-rowindex", "94");
+  });
+
+  it("counts nothing when it is showing everything", () => {
+    render(<Example />);
+    // The browser counts the rows itself, and a second source of truth is one
+    // that can disagree with the document.
+    expect(screen.getByRole("table")).not.toHaveAttribute("aria-rowcount");
+    expect(screen.getAllByRole("row")[1]).not.toHaveAttribute("aria-rowindex");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Table.Head>orphan</Table.Head>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Table.Head must be rendered inside a Table.Root");
+  });
+});
+
+describe("Pagination", () => {
+  component Example(page?: number = 4, pageCount?: number = 25) {
+    return (
+      <Pagination.Root page={page} pageCount={pageCount}>
+        <Pagination.Content>
+          <Pagination.Previous disabled={page === 1} href={`?page=${String(page - 1)}`}>
+            ‹
+          </Pagination.Previous>
+          <Pagination.Item href="?page=3">3</Pagination.Item>
+          <Pagination.Item current href="?page=4">
+            4
+          </Pagination.Item>
+          <Pagination.Item href="?page=5">5</Pagination.Item>
+          <Pagination.Next href={`?page=${String(page + 1)}`}>›</Pagination.Next>
+        </Pagination.Content>
+      </Pagination.Root>
+    );
+  }
+
+  it("marks the current page and names the pagination", () => {
+    render(<Example />);
+    // A page has more than one `nav`, and an unnamed one is announced as
+    // "navigation" with no way to tell it from the site's menu.
+    const nav = screen.getByRole("navigation", { name: "Pagination" });
+    expect(nav).toBeInTheDocument();
+    // `aria-current="page"` and exactly one of it. Not a class, not bold text,
+    // not `aria-selected` — `page` is the value ARIA defines for this and the
+    // only one that tells a reader where they are.
+    expect(within(nav).getByRole("link", { name: "4" })).toHaveAttribute("aria-current", "page");
+    expect(document.querySelectorAll("[aria-current]").length).toBe(1);
+  });
+
+  it("names previous and next in words rather than in chevrons", () => {
+    render(<Example />);
+    // "link, single left-pointing angle quotation mark" is not a thing anybody
+    // can act on. The glyph stays; the name is words.
+    expect(screen.getByRole("link", { name: "Previous page" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
+  });
+
+  it("is not a link at all when there is nowhere to go", () => {
+    render(<Example page={1} />);
+    // There is no such thing as a disabled link: an `<a>` with no `href` is
+    // out of the tab order and is not announced as a link, which is exactly
+    // what "there is no previous page" means.
+    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
+  });
+
+  it("says which page it moved to, in a region that was already there", () => {
+    const { rerender } = render(<Example page={4} />);
+    expect(screen.getByRole("status").textContent).toBe("Page 4 of 25.");
+    rerender(<Example page={5} />);
+    // Pressing "next" replaces the rows and moves nothing a reader is looking
+    // at, so the sentence is the only thing that tells them it worked.
+    expect(screen.getByRole("status").textContent).toBe("Page 5 of 25.");
+  });
+
+  it("is watching before it has anything to say", () => {
+    render(
+      <Pagination.Root>
+        <Pagination.Content>
+          <Pagination.Item href="?page=1">1</Pagination.Item>
+        </Pagination.Content>
+      </Pagination.Root>,
+    );
+    // Given no page to announce it is still in the document, empty, because a
+    // live region that appears together with its text is not announced at all.
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("is a list, so a reader can skip it in one keystroke", () => {
+    render(<Example />);
+    expect(within(screen.getByRole("navigation")).getAllByRole("listitem").length).toBe(5);
   });
 });
 

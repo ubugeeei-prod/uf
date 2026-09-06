@@ -90,6 +90,8 @@
 // - `slider.js`, `resizable.js` and `progress.js` — the three that report a
 //   number in a range. A window splitter is a slider wearing a separator's
 //   role, which is why it is beside one rather than with the layout.
+// - `table.js` and `pagination.js` — the sort that is announced, the selection
+//   that can be mixed, and the rows a page is not showing.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
@@ -140,6 +142,13 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "./menu.js";
+import {
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationRoot,
+} from "./pagination.js";
 import { Progress } from "./progress.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
 import {
@@ -155,6 +164,18 @@ import {
 } from "./select.js";
 import { SliderRange, SliderRoot, SliderThumb, SliderTrack } from "./slider.js";
 import { Switch } from "./switch.js";
+import {
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRoot,
+  TableRow,
+  TableRowHeader,
+  TableRowSelect,
+  TableSelectAll,
+} from "./table.js";
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from "./tabs.js";
 import {
   ToastAction,
@@ -170,6 +191,7 @@ import {
 } from "./toast.js";
 
 export type { ActivationMode } from "./tabs.js";
+export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 
 export { Checkbox, Progress, Switch };
@@ -411,4 +433,69 @@ export const Resizable = {
   PanelGroup: ResizablePanelGroup,
   Panel: ResizablePanel,
   Handle: ResizableHandle,
+};
+
+/**
+ * A table, with the four things about one nobody gets right by hand.
+ *
+ * A real `<table>`, deliberately not a `role="grid"` — `table.js` says why —
+ * and its own live region, so a re-sort is something a reader is told about
+ * rather than something that happens silently behind them.
+ *
+ *   <Table.Root onSortChange={setSort} rowCount={500} rowOffset={90} sort={sort}>
+ *     <Table.Caption>People</Table.Caption>
+ *     <Table.Header>
+ *       <Table.Row>
+ *         <Table.Head>
+ *           <Table.SelectAll checked={all} onCheckedChange={setAll} />
+ *         </Table.Head>
+ *         <Table.Head column="name">Name</Table.Head>
+ *       </Table.Row>
+ *     </Table.Header>
+ *     <Table.Body>
+ *       {page.map((person, at) => (
+ *         <Table.Row index={at} key={person.id}>
+ *           <Table.Cell>
+ *             <Table.RowSelect
+ *               checked={chosen.has(person.id)}
+ *               label={`Select ${person.name}`}
+ *               onCheckedChange={(on) => choose(person.id, on)}
+ *             />
+ *           </Table.Cell>
+ *           <Table.RowHeader>{person.name}</Table.RowHeader>
+ *         </Table.Row>
+ *       ))}
+ *     </Table.Body>
+ *   </Table.Root>
+ */
+export const Table = {
+  Root: TableRoot,
+  Caption: TableCaption,
+  Header: TableHeader,
+  Body: TableBody,
+  Row: TableRow,
+  Head: TableHead,
+  RowHeader: TableRowHeader,
+  Cell: TableCell,
+  SelectAll: TableSelectAll,
+  RowSelect: TableRowSelect,
+};
+
+/**
+ * The navigation a paginated table needs, and the sentence that says it moved.
+ *
+ *   <Pagination.Root page={4} pageCount={25}>
+ *     <Pagination.Content>
+ *       <Pagination.Previous disabled={page === 1} href={hrefFor(page - 1)}>‹</Pagination.Previous>
+ *       <Pagination.Item current href={hrefFor(4)}>4</Pagination.Item>
+ *       <Pagination.Next href={hrefFor(page + 1)}>›</Pagination.Next>
+ *     </Pagination.Content>
+ *   </Pagination.Root>
+ */
+export const Pagination = {
+  Root: PaginationRoot,
+  Content: PaginationContent,
+  Item: PaginationItem,
+  Previous: PaginationPrevious,
+  Next: PaginationNext,
 };

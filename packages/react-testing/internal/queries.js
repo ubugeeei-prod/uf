@@ -303,6 +303,15 @@ export function roleOf(element: Element): string | null {
     // A link without a destination is not a link.
     return "generic";
   }
+  if (tag === "th") {
+    // A `<th>` is a `columnheader` or a `rowheader` depending on what it
+    // heads, and `scope` is how the document says which. Mapping every `th`
+    // to `columnheader` made `getByRole("rowheader")` find nothing in a table
+    // of records — where every row has one, and where it is the cell that
+    // makes a screen reader say "Ada Lovelace, 1815" instead of "1815".
+    const scope = (element.getAttribute("scope") ?? "").toLowerCase();
+    return scope === "row" || scope === "rowgroup" ? "rowheader" : "columnheader";
+  }
   return IMPLICIT_ROLES[tag] ?? null;
 }
 

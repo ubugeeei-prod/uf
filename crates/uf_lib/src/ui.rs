@@ -91,6 +91,13 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Client,
         ),
+        // Deliberately not implemented, which is the same answer shadcn gives:
+        // it ships a guide rather than a component, because a data table is a
+        // table-state library composed with a table. uf has no TanStack Table
+        // equivalent — `@uniflowed/query` is the fetching layer, not table
+        // state — so a `DataTable` here would mean shipping that library
+        // first. `packages/ui/table.js` is the half that is uf's to own: the
+        // accessibility of a table whose state somebody else holds.
         UiComponent::new(
             "DataTable",
             &["Root", "Header", "Body", "Row", "Cell", "Pagination"],
@@ -169,6 +176,10 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "List", "Item", "Trigger", "Body", "Link"],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/pagination.js`: a named `<nav>`, one
+        // `aria-current="page"`, previous and next named in words rather than
+        // in chevrons, and a live region that was already there to say the
+        // page changed.
         UiComponent::new(
             "Pagination",
             &["Root", "Content", "Item", "Previous", "Next"],
@@ -247,10 +258,31 @@ pub fn ui_components() -> Vec<UiComponent> {
         ),
         UiComponent::new("Sonner", &["Root", "Toast", "Action"], UiRuntime::Client),
         UiComponent::new("Switch", &["Root", "Thumb"], UiRuntime::Client),
+        // Implemented in `packages/ui/table.js`. A real `<table>` and
+        // deliberately not a `role="grid"`: a grid is a two-dimensional
+        // keyboard contract rather than an attribute, and declaring one
+        // without it takes the arrow keys away from the screen reader's own
+        // table-reading commands and gives nothing back.
+        //
+        // `RowHeader`, `SelectAll` and `RowSelect` beyond the table's first
+        // guess, and `Client` rather than `Server`, because the parts that
+        // earn the component are the sort state, the announcement and the
+        // `mixed` "select all" — none of which a server can hold.
         UiComponent::new(
             "Table",
-            &["Root", "Header", "Body", "Row", "Head", "Cell", "Caption"],
-            UiRuntime::Server,
+            &[
+                "Root",
+                "Caption",
+                "Header",
+                "Body",
+                "Row",
+                "Head",
+                "RowHeader",
+                "Cell",
+                "SelectAll",
+                "RowSelect",
+            ],
+            UiRuntime::Client,
         ),
         // `Tab` and `Panel` rather than `Trigger` and `Body`: the shipped parts
         // are named after the ARIA roles they render, so `Tabs.Tab` is a `tab`

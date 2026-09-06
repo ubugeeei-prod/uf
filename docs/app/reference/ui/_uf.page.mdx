@@ -39,6 +39,8 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Slider` | A value in a range, with the slider role on the thumb | `slider.js` |
 | `Resizable` | The window splitter: a separator that behaves like a slider | `resizable.js` |
 | `Progress` | How far along something is, or that it is under way at all | `progress.js` |
+| `Table` | The sort that is announced, the selection that can be mixed, the rows a page is not showing | `table.js` |
+| `Pagination` | Navigation with a name, one current page, and a sentence saying it moved | `pagination.js` |
 | `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
 | `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
 
@@ -469,6 +471,118 @@ agree.
 
 This one renders on a server: it holds no state, listens to nothing and manages
 no focus.
+
+## Table
+
+```js
+<Table.Root onSortChange={setSort} rowCount={500} rowOffset={90} sort={sort}>
+  <Table.Caption>People</Table.Caption>
+  <Table.Header>
+    <Table.Row>
+      <Table.Head>
+        <Table.SelectAll checked={all} onCheckedChange={setAll} />
+      </Table.Head>
+      <Table.Head column="name">Name</Table.Head>
+    </Table.Row>
+  </Table.Header>
+  <Table.Body>
+    {page.map((person, at) => (
+      <Table.Row index={at} key={person.id}>
+        <Table.Cell>
+          <Table.RowSelect
+            checked={chosen.has(person.id)}
+            label={`Select ${person.name}`}
+            onCheckedChange={(on) => choose(person.id, on)}
+          />
+        </Table.Cell>
+        <Table.RowHeader>{person.name}</Table.RowHeader>
+      </Table.Row>
+    ))}
+  </Table.Body>
+</Table.Root>
+```
+
+The markup is not what this owns. A `<table>` with `<th scope="col">` and a
+`<caption>` is already accessible, and a component that only renames those
+elements has added a dependency and no behaviour. What it owns is four things
+that are invisible until somebody uses a screen reader.
+
+**Sorting.** `aria-sort` goes on the sorted header *only* — omitted on the
+others, not set to `"none"`, because eleven headers each announcing "not
+sorted" is eleven announcements of nothing on every pass through the table. The
+header's content is a `button`, so the sort is reachable at all. And the
+re-order is **announced**: the rows change places, nothing a reader is looking
+at moves, and without a sentence they are told nothing happened.
+
+**Selection.** `Table.SelectAll` takes `checked: boolean | "mixed"`, and the
+union is the point. A boolean would let you pass `false` for "two of three rows
+are selected", and a reader would be told nothing is selected while three
+checkboxes below say otherwise. Choosing a mixed box reports `true` — select
+all — which is the state a reader expects it to move to, and not the "clears
+itself on the first click" behaviour every table gets wrong.
+
+`Table.RowSelect` **requires** `label`. "Select row" repeated forty times is
+forty identical announcements with no way to tell which row you are on.
+
+**Counting.** `rowCount` is how many rows the whole set has — five hundred
+people, not the ten on this page — and `rowOffset` is where the rendered ones
+start. The component works out `aria-rowcount` (the data plus the header row)
+and each row's `aria-rowindex`, because a reader on page ten being told "row 1
+of 10" looks exactly like a reader being told the truth. A table showing
+everything it has needs neither, and gets neither.
+
+### `table`, not `grid`
+
+"Make it a `role="grid"`" is the advice that circulates and it is usually
+wrong. A grid takes the arrow keys away from the reader and gives them to the
+component — right for a spreadsheet, wrong for a list of records, because a
+screen reader already has table-reading commands that work perfectly on a plain
+`<table>` and readers rely on them.
+
+There is no `role="grid"` opt-in here, and that is deliberate rather than
+missing. A grid is not an attribute; it is a two-dimensional keyboard contract,
+and `role="grid"` without one is strictly worse than the table it replaced,
+because the reader is told the arrow keys will do something and they do
+nothing. An editable grid is a component of its own.
+
+### `DataTable` is not here, for shadcn's own reason
+
+The benchmark ships a guide rather than a component, and composes TanStack
+Table with its `Table`. uf has no TanStack Table equivalent — `@uniflowed/query`
+is the fetching layer, not table state — so a `DataTable` would mean shipping
+that library first. `Table` is the half that is uf's to own: the accessibility
+of a table whose state you hold.
+
+## Pagination
+
+```js
+<Pagination.Root page={4} pageCount={25}>
+  <Pagination.Content>
+    <Pagination.Previous disabled={page === 1} href={hrefFor(page - 1)}>‹</Pagination.Previous>
+    <Pagination.Item href={hrefFor(3)}>3</Pagination.Item>
+    <Pagination.Item current href={hrefFor(4)}>4</Pagination.Item>
+    <Pagination.Next href={hrefFor(page + 1)}>›</Pagination.Next>
+  </Pagination.Content>
+</Pagination.Root>
+```
+
+A `<nav>` with a name, because a page has more than one and an unnamed one is
+announced as "navigation" with no way to tell it from the site's menu. The
+current page is `aria-current="page"` — not a class, not bold text. Previous and
+next are named in words, because "link, single left-pointing angle quotation
+mark" is not something anybody can act on; the glyph stays, the name is words.
+And the change is announced, in a region that was already in the document.
+
+The controls are `<a>` elements, which constrains you and is meant to: page four
+of a table is a *place*, and a reader expects to open it in a new tab, copy it
+and come back to it. A list paginated with buttons is a list whose fourth page
+does not exist as far as the rest of the web is concerned. An application that
+genuinely has no URL for a page is the case where this is the wrong component.
+
+`disabled` drops the `href` rather than adding an attribute, because there is no
+such thing as a disabled link — an `<a>` with no `href` is out of the tab order
+and is not announced as a link, which is exactly what "there is no previous
+page" means.
 
 ## What this page is
 

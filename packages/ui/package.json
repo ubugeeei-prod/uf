@@ -17,11 +17,13 @@
     "./dialog": "./dialog.js",
     "./field": "./field.js",
     "./menu": "./menu.js",
+    "./pagination": "./pagination.js",
     "./progress": "./progress.js",
     "./resizable": "./resizable.js",
     "./select": "./select.js",
     "./slider": "./slider.js",
     "./switch": "./switch.js",
+    "./table": "./table.js",
     "./tabs": "./tabs.js",
     "./toast": "./toast.js"
   },
