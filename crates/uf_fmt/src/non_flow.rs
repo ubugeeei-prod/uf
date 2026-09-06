@@ -19,6 +19,8 @@
 //! formatter without waiting for uf, and can point uf at one uf has never heard
 //! of by naming its command.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::process::{Command, Stdio};
 
 use camino::Utf8Path;
@@ -72,7 +74,20 @@ pub enum NonFlowError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NonFlowOutcome {
     /// Everything handed over is formatted, or there was nothing to hand over.
-    Formatted,
+    ///
+    /// `rewritten` names the files the formatter itself changed, which is what
+    /// its exit status cannot say: a formatter in write mode exits 0 whether
+    /// it rewrote every file or none of them. It is empty under `check`, which
+    /// does not write, and empty under a write run that found nothing to do.
+    ///
+    /// A caller that has to know whether the working tree still matches what
+    /// it read needs this. `uf prepare --fix` is that caller: without it, the
+    /// hook reported a clean commit over files the formatter had just rewritten
+    /// and left unstaged, and git committed the staged bytes instead.
+    Formatted {
+        /// The project-relative paths whose bytes the formatter changed.
+        rewritten: Vec<String>,
+    },
     /// Under `check`, the formatter reported that something needs formatting.
     Unformatted,
     /// The formatter uf chose is not installed, so these files are exactly as
@@ -106,7 +121,7 @@ impl NonFlowOutcome {
     /// and reports itself separately.
     #[must_use]
     pub const fn is_formatted(&self) -> bool {
-        matches!(self, Self::Formatted)
+        matches!(self, Self::Formatted { .. })
     }
 }
 
@@ -239,11 +254,21 @@ pub fn run(
     config: &FmtConfig,
 ) -> Result<NonFlowOutcome, NonFlowError> {
     let Some(invocation) = invocation(config.non_flow.formatter, check, config) else {
-        return Ok(NonFlowOutcome::Formatted);
+        return Ok(nothing_was_rewritten());
     };
     if paths.is_empty() {
-        return Ok(NonFlowOutcome::Formatted);
+        return Ok(nothing_was_rewritten());
     }
+
+    // What the files hold before the formatter runs, so that afterwards a
+    // rewrite can be told from a no-op. Only under a write run: a check does
+    // not write, so the answer is always "none" and reading every file twice
+    // for it is work a commit hook would pay on every commit.
+    let before = if check {
+        Vec::new()
+    } else {
+        digests(root, paths)
+    };
 
     let output = Command::new(program_path(root, &invocation.program).as_str())
         .args(invocation.arguments.iter().map(CompactString::as_str))
@@ -277,7 +302,9 @@ pub fn run(
     };
 
     if output.status.success() {
-        return Ok(NonFlowOutcome::Formatted);
+        return Ok(NonFlowOutcome::Formatted {
+            rewritten: rewritten_since(root, paths, &before),
+        });
     }
 
     // Under `check`, a non-zero exit is the formatter saying a file is not
@@ -291,6 +318,49 @@ pub fn run(
         formatter: invocation.program,
         detail: detail_of(&output.stderr, &output.stdout),
     })
+}
+
+/// A run that formatted nothing, because there was nothing to format.
+///
+/// Its own function so that the two early returns in [`run`] cannot drift
+/// apart from each other or from the meaning of `rewritten`: no formatter ran,
+/// so no file was rewritten.
+fn nothing_was_rewritten() -> NonFlowOutcome {
+    NonFlowOutcome::Formatted {
+        rewritten: Vec::new(),
+    }
+}
+
+/// A digest of each path's bytes, positionally matching `paths`.
+///
+/// Hashed rather than kept, because the set can be a project's whole pile of
+/// JSON and the question is only whether the bytes are the same ones.
+fn digests(root: &Utf8Path, paths: &[String]) -> Vec<Option<u64>> {
+    paths.iter().map(|path| digest(&root.join(path))).collect()
+}
+
+/// What `path` holds, or [`None`] when it cannot be read.
+///
+/// A file that could not be read before and cannot be read after is unchanged
+/// as far as anybody can tell; one that changed readability changed.
+fn digest(path: &Utf8Path) -> Option<u64> {
+    let bytes = std::fs::read(path).ok()?;
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Some(hasher.finish())
+}
+
+/// Which of `paths` no longer holds what `before` recorded.
+///
+/// An empty `before` is a check run — it pairs with nothing, and a run that
+/// wrote nothing rewrote nothing.
+fn rewritten_since(root: &Utf8Path, paths: &[String], before: &[Option<u64>]) -> Vec<String> {
+    paths
+        .iter()
+        .zip(before)
+        .filter(|(path, recorded)| digest(&root.join(path)) != **recorded)
+        .map(|(path, _)| path.clone())
+        .collect()
 }
 
 /// Where to find `program`: the project's own copy, or whatever is on `PATH`.

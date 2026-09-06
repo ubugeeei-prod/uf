@@ -12,12 +12,13 @@
 //! enough to answer somewhere else, because each is a judgement about what uf
 //! is willing to claim rather than a detail of the wire format:
 //!
-//! - [`fix`] — which lint diagnostics have an edit that is the *only* right
-//!   answer, and which deliberately have none.
+//! - [`crate::fix`] — which lint diagnostics have an edit uf is willing to
+//!   make, in which tier, and which deliberately have none. It lives beside
+//!   the commands rather than under this one because `uf lint --fix` reaches
+//!   it too, and a second copy of that judgement is a second answer.
 //! - [`hover`] — what uf can honestly say about the thing under the cursor,
 //!   and what it cannot say yet.
 
-mod fix;
 mod hover;
 mod rsc;
 
@@ -38,7 +39,7 @@ use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log
 use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
-use fix::{FORMATTED_AWAY, Fix};
+use crate::fix::{self, FORMATTED_AWAY, Fix, Safety};
 use rsc::RscReport;
 
 /// What `uf dev` was asked to do.
@@ -581,7 +582,12 @@ fn code_actions(
                     "title": fix.title,
                     "kind": QUICK_FIX,
                     "diagnostics": [encode_diagnostic(&lines, diagnostic)],
-                    "isPreferred": true,
+                    // A lightbulb a person clicks is that person asking, so
+                    // both tiers are offered here. `isPreferred` is not: it is
+                    // what "apply the obvious fix" binds to, and an edit whose
+                    // correctness rests on something the rule could not check
+                    // is not the obvious one.
+                    "isPreferred": fix.safety == Safety::Safe,
                     "edit": { "changes": { &uri: [fix_edit(&lines, &fix)] } },
                 }));
             }
@@ -618,16 +624,18 @@ fn code_actions(
     }
 
     // `source.fixAll`: every mechanical fix in the document, not just the ones
-    // under the cursor. Edits are computed against the document as it is now
-    // and never overlap, which is what lets them be applied as one batch.
+    // under the cursor. Safe ones only, and through the same planner the CLI
+    // uses, so the edits are computed against the document as it is now and no
+    // two of them overlap — which is what lets them be applied as one batch.
+    //
+    // Safe only because this is the unattended path: an editor configured with
+    // `codeActionsOnSave` runs it on every save, and an edit that can change
+    // what the program does must be asked for rather than arrive with a
+    // keystroke somebody has stopped thinking about.
     if wanted(only.as_deref(), FIX_ALL) {
-        let edits: Vec<Value> = diagnostics
+        let edits: Vec<Value> = fix::plan(source, diagnostics, false)
             .iter()
-            .filter_map(|diagnostic| {
-                let text = lines.get(diagnostic.line.saturating_sub(1)).copied()?;
-                fix::fix_for(diagnostic, text)
-            })
-            .map(|fix| fix_edit(&lines, &fix))
+            .map(|fix| fix_edit(&lines, fix))
             .collect();
         if !edits.is_empty() {
             actions.push(json!({

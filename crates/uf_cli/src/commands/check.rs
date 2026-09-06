@@ -24,9 +24,10 @@ use uf_term::Status;
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
-    LintCommand, LintRun, group_by_path, lint_payload, render_file_summary, render_group,
-    render_unreadable, render_verdict, run_lint, severity_count,
+    LintCommand, LintRun, group_by_path, lint_payload, render_file_summary, render_fix_summary,
+    render_group, render_unreadable, render_verdict, run_lint, severity_count,
 };
+use crate::fix::files::{FixMode, FixSummary, fix_project};
 use crate::support::plural;
 #[cfg(feature = "upstream-typecheck")]
 use crate::support::problem_summary;
@@ -114,8 +115,23 @@ fn type_backend_name() -> String {
     }
 }
 
-pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool, paths: &[String]) -> Result<()> {
+pub(crate) fn check(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    json: bool,
+    fix: FixMode,
+    paths: &[String],
+) -> Result<()> {
     let mut progress = ui.progress();
+    // Before the scan, and only the *lint* fixes: `uf check` is `uf lint` plus
+    // inference, and inference has no fix catalogue of its own. A type error
+    // is not something uf knows how to rewrite.
+    let fixed = if fix.writes() {
+        progress.draw("applying fixes");
+        Some(fix_project(cwd, paths, fix)?)
+    } else {
+        None
+    };
     progress.draw("scanning sources");
     let LintRun {
         report: lint,
@@ -129,9 +145,9 @@ pub(crate) fn check(cwd: &Utf8Path, ui: &mut Ui, json: bool, paths: &[String]) -
     drop(progress);
 
     if json {
-        ui.json(&payload(&lint, &types))?;
+        ui.json(&payload(&lint, &types, fixed.as_ref()))?;
     } else {
-        render(ui, &lint, &sources, &types);
+        render(ui, &lint, &sources, &types, fixed.as_ref());
         render_unreadable(ui, &unreadable);
     }
 
@@ -189,8 +205,8 @@ fn type_check(_sources: &[SourceFile], _root: &std::path::Path) -> TypeCheck {
     TypeCheck::Unavailable
 }
 
-fn payload(lint: &LintReport, types: &TypeCheck) -> Value {
-    let mut value = lint_payload(LintCommand::Check, lint);
+fn payload(lint: &LintReport, types: &TypeCheck, fixed: Option<&FixSummary>) -> Value {
+    let mut value = lint_payload(LintCommand::Check, lint, fixed);
     let errors = severity_count(lint, Severity::Error) + types.count(TypeSeverity::Error);
     let warnings = severity_count(lint, Severity::Warn) + types.count(TypeSeverity::Warning);
 
@@ -233,7 +249,13 @@ fn type_check_payload(types: &TypeCheck) -> Value {
     })
 }
 
-fn render(ui: &mut Ui, lint: &LintReport, sources: &[SourceFile], types: &TypeCheck) {
+fn render(
+    ui: &mut Ui,
+    lint: &LintReport,
+    sources: &[SourceFile],
+    types: &TypeCheck,
+    fixed: Option<&FixSummary>,
+) {
     let lint_errors = severity_count(lint, Severity::Error);
     let lint_warnings = severity_count(lint, Severity::Warn);
     let groups = group_by_path(&lint.diagnostics);
@@ -252,6 +274,9 @@ fn render(ui: &mut Ui, lint: &LintReport, sources: &[SourceFile], types: &TypeCh
 
     render_type_diagnostics(ui, sources, types);
 
+    if let Some(fixed) = fixed {
+        render_fix_summary(ui, fixed);
+    }
     render_verdict(
         ui,
         lint,
