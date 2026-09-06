@@ -18,7 +18,25 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Ninety, not sixty, and the difference is one runner rather than the code.
+    #
+    # `uf@0.0.0-alpha.9` published every package to npm and produced no
+    # binaries: `x86_64-apple-darwin` was cancelled at sixty minutes inside its
+    # `Package` step, and `Publish release` needs all four targets. That release
+    # added the `image` crate tree, and the three other targets paid under two
+    # minutes each for the cold cache it caused. `macos-15-intel` paid more than
+    # thirty — it was already twice the next slowest at alpha.8 (29.8 against
+    # 15.4), because it is the oldest hardware in the fleet and the only target
+    # here without an Apple-silicon runner behind it.
+    #
+    # A cancelled job also never reaches `Post Run Swatinem/rust-cache`, so a
+    # build that runs out of time leaves the next one exactly as cold. That is
+    # what makes too small a budget worse than slow: it is self-sustaining.
+    #
+    # This only runs on a `uf@*` tag, so the ceiling costs nothing until it is
+    # needed. Why that one target is four times the others is #464, and raising
+    # a ceiling is not an answer to it.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
