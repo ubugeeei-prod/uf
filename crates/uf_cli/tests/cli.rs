@@ -820,6 +820,87 @@ fn creates_react_app_from_cli() {
     assert!(stdout.contains("✓ created 9 files"));
 }
 
+/// The one-word form, which is what the site tells a reader to type.
+///
+/// `uf create app` takes `[TEMPLATE] [PATH]`, and a single argument was read
+/// as the template, so `uf create app my-site` — printed on the home page and
+/// in the CLI reference — answered `invalid value 'my-site' for '[TEMPLATE]'`.
+/// `ufx @uniflowed/create app my-site` already accepted it, so the two front
+/// doors read the same command differently. See ubugeeei-prod/uf#322.
+#[test]
+fn a_single_argument_that_is_not_a_template_is_the_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("my-site");
+
+    let output = uf().args(["create", "app"]).arg(&app).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(app.join("uf.config.js").exists(), "it scaffolded nothing");
+    assert!(app.join("app/_uf.page.js").exists());
+}
+
+/// And a single argument that *is* a template still is one.
+///
+/// `uf create app react` scaffolds into the current directory, which is the
+/// behaviour the two-positional grammar already had and the reason a lone
+/// argument cannot simply be the path. A directory that wants to be called
+/// `react` is written out in full.
+#[test]
+fn a_single_argument_that_is_a_template_is_the_template() {
+    let dir = tempfile::tempdir().unwrap();
+    let inside = dir.path().join("here");
+    fs::create_dir_all(&inside).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&inside)
+        .args(["create", "app", "react"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Into `here`, not into `here/react`.
+    assert!(inside.join("uf.config.js").exists());
+    assert!(!inside.join("react").exists());
+}
+
+/// Two arguments keep their old meaning, and a typo in the first is refused.
+///
+/// Reading `uf create app raect my-site` as a directory called `raect` with a
+/// second argument nobody looked at would scaffold silently into the wrong
+/// place, which is worse than the error it replaced.
+#[test]
+fn with_two_arguments_the_first_one_must_be_a_template() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = uf()
+        .args(["create", "app", "raect"])
+        .arg(dir.path().join("my-site"))
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success(), "it accepted a template typo");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("`raect` is not a template"), "{stderr}");
+    assert!(stderr.contains("templates: react"), "{stderr}");
+    // And it says what the reader probably meant to type.
+    assert!(stderr.contains("uf create app raect"), "{stderr}");
+    assert!(
+        !dir.path().join("raect").exists() && !dir.path().join("my-site").exists(),
+        "it scaffolded something anyway"
+    );
+}
+
 /// `uf explain` says which provider runs each stage.
 ///
 /// An integrated toolchain that cannot say what it is doing is a black box,

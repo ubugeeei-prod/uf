@@ -20,8 +20,16 @@ import path from "node:path";
 
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
-import { describe, expect, fn, it } from "@uniflowed/test";
-import { act, fireEvent, render, screen, userEvent, within } from "@uniflowed/react-testing";
+import { afterEach, beforeEach, describe, expect, fn, it, uft } from "@uniflowed/test";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  within,
+} from "@uniflowed/react-testing";
 import {
   Accordion,
   Checkbox,
@@ -31,11 +39,21 @@ import {
   Field,
   Menu,
   NavigationMenu,
+  Pagination,
+  Progress,
   RadioGroup,
+  Resizable,
+  Select,
+  Slider,
   Switch,
+  Table,
   Tabs,
+  Toast,
   Toggle,
   ToggleGroup,
+  dismissAllToasts,
+  toast,
+  updateToast,
 } from "@uniflowed/ui";
 
 /**
@@ -66,6 +84,55 @@ function danglingReferences(): Array<string> {
     }
   }
   return dangling;
+}
+
+/**
+ * Switch away from the document and back, the way another tab does.
+ *
+ * `visibilityState` is a getter rather than a property, so it is redefined
+ * rather than assigned. Both halves are needed: the event is what
+ * `useDocumentVisible` subscribes to, and the property is what it reads when
+ * the event arrives.
+ */
+function hideDocument(hidden: boolean): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    // Annotated, because Flow types `visibilityState` as the four states the
+    // specification names and infers a bare `string` from the conditional.
+    get: (): "hidden" | "visible" => (hidden ? "hidden" : "visible"),
+  });
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
+/**
+ * Give an element a box, because this DOM gives every element a zero one.
+ *
+ * A slider turns a press into a value by measuring its track, and a track that
+ * is nought pixels wide has no values in it. This is the one place these tests
+ * pretend about layout, and it pretends about exactly four numbers.
+ */
+function measure(
+  element: HTMLElement,
+  box: {|
+    readonly left: number,
+    readonly width: number,
+    readonly top: number,
+    readonly height: number,
+  |},
+): void {
+  const rect = {
+    left: box.left,
+    width: box.width,
+    top: box.top,
+    height: box.height,
+    right: box.left + box.width,
+    bottom: box.top + box.height,
+    x: box.left,
+    y: box.top,
+  };
+  (element as $FlowFixMe).getBoundingClientRect = () => rect;
 }
 
 describe("Field", () => {
@@ -1423,6 +1490,591 @@ describe("Combobox: the active option never outlives the list", () => {
   });
 });
 
+describe("Select", () => {
+  component Example(defaultValue?: string | null = null, disabledOption?: string) {
+    return (
+      <Select.Root defaultValue={defaultValue}>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option disabled={disabledOption === "FR"} value="FR">
+            France
+          </Select.Option>
+          <Select.Option disabled={disabledOption === "DE"} value="DE">
+            Germany
+          </Select.Option>
+          <Select.Option disabled={disabledOption === "JP"} value="JP">
+            Japan
+          </Select.Option>
+          <Select.Option disabled={disabledOption === "UY"} value="UY">
+            Uruguay
+          </Select.Option>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  /** The keyboard path into the list, which is what most of these are about. */
+  const openFromTheKeyboard = async () => {
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}");
+  };
+
+  /** What `aria-activedescendant` currently names, read the way a reader is told it. */
+  const cursor = (): string | void =>
+    document.getElementById(
+      screen.getByRole("combobox").getAttribute("aria-activedescendant") ?? "",
+    )?.textContent ?? undefined;
+
+  it("announces itself as a combobox with a listbox, and never as a text field", () => {
+    render(<Example />);
+    const trigger = screen.getByRole("combobox");
+    // The two halves of the pattern differ here and nowhere more visibly: the
+    // editable one is a text field the reader types in, and this one is a
+    // button. A select announced as a textbox invites a reader to type into
+    // something that will never take a character.
+    expect(screen.queryByRole("textbox")).toBe(null);
+    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+    expect(screen.queryByRole("listbox")).toBe(null);
+  });
+
+  it("takes its name from its label and leaves its own content to be the value", async () => {
+    render(<Example />);
+    // `role="combobox"` is not a role that takes its name from its content, and
+    // a `<label for>` does not name a `<button>` either — so without the
+    // `aria-labelledby` this is a combobox announced as "combobox" and nothing
+    // else, while looking perfectly correct in the markup.
+    expect(screen.getByRole("combobox", { name: "Country" })).toBeInTheDocument();
+    await openFromTheKeyboard();
+    const list = screen.getByRole("listbox");
+    expect(document.getElementById(list.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Country",
+    );
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("opens on Enter, on Space and on ArrowDown", async () => {
+    for (const key of ["{Enter}", " ", "{ArrowDown}"]) {
+      render(<Example />);
+      screen.getByRole("combobox").focus();
+      await userEvent.keyboard(key);
+      expect(screen.getByRole("combobox")).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it("closes on Escape without changing the selection", async () => {
+    render(<Example defaultValue="DE" />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}");
+    // The cursor has moved off Germany, and Escape must not take what it is on.
+    expect(cursor()).toBe("Japan");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Germany");
+  });
+
+  it("keeps focus on the trigger and moves a second cursor", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    // The same promise `Combobox` makes and for the same reason: a highlight
+    // drawn in CSS moves the same pixels and tells a screen reader nothing.
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    expect(cursor()).toBe("France");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    expect(cursor()).toBe("Germany");
+  });
+
+  it("goes to an option by typing its first letters", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("ur");
+    // The key every hand-written select leaves out, and the one that makes a
+    // list of two hundred countries usable at all.
+    expect(cursor()).toBe("Uruguay");
+  });
+
+  it("opens the list and goes there when the first letter arrives closed", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("j");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("jumps to the first and last option with Home and End", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{End}");
+    // The exact inverse of the Combobox, which leaves both keys to the text
+    // cursor. The pair of tests is the clearest statement of why there are two
+    // components rather than one with a flag.
+    expect(cursor()).toBe("Uruguay");
+    await userEvent.keyboard("{Home}");
+    expect(cursor()).toBe("France");
+  });
+
+  it("opens onto the option already chosen", async () => {
+    render(<Example defaultValue="JP" />);
+    await openFromTheKeyboard();
+    // A list of two hundred countries opened onto "Afghanistan" when the reader
+    // had already chosen Zimbabwe is a list they arrow through twice.
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("answers Home and End with a position rather than with the selection", async () => {
+    render(<Example defaultValue="JP" />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{End}");
+    // Those two keys name a position, and answering "the last one" with "the
+    // one you already chose" is not an answer to the question that was asked.
+    expect(cursor()).toBe("Uruguay");
+  });
+
+  it("stops at the ends rather than wrapping", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(cursor()).toBe("Uruguay");
+    await userEvent.keyboard("{ArrowDown}");
+    // A native menu cycles and a native select stops; the reader's expectation
+    // comes from the platform control the widget imitates, which is why this
+    // differs from `menu.js` on purpose.
+    expect(cursor()).toBe("Uruguay");
+  });
+
+  it("takes the option under the cursor on Enter and closes", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Germany");
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
+  it("takes the option under the cursor on Tab and moves on", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}");
+    // The opposite of what `Combobox` does with this key, and deliberately.
+    // There is nothing typed here to lose: moving the cursor *is* the act of
+    // choosing, and a select that discarded it on Tab would be the only select
+    // on the machine that did. Not prevented, so focus still moves on.
+    expect(fireEvent.keyDown(screen.getByRole("combobox"), { key: "Tab" })).toBe(true);
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Germany");
+  });
+
+  it("moving the cursor does not change the value", async () => {
+    const onValueChange = fn();
+    render(
+      <Select.Root onValueChange={onValueChange}>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+          <Select.Option value="DE">Germany</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    await openFromTheKeyboard();
+    await userEvent.keyboard("{ArrowDown}{ArrowUp}{ArrowDown}");
+    // Selection-follows-focus is what a native select does on Windows, and
+    // copying it here would fire the caller's validation, form store or server
+    // mutation once per arrow press.
+    expect(onValueChange.mock.calls.length).toBe(0);
+    await userEvent.keyboard("{Enter}");
+    expect(onValueChange.mock.calls.length).toBe(1);
+  });
+
+  it("marks the chosen option as selected", async () => {
+    render(<Example defaultValue="JP" />);
+    await openFromTheKeyboard();
+    expect(screen.getByRole("option", { name: "Japan" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: "France" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
+
+  it("steps over a disabled option and still announces it", async () => {
+    render(<Example disabledOption="DE" />);
+    await openFromTheKeyboard();
+    // Announced, not removed: a reader can tell the option exists and is
+    // unavailable, rather than finding a gap where it used to be.
+    expect(screen.getByRole("option", { name: "Germany" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await userEvent.keyboard("{ArrowDown}");
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("opens with no cursor at all on Alt+ArrowDown", async () => {
+    render(<Example />);
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown", altKey: true });
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    // Looking at the options is not the same as moving among them.
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+  });
+
+  it("takes an option that is clicked and leaves focus on the trigger", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    await userEvent.click(screen.getByRole("option", { name: "Uruguay" }));
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("Uruguay");
+    // Without the option's `pointerdown` guard the trigger blurs, and the next
+    // keystroke arrives at the document instead of at this widget.
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
+  it("closes on a press outside it", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("listbox")).toBe(null);
+  });
+
+  it("never names an option that has left the list", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    expect(screen.getByRole("combobox")).toHaveAttribute("aria-activedescendant");
+    await userEvent.keyboard("{Escape}");
+    // Closed, the cursor names nothing: an `aria-activedescendant` pointing at
+    // an id that has left the document makes a reader hear nothing where it
+    // used to hear the current option.
+    expect(screen.getByRole("combobox")).not.toHaveAttribute("aria-activedescendant");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Select.Trigger>orphan</Select.Trigger>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Select.Trigger must be rendered inside a Select.Root");
+  });
+});
+
+describe("Select: what the trigger shows for a value", () => {
+  component Example(defaultValue?: string | null = null) {
+    return (
+      <Select.Root defaultValue={defaultValue}>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="GB">United Kingdom</Select.Option>
+          <Select.Option value="JP">Japan</Select.Option>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  it("shows the placeholder while nothing is chosen", () => {
+    render(<Example />);
+    expect(screen.getByRole("combobox").textContent).toBe("Choose one");
+  });
+
+  it("keeps showing the option's own text after the list has closed", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    // The options are unmounted with the list, which is exactly when the
+    // trigger needs to say what the value is called. A registry that forgot on
+    // unmount would blank the trigger the instant the reader chose something.
+    expect(screen.queryByRole("option")).toBe(null);
+    expect(screen.getByRole("combobox").textContent).toBe("United Kingdom");
+  });
+
+  it("shows the value itself for an option it has never rendered", () => {
+    render(<Example defaultValue="JP" />);
+    // The documented boundary: a value that arrived from outside, for a list
+    // that has not been opened. "JP" is wrong and true; the placeholder there
+    // would be wrong and confident, telling a reader nothing is chosen when
+    // something is. `Select.Value`'s children are the way out.
+    expect(screen.getByRole("combobox").textContent).toBe("JP");
+  });
+
+  it("lets the caller say what a value is called", () => {
+    render(
+      <Select.Root defaultValue="JP">
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one">Japan</Select.Value>
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="JP">Japan</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    expect(screen.getByRole("combobox").textContent).toBe("Japan");
+  });
+});
+
+describe("Select: option groups", () => {
+  component Example() {
+    return (
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Group>
+            <Select.GroupLabel>Europe</Select.GroupLabel>
+            <Select.Option value="FR">France</Select.Option>
+            <Select.Option value="DE">Germany</Select.Option>
+          </Select.Group>
+          <Select.Separator />
+          <Select.Group>
+            <Select.GroupLabel>Asia</Select.GroupLabel>
+            <Select.Option value="JP">Japan</Select.Option>
+          </Select.Group>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  const openFromTheKeyboard = async () => {
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}");
+  };
+
+  const cursor = (): string | void =>
+    document.getElementById(
+      screen.getByRole("combobox").getAttribute("aria-activedescendant") ?? "",
+    )?.textContent ?? undefined;
+
+  it("names a group after its label", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    const [europe, asia] = screen.getAllByRole("group");
+    expect(document.getElementById(europe.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Europe",
+    );
+    expect(document.getElementById(asia.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Asia",
+    );
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("claims no name when there is no label", async () => {
+    render(
+      <Select.Root defaultOpen>
+        <Select.Trigger>
+          <Select.Value />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Group>
+            <Select.Option value="FR">France</Select.Option>
+          </Select.Group>
+        </Select.List>
+      </Select.Root>,
+    );
+    // An `aria-labelledby` naming an id nothing has makes a screen reader
+    // announce nothing at all, which is worse than an unnamed group.
+    expect(screen.getByRole("group")).not.toHaveAttribute("aria-labelledby");
+  });
+
+  it("crosses group boundaries without ever landing on a label", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    expect(cursor()).toBe("France");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    // Straight from the last option of one group to the first of the next,
+    // over the label and the separator between them.
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("keeps the rule between groups out of the accessibility tree", async () => {
+    render(<Example />);
+    await openFromTheKeyboard();
+    // The one place this differs from `Menu.Separator`. A `listbox` may own
+    // `option` and `group` and nothing else, so a `role="separator"` inside one
+    // is a child ARIA does not allow; the rule is decoration and says so.
+    expect(screen.queryByRole("separator")).toBe(null);
+    expect(screen.getAllByRole("option").length).toBe(3);
+  });
+});
+
+describe("what a form submits for a control the browser has never heard of", () => {
+  /**
+   * Submit the form in `container` and hand back what it carried for `field`.
+   *
+   * The entry list is built inside the `submit` handler, which is where a
+   * Server Action or a `fetch` of the form would build it, and from the
+   * document's own `FormData` rather than the global one — the suite runs on
+   * Node, whose `FormData` has no constructor that takes an element, and the
+   * document is happy-dom's.
+   */
+  const submitted = (container: mixed, field: string): mixed => {
+    let carried: mixed = null;
+    const form: $FlowFixMe = (container as $FlowFixMe).querySelector("form");
+    const FormData: $FlowFixMe = form.ownerDocument.defaultView.FormData;
+    form.addEventListener("submit", (event: $FlowFixMe) => {
+      event.preventDefault();
+      carried = new FormData(form).get(field);
+    });
+    fireEvent.submit(form);
+    return carried;
+  };
+
+  it("submits the value and not the label", () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB" name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // The bug this exists for: the reader chose "United Kingdom" and the server
+    // was waiting for `GB`. A `div` wearing a role is not a listed element, so
+    // a form collected nothing at all for it until there was a control to find.
+    expect(submitted(container, "country")).toBe("GB");
+  });
+
+  it("submits what the reader chose, not what it started as", async () => {
+    const { container } = render(
+      <form>
+        <Select.Root name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+            <Select.Option value="JP">Japan</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(submitted(container, "country")).toBe("JP");
+  });
+
+  it("carries the field even when the reader chose nothing", () => {
+    const { container } = render(
+      <form>
+        <Select.Root name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // A key missing from the payload and a key present and empty are different
+    // questions to a server, and this is the second one.
+    expect(submitted(container, "country")).toBe("");
+  });
+
+  it("submits nothing for a select nobody named", () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // A select driving a filter has nothing to submit, and a field the caller
+    // never named is not one this package should invent.
+    expect(submitted(container, "country")).toBe(null);
+  });
+
+  it("submits nothing for a select that is disabled", () => {
+    const { container } = render(
+      <form>
+        <Select.Root defaultValue="GB" disabled name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // What a native `<select disabled>` does, and what a caller who disabled
+    // the widget expects.
+    expect(submitted(container, "country")).toBe(null);
+  });
+
+  it("submits the combobox's value and not the text in its field", async () => {
+    const { container } = render(
+      <form>
+        <Combobox.Root defaultOpen name="country">
+          <Combobox.Label>Country</Combobox.Label>
+          <Combobox.Input />
+          <Combobox.List>
+            <Combobox.Option value="GB">United Kingdom</Combobox.Option>
+          </Combobox.List>
+        </Combobox.Root>
+      </form>,
+    );
+    await userEvent.click(screen.getByRole("option", { name: "United Kingdom" }));
+    // The field now reads "United Kingdom", which is the label. The same hole
+    // as the Select's and the same answer.
+    expect(screen.getByRole("combobox")).toHaveValue("United Kingdom");
+    expect(submitted(container, "country")).toBe("GB");
+  });
+
+  it("never puts a second combobox in the accessibility tree", () => {
+    render(
+      <form>
+        <Select.Root defaultValue="GB" name="country">
+          <Select.Label>Country</Select.Label>
+          <Select.Trigger>
+            <Select.Value placeholder="Choose one" />
+          </Select.Trigger>
+          <Select.List>
+            <Select.Option value="GB">United Kingdom</Select.Option>
+          </Select.List>
+        </Select.Root>
+      </form>,
+    );
+    // The reason the hidden control is an `<input type="hidden">` and not a
+    // concealed `<select>`: a real one is focusable, so a reader tabbing in
+    // hears the styled combobox and then a second, invisible one with the same
+    // options — and `aria-hidden` on a focusable element is itself the
+    // violation it was reached for to avoid.
+    expect(screen.getAllByRole("combobox").length).toBe(1);
+    expect(screen.queryAllByRole("listbox").length).toBe(0);
+  });
+});
+
 describe("one Escape is one dismissal", () => {
   it("closes a menu inside a dialog without closing the dialog", async () => {
     render(
@@ -1463,6 +2115,1069 @@ describe("one Escape is one dismissal", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).toBe(null);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("closes a select's list inside a dialog without closing the dialog", async () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Body>
+          <Dialog.Title>Settings</Dialog.Title>
+          <Select.Root>
+            <Select.Label>Theme</Select.Label>
+            <Select.Trigger>
+              <Select.Value placeholder="Choose one" />
+            </Select.Trigger>
+            <Select.List>
+              <Select.Option value="light">Light</Select.Option>
+            </Select.List>
+          </Select.Root>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}{Escape}");
+    expect(screen.queryByRole("listbox")).toBe(null);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // And the second Escape, with the list already closed, belongs to the
+    // dialog: a select that swallowed it would trap a reader who opened a list
+    // by accident inside a modal they now cannot dismiss.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+  });
+});
+
+describe("Toast", () => {
+  // The queue is one module-level value — that is what lets `toast()` be
+  // called from a `catch` — so what one test queued is still there in the next
+  // one unless something clears it.
+  //
+  // Inside `act`, because `render` cleans up the previous test's tree when the
+  // next one starts rather than in an `afterEach`: the region from the test
+  // before is still mounted here, and emptying the queue is an update to it.
+  beforeEach(() => {
+    act(() => {
+      dismissAllToasts();
+    });
+  });
+
+  // A leaked fake clock is the failure mode that matters most here: the next
+  // file's `setTimeout` never fires and the run hangs with no explanation.
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  component Example(limit?: number = 3) {
+    return (
+      <Toast.Region limit={limit}>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  component WithUndo(onUndo?: () => void) {
+    return (
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Action onClick={onUndo}>Undo</Toast.Action>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  /** Queue a notification the way an event handler or a `catch` would. */
+  const notify = (content: string, options?: $FlowFixMe) => {
+    act(() => {
+      toast(content, options);
+    });
+  };
+
+  it("is watching before there is anything to announce", () => {
+    render(<Example />);
+    // The assertion the whole component exists for, and the one that fails for
+    // every implementation that mounts the region together with the message:
+    // a live region added in the same commit as its text is usually not
+    // announced at all, because the technology watching it had nothing to
+    // watch until it was already too late.
+    const polite = screen.getByRole("status");
+    expect(polite).toBeInTheDocument();
+    expect(polite.textContent).toBe("");
+    expect(screen.getByRole("alert").textContent).toBe("");
+    expect(screen.queryAllByRole("group").length).toBe(0);
+  });
+
+  it("announces a failure assertively and a success politely", () => {
+    render(<Example />);
+    notify("Saved");
+    notify("Could not save", { urgency: "assertive" });
+
+    const polite = screen.getByRole("status");
+    const assertive = screen.getByRole("alert");
+    expect(polite).toHaveAttribute("aria-live", "polite");
+    expect(polite).toHaveAttribute("aria-atomic", "true");
+    expect(assertive).toHaveAttribute("aria-live", "assertive");
+    expect(assertive).toHaveAttribute("aria-atomic", "true");
+    // Which region a notification lands in is what decides whether it
+    // interrupts, and it is chosen per notification rather than per
+    // application: interrupting a reader mid-sentence to say "saved" is why
+    // assertive is not the default, and waiting politely to say "could not
+    // save" is why it has to be available.
+    expect(polite.textContent).toContain("Saved");
+    expect(polite.textContent).not.toContain("Could not save");
+    expect(assertive.textContent).toContain("Could not save");
+  });
+
+  it("does not move focus when one appears", () => {
+    render(
+      <div>
+        <input aria-label="Note" />
+        <Example />
+      </div>,
+    );
+    const field = screen.getByLabelText("Note");
+    field.focus();
+    notify("Saved");
+    // Moving focus to a notification interrupts whatever the reader was
+    // typing, and it is the single failure that makes people turn
+    // notifications off.
+    expect(field).toHaveFocus();
+    expect(screen.getByRole("status").textContent).toContain("Saved");
+  });
+
+  it("names a notification after its title and describes it with the rest", () => {
+    render(
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Description>Two of three files.</Toast.Description>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>,
+    );
+    notify("Uploading");
+    // The group is what turns a stack of three into three things a reader can
+    // move between after F6, rather than one run of text.
+    const group = screen.getByRole("group", { name: "Uploading" });
+    const described = group.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(described)?.textContent).toBe("Two of three files.");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("claims no name when nothing named it", () => {
+    render(
+      <Toast.Region>
+        {() => (
+          <Toast.Root>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>,
+    );
+    notify("Saved");
+    const group = screen.getByRole("group");
+    expect(group).not.toHaveAttribute("aria-labelledby");
+    expect(group).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("names its dismiss button", async () => {
+    render(<Example />);
+    notify("Saved");
+    // An icon-only close with no name is announced as "button": a control a
+    // reader can find and cannot identify.
+    const dismiss = screen.getByRole("button", { name: /dismiss/i });
+    await userEvent.click(dismiss);
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("takes the notification away when its action is taken", async () => {
+    const onUndo = fn();
+    render(<WithUndo onUndo={onUndo} />);
+    notify("Deleted", { duration: null });
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(onUndo).toHaveBeenCalled();
+    // A notification whose offer has been accepted is describing something
+    // that is no longer true.
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("reaches the notifications from the keyboard", async () => {
+    render(<WithUndo />);
+    notify("Deleted", { duration: null });
+    const region = screen.getByRole("region", { name: "Notifications" });
+    fireEvent.keyDown(document, { key: "F6" });
+    // Focus lands on the region rather than on the first button in it, which
+    // is what makes a screen reader read the region's name and its contents
+    // instead of skipping straight past both.
+    expect(region).toHaveFocus();
+    await userEvent.tab();
+    // And from there the action is one Tab away, which is the whole point: an
+    // Undo button that vanishes after four seconds is a control no keyboard
+    // reader can operate.
+    expect(screen.getByRole("button", { name: "Undo" })).toHaveFocus();
+  });
+
+  it("gives focus back when the key is pressed again", () => {
+    render(
+      <div>
+        <input aria-label="Note" />
+        <WithUndo />
+      </div>,
+    );
+    const field = screen.getByLabelText("Note");
+    field.focus();
+    notify("Deleted", { duration: null });
+
+    fireEvent.keyDown(document, { key: "F6" });
+    expect(screen.getByRole("region", { name: "Notifications" })).toHaveFocus();
+    fireEvent.keyDown(document, { key: "F6" });
+    // A key that only goes one way strands the reader it was meant to help.
+    expect(field).toHaveFocus();
+  });
+
+  it("says which part was used outside a region", () => {
+    let message = "";
+    try {
+      render(<Toast.Title>orphan</Toast.Title>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Toast.Title must be rendered inside a Toast.Root");
+  });
+});
+
+describe("Toast: the queue behind the stack", () => {
+  beforeEach(() => {
+    act(() => {
+      dismissAllToasts();
+    });
+  });
+
+  component Example(limit?: number = 2) {
+    return (
+      <Toast.Region limit={limit}>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Close />
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  const notify = (content: string): string => {
+    let id = "";
+    act(() => {
+      id = toast(content);
+    });
+    return id;
+  };
+
+  it("shows no more than the limit, oldest first", () => {
+    render(<Example />);
+    notify("One");
+    notify("Two");
+    notify("Three");
+    // A queue rather than a pile: what arrived first is what a reader is shown
+    // first, and what is over the limit is not rendered at all — which is also
+    // what keeps its countdown from running before anyone has seen it.
+    expect(screen.getAllByRole("group").length).toBe(2);
+    expect(screen.getByRole("status").textContent).toContain("One");
+    expect(screen.getByRole("status").textContent).not.toContain("Three");
+  });
+
+  it("promotes the one behind when a notification is dismissed", async () => {
+    render(<Example />);
+    notify("One");
+    notify("Two");
+    notify("Three");
+    await userEvent.click(screen.getAllByRole("button", { name: /dismiss/i })[0]);
+    expect(screen.getByRole("status").textContent).toContain("Three");
+  });
+
+  it("changes a notification in place rather than stacking a second one", () => {
+    render(<Example />);
+    const id = notify("Uploading…");
+    act(() => {
+      updateToast(id, { content: "Uploaded" });
+    });
+    // A reader told the second thing without the first disappearing has been
+    // told the upload is both in progress and finished.
+    expect(screen.getAllByRole("group").length).toBe(1);
+    expect(screen.getByRole("status").textContent).toContain("Uploaded");
+  });
+
+  it("does not render a region's notification twice", () => {
+    render(<Example />);
+    notify("Saved");
+    // One notification, in one of the two regions, and never mirrored into a
+    // hidden announcer beside it — a reader browsing the page would find each
+    // one again with no way to tell it is the same one.
+    expect(screen.getAllByText("Saved").length).toBe(1);
+  });
+});
+
+describe("Toast: timers that stop", () => {
+  beforeEach(() => {
+    act(() => {
+      dismissAllToasts();
+    });
+  });
+
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
+  component Example() {
+    return (
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Action>Undo</Toast.Action>
+          </Toast.Root>
+        )}
+      </Toast.Region>
+    );
+  }
+
+  /** What the polite region is holding, which is what a reader would hear. */
+  const announced = (): string => screen.getByRole("status").textContent ?? "";
+
+  const advance = (millis: number) => {
+    act(() => {
+      uft.advanceTimersByTime(millis);
+    });
+  };
+
+  const notify = (content: string, duration: number | null) => {
+    act(() => {
+      toast(content, { duration });
+    });
+  };
+
+  it("goes away when its time is up", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Saved", 4000);
+    advance(3999);
+    expect(announced()).toContain("Saved");
+    advance(1);
+    expect(announced()).toBe("");
+  });
+
+  it("stops the clock while the pointer is over it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Saved", 4000);
+    advance(1000);
+
+    const notification = screen.getByRole("group");
+    fireEvent.pointerEnter(notification);
+    advance(30_000);
+    // WCAG 2.2.1, Timing Adjustable: anything that disappears on its own has
+    // to be stoppable by the reader who is still reading it.
+    expect(announced()).toContain("Saved");
+
+    fireEvent.pointerLeave(notification);
+    // What is left, not the whole duration again. The one-line version of
+    // this component re-arms the timeout on every unpause, so a pointer
+    // resting near the stack keeps a notification on screen for ever.
+    advance(2999);
+    expect(announced()).toContain("Saved");
+    advance(1);
+    expect(announced()).toBe("");
+  });
+
+  it("stops the clock while focus is inside it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Deleted", 4000);
+
+    const undo = screen.getByRole("button", { name: "Undo" });
+    act(() => {
+      undo.focus();
+    });
+    advance(30_000);
+    // Otherwise the control the notification exists to offer is taken away
+    // from the reader in the middle of reaching for it.
+    expect(announced()).toContain("Deleted");
+    expect(undo).toHaveFocus();
+  });
+
+  it("stops the clock while the document is hidden", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Saved", 4000);
+
+    hideDocument(true);
+    advance(30_000);
+    // A reader who switches tabs for a minute should not come back to an
+    // empty region and no idea what they missed.
+    expect(announced()).toContain("Saved");
+
+    hideDocument(false);
+    advance(4000);
+    expect(announced()).toBe("");
+  });
+
+  it("never expires when it was given no duration", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    notify("Deleted", null);
+    advance(30_000);
+    // What anything carrying an action should be: the countdown stopping
+    // while focus is inside makes the button reachable, and that is not a
+    // promise that four seconds was enough time to decide.
+    expect(announced()).toContain("Deleted");
+  });
+
+  it("starts the countdown again when the duration is changed under it", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    let id = "";
+    act(() => {
+      id = toast("Uploading…", { duration: null });
+    });
+    advance(30_000);
+    expect(announced()).toContain("Uploading…");
+
+    act(() => {
+      updateToast(id, { content: "Uploaded", duration: 4000 });
+    });
+    advance(3999);
+    expect(announced()).toContain("Uploaded");
+    advance(1);
+    expect(announced()).toBe("");
+  });
+});
+
+describe("Progress", () => {
+  it("says how far along it is", () => {
+    render(<Progress aria-label="Uploading" max={10} min={0} value={3} />);
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+  });
+
+  it("says nothing about how far along it is when it does not know", () => {
+    render(<Progress aria-label="Uploading" />);
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    // The whole component is this conditional. `aria-valuenow="0"` says
+    // "nothing has happened yet", and a reader who asks again in ten seconds
+    // and hears zero again concludes the operation is stuck. Omitting it says
+    // "in progress, amount unknown", which is what is actually true.
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+    expect(bar).toHaveAttribute("aria-valuemax", "100");
+  });
+
+  it("says what the number means when the percentage is not the answer", () => {
+    render(<Progress aria-label="Uploading" max={10} value={3} valueText="3 of 10 files" />);
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    // The text is what a reader hears; the number is still there for anything
+    // that draws a gauge from it.
+    expect(bar).toHaveAttribute("aria-valuetext", "3 of 10 files");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+  });
+
+  it("never reports a value outside its own bounds", () => {
+    render(<Progress aria-label="Uploading" max={10} value={40} />);
+    // An `aria-valuenow` above `aria-valuemax` is a contradiction a screen
+    // reader reads out loud.
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "10");
+  });
+});
+
+describe("Slider", () => {
+  component Example(
+    defaultValue?: $ReadOnlyArray<number> = [20],
+    disabled?: boolean = false,
+    step?: number = 1,
+    valueText?: (value: number, index: number) => string,
+  ) {
+    return (
+      <Slider.Root
+        defaultValue={defaultValue}
+        disabled={disabled}
+        step={step}
+        valueText={valueText}
+      >
+        <Slider.Track data-testid="track">
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Volume" />
+      </Slider.Root>
+    );
+  }
+
+  const now = (thumb: HTMLElement): string | null | void => thumb.getAttribute("aria-valuenow");
+
+  it("puts the slider role on the thumb and reaches it with Tab", async () => {
+    render(<Example />);
+    const thumb = screen.getByRole("slider", { name: "Volume" });
+    // On the thumb, not on the track. The element carrying the role is the
+    // element carrying `tabindex="0"`, and a track with the role is a track
+    // nobody can focus with a thumb nobody can find.
+    expect(thumb).toHaveAttribute("aria-valuemin", "0");
+    expect(thumb).toHaveAttribute("aria-valuemax", "100");
+    expect(thumb).toHaveAttribute("aria-valuenow", "20");
+    expect(thumb).toHaveAttribute("aria-orientation", "horizontal");
+    await userEvent.tab();
+    expect(thumb).toHaveFocus();
+  });
+
+  it("moves by a step, by a page, and to the ends", async () => {
+    render(<Example />);
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(now(thumb)).toBe("21");
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(now(thumb)).toBe("19");
+    await userEvent.keyboard("{PageUp}");
+    // The key that makes a slider from 0 to 10,000 crossable without holding
+    // another one down for a minute.
+    expect(now(thumb)).toBe("29");
+    await userEvent.keyboard("{PageDown}{PageDown}");
+    expect(now(thumb)).toBe("9");
+    await userEvent.keyboard("{End}");
+    expect(now(thumb)).toBe("100");
+    await userEvent.keyboard("{Home}");
+    expect(now(thumb)).toBe("0");
+  });
+
+  it("stops at its ends rather than running past them", async () => {
+    render(<Example />);
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{Home}{ArrowLeft}");
+    // An `aria-valuenow` below `aria-valuemin` is a contradiction a screen
+    // reader reads out loud.
+    expect(now(thumb)).toBe("0");
+    await userEvent.keyboard("{End}{ArrowRight}");
+    expect(now(thumb)).toBe("100");
+  });
+
+  it("lands only on its own steps", async () => {
+    render(<Example defaultValue={[20]} step={5} />);
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(now(thumb)).toBe("25");
+  });
+
+  it("says what the value means when the number does not", async () => {
+    const words = ["Off", "Low", "Medium", "High"];
+    render(
+      <Slider.Root defaultValue={[2]} max={3} valueText={(each) => words[each] ?? ""}>
+        <Slider.Track>
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Fan" />
+      </Slider.Root>,
+    );
+    const thumb = screen.getByRole("slider", { name: "Fan" });
+    // "2" is the implementation. "Medium" is the meaning — and the number is
+    // still there, so anything drawing a gauge still has it.
+    expect(thumb).toHaveAttribute("aria-valuetext", "Medium");
+    expect(thumb).toHaveAttribute("aria-valuenow", "2");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(thumb).toHaveAttribute("aria-valuetext", "High");
+  });
+
+  it("mirrors the horizontal keys in a right-to-left page", async () => {
+    render(
+      <div dir="rtl">
+        <Example />
+      </div>,
+    );
+    const thumb = screen.getByRole("slider");
+    thumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    // `ArrowRight` means "further along", and further along is to the left
+    // here. A slider that ignores this looks identical and walks backwards.
+    expect(now(thumb)).toBe("19");
+    await userEvent.keyboard("{ArrowUp}");
+    // The vertical axis is not mirrored by writing direction.
+    expect(now(thumb)).toBe("20");
+    await userEvent.keyboard("{Home}");
+    // Nor are the ends: `Home` is the smallest value in both directions.
+    expect(now(thumb)).toBe("0");
+  });
+
+  it("does nothing while disabled, and leaves the tab order", () => {
+    render(<Example disabled />);
+    const thumb = screen.getByRole("slider");
+    expect(thumb).toHaveAttribute("tabindex", "-1");
+    expect(thumb).toHaveAttribute("aria-disabled", "true");
+    fireEvent.keyDown(thumb, { key: "ArrowRight" });
+    expect(now(thumb)).toBe("20");
+  });
+
+  it("moves the nearest thumb when the track is pressed", () => {
+    render(<Example />);
+    const track = screen.getByTestId("track");
+    measure(track, { left: 0, width: 200, top: 0, height: 10 });
+    // WCAG 2.5.7, Dragging Movements: a control operated by dragging needs a
+    // way that is not a drag, and a press on the track is the one a pointer
+    // reader reaches for.
+    fireEvent.pointerDown(track, { clientX: 150, clientY: 5 });
+    expect(now(screen.getByRole("slider"))).toBe("75");
+  });
+});
+
+describe("Slider: a range is two sliders", () => {
+  component Example() {
+    return (
+      <Slider.Root defaultValue={[20, 60]}>
+        <Slider.Track>
+          <Slider.Range />
+        </Slider.Track>
+        <Slider.Thumb aria-label="Minimum" index={0} />
+        <Slider.Thumb aria-label="Maximum" index={1} />
+      </Slider.Root>
+    );
+  }
+
+  it("bounds each thumb by its neighbour", async () => {
+    render(<Example />);
+    const lower = screen.getByRole("slider", { name: "Minimum" });
+    const upper = screen.getByRole("slider", { name: "Maximum" });
+    // Two names, told apart. Two identical "slider"s is the whole difference
+    // between a control a reader can operate and one they cannot.
+    expect(lower).toHaveAttribute("aria-valuenow", "20");
+    expect(upper).toHaveAttribute("aria-valuenow", "60");
+    // Announcing both as 0–100 while the behaviour stops them passing each
+    // other is worse than not shipping the range: the reader is told they may
+    // set the low thumb to 90, they try, and the control silently refuses.
+    expect(lower).toHaveAttribute("aria-valuemax", "60");
+    expect(upper).toHaveAttribute("aria-valuemin", "20");
+
+    upper.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    // The neighbour moved, so the bound moved with it.
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute("aria-valuemax", "61");
+  });
+
+  it("will not let one thumb pass the other", async () => {
+    render(<Example />);
+    const lower = screen.getByRole("slider", { name: "Minimum" });
+    lower.focus();
+    await userEvent.keyboard("{End}");
+    // `End` on the lower thumb is its own end, which is its neighbour.
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute("aria-valuenow", "60");
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute("aria-valuenow", "60");
+    expect(screen.getByRole("slider", { name: "Maximum" })).toHaveAttribute("aria-valuenow", "60");
+  });
+
+  it("keeps both thumbs in the tab order, in the order they were written", async () => {
+    render(<Example />);
+    await userEvent.tab();
+    expect(screen.getByRole("slider", { name: "Minimum" })).toHaveFocus();
+    await userEvent.tab();
+    // The APG is explicit that a thumb passing another does not reorder them,
+    // which is why the index is a prop rather than a position counted from the
+    // page.
+    expect(screen.getByRole("slider", { name: "Maximum" })).toHaveFocus();
+  });
+});
+
+describe("Resizable", () => {
+  component Example(defaultValue?: number = 50, min?: number = 0, withPrimary?: boolean = true) {
+    return (
+      <Resizable.PanelGroup defaultValue={defaultValue} min={min} step={10}>
+        <Resizable.Panel primary={withPrimary}>Files</Resizable.Panel>
+        <Resizable.Handle label="Resize the file list" />
+        <Resizable.Panel>Editor</Resizable.Panel>
+      </Resizable.PanelGroup>
+    );
+  }
+
+  const handle = (): HTMLElement => screen.getByRole("separator", { name: "Resize the file list" });
+
+  it("resizes from the keyboard", async () => {
+    render(<Example />);
+    const splitter = handle();
+    // Almost every resizable panel on the web is pointer-only, which is a
+    // WCAG 2.1.1 failure. The keyboard is the feature.
+    expect(splitter).toHaveAttribute("tabindex", "0");
+    expect(splitter).toHaveAttribute("aria-valuenow", "50");
+    await userEvent.tab();
+    expect(splitter).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "60");
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("names the pane it sizes", () => {
+    render(<Example />);
+    const controls = handle().getAttribute("aria-controls") ?? "";
+    expect(document.getElementById(controls)?.textContent).toBe("Files");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("names no pane when there is no primary one to name", () => {
+    render(<Example withPrimary={false} />);
+    // The rule every part of this package repeats: an `aria-controls` naming
+    // an id nothing has is worse than saying nothing at all.
+    expect(handle()).not.toHaveAttribute("aria-controls");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("collapses the pane on Enter and restores it on the next one", async () => {
+    render(<Example defaultValue={40} />);
+    handle().focus();
+    await userEvent.keyboard("{Enter}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "0");
+    await userEvent.keyboard("{Enter}");
+    // A collapse with no way back is a pane a keyboard reader has thrown away.
+    expect(handle()).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("goes to the ends of its range with Home and End", async () => {
+    render(<Example min={10} />);
+    handle().focus();
+    await userEvent.keyboard("{Home}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "10");
+    await userEvent.keyboard("{End}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("says it is a vertical separator when the panes are side by side", () => {
+    render(<Example />);
+    // The inversion worth stating: `aria-orientation` on a separator describes
+    // the separator, and two panes side by side are divided by a vertical
+    // line. ARIA's default for the role is `horizontal`, so a vertical
+    // splitter that says nothing is announced as a horizontal rule.
+    expect(handle()).toHaveAttribute("aria-orientation", "vertical");
+  });
+
+  it("uses the vertical keys when the panes are stacked", async () => {
+    render(
+      <Resizable.PanelGroup defaultValue={50} orientation="vertical" step={10}>
+        <Resizable.Panel primary>Top</Resizable.Panel>
+        <Resizable.Handle />
+        <Resizable.Panel>Bottom</Resizable.Panel>
+      </Resizable.PanelGroup>,
+    );
+    const splitter = screen.getByRole("separator", { name: "Resize" });
+    expect(splitter).toHaveAttribute("aria-orientation", "horizontal");
+    splitter.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "60");
+    // `ArrowRight` in a stacked group is the page's, and swallowing it takes a
+    // key away from every reader who uses one.
+    expect(fireEvent.keyDown(screen.getByRole("separator"), { key: "ArrowRight" })).toBe(true);
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "60");
+  });
+
+  it("tells a menu's separator and a splitter apart", () => {
+    render(
+      <div>
+        <Menu.Root defaultOpen>
+          <Menu.Trigger>File</Menu.Trigger>
+          <Menu.Body>
+            <Menu.Item>Open</Menu.Item>
+            <Menu.Separator />
+          </Menu.Body>
+        </Menu.Root>
+        <Example />
+      </div>,
+    );
+    const [rule, splitter] = screen.getAllByRole("separator");
+    // Same role, and only one of them is a control. `tabindex` and
+    // `aria-valuenow` are the difference, and they are also how a screen
+    // reader tells them apart.
+    expect(rule).not.toHaveAttribute("tabindex");
+    expect(rule).not.toHaveAttribute("aria-valuenow");
+    expect(splitter).toHaveAttribute("tabindex", "0");
+    expect(splitter).toHaveAttribute("aria-valuenow");
+  });
+});
+
+describe("Table", () => {
+  const PEOPLE = [
+    { id: "ada", name: "Ada Lovelace", born: 1815 },
+    { id: "alan", name: "Alan Turing", born: 1912 },
+    { id: "grace", name: "Grace Hopper", born: 1906 },
+  ];
+
+  component Example(rowCount?: number | null = null, rowOffset?: number = 0) {
+    const [sort, setSort] = useState(null);
+    const [chosen, setChosen] = useState<$ReadOnlyArray<string>>([]);
+    const all = chosen.length === PEOPLE.length ? true : chosen.length === 0 ? false : "mixed";
+
+    return (
+      <Table.Root onSortChange={setSort} rowCount={rowCount} rowOffset={rowOffset} sort={sort}>
+        <Table.Caption>People</Table.Caption>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>
+              <Table.SelectAll
+                checked={all}
+                onCheckedChange={(on) => setChosen(on ? PEOPLE.map((each) => each.id) : [])}
+              />
+            </Table.Head>
+            <Table.Head column="name">Name</Table.Head>
+            <Table.Head column="born">Born</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {PEOPLE.map((person, at) => (
+            <Table.Row index={at} key={person.id}>
+              <Table.Cell>
+                <Table.RowSelect
+                  checked={chosen.includes(person.id)}
+                  label={`Select ${person.name}`}
+                  onCheckedChange={(on) =>
+                    setChosen((held) =>
+                      on ? [...held, person.id] : held.filter((each) => each !== person.id),
+                    )
+                  }
+                />
+              </Table.Cell>
+              <Table.RowHeader>{person.name}</Table.RowHeader>
+              <Table.Cell>{person.born}</Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table.Root>
+    );
+  }
+
+  it("is a table with named columns and a caption", () => {
+    render(<Example />);
+    // The caption is what gives a `<table>` its accessible name. A heading
+    // above the table looks the same and is not the table's name.
+    expect(screen.getByRole("table", { name: "People" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute("scope", "col");
+    // `scope="row"` is the other half: it is what lets a reader hear "Ada
+    // Lovelace, 1815" instead of "1815" while moving down the year column.
+    expect(screen.getByRole("rowheader", { name: "Ada Lovelace" })).toHaveAttribute("scope", "row");
+  });
+
+  it("marks only the sorted column", async () => {
+    render(<Example />);
+    const sortable = screen.getAllByRole("columnheader").filter((each) => each.textContent !== "");
+    for (const header of sortable) {
+      // Not `"none"` on the unsorted ones: eleven headers each announcing "not
+      // sorted" is eleven announcements of nothing on every pass.
+      expect(header).not.toHaveAttribute("aria-sort");
+    }
+
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    expect(document.querySelectorAll("[aria-sort]").length).toBe(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Born" }));
+    expect(screen.getByRole("columnheader", { name: "Born" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    expect(screen.getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
+    expect(document.querySelectorAll("[aria-sort]").length).toBe(1);
+  });
+
+  it("puts the sort in a button, so a keyboard can reach it", async () => {
+    render(<Example />);
+    // A `<th>` with an `onClick` is a sort half the readers do not have. The
+    // header's content is a real button, which is what puts it in the tab
+    // order and what makes `Enter` and `Space` the browser's job rather than
+    // this component's.
+    const header = screen.getByRole("columnheader", { name: "Name" });
+    expect(within(header).getByRole("button", { name: "Name" })).toBeInTheDocument();
+    // Tab reaches it: the select-all checkbox first, then this.
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(screen.getByRole("button", { name: "Name" })).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  it("says that it re-sorted, in a region that was already there", async () => {
+    render(<Example />);
+    // The rows change places and a screen reader is told nothing, so the
+    // sentence is the component's job — and the region has to have been in the
+    // document before the first sort or it announces nothing at all.
+    const status = screen.getByRole("status");
+    expect(status).toBeInTheDocument();
+    expect(status.textContent).toBe("");
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");
+    await userEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("status").textContent).toBe("Sorted by Name, descending.");
+  });
+
+  it("reports a partial selection as mixed and moves it to checked", async () => {
+    render(<Example />);
+    const all = screen.getByRole("checkbox", { name: "Select all rows" });
+    expect(all).toHaveAttribute("aria-checked", "false");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select Ada Lovelace" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select Alan Turing" }));
+    // `checkbox.js`'s documented case, finally asserted against the thing it
+    // describes: two of three rows chosen is not "unchecked".
+    expect(screen.getByRole("checkbox", { name: "Select all rows" })).toHaveAttribute(
+      "aria-checked",
+      "mixed",
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all rows" }));
+    // A half-selected "select all" that clears itself on the first click is
+    // the behaviour every table in every application gets wrong.
+    expect(screen.getByRole("checkbox", { name: "Select Grace Hopper" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("checkbox", { name: "Select all rows" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("names each row's checkbox after its row", () => {
+    render(<Example />);
+    // "Select row" forty times is forty identical announcements, with no way
+    // to tell which row a reader is on.
+    expect(screen.getByRole("checkbox", { name: "Select Ada Lovelace" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Grace Hopper" })).toBeInTheDocument();
+  });
+
+  it("counts the rows it is not showing", () => {
+    render(<Example rowCount={500} rowOffset={90} />);
+    // Five hundred data rows and one header row. The caller said 500, which is
+    // what an application knows; the header is the component's arithmetic.
+    expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "501");
+    const rows = screen.getAllByRole("row");
+    expect(rows[0]).toHaveAttribute("aria-rowindex", "1");
+    // Row 91 of the data, after one header row, is row 92 of the table — and a
+    // reader on page ten being told "row 1 of 10" looks exactly like a reader
+    // being told the truth.
+    expect(rows[1]).toHaveAttribute("aria-rowindex", "92");
+    expect(rows[3]).toHaveAttribute("aria-rowindex", "94");
+  });
+
+  it("counts nothing when it is showing everything", () => {
+    render(<Example />);
+    // The browser counts the rows itself, and a second source of truth is one
+    // that can disagree with the document.
+    expect(screen.getByRole("table")).not.toHaveAttribute("aria-rowcount");
+    expect(screen.getAllByRole("row")[1]).not.toHaveAttribute("aria-rowindex");
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Table.Head>orphan</Table.Head>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Table.Head must be rendered inside a Table.Root");
+  });
+});
+
+describe("Pagination", () => {
+  component Example(page?: number = 4, pageCount?: number = 25) {
+    return (
+      <Pagination.Root page={page} pageCount={pageCount}>
+        <Pagination.Content>
+          <Pagination.Previous disabled={page === 1} href={`?page=${String(page - 1)}`}>
+            ‹
+          </Pagination.Previous>
+          <Pagination.Item href="?page=3">3</Pagination.Item>
+          <Pagination.Item current href="?page=4">
+            4
+          </Pagination.Item>
+          <Pagination.Item href="?page=5">5</Pagination.Item>
+          <Pagination.Next href={`?page=${String(page + 1)}`}>›</Pagination.Next>
+        </Pagination.Content>
+      </Pagination.Root>
+    );
+  }
+
+  it("marks the current page and names the pagination", () => {
+    render(<Example />);
+    // A page has more than one `nav`, and an unnamed one is announced as
+    // "navigation" with no way to tell it from the site's menu.
+    const nav = screen.getByRole("navigation", { name: "Pagination" });
+    expect(nav).toBeInTheDocument();
+    // `aria-current="page"` and exactly one of it. Not a class, not bold text,
+    // not `aria-selected` — `page` is the value ARIA defines for this and the
+    // only one that tells a reader where they are.
+    expect(within(nav).getByRole("link", { name: "4" })).toHaveAttribute("aria-current", "page");
+    expect(document.querySelectorAll("[aria-current]").length).toBe(1);
+  });
+
+  it("names previous and next in words rather than in chevrons", () => {
+    render(<Example />);
+    // "link, single left-pointing angle quotation mark" is not a thing anybody
+    // can act on. The glyph stays; the name is words.
+    expect(screen.getByRole("link", { name: "Previous page" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
+  });
+
+  it("is not a link at all when there is nowhere to go", () => {
+    render(<Example page={1} />);
+    // There is no such thing as a disabled link: an `<a>` with no `href` is
+    // out of the tab order and is not announced as a link, which is exactly
+    // what "there is no previous page" means.
+    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
+  });
+
+  it("says which page it moved to, in a region that was already there", () => {
+    const { rerender } = render(<Example page={4} />);
+    expect(screen.getByRole("status").textContent).toBe("Page 4 of 25.");
+    rerender(<Example page={5} />);
+    // Pressing "next" replaces the rows and moves nothing a reader is looking
+    // at, so the sentence is the only thing that tells them it worked.
+    expect(screen.getByRole("status").textContent).toBe("Page 5 of 25.");
+  });
+
+  it("is watching before it has anything to say", () => {
+    render(
+      <Pagination.Root>
+        <Pagination.Content>
+          <Pagination.Item href="?page=1">1</Pagination.Item>
+        </Pagination.Content>
+      </Pagination.Root>,
+    );
+    // Given no page to announce it is still in the document, empty, because a
+    // live region that appears together with its text is not announced at all.
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("is a list, so a reader can skip it in one keystroke", () => {
+    render(<Example />);
+    expect(within(screen.getByRole("navigation")).getAllByRole("listitem").length).toBe(5);
   });
 });
 
@@ -2372,6 +4087,71 @@ describe("caller props never disable the component", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(theirs.mock.calls.length).toBe(1);
     expect(input).toHaveAttribute("aria-activedescendant");
+  });
+
+  it("keeps the select's keys when the caller passes onKeyDown", async () => {
+    const theirs = fn();
+    render(
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger onKeyDown={theirs}>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps the select's trigger findable when the caller passes a ref", async () => {
+    const seen = { current: null };
+    render(
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger ref={seen}>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    // The caller's ref is set too, not instead: the component's own copy is
+    // what an option's click restores focus to, and a replaced one would leave
+    // the reader's next keystroke arriving at the document.
+    expect(seen.current).toBe(screen.getByRole("combobox"));
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.click(screen.getByRole("option", { name: "France" }));
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
+  it("keeps a notification dismissable when the caller passes onClick", async () => {
+    const theirs = fn();
+    act(() => {
+      dismissAllToasts();
+    });
+    render(
+      <Toast.Region>
+        {(each) => (
+          <Toast.Root>
+            <Toast.Title>{each.content}</Toast.Title>
+            <Toast.Close onClick={theirs} />
+          </Toast.Root>
+        )}
+      </Toast.Region>,
+    );
+    act(() => {
+      toast("Saved");
+    });
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(theirs.mock.calls.length).toBe(1);
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 
   it("keeps the field's ids authoritative", () => {

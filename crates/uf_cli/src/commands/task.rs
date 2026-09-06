@@ -12,7 +12,7 @@ use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::PackageManagerPlan;
 use uf_term::{Cell, Column, KeyValue, Status, Table, Tone, display_width, truncate_to_width};
 
-use crate::cli::{AppTemplate, CreateCommand};
+use crate::cli::CreateCommand;
 use crate::commands::{create, pm, test};
 use crate::suggest::closest;
 use crate::support::{plural, project_label, safe_file_label, write_json_file};
@@ -378,20 +378,18 @@ fn exec_uniflowed_virtual_package(
             };
             match kind {
                 "app" => {
-                    let mut cursor = 1;
-                    let template = if args.get(cursor).map(String::as_str) == Some("react") {
-                        cursor += 1;
-                        AppTemplate::React
-                    } else {
-                        AppTemplate::React
-                    };
-                    let path = args.get(cursor).map(Utf8PathBuf::from);
+                    // The same two positionals `uf create app` takes, handed
+                    // over unresolved: `create::app_arguments` decides which
+                    // of them is a template, so the two front doors cannot
+                    // read the same command differently. They did — this one
+                    // already accepted `ufx @uniflowed/create app my-site`
+                    // while `uf create app my-site` was rejected (#322).
                     create::create(
                         cwd,
                         ui,
                         CreateCommand::App {
-                            template,
-                            path,
+                            template_or_path: args.get(1).cloned(),
+                            path: args.get(2).map(Utf8PathBuf::from),
                             name: None,
                             force: args.iter().any(|arg| arg == "--force"),
                         },

@@ -1,6 +1,6 @@
 //! `uf create`: a tree of what was generated, and what to run next.
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_project::{CreateKind, CreateOptions, create_project};
 use uf_term::{Status, Tree};
@@ -10,14 +10,49 @@ use crate::cli::{AppTemplate, CreateCommand};
 use crate::support::{plural, project_label, relative_to};
 use crate::ui::Ui;
 
+/// Which template, and where, out of the one or two positionals given.
+///
+/// `uf create app` takes `[TEMPLATE] [PATH]`, and the first command a reader
+/// types is one word. So a lone argument is the template when it names one and
+/// the path when it does not — which is what the home page, the CLI reference
+/// and `ufx @uniflowed/create app` already assumed, and what the grammar
+/// rejected. See ubugeeei-prod/uf#322.
+///
+/// Two arguments keep the old meaning exactly: the first must be a template,
+/// and saying so is better than quietly reading a typo as a directory name and
+/// scaffolding into it.
+fn app_arguments(
+    template_or_path: Option<String>,
+    path: Option<Utf8PathBuf>,
+) -> Result<(AppTemplate, Option<Utf8PathBuf>)> {
+    let templates = AppTemplate::ALL.join(", ");
+    match (template_or_path, path) {
+        (None, path) => Ok((AppTemplate::React, path)),
+        (Some(first), None) => match AppTemplate::parse(&first) {
+            Some(template) => Ok((template, None)),
+            None => Ok((AppTemplate::React, Some(Utf8PathBuf::from(first)))),
+        },
+        (Some(first), Some(path)) => match AppTemplate::parse(&first) {
+            Some(template) => Ok((template, Some(path))),
+            None => bail!(
+                "`{first}` is not a template, and with two arguments the first one is the \
+                 template.\n  templates: {templates}\n  for a project in `{first}`, write \
+                 `uf create app {first}` with nothing after it"
+            ),
+        },
+    }
+}
+
 pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Result<()> {
     let (kind, target, name, force) = match command {
         CreateCommand::App {
-            template: AppTemplate::React,
+            template_or_path,
             path,
             name,
             force,
         } => {
+            let (template, path) = app_arguments(template_or_path, path)?;
+            let AppTemplate::React = template;
             let target = resolve_target(cwd, path)?;
             let name = name.unwrap_or_else(|| project_name(&target, "uniflowed-app"));
             (CreateKind::AppReact, target, name, force)

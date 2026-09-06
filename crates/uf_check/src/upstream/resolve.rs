@@ -6,8 +6,9 @@
 //! with each of `module.file_ext` appended, then treats the path as a package
 //! directory and reads its `package.json`. `uf_check` is handed a list of
 //! sources and no filesystem, so the first two steps carry over exactly and the
-//! third becomes "look for an `index` file", because a `package.json` is not in
-//! the batch to read.
+//! third becomes "look for an `index` file" — a *relative* specifier naming a
+//! directory is not a package, and reading a manifest to enter one is
+//! [`super::packages`]'s job rather than this module's.
 //!
 //! Everything here is pure: it maps `(importer, specifier)` onto a path, and
 //! [`ModuleIndex`] says whether the batch holds that path. What happens to a
@@ -98,10 +99,21 @@ impl ModuleIndex {
         if !is_relative(specifier) {
             return None;
         }
-        let base = join(importer, specifier)?;
-        self.lookup(&base)
-            .or_else(|| self.with_suffixes(&base, &IMPLICIT_EXTENSIONS, ""))
-            .or_else(|| self.with_suffixes(&base, &INDEX_BASENAMES, "/"))
+        self.resolve_file(&join(importer, specifier)?)
+    }
+
+    /// The source at `base`, tried as written, then with each of Flow's
+    /// extensions, then as a directory holding an `index` file.
+    ///
+    /// This is the half of node resolution that applies to a path *however* the
+    /// path was arrived at: a relative specifier, a package's `main`, or a
+    /// subpath under a package that publishes no `exports` map. What an
+    /// `exports` map names goes through [`Self::lookup`] instead, because that
+    /// is a file rather than a path to search from.
+    pub(super) fn resolve_file(&self, base: &str) -> Option<usize> {
+        self.lookup(base)
+            .or_else(|| self.with_suffixes(base, &IMPLICIT_EXTENSIONS, ""))
+            .or_else(|| self.with_suffixes(base, &INDEX_BASENAMES, "/"))
     }
 
     fn with_suffixes(&self, base: &str, suffixes: &[&str], separator: &str) -> Option<usize> {
@@ -110,7 +122,8 @@ impl ModuleIndex {
             .find_map(|suffix| self.lookup(&format!("{base}{separator}{suffix}")))
     }
 
-    fn lookup(&self, path: &str) -> Option<usize> {
+    /// The source at exactly this path: no extension, no `index`.
+    pub(super) fn lookup(&self, path: &str) -> Option<usize> {
         self.by_path.get(path).copied()
     }
 }
@@ -214,6 +227,18 @@ mod tests {
         let index = ModuleIndex::new(["src/a", "src/a.js", "src/a/index.js", "src/b.js"]);
 
         assert_eq!(index.resolve("src/b.js", "./a"), Some(0));
+    }
+
+    #[test]
+    fn an_exact_lookup_does_not_fall_back_to_an_extension_or_an_index() {
+        // What an `exports` map names is a file, not a path to search from, so
+        // [`super::packages`] resolves its targets through `lookup` alone.
+        let index = ModuleIndex::new(["src/a.js", "src/b/index.js"]);
+
+        assert_eq!(index.lookup("src/a.js"), Some(0));
+        assert_eq!(index.lookup("src/a"), None);
+        assert_eq!(index.lookup("src/b"), None);
+        assert_eq!(index.resolve_file("src/b"), Some(1));
     }
 
     #[test]
