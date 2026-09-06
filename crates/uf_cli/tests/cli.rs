@@ -99,6 +99,12 @@ fn install_has_a_one_letter_alias() {
     // failure filed by two people. Widening the filter to match `1s` too would
     // still be guessing at which of a child process's lines to ignore; naming
     // the block uf rendered says what the test is for.
+    //
+    // uf's own block does carry one thing that is not the same twice: the
+    // durations it reports. Those are blanked by their *grammar* — a number
+    // followed by one of `uf_term::push_duration`'s four units — rather than
+    // by dropping the lines that hold them, so the timings and the verdict are
+    // still compared for everything except how long they took.
     let rendered = |output: &[u8]| {
         let text = String::from_utf8_lossy(output).into_owned();
         let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
@@ -122,7 +128,7 @@ fn install_has_a_one_letter_alias() {
         lines[..=banner + 1]
             .iter()
             .chain(&lines[table..])
-            .cloned()
+            .map(|line| without_durations(line))
             .collect::<Vec<_>>()
     };
     assert_eq!(rendered(&short.stdout), rendered(&long.stdout));
@@ -130,6 +136,47 @@ fn install_has_a_one_letter_alias() {
         String::from_utf8_lossy(&short.stdout).contains("uf install"),
         "`uf i` should report itself as `uf install`"
     );
+}
+
+/// Replace every duration in `line` with a fixed marker.
+///
+/// The grammar is `uf_term::push_duration`'s: digits, optionally a decimal
+/// part, then `ns`, `µs`, `ms` or `s`, and nothing alphanumeric after it. A
+/// version, a byte count and a package name all fail that test, so only the
+/// numbers that genuinely differ between two runs are blanked.
+fn without_durations(line: &str) -> String {
+    const UNITS: [&str; 4] = ["ns", "\u{b5}s", "ms", "s"];
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(start) = rest.find(|ch: char| ch.is_ascii_digit()) {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let end = rest
+            .find(|ch: char| !ch.is_ascii_digit() && ch != '.')
+            .unwrap_or(rest.len());
+        let (number, tail) = rest.split_at(end);
+        let unit = UNITS
+            .iter()
+            .find(|unit| tail.starts_with(**unit))
+            .filter(|unit| {
+                tail[unit.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|ch| !ch.is_alphanumeric())
+            });
+        match unit {
+            Some(unit) => {
+                out.push_str("<duration>");
+                rest = &tail[unit.len()..];
+            }
+            None => {
+                out.push_str(number);
+                rest = tail;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The alias binaries are the longhand commands, and the help says so.

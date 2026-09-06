@@ -3468,6 +3468,7 @@ dependencies = [
  "compact_str",
  "serde",
  "serde_json",
+ "uf_flow",
  "uf_infra",
  "uf_std",
  "uf_tui",

@@ -195,3 +195,46 @@ fn width_tables_are_sorted_and_disjoint() {
         }
     }
 }
+
+#[test]
+fn truncation_keeps_whole_escape_sequences() {
+    let mut out = String::new();
+    push_truncated(&mut out, "\x1b[31mred and long\x1b[0m", 3);
+    // The colour opened, three columns survived, and the reset was written
+    // because the rest of the line was dropped inside it.
+    assert_eq!(out, "\x1b[31mred\x1b[0m");
+}
+
+#[test]
+fn truncation_charges_no_width_to_styling() {
+    let mut out = String::new();
+    push_truncated(&mut out, "\x1b[1m\x1b[32mok\x1b[0m", 8);
+    assert_eq!(out, "\x1b[1m\x1b[32mok\x1b[0m");
+}
+
+#[test]
+fn truncation_measures_wide_characters_in_columns() {
+    let mut out = String::new();
+    push_truncated(&mut out, "日本語", 4);
+    assert_eq!(out, "日本");
+
+    out.clear();
+    // Three columns cannot hold two double-width scalars, and half of one is
+    // not a character a terminal can draw.
+    push_truncated(&mut out, "日本語", 3);
+    assert_eq!(out, "日");
+}
+
+#[test]
+fn truncation_of_plain_text_appends_no_reset() {
+    let mut out = String::new();
+    push_truncated(&mut out, "abcdef", 3);
+    assert_eq!(out, "abc");
+}
+
+#[test]
+fn truncation_to_nothing_still_closes_what_it_opened() {
+    let mut out = String::new();
+    push_truncated(&mut out, "\x1b[31mred\x1b[0m", 0);
+    assert_eq!(out, "\x1b[31m\x1b[0m");
+}
