@@ -321,6 +321,10 @@ jobs:
       # and the release was reported as failed, over a `verify-npm.sh` that
       # dash would not parse and bash would — and bash is `/bin/sh` on the
       # laptop it was written on. `sh -n` reads and does not run.
+      # And that the installer's banner fits an eighty-column terminal — the
+      # first thing anybody sees from `curl … | sh`, and a line wider than the
+      # window wraps without its indent.
+      - run: ./target/release/uf run install:banner
       - run: ./target/release/uf run scripts:parse
       - run: ./target/release/uf run scripts:parse:test
       # And that the set that goes to npm is closed under its own

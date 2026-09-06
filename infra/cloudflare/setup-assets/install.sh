@@ -426,6 +426,17 @@ uf_logo_blocks() {
   uf_paint '216;75;255'  "   ██████    ██"
 }
 
+# The headline, and the tagline under it rather than beside it.
+#
+# They shared a line until the tagline grew: "Unified Toolchain for Flow ·
+# Build the strongest React development experience with Modern Flow" is 96
+# columns with the indent, against a terminal that is 80 by default. It wrapped
+# mid-sentence onto a second line with no indent, as the first thing anybody
+# sees from `curl … | sh`.
+#
+# Two lines, each measured: 28 columns and at most 72. Nothing here asks the
+# terminal how wide it is — a `tput cols` needs a terminal this may not have,
+# and the installer's whole job is to work before anything is installed.
 uf_brand() {
   printf '\n' >&2
   uf_logo_image || uf_logo_blocks
@@ -433,8 +444,9 @@ uf_brand() {
   if [ -z "$uf_colour" ]; then
     printf '  %s\n\n' "Unified Toolchain for Flow" >&2
   else
-    printf '  \033[1m%s\033[0m \033[2m%s\033[0m\n\n' \
-      "Unified Toolchain for Flow" "· Build the strongest React development experience with Modern Flow" >&2
+    printf '  \033[1m%s\033[0m\n' "Unified Toolchain for Flow" >&2
+    printf '  \033[2m%s\033[0m\n\n' \
+      "Build the strongest React development experience with Modern Flow" >&2
   fi
 }
 
