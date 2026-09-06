@@ -10,6 +10,9 @@ _2026-09-06_
 - **story**: the story runner, and four wrong answers the tests found (#211)
 - **prepare**: the command does the five things it lists
 - **flow**: say what is wrong with top-level await, and point at it (#222)
+- **fmt**: the GraphQL inside a tagged template is formatted and re-indented —
+  1,402 of Relay's 1,463 templates byte-identical to Prettier, and the 61 that
+  are not are declined rather than approximated (#238)
 
 ### Fixed
 
@@ -17,9 +20,21 @@ _2026-09-06_
   `@uniflowed/ui`'s 73 type errors, one per element it renders (#220)
 - **test**: a line a finished test's callback printed is still that test's (#221)
 - **test**: an event that outlives its file is not the next file's (#228)
+- **host**: the transform cache key says which `uf` compiled the entry, so a
+  rebuilt compiler stops serving what the previous one produced (#219)
+- **vite**: the compiled config is written where a second command can read it,
+  so `uf dev` and `uf build` in one project stop corrupting each other (#241)
 - **flow**: a parse tree is freed where there is room, not where it is held (#230)
-- **router**: `_uf.not-found` is a reserved name, and the linter says so (#224)
+- **lint**: the ceilings that protect `uf fmt` protect `uf lint` too — a
+  generated file no longer aborts the process (#232)
 - **lint**: a rule about what code does no longer reads strings (#227)
+- **lint**: `fetch/no-global-override` is about the assignment, not the name (#236)
+- **react**: a `useX` name is a hook only where the module says React (#237)
+- **router**: `_uf.not-found` is a reserved name, and the linter says so (#224)
+- **fmt**: the container that breaks a JSX arrow body is the one above the
+  call (#233)
+- **types**: a shipped package says what it knows — 45 of the 58 `any`s in
+  published packages are real types now, and `uf check` gained none (#242)
 
 ### Internal
 
@@ -27,9 +42,10 @@ _2026-09-06_
 - a package somebody implemented has to be on its way to npm (#229)
 - check that `package-lock.json` still describes the manifests, and the two
   mistakes the version bump made on its second run
-- say which Prettier `uf fmt` is compatible with (#223)
 - match the changelog heading literally, and run in `uf run ci` what the
   pipeline runs — the two had drifted eight tasks apart
+- the dev-server test says what the server did, and tries again (#235)
+- say which Prettier `uf fmt` is compatible with (#223)
 
 ## uf@0.0.0-alpha.4
 

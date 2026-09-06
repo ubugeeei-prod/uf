@@ -188,6 +188,12 @@ export default defineConfig({
     // changelog written after the version moved, and a resumed release that
     // was told its Cargo.toml has no version.
     "release:bump:test": "tools/release/test-bump-version.sh",
+    // And that a released version's changelog says what the release contains.
+    // `uf@0.0.0-alpha.5` went out with twenty-two commits in it and twelve in
+    // its notes: the section is written before the branch stops waiting for
+    // CI, and what merges meanwhile is in the tarball and in nobody's notes.
+    "release:changelog": "tools/ci/changelog-covers-the-release.sh",
+    "release:changelog:test": "tools/ci/test-changelog-covers.sh",
     // `npm trust` binds a name the registry already has and cannot create
     // one, so a name that has never been published is published once by a
     // person and is the workflow's from then on.
@@ -247,6 +253,8 @@ export default defineConfig({
         "publishable:test",
         "release:trust:test",
         "release:bump:test",
+        "release:changelog",
+        "release:changelog:test",
         // Not `install:test`. It packages a release before installing it, and
         // packaging needs `wild-linker`, which CI installs in that job and a
         // laptop has no reason to have. A `uf run ci` that fails on a fresh
