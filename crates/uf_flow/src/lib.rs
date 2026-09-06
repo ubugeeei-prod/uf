@@ -23,9 +23,9 @@ mod upstream;
 use thiserror::Error;
 
 pub use parse::{
-    Depths, Loc, MAX_CHAIN_DEPTH, MAX_NESTING_DEPTH, MAX_PARSE_BYTES, PARSE_OPTIONS,
-    PARSE_STACK_BYTES, ParseFailure, Parsed, Position, ast, chain_depth, depths, nesting_depth,
-    parse,
+    Depths, Loc, MAX_CHAIN_DEPTH, MAX_DEPTH_FREED_IN_PLACE, MAX_NESTING_DEPTH, MAX_PARSE_BYTES,
+    PARSE_OPTIONS, PARSE_STACK_BYTES, ParseFailure, Parsed, Position, ast, chain_depth, depths,
+    nesting_depth, parse,
 };
 pub use strip::{MAX_STRIP_BYTES, StripError, Stripped, strip_types};
 
