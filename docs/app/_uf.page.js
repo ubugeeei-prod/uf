@@ -2,10 +2,15 @@
 //
 // The home page.
 //
-// It leads with the thing itself — one command, and what that command really
-// prints — because the argument for uf is not a feature list, it is that the
-// list collapses into one binary. Every claim below links to the page that
-// backs it, and the ones uf loses are on that list too.
+// The heading says what uf is for: writing React, in Flow, better than the
+// assembled toolchains do. That is the promise, and everything under it is
+// the evidence — one command, and what that command really prints. The
+// heading used to be "One binary between your code and the web", which
+// described uf's shape rather than what it gets you, and left a reader who
+// had never heard of uf to work out what the binary was for.
+//
+// Every claim below links to the page that backs it, and the ones uf loses
+// are on that list too.
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
@@ -45,9 +50,9 @@ export default component Home() {
         <div className="hero-copy">
           <Eyebrow>Unified toolchain for Flow</Eyebrow>
           <h1>
-            One binary between
+            React at its best,
             <br />
-            your code and the web.
+            typed by Flow.
           </h1>
           <Lede>
             uf runs, builds, tests, formats and lints Flow and React from a single command. No Babel
