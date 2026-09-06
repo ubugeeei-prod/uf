@@ -51,6 +51,7 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
@@ -114,7 +115,7 @@ export component DialogRoot(
 }
 
 /** What opens the dialog, and what focus comes back to when it closes. */
-export component DialogTrigger(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogTrigger(children: React.Node, ...rest: Rest) {
   const dialog = useDialog("Dialog.Trigger");
   const passed = withoutComposed(rest, ["onClick", "ref"]);
 
@@ -147,7 +148,7 @@ export component DialogTrigger(children: React.Node, ...rest: { readonly [string
  * their own backdrop or omits one entirely must still get it. That lives on
  * `Dialog.Body`, which is the part that knows where "outside" is.
  */
-export component DialogOverlay(...rest: { readonly [string]: mixed }) {
+export component DialogOverlay(...rest: Rest) {
   const dialog = useDialog("Dialog.Overlay");
   if (!dialog.open) {
     return null;
@@ -162,7 +163,7 @@ export component DialogOverlay(...rest: { readonly [string]: mixed }) {
  * which is the half of "modal" that CSS cannot express; `inert` on everything
  * outside is the half the browser enforces.
  */
-export component DialogBody(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogBody(children: React.Node, ...rest: Rest) {
   const dialog = useDialog("Dialog.Body");
   const bodyRef = useRef<HTMLElement | null>(null);
   // Stable, so the effect below depends on `open` and on nothing else. Keyed on
@@ -298,7 +299,7 @@ export component DialogBody(children: React.Node, ...rest: { readonly [string]: 
  * rendered — a conditional title that is absent used to leave the dialog
  * pointing at an id nothing had.
  */
-export component DialogTitle(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogTitle(children: React.Node, ...rest: Rest) {
   const dialog = useDialog("Dialog.Title");
   const register = dialog.registerTitle;
   useEffect(() => {
@@ -320,7 +321,7 @@ export component DialogTitle(children: React.Node, ...rest: { readonly [string]:
  * the one moment the reader has to decide whether they care — so this is where
  * "this cannot be undone" belongs, not in body text further down.
  */
-export component DialogDescription(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogDescription(children: React.Node, ...rest: Rest) {
   const dialog = useDialog("Dialog.Description");
   const register = dialog.registerDescription;
   useEffect(() => {
@@ -344,17 +345,17 @@ export component DialogDescription(children: React.Node, ...rest: { readonly [st
  * styling layer has a name to attach to, and contributes no semantics because
  * it has none to contribute.
  */
-export component DialogHeader(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogHeader(children: React.Node, ...rest: Rest) {
   return <div {...rest}>{children}</div>;
 }
 
 /** The bottom of the dialog, where the actions go. See `Dialog.Header`. */
-export component DialogFooter(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogFooter(children: React.Node, ...rest: Rest) {
   return <div {...rest}>{children}</div>;
 }
 
 /** A button that closes the dialog. */
-export component DialogClose(children: React.Node, ...rest: { readonly [string]: mixed }) {
+export component DialogClose(children: React.Node, ...rest: Rest) {
   const dialog = useDialog("Dialog.Close");
   const passed = withoutComposed(rest, ["onClick"]);
 

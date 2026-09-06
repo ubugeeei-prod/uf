@@ -479,13 +479,17 @@ from durations `.uf/test-timings.json` recorded, and fans them across worker
 processes on the project's Capability JS Host. Each worker takes one file at a
 time — two files sharing a process share globals, and a suite that passes alone
 but fails beside another is the worst failure a runner can produce — imports it
-through the host's Flow loader, and streams one JSON line per case back.
+through the host's Flow loader, and streams one JSON line per case back. Each
+request is numbered and each line says which request it came from, because "one
+file at a time" bounds what a worker *starts* and not what a finished file left
+running.
 
 | Concern | Decision |
 | --- | --- |
 | A test that never settles | Raced against a per-case budget in the worker, *and* a wall-clock deadline in Rust that kills the process, because a wedged event loop would never run its own timer |
 | A module that throws while importing | A file result, not a test result: there were no tests to fail, and "0 tests" for a module that could not load would be a lie |
 | A worker that dies | The file is named with what went wrong and the run continues on a fresh worker |
+| An event from a file that has already finished | Dropped, with a note naming the file it came from. The worker stamps every event with the generation of the request whose asynchronous context produced it, so a `setTimeout` a file left behind is not read as the next file's — and the file it does belong to has already been reported, because the report is streamed |
 | A retry | Re-runs the *file* with a filter naming one case, so the retry sees the module state a first run would |
 | `.only` | Decided per file after the module body has run, because a file's `.only` can appear after the tests it excludes |
 | A failing assertion's position | The matcher's own message, and the line from the stack — which points at the Flow source because the transform emits a source map and the worker runs with it enabled |

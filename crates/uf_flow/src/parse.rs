@@ -17,11 +17,20 @@
 //! whole project sees one refused file rather than its own crash. Syntax errors
 //! are deliberately not failures: the port recovers and reports them, and they
 //! ride along as [`Parsed::diagnostics`].
+//!
+//! # Freeing the tree
+//!
+//! The ceilings bound what the *parser* recurses through. Freeing the tree
+//! recurses too, once per level, and it happens wherever the [`Parsed`] is
+//! held rather than where it was built — so a caller who parsed on a large
+//! stack and then carried the result back to an ordinary one aborted the
+//! process on a source every ceiling here accepts. [`Parsed`]'s [`Drop`]
+//! owns that now; see the type for why it is the type's job and not the
+//! caller's.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use flow_parser::ParseOptions;
-use flow_parser::parse_error::ParseError;
 use thiserror::Error;
 
 pub use flow_parser::ast;
@@ -73,15 +82,17 @@ pub const MAX_NESTING_DEPTH: usize = 300;
 /// chain of 40,000 there; it gives out somewhere before 100,000. So this is
 /// four times under the measured floor of the path that ships.
 ///
-/// # A caller that holds the tree on a small stack
+/// # A caller that held the tree on a small stack
 ///
-/// Freeing the tree recurses once per level, and it happens on whatever
-/// thread holds the [`Parsed`]. A 2 MiB thread — an unoptimized test thread
-/// is one — overflows on a chain of about 4,000, which is *below* this
-/// ceiling. That is a hazard of the AST's `Drop` rather than of the ceiling,
-/// it applies equally to bracket nesting, and it is filed separately; a
-/// caller that parses deep sources should do it on a thread sized like the
-/// one [`parse`] uses. The tests below do.
+/// Freeing the tree recurses once per level too, and it used to happen on
+/// whatever thread held the [`Parsed`]. A 2 MiB thread — an unoptimized test
+/// thread is one — frees about 6,900 levels, which is *below* this ceiling,
+/// so a caller that parsed where there was room and carried the result back
+/// aborted. Lowering this number was not the answer: the corpus above
+/// already reaches 1,958, so there is no room between what real code writes
+/// and what a 2 MiB stack frees. [`Parsed`]'s [`Drop`] is the answer, and
+/// this ceiling is still the one the parser and the printer were measured
+/// against. See ubugeeei-prod/uf#155.
 pub const MAX_CHAIN_DEPTH: usize = 10_000;
 
 /// Stack a thread needs to run [`parse`] on any source under
@@ -96,6 +107,41 @@ pub const MAX_CHAIN_DEPTH: usize = 10_000;
 /// parses at the ceiling on such a thread, so the two constants cannot drift
 /// apart unnoticed.
 pub const PARSE_STACK_BYTES: usize = 128 * 1024 * 1024;
+
+/// Deepest tree [`Parsed`] frees on the thread that holds it.
+///
+/// Above this it goes to a thread of [`PARSE_STACK_BYTES`] instead, which is
+/// what keeps a caller on an ordinary stack from aborting on a tree it is
+/// merely letting go of. The number decides only where the free runs; it
+/// refuses nothing and it is not a ceiling.
+///
+/// **Measured.** Freeing costs about 300 bytes of stack per level in an
+/// unoptimized build — a 2 MiB thread, which is what a thread gets when
+/// nobody chooses otherwise, gave out between 6,906 and 6,925 levels across
+/// every shape tried (`a.f().f()…`, `1 + 1 + …`, `f()()…`, `a.b.b…`,
+/// `typeof typeof …`, `await await …`), and about 210 bytes per level
+/// optimized. So this is under a sixth of the measured floor of the slower
+/// build, roughly 300 KiB of the 2 MiB, and it leaves the rest of that stack
+/// to the caller — which matters, because a caller is never at the bottom of
+/// its own thread when it drops something.
+///
+/// **And above what anyone writes.** The 15,971 files of
+/// `tests/fixtures/git` reach 1,958, in CodeMirror's minified bundle. Of the
+/// 187 Flow sources this repository ships the deepest is 154, and of 2,504
+/// third-party modules under `node_modules` — React, Babel, Rolldown, Shiki
+/// and the rest, development builds included — the deepest is 759. None of
+/// the 2,691 is over this number, so on real input the comparison in
+/// [`Parsed::drop`] is all that ever runs and no thread is started at all.
+///
+/// **What it costs when it is crossed.** Freeing a tree of 1,025 levels took
+/// 111 µs against 67 µs in place, and one at [`MAX_CHAIN_DEPTH`] took
+/// 1.2 ms: a thread with this much stack reserved costs some tens of
+/// microseconds to start and join, once, against a file that takes
+/// milliseconds to parse. `uf_fmt` and `uf_doc` pay it on such a file even
+/// though their own threads had the room — the [`Parsed`] cannot know what
+/// stack it is standing on, and a way to tell it would be a way to tell it
+/// wrong.
+pub const MAX_DEPTH_FREED_IN_PLACE: usize = 1_024;
 
 /// Parse options aligned with the `uf` project defaults.
 ///
@@ -142,12 +188,103 @@ pub const PARSE_OPTIONS: ParseOptions = ParseOptions {
 /// Anything that rewrites source from the tree must refuse to when there are
 /// diagnostics, because a recovered tree is the parser's best guess and
 /// printing a guess loses code.
+///
+/// # Freeing it is this type's job, not the caller's
+///
+/// The port's types free themselves recursively, so letting a tree go costs
+/// stack in proportion to its depth — on whatever thread holds it, which is
+/// not the one that built it. [`parse`] wants [`PARSE_STACK_BYTES`] and says
+/// so; a caller who obliges, takes the [`Parsed`] home and drops it on an
+/// ordinary 2 MiB thread aborts there, on a source under every ceiling this
+/// module declares, with nothing to catch. That is ubugeeei-prod/uf#155.
+///
+/// Documenting the requirement instead — "hold a `Parsed` only on a big
+/// stack" — was the other candidate, and it was rejected for what it does
+/// not cover. `uf_fmt`, `uf_doc` and `uf_check` already run on their own
+/// large stacks, so a rule would have cost nothing today and been enforced
+/// by a test per crate; but the rule only binds the callers someone
+/// remembers to write a test for, `parse` is public and its next caller is
+/// not in this repository, and the obligation is invisible at the point it
+/// is broken — a `Parsed` moved into a channel, a `Vec`, or a `catch_unwind`
+/// boundary changes threads without anybody writing down that it did. A
+/// caller can decline to walk a tree; nobody can decline to free one, so the
+/// unavoidable half belongs to the type.
+///
+/// Reading it is still the caller's own recursion on the caller's own stack,
+/// and [`parse`] still documents the stack that needs. That half is a
+/// choice, and a choice can be documented.
 #[derive(Debug, Clone)]
 pub struct Parsed {
     /// The syntax tree, in the port's own types.
     pub program: ast::Program<Loc, Loc>,
     /// Syntax errors in source order; empty for a clean parse.
     pub diagnostics: Vec<ParseDiagnostic>,
+    /// How deeply the source nested, by whichever of [`Depths`]' two
+    /// measures is larger.
+    ///
+    /// Kept rather than recomputed: [`parse`] has already scanned the source
+    /// to decide the ceilings, so this costs nothing, and by the time
+    /// [`Parsed::drop`] runs the source it came from is long gone.
+    depth: usize,
+}
+
+impl Drop for Parsed {
+    /// Free a deep tree on a thread with room for it.
+    ///
+    /// # The three things it must not do
+    ///
+    /// **Leak a thread per parse.** The worker is joined here, so it is gone
+    /// before `drop` returns and the memory is really back by then —
+    /// `drop(parsed)` means what it says, and a caller freeing trees in a
+    /// loop accumulates neither threads nor bytes. Spawning and *not*
+    /// joining was the first shape written and it is wrong twice over: a
+    /// thread per parse, and a `Parsed` that has not actually been freed
+    /// when the caller's next line runs.
+    ///
+    /// **Cost the ordinary file anything.** Everything at or under
+    /// [`MAX_DEPTH_FREED_IN_PLACE`] — which is everything a person writes —
+    /// takes the early return below: one comparison against a number
+    /// [`parse`] had already computed, and no thread at all.
+    ///
+    /// **Give up during a panic.** `Drop` runs while unwinding too, so the
+    /// worker's result is deliberately dropped rather than unwrapped: a
+    /// panic raised here would abort a process that is already handling one.
+    fn drop(&mut self) {
+        if self.depth <= MAX_DEPTH_FREED_IN_PLACE {
+            return;
+        }
+
+        // Only the statements nest. `loc`, the interpreter directive and the
+        // two comment lists are flat and cost nothing to free here, and
+        // taking the one recursive field means this does not have to name
+        // every member the port's `Program` has — one added upstream would
+        // otherwise have to be added here too, and `tools/upstream/sync.sh`
+        // is not somewhere that gets noticed. What is left behind is the
+        // empty slice, so the `Parsed` stays a whole value for the rest of
+        // its own drop.
+        let statements = std::mem::take(&mut self.program.statements);
+
+        // Walking the tree with an explicit worklist and freeing it
+        // bottom-up needs no thread at all, and was the first answer tried.
+        // It is the wrong one: an iterative free has to know the shape of
+        // every node the port declares, which is a second definition of Flow
+        // syntax living in `uf` — the drift this crate exists to prevent —
+        // and it would go quietly out of date on the next upstream sync,
+        // with a stack overflow as the symptom.
+        let Ok(worker) = std::thread::Builder::new()
+            .name("uf-flow-free".into())
+            .stack_size(PARSE_STACK_BYTES)
+            .spawn(move || drop(statements))
+        else {
+            // The thread would not start, which means the process is out of
+            // memory or out of thread handles. `statements` went down with
+            // the closure, on this stack, which is the overflow this exists
+            // to prevent — there is nowhere else to put it, and a process
+            // that cannot start a thread is failing regardless.
+            return;
+        };
+        let _ = worker.join();
+    }
 }
 
 impl Parsed {
@@ -166,6 +303,18 @@ impl Parsed {
     #[must_use]
     pub fn comments(&self) -> &[ast::Comment<Loc>] {
         &self.program.all_comments
+    }
+
+    /// Whether [`Parsed::drop`] will start a thread to free this tree.
+    ///
+    /// Test-only, because which side of [`MAX_DEPTH_FREED_IN_PLACE`] a tree
+    /// falls on is not something a caller can act on: the answer is either
+    /// "freed" or "freed", and only the stack it happens on differs. It
+    /// exists so a test can assert that ordinary source takes the free path,
+    /// which is the half of the fix that an overflow cannot demonstrate.
+    #[cfg(test)]
+    fn freed_off_thread(&self) -> bool {
+        self.depth > MAX_DEPTH_FREED_IN_PLACE
     }
 }
 
@@ -216,14 +365,19 @@ pub enum ParseFailure {
 ///
 /// # Call this from a thread with [`PARSE_STACK_BYTES`] of stack
 ///
-/// Not because parsing needs it — this spawns its own thread for that — but
-/// because *everything the caller then does with the tree* needs it. Reading
-/// it recurses once per level, and so does freeing it, and the free happens
-/// wherever the [`Parsed`] is held. A main thread's 8 MiB is not enough for a
-/// source at [`MAX_CHAIN_DEPTH`], which is inside every limit here.
+/// The port is recursive descent and its frames are large, so parsing a
+/// source at [`MAX_NESTING_DEPTH`] needs the room; this runs on the caller's
+/// thread and does not find that room for itself. So does any recursive walk
+/// the caller then does over the tree, which is the more easily forgotten
+/// half — a main thread's 8 MiB is not enough to read a source at
+/// [`MAX_CHAIN_DEPTH`], which is inside every limit here.
 ///
-/// `uf_fmt` and `uf_doc` both do this. See ubugeeei-prod/uf#155 for the
-/// structural fix that would make it unnecessary.
+/// *Freeing* the tree is the exception, and it needs nothing from the
+/// caller: [`Parsed`] takes a deep one to a thread of this size itself. See
+/// that type for why the free is the only half that could be taken away from
+/// the caller, and ubugeeei-prod/uf#155 for what it cost when it was not.
+///
+/// `uf_fmt` and `uf_doc` both give the parser this stack.
 ///
 /// # Errors
 ///
@@ -261,16 +415,14 @@ pub fn parse(source: &str) -> Result<Parsed, ParseFailure> {
 
     Ok(Parsed {
         program,
-        diagnostics: errors.iter().map(diagnostic_from_error).collect(),
+        diagnostics: errors
+            .iter()
+            .map(|error| crate::diagnostic_from_error(source, error))
+            .collect(),
+        // The larger of the two measures, because either one of them is a
+        // level the tree nests and so a frame the free recurses through.
+        depth: depths.brackets.max(depths.chain),
     })
-}
-
-fn diagnostic_from_error((loc, error): &(Loc, ParseError)) -> ParseDiagnostic {
-    ParseDiagnostic {
-        message: error.to_string(),
-        line: u32::try_from(loc.start.line).ok(),
-        column: u32::try_from(loc.start.column).ok(),
-    }
 }
 
 /// What the depth scanner is inside: JavaScript, with the number of `{`
@@ -918,11 +1070,9 @@ const y = (x: any) as const;
 
     #[test]
     fn a_chain_at_the_ceiling_still_parses() {
-        // On a thread the size `parse` uses. The tree is freed where it is
-        // held, and freeing recurses once per level, so a default test
-        // thread's 2 MiB is not enough for a chain this deep — which is a
-        // property of the AST's `Drop` and not of the ceiling. See the note
-        // on `MAX_CHAIN_DEPTH`.
+        // On a thread the size `parse` documents: the parser recurses once
+        // per level and its frames are large. Freeing the tree needs no such
+        // arrangement — that is `Parsed`'s own `Drop`, and the tests below.
         std::thread::Builder::new()
             .stack_size(PARSE_STACK_BYTES)
             .spawn(|| {
@@ -933,5 +1083,110 @@ const y = (x: any) as const;
             .expect("spawns")
             .join()
             .expect("no overflow at the ceiling");
+    }
+
+    /// The name of the child arm of
+    /// [`a_tree_at_the_ceilings_frees_on_an_ordinary_thread`], as libtest
+    /// spells it. A typo here would filter every test out and leave a child
+    /// that exits 0 having run nothing, so the parent checks the count too.
+    const DEEP_DROP_CHILD: &str = "parse::tests::frees_a_tree_at_the_ceilings_here_and_now";
+
+    /// A `Parsed` at both ceilings, freed on a thread that has no room to
+    /// recurse that far — ubugeeei-prod/uf#155.
+    ///
+    /// # Why this runs in a child process
+    ///
+    /// A stack overflow is not a panic. It is a guard-page fault the runtime
+    /// turns into `fatal runtime error: stack overflow, aborting`, and it
+    /// takes the whole process with it — `catch_unwind` does not see it and
+    /// neither does `JoinHandle::join`, so a thread cannot contain it either.
+    /// The only boundary that survives one is a process boundary. So this
+    /// re-runs the test binary with the child arm below selected by name and
+    /// reads its exit status: before `Parsed`'s `Drop` existed the child died
+    /// of `SIGABRT` (134) with that message on stderr, and now it exits 0.
+    #[test]
+    fn a_tree_at_the_ceilings_frees_on_an_ordinary_thread() {
+        let binary = std::env::current_exe().expect("the test binary's own path");
+        let child = std::process::Command::new(&binary)
+            .args(["--exact", "--ignored", "--nocapture", DEEP_DROP_CHILD])
+            .output()
+            .expect("runs the test binary again");
+
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(
+            child.status.success(),
+            "freeing a tree at the ceilings killed the child ({}):\n{}\n{}",
+            child.status,
+            stdout,
+            String::from_utf8_lossy(&child.stderr),
+        );
+        // An exit status of 0 also describes a run that matched no test at
+        // all, which is what a renamed child arm would produce.
+        assert!(
+            stdout.contains("1 passed"),
+            "the child ran no test; is {DEEP_DROP_CHILD} still the child arm's name?\n{stdout}",
+        );
+    }
+
+    /// The child arm. Ignored so that only its parent runs it, and only in
+    /// the process its parent starts for it.
+    #[test]
+    #[ignore = "aborts the process before the fix; run by its parent test"]
+    fn frees_a_tree_at_the_ceilings_here_and_now() {
+        for source in [
+            // At `MAX_CHAIN_DEPTH`: one `=` and 9,999 `+`.
+            format!("x = {};", vec!["1"; MAX_CHAIN_DEPTH].join(" + ")),
+            // At `MAX_NESTING_DEPTH`, in the shape that costs the parser the
+            // most per level.
+            format!(
+                "x = {}1{};\n",
+                "{a:".repeat(MAX_NESTING_DEPTH),
+                "}".repeat(MAX_NESTING_DEPTH)
+            ),
+        ] {
+            // Built where the parser has the room it asks for...
+            let parsed = std::thread::Builder::new()
+                .stack_size(PARSE_STACK_BYTES)
+                .spawn(move || parse(&source).expect("parses"))
+                .expect("spawns")
+                .join()
+                .expect("parses at the ceilings");
+
+            // ...and freed where it does not: 2 MiB, which is what a thread
+            // gets when nobody chooses, and what the reproduction on the
+            // issue used.
+            std::thread::Builder::new()
+                .stack_size(2 * 1024 * 1024)
+                .spawn(move || drop(parsed))
+                .expect("spawns")
+                .join()
+                .expect("frees on an ordinary stack");
+        }
+    }
+
+    /// The other half of the fix, and the half an overflow cannot show: that
+    /// ordinary source does *not* pay for any of this.
+    #[test]
+    fn source_anybody_writes_is_freed_where_it_lies() {
+        for source in [
+            "// @flow\nconst x = a.b.c().d(e ?? f);\n",
+            "component Page() renders React.Node { return <ul>{xs.map((x) => <li>{x}</li>)}</ul>; }\n",
+            &"const value = { a: { b: [1, 2, 3] } };\n".repeat(500),
+        ] {
+            let parsed = parse(source).expect("parses");
+            assert!(
+                !parsed.freed_off_thread(),
+                "{} deep, over the {MAX_DEPTH_FREED_IN_PLACE} that is freed in place",
+                parsed.depth,
+            );
+        }
+
+        // And that the threshold is a threshold: one level past it goes to a
+        // thread, so the comparison cannot quietly stop deciding anything.
+        let deep = format!(
+            "x = {};",
+            vec!["1"; MAX_DEPTH_FREED_IN_PLACE + 1].join(" + ")
+        );
+        assert!(parse(&deep).expect("parses").freed_off_thread());
     }
 }

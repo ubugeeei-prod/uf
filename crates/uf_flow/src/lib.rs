@@ -7,14 +7,18 @@
 //! grammar uf documents, which is what happened while a QuickJS-hosted build of
 //! Flow's JavaScript parser stood in for it on stable toolchains.
 //!
-//! Two things sit beside that boundary, and both are here rather than in the
-//! crates that use them because this is the crate that owns Flow syntax:
+//! Three things sit beside that boundary, and all of them are here rather than
+//! in the crates that use them because this is the crate that owns Flow syntax:
 //!
 //! * [`scan`] is the byte-level token scanner — one scanner for uf source, used
 //!   by the eraser below and by anything else that rewrites a module;
 //! * [`strip`] erases Flow types, which is what turns a `// @flow` module into
-//!   the JavaScript a browser runs.
+//!   the JavaScript a browser runs;
+//! * [`explain`] is what uf says about the one failure the parser describes
+//!   badly, because it is describing a construct it does not implement rather
+//!   than a mistake.
 
+pub mod explain;
 pub mod parse;
 pub mod scan;
 pub mod strip;
@@ -23,11 +27,29 @@ mod upstream;
 use thiserror::Error;
 
 pub use parse::{
-    Depths, Loc, MAX_CHAIN_DEPTH, MAX_NESTING_DEPTH, MAX_PARSE_BYTES, PARSE_OPTIONS,
-    PARSE_STACK_BYTES, ParseFailure, Parsed, Position, ast, chain_depth, depths, nesting_depth,
-    parse,
+    Depths, Loc, MAX_CHAIN_DEPTH, MAX_DEPTH_FREED_IN_PLACE, MAX_NESTING_DEPTH, MAX_PARSE_BYTES,
+    PARSE_OPTIONS, PARSE_STACK_BYTES, ParseFailure, Parsed, Position, ast, chain_depth, depths,
+    nesting_depth, parse,
 };
 pub use strip::{MAX_STRIP_BYTES, StripError, Stripped, strip_types};
+
+/// One parser error, as uf reports it.
+///
+/// The one place a `(Loc, ParseError)` becomes a diagnostic, because it is also
+/// the place [`explain`] gets its chance: an error uf can describe better than
+/// the parser did must be described better by every command, and three
+/// conversions would have been three chances to forget one.
+fn diagnostic_from_error(
+    source: &str,
+    (loc, error): &(flow_parser::loc::Loc, flow_parser::parse_error::ParseError),
+) -> ParseDiagnostic {
+    let (message, position) = explain::explained(source, loc, error.to_string());
+    ParseDiagnostic {
+        message,
+        line: u32::try_from(position.line).ok(),
+        column: u32::try_from(position.column).ok(),
+    }
+}
 
 /// A single syntax diagnostic reported by the active Flow parser.
 #[derive(Debug, Clone, PartialEq, Eq)]
