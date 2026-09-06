@@ -13,6 +13,8 @@
 // The whole surface is importable from here, so a test file has one import.
 
 export type { Body as TestBody, Case, Modifier, Suite, TestOptions } from "./internal/registry.js";
+export type { ModuleFactory, ModuleNamespace } from "./internal/modules.js";
+export type { Uft } from "./internal/namespace.js";
 export type { Outcome, Result, RunOptions } from "./internal/run.js";
 export type { Site } from "./internal/frames.js";
 export type { SpyCall, SpyResult } from "./internal/spy.js";
