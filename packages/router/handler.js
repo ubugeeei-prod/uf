@@ -69,6 +69,8 @@
 // `after()` promises. A handler that streams its body has not sent a byte at
 // that point. See ubugeeei-prod/uf#389.
 
+import { noteRoute } from "@uniflowed/server/host";
+
 import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
 
@@ -138,6 +140,12 @@ export function createDispatcher(options: {|
       if (params == null) {
         continue;
       }
+
+      // Before the module is loaded and before the method is checked, because
+      // this is the answer to "what was this request" and a `405` is as much
+      // this route's answer as a `200` is. A log of `/api/users/:id 405` is
+      // actionable; the same line with the path in it is a million lines.
+      noteRoute(record.path);
 
       const module = await record.load();
       const method = request.method.toUpperCase();
