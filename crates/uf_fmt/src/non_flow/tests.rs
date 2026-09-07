@@ -427,3 +427,79 @@ fn stub_formatter(root: &Utf8Path) {
     }
     panic!("the stub was still `Text file busy` after fifty attempts");
 }
+
+/// ubugeeei-prod/uf#485: a Tailwind stylesheet stopped the whole stylesheet
+/// half of `uf fmt`, and nothing uf accepts could tell biome how to parse it.
+///
+/// The project's arguments come last, so they reach an option uf has never
+/// heard of — and win over uf's own defaults, because a default is a
+/// convenience (red line 9) and this is the project saying otherwise.
+#[test]
+fn the_projects_own_arguments_are_passed_through_last() {
+    let mut config = FmtConfig::default();
+    config.non_flow.arguments = vec![
+        "--css-parse-tailwind-directives=true".into(),
+        "--line-width=120".into(),
+    ];
+
+    let invocation = invocation(NonFlowFormatter::Biome, true, &config).expect("an invocation");
+
+    let arguments: Vec<&str> = invocation
+        .arguments
+        .iter()
+        .map(CompactString::as_str)
+        .collect();
+    assert_eq!(
+        arguments.last(),
+        Some(&"--line-width=120"),
+        "the project's arguments have to be last to win: {arguments:?}"
+    );
+    assert!(
+        arguments.contains(&"--css-parse-tailwind-directives=true"),
+        "{arguments:?}"
+    );
+    // And uf's own are still there, in front, for a project that says nothing.
+    assert!(arguments.contains(&"--indent-style=space"), "{arguments:?}");
+}
+
+#[test]
+fn a_project_that_says_nothing_gets_exactly_what_it_did_before() {
+    let config = FmtConfig::default();
+
+    let invocation = invocation(NonFlowFormatter::Biome, true, &config).expect("an invocation");
+
+    assert!(config.non_flow.arguments.is_empty());
+    assert_eq!(
+        invocation.arguments.last().map(CompactString::as_str),
+        Some("--line-width=100")
+    );
+}
+
+/// The one argument a project may not pass, because `uf fmt --check` changing
+/// files is the failure nobody sees: a green CI job and a rewritten tree.
+#[test]
+fn an_argument_that_turns_a_check_into_a_write_is_refused() {
+    for argument in [
+        "--write",
+        "-w",
+        "--fix",
+        "--unsafe",
+        "--check",
+        "--write=true",
+    ] {
+        assert!(
+            uf_config::forbidden_formatter_argument(argument),
+            "{argument} was allowed"
+        );
+    }
+    for argument in [
+        "--css-parse-tailwind-directives=true",
+        "--line-width=120",
+        "--writer",
+    ] {
+        assert!(
+            !uf_config::forbidden_formatter_argument(argument),
+            "{argument} was refused"
+        );
+    }
+}

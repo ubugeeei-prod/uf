@@ -1,0 +1,249 @@
+---
+title: "Internationalisation · uf"
+description: "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops."
+---
+
+<p className="eyebrow">Reference</p>
+
+# @uniflowed/i18n
+
+<div className="lede">
+Messages in MessageFormat 2, with their arguments checked at the call site. A
+message that takes a `count` cannot be formatted without one — not at run time,
+at build time. Plain Flow, no dependencies, and the locale data is the one your
+runtime already ships.
+</div>
+
+```js
+// @flow
+import { defineCatalogue, message, number, string } from "@uniflowed/i18n";
+
+const messages = {
+  greeting: message("Hello, {$name}!", { name: string }),
+  unread: message(
+    `.input {$count :number}
+.match $count
+0   {{No unread messages.}}
+one {{You have {$count} unread message.}}
+*   {{You have {$count} unread messages.}}`,
+    { count: number },
+  ),
+};
+
+const en = defineCatalogue("en-US", messages);
+
+en.t("greeting", { name: "Ada" }); // "Hello, Ada!"
+en.t("unread", { count: 0 }); // "No unread messages."
+en.t("unread", { count: 1 }); // "You have 1 unread message."
+en.t("unread", { count: 1200 }); // "You have 1,200 unread messages."
+```
+
+And the four lines that do not compile:
+
+```js
+en.t("unread", {}); // property count is missing
+en.t("unread", { count: "12" }); // string is incompatible with number
+en.t("unreadd", { count: 1 }); // property unreadd (did you mean unread?)
+en.t("greeting", { name: "Ada", count: 1 }); // count is extra
+```
+
+## Why the parameters are values
+
+Every i18n library types the key. Almost none types the arguments, and the
+reason is real rather than an oversight: reading `{ name: string }` off the
+*string* `"Hello, {$name}!"` needs the message parsed at the type level. Flow
+has no template-literal types, so the placeholders inside a string literal are
+not part of its type in any form a conditional type can reach.
+
+So a message declares its parameters beside its source, as values — `{ name:
+string }`, where `string` is an import from this package rather than the type
+keyword. `ParamArgs` maps that object to the argument type, `ArgsOf` reads it
+back out of the message, and `t` is generic in the key.
+
+Declaring them as values rather than as a type argument is what buys the
+second half. Because `message` is handed both the source *and* the parameters
+at run time, it can compare them:
+
+```js
+message("Hello, {$nom}!", { name: string });
+// MessageContractError: reads $nom, which is not declared in its parameters ($name)
+
+message("Hello!", { name: string });
+// MessageContractError: declares $name, which the message never reads
+
+message("Sorted by {$at :date}", { at: number });
+// MessageContractError: applies :date to $at, which is declared number
+```
+
+None of those three is a type error in any checker. They are facts about a
+string and facts about a type that only meet in one place, and this is that
+place. A type argument — `message<{ name: string }>(…)` — would have been less
+to write and would have caught none of them, because a type argument is erased
+before anything could look at it.
+
+## What is checked, and where
+
+| | |
+| --- | --- |
+| a key that does not exist | Flow, at the call |
+| a missing or misspelled argument | Flow, at the call |
+| an argument of the wrong type | Flow, at the call |
+| a message reading a parameter nobody declared | `message`, where it is written |
+| a parameter the message never reads | `message`, where it is written |
+| a parameter annotated as the wrong kind | `message`, where it is written |
+| a translation that lost or invented a placeholder | `translate`, at start-up |
+| a translation key the source locale does not have | `translate`, at start-up |
+| a key no locale has translated | reported as `untranslated`, never a throw |
+
+The four parameter kinds are `string`, `number`, `boolean` and `date`, and each
+constrains which MF2 functions may be applied to it: `number` takes `:number`
+and `:integer`, `date` takes `:date`, `:time` and `:datetime`, `string` and
+`boolean` take `:string`.
+
+`t("cartEmpty", {})` takes an empty object rather than nothing, and that is
+deliberate. Flow cannot make one parameter optional as a function of another
+parameter's type, so the choice is between an argument that is always required
+and one that is always optional — and the second gives up the whole point,
+because `t("greeting")` would then compile too.
+
+## The MessageFormat 2 subset
+
+A partial implementation stated plainly. Everything refused is refused where the
+message is written, with an error naming itself, rather than accepted and
+quietly ignored.
+
+**Implemented**
+
+- Simple messages, quoted patterns (`{{…}}`), and the four escapes: `\\`,
+  `\{`, `\}`, `\|`.
+- Variable placeholders `{$name}` and literal placeholders `{42}`,
+  `{|two words|}`.
+- The whole MF2 default function registry and only it — `:string`, `:number`,
+  `:integer`, `:date`, `:time`, `:datetime` — with their options, and with
+  option values that may themselves be variables:
+  `{$n :number minimumFractionDigits=$places}`.
+- `.input` and `.local` declarations, including an annotation put on a name by
+  a declaration and inherited by every later use of it.
+- `.match` with any number of selectors, literal and `*` keys, exact numeric
+  keys preferred over plural categories, and MF2's variant sort — so a
+  two-selector matcher resolves ties the way the specification says rather than
+  the way a single scan would.
+
+**Not implemented**
+
+| | Why |
+| --- | --- |
+| Markup, `{#bold}…{/bold}` | `t` returns a string. Dropping the tags silently loses emphasis a translator put in; inlining HTML puts unescaped translator input into a page. A parts-returning API is where this belongs |
+| Attributes, `{$x @unit}` | The specification says they do not affect formatting. The only thing an attribute is for is a tool that reads it, and uf has none |
+| `:currency`, `:unit`, `:math` | The draft registry, not the required one. The line is "all of the required set, none of the draft set" so that a function uf accepts is one every conforming implementation must also accept |
+| Reserved sigils, `{$x !foo}` | Refusing them keeps a message that parses here from meaning something else under a conforming implementation later |
+| Bidi isolation by default | The specification allows `bidiIsolation: none` and uf defaults to it: output goes into React children where the DOM already isolates, and two invisible code points per placeholder make every string assertion a puzzle. `defineCatalogue(…, { bidiIsolation: true })` turns it on |
+
+A message that begins with `.` is a complex message and one that does not is
+simple — MF2 decides on the first character alone, and uf does not trim. So a
+multi-line message starts with `.input` or `.match` hard against the backtick.
+
+## Why not `Intl.MessageFormat`
+
+Because it does not exist. It is a TC39 proposal with no implementation in any
+shipping browser or runtime, so building on it means building on nothing —
+and feature-detecting it with a fallback would be worse: two code paths
+deciding what a user reads, one of which has never run, and a catalogue that
+renders differently in Safari and in Node.
+
+So the algorithm is uf's and the data is `Intl`'s. Plural categories come from
+`Intl.PluralRules`, numerals from `Intl.NumberFormat`, dates from
+`Intl.DateTimeFormat`. The selection algorithm is a few hundred lines; CLDR's
+plural rules and number formats for the locales a browser already carries are
+megabytes, and a second, staler copy of them is exactly what a bundle does not
+need.
+
+One consequence worth knowing: a `.match` on a number in a runtime with no
+`Intl.PluralRules` — a small-icu Node build — raises rather than guessing
+English, because a message that silently pluralises Polish as if it were
+English is a bug that reaches production looking like a translation mistake.
+
+## Translations, and a page that ships one locale
+
+A translation is plain strings over the same keys. It does not redeclare the
+parameters, because those belong to the message rather than to the language.
+
+```js
+// ja.js
+export default {
+  greeting: "こんにちは、{$name}さん!",
+};
+```
+
+```js
+import { defineLocales, negotiate, parseAcceptLanguage } from "@uniflowed/i18n";
+
+const locales = defineLocales(en, {
+  ja: () => import("./ja.js").then((module) => module.default),
+  fr: () => import("./fr.js").then((module) => module.default),
+});
+
+const wanted = negotiate(
+  parseAcceptLanguage(request.headers.get("accept-language") ?? ""),
+  locales.available,
+  "en-US",
+);
+const { t } = await locales.load(wanted);
+```
+
+The loaders are thunks so a bundler splits them: only the locale negotiation
+chose is fetched, and a locale is loaded at most once however many callers ask
+for it at the same moment.
+
+A translation may leave keys out — that is the ordinary state of a growing
+application — and the ones it left out fall back to the source message and are
+listed on the catalogue as `untranslated`. A project that claims to support a
+locale can assert that list is empty in a test, which is the same fact checked
+by whoever wants it checked rather than by this package.
+
+What a translation may *not* do is lose or invent a placeholder. `translate`
+holds each one against the source message's parameters when the catalogue is
+built, so a translator who drops a `{$count}` fails at start-up with the key
+named, rather than rendering a sentence with the number missing on one page in
+one language.
+
+## Locale negotiation
+
+`negotiate` is RFC 4647 Lookup: the requested tag is truncated one subtag at a
+time — `en-Latn-GB-oed`, `en-Latn-GB`, `en-Latn`, `en` — and the first
+truncation naming something you have wins. A single-character subtag is skipped
+rather than tried, because `zh-x` is not a language tag.
+
+There is one deliberate departure, and it runs last so it can never outrank a
+real match: after every requested tag has failed, a pass matches on the primary
+language subtag alone. Lookup only ever shortens the *request*, so a reader
+asking for `en` does not match a catalogue that only has `en-US` — and the
+alternative for that reader is not British English, it is whatever the fallback
+locale happens to be.
+
+`parseAcceptLanguage` orders by quality and then by position, so
+`Accept-Language: en, fr` prefers English. A `q=0` entry is dropped rather than
+ranked last: RFC 9110 gives it the specific meaning "not acceptable".
+
+## Where this stops
+
+**The catalogue is not extracted at build time.** `uf build` does not walk a
+project for `message(…)` calls, so there is no `messages.json` for a
+translation vendor and no build-time report of a key no locale translates. The
+half that belongs in the package — a parse complete enough to generate from,
+and `messageUsage` to read it — is there. The half that walks a repository's
+sources is Rust's, under the same rule that puts the formatter and the checker
+there.
+
+**There is no lint rule linking a message to its parameters.** The run-time
+check in `message` catches the mismatch the first time the module loads, which
+in practice is the first test or the first page render. A `uf lint` rule reading
+the string literal and the parameter object together would catch it in the
+editor, and uf already parses Flow in Rust, so it is a rule rather than a
+research problem.
+
+**There is no hook and no provider**, deliberately. A catalogue is a value and
+`t` is a function on it. A `useTranslation()` reading one out of context would
+put a re-render between a component and a string that does not change; an
+application that wants the locale in context already has `React.createContext`,
+and it should hold the catalogue rather than a hook this package invented.

@@ -40,6 +40,7 @@ upstream-typecheck = [
 ]
 
 [dependencies]
+uf_infra = { path = "../uf_infra" }
 compact_str.workspace = true
 serde.workspace = true
 serde_json.workspace = true

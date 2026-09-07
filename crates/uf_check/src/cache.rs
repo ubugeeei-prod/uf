@@ -72,9 +72,15 @@
 //! and required to name the path its key was built from. An entry that fails
 //! any of that is a miss, which costs one file's inference and cannot be wrong.
 //!
-//! Nothing evicts entries; a source edit orphans one, and a rebuild orphans a
-//! generation, exactly as `.uf/cache/transform` does. That needs a policy
-//! rather than a patch, and #218 already holds the question for both caches.
+//! A source edit orphans an entry and a rebuild of `uf` orphans a whole
+//! generation, exactly as `.uf/cache/transform` does — about 330 records and
+//! 2 MB per build on this repository, and for a long time nothing ever took
+//! one back. [`CheckCache::sweep`] is the policy that bounds that, and it is
+//! deliberately the *same* policy the other two caches use: see
+//! [`uf_infra::cache`] for the argument, including why "keep only the current
+//! compiler identity" is the tempting option and is wrong for the reason
+//! `tests::cache::a_rebuilt_uf_is_not_served_what_the_previous_one_decided`
+//! exists. See #218.
 
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -273,6 +279,24 @@ impl CheckCache {
     /// The compiler identity every key under this cache carries.
     pub(crate) fn identity(&self) -> &str {
         &self.identity
+    }
+
+    /// Bring the directory back under its byte bound, coldest entries first.
+    ///
+    /// Separate from [`CheckCache::open`] on purpose: opening is what a caller
+    /// does to *read*, and it is documented as touching no disk. Removing
+    /// files is not something that should happen because somebody constructed
+    /// a value, so a caller that is about to add to the cache asks for this in
+    /// as many words. `uf check` is that caller and does it once per run,
+    /// which is where the cost — one `read_dir` and one `stat` per entry, and
+    /// no sort at all while the directory is under the cap — is invisible
+    /// beside inference.
+    ///
+    /// The bound and the eviction order are [`uf_infra::cache`]'s, shared with
+    /// `.uf/cache/task` and `.uf/cache/transform` so that three caches with
+    /// the same problem do not grow three answers to it.
+    pub fn sweep(&self) {
+        uf_infra::cache::sweep(&self.directory, uf_infra::cache::CacheBound::default());
     }
 
     /// The record filed under `key`, if there is a readable one about `path`.

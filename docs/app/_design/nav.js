@@ -106,6 +106,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Resized, re-encoded and self-hosted at build time — and what that stops short of.",
       },
       {
+        href: "/guide/vitals",
+        title: "Web vitals",
+        blurb: "Five numbers the browser already has, and nothing that leaves the machine.",
+      },
+      {
         href: "/guide/ui",
         title: "Headless components",
         blurb: "Seven primitives: the keyboard, the ARIA, and no styles at all.",
@@ -149,6 +154,17 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/cache",
         title: "Caching",
         blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
+      },
+      {
+        href: "/guide/auth",
+        title: "Signing in",
+        blurb:
+          "A contract rather than a provider: PKCE, a single-use state, and a store you replace.",
+      },
+      {
+        href: "/guide/logging",
+        title: "Logging",
+        blurb: "A structured logger, and a request id readable from inside a render.",
       },
       {
         href: "/guide/testing",
@@ -196,9 +212,20 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "The headless primitives, their parts, and the keys each one owns.",
       },
       {
+        href: "/reference/hooks",
+        title: "Browser hooks",
+        blurb:
+          "What each one renders before hydration, and how the ones with no server answer say so.",
+      },
+      {
         href: "/reference/effect",
         title: "Effects",
         blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
+      },
+      {
+        href: "/reference/i18n",
+        title: "Internationalisation",
+        blurb: "MessageFormat 2 with typed arguments, and the subset uf implements.",
       },
     ],
   },

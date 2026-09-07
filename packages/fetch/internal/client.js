@@ -25,6 +25,14 @@ export type FetchFailure =
       readonly status: number,
       readonly statusText: string,
       readonly response: Response,
+      /**
+       * The method that was sent.
+       *
+       * On the failure rather than only on the request, because a `405` means
+       * something different depending on it — see [`describe`], and the
+       * `QUERY` section of `@uniflowed/router/handler`.
+       */
+      readonly method: string,
     |}
   | {| readonly kind: "network", readonly cause: mixed |}
   | {| readonly kind: "timeout", readonly millis: number |}
@@ -64,9 +72,26 @@ export class FetchError extends Error {
   }
 }
 
+/**
+ * The message, which for one case says more than the status line does.
+ *
+ * A `405` or a `501` in answer to a `QUERY` is almost never the application:
+ * the method is safe, idempotent and eighteen months old, and the things that
+ * refuse it are proxies, CDNs and WAFs with a list of verbs — which answer
+ * *instead of* the origin, so the request never arrives and the failure looks
+ * exactly like a route that does not exist. Saying so here is the difference
+ * between an afternoon and a status code, and it is the reason `method` is on
+ * the failure at all.
+ */
 function describe(url: string, failure: FetchFailure): string {
   return match (failure.kind) {
-    "http" => `${url} answered ${failure.status} ${failure.statusText}`,
+    "http" =>
+      failure.method === "QUERY" && (failure.status === 405 || failure.status === 501)
+        ? `${url} answered ${failure.status} ${failure.statusText} to a QUERY. That is usually ` +
+          "not the application: a proxy, CDN or firewall with a list of methods answers before " +
+          "the request arrives. Check whether the origin saw it, and export POST beside QUERY " +
+          "if it did not."
+        : `${url} answered ${failure.status} ${failure.statusText}`,
     "network" => `${url} could not be reached: ${String(failure.cause)}`,
     "timeout" => `${url} did not answer within ${failure.millis}ms`,
     "parse" => `${url} did not return the body it said it would: ${String(failure.cause)}`,
@@ -101,7 +126,15 @@ export type FetchConfig = {|
 
 /** One request. */
 export type RequestOptions<T> = {|
-  readonly method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE",
+  /**
+   * The verb.
+   *
+   * `QUERY` is a `GET` with a body — safe, idempotent, and what a search too
+   * large for a URL has been faking with a `POST` for twenty years. It is
+   * retried like the other safe methods below, and a `405` or `501` in answer
+   * to one is reported as what it usually is; see [`describe`].
+   */
+  readonly method?: "GET" | "HEAD" | "QUERY" | "POST" | "PUT" | "PATCH" | "DELETE",
   /** Sent as JSON unless it is already a `BodyInit`. */
   readonly body?: mixed,
   readonly headers?: { readonly [string]: string },
@@ -123,8 +156,15 @@ export type FetchClient = {|
 
 const DEFAULTS = { timeout: 30_000, retries: 0, retryDelay: 200 };
 
-/** Methods that may be retried without asking whether they were applied. */
-const IDEMPOTENT = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
+/**
+ * Methods that may be retried without asking whether they were applied.
+ *
+ * `QUERY` is in it because it is defined as safe as well as idempotent: a
+ * request that only reads cannot have been half-applied, whatever the body
+ * carried. That is the whole reason the method exists rather than being a
+ * `POST` everyone agrees not to repeat.
+ */
+const IDEMPOTENT = new Set(["GET", "HEAD", "QUERY", "PUT", "DELETE", "OPTIONS"]);
 
 /**
  * A client with these defaults.
@@ -187,6 +227,7 @@ async function send(
         status: response.status,
         statusText: response.statusText,
         response,
+        method,
       });
     } catch (error) {
       failure =

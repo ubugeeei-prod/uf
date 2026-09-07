@@ -1802,6 +1802,92 @@ describe("Combobox: the active option never outlives the list", () => {
   });
 });
 
+describe("Combobox: option groups", () => {
+  // The same four claims `Select: option groups` makes, because they are the
+  // same two parts — and one more that only a combobox can get wrong. A select
+  // announces nothing about how many options there are; a combobox does, out of
+  // a live region, and a heading counted as a result tells a reader who typed
+  // two letters that five things matched when three did.
+  //
+  // Until ubugeeei-prod/uf#357 a group here was not a wrong shape, it was a
+  // type error: `Combobox.List` declared `renders* ComboboxOption`, so the
+  // markup could not be written at all.
+
+  component Example() {
+    return (
+      <Combobox.Root defaultOpen>
+        <Combobox.Label>Country</Combobox.Label>
+        <Combobox.Input />
+        <Combobox.List>
+          <Combobox.Group>
+            <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
+            <Combobox.Option value="FR">France</Combobox.Option>
+            <Combobox.Option value="DE">Germany</Combobox.Option>
+          </Combobox.Group>
+          <Combobox.Group>
+            <Combobox.GroupLabel>Asia</Combobox.GroupLabel>
+            <Combobox.Option value="JP">Japan</Combobox.Option>
+          </Combobox.Group>
+        </Combobox.List>
+        <Combobox.Status />
+      </Combobox.Root>
+    );
+  }
+
+  const cursor = (): string | void =>
+    document.getElementById(
+      screen.getByRole("combobox").getAttribute("aria-activedescendant") ?? "",
+    )?.textContent ?? undefined;
+
+  it("names a group after its label", () => {
+    render(<Example />);
+    const [europe, asia] = screen.getAllByRole("group");
+    expect(document.getElementById(europe.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Europe",
+    );
+    expect(document.getElementById(asia.getAttribute("aria-labelledby") ?? "")?.textContent).toBe(
+      "Asia",
+    );
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("claims no name when there is no label", () => {
+    render(
+      <Combobox.Root defaultOpen>
+        <Combobox.Input />
+        <Combobox.List>
+          <Combobox.Group>
+            <Combobox.Option value="FR">France</Combobox.Option>
+          </Combobox.Group>
+        </Combobox.List>
+      </Combobox.Root>,
+    );
+    // An `aria-labelledby` naming an id nothing has makes a screen reader
+    // announce nothing at all, which is worse than an unnamed group.
+    expect(screen.getByRole("group")).not.toHaveAttribute("aria-labelledby");
+  });
+
+  it("crosses group boundaries without ever landing on a heading", async () => {
+    render(<Example />);
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(cursor()).toBe("France");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    // Straight from the last option of one group to the first of the next,
+    // over the heading between them: `itemsOf` asks for `[role="option"]`
+    // whose nearest listbox is this list, and a group is not a listbox.
+    expect(cursor()).toBe("Japan");
+  });
+
+  it("counts the options in a grouped list and not the headings", () => {
+    render(<Example />);
+    // Three options under two headings. A count of five would be a live region
+    // telling a reader there are two more things here than they can choose.
+    expect(screen.getByRole("status").textContent).toBe("3 results available.");
+    expect(screen.getAllByRole("option").length).toBe(3);
+  });
+});
+
 describe("Select", () => {
   component Example(defaultValue?: string | null = null, disabledOption?: string) {
     return (
@@ -4148,9 +4234,20 @@ describe("Slider: a range is two sliders", () => {
 });
 
 describe("Resizable", () => {
-  component Example(defaultValue?: number = 50, min?: number = 0, withPrimary?: boolean = true) {
+  component Example(
+    defaultValue?: number = 50,
+    disabled?: boolean = false,
+    min?: number = 0,
+    withPrimary?: boolean = true,
+  ) {
     return (
-      <Resizable.PanelGroup defaultValue={defaultValue} min={min} step={10}>
+      <Resizable.PanelGroup
+        data-testid="group"
+        defaultValue={defaultValue}
+        disabled={disabled}
+        min={min}
+        step={10}
+      >
         <Resizable.Panel primary={withPrimary}>Files</Resizable.Panel>
         <Resizable.Handle label="Resize the file list" />
         <Resizable.Panel>Editor</Resizable.Panel>
@@ -4159,6 +4256,17 @@ describe("Resizable", () => {
   }
 
   const handle = (): HTMLElement => screen.getByRole("separator", { name: "Resize the file list" });
+
+  /**
+   * Give the group a box, because this DOM gives every element a zero one.
+   *
+   * Two hundred wide and a hundred tall, so a percentage of it is two pixels
+   * across and one down — round numbers in both orientations, which is what
+   * keeps the arithmetic in each test readable.
+   */
+  const measureGroup = (): void => {
+    measure(screen.getByTestId("group"), { height: 100, left: 0, top: 0, width: 200 });
+  };
 
   it("resizes from the keyboard", async () => {
     render(<Example />);
@@ -4235,6 +4343,130 @@ describe("Resizable", () => {
     // key away from every reader who uses one.
     expect(fireEvent.keyDown(screen.getByRole("separator"), { key: "ArrowRight" })).toBe(true);
     expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "60");
+  });
+
+  it("moves under a pointer, and only while the pointer is down", () => {
+    render(<Example />);
+    measureGroup();
+    const splitter = handle();
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 1 });
+    // Taking hold of the handle is not asking it to move. A splitter that also
+    // jumped by the offset between the pointer and its own centre would shift
+    // every time it was clicked.
+    expect(handle()).toHaveAttribute("aria-valuenow", "50");
+    fireEvent.pointerMove(splitter, { clientX: 150, clientY: 50, pointerId: 1 });
+    // And what a reader is told follows the drag, which is the half a
+    // pointer-only implementation leaves out.
+    expect(handle()).toHaveAttribute("aria-valuenow", "75");
+    fireEvent.pointerUp(splitter, { pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 20, clientY: 50, pointerId: 1 });
+    expect(handle()).toHaveAttribute("aria-valuenow", "75");
+  });
+
+  it("captures the pointer, so a drag that wanders off the handle keeps arriving", () => {
+    render(<Example />);
+    measureGroup();
+    const splitter = handle();
+    let captured = null;
+    (splitter as $FlowFixMe).setPointerCapture = (id: number) => {
+      captured = id;
+    };
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 7 });
+    // Every drag leaves a bar a few pixels wide. Without the capture the moves
+    // arrive at whatever the pointer wandered over and the splitter stops.
+    expect(captured).toBe(7);
+    // And the handle takes focus, because a reader who has just dragged it is
+    // the reader most likely to reach for an arrow key next.
+    expect(splitter).toHaveFocus();
+  });
+
+  it("holds a drag inside the range rather than mapping it across one", () => {
+    render(<Example min={20} />);
+    measureGroup();
+    const splitter = handle();
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 10, clientY: 50, pointerId: 1 });
+    // Five percent of the way along, and `min` is 20. A slider maps its
+    // pointer across `min`–`max`, which would answer 24 here; these two are
+    // bounds on how far the pane may be dragged rather than the ends of a
+    // scale, so the value is the position clamped and the pane stops.
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+  });
+
+  it("moves the splitter one percent at a time, not one step", () => {
+    render(<Example />);
+    measureGroup();
+    const splitter = handle();
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 133, clientY: 50, pointerId: 1 });
+    // `step` is 10 and is the keyboard's: a drag that snapped to it would move
+    // the bar in tenths under a pointer moving smoothly. The pointer's own
+    // step is one, and it still snaps — 66.5 would reach `aria-valuenow` in
+    // full and be read out in full.
+    expect(handle()).toHaveAttribute("aria-valuenow", "67");
+  });
+
+  it("drags the other way in a right-to-left page", () => {
+    render(
+      <div dir="rtl">
+        <Example />
+      </div>,
+    );
+    measureGroup();
+    const splitter = handle();
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 150, clientY: 50, pointerId: 1 });
+    // The primary pane is the one before the handle, which in an RTL page is
+    // the one on the right. Three quarters of the way from the left edge is a
+    // quarter of the way along the pane, and a hard-coded reading renders
+    // identically while dragging the wrong pane.
+    expect(handle()).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("reads a stacked group from the top, where its primary pane is", () => {
+    render(
+      <Resizable.PanelGroup data-testid="group" defaultValue={50} orientation="vertical" step={10}>
+        <Resizable.Panel primary>Top</Resizable.Panel>
+        <Resizable.Handle />
+        <Resizable.Panel>Bottom</Resizable.Panel>
+      </Resizable.PanelGroup>,
+    );
+    measureGroup();
+    const splitter = screen.getByRole("separator", { name: "Resize" });
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 100, clientY: 30, pointerId: 1 });
+    // `Slider.Track` reads a vertical drag from the *bottom*, because a
+    // slider's minimum is there. A stacked group's primary pane is the top
+    // one, so this reads from the top; taking the slider's line unchanged
+    // would make the pane grow as the pointer went up.
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "30");
+  });
+
+  it("does not drag while disabled", () => {
+    render(<Example disabled />);
+    measureGroup();
+    const splitter = handle();
+    fireEvent.pointerDown(splitter, { clientX: 100, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 150, clientY: 50, pointerId: 1 });
+    expect(handle()).toHaveAttribute("aria-valuenow", "50");
+  });
+
+  it("forgets where the pane was once a drag has moved it", async () => {
+    render(<Example defaultValue={40} />);
+    measureGroup();
+    const splitter = handle();
+    splitter.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(handle()).toHaveAttribute("aria-valuenow", "0");
+    fireEvent.pointerDown(splitter, { clientX: 0, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(splitter, { clientX: 120, clientY: 50, pointerId: 1 });
+    fireEvent.pointerUp(splitter, { pointerId: 1 });
+    expect(handle()).toHaveAttribute("aria-valuenow", "60");
+    await userEvent.keyboard("{Enter}");
+    // `Enter` collapses, because the drag is the reader's last word about
+    // where the pane goes. Restoring 40 here would put it back to a size it
+    // had before a gesture that said otherwise.
+    expect(handle()).toHaveAttribute("aria-valuenow", "0");
   });
 
   it("tells a menu's separator and a splitter apart", () => {
@@ -6085,6 +6317,34 @@ describe("a side and an alignment are unions, not strings", () => {
 
   it("reports every misuse, and only the misuses", () => {
     everyMisuseIsReported(path.join("tests", "type-tests", "anchoring.js"));
+  });
+});
+
+describe("a wrong child is a type error and not a review comment", () => {
+  // The strongest claim `packages/ui/index.js` makes, and the one nothing here
+  // held: `Tabs.List` declares `renders* Tabs.Tab`, so a `<button>` in a tab
+  // list does not compile. Twelve containers in this package state a constraint
+  // like that — `Menu.Body`, `Combobox.List`, `Select.List`, `Toast.Region`,
+  // `Pagination.Content` and the rest — and every one of them was an unverified
+  // promise: they were checked by hand against a scratch file while `select.js`
+  // and `toast.js` were written, and a scratch file survives no refactor. That
+  // is ubugeeei-prod/uf#358.
+  //
+  // It is checked here rather than by rendering anything because there is
+  // nothing to render. The failure a `renders*` prevents does not reach a
+  // browser: it is a `<button>` announced as "button" where the reader expected
+  // "tab, 2 of 5", in a build that never happened.
+  //
+  // Both directions are in the fixture, which is the part worth keeping. A
+  // constraint that stopped rejecting a `<div>` would take the guarantee away
+  // and nothing else would notice; one that started rejecting the parts it
+  // exists to admit would take the library away, and this test would name which
+  // container did it.
+  //
+  // `tests/type-tests/composition.js` is the misuse, written down.
+
+  it("reports every misuse, and only the misuses", () => {
+    everyMisuseIsReported(path.join("tests", "type-tests", "composition.js"));
   });
 });
 
