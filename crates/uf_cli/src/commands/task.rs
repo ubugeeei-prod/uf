@@ -1,7 +1,7 @@
 //! `uf run` and `ufx`: the two commands that hand control to another process.
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::io::Write as _;
 use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, bail};
@@ -9,6 +9,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::{Operation, PackageManager, command_for, detect_package_manager};
+use uf_task::{Concurrency, Plan, PlanError, RunOptions, ScheduledTask, TaskCache};
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
 use crate::cli::CreateCommand;
@@ -17,11 +18,23 @@ use crate::suggest::closest;
 use crate::support::{DEVELOPMENT, plural, project_env, project_label};
 use crate::ui::Ui;
 
+/// What `uf run` was asked for beyond the task's name.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct RunArgs {
+    /// How many tasks may run at once.
+    pub(crate) concurrency: Option<usize>,
+    /// Ignore what the cache holds. It is still written.
+    pub(crate) force: bool,
+    /// Say, for every task, why it ran or did not.
+    pub(crate) why: bool,
+}
+
 pub(crate) fn run_task(
     cwd: &Utf8Path,
     requested_mode: Option<&str>,
     script: &str,
     args: &[String],
+    options: RunArgs,
 ) -> Result<()> {
     let resolved = load_config(cwd)?;
     // A task is project code with a shell in front of it, so it reads the
@@ -31,8 +44,314 @@ pub(crate) fn run_task(
     // values uf injected here are marked as uf's and lose to a file. See
     // `uf_config::env_files`.
     let env = project_env(&resolved, requested_mode, DEVELOPMENT)?;
-    let mut visited = BTreeSet::new();
-    run_named_task(&resolved, &env, script, args, &mut visited)
+
+    let plan = match Plan::build(&resolved.config, script) {
+        Ok(plan) => plan,
+        Err(PlanError::Unknown { name, through }) => {
+            bail!(unknown_task(&resolved, &name, &through))
+        }
+        Err(PlanError::Cycle(cycle)) => bail!(dependency_cycle(&cycle)),
+    };
+
+    let environment = environment_digest(&env);
+    let mut tasks = Vec::with_capacity(plan.len());
+    for (at, node) in plan.nodes().iter().enumerate() {
+        let name = node.name.as_str();
+        let Some(definition) = resolved.config.tasks.get(name) else {
+            bail!(unknown_task(&resolved, name, &[]));
+        };
+        let details = definition.details();
+        if details.is_some_and(|task| task.cache == Some(true) && task.inputs.is_empty()) {
+            bail!(
+                "task {name:?} sets `cache: true` and declares no `inputs`\n\n  \
+                 uf keys a cached result on the files a task says it reads, so a task \
+                 that names none\n  cannot be cached — and a request to cache it that \
+                 uf quietly ignored would be worse\n  than this message. Add `inputs`, \
+                 or drop the `cache` field."
+            );
+        }
+        // Only the requested task takes the caller's arguments, and it takes
+        // them in the command text so that two runs with different arguments
+        // are two cache keys rather than one.
+        let mut command = definition.command().to_string();
+        if at == plan.requested() && !args.is_empty() {
+            command.push(' ');
+            command.push_str(&args.join(" "));
+        }
+        let mut fields = String::from(&environment);
+        if let Some(details) = details {
+            for (key, value) in &details.env {
+                fields.push('\0');
+                fields.push_str(key);
+                fields.push('=');
+                fields.push_str(value);
+            }
+            if let Some(cwd) = &details.cwd {
+                fields.push_str("\0cwd=");
+                fields.push_str(cwd);
+            }
+        }
+        tasks.push(ScheduledTask {
+            name: node.name.clone(),
+            dependencies: node.dependencies.clone(),
+            command,
+            inputs: details.map(|task| task.inputs.clone()).unwrap_or_default(),
+            outputs: details.map(|task| task.outputs.clone()).unwrap_or_default(),
+            cacheable: definition.is_cacheable(),
+            environment: fields,
+        });
+    }
+
+    let spawner = TaskSpawner {
+        resolved: &resolved,
+        env: &env,
+        requested: script,
+        args,
+    };
+    let reporter = Reporter {
+        // One task is the whole plan, so there is nothing to schedule and
+        // nothing to report that the task itself does not already say. This is
+        // what keeps `uf run build` the command it has always been — unless
+        // the caller asked why, which is a question uf must answer even when
+        // there is only one task to answer it about.
+        quiet: plan.len() == 1 && !options.why,
+        why: options.why,
+        width: plan
+            .nodes()
+            .iter()
+            .map(|node| node.name.chars().count())
+            .max()
+            .unwrap_or(0),
+    };
+    let started = std::time::Instant::now();
+    let report = uf_task::run(
+        &tasks,
+        &resolved.root,
+        &TaskCache::open(&resolved.root),
+        RunOptions {
+            concurrency: match options.concurrency {
+                Some(count) => Concurrency::Fixed(count),
+                None => Concurrency::Auto,
+            },
+            force: options.force,
+        },
+        &spawner,
+        &reporter,
+    );
+
+    if plan.len() > 1 {
+        let replayed = report.replayed();
+        let unreached = report
+            .outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome.decision, uf_task::Decision::NotRun))
+            .count();
+        let mut line = format!(
+            "  {}, {replayed} replayed, {} run",
+            plural(plan.len(), "task"),
+            plan.len() - replayed - unreached,
+        );
+        if unreached > 0 {
+            line.push_str(&format!(", {unreached} not reached"));
+        }
+        let _ = writeln!(
+            std::io::stderr(),
+            "{line}, in {}",
+            seconds(started.elapsed().as_micros() as u64),
+        );
+    }
+
+    let failures = report.failures();
+    if failures.is_empty() {
+        return Ok(());
+    }
+    // The first failure in plan order is the one to lead with: it is the one
+    // whose output the reader has just watched go past.
+    let mut message = match &failures[0].status {
+        uf_task::Status::Failed(said) => said.clone(),
+        _ => format!("task {script:?} failed"),
+    };
+    if failures.len() > 1 {
+        message.push('\n');
+        for failure in &failures[1..] {
+            if let uf_task::Status::Failed(said) = &failure.status {
+                message.push_str("\n  ");
+                message.push_str(said);
+            }
+        }
+    }
+    bail!(message)
+}
+
+/// A digest over the environment every task in this run starts with.
+///
+/// Names *and* values, because a task that reads `API_URL` gets a different
+/// answer when it changes, and a digest is the one way to say so without
+/// putting the value anywhere a person or a log can see it.
+fn environment_digest(env: &ProjectEnv) -> String {
+    let mut fields = String::from(env.mode());
+    for (name, value) in env.values() {
+        fields.push('\0');
+        fields.push_str(name);
+        fields.push('=');
+        fields.push_str(value);
+    }
+    fields
+}
+
+/// The error for `dependsOn` that closes a loop.
+fn dependency_cycle(cycle: &[compact_str::CompactString]) -> String {
+    let path = cycle
+        .iter()
+        .map(compact_str::CompactString::as_str)
+        .collect::<Vec<_>>()
+        .join(" → ");
+    format!(
+        "`dependsOn` in uf.config.js closes a loop: {path}\n\n  \
+         each of these waits for the next, so none of them can start"
+    )
+}
+
+/// Turns a task into the process that runs it.
+///
+/// The two engines live here rather than in `uf_task` because which of them
+/// runs a task is `uf run`'s question: a task that names a command is uf's,
+/// and a task that names none is Vite Task's.
+struct TaskSpawner<'a> {
+    resolved: &'a ResolvedConfig,
+    env: &'a ProjectEnv,
+    requested: &'a str,
+    args: &'a [String],
+}
+
+impl uf_task::Spawn for TaskSpawner<'_> {
+    fn command(&self, name: &str, command: &str) -> std::io::Result<ProcessCommand> {
+        let task = self
+            .resolved
+            .config
+            .tasks
+            .get(name)
+            .ok_or_else(|| std::io::Error::other(format!("task {name:?} is not defined")))?;
+
+        // A task that names a command is run by uf, because `uf.config.js` is
+        // where its meaning is written down and Vite Task has no way to read
+        // it — handing `ci` to `vp run ci` asked Vite+ for a script it had
+        // never heard of, so every task defined here failed on a machine that
+        // had `vp` and on one that did not. A task with no command of its own
+        // is Vite+'s, and is handed over.
+        if task.command().trim().is_empty()
+            && self.resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
+        {
+            return Ok(self.vite_task(name));
+        }
+
+        let mut process = ProcessCommand::new("sh");
+        process.arg("-c").arg(command);
+
+        let details = task.details();
+        let overrides: Vec<(&str, &str)> = details.map_or_else(Vec::new, |details| {
+            details
+                .env
+                .iter()
+                .map(|(key, value)| (key.as_str(), value.as_str()))
+                .collect()
+        });
+
+        // Under the task's own `env`, which is the more specific of the two: a
+        // task that names a variable means it, and a `.env` file is the
+        // project's default rather than an override.
+        //
+        // In one call rather than two, because setting the files and then the
+        // overrides gets the values right and the label wrong: `apply` also
+        // writes `UF_ENV_INJECTED`, which tells a nested uf "these came from a
+        // file, your own files may overrule them". A task's `env` did not come
+        // from a file, so a marker naming it let `.env.production` win over the
+        // task inside a nested `uf build` — the exact override the task was
+        // written to make.
+        self.env.apply_over(&mut process, &overrides);
+
+        match details.and_then(|details| details.cwd.as_ref()) {
+            Some(cwd) => process.current_dir(self.resolved.root.join(cwd.as_str())),
+            None => process.current_dir(&self.resolved.root),
+        };
+        Ok(process)
+    }
+}
+
+impl TaskSpawner<'_> {
+    fn vite_task(&self, name: &str) -> ProcessCommand {
+        let runner = std::env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
+        let mut process = ProcessCommand::new(runner);
+        self.env.apply(&mut process);
+        process.arg("run").arg(name);
+        // Only the task that was asked for takes the caller's arguments; a
+        // dependency was not the thing they typed them after.
+        if name == self.requested && !self.args.is_empty() {
+            process.arg("--").args(self.args);
+        }
+        process.current_dir(self.resolved.root.as_std_path());
+        process
+    }
+}
+
+/// What uf itself says while a plan runs.
+///
+/// On stderr, all of it. `uf run <task>` hands stdout to the task — that is
+/// what `Commands::owns_stdout` records — and a scheduler's notes on a
+/// pipeline's output would be uf writing on a report it did not produce.
+struct Reporter {
+    quiet: bool,
+    why: bool,
+    width: usize,
+}
+
+impl uf_task::Observe for Reporter {
+    fn finished(&self, outcome: &uf_task::TaskOutcome) {
+        if self.quiet {
+            return;
+        }
+        let mark = match &outcome.status {
+            uf_task::Status::Succeeded => "✓",
+            uf_task::Status::Failed(_) => "✗",
+            uf_task::Status::NotRun => "·",
+        };
+        let took = match &outcome.decision {
+            uf_task::Decision::Replayed { saved_micros } => {
+                format!("saved {}", seconds(*saved_micros))
+            }
+            _ => seconds(outcome.duration_micros),
+        };
+        let mut line = format!(
+            "{mark} {:width$}  {:8}  {took}",
+            outcome.name,
+            outcome.decision.verb(),
+            width = self.width,
+        );
+        if self.why {
+            match &outcome.decision {
+                uf_task::Decision::Replayed { .. } => {
+                    line.push_str("  — every declared input is unchanged");
+                }
+                uf_task::Decision::Ran(reason) => {
+                    line.push_str(&format!("  — {reason}"));
+                }
+                uf_task::Decision::NotRun => {
+                    line.push_str("  — an earlier task failed");
+                }
+            }
+        }
+        let _ = writeln!(std::io::stderr(), "{line}");
+    }
+}
+
+/// A microsecond count as a short duration.
+fn seconds(micros: u64) -> String {
+    let seconds = micros as f64 / 1_000_000.0;
+    if seconds < 10.0 {
+        format!("{seconds:.2}s")
+    } else {
+        format!("{seconds:.1}s")
+    }
 }
 
 /// Widest a task's command is shown at on the menu.
@@ -161,30 +480,6 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     Ok(())
 }
 
-fn run_named_task(
-    resolved: &ResolvedConfig,
-    env: &ProjectEnv,
-    script: &str,
-    args: &[String],
-    visited: &mut BTreeSet<String>,
-) -> Result<()> {
-    if !visited.insert(script.to_string()) {
-        return Ok(());
-    }
-
-    let Some(task) = resolved.config.tasks.get(script) else {
-        bail!(unknown_task(resolved, script));
-    };
-
-    if let TaskDefinition::Detailed(details) = task {
-        for dependency in &details.depends_on {
-            run_named_task(resolved, env, dependency.as_str(), &[], visited)?;
-        }
-    }
-
-    execute_task(resolved, env, script, task, args)
-}
-
 /// The error for a task name that is not in `uf.config.js`.
 ///
 /// `task "biuld" is not defined in uf.config.js` is true and unhelpful: the
@@ -193,7 +488,11 @@ fn run_named_task(
 /// read — every task the project defines, because someone who has just arrived
 /// in a repository does not know what is on offer and should not have to open
 /// the config to find out.
-fn unknown_task(resolved: &ResolvedConfig, script: &str) -> String {
+fn unknown_task(
+    resolved: &ResolvedConfig,
+    script: &str,
+    through: &[compact_str::CompactString],
+) -> String {
     let names = resolved
         .config
         .tasks
@@ -201,7 +500,14 @@ fn unknown_task(resolved: &ResolvedConfig, script: &str) -> String {
         .map(compact_str::CompactString::as_str)
         .collect::<Vec<_>>();
 
-    let mut message = format!("task {script:?} is not defined in uf.config.js");
+    let mut message = match through.last() {
+        // A name nobody typed is a name somebody's `dependsOn` asked for, and
+        // the reader's first question is which task that was.
+        Some(asker) => {
+            format!("task {script:?} is not defined in uf.config.js, and {asker:?} depends on it")
+        }
+        None => format!("task {script:?} is not defined in uf.config.js"),
+    };
     if names.is_empty() {
         message.push_str("\n\n  this project defines no tasks");
         return message;
@@ -227,99 +533,6 @@ fn unknown_task(resolved: &ResolvedConfig, script: &str) -> String {
         ));
     }
     message
-}
-
-/// Run one task.
-///
-/// A task that names a command is run by uf, because `uf.config.js` is where
-/// its meaning is written down and Vite Task has no way to read it — handing
-/// `ci` to `vp run ci` asked Vite+ for a script it had never heard of, so
-/// every task defined here failed on a machine that had `vp` and on one that
-/// did not. A task with no command of its own is Vite+'s, and is handed over.
-fn execute_task(
-    resolved: &ResolvedConfig,
-    env: &ProjectEnv,
-    script: &str,
-    task: &TaskDefinition,
-    args: &[String],
-) -> Result<()> {
-    if task.command().trim().is_empty()
-        && resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
-    {
-        return execute_vite_task(resolved, env, script, args);
-    }
-
-    let command = if args.is_empty() {
-        task.command().to_string()
-    } else {
-        format!("{} {}", task.command(), args.join(" "))
-    };
-    let mut process = ProcessCommand::new("sh");
-    process.arg("-c").arg(&command);
-
-    let details = match task {
-        TaskDefinition::Detailed(details) => Some(details),
-        TaskDefinition::Command(_) => None,
-    };
-    let overrides: Vec<(&str, &str)> = details.map_or_else(Vec::new, |details| {
-        details
-            .env
-            .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
-            .collect()
-    });
-
-    // Under the task's own `env`, which is the more specific of the two: a task
-    // that names a variable means it, and a `.env` file is the project's
-    // default rather than an override.
-    //
-    // In one call rather than two, because setting the files and then the
-    // overrides gets the values right and the label wrong: `apply` also writes
-    // `UF_ENV_INJECTED`, which tells a nested uf "these came from a file, your
-    // own files may overrule them". A task's `env` did not come from a file, so
-    // a marker naming it let `.env.production` win over the task inside a
-    // nested `uf build` — the exact override the task was written to make.
-    env.apply_over(&mut process, &overrides);
-
-    match details.and_then(|details| details.cwd.as_ref()) {
-        Some(cwd) => process.current_dir(resolved.root.join(cwd.as_str())),
-        None => process.current_dir(&resolved.root),
-    };
-
-    let status = process.status().with_context(|| {
-        format!("failed to run task {script:?} through the fallback task runner")
-    })?;
-    if !status.success() {
-        bail!("task {script:?} exited with {status}");
-    }
-    Ok(())
-}
-
-fn execute_vite_task(
-    resolved: &ResolvedConfig,
-    env: &ProjectEnv,
-    script: &str,
-    args: &[String],
-) -> Result<()> {
-    let runner = std::env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
-    let mut process = ProcessCommand::new(runner);
-    env.apply(&mut process);
-    process.arg("run").arg(script);
-    if !args.is_empty() {
-        process.arg("--").args(args);
-    }
-    let status = process
-        .current_dir(resolved.root.as_std_path())
-        .status()
-        .with_context(|| {
-            format!(
-                "failed to run task {script:?} through Vite Task; install Vite+ and make `vp` available"
-            )
-        })?;
-    if !status.success() {
-        bail!("Vite Task task {script:?} exited with {status}");
-    }
-    Ok(())
 }
 
 /// `uf exec PACKAGE [ARGS...]`, also spelled `ufx`.

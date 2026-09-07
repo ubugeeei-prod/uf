@@ -3489,6 +3489,7 @@ dependencies = [
  "uf_rsc",
  "uf_runtime",
  "uf_stylex",
+ "uf_task",
  "uf_term",
  "uf_test",
  "uf_transform",
@@ -3761,6 +3762,23 @@ dependencies = [
  "uf_infra",
  "uf_plugin",
  "uf_rsc",
+]
+
+[[package]]
+name = "uf_task"
+version = "0.0.0-alpha.12"
+dependencies = [
+ "base64",
+ "camino",
+ "compact_str",
+ "globset",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "uf_config",
+ "walkdir",
 ]
 
 [[package]]
