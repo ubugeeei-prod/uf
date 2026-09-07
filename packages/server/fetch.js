@@ -53,6 +53,21 @@
 // because a `HEAD` is a request for a status and a length, and letting it fill
 // a document cache would let a request that wants no body pay for one.
 //
+// # And what the host can do, which is not the same for all four
+//
+// `capabilities` is the other thing an adapter passes, and it exists because
+// three of the four front doors can hold a connection open and one cannot. A
+// route handler that returns an event stream or takes a WebSocket is correct
+// on `uf start` and on a worker, and on a Lambda is a response buffered until
+// the invocation times out — the same code, the same build, and a failure that
+// appears only in the deployment nobody checked. So a host says what it is,
+// once, where it is wired, and `./internal/capabilities.js` turns that into a
+// refusal at the point somebody asks rather than a dropped connection later.
+//
+// A handler asks through `./socket.js`, `./events.js` and `./queue.js`; this
+// function's only part in it is putting the answer on the request, beside the
+// cache and for the same reason.
+//
 // # What it deliberately does not do
 //
 // Static files. A build's assets and its prerendered documents are the *host's*
@@ -66,10 +81,28 @@ import { noStore } from "./cache.js";
 import type { Application, DocumentAssets } from "./internal/application.js";
 import type { CacheOptions, CacheOutcome } from "./internal/cache-store.js";
 import { newScope, runInScope } from "./internal/cache-store.js";
+import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
+
+export type {
+  CapabilityDefaults,
+  CapabilityOptions,
+  JobRecord,
+  QueueBackend,
+  ServerCapabilities,
+  WebSocketUpgrade,
+  WebSocketUpgrader,
+} from "./internal/capabilities.js";
+
+export {
+  CapabilityRefusedError,
+  CapabilityUnavailableError,
+  assertCapable,
+  capabilitiesFor,
+} from "./internal/capabilities.js";
 
 /** Everything the application half needs to answer a request. */
 export type FetchHandlerOptions = {|
@@ -86,6 +119,17 @@ export type FetchHandlerOptions = {|
    * in the configuration are two switches.
    */
   readonly cache?: CacheOptions,
+  /**
+   * What this host can do, from the adapter that built it.
+   *
+   * Absent means nothing was said, which is what every request looked like
+   * before this option existed and is treated as such: an event stream is
+   * allowed, because a `Response` streams by default everywhere except where
+   * somebody said otherwise, and an upgrade and a queue are refused, because
+   * both are objects and there is no such object. `./internal/capabilities.js`
+   * argues that asymmetry.
+   */
+  readonly capabilities?: ServerCapabilities,
 |};
 
 /** A whole document, as an entry: what a hit answers with without rendering. */
@@ -103,10 +147,22 @@ type CachedDocument = {|
  * project's `_uf.not-found` page says.
  *
  * The order is the dev server's, and has to stay the dev server's: middleware
- * first, then handlers for every method, because a handler is the only thing
- * that can answer a `POST` and it may also answer a `GET` for a path that has
- * no page. A page cannot answer a `POST`, so a non-navigation that no handler
- * claimed is a 404 rather than a rendered page with a 200.
+ * first, then server actions, then handlers for every method, because a
+ * handler is the only thing that can answer a `POST` and it may also answer a
+ * `GET` for a path that has no page. A page cannot answer a `POST`, so a
+ * non-navigation that no handler claimed is a 404 rather than a rendered page
+ * with a 200.
+ *
+ * `app.callAction` is between the two, and this is the function that puts it
+ * on all four deploy targets at once: `handler.js` is byte-for-byte the same
+ * file in the node, container, edge and serverless artefacts, so an action
+ * endpoint that works here works in each of them or in none. It declines every
+ * request that carries no action id and answers every request that carries
+ * one, refusals included — so a `POST` naming an action never reaches a route
+ * handler that happens to sit at the same path, and a request naming none
+ * pays one header lookup. Called rather than tested for, for the reason
+ * `app.runMiddleware` is: a server bundle without it is a `TypeError` on the
+ * first request rather than an application whose actions quietly answer 404.
  *
  * Middleware above both, and not inside either: it guards a path, so it has to
  * run for a page, for a route handler, and for a path under it that matches
@@ -150,7 +206,7 @@ type CachedDocument = {|
 export function createFetchHandler(
   options: FetchHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const { app, cache, document } = options;
+  const { app, cache, capabilities, document } = options;
 
   return async function handle(request: Request): Promise<Response> {
     // Before the guard, not after it. A route handler and a server action both
@@ -162,9 +218,18 @@ export function createFetchHandler(
     if (context != null && cache != null) {
       context.cache = cache;
     }
+    // And beside it, for the same reason and at the same moment: a handler
+    // that upgrades a connection or queues work is inside `dispatch` too, and
+    // what it can do is a fact about the host rather than about the route.
+    if (context != null && capabilities != null) {
+      context.capabilities = capabilities;
+    }
 
     const guarded = await app.runMiddleware(request);
     if (guarded != null) return guarded;
+
+    const acted = await app.callAction(request);
+    if (acted != null) return acted;
 
     const handled = await app.dispatch(request);
     if (handled != null) return handled;

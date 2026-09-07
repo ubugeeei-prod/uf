@@ -14,20 +14,26 @@
     ".": "./index.js",
     "./cache": "./cache.js",
     "./edge": "./edge.js",
+    "./events": "./events.js",
     "./fetch": "./fetch.js",
     "./host": "./host.js",
     "./lambda": "./lambda.js",
     "./node": "./node.js",
+    "./queue": "./queue.js",
+    "./socket": "./socket.js",
     "./standalone": "./standalone.js"
   },
   "files": [
     "cache.js",
     "edge.js",
+    "events.js",
     "fetch.js",
     "host.js",
     "index.js",
     "lambda.js",
     "node.js",
+    "queue.js",
+    "socket.js",
     "standalone.js",
     "internal/*.js"
   ]

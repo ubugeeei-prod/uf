@@ -332,3 +332,38 @@ fn unclear_type_still_reads_an_annotation_on_a_continued_parameter_list() {
 
     assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
 }
+
+/// ubugeeei-prod/uf#571: a property named `any` is a name, not a type — and
+/// the three spellings of the same key were three different answers.
+///
+/// `@uniflowed/test`'s matcher interface lists Jest's asymmetric matchers, and
+/// `readonly any: (expected: mixed) => …` was reported as an unclear type. The
+/// only way past it was a suppression, for a rule that was simply wrong.
+#[test]
+fn a_property_key_is_a_key_however_its_variance_is_written() {
+    for source in [
+        "// @flow\nexport type M = { any: (expected: mixed) => boolean };\n",
+        "// @flow\nexport type M = { readonly any: (expected: mixed) => boolean };\n",
+        "// @flow\nexport type M = { +any: (expected: mixed) => boolean };\n",
+        "// @flow\nexport type M = { -any: (expected: mixed) => boolean };\n",
+        "// @flow\nexport type M = { any?: (expected: mixed) => boolean };\n",
+        "// @flow\nexport type M = { readonly any?: (expected: mixed) => boolean };\n",
+    ] {
+        let diagnostics = lint_js("flow/unclear-type", source);
+        assert!(diagnostics.is_empty(), "{source}\n{diagnostics:?}");
+    }
+}
+
+/// And an `any` that really is a type is still reported, whatever stands
+/// before it — otherwise the fix above would be a hole rather than a fix.
+#[test]
+fn an_annotation_is_still_unclear_beside_a_key_that_is_not() {
+    for source in [
+        "// @flow\nexport type M = { readonly value: any };\n",
+        "// @flow\nexport type M = { +value: any };\n",
+        "// @flow\nexport type M = { value?: any };\n",
+    ] {
+        let diagnostics = lint_js("flow/unclear-type", source);
+        assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:?}");
+    }
+}

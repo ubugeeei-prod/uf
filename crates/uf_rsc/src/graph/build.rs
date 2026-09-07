@@ -232,7 +232,32 @@ fn propagate(
                     ModuleEnvironment::Client => EntryKind::Client,
                     _ => EntryKind::Server,
                 },
-                EntryKind::Client => EntryKind::Client,
+                EntryKind::Client => match environments[target.index()] {
+                    // And the mirror of it: the client never executes a
+                    // `"use server"` module either. `@uniflowed/vite` replaces
+                    // that module, in the browser's graph, with one
+                    // `createServerReference` per callable export — so what
+                    // crosses the import is an id and a `fetch`, and the
+                    // module's own body, its imports and everything only they
+                    // reached stay on the server.
+                    //
+                    // Colouring it server rather than client is what makes the
+                    // rest of this file agree with that. A database handle
+                    // reached only through an action is not in the client
+                    // graph, so it is not a leak to report; the client-only
+                    // API check does run over the action's body, because the
+                    // server is what executes it; and the module's `imports`
+                    // are walked with the server colour, so a Server Component
+                    // an action calls is server code and not shared code.
+                    //
+                    // The rule is the transform's, so it is only true while
+                    // the transform is: see `serverActionModules` in
+                    // `packages/vite/internal/rsc.js` and
+                    // `crates/uf_rsc/src/action/registry.rs` for which exports
+                    // become references at all.
+                    ModuleEnvironment::ServerActions => EntryKind::Server,
+                    _ => EntryKind::Client,
+                },
             };
             enqueue(
                 target.index(),

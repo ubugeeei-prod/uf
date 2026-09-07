@@ -66,6 +66,23 @@ import { createServer } from "node:http";
 
 import { send } from "./node.js";
 
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
+
+/**
+ * What a compiled binary can do, plus whatever the deployment supplied.
+ *
+ * The same two answers `nodeCapabilities` gives, because it is the same kind
+ * of host: a socket this process is holding, and a process that is still there
+ * once a response has gone. It is a separate function only so that the target
+ * a refusal names is the one somebody actually ran — "the standalone host has
+ * no WebSocket upgrader" points at a binary, and "the node host" points at a
+ * directory of JavaScript.
+ */
+export function standaloneCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(capabilitiesFor("standalone", { stream: true, persistent: true }, options));
+}
+
 /**
  * The pieces of a Node request and response this module touches.
  *
@@ -145,6 +162,15 @@ export type StandaloneApp = {|
   |}>,
   readonly dispatch: (request: Request) => Promise<Response | null>,
   /**
+   * The server action this request names, or `null` when it names none.
+   *
+   * Between the guard and the handlers here as in every other host, and called
+   * rather than tested for on the same reasoning as `runMiddleware` below: a
+   * binary whose bundle predates this is a `TypeError` on the first request
+   * rather than one whose actions quietly answer 404.
+   */
+  readonly callAction: (request: Request) => Promise<Response | null>,
+  /**
    * The guard on the path, run before anything under it answers.
    *
    * Called rather than tested for: a server bundle without it is a `TypeError`
@@ -169,6 +195,15 @@ export type StandaloneApp = {|
    * `pipe` resolves. See ubugeeei-prod/uf#389.
    */
   readonly beginRequest: (request: Request) => {|
+    /**
+     * The request itself, so this module can say what the host can do.
+     *
+     * Named here rather than left off because a compiled binary reaches a
+     * route handler without going through `./fetch.js`, which is where the
+     * other three front doors install their capabilities — and a handler that
+     * streams events has to get the same answer from all four.
+     */
+    readonly context: { capabilities: ServerCapabilities | null, ... },
     readonly run: <T>(body: () => Promise<T>) => Promise<T>,
     readonly settle: () => Promise<void>,
   |},
@@ -378,7 +413,13 @@ export function createHandler(
     // still a request that happened, so the drain is owed either way; see
     // ubugeeei-prod/uf#389.
     const asRequest = toRequest(request, url);
-    const { run, settle } = app.beginRequest(asRequest);
+    const lifecycle = app.beginRequest(asRequest);
+    const { run, settle } = lifecycle;
+    // Beside the request, the way `./fetch.js` does it for the other three: a
+    // handler that streams events or takes a socket must get the same answer
+    // from a compiled binary as it does from `uf start`, and this is the front
+    // door that does not come through that function.
+    lifecycle.context.capabilities ??= standaloneCapabilities();
     try {
       await run(async () => {
         // Middleware above the dispatcher and above the render, and below the two
@@ -392,6 +433,15 @@ export function createHandler(
         const guarded = await app.runMiddleware(asRequest);
         if (guarded != null) {
           await sendUnlessHead(response, method, guarded);
+          return;
+        }
+
+        // A server action between the guard and the handlers, exactly where
+        // the other three hosts put it. It declines a request that carries no
+        // action id, and answers every one that does.
+        const acted = await app.callAction(asRequest);
+        if (acted != null) {
+          await sendUnlessHead(response, method, acted);
           return;
         }
 

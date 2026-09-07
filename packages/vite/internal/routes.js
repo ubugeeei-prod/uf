@@ -86,7 +86,9 @@ const MAX_DEPTH = 32;
  *
  * @typedef {object} NotFoundBoundary
  * @property {string} path route path of the directory that declares it
- * @property {string} page absolute path of the page module
+ * @property {?string} page absolute path of the page module, or `null` for the
+ *   record the scan synthesises at the router root when a project declares
+ *   none — see `scanRoutes`
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
  * @property {boolean} mdx whether the page is MDX content
  */
@@ -103,7 +105,8 @@ const MAX_DEPTH = 32;
  *
  * @typedef {object} ErrorBoundary
  * @property {string} path route path of the directory that declares it
- * @property {string} module absolute path of the error module
+ * @property {?string} module absolute path of the error module, or `null` for
+ *   the synthesised root record
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
  */
 
@@ -153,6 +156,10 @@ export function scanRoutes(appRoot) {
   const errors = [];
   if (!isDirectory(appRoot)) return { routes, handlers, middleware, notFound, errors };
 
+  // The layouts in scope at the router root, kept because the two synthesised
+  // records below are made of them. See the note beside them.
+  let rootLayouts = [];
+
   const walk = (directory, segments, layouts, loading, depth) => {
     if (depth > MAX_DEPTH) return;
     const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
@@ -161,6 +168,9 @@ export function scanRoutes(appRoot) {
 
     const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS);
     const nextLayouts = ownLayout ? [...layouts, ownLayout] : layouts;
+    if (depth === 0) {
+      rootLayouts = nextLayouts;
+    }
 
     // Inside this directory's own layout, which is where Next.js puts it and
     // the only placement that makes sense: the fallback is what shows *within*
@@ -244,6 +254,30 @@ export function scanRoutes(appRoot) {
   };
 
   walk(appRoot, [], [], [], 0);
+
+  // A boundary at the router root for a project that declared none, carrying
+  // the root's layouts and no module of its own.
+  //
+  // Without it the router had no record to answer an unmatched URL with, so it
+  // answered with the framework's page and `layouts: []` — and a site whose
+  // root layout owns the masthead, the stylesheet and often `<html>` itself
+  // replied to a stale link with a white page saying 404, with no way to leave
+  // it. That was never the nearest-ancestor rule failing: the rule had nothing
+  // to find. `uf create` scaffolds neither boundary, so this is the state every
+  // new project is in until it writes one. See ubugeeei-prod/uf#351.
+  //
+  // Only when nothing is at `/` already. A `(group)` directory is not a URL
+  // segment, so `app/(marketing)/_uf.not-found.js` is a boundary at `/` too and
+  // adding a second one there would put a second answer at a path the URL
+  // cannot choose between.
+  const atRoot = (boundaries) => boundaries.some((boundary) => boundary.path === "/");
+  if (!atRoot(notFound)) {
+    notFound.push({ path: "/", page: null, layouts: rootLayouts, mdx: false });
+  }
+  if (!atRoot(errors)) {
+    errors.push({ path: "/", module: null, layouts: rootLayouts });
+  }
+
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
   handlers.sort(byPath);
@@ -316,11 +350,21 @@ export function routeFromSegments(segments) {
   return { path: routePath, pattern: routePath.replace(/:(\w+)\*/g, "*$1"), params };
 }
 
-/** Virtual module ids the router plugin serves. */
+/**
+ * Virtual module ids the router plugin serves.
+ *
+ * `actions` is the one that does not come from this file's directory scan: it
+ * is generated from the RSC manifest by `internal/rsc.js`, because which
+ * `"use server"` exports are callable endpoints is an answer about the module
+ * graph and not about the filesystem. It is here because it is a virtual
+ * module id and this is where they are named, and because
+ * `serverModuleSource` below is the only thing that imports it.
+ */
 export const VIRTUAL = Object.freeze({
   routes: "virtual:uf/routes",
   client: "virtual:uf/client",
   server: "virtual:uf/server",
+  actions: "virtual:uf/actions",
 });
 
 /**
@@ -438,6 +482,15 @@ export function routesModuleSource(table, options = {}) {
   }`;
   });
 
+  // A boundary the scan synthesised has no module to import — the framework's
+  // own page renders in its place — so it emits `null` where a declared one
+  // emits a loader, and a name for `file` rather than a path nothing wrote.
+  // See the note in `scanRoutes` and ubugeeei-prod/uf#351.
+  const SYNTHESISED = JSON.stringify("@uniflowed/router");
+  const boundaryModule = (file) =>
+    file == null ? "null" : `() => import(${JSON.stringify(file)})`;
+  const boundaryFile = (file) => (file == null ? SYNTHESISED : JSON.stringify(file));
+
   // A list, because a not-found is a segment file: every directory may declare
   // one and the router takes the nearest above the path. `layoutId` is the
   // same table the routes use, so a boundary that shares a layout with a page
@@ -446,8 +499,8 @@ export function routesModuleSource(table, options = {}) {
     (boundary) => `  {
     path: ${JSON.stringify(boundary.path)},
     mdx: ${boundary.mdx},
-    file: ${JSON.stringify(boundary.page)},
-    page: () => import(${JSON.stringify(boundary.page)}),
+    file: ${boundaryFile(boundary.page)},
+    page: ${boundaryModule(boundary.page)},
     layouts: [${boundary.layouts.map(layoutId).join(", ")}],
   }`,
   );
@@ -459,8 +512,8 @@ export function routesModuleSource(table, options = {}) {
   const errorEntries = (table.errors ?? []).map(
     (boundary) => `  {
     path: ${JSON.stringify(boundary.path)},
-    file: ${JSON.stringify(boundary.module)},
-    module: () => import(${JSON.stringify(boundary.module)}),
+    file: ${boundaryFile(boundary.module)},
+    module: ${boundaryModule(boundary.module)},
     layouts: [${boundary.layouts.map(layoutId).join(", ")}],
   }`,
   );
@@ -558,6 +611,16 @@ hydrate({ App, routes, notFound, errors });
  * request — one decides whether the router is reached at all, the others
  * decide what the router renders when it is.
  *
+ * `callAction` goes between the two, and its position is the same argument
+ * made twice. Below `runMiddleware`, because an action call is a request to a
+ * path and the guard on that path is owed the same say over it as over the
+ * page — which is why the call is a `POST` to the page's own URL rather than
+ * to a reserved one. Above `dispatch`, because a request that names an action
+ * has named it: letting it fall through to a route handler that happens to sit
+ * at the same path would answer somebody's action with somebody else's
+ * function. It declines every request that carries no action id, so a project
+ * with no actions pays one `headers.get` per request and nothing else.
+ *
  * `internal/serve.js` and `driver.js` call them in that order, and
  * `packages/vite/index.js` does the same for a project driving Vite itself.
  *
@@ -583,11 +646,13 @@ hydrate({ App, routes, notFound, errors });
  */
 export function serverModuleSource(appEntry) {
   return `import {
+  createActionDispatcher,
   createDispatcher,
   createMiddlewareRunner,
   createRenderer,
 } from "@uniflowed/router/server";
 import { routes, handlers, middleware, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
+import { actions } from ${JSON.stringify(VIRTUAL.actions)};
 import App from ${JSON.stringify(appEntry)};
 export { routes, handlers, middleware, notFound, errors };
 export { beginRequest } from "@uniflowed/router/server";
@@ -595,6 +660,7 @@ const renderer = createRenderer({ App, routes, notFound, errors });
 export const render = renderer.render;
 export const prerender = renderer.prerender;
 export const dispatch = createDispatcher({ handlers });
+export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
 `;
 }

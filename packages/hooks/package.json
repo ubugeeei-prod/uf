@@ -16,6 +16,7 @@
     "./browser": "./browser.js",
     "./channels": "./channels.js",
     "./dom": "./dom.js",
+    "./events": "./events.js",
     "./keyboard": "./keyboard.js",
     "./lifecycle": "./lifecycle.js",
     "./render": "./render.js",

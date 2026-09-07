@@ -68,6 +68,10 @@
 // - `keyboard.js` — what is being pressed: a chord, and a held key.
 // - `channels.js` — a value that came from outside the page: another tab, the
 //   system clipboard.
+// - `events.js` — a stream the server is pushing, and where its reconnection
+//   is. Not `channels.js`, whose boundary is deliberately everything except
+//   the server, and not `@uniflowed/query`, because there is no cache entry
+//   and nothing to revalidate: a connection is a third thing.
 //
 // The two that are easiest to confuse are `browser.js` and `dom.js`, so each
 // says so in its own header: `browser.js` needs no ref because there is one
@@ -96,8 +100,9 @@
 // intersection, mutations, hover, focus-within, click-outside, long press,
 // element scroll, the element as state; key chords and held keys; storage with
 // cross-tab sync;
-// broadcast channels; the clipboard; the render anchor and the seeded stream
-// in `render.js`. `tests/library/hooks.test.js` covers
+// broadcast channels; the clipboard; a server-sent event stream, including the
+// one case the platform's own reconnection gives up on; the render anchor and
+// the seeded stream in `render.js`. `tests/library/hooks.test.js` covers
 // behaviour and cleanup, and `tests/library/hooks-ssr.test.js` renders the
 // whole surface in a process that has no DOM at all.
 //
@@ -137,6 +142,12 @@ export type {
 } from "./browser.js";
 export type { UseBroadcastReturn, UseClipboardReturn } from "./channels.js";
 export type { ListenerOptions, ListenerTarget, MutationOptions, Ref } from "./dom.js";
+export type {
+  EventSourceOptions,
+  EventStreamStatus,
+  ServerEvent,
+  UseEventSourceReturn,
+} from "./events.js";
 export type { KeyComboOptions } from "./keyboard.js";
 export type { RenderEnvelope } from "./render.js";
 export type {
@@ -208,6 +219,7 @@ export {
   useShuffled,
 } from "./render.js";
 export { useBroadcast, useClipboard } from "./channels.js";
+export { useEventSource } from "./events.js";
 export {
   useCounter,
   useCycle,
