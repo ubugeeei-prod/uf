@@ -718,6 +718,36 @@ does not fail the command.
 This is **not** `uf upgrade`, which is about the toolchain and the workspace
 plan rather than about your dependencies.
 
+### uf pm approve-builds [NAME...]
+
+Lists every package in the installed tree that would run code when it installs,
+with the hooks it declares and whether this project has approved it:
+
+```
+  manager       pnpm
+  approvals in  pnpm.onlyBuiltDependencies
+
+  package  version  runs         approved
+  esbuild  0.24.0   postinstall  no
+  sharp    0.33.5   postinstall  no
+
+› 2 packages would run code at install time and are not approved, so uf does not let them run
+› uf pm approve-builds <name>... records the ones you have read
+```
+
+Naming one records it. `--dry-run` says what would be approved and writes
+nothing. A name that is not in the tree is refused with the names that are — on
+a security command a typo that silently does nothing is worse than an error.
+
+The approved set lives in the root `package.json`, in the field your package
+manager already reads (`pnpm.onlyBuiltDependencies`, `trustedDependencies`,
+`dependenciesMeta`), so the manager is what enforces it. npm and Yarn 1 have no
+per-package control and are told so plainly. `docs/security.md` has the full
+reasoning, including why an empty list still means "none"
+([#495](https://github.com/ubugeeei-prod/uf/issues/495)).
+
+Approving does not install; `uf install` is what runs the builds.
+
 ### uf patch PACKAGE
 
 Opens a copy of a dependency somewhere you can edit it, and prints the

@@ -40,7 +40,7 @@ struct Stage {
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
     "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
-    "install", "add", "remove", "update", "patch", "catalog", "why", "upgrade", "use", "env",
+    "install", "add", "remove", "update", "patch", "pm", "catalog", "why", "upgrade", "use", "env",
     "prepare", "publish", "release", "lsp",
 ];
 
@@ -79,6 +79,13 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         // The listing is uf's own — it reads the workspace's manifests and
         // nothing else — and `uf catalog set` rewrites them and then delegates
         // an install, which is the part with a provider worth naming.
+        "pm" => query_stages(
+            &resolved,
+            Operation::Install,
+            "`uf pm approve-builds` reads node_modules for the packages that declare an install \
+             script and the root manifest for the ones this project has approved; the manager is \
+             what enforces the list, which is why the list lives in the field the manager reads",
+        ),
         "patch" => query_stages(
             &resolved,
             Operation::Patch,

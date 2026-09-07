@@ -325,6 +325,11 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 paths,
             },
         ),
+        Commands::Pm { command } => match command {
+            cli::PmCommand::ApproveBuilds { names, dry_run } => {
+                commands::pm::approve_builds(&cwd, ui, &names, dry_run)
+            }
+        },
         Commands::Patch { target, commit } => commands::pm::patch(&cwd, ui, &target, commit),
         Commands::Catalog { command } => match command {
             None => commands::pm::catalog(&cwd, ui),

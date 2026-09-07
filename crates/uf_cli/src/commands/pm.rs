@@ -1,11 +1,13 @@
 //! `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf upgrade`,
 //! and `uf use`: packages and runtimes.
 
+mod approve;
 mod catalog;
 mod deps;
 mod install;
 mod update;
 
+pub(crate) use approve::approve_builds;
 pub(crate) use catalog::{list as catalog, set as catalog_set};
 pub(crate) use deps::{add, patch, query, remove, why};
 pub(crate) use install::install;
@@ -23,6 +25,34 @@ use uf_term::{KeyValue, Status, Tone};
 
 use crate::support::{enabled, project_label, write_json_file};
 use crate::ui::Ui;
+
+/// Whether this install may let a dependency's own scripts run.
+///
+/// `pm.allowLifecycleScripts` is the blunt answer and stays the blunt answer:
+/// on means every dependency, including the ones nobody has read. The other way
+/// in is [`uf_pm::builds`]: a manager that can be handed an allow-list, with at
+/// least one name in it, gets to run exactly those, so `--ignore-scripts` comes
+/// off and the manager holds the line uf was holding.
+///
+/// Both call sites go through here rather than through
+/// `PackageManagerPlan::forbids_npm_scripts`, because a rule about running
+/// somebody else's code should have one spelling.
+///
+/// # Errors
+///
+/// When the root manifest is not JSON — the same failure the install is about
+/// to hit anyway.
+fn scripts_allowed(
+    root: &Utf8Path,
+    manager: uf_pm::PackageManager,
+    plan: &PackageManagerPlan,
+) -> Result<bool> {
+    Ok(uf_pm::builds::scripts_allowed(
+        root,
+        manager,
+        !plan.forbids_npm_scripts(),
+    )?)
+}
 
 pub(crate) fn upgrade(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let resolved = load_config(cwd)?;
