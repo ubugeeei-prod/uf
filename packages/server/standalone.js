@@ -162,6 +162,15 @@ export type StandaloneApp = {|
   |}>,
   readonly dispatch: (request: Request) => Promise<Response | null>,
   /**
+   * The server action this request names, or `null` when it names none.
+   *
+   * Between the guard and the handlers here as in every other host, and called
+   * rather than tested for on the same reasoning as `runMiddleware` below: a
+   * binary whose bundle predates this is a `TypeError` on the first request
+   * rather than one whose actions quietly answer 404.
+   */
+  readonly callAction: (request: Request) => Promise<Response | null>,
+  /**
    * The guard on the path, run before anything under it answers.
    *
    * Called rather than tested for: a server bundle without it is a `TypeError`
@@ -424,6 +433,15 @@ export function createHandler(
         const guarded = await app.runMiddleware(asRequest);
         if (guarded != null) {
           await sendUnlessHead(response, method, guarded);
+          return;
+        }
+
+        // A server action between the guard and the handlers, exactly where
+        // the other three hosts put it. It declines a request that carries no
+        // action id, and answers every one that does.
+        const acted = await app.callAction(asRequest);
+        if (acted != null) {
+          await sendUnlessHead(response, method, acted);
           return;
         }
 

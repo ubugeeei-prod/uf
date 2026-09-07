@@ -147,10 +147,22 @@ type CachedDocument = {|
  * project's `_uf.not-found` page says.
  *
  * The order is the dev server's, and has to stay the dev server's: middleware
- * first, then handlers for every method, because a handler is the only thing
- * that can answer a `POST` and it may also answer a `GET` for a path that has
- * no page. A page cannot answer a `POST`, so a non-navigation that no handler
- * claimed is a 404 rather than a rendered page with a 200.
+ * first, then server actions, then handlers for every method, because a
+ * handler is the only thing that can answer a `POST` and it may also answer a
+ * `GET` for a path that has no page. A page cannot answer a `POST`, so a
+ * non-navigation that no handler claimed is a 404 rather than a rendered page
+ * with a 200.
+ *
+ * `app.callAction` is between the two, and this is the function that puts it
+ * on all four deploy targets at once: `handler.js` is byte-for-byte the same
+ * file in the node, container, edge and serverless artefacts, so an action
+ * endpoint that works here works in each of them or in none. It declines every
+ * request that carries no action id and answers every request that carries
+ * one, refusals included — so a `POST` naming an action never reaches a route
+ * handler that happens to sit at the same path, and a request naming none
+ * pays one header lookup. Called rather than tested for, for the reason
+ * `app.runMiddleware` is: a server bundle without it is a `TypeError` on the
+ * first request rather than an application whose actions quietly answer 404.
  *
  * Middleware above both, and not inside either: it guards a path, so it has to
  * run for a page, for a route handler, and for a path under it that matches
@@ -215,6 +227,9 @@ export function createFetchHandler(
 
     const guarded = await app.runMiddleware(request);
     if (guarded != null) return guarded;
+
+    const acted = await app.callAction(request);
+    if (acted != null) return acted;
 
     const handled = await app.dispatch(request);
     if (handled != null) return handled;

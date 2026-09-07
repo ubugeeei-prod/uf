@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
 import { createMiddlewareRunner } from "@uniflowed/router/middleware";
-import { beginRequest, createRenderer } from "@uniflowed/router/server";
+import { beginRequest, createActionDispatcher, createRenderer } from "@uniflowed/router/server";
 import { routerView } from "@uniflowed/router";
 import { after, cookies, draftMode, headers } from "@uniflowed/server";
 import { createHandler } from "@uniflowed/server/standalone";
@@ -388,6 +388,10 @@ function bundle(options: {
   return {
     beginRequest,
     runMiddleware: createMiddlewareRunner({ middleware: options.middleware ?? [] }),
+    // The real one over an empty table, for the reason above: a fake would
+    // prove the host calls something. It refuses outside a request like the
+    // other two, so it is also part of what these cases are about.
+    callAction: createActionDispatcher({ actions: [] }),
     dispatch: createDispatcher({ handlers: options.handlers ?? [] }),
     render: options.render ?? (async () => ({ status: 200, stream: () => emptyStream() })),
   };

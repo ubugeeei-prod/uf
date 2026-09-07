@@ -1,0 +1,208 @@
+---
+title: "Web vitals · uf"
+description: "Five numbers the browser already has, and nothing that leaves the machine unless you ask."
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Web vitals
+
+<div className="lede">
+`@uniflowed/web` reads LCP, CLS, INP, TTFB and FCP straight out of the
+browser's own `PerformanceObserver` and hands each one to a callback you
+supply. There is no default destination, no third party, and no request until
+you write one.
+</div>
+
+## The whole API
+
+```js
+import { collectVitals } from "@uniflowed/web";
+
+collectVitals({
+  report: (vital) => {
+    console.log(vital.name, vital.value, vital.rating);
+    // LCP 1840 good
+  },
+});
+```
+
+`collectVitals` returns a function that stops collecting. It reports each
+metric exactly once, at the moment that metric becomes final — which is not the
+same moment for all five.
+
+From a component, `useVitals` is the same thing tied to a mount:
+
+```js
+import { useVitals } from "@uniflowed/web";
+
+export component Layout(children: React.Node) {
+  useVitals((vital) => {
+    console.log(vital.name, vital.value);
+  });
+  return <>{children}</>;
+}
+```
+
+A root layout commits long after the page painted, and that is fine: every
+observer asks the browser to replay the entries it recorded beforehand, so the
+first paint of a server-rendered page is measured by a component that did not
+exist when it happened.
+
+## What you get
+
+```js
+{
+  name: "LCP",              // "TTFB" | "FCP" | "LCP" | "CLS" | "INP"
+  value: 1840,              // milliseconds, except CLS, which is unitless
+  rating: "good",           // "good" | "needs-improvement" | "poor"
+  navigationType: "navigate",
+}
+```
+
+`rating` is the value placed against the thresholds the metric is published
+with, so two parts of an application cannot disagree about where "good" ends:
+
+| | good | poor above |
+| --- | --- | --- |
+| `TTFB` | ≤ 800ms | 1800ms |
+| `FCP` | ≤ 1800ms | 3000ms |
+| `LCP` | ≤ 2500ms | 4000ms |
+| `CLS` | ≤ 0.1 | 0.25 |
+| `INP` | ≤ 200ms | 500ms |
+
+`navigationType` is `navigate`, `reload`, `back-forward`, `prerender` or
+`unknown`. It is on every metric because pooling the five kinds is how a slow
+site measures fast: a reload has a warm cache and a back-forward restore has a
+warm everything.
+
+## Sending them somewhere
+
+<div className="command"><code>vitalsBeacon()</code></div>
+
+```js
+import { collectVitals, vitalsBeacon } from "@uniflowed/web";
+
+collectVitals({ report: vitalsBeacon() });
+```
+
+That posts to `/__uf/vitals` on the page's own origin. The destination is a
+**path**, not a URL, so it cannot be aimed at somebody else's server by
+accident.
+
+`/__uf/` is the dev server's namespace — the same one the hot-update stream
+lives in — and a directory in `app/` whose name begins with `_` is not a route,
+so nothing you write can collide with it or serve it. That is what makes it
+safe as a default and why it is only half the answer: it is where a page being
+developed reports, and in production you pass a path of your own.
+
+```js
+collectVitals({ report: vitalsBeacon("/api/vitals") });
+```
+
+```js
+// app/api/vitals/_uf.route.js
+export async function POST(request: Request): Promise<Response> {
+  const report = await request.json();
+  // { url: "https://example.com/pricing", vitals: [ … ] }
+  return new Response(null, { status: 204 });
+}
+```
+
+That is the whole endpoint contract: a path you chose, and a `{ url, vitals }`
+body. There is nothing else to integrate with.
+
+A receiver gets **more than one report per page load**. Metrics become final at
+different moments — TTFB and FCP early, LCP, CLS and INP when the page is put
+away — and the beacon coalesces across a microtask rather than holding
+everything to the end, so the reports are additive. Batching to a single
+request would have made the whole thing depend on which page-hide listener the
+browser happened to call first, which is not something either side can state.
+
+## What leaves the machine
+
+Nothing, unless the project asks for it.
+
+- Importing `@uniflowed/web` or `@uniflowed/web/vitals` does nothing. There is
+  no top-level side effect, no listener, and no connection.
+- `collectVitals` calls the function you gave it and nothing else.
+- `vitalsBeacon` has to be constructed by you, and posts to a path on your own
+  origin. There is no uf endpoint and no analytics integration to switch off.
+
+## Where uf's numbers differ from `web-vitals`'s
+
+`web-vitals` is the reference implementation and this is not a fork of it — it
+is a direct read of the same entry types. The corrections that turn raw entries
+into numbers anybody quotes are all here: CLS is the worst five-second window
+rather than the sum, INP steps down from the slowest interaction as a page
+accumulates them, and every timestamp has the prerender subtracted. The
+remaining differences are these.
+
+**One set of metrics per page load.** `web-vitals` re-arms everything when a
+page is restored from the back-forward cache and reports a second set with a
+`back-forward-cache` navigation type. uf stops after one set. A bfcache restore
+is a second page view inside one document, and neither the metric nor the
+report has a way to say which view it belongs to; adding one is a change to the
+endpoint contract rather than to the collector, so it is not made quietly.
+
+**No attribution.** `web-vitals` has a second build that names the element that
+was the LCP, the shifts that made up the CLS, and the target of the slowest
+interaction. uf reports the number and not the cause. For a number you are
+reading about your own page that is the interesting half, and it is missing.
+
+**No `delta`.** `web-vitals` reports a metric repeatedly as it changes and gives
+you the difference since the last report, so an analytics backend can sum them.
+uf reports each metric once, when it is final, so the delta would always equal
+the value.
+
+**Prerendering is corrected, not deferred.** Both subtract `activationStart`
+from every timestamp. `web-vitals` additionally holds all reporting until a
+prerendered page is activated; uf reports when the metric is final and applies
+the correction at that moment. For a metric that becomes final *before*
+activation — which needs a prerendered page that is hidden before anyone
+navigates to it — uf's number will be lower.
+
+**Where `interactionCount` is missing.** INP is a high percentile rather than
+the maximum, and the denominator is `performance.interactionCount`, which is
+Chromium's. `web-vitals` polyfills it by observing every event with no duration
+threshold; uf falls back to the number of interactions it actually saw, which
+biases the answer towards the slowest one. It never flatters the page.
+
+## Browsers that cannot measure
+
+A metric whose entry type the browser does not serve is **not reported at
+all** — not as zero, not as `null`. Zero is the best possible score for three
+of these five, so a collector that reported it for "this browser has no idea"
+would make a site's worst pages look like its best ones, and it would look like
+good news.
+
+The distinction has an edge worth being exact about:
+
+- **CLS is reported as zero** when the browser supports `layout-shift` and
+  nothing moved. That is a measurement.
+- **INP is not reported at all** when nobody interacted. There is nothing that
+  could have been slow.
+
+The check is `PerformanceObserver.supportedEntryTypes`, asked per metric, and
+never `typeof PerformanceObserver`. Node has had a `PerformanceObserver` for
+years and it serves none of these types, so the obvious guard passes during a
+server render and then measures nothing.
+
+## Server rendering
+
+`collectVitals`, `useVitals` and `vitalsBeacon` all do nothing where there is no
+document, and none of them throws. uf prerenders every static route, so each of
+them runs with no browser on every build.
+
+## What is not here yet
+
+`uf dev` does not answer `/__uf/vitals`, so pointing the beacon at it in
+development currently reaches nothing. The browser half of the contract is
+what this page describes and it is finished; printing the numbers in the
+terminal beside the reload that caused them is the other half, and it belongs
+to the dev server rather than to the package. Until it exists, the way to see
+these numbers locally is to log them:
+
+```js
+collectVitals({ report: (vital) => console.log(vital) });
+```
