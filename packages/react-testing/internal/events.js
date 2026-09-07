@@ -170,72 +170,362 @@ export function dispatch(target: EventTarget, name: string, init?: EventInit): b
   return ran;
 }
 
+/** One event name's firer: the event that name stands for, at this target. */
+export type Firer = (target: EventTarget, init?: EventInit) => boolean;
+
 /**
  * `fireEvent.click(element)`, and one entry per event name.
  *
- * A proxy rather than a written-out table: the set of DOM events is long,
- * grows, and every entry would be the same line. `fireEvent(target, name)`
- * also works, for an event whose name is computed.
+ * # Why the names are written out
  *
- * # Why the type is still `any`, and what was tried
+ * This was a `Proxy` over a function, answering to any property at all and
+ * dispatching whatever it was asked for lowercased. That is the shortest thing
+ * to write and it cannot be typed, so the published type was `any`:
+ * `fireEvent.clcik(button)` was not a misspelling anybody's checker would find,
+ * and neither was passing something that is not an `EventTarget`. A hole like
+ * that in the package whose purpose is testing *typed* components is the same
+ * argument ubugeeei-prod/uf#381 made about the queries, which is why
+ * `screen`'s thirty-six names are written out too.
  *
- * The type this wants is a function that also answers to every event name.
- * Written with an indexer:
+ * Two shapes were tried against the proxy and neither works, for reasons no
+ * spelling fixes. An indexer — `readonly [string]: Firer` beside the call
+ * signature — Flow declines, and is right to: the value is a function, a
+ * function has `name`, `length`, `call`, `apply` and `bind`, and the trap
+ * handed those back as themselves because `property in base` was true for
+ * them. None of the five is a DOM event, so the lie was unreachable from a real
+ * call, but a type is not something to be right about on average. A written-out
+ * table over the proxy failed earlier still — "functions without statics are
+ * not compatible with objects" — because a `Proxy` over a function *is* a
+ * function, and Flow will not treat one carrying no statics as an object with
+ * properties, whatever those properties are.
  *
- *     type FireEvent = {
- *       (target: EventTarget, name: string, init?: EventInit): boolean,
- *       readonly [string]: (target: EventTarget, init?: EventInit) => boolean,
- *     };
+ * So the value changed rather than the annotation. The names below are real
+ * properties on a real function, attached inside a builder the way
+ * `@uniflowed/test`'s `describe` attaches its modifiers, and the type is the
+ * same list written down: Flow has no template literal types, so `fireEvent`'s
+ * hundred-odd names have to be listed for the type to exist at all. The list is
+ * the one React and Testing Library publish, so a suite being ported already
+ * has these spellings.
  *
- * Flow declines the indexer, and is right to. As an `interface`, so the
- * assignment gets far enough to say why, it reads "an unknown property that
- * may exist on the inexact function is incompatible with `Firer`" — the value
- * is a function, a function has `name`, `length`, `call`, `apply` and `bind`,
- * and the trap below hands those back as themselves because `property in base`
- * is true for them. None of the five is a DOM event, so the lie is unreachable
- * from any real call, but a type is not something to be right about on
- * average.
+ * # What that costs
  *
- * The written-out table the runtime deliberately is not — a call signature
- * plus a named property per event — fails earlier and for a reason no list of
- * names would fix:
+ * `fireEvent.somethingNobodyListedYet(el)` stops working, and a table stops
+ * answering to the hundred-and-sixth name the way a proxy never did. The
+ * escape hatch is the call signature this has always had:
+ * `fireEvent(target, "somethingnobodylistedyet", init)` takes a computed name
+ * and always did — it is what the proxy called into — and `dispatch` is
+ * exported for the same reason. So nothing became impossible; one spelling of
+ * it became a name a reader can look up.
  *
- *     error[incompatible-type]: Cannot assign `new Proxy(...)` to `fireEvent`
- *     because `(target: EventTarget, name: string, init?: EventInit) =>
- *     boolean` is incompatible with `FireEvent`.
- *     Functions without statics are not compatible with objects.
+ * The table also takes the camel-cased spelling only. The proxy lowercased
+ * whatever it was handed, so `fireEvent.keydown` and `fireEvent.KeyDown`
+ * worked as well as `fireEvent.keyDown`; the first of those is the DOM's own
+ * name and the loss is real, though nothing in this repository or in a suite
+ * written against Testing Library uses it.
  *
- * A `Proxy` over a function *is* a function, and Flow will not treat a
- * function with no statics as an object with properties whatever those
- * properties are. So no type at all can be assigned to this value: typing
- * `fireEvent` means changing what it is — a function carrying real static
- * properties, one per event name, which is a table of a hundred-odd entries
- * that stops answering to the hundred-and-first. That is a design decision
- * about a published API and not a cast to remove in passing.
- *
- * Suppressed by name rather than renamed to `$FlowFixMe`. The rename would
- * move it out of `flow/unclear-type`'s sight and say nothing; the directive
- * below names the rule it is escaping, is checked by
- * `uniflowed/unknown-lint-suppression`, and can be counted — this is one of
- * the seven in the packages, and ubugeeei-prod/uf#401 is the design decision
- * that would remove it.
+ * The type is inexact, and has to be: a function carries `name`, `length`,
+ * `call`, `apply` and `bind`, and an exact object type refuses one for
+ * exactly that reason. Inexactness costs nothing that matters here — Flow
+ * still reports a read of a property the type does not list, which is what
+ * makes `fireEvent.clcik` an error.
  */
-// uf-lint-disable-next-line flow/unclear-type
-export const fireEvent: any = new Proxy(
-  (target: EventTarget, name: string, init?: EventInit) => dispatch(target, name, init),
-  {
-    get(base, property) {
-      if (typeof property !== "string") {
-        return Reflect.get(base, property);
-      }
-      if (property in base) {
-        return Reflect.get(base, property);
-      }
-      return (target: EventTarget, init?: EventInit) =>
-        dispatch(target, property.toLowerCase(), init);
-    },
-  },
-);
+export type FireEvent = {
+  (target: EventTarget, name: string, init?: EventInit): boolean,
+
+  // The clipboard.
+  readonly copy: Firer,
+  readonly cut: Firer,
+  readonly paste: Firer,
+
+  // An input method editor composing a character.
+  readonly compositionEnd: Firer,
+  readonly compositionStart: Firer,
+  readonly compositionUpdate: Firer,
+
+  // Keys.
+  readonly keyDown: Firer,
+  readonly keyPress: Firer,
+  readonly keyUp: Firer,
+
+  // Focus. `focus` and `blur` are paired with the bubbling forms React listens for; see `ALSO_BUBBLES`.
+  readonly blur: Firer,
+  readonly focus: Firer,
+  readonly focusIn: Firer,
+  readonly focusOut: Firer,
+
+  // Forms.
+  readonly beforeInput: Firer,
+  readonly change: Firer,
+  readonly input: Firer,
+  readonly invalid: Firer,
+  readonly reset: Firer,
+  readonly submit: Firer,
+
+  // The mouse.
+  readonly auxClick: Firer,
+  readonly click: Firer,
+  readonly contextMenu: Firer,
+  readonly dblClick: Firer,
+  readonly mouseDown: Firer,
+  readonly mouseEnter: Firer,
+  readonly mouseLeave: Firer,
+  readonly mouseMove: Firer,
+  readonly mouseOut: Firer,
+  readonly mouseOver: Firer,
+  readonly mouseUp: Firer,
+
+  // Dragging.
+  readonly drag: Firer,
+  readonly dragEnd: Firer,
+  readonly dragEnter: Firer,
+  readonly dragLeave: Firer,
+  readonly dragOver: Firer,
+  readonly dragStart: Firer,
+  readonly drop: Firer,
+
+  // Pointers, which is what a component that works under both a mouse and a finger listens for.
+  readonly gotPointerCapture: Firer,
+  readonly lostPointerCapture: Firer,
+  readonly pointerCancel: Firer,
+  readonly pointerDown: Firer,
+  readonly pointerEnter: Firer,
+  readonly pointerLeave: Firer,
+  readonly pointerMove: Firer,
+  readonly pointerOut: Firer,
+  readonly pointerOver: Firer,
+  readonly pointerUp: Firer,
+
+  // Touch.
+  readonly touchCancel: Firer,
+  readonly touchEnd: Firer,
+  readonly touchMove: Firer,
+  readonly touchStart: Firer,
+
+  // Scrolling and the wheel.
+  readonly scroll: Firer,
+  readonly scrollEnd: Firer,
+  readonly wheel: Firer,
+
+  // Selection.
+  readonly select: Firer,
+  readonly selectionChange: Firer,
+
+  // Media.
+  readonly abort: Firer,
+  readonly canPlay: Firer,
+  readonly canPlayThrough: Firer,
+  readonly durationChange: Firer,
+  readonly emptied: Firer,
+  readonly encrypted: Firer,
+  readonly ended: Firer,
+  readonly loadStart: Firer,
+  readonly loadedData: Firer,
+  readonly loadedMetadata: Firer,
+  readonly pause: Firer,
+  readonly play: Firer,
+  readonly playing: Firer,
+  readonly progress: Firer,
+  readonly rateChange: Firer,
+  readonly seeked: Firer,
+  readonly seeking: Firer,
+  readonly stalled: Firer,
+  readonly suspend: Firer,
+  readonly timeUpdate: Firer,
+  readonly volumeChange: Firer,
+  readonly waiting: Firer,
+
+  // Loading a resource.
+  readonly error: Firer,
+  readonly load: Firer,
+
+  // Animations and transitions.
+  readonly animationCancel: Firer,
+  readonly animationEnd: Firer,
+  readonly animationIteration: Firer,
+  readonly animationStart: Firer,
+  readonly transitionCancel: Firer,
+  readonly transitionEnd: Firer,
+  readonly transitionRun: Firer,
+  readonly transitionStart: Firer,
+
+  // A dialog and a disclosure.
+  readonly cancel: Firer,
+  readonly close: Firer,
+  readonly toggle: Firer,
+
+  // The window and the document.
+  readonly beforeUnload: Firer,
+  readonly hashChange: Firer,
+  readonly message: Firer,
+  readonly messageError: Firer,
+  readonly offline: Firer,
+  readonly online: Firer,
+  readonly pageHide: Firer,
+  readonly pageShow: Firer,
+  readonly popState: Firer,
+  readonly readyStateChange: Firer,
+  readonly resize: Firer,
+  readonly storage: Firer,
+  readonly unload: Firer,
+  readonly visibilityChange: Firer,
+  ...
+};
+
+/**
+ * Build `fireEvent`: the callable, with one firer per name hung off it.
+ *
+ * Inside a builder rather than at the module's top level, because a shipped
+ * module may only declare, import and export at its top level and
+ * `fireEvent.click = …` out here is a statement that runs on import.
+ */
+function firing(): FireEvent {
+  const fires =
+    (name: string): Firer =>
+    (target: EventTarget, init?: EventInit) =>
+      dispatch(target, name, init);
+  const api = (target: EventTarget, name: string, init?: EventInit) => dispatch(target, name, init);
+
+  // The clipboard.
+  api.copy = fires("copy");
+  api.cut = fires("cut");
+  api.paste = fires("paste");
+
+  // An input method editor composing a character.
+  api.compositionEnd = fires("compositionend");
+  api.compositionStart = fires("compositionstart");
+  api.compositionUpdate = fires("compositionupdate");
+
+  // Keys.
+  api.keyDown = fires("keydown");
+  api.keyPress = fires("keypress");
+  api.keyUp = fires("keyup");
+
+  // Focus. `focus` and `blur` are paired with the bubbling forms React listens for; see `ALSO_BUBBLES`.
+  api.blur = fires("blur");
+  api.focus = fires("focus");
+  api.focusIn = fires("focusin");
+  api.focusOut = fires("focusout");
+
+  // Forms.
+  api.beforeInput = fires("beforeinput");
+  api.change = fires("change");
+  api.input = fires("input");
+  api.invalid = fires("invalid");
+  api.reset = fires("reset");
+  api.submit = fires("submit");
+
+  // The mouse.
+  api.auxClick = fires("auxclick");
+  api.click = fires("click");
+  api.contextMenu = fires("contextmenu");
+  api.dblClick = fires("dblclick");
+  api.mouseDown = fires("mousedown");
+  api.mouseEnter = fires("mouseenter");
+  api.mouseLeave = fires("mouseleave");
+  api.mouseMove = fires("mousemove");
+  api.mouseOut = fires("mouseout");
+  api.mouseOver = fires("mouseover");
+  api.mouseUp = fires("mouseup");
+
+  // Dragging.
+  api.drag = fires("drag");
+  api.dragEnd = fires("dragend");
+  api.dragEnter = fires("dragenter");
+  api.dragLeave = fires("dragleave");
+  api.dragOver = fires("dragover");
+  api.dragStart = fires("dragstart");
+  api.drop = fires("drop");
+
+  // Pointers, which is what a component that works under both a mouse and a finger listens for.
+  api.gotPointerCapture = fires("gotpointercapture");
+  api.lostPointerCapture = fires("lostpointercapture");
+  api.pointerCancel = fires("pointercancel");
+  api.pointerDown = fires("pointerdown");
+  api.pointerEnter = fires("pointerenter");
+  api.pointerLeave = fires("pointerleave");
+  api.pointerMove = fires("pointermove");
+  api.pointerOut = fires("pointerout");
+  api.pointerOver = fires("pointerover");
+  api.pointerUp = fires("pointerup");
+
+  // Touch.
+  api.touchCancel = fires("touchcancel");
+  api.touchEnd = fires("touchend");
+  api.touchMove = fires("touchmove");
+  api.touchStart = fires("touchstart");
+
+  // Scrolling and the wheel.
+  api.scroll = fires("scroll");
+  api.scrollEnd = fires("scrollend");
+  api.wheel = fires("wheel");
+
+  // Selection.
+  api.select = fires("select");
+  api.selectionChange = fires("selectionchange");
+
+  // Media.
+  api.abort = fires("abort");
+  api.canPlay = fires("canplay");
+  api.canPlayThrough = fires("canplaythrough");
+  api.durationChange = fires("durationchange");
+  api.emptied = fires("emptied");
+  api.encrypted = fires("encrypted");
+  api.ended = fires("ended");
+  api.loadStart = fires("loadstart");
+  api.loadedData = fires("loadeddata");
+  api.loadedMetadata = fires("loadedmetadata");
+  api.pause = fires("pause");
+  api.play = fires("play");
+  api.playing = fires("playing");
+  api.progress = fires("progress");
+  api.rateChange = fires("ratechange");
+  api.seeked = fires("seeked");
+  api.seeking = fires("seeking");
+  api.stalled = fires("stalled");
+  api.suspend = fires("suspend");
+  api.timeUpdate = fires("timeupdate");
+  api.volumeChange = fires("volumechange");
+  api.waiting = fires("waiting");
+
+  // Loading a resource.
+  api.error = fires("error");
+  api.load = fires("load");
+
+  // Animations and transitions.
+  api.animationCancel = fires("animationcancel");
+  api.animationEnd = fires("animationend");
+  api.animationIteration = fires("animationiteration");
+  api.animationStart = fires("animationstart");
+  api.transitionCancel = fires("transitioncancel");
+  api.transitionEnd = fires("transitionend");
+  api.transitionRun = fires("transitionrun");
+  api.transitionStart = fires("transitionstart");
+
+  // A dialog and a disclosure.
+  api.cancel = fires("cancel");
+  api.close = fires("close");
+  api.toggle = fires("toggle");
+
+  // The window and the document.
+  api.beforeUnload = fires("beforeunload");
+  api.hashChange = fires("hashchange");
+  api.message = fires("message");
+  api.messageError = fires("messageerror");
+  api.offline = fires("offline");
+  api.online = fires("online");
+  api.pageHide = fires("pagehide");
+  api.pageShow = fires("pageshow");
+  api.popState = fires("popstate");
+  api.readyStateChange = fires("readystatechange");
+  api.resize = fires("resize");
+  api.storage = fires("storage");
+  api.unload = fires("unload");
+  api.visibilityChange = fires("visibilitychange");
+  return api;
+}
+
+/** Dispatch one event, by name. See [`FireEvent`]. */
+export const fireEvent: FireEvent = firing();
 
 /** Set a control's value the way a browser does, so React sees the change. */
 function setValue(element: HTMLElement, value: string): void {
