@@ -450,8 +450,11 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &[
                 "Announcer",
                 "Font",
+                "Icon",
+                "IconSprite",
                 "Image",
                 "Layout",
+                "OgImage",
                 "Page",
                 "Picture",
                 "SkipLink",
