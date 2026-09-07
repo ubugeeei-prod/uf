@@ -16,7 +16,8 @@
     "./head": "./head.js",
     "./media": "./media.js",
     "./regions": "./regions.js",
-    "./time": "./time.js"
+    "./time": "./time.js",
+    "./vitals": "./vitals.js"
   },
   "files": [
     "*.js"
