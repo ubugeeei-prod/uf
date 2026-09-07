@@ -156,6 +156,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
       },
       {
+        href: "/guide/logging",
+        title: "Logging",
+        blurb: "A structured logger, and a request id readable from inside a render.",
+      },
+      {
         href: "/guide/testing",
         title: "Testing",
         blurb: "A Rust runner, host workers, and where it stands against Bun.",

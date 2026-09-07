@@ -688,6 +688,15 @@ function loadOnce<T>(load: () => Promise<T>): Promise<T> {
   return pending;
 }
 
+/** What a caller may tell [`resolveMatch`] about the resolution it wants. */
+export type ResolveOptions = {|
+  /** What the loader returned already, so it does not run twice. */
+  readonly data?: mixed,
+  readonly skipLoader?: boolean,
+  /** The route pattern, the moment the URL matches one; see [`resolveMatch`]. */
+  readonly onMatch?: (pattern: string) => void,
+|};
+
 /**
  * Load a match's modules and run its loader.
  *
@@ -707,6 +716,19 @@ function loadOnce<T>(load: () => Promise<T>): Promise<T> {
  * before `hydrateRoot`, so a rejection there is not an error page — it is no
  * `hydrateRoot` call at all, and the document the server sent stays on screen
  * with nothing attached to it.
+ *
+ * # `onMatch`
+ *
+ * Called with the route pattern the moment the URL matches one, before any
+ * module is imported and before the loader runs. It exists because the server
+ * has something to do with that fact and does it too late otherwise: the route
+ * a request turned out to be is what its log line carries, and a loader is
+ * inside this call, so a server that recorded the route after this resolved
+ * would have every line a loader wrote saying it belonged to no route.
+ *
+ * A callback rather than a return value because both callers already have one
+ * — the pattern is on the `ResolvedRoute` this hands back — and only one of
+ * them needs it *early*. The browser passes nothing and pays nothing.
  */
 export async function resolveMatch(
   table: RouteTable,
@@ -762,6 +784,10 @@ async function resolveRoute(
   const { pathname, search } = splitUrl(url);
   const searchParams = parseSearch(search);
   const matched = matchRoute(table.routes, pathname);
+
+  if (matched != null) {
+    options?.onMatch?.(matched.route.path);
+  }
 
   if (matched == null) {
     return resolveNotFound(table, pathname, search, searchParams);

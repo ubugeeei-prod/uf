@@ -137,6 +137,24 @@ run is a function with a hole in it.
 | Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
 | XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
+## Logging
+
+A log is where attacker-chosen text is written and later read as a record of
+what happened, and where credentials are published by accident. Both are
+answered where the record is built rather than at each call site.
+
+| Concern | Decision in `uf` | Where |
+| --- | --- | --- |
+| A credential in a log line. A token in the log store is read by more people, kept for longer, and replicated further than the store it came from | A closed table of field names whose value is never printed, matched after normalising case, `-`, `_` and `.`, and applied at every depth. A table of *names* rather than a test of values: recognising "this looks like a JWT" is a regex over untrusted input, which rule 5 forbids, and a heuristic that misses once has published the token | `packages/server/internal/log.js`, `tests/library/log.test.js` |
+| Log injection — a newline in a path or a user agent closing its own record and opening a fabricated one | Every string in a record loses its control characters and is cut to a fixed length before it is formatted, the same treatment `uf_pm::progress` gives registry text before drawing it | `packages/server/internal/log.js`, `tests/library/log.test.js` |
+| A query string in an access line: a return path, a search term, a signed URL, an OAuth `code` and `state` | The access line carries `url.pathname` and never the search. A host writing that line does not know which route it is logging, so the only rule it can apply is the one that is right for every route | `packages/server/log.js`, `tests/library/log.test.js` |
+| A field named `level` or `msg` relabelling a record's own severity | The record's own keys are written after the fields, so a field of the same name cannot displace one | `packages/server/internal/log.js`, `tests/library/log.test.js` |
+| An inbound `X-Request-Id` becoming the id `uf` correlates by | `uf` generates the request id and never takes it from the request. A client-chosen id can be identical on a million requests, which defeats the only thing an id is for, and it lands in a log line | `packages/server/internal/context.js` |
+| A request id rendered into a document that is then cached, so every later visitor is told they are the first one | `requestId()` counts as a read of request state, exactly as `cookies()` does, so the route cache refuses to store the render. `logger()` deliberately does not: an id that reached a log line has not made the document personal | `packages/server/index.js`, `tests/library/log.test.js` |
+| A log line written into `uf`'s own control channel | The default sink writes every level to `console.error`. In the process that runs `uf start` and `uf preview`, stdout is `@uniflowed/vite`'s JSON event channel and `console.info` goes to stdout on Node, so choosing the stream by level would put a log line in the middle of a protocol — intermittently, and only under traffic | `packages/server/internal/log.js` |
+| A request Node's own parser refuses, answered `400` by the runtime and recorded nowhere | `serve` attaches a `clientError` handler that writes the same `400` the default one does and reports it at `warn`, with the error's `code` and nothing else — Node puts the offending bytes on `error.rawPacket`, and those are whatever the client sent | `packages/server/node.js` |
+| Unbounded work from a field a handler passed to a logger | Values are walked to a fixed depth with a fixed number of keys per object and entries per array, and strings are cut | `packages/server/internal/log.js`, `tests/library/log.test.js` |
+
 ## Package manager
 
 `uf install` runs on a freshly cloned, untrusted repository. Everything in

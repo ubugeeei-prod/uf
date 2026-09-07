@@ -51,6 +51,7 @@ import { createStaticHandler } from "./node.js";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import { logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -264,14 +265,21 @@ export function createLambdaHandler(
   return async function lambdaHandler(event: LambdaHttpEvent): Promise<LambdaHttpResult> {
     const request = toRequest(event);
     const lifecycle = beginRequest(request);
+    const started = Date.now();
+    // Declared out here so the `finally` can say what this invocation answered.
+    // A Lambda has no terminal, so the line it leaves in CloudWatch is the only
+    // account of the request there will ever be.
+    let status = 500;
     try {
-      return await lifecycle.run(async () => {
+      const result = await lifecycle.run(async () => {
         const asset = serveStatic == null ? null : await serveStatic(request);
         return await toResult(asset ?? (await handle(request)));
       });
+      status = result.statusCode;
+      return result;
     } catch (error) {
       // The same 500 `./node.js`'s `nodeListener` writes, and for the same
-      // reasons: the body must not carry the stack, and the console — which on
+      // reasons: the body must not carry the stack, and the log — which on
       // Lambda is CloudWatch — is where the operator is already looking. A
       // rejected invocation would be a 502 from API Gateway instead, which is
       // a different answer from `uf start`'s for the same failure.
@@ -279,7 +287,7 @@ export function createLambdaHandler(
       // `toRequest` above is deliberately outside this: an event in the wrong
       // format is a misconfigured function rather than a failed request, and
       // answering it 500 forever would hide that.
-      console.error(error);
+      processLogger().error("request failed", { error });
       return {
         statusCode: 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
@@ -288,6 +296,14 @@ export function createLambdaHandler(
         isBase64Encoded: false,
       };
     } finally {
+      logRequest(processLogger(), {
+        requestId: lifecycle.context.id,
+        method: request.method.toUpperCase(),
+        path: new URL(request.url).pathname,
+        route: lifecycle.context.route,
+        status,
+        durationMs: Date.now() - started,
+      });
       await lifecycle.settle();
     }
   };

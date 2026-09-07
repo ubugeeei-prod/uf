@@ -1,0 +1,145 @@
+---
+title: "Logging · uf"
+description: "A structured logger, and a request id readable from inside a render."
+---
+
+<p className="eyebrow">The tools</p>
+
+# Logging
+
+<div className="lede">
+A line a person reads and a line a log aggregator reads are different lines, and
+the way to have both is to build a record and format it twice. uf builds the
+record: a level, a time, a constant message, and fields. Every request gets an
+id when it arrives, and that id is readable from a loader, a route handler and a
+server component's render without anybody being handed a request.
+</div>
+
+## Saying something
+
+```js
+// @flow
+import { logger } from "@uniflowed/server";
+
+export async function loader({ params }: LoaderArgs) {
+  const order = await findOrder(params.id);
+  if (order == null) {
+    logger().warn("order not found", { orderId: params.id });
+  }
+  return order;
+}
+```
+
+`logger()` is the process logger with this request's id and matched route
+already on it, so a line written six levels down inside a render can be joined
+to the request that caused it. The message is a constant and everything that
+varies is a field — `order not found` with `orderId=8813` is a thing you can
+count, and `"order 8813 not found"` is a thing you can only grep.
+
+Unlike `cookies()`, `headers()` and `requestId()`, it does not throw outside a
+request. Those three answer *about* a request and have no honest answer without
+one; a logger has the same answer either way, minus the id. A package whose
+logging call is the one call you cannot make from a failure path has it
+backwards.
+
+## The request id
+
+```js
+// @flow
+import { requestId } from "@uniflowed/server";
+
+export default function ErrorPage() {
+  return <p>Something went wrong. Quote {requestId()} if you get in touch.</p>;
+}
+```
+
+It is created when the request arrives and lives on the request context, so two
+requests in flight cannot see each other's — the failure a module-level variable
+has, and only under load.
+
+Reading it **counts as reading request state**, exactly as `cookies()` does, so a
+render that puts it in the document is a render uf will not put in the route
+cache. A document holding a request id is true of exactly one request, and a
+cache that stored it would tell every later visitor they were the first one.
+`logger()` does not count: an id that reaches a log line has not made the
+document personal, and a page that logs must not thereby become a page uf
+refuses to cache.
+
+uf generates the id and never takes it from the request. An `X-Request-Id` a
+client sent can be identical on a million requests, which defeats the only thing
+an id is for, and it lands in a log line.
+
+## The line a request leaves behind
+
+Every request writes one line after its response, and the field that makes it
+worth keeping is the **route**:
+
+```text
+11:41:15.638 info  request requestId=37f84251-… method=GET path=/orders/8813 route=/orders/:id status=200 durationMs=12
+```
+
+A log of paths says `/orders/8813` was slow. A log of routes says `/orders/:id`
+is slow, which is the question you actually have. The route is what
+`@uniflowed/router` matched, and it is `null` for a request that matched
+nothing — a static asset, a 404, a request a guard refused above any route.
+
+The query string is never in it. That is where a return path, a search term, a
+signed download URL and an OAuth `code` and `state` all live, and a host writing
+this line does not know which route it is logging.
+
+The level comes from the status: `error` at 500 and above, `warn` at 400,
+`info` otherwise — so `UF_LOG_LEVEL=warn` leaves exactly the requests that went
+wrong.
+
+## Format and level
+
+| Variable | Values | Default |
+| --- | --- | --- |
+| `UF_LOG_LEVEL` | `debug`, `info`, `warn`, `error`, `silent` | `info` |
+| `UF_LOG_FORMAT` | `json`, `text` | `json` when `NODE_ENV=production`, else `text` |
+
+A name that is not a level falls back to `info` rather than to silence: a typo
+in a deployment's environment must not be the reason an incident left no trace.
+
+Output goes to `console.error` at every level, not only for errors. In the
+process that runs `uf start` and `uf preview`, stdout is `@uniflowed/vite`'s JSON
+control channel, and `console.info` writes there on Node — so choosing the
+stream by level would put a log line in the middle of a protocol.
+
+## Sending it somewhere else
+
+```js
+// @flow
+import { createLogger, installLogger } from "@uniflowed/server/log";
+
+installLogger(
+  createLogger({
+    level: "info",
+    sink: (record) => myCollector.send(record),
+  }),
+);
+```
+
+Every line uf writes goes there afterwards, including the ones written from
+inside a render. A deployment already has somewhere it puts logs, and a
+framework that could only write its own shape to its own stream is a framework
+the operator has to work around.
+
+For a test, `recordingLogger()` hands back a logger and the array of records it
+collects — the records rather than the arguments, which is where redaction and
+truncation have already happened and so the half worth asserting on.
+
+## What a log line may not carry
+
+**A credential.** Field names that name one — `accessToken`, `client_secret`,
+`Set-Cookie`, `password` and the rest — are replaced with `[redacted]`, at every
+depth, matched after normalising case, `-`, `_` and `.`. It is a table of names
+rather than a test of values on purpose: recognising "this looks like a JWT" is
+a regular expression over untrusted input, and a heuristic that misses once has
+published the token. A field called `code` is deliberately *not* redacted — it
+is `ECONNRESET` far more often than it is an authorization code.
+
+**A second record.** Every string loses its control characters and is cut to a
+fixed length before it is formatted. A path or a user agent is text a client
+chose, and a newline in one would close its own record and open a fabricated
+one — which is how a log becomes evidence of something that did not happen.
