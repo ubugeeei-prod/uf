@@ -99,8 +99,9 @@
 //   plain element does not; if it ever stops being true, the component should
 //   be deleted rather than fixed.
 // - `menu.js` — the arrow keys, typeahead, submenus and `Escape` stacking.
-// - `combobox.js` — `aria-activedescendant` over a filtered list, and the
-//   count a screen reader is told.
+// - `combobox.js` — `aria-activedescendant` over a filtered list, the count a
+//   screen reader is told, and the option groups that make a command palette a
+//   composition rather than a seventh module.
 // - `select.js` — the other half of the combobox pattern: the select-only one,
 //   with typeahead, option groups and a value a form can submit.
 // - `tabs.js` — the roving `tabindex`, and automatic versus manual activation.
@@ -182,10 +183,19 @@ import {
   CarouselPrevious,
   CarouselRoot,
 } from "./carousel.js";
+import {
+  CalendarDay,
+  CalendarMonth,
+  CalendarNext,
+  CalendarPrevious,
+  CalendarRoot,
+} from "./calendar.js";
 import { Checkbox } from "./checkbox.js";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "./collapsible.js";
 import {
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxInput,
   ComboboxLabel,
   ComboboxList,
@@ -193,6 +203,12 @@ import {
   ComboboxRoot,
   ComboboxStatus,
 } from "./combobox.js";
+import {
+  DatePickerCalendar,
+  DatePickerInput,
+  DatePickerRoot,
+  DatePickerTrigger,
+} from "./date-picker.js";
 import {
   DialogBody,
   DialogClose,
@@ -312,6 +328,9 @@ import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
 import { TooltipBody, TooltipProvider, TooltipRoot, TooltipTrigger } from "./tooltip.js";
 
 export type { AccordionType } from "./accordion.js";
+// A date, however a caller had one to hand: a `PlainDate` from
+// `@uniflowed/temporal`, or the ISO 8601 string a form field or a URL carries.
+export type { DateValue } from "./calendar.js";
 export type { ActivationMode } from "./tabs.js";
 // What a modal announces itself as, for a caller who holds one in a variable.
 // Two members, not a string: see `dialog.js`.
@@ -324,7 +343,10 @@ export type { SidebarSide } from "./sidebar.js";
 // Where an anchored overlay opens, for a caller who holds one in a variable or
 // a prop of their own. Unions rather than strings, so `side="botom"` is a type
 // error at the call rather than an overlay that quietly opens somewhere else.
-export type { Align, Side } from "./popover.js";
+// `LogicalSide` is the same four plus `inline-start` and `inline-end`, which
+// are the ones that mean "the way the reader reads" - what a submenu opens
+// onto, and the left of the page in Arabic.
+export type { Align, LogicalSide, Side } from "./popover.js";
 export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 export type { ToggleGroupType } from "./toggle-group.js";
@@ -755,13 +777,19 @@ export const Menu = {
  *     <Combobox.Label>Country</Combobox.Label>
  *     <Combobox.Input />
  *     <Combobox.List>
- *       {matches.map((each) => (
- *         <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
- *       ))}
+ *       <Combobox.Group>
+ *         <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
+ *         {european.map((each) => (
+ *           <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
+ *         ))}
+ *       </Combobox.Group>
  *     </Combobox.List>
  *     <Combobox.Empty>No matches.</Combobox.Empty>
  *     <Combobox.Status />
  *   </Combobox.Root>
+ *
+ * `Combobox.Label` names the field and `Combobox.GroupLabel` names a group of
+ * options, which is why there are two of them.
  */
 export const Combobox = {
   Root: ComboboxRoot,
@@ -769,6 +797,8 @@ export const Combobox = {
   Input: ComboboxInput,
   List: ComboboxList,
   Option: ComboboxOption,
+  Group: ComboboxGroup,
+  GroupLabel: ComboboxGroupLabel,
   Empty: ComboboxEmpty,
   Status: ComboboxStatus,
 };
@@ -835,6 +865,64 @@ export const Popover = {
   Root: PopoverRoot,
   Trigger: PopoverTrigger,
   Body: PopoverBody,
+};
+
+/**
+ * A month of dates, as one stop in the page's tab order.
+ *
+ * The grid is `role="grid"`, the arrow keys move by a day and by a week, and
+ * `PageUp` and `PageDown` change the month - with `Shift`, the year. Running off
+ * the end of a month shows the next one and lands on its first day, and the
+ * month is announced in a live region when it changes.
+ *
+ *   <Calendar.Root defaultValue="2026-10-14" onValueChange={setWhen}>
+ *     <Calendar.Previous>Previous month</Calendar.Previous>
+ *     <Calendar.Next>Next month</Calendar.Next>
+ *     <Calendar.Month />
+ *   </Calendar.Root>
+ *
+ * `Calendar.Month` takes a function child when a day needs more than its number
+ * in it - a dot for an appointment, a price for a night - and it is handed the
+ * date and returns a `Calendar.Day`.
+ *
+ * Dates are `@uniflowed/temporal`'s `PlainDate`, or the ISO strings it reads.
+ * `isDateDisabled` marks a day unavailable *without* making it unreachable: it
+ * is `aria-disabled` and the arrow keys still land on it, which is the opposite
+ * of what a disabled menu item does and the only way a reader can find out which
+ * days are unavailable.
+ */
+export const Calendar = {
+  Root: CalendarRoot,
+  Previous: CalendarPrevious,
+  Next: CalendarNext,
+  Month: CalendarMonth,
+  Day: CalendarDay,
+};
+
+/**
+ * A field somebody types a date into, and a calendar for the times they would
+ * rather point at one.
+ *
+ *   <DatePicker.Root onValueChange={setWhen} value={when}>
+ *     <DatePicker.Input aria-label="Arrive on" />
+ *     <DatePicker.Trigger>Choose a date</DatePicker.Trigger>
+ *     <DatePicker.Calendar>
+ *       <Calendar.Previous>Previous month</Calendar.Previous>
+ *       <Calendar.Next>Next month</Calendar.Next>
+ *       <Calendar.Month />
+ *     </DatePicker.Calendar>
+ *   </DatePicker.Root>
+ *
+ * The field is the control and the grid is the second way in: `Escape` and a
+ * chosen date both put focus back on the field. `format` and `parse` are ISO
+ * 8601 both ways unless a caller passes their own - `date-picker.js` says why a
+ * locale format is not this package's to guess.
+ */
+export const DatePicker = {
+  Root: DatePickerRoot,
+  Input: DatePickerInput,
+  Trigger: DatePickerTrigger,
+  Calendar: DatePickerCalendar,
 };
 
 /**

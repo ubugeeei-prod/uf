@@ -54,6 +54,20 @@ export const metadata: Metadata = {
   // derive: it is an X handle, and this project has not said it has one. The
   // field exists — `twitter: { site: "@…" }` — for the day it does.
   twitter: { card: "summary_large_image", images: ["/brand/og.png"] },
+  // What the site is, in the vocabulary a search engine reads rather than the
+  // sentence a person does. On the layout because it describes the site, and
+  // `jsonLd` is the one metadata field that *adds* to what an outer layout
+  // declared rather than replacing it — so a page describing itself as an
+  // `Article` keeps this rather than deleting it.
+  jsonLd: [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "uf",
+      url: "https://docs.uniflowed.dev",
+      description: "The Unified Toolchain for Flow (React).",
+    },
+  ],
 };
 
 /**

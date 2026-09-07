@@ -23,7 +23,7 @@ integrated feature coverage.
 - `uf_check`: Flow type inference, driven from `upstream/flow`
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
-- `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString
+- `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString, and the byte bound every `.uf/cache/` directory is swept to
 - `uf_lib`: native standard library registry exposed to Flow
 - `uf_lint`: native lint runner and framework rules
 - `uf_pm`: self-hosted package manager plan, lockfile, and content-addressed store contracts
@@ -214,6 +214,24 @@ module policy first (`is_flow_module`): project `.js` files and `@uniflowed/*`
 under `node_modules` are uf's to transform, a third-party dependency is not,
 and a build driver's own virtual modules never are.
 
+The three hosts ask that question at different moments, and Bun's is the one
+that constrains the design. Node's hooks may hand a module back untouched;
+Bun's plugin API selects a module by *pattern* and then requires the hook to
+answer with contents, and there is no shape that means "not mine" — so the
+policy exists twice in `packages/host/transform.js`, as `isFlowModule` and as
+`FLOW_MODULE_PATTERN`, and `tests/library/flow-modules.test.js` pins the two
+equal path for path. It has to be equality rather than approximation in both
+directions: a pattern that under-matched would leave a `@uniflowed` package's
+Flow to Bun's parser, and one that over-matched would put a CommonJS
+dependency through `onLoad`, where anything that comes out is an ES module and
+`import dep from "dep"` stops finding a default export.
+
+The service also unreferences its child between requests, so it holds its host
+open for exactly as long as it owes an answer. Node did not need that — its
+module hooks run on a loader thread and the process exits with the main
+thread — which is the only reason it was never noticed that on Bun the same
+service kept the process alive forever after the program had finished.
+
 Source maps point at the Flow source. The printer records a mapping for every
 node the author wrote and none for nodes the compiler or the lowering passes
 invented, and oxc's map over the printed text is composed with those, so a
@@ -321,6 +339,20 @@ a loaded runner and pass it on an idle laptop, with a failure a reader could not
 tell from a real one ([#565](https://github.com/ubugeeei-prod/uf/issues/565)).
 The bound against inference that does not terminate is Flow's own recursion
 limit, which counts work rather than time.
+
+All three disk caches — `.uf/cache/check`, `.uf/cache/transform` and
+`.uf/cache/task` — are bounded by one policy in `uf_infra::cache`: 128 MiB per
+directory, swept to 96 MiB, coldest entry first, where "coldest" is the later
+of a file's access and modification times. Every key names the `uf` that wrote
+it, so a rebuild orphans a whole generation at once and none of them could
+give a byte back before this existed. The sweep runs once at the start of the
+command that is about to add to a cache — `uf check`, `uf run`, and
+`uf transform`, which a host starts only when something actually has to be
+compiled — and it never rewrites a file, only unlinks one, and never unlinks
+one used in the last minute, which is what makes it safe beside the twelve
+workers of `uf test`. Evicting by *compiler identity* instead was considered
+and rejected: it is the smallest cache and it would retire the guarantee that
+a bisect walking back over a rebuild finds its entries still there.
 
 Errors are never flattened into strings. `flow_common_errors`'s accessors give
 the code, kind, and primary location directly; the message tree itself is private

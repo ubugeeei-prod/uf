@@ -109,6 +109,19 @@ import { directionOf } from "./roving-focus.js";
 export type Side = "top" | "right" | "bottom" | "left";
 
 /**
+ * A side a caller may ask for, which is the four above plus the two that mean
+ * "the way the reader reads".
+ *
+ * The WAI-ARIA menu pattern puts a submenu on the inline end - to the right of a
+ * left-to-right menu and to the left of a right-to-left one - and `menu.js`
+ * already spells the *keys* that way, so a physical-only `side` would have left
+ * one half of that pattern mirrored and the other half not. `Placement` and
+ * `placeOverlay` stay physical: a logical side is resolved once, against the
+ * trigger's own direction, before any arithmetic sees it.
+ */
+export type LogicalSide = Side | "inline-start" | "inline-end";
+
+/**
  * Where the overlay sits along the trigger's other axis.
  *
  * Logical: `start` is the left edge in a left-to-right page and the right edge
@@ -173,7 +186,8 @@ export type AnchorRequest = {|
   readonly overlayRef: { current: HTMLElement | null },
   /** Nothing is measured while it is closed: there is nothing to measure. */
   readonly open: boolean,
-  readonly side: Side,
+  /** Resolved against the trigger's writing direction; see `LogicalSide`. */
+  readonly side: LogicalSide,
   readonly align: Align,
   readonly sideOffset: number,
   readonly alignOffset: number,
@@ -188,6 +202,28 @@ const OPPOSITE: { readonly [Side]: Side } = {
   left: "right",
   right: "left",
 };
+
+/**
+ * The side on the screen that `side` names for a reader reading `direction`.
+ *
+ * The four physical ones pass through unchanged, because a design that puts a
+ * popover to the right of a toolbar means the right of the toolbar in Arabic
+ * too; `Side`'s own documentation says why that is the useful default and why
+ * alignment is the axis that mirrors.
+ */
+export function physicalSide(side: LogicalSide, direction: Direction): Side {
+  // Written out rather than left to a wildcard, so that a sixth side added to
+  // `LogicalSide` one day is a checker error here instead of a value that falls
+  // through unresolved.
+  return match (side) {
+    "inline-start" => direction === "rtl" ? "right" : "left",
+    "inline-end" => direction === "rtl" ? "left" : "right",
+    "top" => "top",
+    "right" => "right",
+    "bottom" => "bottom",
+    "left" => "left",
+  };
+}
 
 /** Whether a side stacks the overlay above the trigger or beside it. */
 function isVertical(side: Side): boolean {
@@ -396,7 +432,12 @@ export hook useAnchor(request: AnchorRequest): Anchored {
     side,
     sideOffset,
   } = request;
-  const [settled, setSettled] = useState<Anchored>({ align, side });
+  // The left-to-right reading of a logical side, which is what `Anchored`
+  // reports until something has been measured. In a right-to-left page a
+  // submenu's `inline-end` is the *left*, and the first `reflow` says so - one
+  // commit later, exactly as a flip does, and for the same reason: the direction
+  // is a fact about the document, and a render may not read one.
+  const [settled, setSettled] = useState<Anchored>({ align, side: physicalSide(side, "ltr") });
 
   const reflow = useStableCallback(() => {
     const anchor = anchorRef.current;
@@ -414,7 +455,7 @@ export hook useAnchor(request: AnchorRequest): Anchored {
       collisionPadding,
       direction: directionOf(anchor),
       overlay: rectOf(overlay),
-      side,
+      side: physicalSide(side, directionOf(anchor)),
       sideOffset,
       // The viewport of a fixed element, which is the whole of it: a fixed box
       // is positioned against the viewport rather than against whatever is
@@ -443,8 +484,9 @@ export hook useAnchor(request: AnchorRequest): Anchored {
       // drawn from `data-side` pointing the wrong way, after a reopen that
       // follows a flip.
       if (!open) {
+        const asked = physicalSide(side, anchor == null ? "ltr" : directionOf(anchor));
         setSettled((current) =>
-          current.side === side && current.align === align ? current : { align, side },
+          current.side === asked && current.align === align ? current : { align, side: asked },
         );
       }
       return;
@@ -496,5 +538,5 @@ export hook useAnchor(request: AnchorRequest): Anchored {
   // first commit — and the server's markup, which measures nothing at all —
   // says the requested side rather than the last one some other opening
   // happened to settle on.
-  return open ? settled : { align, side };
+  return open ? settled : { align, side: physicalSide(side, "ltr") };
 }

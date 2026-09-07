@@ -3,7 +3,13 @@
 //! This crate is intentionally tiny and boring at the API boundary. Internals can
 //! change as benchmarks teach us more, while downstream crates get one stable
 //! import path for the fast defaults we want everywhere.
+//!
+//! [`cache`] is the one module here that touches a disk rather than a buffer.
+//! It is here for the same reason the rest is: three crates keep an answer
+//! cache under `.uf/cache/`, all three need the same bound on it, and three
+//! copies of an eviction policy would be three policies.
 
+pub mod cache;
 pub mod parallel;
 
 pub use bumpalo::{Bump, collections::Vec as ArenaVec};

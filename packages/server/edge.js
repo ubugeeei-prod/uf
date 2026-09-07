@@ -44,9 +44,34 @@
 // into the `handler.js` beside the generated `worker.js`. See
 // ubugeeei-prod/uf#389.
 
+import { Temporal } from "@uniflowed/core/temporal";
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+
+/**
+ * What a Worker can do, plus whatever the deployment supplied.
+ *
+ * Streams, and does not persist — the one split in this package where the two
+ * flags disagree, which is why they are two flags. A Worker writes a body as
+ * it is produced, so an event stream is exactly as good here as it is on Node.
+ * It is also an isolate the platform may tear down the moment the response is
+ * out, which is the whole reason `after()` on this target goes through
+ * `ctx.waitUntil` rather than being awaited — so an in-process queue is work
+ * pushed into something that may not be there to drain it, and
+ * `./internal/capabilities.js` refuses one.
+ *
+ * `websocket` is the deployment's. Cloudflare's upgrade is `new WebSocketPair`,
+ * `server.accept()` and a `Response` carrying `webSocket` — four lines, using
+ * two globals nothing outside a real Worker can produce, which is the same
+ * reason `./lambda.js` does not implement response streaming.
+ */
+export function edgeCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(capabilitiesFor("edge", { stream: true, persistent: false }, options));
+}
 
 /**
  * The `ASSETS` binding, as much of it as this module uses.
@@ -120,8 +145,13 @@ export function createWorkerFetch(
     ctx?: ExecutionContext,
   ): Promise<Response> {
     const lifecycle = beginRequest(request);
+    const started = Temporal.Now.instant();
+    // Declared out here so the `finally` can say what this request answered. A
+    // worker has no terminal at all, so the line it leaves behind is the only
+    // account of it there will ever be.
+    let status = 500;
     try {
-      return await lifecycle.run(async () => {
+      const response = await lifecycle.run(async () => {
         const assets = env?.ASSETS;
         const method = request.method.toUpperCase();
         if (assets != null && (method === "GET" || method === "HEAD")) {
@@ -130,19 +160,29 @@ export function createWorkerFetch(
         }
         return await handle(request);
       });
+      status = response.status;
+      return response;
     } catch (error) {
       // The same 500 `./node.js`'s `nodeListener` writes, and for the same
       // reasons: the body must not carry the stack, because the body goes to
-      // whoever asked, and the console is where the operator is already
-      // looking. Without this the answer would be Cloudflare's own error page,
-      // which is a different answer from `uf start`'s for the same failure —
-      // and the whole claim of the seam is that there is one answer.
-      console.error(error);
+      // whoever asked, and the log is where the operator is already looking.
+      // Without this the answer would be Cloudflare's own error page, which is
+      // a different answer from `uf start`'s for the same failure — and the
+      // whole claim of the seam is that there is one answer.
+      processLogger().error("request failed", { error });
       return new Response("500 Internal Server Error\n", {
         status: 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     } finally {
+      logRequest(processLogger(), {
+        requestId: lifecycle.context.id,
+        method: request.method.toUpperCase(),
+        path: new URL(request.url).pathname,
+        route: lifecycle.context.route,
+        status,
+        durationMs: elapsedMs(started),
+      });
       // Scheduled rather than awaited: awaiting it here would hold the
       // response back until every `after()` callback had finished, which is
       // the opposite of what `after()` is for. Where there is no `ctx` — a

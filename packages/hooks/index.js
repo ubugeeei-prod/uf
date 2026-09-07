@@ -32,6 +32,12 @@
 // its sidebar under 48rem wants `false` on the server and one that renders a
 // mobile menu wants `true`, and a library cannot know which.
 //
+// Where there is exactly one honest answer, the caller is not asked. `useHash`
+// takes no server value because the browser strips the fragment before the
+// request goes out, so `""` is not a default standing in for something better —
+// it is what the server knows, and offering an override would have invited a
+// caller to state a value that cannot be true.
+//
 // The hooks built on effects rather than stores — everything in `dom.js`, and
 // the three in `browser.js` whose first value only arrives in a callback — do
 // nothing at all before hydration, and report the same starting value on both
@@ -62,12 +68,18 @@
 //   was made at, and the seed anything random on the page is drawn from.
 // - `async.js` — one promise: its states, its abort signal, its retries.
 // - `browser.js` — the ambient environment: viewport, scroll, connection,
-//   position, permissions, preferences.
+//   position, permissions, preferences, the fragment in the address bar. Its
+//   header carries the table of what every one of them renders before
+//   hydration.
 // - `dom.js` — one element the caller holds a ref to: listen, measure,
 //   observe, press.
 // - `keyboard.js` — what is being pressed: a chord, and a held key.
 // - `channels.js` — a value that came from outside the page: another tab, the
 //   system clipboard.
+// - `events.js` — a stream the server is pushing, and where its reconnection
+//   is. Not `channels.js`, whose boundary is deliberately everything except
+//   the server, and not `@uniflowed/query`, because there is no cache entry
+//   and nothing to revalidate: a connection is a third thing.
 //
 // The two that are easiest to confuse are `browser.js` and `dom.js`, so each
 // says so in its own header: `browser.js` needs no ref because there is one
@@ -92,12 +104,14 @@
 // **Implemented and tested.** The component's life; the state shapes; every
 // timer, including the adaptive schedule behind `useTimeAgo`; `useAsync` with
 // abort and retry; media queries, colour scheme, reduced motion, online,
-// document visibility, window size and scroll, scroll lock; element size,
+// document visibility, window size and scroll, the address bar's fragment,
+// scroll lock; element size,
 // intersection, mutations, hover, focus-within, click-outside, long press,
 // element scroll, the element as state; key chords and held keys; storage with
 // cross-tab sync;
-// broadcast channels; the clipboard; the render anchor and the seeded stream
-// in `render.js`. `tests/library/hooks.test.js` covers
+// broadcast channels; the clipboard; a server-sent event stream, including the
+// one case the platform's own reconnection gives up on; the render anchor and
+// the seeded stream in `render.js`. `tests/library/hooks.test.js` covers
 // behaviour and cleanup, and `tests/library/hooks-ssr.test.js` renders the
 // whole surface in a process that has no DOM at all.
 //
@@ -123,6 +137,8 @@
 
 export type { Async, AsyncOptions } from "./async.js";
 export type {
+  BrowserHistory,
+  BrowserLocation,
   BrowserNavigator,
   BrowserWindow,
   EffectiveConnectionType,
@@ -130,6 +146,7 @@ export type {
   Geoposition,
   Network,
   NetworkConnection,
+  NetworkMeasurement,
   PermissionAnswer,
   PermissionName,
   ScrollOffset,
@@ -137,6 +154,12 @@ export type {
 } from "./browser.js";
 export type { UseBroadcastReturn, UseClipboardReturn } from "./channels.js";
 export type { ListenerOptions, ListenerTarget, MutationOptions, Ref } from "./dom.js";
+export type {
+  EventSourceOptions,
+  EventStreamStatus,
+  ServerEvent,
+  UseEventSourceReturn,
+} from "./events.js";
 export type { KeyComboOptions } from "./keyboard.js";
 export type { RenderEnvelope } from "./render.js";
 export type {
@@ -173,6 +196,7 @@ export {
   browserWindow,
   useDocumentVisible,
   useGeolocation,
+  useHash,
   useMediaQuery,
   useNetwork,
   useOnline,
@@ -208,6 +232,7 @@ export {
   useShuffled,
 } from "./render.js";
 export { useBroadcast, useClipboard } from "./channels.js";
+export { useEventSource } from "./events.js";
 export {
   useCounter,
   useCycle,

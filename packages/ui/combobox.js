@@ -49,6 +49,69 @@
 // the active option is cleared when the option it named is filtered away, the
 // count is remeasured, and `aria-activedescendant` never names an id that has
 // left the document.
+//
+// # Groups, and the two elements that had to change to have them
+//
+// A `listbox` may own `option` and `group` elements, and nothing else. This
+// module rendered a `<ul>` of `<li>`s, which is the right shape for a flat list
+// and the wrong one the moment a group appears: a group's options belong inside
+// the group, a group inside a `<ul>` is an `<li>`, and an `<li>` inside an
+// `<li>` is not something HTML has. The parser closes the outer one, so the
+// markup a server sent and the tree a browser built would disagree — which
+// React finds at hydration, in production, on the one page that had groups.
+//
+// The way out that keeps the list is a second `<ul role="presentation">` around
+// each group's options, and it was rejected twice over. It works by an
+// inheritance rule — a presentational role propagating to the elements its own
+// role requires, except where a child carries an explicit role — which is
+// correct in the specification and up to the software, and this package's whole
+// premise is not building on that distinction. It would also leave the two
+// halves of one pattern with two differently shaped listboxes, for a reason
+// neither module could state.
+//
+// So `Combobox.List` and `Combobox.Option` are `div`s, exactly as `select.js`'s
+// are and for the reason its header already gives at length. That is a change
+// to what this component renders, and a caller whose stylesheet names `ul` or
+// `li` will see it; nothing else moved, because the roles were always the part
+// that carried the meaning.
+//
+// `Combobox.Group` and `Combobox.GroupLabel` are then `Select.Group` and
+// `Select.GroupLabel`. The second name is deliberate rather than clumsy:
+// `Combobox.Label` already means the *field's* label, so the heading over a
+// group of options cannot also be `Combobox.Label`, and shadcn's single
+// `SelectLabel` — which is the group's — has no name left for the field's.
+//
+// There is no `Combobox.Separator`, and that is the same decision `select.js`
+// made about the tree rather than a different one about the part. A rule
+// between two groups of options cannot be a `role="separator"`, because a
+// listbox may not own one; it is `aria-hidden` decoration, and a
+// `<div aria-hidden="true">` is something a caller writes without needing a
+// part for it. `Select.Separator` exists because a select's options are a fixed
+// list somebody wrote out and the rule between two of them is fixed too. A
+// combobox's options are whatever survived the filter, so a rule that stays put
+// while the groups either side of it disappear is decoration in the wrong
+// place, and the caller who filtered is the one who knows where it goes.
+//
+// # A command palette is a composition, not a seventh module
+//
+// `crates/uf_lib/src/ui.rs` lists a `Command` with `Root`, `Input`, `List`,
+// `Item`, `Group` and `Empty`, and with groups here every one of those parts
+// now exists: a palette is a `Combobox` inside a `Dialog`, opened by
+// `useKeyCombo("mod+k", …)` from `@uniflowed/hooks/keyboard`, with
+// `Combobox.Group` for the sections, `Combobox.Empty` for the no-results state
+// and `Combobox.Status` for the count. `ubugeeei-redundancy.md`'s objection to
+// small lookalikes is an objection to shipping a module whose entire content is
+// a composition the reader could have written, so the answer is the
+// documentation page — `docs/app/reference/ui`, under "A command palette" —
+// and not a seventh module.
+//
+// One behaviour a `Command` module would genuinely add is not in that page,
+// because it is not implemented anywhere: a palette whose filter matched
+// nothing still traps focus, so `Tab` cycles between a text field and a close
+// button while the reader is told there are no results. That is `Dialog`'s
+// question rather than this module's — a modal with nothing in it to reach is
+// the general case — and it is left open on purpose rather than answered here
+// by a component that would only look like it had.
 
 "use client";
 
@@ -64,11 +127,15 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Align, LogicalSide } from "./internal/anchor.js";
+import { useAnchor } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { FormValue } from "./internal/form-value.js";
+
+export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 const OPTION_SELECTOR = '[role="option"]';
 const LISTBOX_SELECTOR = '[role="listbox"]';
@@ -115,6 +182,14 @@ hook useCombobox(part: string): ComboboxState {
   }
   return state;
 }
+
+/** The id of a group's label, so `Combobox.Group` only claims one that exists. */
+type ComboboxGroupState = {|
+  readonly labelId: string,
+  readonly registerLabel: (present: boolean) => void,
+|};
+
+const ComboboxGroupContext: React.Context<ComboboxGroupState | null> = createContext(null);
 
 /**
  * The combobox.
@@ -347,16 +422,45 @@ export component ComboboxInput(...rest: Rest) {
 /**
  * The list of options, in the document only while it is open.
  *
+ * A `div` rather than the `ul` this was, because a listbox that owns groups
+ * cannot be a list without a second `list` role between a group and the options
+ * it holds. The module header has the argument and what it costs a caller.
+ *
  * It also keeps the two things that have to stay true as the caller filters:
  * the count the live region announces, and the invariant that
  * `aria-activedescendant` never names an option that has left the list.
  */
-export component ComboboxList(children: renders* ComboboxOption, ...rest: Rest) {
+export component ComboboxList(
+  children: renders* (ComboboxOption | ComboboxGroup),
+  align?: Align = "start",
+  alignOffset?: number = 0,
+  avoidCollisions?: boolean = true,
+  collisionPadding?: number = 0,
+  side?: LogicalSide = "bottom",
+  sideOffset?: number = 0,
+  ...rest: Rest
+) {
   const combobox = useCombobox("Combobox.List");
   const { activeId, count, listRef, inputRef, pendingActive, setActiveId, setCount } = combobox;
   const close = useStableCallback(() => {
     combobox.setOpen(false);
     combobox.setActiveId(null);
+  });
+
+  // Anchored to the *field*, not to a wrapper the caller may not have written.
+  // `align="start"` because a list of options belongs under the edge the text
+  // starts at, and `--uf-anchor-trigger-width` is what a stylesheet reads to
+  // make it exactly as wide as the field.
+  const anchored = useAnchor({
+    align,
+    alignOffset,
+    anchorRef: inputRef,
+    avoidCollisions,
+    collisionPadding,
+    open: combobox.open,
+    overlayRef: listRef,
+    side,
+    sideOffset,
   });
 
   // No dependency list on purpose: what this reads is the *rendered* options,
@@ -427,9 +531,11 @@ export component ComboboxList(children: renders* ComboboxOption, ...rest: Rest) 
   const passed = withoutComposed(rest, ["ref"]);
 
   return (
-    <ul
+    <div
       {...passed}
       aria-labelledby={combobox.labelled ? `${combobox.base}-label` : undefined}
+      data-align={anchored.align}
+      data-side={anchored.side}
       id={`${combobox.base}-list`}
       ref={composeRefs(rest.ref, (element) => {
         listRef.current = element;
@@ -437,7 +543,7 @@ export component ComboboxList(children: renders* ComboboxOption, ...rest: Rest) 
       role="listbox"
     >
       {children}
-    </ul>
+    </div>
   );
 }
 
@@ -463,7 +569,7 @@ export component ComboboxOption(
   const passed = withoutComposed(rest, ["onClick", "onPointerDown", "onPointerMove"]);
 
   return (
-    <li
+    <div
       {...passed}
       aria-disabled={disabled ? "true" : undefined}
       aria-selected={combobox.value === value ? "true" : "false"}
@@ -495,7 +601,72 @@ export component ComboboxOption(
       role="option"
     >
       {children}
-    </li>
+    </div>
+  );
+}
+
+/**
+ * A named group of options.
+ *
+ * The name reaches the group through `aria-labelledby`, and only while a
+ * `Combobox.GroupLabel` is rendered — the same rule, and the same reason, as
+ * `Select.Group` and `Menu.Group` before it.
+ *
+ * Nothing about `Combobox.Input` had to learn that groups exist. It asks for
+ * `[role="option"]` elements whose nearest `[role="listbox"]` is this list, and
+ * a group is not a listbox — so the arrow keys walk an option at a time across
+ * a boundary they cannot see, and the heading is never a place the cursor can
+ * land, because it is not an option.
+ *
+ * `children` is narrower than `Select.Group`'s `React.Node`, and the narrower
+ * one is the true statement: a `group` inside a `listbox` may own options and
+ * its own heading, and nothing else. `Select.Group` should say the same and
+ * does not yet.
+ */
+export component ComboboxGroup(
+  children: renders* (ComboboxOption | ComboboxGroupLabel),
+  ...rest: Rest
+) {
+  const base = useId();
+  const [labelled, setLabelled] = useState(false);
+
+  const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
+
+  return (
+    <ComboboxGroupContext.Provider value={group}>
+      <div {...rest} aria-labelledby={labelled ? group.labelId : undefined} role="group">
+        {children}
+      </div>
+    </ComboboxGroupContext.Provider>
+  );
+}
+
+/**
+ * The heading of a `Combobox.Group`.
+ *
+ * `role="presentation"` because the group already carries the name: left as
+ * ordinary content a reader would hear the heading once as the group's name and
+ * again as a stray line of text among the options.
+ *
+ * This is not `Combobox.Label`. That one names the field; this one names a
+ * group of options, and a combobox with groups has both.
+ */
+export component ComboboxGroupLabel(children: React.Node, ...rest: Rest) {
+  const group = useContext(ComboboxGroupContext);
+  const register = group?.registerLabel;
+
+  useEffect(() => {
+    if (register == null) {
+      return;
+    }
+    register(true);
+    return () => register(false);
+  }, [register]);
+
+  return (
+    <div {...rest} id={group?.labelId} role="presentation">
+      {children}
+    </div>
   );
 }
 

@@ -56,6 +56,17 @@ pub fn ui_components() -> Vec<UiComponent> {
             UiRuntime::Server,
         ),
         UiComponent::new("Button", &["Root"], UiRuntime::Server),
+        // Implemented in `packages/ui/calendar.js`. `Month` is the grid and its
+        // caption rather than a wrapper around several months: one month is one
+        // `role="grid"` with one caption naming it, and a component that put two
+        // grids under one caption would have nothing to name either of them.
+        //
+        // There is no `Status` part, which every other component with a live
+        // region has. A reader has no reason to place the sentence that says the
+        // month changed, and `Combobox.Status`'s constraint - the region has to
+        // be in the document *before* the text arrives, or it is not announced -
+        // is easier to keep when the component owns it than when the caller can
+        // forget it.
         UiComponent::new(
             "Calendar",
             &["Root", "Day", "Month", "Next", "Previous"],
@@ -93,10 +104,28 @@ pub fn ui_components() -> Vec<UiComponent> {
         UiComponent::new(
             "Combobox",
             &[
-                "Root", "Label", "Input", "List", "Option", "Empty", "Status",
+                "Root",
+                "Label",
+                "Input",
+                "List",
+                "Option",
+                "Group",
+                "GroupLabel",
+                "Empty",
+                "Status",
             ],
             UiRuntime::Client,
         ),
+        // Deliberately not implemented, and listed so that the decision is
+        // visible where somebody would look for the component rather than only
+        // in a documentation page. A command palette is a `Combobox` in a
+        // `Dialog` — every part below already exists — so a seventh module
+        // would be a second spelling of two that are already there, and one
+        // more surface to keep in step with both.
+        //
+        // The one thing it would genuinely add is a palette with no results
+        // that still traps focus, which is a `Dialog` question rather than a
+        // `Command` one. `docs/app/reference/ui` shows the composition.
         UiComponent::new(
             "Command",
             &["Root", "Input", "List", "Item", "Group", "Empty"],
@@ -127,9 +156,18 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Header", "Body", "Row", "Cell", "Pagination"],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/date-picker.js`: `Popover` and `Calendar`
+        // composed, plus the three joins between them.
+        //
+        // `Input` beyond the first guess, and it is the part the component
+        // exists for. A date picker whose only input is the grid is slower for
+        // everybody who already knows the date and unusable for anybody who
+        // cannot operate a grid, so the field is the control and the calendar is
+        // the second way in - which makes the field a named part rather than
+        // something the caller is left to wire up beside one.
         UiComponent::new(
             "DatePicker",
-            &["Root", "Trigger", "Calendar"],
+            &["Root", "Input", "Trigger", "Calendar"],
             UiRuntime::Split,
         ),
         UiComponent::new(

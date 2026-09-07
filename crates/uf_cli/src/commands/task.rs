@@ -124,10 +124,14 @@ pub(crate) fn run_task(
             .unwrap_or(0),
     };
     let started = std::time::Instant::now();
+    let cache = TaskCache::open(&resolved.root);
+    // Before the run adds to it. See `uf_infra::cache` for the bound and #218
+    // for why every cache under `.uf/cache` now has one.
+    cache.sweep();
     let report = uf_task::run(
         &tasks,
         &resolved.root,
-        &TaskCache::open(&resolved.root),
+        &cache,
         RunOptions {
             concurrency: match options.concurrency {
                 Some(count) => Concurrency::Fixed(count),

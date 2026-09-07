@@ -73,7 +73,7 @@ import { createContext, useContext, useEffect, useId, useMemo, useRef } from "@u
 import { useEventListener } from "@uniflowed/hooks/dom";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
-import type { Align, Side } from "./internal/anchor.js";
+import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { DelayGroup, HoverIntent } from "./internal/hover-intent.js";
 import type { Rest } from "./internal/merge-props.js";
 import { composeRefs, withProps, withoutComposed } from "./internal/merge-props.js";
@@ -89,7 +89,7 @@ import {
 import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
 
-export type { Align, Side } from "./internal/anchor.js";
+export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 /** What a `Tooltip.Provider` shares with the tooltips inside it. */
 type TooltipScope = {|
@@ -337,7 +337,7 @@ export component TooltipBody(
   alignOffset?: number = 0,
   avoidCollisions?: boolean = true,
   collisionPadding?: number = 0,
-  side?: Side = "top",
+  side?: LogicalSide = "top",
   sideOffset?: number = 0,
   ...rest: Rest
 ) {

@@ -16,3 +16,6 @@ phf.workspace = true
 rustc-hash.workspace = true
 simdutf8.workspace = true
 smallvec.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
