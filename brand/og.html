@@ -8,12 +8,20 @@
   edit here; the PNG beside it is the output and is committed because a build
   should not need a browser.
 
-  What it deliberately is not: the mark on a field. A square logo centred on
-  white is a badge, and every platform that renders a 1.91:1 card crops or
-  letterboxes it into something that says nothing. This one is type first —
-  the proposition, at a size a card is actually read at — with the mark as
-  texture bleeding off the right edge and the brand gradient reduced to a rule
-  down the left margin.
+  Two elements: the mark, and the name. Nothing else.
+
+  A card never appears alone — every platform prints `og:title` and
+  `og:description` beside it — so a sentence in the image is the same sentence
+  twice, and it is the copy in the image that is too small to read. What the
+  picture is for is being recognised, which is the mark's job and not a
+  paragraph's.
+
+  Four things it deliberately does not do. The mark is not a corner watermark:
+  it is the brand, at the size a brand is looked at, and the card is the one
+  place it should carry its colour. The type takes no gradient — a gradient
+  across a word competes with a mark that is already the colour. Nothing is set
+  in capitals. And nothing sits inside a frame, a panel or a rounded rectangle,
+  which is the shape that makes a card look like a badge.
 -->
 <meta charset="utf-8" />
 <style>
@@ -21,152 +29,50 @@
   html, body { width: 1200px; height: 630px; }
   body {
     background: #080b14;
-    color: #e6eaf2;
+    color: #ffffff;
     font-family: "Inter", ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
-    font-feature-settings: "ss01", "cv11", "tnum";
     -webkit-font-smoothing: antialiased;
     position: relative;
     overflow: hidden;
   }
 
-  /* A single wash off the top-left, so the ground has depth without becoming
-     the subject. No vignette, no glow behind the type. */
+  /* One wash, thrown from behind the mark, so the ground has depth and the
+     mark has somewhere to sit. Not a glow around it — that is a badge. */
   .wash {
     position: absolute;
-    inset: -30% 30% 30% -30%;
-    background: radial-gradient(closest-side, rgba(38, 119, 255, 0.22), transparent 70%);
-  }
-  .wash2 {
-    position: absolute;
-    inset: 40% -25% -40% 45%;
-    background: radial-gradient(closest-side, rgba(143, 75, 255, 0.18), transparent 70%);
-  }
-
-  /* The one place the brand gradient appears at full strength: a 3px rule down
-     the left margin, which is where the text block starts. */
-  .rule {
-    position: absolute;
-    left: 92px;
-    top: 80px;
-    bottom: 76px;
-    width: 3px;
-    background: linear-gradient(180deg, #35d6f6, #2677ff 34%, #5c49ff 62%, #d84bff);
-    border-radius: 3px;
+    left: 2%;
+    top: -25%;
+    width: 66%;
+    height: 150%;
+    background: radial-gradient(closest-side, rgba(60, 110, 255, 0.22), transparent 72%);
   }
 
   main {
     position: relative;
     height: 100%;
-    padding: 80px 96px 76px 132px;
     display: flex;
-    flex-direction: column;
-  }
-  /* The text block is optically centred and the footer sits on the baseline,
-     so the space left over is shared above and below rather than pooling in
-     one gap under the paragraph. */
-  .block {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+    align-items: center;
     justify-content: center;
+    gap: 72px;
   }
 
-  .eyebrow {
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 19px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #7c8aa5;
-    font-weight: 500;
+  .mark {
+    width: 360px;
+    height: 360px;
+    flex: none;
   }
 
   h1 {
-    font-size: 66px;
-    line-height: 1.12;
-    letter-spacing: -0.038em;
-    font-weight: 600;
-    color: #f4f7fb;
-    max-width: 17ch;
-    margin-top: 26px;
-  }
-  h1 em {
-    font-style: normal;
-    background: linear-gradient(96deg, #35d6f6, #5c49ff 52%, #d84bff);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  p {
-    margin-top: 24px;
-    font-size: 25px;
-    line-height: 1.5;
-    letter-spacing: -0.011em;
-    color: #93a1b8;
-    max-width: 46ch;
-    font-weight: 400;
-  }
-
-  footer {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-  }
-  .name {
-    display: flex;
-    align-items: baseline;
-    gap: 18px;
-  }
-  .name b {
-    font-size: 42px;
+    font-size: 208px;
+    line-height: 0.82;
+    letter-spacing: -0.06em;
     font-weight: 700;
-    letter-spacing: -0.03em;
-    color: #f4f7fb;
-  }
-  .name span {
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 20px;
-    color: #64748b;
-    letter-spacing: 0.02em;
-  }
-  .host {
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 20px;
-    color: #64748b;
-    letter-spacing: 0.02em;
-  }
-
-  /* The mark, large and almost invisible, bleeding off the right edge. It is
-     texture rather than a badge: nothing is centred on it and nothing is
-     enclosed by it. */
-  .mark {
-    position: absolute;
-    right: -120px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 560px;
-    opacity: 0.07;
-    filter: grayscale(0.15);
   }
 </style>
 
 <div class="wash"></div>
-<div class="wash2"></div>
-<img class="mark" src="uniflowed-mark.png" alt="" />
-<div class="rule"></div>
 
 <main>
-  <div class="block">
-    <div class="eyebrow">Unified Toolchain for Flow</div>
-    <h1>One answer to <em>what this file means</em>.</h1>
-    <p>Run, build, test, format, lint and type-check React written in Flow — from one binary.</p>
-  </div>
-
-  <footer>
-    <div class="name">
-      <b>uf</b>
-      <span>@uniflowed</span>
-    </div>
-    <div class="host">docs.uniflowed.dev</div>
-  </footer>
+  <img class="mark" src="uniflowed-mark.png" alt="" />
+  <h1>uf</h1>
 </main>
