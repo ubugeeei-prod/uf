@@ -223,6 +223,19 @@ export type UniflowedConfig = {
       >,
     },
   },
+  // Where the built site is served from, and what `uf build` may therefore
+  // write for a crawler. `url` is the switch: without it no `sitemap.xml` and
+  // no `robots.txt` are written at all, because a build cannot guess the host
+  // it will be deployed to and a wrong `<loc>` is worse than a missing one.
+  readonly site?: {
+    readonly url?: string,
+    readonly sitemap?: boolean,
+    readonly robots?: {
+      readonly enabled?: boolean,
+      readonly allow?: $ReadOnlyArray<string>,
+      readonly disallow?: $ReadOnlyArray<string>,
+    },
+  },
   readonly std?: {
     readonly module?: "@uniflowed/std",
     readonly wintertcAligned?: true,

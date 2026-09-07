@@ -14,6 +14,11 @@
 //! `uf-build-manifest.json` and friends — is a file no visitor can ever fetch,
 //! so shipping it inside the executable would be dead weight and a small
 //! disclosure of how the build was made.
+//!
+//! `uf build` writes those three beside the output directory now rather than
+//! inside it (ubugeeei-prod/uf#339), so the walk no longer meets them here.
+//! The exclusion in [`ReportOptions`] is what keeps that true for an output
+//! directory a previous release wrote, which is the whole reason it stayed.
 
 use std::fs;
 

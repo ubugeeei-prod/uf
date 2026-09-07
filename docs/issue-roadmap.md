@@ -129,7 +129,9 @@
 - [ ] Assume React 19, Suspense, `use`, and Async React.
 - [ ] Bundle GraphQL Relay primitives.
 - [ ] Provide explicit fetch clients without global fetch override.
-- [x] Start Nuxt-like web primitives: Font, Image, OgImage, Link, Page, Layout, Time, Announcer, and Picture.
+- [x] Start Nuxt-like web primitives: Font, Image, Link, Page, Layout, Time, Announcer, and Picture.
+- [ ] Generate an Open Graph image from JSX (`OgImage`), which needs a text-shaping and rasterising path ([#269](https://github.com/ubugeeei-prod/uf/issues/269)).
+- [x] Write the metadata files a site is asked for: `sitemap.xml` from the documents the prerender wrote, and `robots.txt` when it would say something, both from `site.url` in `uf.config.js` ([#269](https://github.com/ubugeeei-prod/uf/issues/269)). A web app manifest and `opensearch.xml` are not written; the manifest overlaps `@uniflowed/pwa` and which package owns it is undecided.
 - [x] Start typed `useCookie`, `useHead`, `useRoute`, `useRouter`, and navigation guard contracts.
 - [ ] Generate fully type-safe route hook declarations from `router.js`.
 - [ ] Implement Link prefetch scheduling with opt-in cache semantics.

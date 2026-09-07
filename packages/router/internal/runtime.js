@@ -131,11 +131,50 @@ export type LoadingModule = {
   ...
 };
 
+/**
+ * How a Twitter card is laid out, which is the whole of what `card` may be.
+ *
+ * A union rather than a string: every one of the four is spelled exactly this
+ * way and a fifth value is silently ignored by the crawler, so a typo in it
+ * costs a card and produces no error anywhere.
+ */
+export type TwitterCard = "summary" | "summary_large_image" | "app" | "player";
+
 /** Document metadata a page or layout declares. */
 export type Metadata = {
   readonly title?: string,
   readonly description?: string,
+  /**
+   * The absolute URL every other URL here is resolved against.
+   *
+   * Open Graph and Twitter both require absolute image URLs, and a route
+   * module has no way to know the host it will be served from — so without
+   * this, `openGraph.images: ["/og.png"]` ships exactly as written and is not
+   * a valid `og:image`. Declare it once on the root layout and every
+   * descendant inherits it through the same merge as everything else.
+   *
+   * Resolution is the URL standard's, so `"/og.png"` is resolved against the
+   * *origin* and `"og.png"` against the base's own path — not against the
+   * page's URL, which `Head` does not know.
+   */
+  readonly metadataBase?: string,
+  /**
+   * This page's canonical URL, for `<link rel="canonical">` and `og:url`.
+   *
+   * Relative to `metadataBase` when it is not absolute. A page
+   * reachable at more than one path — a query a filter added, a duplicate
+   * under a second section — is one page, and this is how it says so.
+   */
+  readonly canonical?: string,
   readonly openGraph?: {
+    readonly title?: string,
+    readonly description?: string,
+    readonly images?: $ReadOnlyArray<string>,
+  },
+  readonly twitter?: {
+    readonly card?: TwitterCard,
+    readonly site?: string,
+    readonly creator?: string,
     readonly title?: string,
     readonly description?: string,
     readonly images?: $ReadOnlyArray<string>,
@@ -1543,18 +1582,66 @@ function renderable<TProps extends { ... }>(
   return component as any;
 }
 
+/**
+ * One URL from a route's metadata, made absolute if it can be.
+ *
+ * Open Graph, Twitter and `rel="canonical"` all want an absolute URL, and a
+ * route module cannot know the host it is served from — so `metadataBase` is
+ * how a site says it once, and this is where it is applied.
+ *
+ * Three things it deliberately does not do. It does not resolve against the
+ * *page's* URL: `Head` renders inside the route and does not know it, and a
+ * `metadataBase` is a site-wide fact rather than a per-page one. It does not
+ * invent a base: with none declared the value is emitted exactly as written,
+ * which is what every page that predates this field already gets. And it does
+ * not throw — a `metadataBase` that is not a URL is a mistake in one field,
+ * and turning it into a blank page would be a worse answer than an unresolved
+ * `og:image`.
+ */
+function absoluteUrl(value: string, base: void | string): string {
+  if (base == null) return value;
+  try {
+    return new URL(value, base).href;
+  } catch {
+    return value;
+  }
+}
+
 component Head(metadata: Metadata) {
-  const { title, description, openGraph } = metadata;
+  const { title, description, metadataBase, canonical, openGraph, twitter } = metadata;
+  const href = canonical != null ? absoluteUrl(canonical, metadataBase) : null;
   return (
     <>
       {title != null ? <title>{title}</title> : null}
       {description != null ? <meta name="description" content={description} /> : null}
+      {href != null ? <link rel="canonical" href={href} /> : null}
+      {/* `og:url` *is* the canonical URL of the page, in Open Graph's own
+          words, so one declaration answers both rather than asking a project
+          to write the same URL twice and keep them in step. */}
+      {href != null ? <meta property="og:url" content={href} /> : null}
       {openGraph?.title != null ? <meta property="og:title" content={openGraph.title} /> : null}
       {openGraph?.description != null ? (
         <meta property="og:description" content={openGraph.description} />
       ) : null}
       {openGraph?.images != null
-        ? openGraph.images.map((image) => <meta key={image} property="og:image" content={image} />)
+        ? openGraph.images.map((image) => (
+            <meta key={image} property="og:image" content={absoluteUrl(image, metadataBase)} />
+          ))
+        : null}
+      {/* `name`, not `property`: Open Graph is RDFa and Twitter's cards are
+          not, and a `property="twitter:card"` is ignored by the crawler that
+          reads it. */}
+      {twitter?.card != null ? <meta name="twitter:card" content={twitter.card} /> : null}
+      {twitter?.site != null ? <meta name="twitter:site" content={twitter.site} /> : null}
+      {twitter?.creator != null ? <meta name="twitter:creator" content={twitter.creator} /> : null}
+      {twitter?.title != null ? <meta name="twitter:title" content={twitter.title} /> : null}
+      {twitter?.description != null ? (
+        <meta name="twitter:description" content={twitter.description} />
+      ) : null}
+      {twitter?.images != null
+        ? twitter.images.map((image) => (
+            <meta key={image} name="twitter:image" content={absoluteUrl(image, metadataBase)} />
+          ))
         : null}
     </>
   );

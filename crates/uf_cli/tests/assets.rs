@@ -495,15 +495,19 @@ fn the_emitted_assets_go_through_the_bundler_and_are_counted() {
     write_font(&project.path().join("Fixture.ttf"));
 
     build(project.path());
-    let dist = project.path().join("dist");
 
     // `uf_bundle` walks the output directory, so an image copied past the
     // bundler would still be measured. What this actually proves is the other
     // half: the files are in the output directory at all, under the names the
     // manifest promised, and `build.budgets` therefore sees an image's weight.
-    let report: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dist.join("uf-bundle-report.json")).unwrap())
-            .unwrap();
+    //
+    // The report itself is *not* in the output directory — it names every
+    // asset and its size, which is a description of the application rather
+    // than a part of it (ubugeeei-prod/uf#339).
+    let report: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(project.path().join(".uf/build/meta/uf-bundle-report.json")).unwrap(),
+    )
+    .unwrap();
     let paths: Vec<&str> = report["assets"]
         .as_array()
         .unwrap()

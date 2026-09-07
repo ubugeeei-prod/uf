@@ -106,10 +106,18 @@ here changes an exit code.
 Builds the client and server bundles and prerenders what can be prerendered.
 `--size-report` prints the cost of each chunk. A route that a
 `_uf.middleware.js` guards and the prerender wrote a document for is listed
-under `guards`, and in `uf-build-manifest.json` as
+under `guards`, and in `.uf/build/meta/uf-build-manifest.json` as
 `prerenderedUnderMiddleware` — a static host serves that file without running
 the guard, and which half of `dist/` you deploy is the one thing the build
 cannot know.
+
+The build's own notes go in `.uf/build/meta/` rather than in the output
+directory: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
+`uf-bundle-report.json` describe the application instead of being part of it,
+and everything in `dist/` is served. What the build does write into `dist/` for
+a reader that is not a person is `sitemap.xml` and `robots.txt`, when
+[`site.url`](/reference/config#site) says where the application is served
+from.
 
 `--mode MODE` builds in that mode instead of `production`: it chooses
 `.env.<mode>` out of the cascade and is what `import.meta.env.MODE` reads, so

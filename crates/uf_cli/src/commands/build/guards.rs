@@ -45,6 +45,7 @@
 use camino::Utf8Path;
 use uf_router::Route;
 
+use super::Prerendered;
 use crate::support::relative_to;
 
 /// One prerendered document, and the guards that do not run for it.
@@ -68,14 +69,14 @@ pub(crate) struct UnguardedPage {
 pub(crate) fn unguarded_pages(
     root: &Utf8Path,
     routes: &[Route],
-    pages: &[(String, String)],
+    pages: &[Prerendered],
 ) -> Vec<UnguardedPage> {
     if !routes.iter().any(Route::is_guarded) {
         return Vec::new();
     }
 
     let mut found = Vec::new();
-    for (url, file) in pages {
+    for Prerendered { url, file, .. } in pages {
         // The most specific route wins, the way the router resolves a request:
         // `/posts/new` is `/posts/new` and not `/posts/:slug` when both exist.
         // Chosen over *every* route and then asked whether it is guarded,

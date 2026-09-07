@@ -1,4 +1,4 @@
-//! The `dist/uf-rsc-manifest.json` build artefact.
+//! The `.uf/build/meta/uf-rsc-manifest.json` build artefact.
 //!
 //! The manifest is what `uf build` hands to the bundler and what `uf dev` reads
 //! back, so it is deterministic by construction: every collection is sorted, and
@@ -28,11 +28,13 @@ pub const RSC_MANIFEST_FILE_NAME: &str = "uf-rsc-manifest.json";
 
 /// Directory, relative to the project root, the bundler reads the manifest from.
 ///
-/// `dist/` is written *after* Vite — it is emptied at the start of a build, so
-/// a copy put there beforehand would not survive to be read — and the split the
-/// bundler performs needs the analysis *before* it emits anything. So the same
-/// bytes are written here first, and the path is handed to the driver in
-/// [`RSC_MANIFEST_ENV`].
+/// The split the bundler performs needs the analysis *before* Vite emits
+/// anything, and `uf dev` recomputes it on every edit — so this copy is the
+/// bundler's input, written before the build runs and rewritten by the dev
+/// server, and its path is handed to the driver in [`RSC_MANIFEST_ENV`]. The
+/// build writes the same bytes a second time when it is over, into its own
+/// metadata directory, so that the record of a finished build is not the file
+/// the next `uf dev` overwrites.
 pub const RSC_MANIFEST_BUILD_DIR: &str = ".uf/rsc";
 
 /// Environment variable naming the manifest the bundler must read.
@@ -256,13 +258,20 @@ impl RscManifest {
     }
 }
 
-/// Write `uf-rsc-manifest.json` into the build output directory.
-pub fn write_manifest(out_dir: &Utf8Path, manifest: &RscManifest) -> Result<Utf8PathBuf, RscError> {
-    fs::create_dir_all(out_dir).map_err(|source| RscError::Write {
-        path: out_dir.to_path_buf(),
+/// Write `uf-rsc-manifest.json` into `dir`, creating it if it is not there.
+///
+/// Never the build output directory: the manifest names every module in the
+/// application and which of them the browser is handed, and the output
+/// directory is served to whoever asks. Both callers pass a directory under
+/// `.uf/` — [`RSC_MANIFEST_BUILD_DIR`] for the bundler's copy, and `uf build`'s
+/// own metadata directory for the record of the build. See
+/// ubugeeei-prod/uf#339.
+pub fn write_manifest(dir: &Utf8Path, manifest: &RscManifest) -> Result<Utf8PathBuf, RscError> {
+    fs::create_dir_all(dir).map_err(|source| RscError::Write {
+        path: dir.to_path_buf(),
         source,
     })?;
-    let path = out_dir.join(RSC_MANIFEST_FILE_NAME);
+    let path = dir.join(RSC_MANIFEST_FILE_NAME);
     fs::write(&path, manifest.to_json()?).map_err(|source| RscError::Write {
         path: path.clone(),
         source,

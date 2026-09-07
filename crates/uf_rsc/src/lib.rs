@@ -16,7 +16,7 @@
 //!   oracle.
 //!
 //! [`analyze_project`] runs all three over a project directory, and
-//! [`RscManifest`] serializes the result to `dist/uf-rsc-manifest.json`.
+//! [`RscManifest`] serializes the result to `.uf/build/meta/uf-rsc-manifest.json`.
 //!
 //! ```
 //! use uf_rsc::{EntryKind, ModuleEnvironment, RscGraphBuilder, module_environment};
