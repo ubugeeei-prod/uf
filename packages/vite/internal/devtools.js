@@ -49,8 +49,15 @@
 // A production build injects none of this: `transformIndexHtml` returns an
 // empty list unless the plugin is serving. That is the half a person can check
 // on the artefact rather than by reading, and
-// `crates/uf_cli/tests/vite.rs`'s `a_build_ships_no_devtools_hook` does: the
-// string below appears in nothing `uf build` wrote.
+// `crates/uf_cli/tests/vite.rs`'s `a_build_ships_no_devtools_hook` does.
+//
+// What it checks for is the *assignment* below rather than the name, and the
+// distinction is worth stating here because the obvious test is wrong: React's
+// own production build mentions `__REACT_DEVTOOLS_GLOBAL_HOOK__` twice, because
+// reading that global is how a deployed React application is attachable at all.
+// React reads it; only an installer writes it. So `window.<hook> =` is what
+// must be absent, and it is absent because this function is never called
+// outside a dev server.
 
 /**
  * The global React registers itself with.

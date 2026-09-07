@@ -18,6 +18,15 @@
 // Development only, and dynamically imported so a production bundle has no path
 // to it. See ubugeeei-prod/uf#508.
 //
+// # And whether React DevTools can see the page at all
+//
+// The other question only this module is in a position to ask.
+// `@uniflowed/vite` installs the hook DevTools attaches through, above every
+// module in the document; whether that worked *on this page* is a fact about a
+// running browser, and the line after hydration is where it can be read.
+// `internal/devtools.js` has the two findings and sends them to the same
+// terminal the hydration report goes to. See ubugeeei-prod/uf#503.
+//
 // # Strict Mode, in development, by default
 //
 // `uf dev` generates `strictMode: true` into `virtual:uf/client` and `uf build`
@@ -28,12 +37,17 @@
 // with something — and Strict Mode makes them behave incorrectly at once, on
 // the machine of the person writing them.
 //
-// The wrapper is here rather than around `<App>` inside the router because it
-// has to be outside the root React renders: a `<StrictMode>` under the root
-// would leave whatever the root itself does unchecked. It renders no element,
-// so the hydrated tree is unchanged and the markup comparison above is
-// unaffected. `app.react.strictMode: false` in `uf.config.js` turns it off.
-// See ubugeeei-prod/uf#516.
+// The wrapper is the argument to `hydrateRoot` rather than something inside
+// `<App>`, and that is load-bearing rather than tidy. React decides whether to
+// double-invoke a mount's effects at the *topmost fiber it is placing*: if that
+// fiber is not itself in Strict Mode, React stops there and never looks inside
+// it. A `<StrictMode>` further down still doubles the renders under it — that
+// comes from the fiber's own mode — and doubles no effect at all, so it would
+// have bought the half of the check that is easy to notice and silently lost
+// the half that finds the bug. It renders no element, so the hydrated tree is
+// unchanged and the markup comparison above is unaffected.
+// `app.react.strictMode: false` in `uf.config.js` turns it off. See
+// ubugeeei-prod/uf#516.
 //
 // # A route can decline to be hydrated
 //
@@ -125,4 +139,16 @@ export async function hydrate(options: {|
       recovery == null ? undefined : { onRecoverableError: recovery },
     );
   });
+
+  // And, in development only, whether the panel a developer is about to open
+  // can see any of that. `react-dom` announced itself while it was being
+  // imported — long before this line — so the answer is already settled and
+  // this only reads it. Behind the same `import.meta.hot` gate as the
+  // hydration reporter, dynamically imported for the same reason: a production
+  // bundle has no path to the module rather than merely no reason to run it.
+  // See `./internal/devtools.js` and ubugeeei-prod/uf#503.
+  if (import.meta.hot != null) {
+    const { reportDevtools } = await import("./internal/devtools.js");
+    reportDevtools(window);
+  }
 }

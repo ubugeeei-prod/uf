@@ -33,16 +33,17 @@
 // expects the second one and does not see it will conclude the flag is not
 // working.
 //
-// Turning it on found one real bug, and it is fixed rather than described:
+// Turning it on found two real bugs, and both are fixed rather than described.
 // `@uniflowed/web/vitals` reported TTFB from the collector Strict Mode throws
 // away *and* from the one it keeps, so every page load produced two of them.
-// `web-vitals.test.js` owns that regression, and `query.test.js` owns the
-// `useQuery` case, which is the other place a strict remount is a real
-// unsubscribe.
+// `@uniflowed/query` treated the strict unsubscribe as the last observer
+// leaving, cancelled the request in flight and asked again, so every `useQuery`
+// on every development page made two requests and aborted one of them.
+// `web-vitals.test.js` and `query.test.js` own those regressions.
 
 import * as React from "@uniflowed/react";
 import { StrictMode, useEffect, useState } from "@uniflowed/react";
-import { act, cleanup, userEvent } from "@uniflowed/react-testing";
+import { act, cleanup, render, userEvent } from "@uniflowed/react-testing";
 import { Link, routerView } from "@uniflowed/router";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 
@@ -390,5 +391,74 @@ describe("the router, hydrated under Strict Mode", () => {
     });
 
     expect(output.textContent).toBe("1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Where the wrapper has to be
+// ---------------------------------------------------------------------------
+
+describe("where `<StrictMode>` has to be", () => {
+  // The reason `client.js` passes the wrapper to `hydrateRoot` rather than
+  // putting it anywhere inside `<App>`, pinned so that a refactor which moves
+  // it fails here instead of quietly turning the check off.
+  //
+  // React decides whether to double-invoke a mount's effects at the topmost
+  // fiber it is placing, and stops there: a fiber that is not itself in Strict
+  // Mode is not descended into for this purpose. So a `<StrictMode>` under
+  // anything at all doubles the renders beneath it — which comes from the
+  // fiber's own mode and is easy to see — and doubles no effect, which is the
+  // half that finds the bug. `@uniflowed/query`'s double fetch was found
+  // because this is true and missed at first because it is not obvious.
+
+  /** What one component did, in order, for one mount. */
+  function record(): {| log: Array<string>, Probe: React.ComponentType<{||}> |} {
+    const log: Array<string> = [];
+    component Probe() {
+      log.push("render");
+      useEffect(() => {
+        log.push("setup");
+        return () => {
+          log.push("cleanup");
+        };
+      }, []);
+      return null;
+    }
+    return { log, Probe: (Probe: $FlowFixMe) };
+  }
+
+  it("doubles renders and effects when it is the root's own child", () => {
+    installDom();
+    const { log, Probe } = record();
+
+    render(
+      <StrictMode>
+        <Probe />
+      </StrictMode>,
+    );
+
+    expect(log).toEqual(["render", "render", "setup", "cleanup", "setup"]);
+  });
+
+  it("doubles only the renders when anything is above it", () => {
+    // Not an assertion about what *should* happen — it is React's rule, and
+    // this is here so a reader who moves the wrapper sees the cost written
+    // down rather than a suite that still passes.
+    installDom();
+    const { log, Probe } = record();
+
+    component Shell(children: React.Node) {
+      return <div>{children}</div>;
+    }
+
+    render(
+      <Shell>
+        <StrictMode>
+          <Probe />
+        </StrictMode>
+      </Shell>,
+    );
+
+    expect(log).toEqual(["render", "render", "setup"]);
   });
 });

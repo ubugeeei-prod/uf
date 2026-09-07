@@ -40,14 +40,33 @@ import { DEVTOOLS_HOOK, devtoolsPreamble } from "../../packages/vite/internal/de
 // than at use. The same reason `rsc-split.test.js` reaches for
 // `@uniflowed/router/client` through a dynamic import.
 import { installDom } from "../../packages/react-testing/internal/dom.js";
+import {
+  DEVTOOLS_HOOK as ROUTER_DEVTOOLS_HOOK,
+  devtoolsProblem,
+  reportDevtools,
+} from "../../packages/router/internal/devtools.js";
 
 /** A window with nothing on it, which is a browser with no extension. */
 function emptyWindow(): $FlowFixMe {
   return {};
 }
 
-/** Run the injected script against `win`, the way the document does. */
+/**
+ * Run the injected script against `win`, the way the document does.
+ *
+ * `security/no-eval` is the right rule and this is the case it is not about.
+ * The rule exists because compiling a string into code is how untrusted input
+ * becomes execution; the string here is `devtoolsPreamble()`'s own return
+ * value, generated a line earlier in this process from a template literal with
+ * one interpolation, and it never leaves this file. And the alternative is
+ * worse than the risk it avoids: what has to be asserted is that the exact text
+ * a browser is sent installs a hook a renderer will register with, so a test
+ * that re-implemented the script — or matched substrings of it — would go on
+ * passing after the script it is about stopped working. Running it is the whole
+ * of the coverage.
+ */
 function runPreamble(win: $FlowFixMe): void {
+  // uf-lint-disable-next-line security/no-eval
   new Function("window", devtoolsPreamble())(win);
 }
 
@@ -184,5 +203,92 @@ describe("the two conditions that are not this file's", () => {
 
     expect(config.optimizeDeps.include).toContain("react/jsx-dev-runtime");
     expect(config.optimizeDeps.include).toContain("react-dom/client");
+  });
+});
+
+describe("the check the page makes on itself", () => {
+  // `@uniflowed/vite` says the hook will be there; this is what asks a running
+  // page whether it is. The two are different claims — the preamble goes into a
+  // document a project's own plugins also write to, and what has to be true is
+  // an ordering rather than a line of configuration — which is why #503 asks
+  // for a check and not only an injector.
+
+  it("spells the global the way the injector does", () => {
+    // Two constants, because `@uniflowed/vite` is loaded by Vite before any
+    // Flow transform exists and `@uniflowed/router` is Flow, so neither can
+    // import the other's. The whole value of the name is that it matches
+    // React's exactly, so the agreement is asserted rather than assumed — the
+    // same bargain `dev-channel.test.js` makes about the endpoint paths.
+    expect(ROUTER_DEVTOOLS_HOOK).toBe(DEVTOOLS_HOOK);
+  });
+
+  it("says nothing about a page with one renderer registered", () => {
+    // The ordinary development page, and the case that has to stay silent: a
+    // check that reported on every load would be a warning people learn to
+    // scroll past.
+    const win = emptyWindow();
+    runPreamble(win);
+    const hook = win[DEVTOOLS_HOOK];
+    hook.renderers.set(hook.inject({}), {});
+
+    expect(devtoolsProblem(win)).toBe(null);
+  });
+
+  it("says nothing about a hook whose renderers it does not recognise", () => {
+    // A hook uf did not install and DevTools did not either — a browser
+    // extension of some other kind, or a version of the panel whose bookkeeping
+    // is not a `Map`. Reporting on it would be this module failing to recognise
+    // something and calling it the page's problem.
+    const win = emptyWindow();
+    win[DEVTOOLS_HOOK] = { renderers: { size: 4 }, supportsFiber: true };
+
+    expect(devtoolsProblem(win)).toBe(null);
+  });
+
+  it("reports a page whose hook never arrived", () => {
+    // What a document looks like when something got between the preamble and
+    // `react-dom`, or when the preamble never reached it: React registered with
+    // nothing and the panel says the page is not using React.
+    const problem = devtoolsProblem(emptyWindow());
+
+    expect(problem?.message).toContain(DEVTOOLS_HOOK);
+    expect(problem?.message).toContain("cannot attach");
+    // The message says what to do about it, because the reader is looking at a
+    // terminal and not at this file.
+    expect(problem?.detail.join(" ")).toContain("classic script");
+  });
+
+  it("reports a page carrying two renderers", () => {
+    // Two copies of `react-dom`, which is the shape of the "multiple renderers
+    // concurrently rendering the same context provider" report: the panel shows
+    // one tree and the rest of the page is missing from it with nothing on
+    // screen saying why.
+    const win = emptyWindow();
+    runPreamble(win);
+    const hook = win[DEVTOOLS_HOOK];
+    hook.renderers.set(hook.inject({}), {});
+    hook.renderers.set(hook.inject({}), {});
+
+    const problem = devtoolsProblem(win);
+
+    expect(problem?.message).toContain("2 renderers");
+    expect(problem?.detail.join(" ")).toContain("dedupe");
+  });
+
+  it("is not a page's problem when the hook throws at it", () => {
+    // The whole of this module's contract with the page it runs on: it is
+    // called from the line after a successful hydration, so anything it cannot
+    // read is something it declines to report rather than something it raises
+    // over a page that is otherwise working.
+    const win = emptyWindow();
+    win[DEVTOOLS_HOOK] = {
+      // uf-lint-disable-next-line flow/unsafe-getters-setters
+      get renderers(): mixed {
+        throw new Error("no");
+      },
+    };
+
+    expect(() => devtoolsProblem(win)).toThrow();
+    expect(() => reportDevtools(win)).not.toThrow();
   });
 });
