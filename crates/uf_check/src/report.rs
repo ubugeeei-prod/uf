@@ -25,6 +25,34 @@ impl<'a> Source<'a> {
     }
 }
 
+/// The batch a set of files needs in order to be checked against what they
+/// import.
+///
+/// [`crate::check_sources`] resolves an import to a file in the batch or to
+/// nothing typed, so a caller that hands it one file gets that file checked
+/// against nothing: `import type { Control } from "@uniflowed/form"` becomes
+/// an `any`-typed value and every annotation written against it goes unread.
+/// [`crate::module_closure`] is how a caller finds out what else to hand over.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleClosure<'a> {
+    /// The seeds and everything they reach, in the order they were given.
+    ///
+    /// This is the batch: pass it to [`crate::check_sources`] and every
+    /// specifier that resolved during the walk resolves again during the check,
+    /// because both use the same rules. A package's `package.json` is in here
+    /// beside the file it publishes, since that is where the name comes from.
+    pub sources: Vec<Source<'a>>,
+    /// Specifiers no source answered, sorted and de-duplicated.
+    ///
+    /// Not all of these are holes. `react` is Flow's own `declare module` and
+    /// `node:fs` is a builtin; the walk has no builtin environment to ask, and
+    /// giving it one would make assembling a batch depend on merging the
+    /// library definitions. This list is for the caller that can go and find
+    /// more sources — reading `node_modules` for a bare specifier, say — and
+    /// then ask again.
+    pub unresolved: Vec<CompactString>,
+}
+
 /// What one call to [`crate::prepare_builtins`] cost.
 ///
 /// The builtin environment is merged once per process and shared, so the first

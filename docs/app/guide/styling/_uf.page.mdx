@@ -38,6 +38,7 @@ There is no Babel plugin to add and no PostCSS step.
 
 ```js
 // @flow
+import * as React from "@uniflowed/react";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
@@ -50,7 +51,7 @@ const styles = stylex.create({
   },
 });
 
-export component Card(children: mixed) {
+export component Card(children: React.Node) {
   return <section {...props(styles.card)}>{children}</section>;
 }
 ```

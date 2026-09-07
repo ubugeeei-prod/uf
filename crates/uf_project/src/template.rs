@@ -218,7 +218,7 @@ fn app_layout() -> String {
 import * as React from "@uniflowed/react";
 import { Suspense } from "@uniflowed/react";
 
-export component Layout(children: mixed) {
+export component Layout(children: React.Node) {
   return (
     <html lang="en">
       <body>

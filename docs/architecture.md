@@ -260,6 +260,30 @@ of the file check. Those specifiers are reported in
 repository they are the third-party packages and the `node:` builtins that no
 manifest here publishes.
 
+Which makes *what is in the batch* the whole question, and it is the caller's to
+answer. `uf_check::module_closure` is how: given the files a reader asked about
+and every file the scan found, it walks the module graph with the same
+`ModuleIndex` and `WorkspacePackages` the checker resolves through, and returns
+the files that are reachable together with the specifiers nothing answered.
+`uf check <path>` then checks the closure rather than the selection — before it
+did, a batch of one file resolved nothing, and every `import type` in it was an
+`any`-typed value the annotations were written against and never read
+([#403](https://github.com/ubugeeei-prod/uf/issues/403)). Diagnostics are still
+reported only for the files that were asked about: a dependency is in the batch
+to be typed against, not to be reported on.
+
+A specifier the closure could not answer is looked for under `node_modules`,
+which is what makes a project that merely *uses* uf check against uf's real
+types rather than against `any` — the package is read through the symlink a
+workspace makes, and its `exports` map decides which of its files anything
+resolves to. Two conditions bound that, and both are Flow's rather than uf's.
+A package Flow's own library definitions describe is never read: a file in the
+batch outranks a `declare module`, so reading React's shipped JavaScript would
+replace Flow's description of React with a bundle that has no types in it. And
+a package that declares no `@flow` anywhere is not read either: it exports `any`
+whether it is in the batch or not, so reading it would buy a parse of every byte
+it ships and nothing else.
+
 Nothing is checked twice. A run keeps one record per file under
 `.uf/cache/check/`, keyed by the identity of the `uf` that wrote it — its path,
 size and modification time, the discipline `.uf/cache/transform` already

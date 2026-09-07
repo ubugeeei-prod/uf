@@ -330,7 +330,7 @@ impl ProjectModules {
     /// the specifier in a cache record: it is a property of the specifier and
     /// of the compiler, so a run that reads every file from disk must not have
     /// to merge the builtins to find out it did not need them.
-    fn declared_externally(&self, specifier: &str) -> bool {
+    pub(super) fn declared_externally(&self, specifier: &str) -> bool {
         let declared = if resolve::is_relative(specifier) {
             match assets::declared_module_for(specifier) {
                 Some(declared) => declared,

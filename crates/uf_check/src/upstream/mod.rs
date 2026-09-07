@@ -25,6 +25,7 @@
 
 mod assets;
 mod builtins;
+mod closure;
 mod convert;
 mod environments;
 mod graph;
@@ -95,6 +96,41 @@ pub(crate) fn check_sources(
 ) -> Result<CheckReport, CheckError> {
     let path = sources.first().map_or("<empty>", |source| source.path);
     on_check_thread(path, || check_batch(sources, limits, cache))?
+}
+
+/// The closure of `seeds` over `available`, by the batch's own rules.
+pub(crate) fn module_closure<'a>(
+    seeds: &[&str],
+    available: &[Source<'a>],
+    limits: &CheckLimits,
+) -> Result<crate::ModuleClosure<'a>, CheckError> {
+    let path = seeds.first().copied().unwrap_or("<empty>");
+    on_check_thread(path, || {
+        // The builtins are merged here so that a specifier Flow's own library
+        // definitions already describe is not handed back as something the
+        // caller should go and find. Once per process and shared, so the check
+        // that follows this walk pays nothing for having asked.
+        builtins::prepare()?;
+        let master_cx = builtins::master_context()?;
+        let options = options::options(limits);
+        let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
+        let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
+        // A batch of no files: this exists only to ask what the builtins
+        // declare, which is a property of the compiler and not of any source.
+        let probe = ProjectModules::new(&[], options.clone(), mk_builtins, limits);
+        let found = closure::closure(seeds, available, &options, &|specifier| {
+            probe.declared_externally(specifier)
+        });
+        probe.release();
+        Ok(crate::ModuleClosure {
+            sources: found
+                .reached
+                .into_iter()
+                .map(|index| available[index])
+                .collect(),
+            unresolved: found.unresolved,
+        })
+    })?
 }
 
 /// Run `work` on a thread with a stack large enough for recursive descent over

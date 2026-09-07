@@ -132,6 +132,20 @@ pub(crate) struct LintRun {
     /// type-check cache under it, and reading the config twice to learn the
     /// same answer is how the two come to disagree.
     pub(crate) root: Utf8PathBuf,
+    /// Every Flow source and manifest the scan collected, before `paths`
+    /// narrowed it — empty when nothing was narrowed away.
+    ///
+    /// The linter has no use for this: a rule reads one file, so a file nobody
+    /// asked about is a file nobody should be told about. The *checker* does,
+    /// because an import is only typed against a file in the same batch, and
+    /// the file a narrowed run imports is exactly the file narrowing removed.
+    /// `uf check` walks this set to find what its selection reaches; see
+    /// `uf_check::module_closure`.
+    ///
+    /// Empty rather than a copy when `paths` selected everything, because then
+    /// [`Self::sources`] already is the whole scan and holding a second copy of
+    /// a project's text is a real cost for no answer.
+    pub(crate) available: Vec<SourceFile>,
 }
 
 pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
@@ -148,16 +162,27 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
     scan.unreadable
         .retain(|failure| selects(paths, &failure.relative_path));
     let unreadable = unreadable_lines(&scan.unreadable);
-    let sources = scan
+    let collected = scan
         .files
         .into_iter()
         .filter(|file| file.kind.is_flow() || file.kind == SourceKind::PackageManifest)
-        .filter(|file| selects(paths, &file.relative_path))
         .map(|file| SourceFile {
             path: file.relative_path,
             source: file.source,
         })
         .collect::<Vec<_>>();
+    // Narrowing is what makes the two sets differ, so it is also the only case
+    // that pays for keeping both.
+    let (sources, available) = if paths.is_empty() {
+        (collected, Vec::new())
+    } else {
+        let selected = collected
+            .iter()
+            .filter(|file| selects(paths, &file.path))
+            .cloned()
+            .collect::<Vec<_>>();
+        (selected, collected)
+    };
     if sources.is_empty() && !paths.is_empty() && unreadable.is_empty() {
         bail!("no file matched {}", quoted_list(paths));
     }
@@ -167,6 +192,7 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
         sources,
         unreadable,
         root: resolved.root,
+        available,
     })
 }
 

@@ -15,9 +15,11 @@ use camino::Utf8Path;
 use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
 use uf_check::{
-    CheckCache, CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic, active_backend,
-    backend_name, check_sources_cached,
+    BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic,
+    active_backend, backend_name, check_sources_cached, module_closure, prepare_builtins,
 };
+#[cfg(feature = "upstream-typecheck")]
+use uf_infra::FxHashSet;
 use uf_lint::{LintReport, Severity, SourceFile};
 use uf_term::Status;
 #[cfg(feature = "upstream-typecheck")]
@@ -37,6 +39,28 @@ use crate::ui::Ui;
 #[cfg(feature = "upstream-typecheck")]
 const UNTYPED_MODULES_SHOWN: usize = 5;
 
+/// What the run did, beyond what the report describes.
+///
+/// The batch counts are reported because they are the difference between "your
+/// file is clean" and "your file is clean, and so are the eleven modules that
+/// had to be typed to say so" — and because they are what explains the time.
+#[cfg(feature = "upstream-typecheck")]
+#[derive(Clone, Copy)]
+struct Batch {
+    /// Files the reader asked about.
+    requested: usize,
+    /// Modules in the batch only because those files import them.
+    imported: usize,
+    /// What the shared builtin environment cost *this process*.
+    ///
+    /// Taken from the run's own `prepare_builtins` rather than from the
+    /// report, because the report's `cold` says whether the *check* did the
+    /// merge and the walk that assembles the batch now gets there first. A run
+    /// that paid for the merge must not print "warm" because it paid a moment
+    /// earlier than the footer looks.
+    builtins: BuiltinsTiming,
+}
+
 /// Severity counts from the type-checking half of `uf check`.
 #[derive(Clone, Copy)]
 enum TypeSeverity {
@@ -55,8 +79,12 @@ enum TypeCheck {
     /// No checker was compiled in.
     Unavailable,
     /// Inference ran over the project.
+    ///
+    /// The batch beside the report is not derivable from it: a report describes
+    /// the files it was handed, and which of them a *reader* asked about is the
+    /// caller's question.
     #[cfg(feature = "upstream-typecheck")]
-    Checked(CheckReport),
+    Checked(CheckReport, Batch),
     /// Inference could not run.
     #[cfg(feature = "upstream-typecheck")]
     Failed(CheckError),
@@ -66,7 +94,7 @@ impl TypeCheck {
     #[cfg(feature = "upstream-typecheck")]
     fn report(&self) -> Option<&CheckReport> {
         match self {
-            Self::Checked(report) => Some(report),
+            Self::Checked(report, _) => Some(report),
             Self::Unavailable | Self::Failed(_) => None,
         }
     }
@@ -93,11 +121,20 @@ impl TypeCheck {
         }
     }
 
+    /// What the batch was made of, for a run that produced one.
+    #[cfg(feature = "upstream-typecheck")]
+    fn batch(&self) -> Option<Batch> {
+        match self {
+            Self::Checked(_, batch) => Some(*batch),
+            Self::Unavailable | Self::Failed(_) => None,
+        }
+    }
+
     fn status(&self) -> &'static str {
         match self {
             Self::Unavailable => "unavailable",
             #[cfg(feature = "upstream-typecheck")]
-            Self::Checked(_) => "checked",
+            Self::Checked(..) => "checked",
             #[cfg(feature = "upstream-typecheck")]
             Self::Failed(_) => "failed",
         }
@@ -138,9 +175,10 @@ pub(crate) fn check(
         sources,
         unreadable,
         root,
+        available,
     } = run_lint(cwd, paths)?;
     progress.draw("type checking");
-    let types = type_check(&sources, root.as_std_path());
+    let types = type_check(&sources, &available, &root);
     progress.finish();
     drop(progress);
 
@@ -171,37 +209,125 @@ pub(crate) fn check(
     Ok(())
 }
 
-/// Run inference over every source the linter collected.
+/// Run inference over the sources the linter collected, and the modules those
+/// sources import.
 ///
-/// Syntax errors are dropped here rather than in `uf_check`: the checker
-/// reports them because a library caller needs to know why inference did not
-/// run, but `uf lint` has already reported the same syntax error with its own
-/// rule id, and printing it twice helps nobody.
+/// Two kinds of diagnostic are dropped rather than rendered. **Syntax errors**,
+/// because `uf lint` has already reported the same one with its own rule id and
+/// printing it twice helps nobody — `uf_check` reports them because a library
+/// caller needs to know why inference did not run. And **anything about a file
+/// nobody asked about**, because a dependency is in the batch to be typed
+/// against, not to be reported on.
 #[cfg(feature = "upstream-typecheck")]
-fn type_check(sources: &[SourceFile], root: &std::path::Path) -> TypeCheck {
-    let inputs: Vec<Source<'_>> = sources
+fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path) -> TypeCheck {
+    let limits = CheckLimits::default();
+    // Before the walk, because the walk merges the builtins too and whichever
+    // call gets there first is the one that pays. Asking here is what lets the
+    // footer say which.
+    let builtins = match prepare_builtins() {
+        Ok(builtins) => builtins,
+        Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
+        Err(error) => return TypeCheck::Failed(error),
+    };
+    let seeds: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
+    // What the walk searches. `available` is empty when `paths` selected
+    // everything, and then the selection already is every file the scan found.
+    let project = if available.is_empty() {
+        sources
+    } else {
+        available
+    };
+
+    // The batch is what was asked about plus what it imports, because an
+    // import is only typed against a file in the same batch. A run that skipped
+    // this checked its files against nothing: every
+    // `import type { Control } from "@uniflowed/form"` was an `any`-typed
+    // value, so the annotations written against it were neither right nor
+    // wrong — ubugeeei-prod/uf#403.
+    //
+    // In rounds, because a package read from `node_modules` imports packages
+    // of its own. It terminates because `read` never lets a package be looked
+    // for twice and there are finitely many of them.
+    let mut installed: Vec<SourceFile> = Vec::new();
+    let mut read: FxHashSet<String> = FxHashSet::default();
+    let batch_paths = loop {
+        // In its own scope: the walk borrows `installed`, and the round that
+        // follows it grows `installed`.
+        let round = {
+            let pool: Vec<Source<'_>> = project
+                .iter()
+                .chain(installed.iter())
+                .map(as_input)
+                .collect();
+            match module_closure(&seeds, &pool, &limits) {
+                Ok(closure) => Ok((
+                    closure
+                        .sources
+                        .iter()
+                        .map(|source| source.path.to_owned())
+                        .collect::<Vec<String>>(),
+                    closure.unresolved,
+                )),
+                Err(error) => Err(error),
+            }
+        };
+        let (paths, unresolved) = match round {
+            Ok(round) => round,
+            Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
+            Err(error) => return TypeCheck::Failed(error),
+        };
+        let more = dependencies::load_packages(root, &unresolved, &mut read);
+        if more.is_empty() {
+            break paths;
+        }
+        installed.extend(more);
+    };
+
+    let reached: FxHashSet<&str> = batch_paths.iter().map(String::as_str).collect();
+    let batch: Vec<Source<'_>> = project
         .iter()
-        .map(|source| Source::new(&source.path, &source.source))
+        .chain(installed.iter())
+        .filter(|source| reached.contains(source.path.as_str()))
+        .map(as_input)
         .collect();
+    let counts = Batch {
+        requested: sources.len(),
+        imported: batch.len().saturating_sub(sources.len()),
+        builtins,
+    };
 
     // Under the project root, because that is what the cache is about: the same
     // sources checked from two roots are two projects, and `.uf/` is where uf
     // already keeps per-project state that `.gitignore` covers.
-    let cache = CheckCache::open(root);
-    match check_sources_cached(&inputs, &CheckLimits::default(), cache.as_ref()) {
+    let cache = CheckCache::open(root.as_std_path());
+    match check_sources_cached(&batch, &limits, cache.as_ref()) {
         Ok(mut report) => {
-            report
-                .diagnostics
-                .retain(|diagnostic| diagnostic.kind != uf_check::DiagnosticKind::Parse);
-            TypeCheck::Checked(report)
+            let asked_about: FxHashSet<&str> =
+                sources.iter().map(|source| source.path.as_str()).collect();
+            report.diagnostics.retain(|diagnostic| {
+                // A dependency was checked so that the files asked about could
+                // be typed against it, not so that its own errors could be
+                // reported. `uf check packages/form/watch.js` must not fail on
+                // a file the author did not name — and in a project that has
+                // errors elsewhere, one that did would be unusable.
+                diagnostic.kind != uf_check::DiagnosticKind::Parse
+                    && asked_about.contains(diagnostic.primary.path.as_str())
+            });
+            TypeCheck::Checked(report, counts)
         }
         Err(error) if error.is_unavailable() => TypeCheck::Unavailable,
         Err(error) => TypeCheck::Failed(error),
     }
 }
 
+/// One scanned file as the checker takes it.
+#[cfg(feature = "upstream-typecheck")]
+fn as_input(source: &SourceFile) -> Source<'_> {
+    Source::new(&source.path, &source.source)
+}
+
 #[cfg(not(feature = "upstream-typecheck"))]
-fn type_check(_sources: &[SourceFile], _root: &std::path::Path) -> TypeCheck {
+fn type_check(_sources: &[SourceFile], _available: &[SourceFile], _root: &Utf8Path) -> TypeCheck {
     TypeCheck::Unavailable
 }
 
@@ -227,11 +353,19 @@ fn type_check_payload(types: &TypeCheck) -> Value {
     });
     if let Some(report) = types.report() {
         value["filesChecked"] = json!(report.files_checked);
+        if let Some(batch) = types.batch() {
+            value["requested"] = json!(batch.requested);
+            value["imported"] = json!(batch.imported);
+        }
         value["filesSkipped"] = json!(report.files_skipped);
         value["filesFromCache"] = json!(report.files_from_cache);
         value["elapsedMs"] = json!(report.elapsed.as_secs_f64() * 1000.0);
         value["builtinsMs"] = json!(report.builtins.cold_elapsed.as_secs_f64() * 1000.0);
-        value["builtinsCold"] = json!(report.builtins.cold);
+        value["builtinsCold"] = json!(
+            types
+                .batch()
+                .map_or(report.builtins.cold, |batch| batch.builtins.cold)
+        );
         value["untypedModules"] = json!(report.untyped_modules);
     }
     if let TypeCheck::Failed(error) = types {
@@ -413,13 +547,21 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             });
         }
         #[cfg(feature = "upstream-typecheck")]
-        TypeCheck::Checked(report) => {
+        TypeCheck::Checked(report, batch) => {
             let files = report.files_checked.to_string();
+            // Only shown when a selection pulled more in. A whole-project run
+            // imports nothing it was not also asked about, and a reader should
+            // not have to work that out from a zero.
+            let requested = format!(
+                "{} of {}",
+                batch.requested,
+                batch.requested + batch.imported
+            );
             let inference = format!("{:.1?}", report.elapsed);
             let builtins = format!(
                 "{:.1?} ({})",
-                report.builtins.cold_elapsed,
-                if report.builtins.cold { "cold" } else { "warm" }
+                batch.builtins.cold_elapsed,
+                if batch.builtins.cold { "cold" } else { "warm" }
             );
             // Only shown when it happened. A project with nothing opted out
             // should not have to read a line saying so.
@@ -434,6 +576,9 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             ];
             if report.files_from_cache > 0 {
                 rows.insert(1, KeyValue::toned("unchanged", &cached, Tone::Muted));
+            }
+            if batch.imported > 0 {
+                rows.insert(1, KeyValue::toned("asked about", &requested, Tone::Muted));
             }
             if report.files_skipped > 0 {
                 rows.insert(1, KeyValue::toned("@noflow", &skipped, Tone::Muted));
@@ -479,6 +624,9 @@ fn untyped_module_list(report: &CheckReport) -> Vec<String> {
     }
     named
 }
+
+#[cfg(feature = "upstream-typecheck")]
+mod dependencies;
 
 #[cfg(test)]
 mod tests;

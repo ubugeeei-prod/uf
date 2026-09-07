@@ -47,7 +47,7 @@ pub use crate::diagnostic::{
 };
 pub use crate::error::CheckError;
 pub use crate::limits::{CHECK_STACK_BYTES, CheckLimits};
-pub use crate::report::{BuiltinsTiming, CheckReport, Source};
+pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source};
 
 /// Which type checker a build compiled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +96,53 @@ pub fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
     }
     #[cfg(not(feature = "upstream-typecheck"))]
     {
+        Err(CheckError::Unavailable)
+    }
+}
+
+/// The batch `seeds` need in order to be checked against what they import.
+///
+/// [`check_sources`] resolves an import to a file in the batch or to nothing
+/// typed, which leaves a caller that wants to check *part* of a project with
+/// no good option: hand over the one file and it is checked against nothing,
+/// or hand over everything and pay for the whole project's inference. This
+/// walks the module graph from `seeds` — through relative specifiers, and
+/// through the `exports` map of any `package.json` in `available` — and
+/// returns just the sources that are reachable, with the manifests that named
+/// them.
+///
+/// The walk resolves with the same rules the check does, so a specifier that
+/// resolved here resolves there. It parses each file it reaches and builds no
+/// signatures, so it costs a parse per reachable module rather than an
+/// inference.
+///
+/// ```
+/// # use uf_check::{CheckLimits, Source, module_closure};
+/// let available = [
+///     Source::new("app.js", "import { b } from './b.js';\n"),
+///     Source::new("b.js", "export const b = 1;\n"),
+///     Source::new("unrelated.js", "export const c = 1;\n"),
+/// ];
+/// match module_closure(&["app.js"], &available, &CheckLimits::default()) {
+///     Ok(closure) => assert_eq!(
+///         closure.sources.iter().map(|source| source.path).collect::<Vec<_>>(),
+///         ["app.js", "b.js"],
+///     ),
+///     Err(error) => assert!(error.is_unavailable()),
+/// }
+/// ```
+pub fn module_closure<'a>(
+    seeds: &[&str],
+    available: &[Source<'a>],
+    limits: &CheckLimits,
+) -> Result<ModuleClosure<'a>, CheckError> {
+    #[cfg(feature = "upstream-typecheck")]
+    {
+        upstream::module_closure(seeds, available, limits)
+    }
+    #[cfg(not(feature = "upstream-typecheck"))]
+    {
+        let _ = (seeds, available, limits);
         Err(CheckError::Unavailable)
     }
 }

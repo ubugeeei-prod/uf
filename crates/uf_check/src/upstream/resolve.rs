@@ -126,6 +126,16 @@ impl ModuleIndex {
     pub(super) fn lookup(&self, path: &str) -> Option<usize> {
         self.by_path.get(path).copied()
     }
+
+    /// The source at this path, however the path is spelled.
+    ///
+    /// [`Self::lookup`] is keyed by the [`normalize`]d form, which is what a
+    /// resolution produces; a path that came from somewhere else — a `--path`
+    /// argument, a caller's own list of files to start from — has not been
+    /// through that, so `./src/app.js` and `src/app.js` would be two keys.
+    pub(super) fn index_of(&self, path: &str) -> Option<usize> {
+        self.lookup(&normalize(path))
+    }
 }
 
 /// A batch path in the shape [`join`] produces.

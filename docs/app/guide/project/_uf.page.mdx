@@ -86,9 +86,10 @@ A layout renders the document. It is a `component`, and it receives the page as
 
 ```js
 // @flow
+import * as React from "@uniflowed/react";
 import { Suspense } from "@uniflowed/react";
 
-export component Layout(children: mixed) {
+export component Layout(children: React.Node) {
   return (
     <html lang="en">
       <body>
@@ -112,10 +113,13 @@ The router takes `module.default ?? module.Page`, so a default export works too
 — but `uf check` warns on a default-exported component, on the grounds that a
 route wired by name is easier to find than one wired by position.
 
-`children: mixed` rather than `React.Node` is not a style choice: `uf check`
-does not yet resolve a type imported by a package name, so `React.Node` from
-`@uniflowed/react` is an any-typed value and using it as an annotation is an
-error. That is [issue #248](https://github.com/ubugeeei-prod/uf/issues/248).
+`React.Node` there is a type imported by a package name, and it resolves:
+`uf check` reads `@uniflowed/react`'s manifest out of `node_modules`, follows
+its `exports` map, and types `children` against what the package actually
+declares. It used to say `mixed` instead, because the checker resolved no
+package and an annotation written against an any-typed value is an error —
+[#248](https://github.com/ubugeeei-prod/uf/issues/248) and
+[#403](https://github.com/ubugeeei-prod/uf/issues/403) are that history.
 
 Both files are Flow, both use `component` syntax, and neither needs a plugin
 declared anywhere. [Routing](/guide/routing) covers nesting, parameters and
