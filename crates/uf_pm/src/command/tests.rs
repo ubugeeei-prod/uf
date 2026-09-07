@@ -336,6 +336,9 @@ fn only_the_operations_that_install_can_run_scripts() {
                 | Operation::List
                 | Operation::Audit
                 | Operation::Search
+                // `pnpm patch` extracts into a temporary directory; the commit
+                // is the half that installs.
+                | Operation::Patch
         );
         assert_eq!(installs, expected, "{operation:?}");
     }
@@ -439,6 +442,9 @@ fn yarn_editions_disagree_exactly_where_yarn_changed() {
             // the registry commands under `yarn npm`.
             Operation::List,
             Operation::Audit,
+            // `yarn patch` is Berry's, and Yarn 1 never had one.
+            Operation::Patch,
+            Operation::PatchCommit,
         ]
     );
 }
@@ -459,13 +465,16 @@ fn search_is_unsupported_where_the_manager_has_none() {
     assert_eq!(without, [PackageManager::Bun, YARN_BERRY, YARN_CLASSIC]);
 }
 
-/// And search is the only one, so every other operation is answerable by every
-/// manager uf supports.
+/// Every operation but those three, so a manager uf supports can answer the
+/// rest of the table without uf substituting anybody.
 #[test]
-fn search_is_the_only_operation_a_manager_can_lack() {
+fn search_and_patch_are_the_only_operations_a_manager_can_lack() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
-            if matches!(operation, Operation::Search) {
+            if matches!(
+                operation,
+                Operation::Search | Operation::Patch | Operation::PatchCommit
+            ) {
                 continue;
             }
             assert!(
@@ -474,4 +483,50 @@ fn search_is_the_only_operation_a_manager_can_lack() {
             );
         }
     }
+}
+
+/// Two managers have `patch`, three do not, and the two that do have both
+/// halves — an `Operation::Patch` a manager could open but not commit would be
+/// a command that leaves an edit nowhere.
+#[test]
+fn patch_is_unsupported_where_the_manager_has_none() {
+    let without = PackageManager::ALL
+        .into_iter()
+        .filter(|manager| command_for(*manager, Operation::Patch).is_none())
+        .collect::<Vec<_>>();
+
+    // In `PackageManager::ALL`'s own order.
+    assert_eq!(
+        without,
+        [PackageManager::Bun, YARN_CLASSIC, PackageManager::Npm]
+    );
+
+    for manager in PackageManager::ALL {
+        assert_eq!(
+            command_for(manager, Operation::Patch).is_some(),
+            command_for(manager, Operation::PatchCommit).is_some(),
+            "{manager} has one half of patch and not the other"
+        );
+    }
+}
+
+/// And the refusal names what to do instead, because "your package manager
+/// cannot" is half an answer.
+#[test]
+fn the_patch_refusal_names_the_ecosystems_answer() {
+    let refusal = crate::invocation_for(PackageManager::Npm, Operation::Patch, &[], false)
+        .expect_err("npm has no patch");
+
+    let crate::ManagerRunError::Unsupported {
+        manager,
+        operation,
+        hint,
+    } = refusal
+    else {
+        panic!("npm's patch was a passthrough: {refusal:?}");
+    };
+    assert_eq!(manager, "npm");
+    assert_eq!(operation, "patch");
+    assert!(hint.contains("patch-package"), "{hint}");
+    assert!(hint.contains("pnpm and yarn 2+"), "{hint}");
 }

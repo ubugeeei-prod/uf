@@ -36,12 +36,12 @@
 import type { Cell, CellOptions, Unsubscribe } from "@uniflowed/cell";
 import {
   batch,
-  cell,
-  computed,
+  derived,
   peek,
   read,
   refresh,
   resource,
+  state,
   status,
   subscribe,
   untracked,
@@ -126,7 +126,7 @@ export function createStore(): StoreInstance {
    *
    * An async atom is two cells — a resource and the projection over it — and
    * `cells` holds the projection, because that is the one an application
-   * reads. Refreshing the projection would do nothing: it is a `computed`,
+   * reads. Refreshing the projection would do nothing: it is a `derived` cell,
    * and recomputing it reads a resource that is perfectly up to date. So the
    * resource is recorded here as it is built, next to the map that hides it.
    */
@@ -145,21 +145,28 @@ export function createStore(): StoreInstance {
   function instantiate<V, A>(target: AtomRecord<V, A>): Cell<V> {
     const options = cellOptions<V, A>(target);
     return match (target.kind) {
-      "primitive" => cell(target.initial, options),
+      "primitive" => state(target.initial, options),
       "async" => loadable<V, A>(target, options),
-      _ => derived<V, A>(target, options),
+      _ => derivedAtom<V, A>(target, options),
     };
   }
 
-  function derived<V, A>(target: AtomRecord<V, A>, options: CellOptions<V>): Cell<V> {
+  /**
+   * The cell for an atom of kind `"derived"`.
+   *
+   * The atom kind and the cell constructor carry the same name one layer
+   * apart, so the local one takes the suffix: bare `derived` here is
+   * `@uniflowed/cell`'s.
+   */
+  function derivedAtom<V, A>(target: AtomRecord<V, A>, options: CellOptions<V>): Cell<V> {
     const reader = target.read;
     if (reader === null) {
       // A write-only atom. It still gets a cell, so that `useSetAtom` on one
       // works the same way as on any other atom, but its value is a constant
       // and nothing ever recomputes it.
-      return cell(target.initial, options);
+      return state(target.initial, options);
     }
-    return computed(() => reader(get), options);
+    return derived(() => reader(get), options);
   }
 
   /**
@@ -175,7 +182,7 @@ export function createStore(): StoreInstance {
   function loadable<V, A>(target: AtomRecord<V, A>, options: CellOptions<V>): Cell<V> {
     const loader = target.load;
     if (loader === null) {
-      return cell(target.initial, options);
+      return state(target.initial, options);
     }
     // The load's own context is forwarded rather than rebuilt: the cell owns
     // the signal, because the cell is what abandons the load.
@@ -183,7 +190,7 @@ export function createStore(): StoreInstance {
     reloads.set(target, () => {
       refresh(pending);
     });
-    return computed(() => {
+    return derived(() => {
       try {
         // Read first, and unconditionally: this is what makes the projection
         // depend on the resource. A load in flight reads as `null`, and a
