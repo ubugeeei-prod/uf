@@ -151,3 +151,133 @@ fn untrusted_text_in_an_error_is_bounded() {
     };
     assert!(registry.len() <= 64, "{} bytes", registry.len());
 }
+
+#[test]
+fn a_bound_scope_routes_to_its_own_registry_and_everything_else_to_the_default() {
+    let routing = RegistryRouting::new("https://registry.npmjs.org")
+        .bind("@company", "https://npm.company.example");
+
+    let bound = routing.route("@company/internal-thing");
+    assert_eq!(bound.registry, "https://npm.company.example");
+    assert_eq!(bound.scope, Some("@company"));
+    assert!(bound.is_bound());
+
+    for name in ["react", "@types/node", "@companyish/thing"] {
+        let route = routing.route(name);
+        assert_eq!(route.registry, "https://registry.npmjs.org", "{name}");
+        assert_eq!(route.scope, None, "{name}");
+        assert!(!route.is_bound(), "{name}");
+    }
+}
+
+/// A binding written without its `@` is the same binding. A security setting
+/// that silently did not apply because of a missing sigil would be worse than
+/// one that was never written.
+#[test]
+fn a_scope_binds_with_or_without_its_at_sign() {
+    let with = RegistryRouting::new("https://registry.npmjs.org")
+        .bind("@company", "https://npm.company.example");
+    let without = RegistryRouting::new("https://registry.npmjs.org")
+        .bind("company", "https://npm.company.example");
+
+    assert_eq!(with, without);
+    assert!(without.route("@company/thing").is_bound());
+}
+
+#[test]
+fn the_scope_of_a_name_is_the_part_before_the_slash_or_nothing() {
+    assert_eq!(scope_of("@company/thing"), Some("@company"));
+    assert_eq!(scope_of("@company/nested/thing"), Some("@company"));
+    assert_eq!(scope_of("react"), None);
+    // A `@` with no `/` is not a scope; npm has no such name.
+    assert_eq!(scope_of("@company"), None);
+    assert_eq!(scope_of(""), None);
+}
+
+#[test]
+fn a_routing_reads_the_default_and_every_binding_out_of_the_config() {
+    let mut config = UniflowedConfig::default();
+    config.pm.registry = Some(CompactString::const_new("https://mirror.company.example"));
+    config.pm.scopes.insert(
+        CompactString::const_new("@company"),
+        CompactString::const_new("https://npm.company.example"),
+    );
+
+    let routing = RegistryRouting::from_config(&config);
+    assert_eq!(routing.default_registry(), "https://mirror.company.example");
+    assert!(routing.has_bindings());
+    assert_eq!(
+        routing.route("@company/thing").registry,
+        "https://npm.company.example"
+    );
+    assert_eq!(
+        routing.route("react").registry,
+        "https://mirror.company.example"
+    );
+    // And a project that binds nothing has no bindings to check.
+    assert!(!RegistryRouting::from_config(&UniflowedConfig::default()).has_bindings());
+}
+
+/// The refusal that *is* the dependency-confusion defence on the read path: a
+/// bound registry that answered, and answered that it has never heard of this
+/// name, ends the search. There is no second request, and the error says so
+/// rather than reading as a network problem somebody might retry around.
+#[test]
+fn a_bound_registry_that_does_not_have_the_name_is_the_answer_not_the_first_half() {
+    let bound = Route {
+        registry: "https://npm.company.example",
+        scope: Some("@company"),
+    };
+    let error = unread(
+        &HttpFailure::Answered("curl: (22) 404".to_owned()),
+        bound,
+        "@company/internal-thing",
+    );
+
+    assert!(
+        matches!(error, RegistryError::NotOnBoundRegistry { .. }),
+        "{error:?}"
+    );
+    let message = error.to_string();
+    assert!(message.contains("@company/internal-thing"), "{message}");
+    assert!(message.contains("@company"), "{message}");
+    assert!(message.contains("https://npm.company.example"), "{message}");
+    // And it says why there is no fallback, because a reader whose install has
+    // just stopped will otherwise go looking for the switch that turns it on.
+    assert!(message.contains("dependency-confusion"), "{message}");
+}
+
+/// A registry that never answered is not evidence that a name is not on it.
+/// Turning "the company registry is down" into "that package does not exist
+/// here" is how a security message stops being believed.
+#[test]
+fn a_bound_registry_that_could_not_be_reached_is_a_different_sentence() {
+    let bound = Route {
+        registry: "https://npm.company.example",
+        scope: Some("@company"),
+    };
+    let error = unread(
+        &HttpFailure::Unreachable("curl: (6) could not resolve host".to_owned()),
+        bound,
+        "@company/internal-thing",
+    );
+
+    assert!(matches!(error, RegistryError::Fetch { .. }), "{error:?}");
+}
+
+/// The same 404 from the default registry is an ordinary unreadable package:
+/// nothing was bound, so nothing was promised about where it lives.
+#[test]
+fn an_unbound_name_that_is_not_published_is_just_unreadable() {
+    let unbound = Route {
+        registry: "https://registry.npmjs.org",
+        scope: None,
+    };
+    let error = unread(
+        &HttpFailure::Answered("curl: (22) 404".to_owned()),
+        unbound,
+        "no-such-package",
+    );
+
+    assert!(matches!(error, RegistryError::Fetch { .. }), "{error:?}");
+}

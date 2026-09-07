@@ -40,6 +40,22 @@
 //! plain-http mirror gets a named refusal beside the packages uf could not read
 //! — which is the honest outcome, and the one a report that quietly leaked a
 //! token would not be.
+//!
+//! # Which registry, for which name
+//!
+//! [`RegistryRouting`] is the answer, and the reason it exists is dependency
+//! confusion: publish `@company/internal-thing` to the public registry and a
+//! resolver that asks the public registry — first, or only — installs the
+//! attacker's copy. It has hit Apple, Microsoft, PayPal and Netflix, and it
+//! needs no compromise of anything.
+//!
+//! So a scope bound in `pm.scopes` is resolved from that registry **and
+//! nowhere else**. There is deliberately no fallback to the default registry
+//! when the bound one does not have the name, because the fallback *is* the
+//! vulnerability: it is the step that turns "the company registry has never
+//! heard of this" into "so let us try the one anybody can publish to". A name
+//! the bound registry does not have is [`RegistryError::NotOnBoundRegistry`],
+//! which names the scope and the registry it asked.
 
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -49,6 +65,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use compact_str::{CompactString, ToCompactString};
 use serde_json::Value;
 use thiserror::Error;
+use uf_config::UniflowedConfig;
 
 use crate::detect::Version;
 
@@ -63,7 +80,7 @@ const TIMEOUT_SECONDS: &str = "20";
 ///
 /// Enough to make a fifty-dependency project fast, few enough to be a polite
 /// client of a registry that is answering everyone else too.
-const CONCURRENCY: usize = 8;
+pub(crate) const CONCURRENCY: usize = 8;
 
 /// The biggest packument uf will parse.
 ///
@@ -126,9 +143,136 @@ pub enum RegistryError {
         /// The rejected registry, length-bounded.
         registry: CompactString,
     },
+    /// A name in a bound scope that the bound registry does not publish.
+    ///
+    /// Not a reason to ask anybody else. The whole point of binding a scope is
+    /// that this name has one source, so "not there" is the answer rather than
+    /// the first half of a search.
+    #[error(
+        "`{name}` is not published on {registry}, which is the registry `{scope}` is bound to.\n\n  \
+         uf does not look anywhere else for a bound scope: a fallback to the public registry is \
+         the dependency-confusion attack, not a recovery from it.\n  \
+         Either the name is wrong, or pm.scopes in uf.config.js binds `{scope}` to the wrong \
+         registry."
+    )]
+    NotOnBoundRegistry {
+        /// Package that was asked about.
+        name: CompactString,
+        /// The scope it is in.
+        scope: CompactString,
+        /// The registry that was asked, and the only one that will be.
+        registry: CompactString,
+    },
 }
 
-/// Read one package's published versions.
+/// Which registry answers for which package name.
+///
+/// A default for everything, plus any number of `@scope -> registry` bindings
+/// from `pm.scopes`. See the module docs for why a bound scope never falls back.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RegistryRouting {
+    default: CompactString,
+    scopes: BTreeMap<CompactString, CompactString>,
+}
+
+/// Where one name resolves from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Route<'a> {
+    /// The registry to ask, and — when [`Route::scope`] is set — the only one.
+    pub registry: &'a str,
+    /// The bound scope this came from, or `None` for the default registry.
+    pub scope: Option<&'a str>,
+}
+
+impl Route<'_> {
+    /// Whether this name may only be resolved from [`Route::registry`].
+    #[must_use]
+    pub const fn is_bound(&self) -> bool {
+        self.scope.is_some()
+    }
+}
+
+impl RegistryRouting {
+    /// Everything from one registry, which is where a project starts.
+    #[must_use]
+    pub fn new(default: &str) -> Self {
+        Self {
+            default: default.to_compact_string(),
+            scopes: BTreeMap::new(),
+        }
+    }
+
+    /// Bind one scope, with or without its leading `@`.
+    ///
+    /// Both spellings are accepted because both are what people write, and a
+    /// binding that silently did not apply because of a missing `@` would be a
+    /// security setting that looked configured and was not.
+    #[must_use]
+    pub fn bind(mut self, scope: &str, registry: &str) -> Self {
+        self.scopes
+            .insert(normalize_scope(scope), registry.to_compact_string());
+        self
+    }
+
+    /// The routing a project's `uf.config.js` describes.
+    #[must_use]
+    pub fn from_config(config: &UniflowedConfig) -> Self {
+        let mut routing = Self::new(config.read_registry().url);
+        for (scope, registry) in config.scope_registries() {
+            routing = routing.bind(scope, registry);
+        }
+        routing
+    }
+
+    /// Whether any scope is bound at all.
+    #[must_use]
+    pub fn has_bindings(&self) -> bool {
+        !self.scopes.is_empty()
+    }
+
+    /// The registry uf asks for everything that is not in a bound scope.
+    #[must_use]
+    pub fn default_registry(&self) -> &str {
+        &self.default
+    }
+
+    /// Where `name` resolves from.
+    #[must_use]
+    pub fn route(&self, name: &str) -> Route<'_> {
+        match scope_of(name).and_then(|scope| self.scopes.get_key_value(scope)) {
+            Some((scope, registry)) => Route {
+                registry,
+                scope: Some(scope),
+            },
+            None => Route {
+                registry: &self.default,
+                scope: None,
+            },
+        }
+    }
+}
+
+/// The scope a package name is in, with its `@`, or `None` for an unscoped one.
+#[must_use]
+pub fn scope_of(name: &str) -> Option<&str> {
+    if !name.starts_with('@') {
+        return None;
+    }
+    let end = name.find('/')?;
+    Some(&name[..end])
+}
+
+/// `company` and `@company` are the same binding.
+fn normalize_scope(scope: &str) -> CompactString {
+    if scope.starts_with('@') {
+        return scope.to_compact_string();
+    }
+    let mut normalized = CompactString::const_new("@");
+    normalized.push_str(scope);
+    normalized
+}
+
+/// Read one package's published versions from one registry.
 ///
 /// # Errors
 ///
@@ -136,7 +280,144 @@ pub enum RegistryError {
 /// failing the command: one unreachable package is not a reason to stop
 /// reporting the other forty.
 pub fn packument(registry: &str, name: &str) -> Result<Packument, RegistryError> {
-    let url = url_for(registry, name)?;
+    packument_from(
+        Route {
+            registry,
+            scope: None,
+        },
+        name,
+    )
+}
+
+/// Read one package's published versions from wherever `routing` sends it.
+///
+/// A name in a bound scope is asked of that scope's registry and of nothing
+/// else, whatever the answer is. See the module docs.
+///
+/// # Errors
+///
+/// [`RegistryError`]. A bound scope whose registry does not have the name gets
+/// [`RegistryError::NotOnBoundRegistry`] rather than a second request.
+pub fn packument_via(routing: &RegistryRouting, name: &str) -> Result<Packument, RegistryError> {
+    packument_from(routing.route(name), name)
+}
+
+fn packument_from(route: Route<'_>, name: &str) -> Result<Packument, RegistryError> {
+    let url = url_for(route.registry, name)?;
+    let body = get(&url, "application/vnd.npm.install-v1+json")
+        .map_err(|failure| unread(&failure, route, name))?;
+    parse(&body).ok_or_else(|| RegistryError::Malformed {
+        name: bounded(name),
+    })
+}
+
+/// The error a request that produced no body becomes.
+///
+/// A pure function of the three facts, so the one branch that matters can be
+/// tested without a registry: a **bound** scope whose registry *answered* — and
+/// answered that it does not publish this name — is the end of the search, not
+/// the beginning of one. That is the whole of uf's dependency-confusion
+/// defence on the read path, and if it ever quietly became a `Fetch` error some
+/// caller retried elsewhere, nothing else here would notice.
+///
+/// An unreachable registry is deliberately *not* that case. "The company
+/// registry is down" is not evidence that a name does not live there, and
+/// saying it was would teach people to distrust the message.
+fn unread(failure: &HttpFailure, route: Route<'_>, name: &str) -> RegistryError {
+    match (failure, route.scope) {
+        (HttpFailure::Program(detail), _) => RegistryError::Program {
+            detail: detail.clone(),
+        },
+        (HttpFailure::Answered(_), Some(scope)) => RegistryError::NotOnBoundRegistry {
+            name: bounded(name),
+            scope: bounded(scope),
+            registry: bounded(route.registry),
+        },
+        _ => RegistryError::Fetch {
+            name: bounded(name),
+            detail: failure.detail().to_owned(),
+        },
+    }
+}
+
+/// Read several, a few at a time, each from its own registry.
+///
+/// Every name comes back, with its own answer or its own error. The order of
+/// the map is the order a report prints in, which is the name order rather than
+/// whichever request finished first.
+#[must_use]
+pub fn packuments(
+    routing: &RegistryRouting,
+    names: &[CompactString],
+) -> BTreeMap<CompactString, Result<Packument, RegistryError>> {
+    let answers = Mutex::new(BTreeMap::new());
+    let next = AtomicUsize::new(0);
+    let workers = CONCURRENCY.min(names.len().max(1));
+
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(name) = names.get(index) else {
+                        return;
+                    };
+                    let answer = packument_via(routing, name);
+                    // `unwrap` on a mutex a scope owns: the only way it is
+                    // poisoned is a panic in this closure, and there is nothing
+                    // above to unwind into.
+                    answers
+                        .lock()
+                        .expect("no other thread panicked holding this")
+                        .insert(name.clone(), answer);
+                }
+            });
+        }
+    });
+
+    answers.into_inner().expect("the scope joined every worker")
+}
+
+/// A request that did not produce a body.
+///
+/// The three are kept apart because they are three different sentences to a
+/// reader. curl exits 22 for an HTTP status it was told to fail on and
+/// something else for a connection it could not make, and "that registry does
+/// not have this name" is a different problem from "uf could not reach that
+/// registry" — which is in turn different from "this machine has no curl".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HttpFailure {
+    /// `curl` could not be started at all.
+    Program(String),
+    /// The host answered, with a status curl was told to treat as a failure.
+    Answered(String),
+    /// The request never got an answer.
+    Unreachable(String),
+}
+
+impl HttpFailure {
+    /// What curl, or the operating system, said.
+    pub(crate) fn detail(&self) -> &str {
+        match self {
+            Self::Program(detail) | Self::Answered(detail) | Self::Unreachable(detail) => detail,
+        }
+    }
+
+    /// Whether the host answered rather than never being reached.
+    pub(crate) const fn answered(&self) -> bool {
+        matches!(self, Self::Answered(_))
+    }
+}
+
+/// curl's exit status for an HTTP response it was asked to treat as a failure.
+const CURL_HTTP_ERROR: i32 = 22;
+
+/// GET one URL over TLS, bounded, and hand back the body.
+///
+/// Shared by the packument reads and by [`crate::provenance`], because the
+/// argument for every flag on it is the same in both places and a second copy
+/// would be a second place for one of them to be dropped.
+pub(crate) fn get(url: &str, accept: &str) -> Result<Vec<u8>, HttpFailure> {
     let output = Command::new("curl")
         .args([
             "-fsSL",
@@ -157,66 +438,29 @@ pub fn packument(registry: &str, name: &str) -> Result<Packument, RegistryError>
             "--proto-redir",
             "=https",
             "-H",
-            "Accept: application/vnd.npm.install-v1+json",
-            "--",
         ])
-        .arg(&url)
-        .output()
-        .map_err(|source| RegistryError::Program {
-            detail: source.to_string(),
-        })?;
+        .arg(format!("Accept: {accept}"))
+        .arg("--")
+        .arg(url)
+        .output();
+    let output = match output {
+        Ok(output) => output,
+        Err(source) => return Err(HttpFailure::Program(source.to_string())),
+    };
     if !output.status.success() {
-        return Err(RegistryError::Fetch {
-            name: bounded(name),
-            detail: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(if output.status.code() == Some(CURL_HTTP_ERROR) {
+            HttpFailure::Answered(detail)
+        } else {
+            HttpFailure::Unreachable(detail)
         });
     }
     if output.stdout.len() > MAX_PACKUMENT_BYTES {
-        return Err(RegistryError::Malformed {
-            name: bounded(name),
-        });
+        return Err(HttpFailure::Answered(format!(
+            "the answer is larger than {MAX_PACKUMENT_BYTES} bytes"
+        )));
     }
-    parse(&output.stdout).ok_or_else(|| RegistryError::Malformed {
-        name: bounded(name),
-    })
-}
-
-/// Read several, a few at a time.
-///
-/// Every name comes back, with its own answer or its own error. The order of
-/// the map is the order a report prints in, which is the name order rather than
-/// whichever request finished first.
-#[must_use]
-pub fn packuments(
-    registry: &str,
-    names: &[CompactString],
-) -> BTreeMap<CompactString, Result<Packument, RegistryError>> {
-    let answers = Mutex::new(BTreeMap::new());
-    let next = AtomicUsize::new(0);
-    let workers = CONCURRENCY.min(names.len().max(1));
-
-    std::thread::scope(|scope| {
-        for _ in 0..workers {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(name) = names.get(index) else {
-                        return;
-                    };
-                    let answer = packument(registry, name);
-                    // `unwrap` on a mutex a scope owns: the only way it is
-                    // poisoned is a panic in this closure, and there is nothing
-                    // above to unwind into.
-                    answers
-                        .lock()
-                        .expect("no other thread panicked holding this")
-                        .insert(name.clone(), answer);
-                }
-            });
-        }
-    });
-
-    answers.into_inner().expect("the scope joined every worker")
+    Ok(output.stdout)
 }
 
 /// The abbreviated packument's two fields.
@@ -272,7 +516,7 @@ fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
             registry: bounded(registry),
         });
     }
-    if !is_safe_name(name) {
+    if !is_safe_package_name(name) {
         return Err(RegistryError::UnsafeName {
             name: bounded(name),
         });
@@ -292,7 +536,7 @@ fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
 /// Deliberately narrower than npm's historical names allow: a name uf refuses
 /// is reported beside the package, and reporting one legacy package is a better
 /// failure than requesting a URL nobody wrote.
-fn is_safe_name(name: &str) -> bool {
+pub(crate) fn is_safe_package_name(name: &str) -> bool {
     if name.is_empty() || name.len() > 214 {
         return false;
     }
@@ -323,7 +567,7 @@ fn is_safe_segment(segment: &str) -> bool {
 }
 
 /// Keep untrusted text out of error messages beyond a fixed budget.
-fn bounded(value: &str) -> CompactString {
+pub(crate) fn bounded_text(value: &str) -> CompactString {
     const BUDGET: usize = 64;
 
     let end = value
@@ -333,6 +577,11 @@ fn bounded(value: &str) -> CompactString {
         .last()
         .unwrap_or(0);
     value[..end].to_compact_string()
+}
+
+/// The same, under the name this module's own errors use.
+fn bounded(value: &str) -> CompactString {
+    bounded_text(value)
 }
 
 #[cfg(test)]

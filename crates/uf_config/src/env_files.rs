@@ -260,6 +260,34 @@ impl ProjectEnv {
     }
 }
 
+/// Every file the cascade would consult in `mode`, whether or not it exists.
+///
+/// [`ProjectEnv::files`] answers a different question — which files were *read*
+/// — and that is the one a banner wants. This is the one a watcher wants: a
+/// `.env.local` created while `uf dev` is running changes the answer exactly as
+/// much as an edit to one that was already there, and a watcher primed with
+/// only the files that existed at startup would never see it. See
+/// ubugeeei-prod/uf#428.
+///
+/// In cascade order, so a reader of the list sees the precedence, and absolute,
+/// because the process that is given them has its own working directory.
+///
+/// # Errors
+///
+/// When `env.files` in `uf.config.js` names an entry that is not a relative
+/// path inside the project, which is the same refusal [`load`] makes.
+pub fn candidate_files(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    mode: &str,
+) -> Result<Vec<Utf8PathBuf>, EnvFileError> {
+    check_mode(mode)?;
+    Ok(file_names(config, mode)?
+        .into_iter()
+        .map(|name| root.join(name))
+        .collect())
+}
+
 /// Load the project's environment for `mode`, from the real process environment.
 ///
 /// # Errors
