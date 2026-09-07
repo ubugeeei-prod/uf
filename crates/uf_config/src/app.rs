@@ -567,12 +567,41 @@ pub enum RenderingMode {
     Isr,
 }
 
+/// Which of uf's caches a project has turned on.
+///
+/// Four switches, and for a long time all four of them were read once, copied
+/// into `dist/uf-build-manifest.json` and read by nothing — so setting any of
+/// them to `true` changed one field of one JSON file and no behaviour anywhere.
+/// ubugeeei-prod/uf#277 is about that, and about how a config key that accepts
+/// `true` and means nothing is indistinguishable from a cache that is off.
+///
+/// Two of them mean something now:
+///
+/// * `route` — a rendered document, kept under the URL that produced it. Wired
+///   through `@uniflowed/vite`'s generated server entry and through
+///   `uf preview` and `uf start` to `createFetchHandler`'s `cache` option.
+/// * `fetch` — a request's answer, kept under the client's name and the URL.
+///   The same wiring reaches `@uniflowed/server/cache`'s `createCachedFetch`.
+///
+/// Two of them do not, and are **refused** rather than ignored:
+/// [`crate::ConfigError::UnimplementedCache`] fails the load when `data` or
+/// `actions` is `true`. Being told is the point — a project that asks for a
+/// cache uf does not have should find out at the config file rather than in
+/// production, where the symptom is a mutation that invalidates nothing.
+///
+/// All four still default to `false`. `docs/roadmap.md` says "opt-in-only cache
+/// controls" and that has not changed; what has changed is that opting in now
+/// does something.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct CacheConfig {
+    /// Not implemented. `true` is refused; see the type's documentation.
     pub actions: bool,
+    /// Not implemented. `true` is refused; see the type's documentation.
     pub data: bool,
+    /// A request's answer, through `@uniflowed/server/cache`.
     pub fetch: bool,
+    /// A rendered document, through `@uniflowed/server/fetch`.
     pub route: bool,
 }

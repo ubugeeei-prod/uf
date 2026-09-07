@@ -242,6 +242,22 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // What the route cache is worth in front of a slow loader: the same page
+    // served twice, with and without the cache `rendering.cache.route` turns
+    // on. ubugeeei-prod/uf#277 asked for a number rather than a claim, and
+    // this is it.
+    //
+    // Not in `ci`, for the reason above and one of its own: the loader is a
+    // `setTimeout`, so the cold column is a measurement of a sleep and the
+    // whole thing is a wall clock on whatever machine ran it. The behaviour it
+    // is a number *about* is checked without a clock at all, in
+    // `tests/library/cache.test.js`, which drives the store's own `now`.
+    "bench:route-cache": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/cache/route-cache.js",
+      dependsOn: ["build"],
+    },
+
     // --- Release --------------------------------------------------------
     //
     // Each is a step the release workflow runs, named so it can be run by

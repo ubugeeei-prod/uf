@@ -1,0 +1,202 @@
+---
+title: "Caching · uf"
+---
+
+<p className="eyebrow">The tools</p>
+
+# Caching
+
+<div className="lede">
+A route cache and a fetch cache, both off by default, both opt-in per route and
+per request, and both in the memory of one process. Time-based revalidation with
+an optional stale-while-revalidate window, and on-demand invalidation by tag or
+by path. What uf does not have is named here too, because a cache you cannot
+describe is a cache you cannot trust.
+</div>
+
+## Turning it on
+
+<div className="command"><code>uf.config.js</code></div>
+
+```js
+// @flow
+export default {
+  app: {
+    rendering: {
+      cache: {
+        route: true,
+        fetch: true,
+      },
+    },
+  },
+};
+```
+
+Both default to `false`. The other two keys — `data` and `actions` — are **not
+implemented**, and setting either to `true` fails the config load by name rather
+than reaching a build manifest and changing nothing.
+
+Turning `route` on does not start caching anything. It makes a *stated* lifetime
+take effect, and a page states one from inside its own render:
+
+```js
+// @flow
+import { cacheLife, cacheTag } from "@uniflowed/server/cache";
+
+export default async function Posts() {
+  cacheLife({ revalidate: 60, expire: 600 });
+  cacheTag("posts");
+  const posts = await loadPosts();
+  return <PostList posts={posts} />;
+}
+```
+
+A page that says nothing is rendered for every request, exactly as it is with
+the cache off. There is no default lifetime and there will not be one: an
+in-memory entry with no stated end is an answer served until the process
+restarts.
+
+## What the two numbers mean
+
+`revalidate` is when the entry becomes **stale** — it may be old. `expire` is
+when it may not be served at all. `expire` defaults to `revalidate`, so
+stale-while-revalidate is something you ask for rather than something you get:
+
+- `{ revalidate: 60 }` — fresh for a minute; the request after that renders and
+  waits.
+- `{ revalidate: 60, expire: 600 }` — fresh for a minute, then for nine more
+  minutes a reader is handed the old document immediately and a refresh runs
+  behind them. After ten minutes a reader waits again.
+
+Called more than once in a render, the **shortest** lifetime wins. A page made of
+a thing that changes hourly and a thing that changes by the minute is a page that
+changes by the minute.
+
+## Invalidating on demand
+
+```js
+// @flow
+import { revalidatePath, revalidateTag } from "@uniflowed/server/cache";
+
+export async function POST(request: Request): Promise<Response> {
+  await createPost(await request.json());
+  revalidateTag("posts");
+  return new Response(null, { status: 204 });
+}
+```
+
+`revalidateTag` reaches every entry filled under that tag; `revalidatePath`
+reaches every entry filled for that URL. Both answer with the number of entries
+they expired, so a handler can log what it did rather than what it meant to.
+
+An invalidated entry is **expired**, not marked stale. A stale-while-revalidate
+window does not apply to it: a tag is invalidated because somebody changed the
+thing it names, so the entry is known wrong rather than possibly old, and there
+is no window in which serving it is acceptable.
+
+## What is never cached
+
+A rendered document is stored only if all of these hold, and the failing one is
+reported in the response's `x-uf-cache` header as `BYPASS`:
+
+- the render stated a lifetime;
+- the render did **not** call `cookies()`, `headers()` or `draftMode()`;
+- the render answered `200`;
+- the render set no cookie.
+
+The second is the one that matters most and the one that is easiest to get
+wrong. Those three functions are how a document comes to be about one person,
+and a document about one person in a cache shared by every person is the worst
+bug a framework can have. uf counts those calls across the *whole* document
+rather than up to the shell — a component inside a `<Suspense>` boundary renders
+long after the shell resolved, and a cache that decided early would cache a
+document whose tail was about somebody.
+
+A read from a middleware does not count. A guard that reads a session cookie and
+lets the request through has not made the page vary, and treating it as though it
+had would mean no application with authentication could cache anything.
+
+This is a runtime refusal. `crates/uf_rsc` already answers "is this call
+reachable from here" for server-only imports, and turning the same question on a
+cached scope would make it a build error naming the call chain instead. That is
+not done; [#277](https://github.com/ubugeeei-prod/uf/issues/277) has the
+argument.
+
+## The fetch cache
+
+`@uniflowed/fetch` stays what it says it is — a failed response that is a failed
+promise, a timeout, and a retry policy — so caching wraps it rather than growing
+inside it:
+
+```js
+// @flow
+import { createFetch } from "@uniflowed/fetch";
+import { createCachedFetch } from "@uniflowed/server/cache";
+
+const api = createCachedFetch({ client: createFetch({ baseURL }), name: "api" });
+
+const users = await api.request("/users", {
+  cache: { lifetime: { revalidate: 60 }, tags: ["users"] },
+});
+```
+
+Opt-in per call. A request with no `cache` option behaves exactly as the
+underlying client's does, so wrapping a client changes nothing until somebody
+states a lifetime for one request. There is no "cache every GET" mode: every GET
+is not cacheable, and a framework guessing which ones are is how a cache serves
+one person's account page to another.
+
+`name` is required because two clients with different base URLs both request
+`/users`, and a key built from the path alone would file one client's answer
+under the other's name.
+
+## Where it lives
+
+**In memory, in one process.** Four server processes behind a load balancer hold
+four caches and they disagree; a restart empties one; `revalidateTag` in one of
+them does not reach the other three. There is no configuration that changes
+this.
+
+That is a real limit, and it is stated rather than implied because the shape of
+the alternative is already decided: the store is one method, `resolve`, and
+anything that can answer it can be the store. A durable one is an adapter's to
+provide, and per uf's deployment rules a target that cannot provide one has to
+say so rather than degrade quietly.
+
+Cache entries are bounded by count — the least recently used entry goes when the
+store is full — and nothing sweeps in the background, because a cache with a
+timer in it is a process that will not exit.
+
+## What it is worth
+
+<div className="command"><code>uf run bench:route-cache</code></div>
+
+One page whose loader takes 50 ms, served twice, twenty times, on Node 24 and an
+M-series laptop:
+
+| | first request | second request | renders per pair | renders for 10 at once |
+| --- | --- | --- | --- | --- |
+| no cache | 52.35 ms | 52.41 ms | 2 | 10 |
+| route cache | 52.45 ms | 0.16 ms | 1 | 1 |
+
+The cold request is fractionally slower, and that is the trade a cached route
+makes: the document has to be whole before it can be an entry, so the fill
+buffers rather than streams. An uncached route streams exactly as it did before.
+
+The last column is the half a median cannot show. Ten simultaneous requests for a
+page nobody has asked for yet are one render, because a request that arrives
+while an entry is being filled joins the fill rather than starting a second one.
+
+## What is not here
+
+- **The data cache and the action cache.** `rendering.cache.data` and
+  `rendering.cache.actions` are refused rather than ignored.
+- **A durable store.** See "Where it lives".
+- **Build-time enforcement** of the request-state rule, above.
+- **ISR.** `uf build` prerenders routes and that is a cache of a kind; joining it
+  to this one is what incremental static regeneration is, and the join is not
+  written.
+- **`uf build --compile`.** A compiled binary answers from bytes it carries
+  rather than from a directory, so it has its own copy of the resolution order
+  and not its own copy of the cache. `uf preview`, `uf start` and every
+  `--adapter` target do have it.

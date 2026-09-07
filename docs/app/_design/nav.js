@@ -146,6 +146,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Vite runs both; uf decides what it is handed.",
       },
       {
+        href: "/guide/cache",
+        title: "Caching",
+        blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
+      },
+      {
         href: "/guide/testing",
         title: "Testing",
         blurb: "A Rust runner, host workers, and where it stands against Bun.",
