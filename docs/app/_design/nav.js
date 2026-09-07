@@ -211,6 +211,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Effects",
         blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
       },
+      {
+        href: "/reference/i18n",
+        title: "Internationalisation",
+        blurb: "MessageFormat 2 with typed arguments, and the subset uf implements.",
+      },
     ],
   },
 ];

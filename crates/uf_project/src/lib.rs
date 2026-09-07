@@ -1,9 +1,9 @@
 use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use ignore::WalkBuilder;
 use thiserror::Error;
 use uf_config::UniflowedConfig;
-use walkdir::WalkDir;
 
 mod template;
 pub mod workspace;
@@ -165,8 +165,12 @@ pub enum ProjectError {
     #[error("failed to walk {path}: {source}")]
     Walk {
         path: Utf8PathBuf,
+        /// `std::io::Error` rather than the walker's own: the walk honours
+        /// `.gitignore` now, so its error type is the ignore crate's, and
+        /// leaking either one would make the crate that walks a detail of this
+        /// crate's public error.
         #[source]
-        source: walkdir::Error,
+        source: std::io::Error,
     },
 }
 
@@ -205,18 +209,80 @@ pub fn scan_source_files(
     root: &Utf8Path,
     config: &UniflowedConfig,
 ) -> Result<SourceScan, ProjectError> {
+    scan_selected_source_files(root, config, &[])
+}
+
+/// The same walk, told which paths the caller asked for by name.
+///
+/// # Why naming a path overrides `.gitignore`
+///
+/// `.gitignore` says which files are not the project's *source*. It does not
+/// say which files a person may ask about, and those are different questions:
+/// a generated file is exactly the thing somebody points at when they want to
+/// know why it will not compile.
+///
+/// This is not hypothetical. `tests/library/module-mock.test.js` writes a
+/// fixture into a gitignored directory — deliberately, so a run killed half way
+/// through does not leave it in the workspace — and then asks
+/// `uf check tests/library/<fixture>` about it by name. Applying the ignore to
+/// an explicitly named path answered "no diagnostics" for a file that has one,
+/// which is the worst shape of wrong: silence that reads as success.
+///
+/// Every tool in this class draws the line here. `rg`, `prettier` and `biome`
+/// all read a path you name and skip one you did not.
+///
+/// `.uf` and `.git` are *not* suspended by naming them: uf's own working
+/// directory and somebody else's repository do not become this project's source
+/// by being pointed at.
+///
+/// # Errors
+///
+/// The same as [`scan_source_files`].
+pub fn scan_selected_source_files(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    selected: &[String],
+) -> Result<SourceScan, ProjectError> {
     let mut files = Vec::new();
     let mut unreadable = Vec::new();
+    // `.gitignore` is the list the project already keeps of what is not its
+    // source. A generated file is generated whichever command is asking, so
+    // honouring it here makes `uf fmt`, `uf lint`, `uf check` and `uf test`
+    // agree about what the project is — by construction rather than by four
+    // configuration keys somebody has to keep in step (ubugeeei-prod/uf#483).
+    //
+    // Three of the walker's defaults are turned off on purpose:
+    //
+    // * **the global gitignore**, because a developer's personal `~/.config/
+    //   git/ignore` must not change what `uf fmt --check` says. Two people on
+    //   one repository have to get the same answer.
+    // * **parent directories**, because a `.gitignore` above the project root
+    //   belongs to whatever the project is sitting inside, and a checkout in
+    //   somebody's `~/ignored-scratch/` is still a project.
+    // * **hidden files**, because uf walked them before this and stopping
+    //   would be a second change hiding inside the first. `.uf` and `.git` are
+    //   excluded by name below, which is what actually mattered.
+    //
     // A directory holding a `.git` is another repository — a submodule, or a
     // checkout that happens to live inside this one. Its contents are not this
     // project's to read, and formatting them writes into somebody else's
     // history: `uf fmt` reformatted the vendored Flow sources, and the next
     // submodule sync would have thrown the result away.
-    let walk = WalkDir::new(root).into_iter().filter_entry(|entry| {
-        entry.path() == root.as_std_path()
-            || !entry.file_type().is_dir()
-            || !entry.path().join(".git").exists()
-    });
+    let root_path = root.as_std_path().to_path_buf();
+    let walk = WalkBuilder::new(root)
+        .hidden(false)
+        .git_global(false)
+        .parents(false)
+        // Without a `.git` present too: a tarball of a project has the same
+        // `.gitignore` and the same generated files, and should get the same
+        // answer as the checkout it came from.
+        .require_git(false)
+        .filter_entry(move |entry| {
+            entry.path() == root_path
+                || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                || !entry.path().join(".git").exists()
+        })
+        .build();
     for entry in walk {
         let entry = match entry {
             Ok(entry) => entry,
@@ -232,23 +298,24 @@ pub fn scan_source_files(
             // directory in it, and answering "0 files" for a path that does
             // not exist is worse than saying so.
             Err(error) => {
-                let named = error
-                    .path()
-                    .filter(|path| *path != root.as_std_path())
-                    .map(std::path::Path::to_path_buf);
+                let reason = error.to_string();
+                let named = match &error {
+                    ignore::Error::WithPath { path, .. } => Some(path.clone()),
+                    _ => None,
+                }
+                .filter(|path| path != root.as_std_path());
                 let Some(path) = named else {
                     return Err(ProjectError::Walk {
                         path: root.to_path_buf(),
-                        source: error,
+                        source: error.into_io_error().unwrap_or_else(|| {
+                            std::io::Error::other("the project could not be walked")
+                        }),
                     });
                 };
                 let relative = path.strip_prefix(root.as_std_path()).unwrap_or(&path);
                 unreadable.push(UnreadableFile {
                     relative_path: relative.display().to_string(),
-                    reason: match error.io_error() {
-                        Some(io) => io.to_string(),
-                        None => error.to_string(),
-                    },
+                    reason,
                 });
                 continue;
             }
@@ -260,7 +327,8 @@ pub fn scan_source_files(
             }
         })?;
 
-        if !entry.file_type().is_file() || is_ignored(root, &path, config) {
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) || is_ignored(root, &path, config)
+        {
             continue;
         }
         let Some(kind) = SourceKind::from_path(&path) else {
@@ -294,8 +362,73 @@ pub fn scan_source_files(
             kind,
         });
     }
+    // A second pass over the paths the caller named, with the ignore files off.
+    // Two walks rather than one, because the walker applies `.gitignore` as it
+    // descends and there is no per-path way to suspend it — and because a
+    // reader can see what each of the two is for.
+    for named in selected {
+        let start = root.join(named.trim_start_matches("./"));
+        if !start.exists() {
+            continue;
+        }
+        let root_path = root.as_std_path().to_path_buf();
+        let walk = WalkBuilder::new(&start)
+            .hidden(false)
+            .git_ignore(false)
+            .git_global(false)
+            .git_exclude(false)
+            .ignore(false)
+            .parents(false)
+            .filter_entry(move |entry| {
+                entry.path() == root_path
+                    || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                    || !entry.path().join(".git").exists()
+            })
+            .build();
+        for entry in walk.flatten() {
+            if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+                continue;
+            }
+            let Ok(path) = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()) else {
+                continue;
+            };
+            // `ALWAYS_IGNORED` and `lint.ignore` still apply: naming a path
+            // says "this one too", not "everything uf knows to stay out of".
+            let Some(kind) = SourceKind::from_path(&path) else {
+                continue;
+            };
+            if is_ignored(root, &path, config) {
+                continue;
+            }
+            let relative_path = path
+                .strip_prefix(root)
+                .map(|path| path.as_str().to_string())
+                .unwrap_or_else(|_| path.as_str().to_string());
+            if files
+                .iter()
+                .any(|file: &ProjectFile| file.relative_path == relative_path)
+            {
+                continue;
+            }
+            match fs::read_to_string(&path) {
+                Ok(source) => files.push(ProjectFile {
+                    kind,
+                    absolute_path: path,
+                    relative_path,
+                    source,
+                }),
+                Err(error) => unreadable.push(UnreadableFile {
+                    relative_path,
+                    reason: error.to_string(),
+                }),
+            }
+        }
+    }
+
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    files.dedup_by(|a, b| a.relative_path == b.relative_path);
     unreadable.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    unreadable.dedup_by(|a, b| a.relative_path == b.relative_path);
     Ok(SourceScan { files, unreadable })
 }
 
