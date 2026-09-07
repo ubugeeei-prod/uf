@@ -342,7 +342,36 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 paths,
             },
         ),
-        Commands::Update { packages } => commands::pm::update(&cwd, ui, &packages),
+        Commands::Pm { command } => match command {
+            cli::PmCommand::ApproveBuilds { names, dry_run } => {
+                commands::pm::approve_builds(&cwd, ui, &names, dry_run)
+            }
+        },
+        Commands::Patch { target, commit } => commands::pm::patch(&cwd, ui, &target, commit),
+        Commands::Catalog { command } => match command {
+            None => commands::pm::catalog(&cwd, ui),
+            Some(cli::CatalogCommand::Set {
+                name,
+                range,
+                dry_run,
+            }) => commands::pm::catalog_set(&cwd, ui, &name, &range, dry_run),
+        },
+        Commands::Update {
+            packages,
+            latest,
+            minor,
+            patch,
+            dry_run,
+        } => {
+            // clap's group makes at most one of the three true.
+            let level = match (latest, minor, patch) {
+                (true, _, _) => Some(uf_pm::ranges::Level::Major),
+                (_, true, _) => Some(uf_pm::ranges::Level::Minor),
+                (_, _, true) => Some(uf_pm::ranges::Level::Patch),
+                _ => None,
+            };
+            commands::pm::update(&cwd, ui, &packages, level, dry_run)
+        }
         Commands::Use { runtime } => commands::pm::use_runtime(&cwd, ui, &runtime),
         Commands::Upgrade => commands::pm::upgrade(&cwd, ui),
         Commands::Why { package } => commands::pm::why(&cwd, ui, &package),

@@ -1,4 +1,4 @@
-//! `uf add`, `uf remove`, `uf update`, `uf why` and `uf install
+//! `uf add`, `uf remove`, `uf update`, `uf patch`, `uf why` and `uf install
 //! --frozen-lockfile`, against a real package manager.
 //!
 //! Every test here runs npm, and none of them needs the network. A dependency
@@ -552,4 +552,46 @@ fn explain_names_the_command_each_of_these_will_spawn() {
             "uf explain {command} did not name `{expected}`:\n{stdout}"
         );
     }
+}
+
+/// npm has no `patch`, and uf says so in its own words rather than handing npm
+/// a subcommand it has never heard of.
+///
+/// The distinction is the whole point of ubugeeei-prod/uf#494: a passthrough
+/// would fail too, with npm's "Unknown command: patch" and a suggestion to run
+/// `npm help`, which tells a reader nothing about what to do next. A refusal
+/// names the two managers that have it and the package the rest of the
+/// ecosystem uses.
+#[test]
+fn patch_on_a_manager_that_has_none_is_a_refusal_rather_than_a_passthrough() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[("tiny", "1.2.3")]);
+    ok(dir.path(), &["add", "./vendor/tiny"]);
+
+    let (stdout, stderr, success) = run(dir.path(), &["patch", "tiny"]);
+
+    assert!(!success, "this cannot succeed:\n{stdout}{stderr}");
+    assert!(
+        !stderr.contains("Unknown command"),
+        "npm was handed a subcommand it does not have:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("patch") && stderr.contains("npm"),
+        "the refusal names neither the operation nor the manager:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("patch-package"),
+        "the refusal does not say what to do instead:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("pnpm and yarn 2+"),
+        "the refusal does not name the managers that can:\n{stderr}"
+    );
+    // A command that refuses must not have touched the project on the way to
+    // refusing.
+    assert!(
+        !dir.path().join("patches").exists(),
+        "`uf patch` wrote a patch directory for a manager that cannot patch"
+    );
+    assert_plain(&stderr);
 }

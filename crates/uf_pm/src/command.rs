@@ -122,11 +122,19 @@ pub enum Operation<'a> {
     /// The first operation the table cannot answer for every manager: yarn and
     /// bun have no search. That is why [`command_for`] returns an [`Option`].
     Search,
+    /// Open a dependency for editing; the caller appends the package name.
+    ///
+    /// pnpm and yarn berry only. npm and yarn classic have nothing like it, and
+    /// bun has nothing like it either — see [`crate::run`] for what uf says
+    /// instead of substituting somebody else's manager.
+    Patch,
+    /// Write the patch from the directory [`Self::Patch`] opened, and install.
+    PatchCommit,
 }
 
 impl Operation<'_> {
     /// Every operation, with a representative payload, for exhaustive testing.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 17] = [
         Self::Install,
         Self::InstallFrozen,
         Self::Add {
@@ -150,6 +158,8 @@ impl Operation<'_> {
         Self::List,
         Self::Audit,
         Self::Search,
+        Self::Patch,
+        Self::PatchCommit,
     ];
 
     /// Whether this operation can cause a dependency's install scripts to run.
@@ -165,14 +175,21 @@ impl Operation<'_> {
             | Self::InstallFrozen
             | Self::Add { .. }
             | Self::Remove
-            | Self::Update => true,
+            | Self::Update
+            // `patch-commit` writes the patch, records it in the manifest, and
+            // reinstalls the package it patched — which is an install, and one
+            // whose scripts run against code the project has just edited.
+            | Self::PatchCommit => true,
             Self::Run { .. }
             | Self::Exec
             | Self::DlxExec
             | Self::Why
             | Self::List
             | Self::Audit
-            | Self::Search => false,
+            | Self::Search
+            // `pnpm patch` extracts a copy into a temporary directory and
+            // prints the path. Nothing enters `node_modules` until the commit.
+            | Self::Patch => false,
         }
     }
 
@@ -191,6 +208,8 @@ impl Operation<'_> {
             Self::List => "ls",
             Self::Audit => "audit",
             Self::Search => "search",
+            Self::Patch => "patch",
+            Self::PatchCommit => "patch-commit",
         }
     }
 }
@@ -299,6 +318,8 @@ const fn uf_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::List => spec("uf", &["ls"]),
         Operation::Audit => spec("uf", &["audit"]),
         Operation::Search => spec("uf", &["search"]),
+        Operation::Patch => spec("uf", &["patch"]),
+        Operation::PatchCommit => spec("uf", &["patch", "--commit"]),
     }
 }
 
@@ -329,6 +350,10 @@ const fn npm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::List => spec("npm", &["ls"]),
         Operation::Audit => spec("npm", &["audit"]),
         Operation::Search => spec("npm", &["search"]),
+        // npm has no patch command in any version. `patch-package` is the
+        // ecosystem's answer and it is not npm's, so uf refuses rather than
+        // reaching for a package the project has not installed.
+        Operation::Patch | Operation::PatchCommit => unsupported(),
     }
 }
 
@@ -360,6 +385,8 @@ const fn pnpm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // command", which names the manager and the version, and is a better
         // message than one uf could write about a version it did not check.
         Operation::Search => spec("pnpm", &["search"]),
+        Operation::Patch => spec("pnpm", &["patch"]),
+        Operation::PatchCommit => spec("pnpm", &["patch-commit"]),
     }
 }
 
@@ -379,6 +406,8 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Audit => spec("yarn", &["audit"]),
         // Yarn 1 has no registry search, and neither does Yarn 2+.
         Operation::Search => unsupported(),
+        // `yarn patch` is Berry's; Yarn 1 never had one.
+        Operation::Patch | Operation::PatchCommit => unsupported(),
     }
 }
 
@@ -411,6 +440,8 @@ const fn yarn_berry_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // Berry keeps the registry commands under `yarn npm`.
         Operation::Audit => spec("yarn", &["npm", "audit"]),
         Operation::Search => unsupported(),
+        Operation::Patch => spec("yarn", &["patch"]),
+        Operation::PatchCommit => spec("yarn", &["patch-commit"]),
     }
 }
 
@@ -439,6 +470,11 @@ const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Audit => spec("bun", &["audit"]),
         // Bun has no registry search.
         Operation::Search => unsupported(),
+        // And no patch. `bun patch` exists in recent versions but writes a
+        // `patches/` entry bun alone reapplies, which is a different contract
+        // from pnpm's and yarn's — uf will not present three incompatible
+        // things under one name.
+        Operation::Patch | Operation::PatchCommit => unsupported(),
     }
 }
 
