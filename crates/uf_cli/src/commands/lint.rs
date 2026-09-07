@@ -1,4 +1,31 @@
-//! `uf lint` and `uf check`: grouped diagnostics with code frames.
+//! `uf lint` and `uf check`: grouped diagnostics with code frames, and the
+//! `--fix` that writes the ones uf can answer.
+//!
+//! # What `--fix` does to the report
+//!
+//! It runs first, over the files on disk, and then the command lints the
+//! project it just rewrote. Nothing a reader is shown is carried over from
+//! before the fixes: the diagnostics, the counts and the exit status all come
+//! from the same fresh pass, so `uf lint --fix` followed by `uf lint` cannot
+//! disagree with itself. The cost is a second walk of the project, paid only
+//! when fixes were asked for.
+//!
+//! # What the exit status means
+//!
+//! **The status describes what is left, never what was done.** A run that
+//! fixed forty findings and left one error fails; a run that fixed nothing
+//! and left none passes.
+//!
+//! - `0` — no errors remain. Warnings may: they do not fail `uf lint` today
+//!   and `--fix` is not the place to change that, so a project with sixteen
+//!   warnings and no errors exits `0` whether or not anything was fixed.
+//! - `1` — errors remain, a file could not be read, or writing a fix failed.
+//!
+//! Without `--fix` this is exactly what `uf lint` already meant, which is the
+//! point: `--fix` adds writing to the command, not a second dialect of
+//! success. There is no third status for "fixed everything" — the two the
+//! command has are the two a shell script branches on, and a `--check`-like
+//! run is simply the default one, which writes nothing.
 
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -10,6 +37,7 @@ use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
 };
 
+use crate::fix::files::{FixMode, FixSummary, fix_project};
 use crate::support::{plural, problem_summary, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
 
@@ -42,9 +70,16 @@ pub(crate) fn lint_command(
     ui: &mut Ui,
     command: LintCommand,
     json: bool,
+    fix: FixMode,
     paths: &[String],
 ) -> Result<()> {
     let mut progress = ui.progress();
+    let fixed = if fix.writes() {
+        progress.draw("applying fixes");
+        Some(fix_project(cwd, paths, fix)?)
+    } else {
+        None
+    };
     progress.draw("scanning sources");
     let LintRun {
         report,
@@ -56,9 +91,9 @@ pub(crate) fn lint_command(
     drop(progress);
 
     if json {
-        ui.json(&lint_payload(command, &report))?;
+        ui.json(&lint_payload(command, &report, fixed.as_ref()))?;
     } else {
-        render_lint_report(ui, command, &report, &sources);
+        render_lint_report(ui, command, &report, &sources, fixed.as_ref());
         render_unreadable(ui, &unreadable);
     }
 
@@ -143,8 +178,17 @@ pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {
         .count()
 }
 
-pub(crate) fn lint_payload(command: LintCommand, report: &LintReport) -> serde_json::Value {
-    json!({
+/// The machine-readable report.
+///
+/// `fixed` is present only when `--fix` ran, and it describes the pass that
+/// preceded the diagnostics rather than the diagnostics themselves: every
+/// count under `diagnostics` is from after the fixes were written.
+pub(crate) fn lint_payload(
+    command: LintCommand,
+    report: &LintReport,
+    fixed: Option<&FixSummary>,
+) -> serde_json::Value {
+    let mut payload = json!({
         "command": command.title(),
         "filesChecked": report.files_checked,
         "errors": severity_count(report, Severity::Error),
@@ -164,7 +208,22 @@ pub(crate) fn lint_payload(command: LintCommand, report: &LintReport) -> serde_j
             "rule": unavailable.rule,
             "reason": unavailable.reason(),
         })).collect::<Vec<_>>(),
-    })
+    });
+    if let Some(fixed) = fixed
+        && let Some(object) = payload.as_object_mut()
+    {
+        object.insert(
+            "fixed".to_owned(),
+            json!({
+                "applied": fixed.applied,
+                "files": fixed.changed,
+                "refused": fixed.refused,
+                "needsUnsafeFix": fixed.needs_unsafe,
+                "needsFormatter": fixed.needs_fmt,
+            }),
+        );
+    }
+    payload
 }
 
 /// The path a diagnostic is reported under.
@@ -230,6 +289,7 @@ fn render_lint_report(
     command: LintCommand,
     report: &LintReport,
     sources: &[SourceFile],
+    fixed: Option<&FixSummary>,
 ) {
     let errors = severity_count(report, Severity::Error);
     let warnings = severity_count(report, Severity::Warn);
@@ -246,7 +306,83 @@ fn render_lint_report(
     if groups.len() > 1 {
         render_file_summary(ui, &groups);
     }
+    // Above the verdict, because the verdict counts what is left and this
+    // counts what went: a reader who sees "16 warnings" wants the line that
+    // says forty other findings are already gone next to it, not after it.
+    if let Some(fixed) = fixed {
+        render_fix_summary(ui, fixed);
+    }
     render_verdict(ui, report, errors, warnings);
+}
+
+/// `1 fix` / `3 fixes`.
+///
+/// Its own function because [`plural`] appends an `s`, and "fixs" is a typo in
+/// the tool as far as anybody reading it is concerned.
+fn fix_count(count: usize) -> String {
+    if count == 1 {
+        String::from("1 fix")
+    } else {
+        format!("{count} fixes")
+    }
+}
+
+/// What `--fix` wrote, and what it deliberately did not.
+///
+/// Printed even when nothing was written: "nothing here had a fix" is the
+/// answer to the question `--fix` asks, and a command that says nothing after
+/// being asked to change files reads as one that failed silently.
+pub(crate) fn render_fix_summary(ui: &mut Ui, fixed: &FixSummary) {
+    let headline = if fixed.applied == 0 {
+        String::from("no finding here had a fix to apply")
+    } else {
+        format!(
+            "applied {} in {}",
+            fix_count(fixed.applied),
+            plural(fixed.changed.len(), "file")
+        )
+    };
+    let changed: Vec<&str> = fixed.changed.iter().map(String::as_str).collect();
+    let refused: Vec<&str> = fixed.refused.iter().map(String::as_str).collect();
+    let mut notes = Vec::new();
+    if fixed.needs_unsafe > 0 {
+        notes.push(format!(
+            "{} would be fixed by `--fix-unsafe`, which can change what the program does",
+            plural(fixed.needs_unsafe, "finding")
+        ));
+    }
+    if fixed.needs_fmt > 0 {
+        notes.push(format!(
+            "{} would be cleared by `uf fmt`",
+            plural(fixed.needs_fmt, "finding")
+        ));
+    }
+
+    ui.render(|renderer, out| {
+        renderer.status(
+            out,
+            if fixed.applied == 0 {
+                Status::Info
+            } else {
+                Status::Success
+            },
+            &headline,
+        );
+        renderer.bullet_list(out, 2, &changed);
+        if !refused.is_empty() {
+            renderer.blank(out);
+            renderer.status(
+                out,
+                Status::Warn,
+                &format!("{} left unfixed", plural(refused.len(), "file")),
+            );
+            renderer.bullet_list(out, 2, &refused);
+        }
+        for note in &notes {
+            renderer.status(out, Status::Info, note);
+        }
+        renderer.blank(out);
+    });
 }
 
 /// One file's diagnostics: a header naming the file, then the code frames.

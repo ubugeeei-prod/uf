@@ -33,12 +33,16 @@ import {
 } from "@uniflowed/react-testing";
 import {
   Accordion,
+  AlertDialog,
+  Carousel,
   Checkbox,
   Collapsible,
   Combobox,
   Dialog,
+  Drawer,
   Field,
   HoverCard,
+  InputOtp,
   Menu,
   NavigationMenu,
   Pagination,
@@ -46,7 +50,10 @@ import {
   Progress,
   RadioGroup,
   Resizable,
+  ScrollArea,
   Select,
+  Sheet,
+  Sidebar,
   Slider,
   Switch,
   Table,
@@ -67,6 +74,10 @@ import {
 // test can hold to an exact number, so it is reached where it lives.
 import type { Align, Placement, Rect, Side } from "../../packages/ui/internal/anchor.js";
 import { placeOverlay, useAnchor } from "../../packages/ui/internal/anchor.js";
+// The same reasoning, for the same reason: `focusable()` is this package's
+// definition of what `Tab` reaches, and "a slide nobody can see is not one of
+// them" is a claim about that definition rather than about a rendered tree.
+import { focusable } from "../../packages/ui/internal/focus.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -145,6 +156,52 @@ function measure(
     y: box.top,
   };
   (element as $FlowFixMe).getBoundingClientRect = () => rect;
+}
+
+/**
+ * Answer every media query the same way, or stop answering them at all.
+ *
+ * This document has no `matchMedia`, which is what `useMediaQuery` treats as
+ * "no viewport to ask" — so a sidebar is wide and nothing prefers reduced
+ * motion unless a test says otherwise. `null` puts it back.
+ */
+function answerMediaQueries(matches: boolean | null): void {
+  const host: $FlowFixMe = window;
+  host.matchMedia =
+    matches == null
+      ? undefined
+      : (query: string) => ({
+          matches,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        });
+}
+
+/**
+ * Put a whole string into a control the way a paste does.
+ *
+ * `userEvent.type` sends one character at a time, which is the opposite of what
+ * a paste is, and this document has no clipboard. A paste is one `input` event
+ * carrying the whole string, so that is what this is — written through the
+ * prototype's setter for the reason `react-testing`'s own `setValue` gives:
+ * React remembers the last value it wrote to the node and skips an event whose
+ * value it believes it already knows.
+ *
+ * It is also how a `Backspace` is spelled here. The harness's `keyboard` does
+ * not edit text — `Backspace` has no printable form, so it dispatches the key
+ * and changes nothing — and the claim being tested is not that the browser
+ * deletes a character. It is what the component does with the `input` event
+ * afterwards.
+ */
+function replaceValue(field: HTMLElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
+  if (setter != null) {
+    setter.call(field, value);
+  } else {
+    (field as $FlowFixMe).value = value;
+  }
+  fireEvent.input(field, { data: value });
 }
 
 describe("Field", () => {
@@ -729,6 +786,249 @@ describe("Dialog: two of them stacked", () => {
     // still be inert — the inner dialog's cleanup must not undo the outer's.
     expect(document.body.style.overflow).toBe("hidden");
     expect(trigger).not.toHaveAttribute("inert");
+  });
+});
+
+describe("Alert dialog", () => {
+  component Confirm() {
+    return (
+      <AlertDialog.Root>
+        <AlertDialog.Trigger>Delete the project</AlertDialog.Trigger>
+        <AlertDialog.Overlay />
+        <AlertDialog.Body>
+          <AlertDialog.Header>
+            <AlertDialog.Title>Delete this project?</AlertDialog.Title>
+            <AlertDialog.Description>This cannot be undone.</AlertDialog.Description>
+          </AlertDialog.Header>
+          <AlertDialog.Footer>
+            <AlertDialog.Action>Delete</AlertDialog.Action>
+            <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+          </AlertDialog.Footer>
+        </AlertDialog.Body>
+      </AlertDialog.Root>
+    );
+  }
+
+  const open = async () => {
+    render(<Confirm />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete the project" }));
+  };
+
+  it("announces an alert dialog as an alert dialog, and always describes it", async () => {
+    await open();
+    const dialog = screen.getByRole("alertdialog");
+    // `alertdialog` rather than `dialog`, which is what makes a screen reader
+    // announce the description as soon as focus arrives rather than waiting to
+    // be asked.
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog.getAttribute("aria-describedby")).toBe(
+      screen.getByText("This cannot be undone.").getAttribute("id"),
+    );
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("does not close an alert dialog on a press outside it", async () => {
+    await open();
+    fireEvent.pointerDown(document.body);
+    // The inverse of `Dialog`'s "closes on a press outside it", and the two
+    // together are what say the behaviour is a choice. A confirmation that
+    // disappears when the reader clicks slightly beside it has given no
+    // indication which way it went.
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    // Escape still does, because a modal a reader cannot leave from the
+    // keyboard is a trap and declining is what Escape means.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).toBe(null);
+  });
+
+  it("puts focus on the action the caller named", async () => {
+    await open();
+    // Cancel, and not `Delete` — which is the first focusable element in the
+    // dialog, and is where a plain `Dialog` would have put it.
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Delete" })).not.toHaveFocus();
+  });
+
+  it("closes from either answer, and gives focus back", async () => {
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.queryByRole("alertdialog")).toBe(null);
+    expect(screen.getByRole("button", { name: "Delete the project" })).toHaveFocus();
+  });
+
+  it("refuses to be an alert with nothing to announce", () => {
+    // `role="alertdialog"` exists to announce a description. One without a
+    // description interrupts the reader to say only its title, which is worse
+    // than the plain dialog it replaced.
+    expect(() =>
+      render(
+        <AlertDialog.Root defaultOpen>
+          <AlertDialog.Body>
+            <AlertDialog.Title>Delete this project?</AlertDialog.Title>
+            <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+          </AlertDialog.Body>
+        </AlertDialog.Root>,
+      ),
+    ).toThrow("AlertDialog.Description");
+  });
+});
+
+describe("Sheet", () => {
+  it("is a modal dialog that says which edge it came from", async () => {
+    render(
+      <Sheet.Root side="left">
+        <Sheet.Trigger>Filters</Sheet.Trigger>
+        <Sheet.Overlay data-testid="backdrop" />
+        <Sheet.Body>
+          <Sheet.Title>Filters</Sheet.Title>
+          <Sheet.Close>Done</Sheet.Close>
+        </Sheet.Body>
+      </Sheet.Root>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    // Every modal promise is `Dialog`'s, unchanged. What a sheet adds is the
+    // edge, as an attribute a stylesheet can read — the same `data-side`
+    // `Popover.Body` writes, and the one `Drawer` and `Sidebar` are defined
+    // against.
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("data-side", "left");
+    expect(document.querySelector('[data-testid="backdrop"]')).toHaveAttribute("data-side", "left");
+  });
+});
+
+describe("Drawer", () => {
+  component Example() {
+    return (
+      <Drawer.Root defaultOpen side="bottom" snapPoints={[0.4, 1]}>
+        <Drawer.Overlay />
+        <Drawer.Body>
+          <Drawer.Handle label="Resize the details" />
+          <Drawer.Title>Details</Drawer.Title>
+          <Drawer.Description>What we know so far.</Drawer.Description>
+          <Drawer.Close>Close</Drawer.Close>
+        </Drawer.Body>
+      </Drawer.Root>
+    );
+  }
+
+  it("lets a drawer be closed without dragging", async () => {
+    render(<Example />);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    // WCAG 2.5.7 wants everything a drag achieves achievable without one, and
+    // WCAG 2.1.1 wants it from the keyboard. Both, with no pointer at all: the
+    // closing key at the smallest snap point is "drag it off the edge".
+    screen.getByRole("slider", { name: "Resize the details" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+  });
+
+  it("reaches every snap point the drag can", async () => {
+    render(<Example />);
+    const handle = screen.getByRole("slider", { name: "Resize the details" });
+    // A slider over the snap points, so a reader is told where they are in a
+    // list rather than left with a grip that does nothing.
+    expect(handle).toHaveAttribute("aria-valuemin", "0");
+    expect(handle).toHaveAttribute("aria-valuemax", "1");
+    expect(handle).toHaveAttribute("aria-valuenow", "0");
+    expect(handle).toHaveAttribute("aria-valuetext", "40%");
+
+    handle.focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(handle).toHaveAttribute("aria-valuenow", "1");
+    expect(handle).toHaveAttribute("aria-valuetext", "100%");
+
+    await userEvent.keyboard("{Home}");
+    expect(handle).toHaveAttribute("aria-valuenow", "0");
+    await userEvent.keyboard("{End}");
+    expect(handle).toHaveAttribute("aria-valuenow", "1");
+  });
+
+  it("refuses a drag that is the only way out", () => {
+    expect(() =>
+      render(
+        <Drawer.Root defaultOpen>
+          <Drawer.Body>
+            <Drawer.Handle label="Resize the details" />
+            <Drawer.Title>Details</Drawer.Title>
+          </Drawer.Body>
+        </Drawer.Root>,
+      ),
+    ).toThrow("2.5.7");
+  });
+});
+
+describe("Sidebar", () => {
+  afterEach(() => {
+    answerMediaQueries(null);
+  });
+
+  component Example(defaultOpen?: boolean = true) {
+    return (
+      <Sidebar.Root defaultOpen={defaultOpen}>
+        <Sidebar.Trigger>Menu</Sidebar.Trigger>
+        <Sidebar.Body label="Main">
+          <Sidebar.Item label="Settings">Settings</Sidebar.Item>
+        </Sidebar.Body>
+      </Sidebar.Root>
+    );
+  }
+
+  it("keeps the sidebar's buttons named while it is collapsed", async () => {
+    render(<Example />);
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Menu" }));
+    // Collapsed to icons, a button whose name came from its text is announced
+    // as "button". The name has to survive whatever the stylesheet does to the
+    // text, so it moves into `aria-label` rather than depending on it.
+    const entry = screen.getByRole("button", { name: "Settings" });
+    expect(entry).toHaveAttribute("aria-label", "Settings");
+    expect(entry).toHaveAttribute("data-collapsed", "true");
+  });
+
+  it("is a named navigation landmark, and says whether it is showing", async () => {
+    render(<Example />);
+    // A `<div>` here is navigation a reader has to find by tabbing through it;
+    // a landmark is one their software offers to jump to.
+    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("is not modal while it is part of the page", async () => {
+    render(<Example />);
+    // Nothing is inert, nothing is announced as modal, and the reader can use
+    // what is beside it. That is the whole difference from the other three.
+    expect(screen.queryByRole("dialog")).toBe(null);
+    expect(screen.getByRole("button", { name: "Menu" })).not.toHaveAttribute("inert");
+  });
+
+  it("becomes a modal dialog on a narrow viewport, and gives focus back", async () => {
+    answerMediaQueries(true);
+    render(<Example defaultOpen={false} />);
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    expect(screen.queryByRole("navigation")).toBe(null);
+
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(within(dialog).getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+    // Focus moved in, because it is a dialog now and the page behind it is
+    // gone.
+    expect(within(dialog).getByRole("button", { name: "Settings" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+    // And back out again, to the button that opened it. The transition has to
+    // move focus correctly in both directions or the reader is stranded at one
+    // end of it.
+    expect(trigger).toHaveFocus();
   });
 });
 
@@ -5010,6 +5310,317 @@ describe("Navigation menu", () => {
   });
 });
 
+describe("Carousel", () => {
+  afterEach(() => {
+    uft.useRealTimers();
+    answerMediaQueries(null);
+  });
+
+  component Example(autoplay?: number | null = null) {
+    return (
+      <Carousel.Root autoplay={autoplay} count={3} label="Featured">
+        <Carousel.Pause />
+        <Carousel.Content>
+          <Carousel.Item index={0}>
+            <a href="/one">One</a>
+          </Carousel.Item>
+          <Carousel.Item index={1}>
+            <a href="/two">Two</a>
+          </Carousel.Item>
+          <Carousel.Item index={2}>
+            <a href="/three">Three</a>
+          </Carousel.Item>
+        </Carousel.Content>
+        <Carousel.Previous />
+        <Carousel.Next />
+      </Carousel.Root>
+    );
+  }
+
+  /** The carousel, which is the group the slides are in rather than one of them. */
+  const carouselElement = (): HTMLElement => screen.getByRole("group", { name: "Featured" });
+
+  /** Every slide, in document order. */
+  const slides = (): Array<HTMLElement> =>
+    screen
+      .getAllByRole("group")
+      .filter((element) => element.getAttribute("aria-roledescription") === "slide");
+
+  /** Which one is showing, by the text in it. */
+  const showing = (): string =>
+    slides()
+      .filter((slide) => slide.getAttribute("data-state") === "active")
+      .map((slide) => slide.textContent ?? "")
+      .join("");
+
+  const advance = (millis: number) => {
+    act(() => {
+      uft.advanceTimersByTime(millis);
+    });
+  };
+
+  it("says it is a carousel and where each slide is", () => {
+    render(<Example />);
+    // Without these a reader is told "group, group" and has no way to know
+    // what they are in or how much of it there is.
+    expect(carouselElement()).toHaveAttribute("aria-roledescription", "carousel");
+    const all = slides();
+    expect(all.length).toBe(3);
+    expect(all[0]).toHaveAttribute("aria-label", "1 of 3");
+    expect(all[2]).toHaveAttribute("aria-label", "3 of 3");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("does not let Tab into a slide nobody can see", () => {
+    render(<Example />);
+    // The slides that are not showing are still in the document, so without
+    // `inert` their links are still focus stops and a reader tabs into content
+    // the page is not showing.
+    expect(slides()[1]).toHaveAttribute("inert");
+    expect(
+      focusable(carouselElement())
+        .filter((element) => element.tagName.toLowerCase() === "a")
+        .map((element) => element.textContent),
+    ).toEqual(["One"]);
+  });
+
+  it("can be stopped, and stays stopped", () => {
+    uft.useFakeTimers();
+    render(<Example autoplay={5000} />);
+    const pause = screen.getByRole("button", { name: "Stop the carousel" });
+    // WCAG 2.2.2's mechanism, and the APG's placement for it: a pause control
+    // a reader reaches after the slides is one they reach after the thing they
+    // wanted to stop.
+    expect(focusable(carouselElement())[0]).toBe(pause);
+
+    advance(5000);
+    expect(showing()).toBe("Two");
+
+    fireEvent.click(pause);
+    expect(pause).toHaveAttribute("aria-pressed", "true");
+    // Not merely paused by the pointer or by focus: both have gone, and it is
+    // still stopped, because that was a decision rather than a hover.
+    fireEvent.pointerLeave(carouselElement());
+    fireEvent.blur(carouselElement());
+    advance(50_000);
+    expect(showing()).toBe("Two");
+  });
+
+  it("turns the live region on only when it is not rotating", () => {
+    uft.useFakeTimers();
+    render(<Example autoplay={5000} />);
+    const live = (): Element | null => carouselElement().querySelector("[aria-live]");
+    // Announcing every slide of an auto-rotating carousel is unusable; never
+    // announcing anything makes the Next button silent. So it is one while it
+    // moves and the other while it does not.
+    expect(live()).toHaveAttribute("aria-live", "off");
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop the carousel" }));
+    expect(live()).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("does not rotate for a reader who asked for less motion", () => {
+    answerMediaQueries(true);
+    uft.useFakeTimers();
+    render(<Example autoplay={5000} />);
+    advance(50_000);
+    expect(showing()).toBe("One");
+  });
+
+  it("refuses to rotate behind a pause control nobody reaches in time", () => {
+    expect(() =>
+      render(
+        <Carousel.Root autoplay={5000} count={2} label="Featured">
+          <Carousel.Previous />
+          <Carousel.Pause />
+          <Carousel.Content>
+            <Carousel.Item index={0}>One</Carousel.Item>
+            <Carousel.Item index={1}>Two</Carousel.Item>
+          </Carousel.Content>
+        </Carousel.Root>,
+      ),
+    ).toThrow("first focusable element");
+  });
+});
+
+describe("Scroll area", () => {
+  component Example(children: React.Node) {
+    return (
+      <ScrollArea.Root label="Release notes">
+        <ScrollArea.Viewport>{children}</ScrollArea.Viewport>
+        <ScrollArea.Scrollbar orientation="vertical" />
+      </ScrollArea.Root>
+    );
+  }
+
+  it("can be scrolled from the keyboard", async () => {
+    render(
+      <Example>
+        <p>The bottom of this is only reachable by scrolling.</p>
+      </Example>,
+    );
+    // A scroll container is focusable in Firefox and not in Chromium, so a
+    // region that must be scrolled to be read needs the tab stop, the role and
+    // the name — or a keyboard reader can see the top of it and nothing else.
+    const region = screen.getByRole("region", { name: "Release notes" });
+    expect(region).toHaveAttribute("tabindex", "0");
+
+    await userEvent.tab();
+    expect(region).toHaveFocus();
+  });
+
+  it("does not take the scrolling keys away from the reader", () => {
+    render(
+      <Example>
+        <p>Long.</p>
+      </Example>,
+    );
+    const region = screen.getByRole("region", { name: "Release notes" });
+    // Nothing here handles a key. Every key that scrolls a native overflow
+    // container scrolls this one, because it is one.
+    expect(fireEvent.keyDown(region, { key: "PageDown" })).toBe(true);
+    expect(fireEvent.keyDown(region, { key: "ArrowDown" })).toBe(true);
+    expect(fireEvent.keyDown(region, { key: "End" })).toBe(true);
+  });
+
+  it("keeps the reader's place when the content is replaced", () => {
+    const { rerender } = render(
+      <Example>
+        <p>First.</p>
+      </Example>,
+    );
+    const region = screen.getByRole("region", { name: "Release notes" });
+    region.scrollTop = 120;
+    fireEvent.scroll(region);
+
+    // What a browser does when a scroll container's content is replaced by
+    // something shorter: the offset is clamped, and it is not put back when
+    // the content grows again.
+    region.scrollTop = 0;
+    rerender(
+      <Example>
+        <p>Second.</p>
+      </Example>,
+    );
+    expect(region.scrollTop).toBe(120);
+  });
+
+  it("leaves the reader's own scroll to the top alone", () => {
+    const { rerender } = render(
+      <Example>
+        <p>First.</p>
+      </Example>,
+    );
+    const region = screen.getByRole("region", { name: "Release notes" });
+    region.scrollTop = 120;
+    fireEvent.scroll(region);
+    // Their scroll, not the browser's clamp: it fires a `scroll` event, so the
+    // remembered position is theirs and nothing puts them back.
+    region.scrollTop = 0;
+    fireEvent.scroll(region);
+
+    rerender(
+      <Example>
+        <p>Second.</p>
+      </Example>,
+    );
+    expect(region.scrollTop).toBe(0);
+  });
+});
+
+describe("Input OTP", () => {
+  component Example(length?: number = 6) {
+    return (
+      <InputOtp.Root label="One-time code" length={length} name="code">
+        <InputOtp.Group>
+          <InputOtp.Slot index={0} />
+          <InputOtp.Slot index={1} />
+          <InputOtp.Slot index={2} />
+        </InputOtp.Group>
+        <InputOtp.Separator>-</InputOtp.Separator>
+        <InputOtp.Group>
+          <InputOtp.Slot index={3} />
+          <InputOtp.Slot index={4} />
+          <InputOtp.Slot index={5} />
+        </InputOtp.Group>
+      </InputOtp.Root>
+    );
+  }
+
+  /** What each box is showing, in order. */
+  const boxes = (): Array<string> =>
+    Array.from(document.querySelectorAll("[data-index]")).map(
+      (element) => element.textContent ?? "",
+    );
+
+  /** Which box is lit. */
+  const lit = (): string | null =>
+    document.querySelector('[data-active="true"]')?.getAttribute("data-index") ?? null;
+
+  it("asks the platform for the code", () => {
+    render(<Example />);
+    const field = screen.getByRole("textbox", { name: "One-time code" });
+    // The single most valuable thing about the component, and the first thing
+    // a six-input version loses: without it the operating system has no field
+    // to offer the code it just received by SMS to.
+    expect(field).toHaveAttribute("autocomplete", "one-time-code");
+    expect(field).toHaveAttribute("inputmode", "numeric");
+  });
+
+  it("fills every box from one paste", () => {
+    render(<Example />);
+    const field = screen.getByRole("textbox", { name: "One-time code" });
+    replaceValue(field, "123456");
+
+    expect(boxes()).toEqual(["1", "2", "3", "4", "5", "6"]);
+    // One value, under one name, rather than six. A form reads the field the
+    // reader typed into, so there is no hidden input here at all.
+    expect(document.querySelectorAll("input").length).toBe(1);
+    expect(field).toHaveAttribute("name", "code");
+    expect((field as $FlowFixMe).value).toBe("123456");
+  });
+
+  it("keeps everything that is not the code out", () => {
+    render(<Example />);
+    const field = screen.getByRole("textbox", { name: "One-time code" });
+    // A code pasted out of a message arrives with whatever was around it.
+    replaceValue(field, "Your code is 12-34-56, do not share it");
+    expect((field as $FlowFixMe).value).toBe("123456");
+  });
+
+  it("moves back on Backspace", async () => {
+    render(<Example />);
+    const field = screen.getByRole("textbox", { name: "One-time code" });
+    await userEvent.type(field, "12");
+    expect(boxes()).toEqual(["1", "2", "", "", "", ""]);
+    expect(lit()).toBe("2");
+
+    replaceValue(field, "1");
+    // The character is gone and the lit box has moved back with it, which is
+    // the half of `Backspace` this component is responsible for; the deletion
+    // is the browser's, because there is one input for it to happen in.
+    expect(boxes()).toEqual(["1", "", "", "", "", ""]);
+    expect(lit()).toBe("1");
+  });
+
+  it("says the code is finished once, when it is", async () => {
+    const onComplete = fn();
+    render(
+      <InputOtp.Root label="One-time code" length={4} name="code" onComplete={onComplete}>
+        <InputOtp.Slot index={0} />
+        <InputOtp.Slot index={1} />
+        <InputOtp.Slot index={2} />
+        <InputOtp.Slot index={3} />
+      </InputOtp.Root>,
+    );
+    const field = screen.getByRole("textbox", { name: "One-time code" });
+    await userEvent.type(field, "123");
+    expect(onComplete.mock.calls.length).toBe(0);
+    await userEvent.type(field, "4");
+    expect(onComplete).toHaveBeenCalledWith("1234");
+  });
+});
+
 describe("caller props never disable the component", () => {
   it("keeps the focus trap when the caller passes a ref", async () => {
     // The ref used to replace the dialog's own, leaving it null — so the Tab
@@ -5392,6 +6003,77 @@ describe("the props a part spreads onto its element", () => {
   });
 });
 
+/**
+ * Hold one `tests/type-tests` fixture to its own `// expect:` markers.
+ *
+ * Shared by the two blocks below, because the mechanism is the same and the
+ * only difference is which file is being read: a marker says the line after it
+ * must be reported and what the report must contain, a line without one must
+ * not be reported at all, and both halves matter — a change that makes one of
+ * these stop being an error fails here, and so does one that makes something
+ * else in the file start being one.
+ *
+ * Both paths go to the checker in one command, and that is load-bearing:
+ * `uf check` builds its module map from the files it is asked about, so a
+ * relative import that leaves that set resolves to an any-typed value — after
+ * which every union in it is `any` and every line of the fixture passes. The
+ * fixtures' own headers say why they are not inside the package.
+ */
+function everyMisuseIsReported(fixture: string): void {
+  const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
+  const wanted = new Map<number, string>();
+  source.forEach((line, index) => {
+    const marker = line.match(/^\s*\/\/ expect: (.+)$/);
+    if (marker != null) {
+      // Lines are one-based, and the line that must fail is the next one.
+      wanted.set(index + 2, marker[1]);
+    }
+  });
+  // Without this the test would pass on a fixture somebody had emptied.
+  expect(wanted.size).toBeGreaterThan(4);
+
+  const run = spawnSync(UF, ["check", "tests/type-tests", "packages/ui", "--json"], {
+    cwd: repository,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (run.stdout === "") {
+    throw new Error(
+      `\`uf check tests/type-tests packages/ui --json\` in ${repository} printed ` +
+        `nothing: status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
+    );
+  }
+  const report: Report = JSON.parse(run.stdout);
+  expect(report.typeCheck.status).toBe("checked");
+
+  const reported = new Map<number, string>();
+  for (const diagnostic of report.typeCheck.diagnostics) {
+    if (diagnostic.primary.path.endsWith(fixture)) {
+      reported.set(
+        diagnostic.primary.start.line,
+        diagnostic.message.map((span) => span.text).join(""),
+      );
+    }
+  }
+
+  const missing = [];
+  for (const [line, expected] of wanted) {
+    const said = reported.get(line);
+    if (said == null || !said.includes(expected)) {
+      missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
+    }
+  }
+  // Every marked line is an error, with the message the fixture predicted.
+  expect(missing).toEqual([]);
+
+  // And nothing else in the file is: the members of each union are usable, and
+  // this is what says the fixture is not just broken.
+  const unexpected = [...reported.keys()]
+    .filter((line) => !wanted.has(line))
+    .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
+  expect(unexpected).toEqual([]);
+}
+
 describe("a side and an alignment are unions, not strings", () => {
   // The other promise a type makes, and the other one no amount of rendering
   // can check. `internal/anchor.js` says a side is one of four names and an
@@ -5399,71 +6081,23 @@ describe("a side and an alignment are unions, not strings", () => {
   // misspells one is stopped by the checker rather than by a reader finding an
   // overlay in the wrong place.
   //
-  // `tests/type-tests/anchoring.js` is the misuse, written down. It is
-  // *supposed* to fail `uf check`, it marks each line that must fail with a
-  // `// expect:` comment, and this reads both and compares them — so a change
-  // that makes one of them stop being an error fails here, and so does one that
-  // makes something else in that file start being one.
-  //
-  // Both paths go to the checker in one command, and that is load-bearing:
-  // `uf check` builds its module map from the files it is asked about, so a
-  // relative import that leaves that set resolves to an any-typed value —
-  // after which `Side` is `any` and every line of the fixture passes. The
-  // fixture's own header says why it is not inside the package.
-  const fixture = path.join("tests", "type-tests", "anchoring.js");
+  // `tests/type-tests/anchoring.js` is the misuse, written down.
 
   it("reports every misuse, and only the misuses", () => {
-    const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
-    const wanted = new Map<number, string>();
-    source.forEach((line, index) => {
-      const marker = line.match(/^\s*\/\/ expect: (.+)$/);
-      if (marker != null) {
-        // Lines are one-based, and the line that must fail is the next one.
-        wanted.set(index + 2, marker[1]);
-      }
-    });
-    // Without this the test would pass on a fixture somebody had emptied.
-    expect(wanted.size).toBeGreaterThan(4);
+    everyMisuseIsReported(path.join("tests", "type-tests", "anchoring.js"));
+  });
+});
 
-    const run = spawnSync(UF, ["check", "tests/type-tests", "packages/ui", "--json"], {
-      cwd: repository,
-      encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    if (run.stdout === "") {
-      throw new Error(
-        `\`uf check tests/type-tests packages/ui --json\` in ${repository} printed ` +
-          `nothing: status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
-      );
-    }
-    const report: Report = JSON.parse(run.stdout);
-    expect(report.typeCheck.status).toBe("checked");
+describe("an edge, a role and an alphabet are unions too", () => {
+  // The same claim, for the dialog-shaped components and the three that replace
+  // something the browser already does. A sheet's `side`, a sidebar's — which
+  // has two members rather than four, because a sidebar is never along the top
+  // — a modal's `role`, and what a one-time code is made of: four unions whose
+  // misuse has no symptom at run time and none in a screenshot.
+  //
+  // `tests/type-tests/overlays.js` is the misuse, written down.
 
-    const reported = new Map<number, string>();
-    for (const diagnostic of report.typeCheck.diagnostics) {
-      if (diagnostic.primary.path.endsWith(fixture)) {
-        reported.set(
-          diagnostic.primary.start.line,
-          diagnostic.message.map((span) => span.text).join(""),
-        );
-      }
-    }
-
-    const missing = [];
-    for (const [line, expected] of wanted) {
-      const said = reported.get(line);
-      if (said == null || !said.includes(expected)) {
-        missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
-      }
-    }
-    // Every marked line is an error, with the message the fixture predicted.
-    expect(missing).toEqual([]);
-
-    // And nothing else in the file is: the four sides and the three alignments
-    // are usable, and this is what says the fixture is not just broken.
-    const unexpected = [...reported.keys()]
-      .filter((line) => !wanted.has(line))
-      .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
-    expect(unexpected).toEqual([]);
+  it("reports every misuse, and only the misuses", () => {
+    everyMisuseIsReported(path.join("tests", "type-tests", "overlays.js"));
   });
 });

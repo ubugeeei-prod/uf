@@ -155,6 +155,26 @@ pub(crate) enum Commands {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// Rewrite the files, applying every fix that cannot change what the
+        /// program does.
+        ///
+        /// A fix is applied only when the replacement is a synonym the
+        /// language already treats as the original, so the program after it
+        /// means what it meant before. What is written parses, and a file that
+        /// passed `uf fmt --check` before still passes it after. Running this
+        /// twice is running it once.
+        #[arg(long)]
+        fix: bool,
+        /// Also apply the fixes whose correctness rests on something the rule
+        /// could not check.
+        ///
+        /// "Unsafe" means the edit is the one the rule asks for and there is no
+        /// second plausible spelling of it, but applying it can change what the
+        /// program does: `export let count = 0` becomes `export const
+        /// count = 0`, which throws where the old code reassigned it. The file
+        /// still parses and still formats — read the diff before committing it.
+        #[arg(long, conflicts_with = "fix")]
+        fix_unsafe: bool,
         /// Only check files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -297,6 +317,26 @@ pub(crate) enum Commands {
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+        /// Rewrite the files, applying every fix that cannot change what the
+        /// program does.
+        ///
+        /// A fix is applied only when the replacement is a synonym the
+        /// language already treats as the original, so the program after it
+        /// means what it meant before. What is written parses, and a file that
+        /// passed `uf fmt --check` before still passes it after. Running this
+        /// twice is running it once.
+        #[arg(long)]
+        fix: bool,
+        /// Also apply the fixes whose correctness rests on something the rule
+        /// could not check.
+        ///
+        /// "Unsafe" means the edit is the one the rule asks for and there is no
+        /// second plausible spelling of it, but applying it can change what the
+        /// program does: `export let count = 0` becomes `export const
+        /// count = 0`, which throws where the old code reassigned it. The file
+        /// still parses and still formats — read the diff before committing it.
+        #[arg(long, conflicts_with = "fix")]
+        fix_unsafe: bool,
         /// Only lint files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -304,7 +344,17 @@ pub(crate) enum Commands {
     /// Serve the language server over stdin/stdout, for an editor.
     Lsp,
     /// Run the checks and code generation a commit should not go without.
-    Prepare,
+    Prepare {
+        /// Apply `uf lint`'s safe fixes to the staged files and format them,
+        /// instead of only reporting what is wrong with them.
+        ///
+        /// Whatever it rewrites is left in the working tree unstaged, and the
+        /// run fails so the commit stops: the fixes are yours to read and
+        /// stage, not uf's to slip into a commit you already wrote a message
+        /// for.
+        #[arg(long)]
+        fix: bool,
+    },
     /// Serve the production build through Vite's preview server.
     ///
     /// The step between `uf build` and deploying: the one place a person finds
@@ -646,6 +696,8 @@ mod tests {
         assert!(
             Commands::Lint {
                 json: true,
+                fix: false,
+                fix_unsafe: false,
                 paths: Vec::new()
             }
             .wants_json()
@@ -653,6 +705,8 @@ mod tests {
         assert!(
             Commands::Check {
                 json: true,
+                fix: false,
+                fix_unsafe: false,
                 paths: Vec::new()
             }
             .wants_json()

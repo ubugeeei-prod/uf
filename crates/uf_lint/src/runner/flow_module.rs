@@ -78,6 +78,13 @@ pub(crate) fn run_flow_non_const_var_export(
         if len == 0 || !matches!(&code[keyword_at..keyword_at + len], "var" | "let") {
             continue;
         }
+        // A line of a template literal that happens to read `export let x = 1`
+        // is a string this module builds, not a binding it exports — uf's own
+        // code generators emit Flow source that way. Its sibling rules in this
+        // runner guard the same search with the same test.
+        if line.in_string(keyword_at) {
+            continue;
+        }
         push_in_code(
             diagnostics,
             scan,
