@@ -47,8 +47,11 @@ pub struct Printed {
 ///
 /// # Errors
 ///
-/// [`TransformError::Internal`] for a node kind the printer does not know,
-/// which means a stage before it produced something outside the contract.
+/// [`TransformError::Internal`] for a node kind the printer does not know, and
+/// for a node whose fields describe syntax that does not exist — a
+/// `ForInStatement` marked `await`. Either means a stage before it produced
+/// something outside the contract; printing it anyway would emit a module no
+/// engine will load.
 pub fn print(file: &Value) -> Result<Printed, TransformError> {
     let mut printer = Printer::default();
     printer.program(&file["program"])?;
