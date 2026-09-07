@@ -1142,11 +1142,18 @@ fn changed_document(message: &Value) -> Option<(String, String)> {
 /// `dev.strictPort` still decides the case where the port came from the
 /// config, and the driver reads it there.
 ///
-/// `--env-file` names every file the cascade would consult in this mode,
+/// `--uf-env-file` names every file the cascade would consult in this mode,
 /// existing or not, so that the driver's watcher can say when one moved. They
 /// are named rather than read by the driver: uf is still the only thing that
 /// parses a `.env` file, and what the driver reports is "this changed" rather
 /// than what it now says. See ubugeeei-prod/uf#428.
+///
+/// The `uf-` prefix is not decoration. Node parses `--env-file` itself, and it
+/// parses it *wherever it appears* — after the script path as readily as
+/// before it — so `node driver.js dev --env-file .env` is node being told to
+/// load an environment file, and node exits 9 when there is not one. Every
+/// dev-server test failed that way once. A flag this process invents must be
+/// spelled so that no host can ever claim it.
 fn driver_args(host: Option<&str>, port: Option<u16>, env_files: &[Utf8PathBuf]) -> Vec<String> {
     let mut driver_args = Vec::new();
     if let Some(bind) = host {
@@ -1159,7 +1166,7 @@ fn driver_args(host: Option<&str>, port: Option<u16>, env_files: &[Utf8PathBuf])
         driver_args.push(String::from("--strict-port"));
     }
     for file in env_files {
-        driver_args.push(String::from("--env-file"));
+        driver_args.push(String::from("--uf-env-file"));
         driver_args.push(file.to_string());
     }
     driver_args
@@ -1191,6 +1198,35 @@ mod tests {
         assert_eq!(
             driver_args(Some("0.0.0.0"), None, &[]),
             ["--host", "0.0.0.0"]
+        );
+    }
+
+    /// The watched `.env` files go over as `--uf-env-file`, and the prefix is
+    /// the whole point of the test.
+    ///
+    /// Node owns `--env-file`, and owns it *wherever it appears*: options after
+    /// the script path are the script's everywhere else, and not for this one.
+    /// `node driver.js dev --env-file .env` is node being asked to load an
+    /// environment file, and node exits 9 saying it could not find one — which
+    /// is every `uf dev` in this repository refusing to start, and every
+    /// dev-server test in `tests/vite.rs` failing with a message about a server
+    /// that never answered. See ubugeeei-prod/uf#428.
+    #[test]
+    fn the_watched_env_files_are_named_so_that_node_does_not_claim_them() {
+        let files = [
+            Utf8PathBuf::from("/p/.env"),
+            Utf8PathBuf::from("/p/.env.local"),
+        ];
+        assert_eq!(
+            driver_args(None, None, &files),
+            ["--uf-env-file", "/p/.env", "--uf-env-file", "/p/.env.local"]
+        );
+        assert!(
+            !driver_args(None, None, &files)
+                .iter()
+                .any(|arg| arg == "--env-file"),
+            "`--env-file` is node's own flag; a driver argument by that name never reaches the \
+             driver"
         );
     }
 

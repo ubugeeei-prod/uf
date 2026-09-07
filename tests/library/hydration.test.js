@@ -89,7 +89,17 @@ afterEach(() => {
   }
   // The panel too: `showHydrationReport` mounts it on the body rather than in a
   // container, so it outlives everything above.
-  for (const host of Array.from(bodyOf().querySelectorAll("#uf-hydration-overlay"))) {
+  //
+  // `document` is read through the global rather than through `bodyOf`, because
+  // this runs after *every* test in the file including the ones that never
+  // rendered — and in a worker where no file has installed a DOM yet there is
+  // no document at all. `bodyOf` throws there, which would fail the first test
+  // in the file for something it did not do.
+  const body = globalThis.document?.body;
+  if (body == null) {
+    return;
+  }
+  for (const host of Array.from(body.querySelectorAll("#uf-hydration-overlay"))) {
     host.remove();
   }
 });

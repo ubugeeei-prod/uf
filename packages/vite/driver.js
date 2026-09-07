@@ -6,7 +6,7 @@
 // `uf start` spawn.
 //
 //   <host> driver.js dev     --root <dir> [--mode <m>] [--host <h>] [--port <n>] [--strict-port]
-//                            [--env-file <file>]...
+//                            [--uf-env-file <file>]...
 //   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
 //   <host> driver.js compile --root <dir> [--mode <m>] [--out-dir <dir>] --assets <file> --bundle <dir>
 //   <host> driver.js deploy  --root <dir> [--mode <m>] [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
@@ -20,8 +20,11 @@
 // environment — see `viteConfig` below and `crates/uf_config/src/env_files.rs`.
 // `start` has no Vite in it and therefore no mode.
 //
-// `--env-file` names those files, one flag each, so `dev` can watch them and
-// say when one moved; nothing here reads their contents.
+// `--uf-env-file` names those files, one flag each, so `dev` can watch them and
+// say when one moved; nothing here reads their contents. The prefix is load
+// bearing: node claims `--env-file` for itself and honours it wherever it
+// appears on the command line, script arguments included, so a driver argument
+// by that name is an argument node eats and then exits 9 over.
 //
 // `uf` in Rust owns the terminal; this process owns Vite. They talk over
 // stdout, one JSON event per line (see `./internal/events.js`), and the driver
@@ -289,7 +292,7 @@ function watchSources(server) {
  * nothing until somebody restarted the command by hand, and the guide had to
  * document it as a limitation. See ubugeeei-prod/uf#428.
  *
- * `uf` passes the files it would consult with `--env-file`, one per file, in
+ * `uf` passes the files it would consult with `--uf-env-file`, one per file, in
  * cascade order, whether or not each exists today — a `.env.local` *created*
  * while the server runs changes the answer exactly as much as an edit to one
  * that was already there, and watching only what was read would have missed
@@ -306,7 +309,7 @@ function watchSources(server) {
  * answer to "did this file change".
  */
 function watchEnvFiles(server) {
-  const files = argumentAll("--env-file").map((file) => path.resolve(root, file));
+  const files = argumentAll("--uf-env-file").map((file) => path.resolve(root, file));
   if (files.length === 0) return;
   const watched = new Set(files);
   server.watcher.add(files);
