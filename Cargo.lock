@@ -3452,6 +3452,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_flow",
+ "uf_infra",
 ]
 
 [[package]]
@@ -3578,6 +3579,7 @@ dependencies = [
  "rustc-hash",
  "simdutf8",
  "smallvec",
+ "tempfile",
 ]
 
 [[package]]
@@ -3778,6 +3780,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_config",
+ "uf_infra",
  "walkdir",
 ]
 
