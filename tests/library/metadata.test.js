@@ -16,8 +16,8 @@
 // silently ignored by the machine that reads it.
 
 import * as React from "@uniflowed/react";
-import { routerView } from "@uniflowed/router";
-import type { Metadata } from "@uniflowed/router";
+import { routerView, useSeo } from "@uniflowed/router";
+import type { LayoutModule, Metadata, PageModule } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
 import { describe, expect, it } from "@uniflowed/test";
 
@@ -415,6 +415,231 @@ describe("what was already there", () => {
     );
     expect(html).toContain(
       '<meta property="og:image" content="https://docs.uniflowed.dev/og.png"/>',
+    );
+  });
+});
+
+/**
+ * The document a single route renders to, from the modules it is given.
+ *
+ * `documentFor` is the shorthand over it; a test reaches for this one when it
+ * needs a page module of its own rather than a metadata object.
+ */
+async function documentOf(page: PageModule, layout?: ?LayoutModule): Promise<string> {
+  const { prerender } = createRenderer({
+    App: routerView("./app"),
+    routes: [
+      {
+        path: "/guide",
+        params: [],
+        mdx: false,
+        file: "app/guide/_uf.page.js",
+        page: () => Promise.resolve(page),
+        layouts: layout == null ? [] : [() => Promise.resolve(layout)],
+      },
+    ],
+    notFound: [],
+    errors: [],
+  });
+
+  const result = await prerender("/guide", assets);
+  // A throw anywhere above would render the error page instead, and every
+  // `not.toContain` below would then pass for the wrong reason.
+  expect(result.status).toBe(200);
+  return result.html;
+}
+
+describe("what a page tells a crawler", () => {
+  it("says noindex, nofollow when it wants neither", async () => {
+    const html = await documentFor({ title: "a preview", robots: { index: false, follow: false } });
+
+    expect(html).toContain('<meta name="robots" content="noindex, nofollow"/>');
+  });
+
+  it("says nothing at all when the page declares nothing", async () => {
+    // "index, follow" is what a document with no `robots` meta already means,
+    // so a tag that spelled it out would tell a crawler what it had assumed.
+    const html = await documentFor({ title: "an ordinary page" });
+
+    expect(html).not.toContain('name="robots"');
+  });
+
+  it("keeps a directive that agrees with the default, because it is overruling one", async () => {
+    // A section declared `index: false` on its layout and one page under it is
+    // public. Dropping `index` for agreeing with the crawler's default would
+    // leave that page saying nothing, in a document whose own layout is the
+    // reason it had to say something.
+    const html = await documentFor({ robots: { index: true } }, { robots: { index: false } });
+
+    expect(html).toContain('<meta name="robots" content="index"/>');
+  });
+
+  it("carries the two directives that change what a result looks like", async () => {
+    const html = await documentFor({
+      title: "a page",
+      robots: { maxSnippet: 160, maxImagePreview: "large" },
+    });
+
+    expect(html).toContain(
+      '<meta name="robots" content="max-snippet:160, max-image-preview:large"/>',
+    );
+  });
+});
+
+describe("the translations of a page", () => {
+  it("is one hreflang link each, resolved against metadataBase", async () => {
+    const html = await documentFor({
+      metadataBase: "https://docs.uniflowed.dev",
+      alternates: { languages: { en: "/guide", ja: "/ja/guide" } },
+    });
+
+    expect(html).toContain(
+      '<link rel="alternate" hrefLang="en" href="https://docs.uniflowed.dev/guide"/>',
+    );
+    expect(html).toContain(
+      '<link rel="alternate" hrefLang="ja" href="https://docs.uniflowed.dev/ja/guide"/>',
+    );
+  });
+
+  it("takes x-default like any other tag, because to a crawler it is one", async () => {
+    const html = await documentFor({
+      alternates: { languages: { "x-default": "https://docs.uniflowed.dev/guide" } },
+    });
+
+    expect(html).toContain(
+      '<link rel="alternate" hrefLang="x-default" href="https://docs.uniflowed.dev/guide"/>',
+    );
+  });
+
+  it("comes down from the layout, because the set is the same on every page of it", async () => {
+    const html = await documentFor(
+      { title: "a page" },
+      { alternates: { languages: { ja: "/ja" } } },
+    );
+
+    expect(html).toContain('<link rel="alternate" hrefLang="ja" href="/ja"/>');
+  });
+
+  it("is absent from a page that has no translations", async () => {
+    const html = await documentFor({ title: "a page" });
+
+    expect(html).not.toContain('rel="alternate"');
+  });
+});
+
+describe("a page in a sequence", () => {
+  it("links to the pages either side of it", async () => {
+    const html = await documentFor({
+      metadataBase: "https://docs.uniflowed.dev",
+      canonical: "/posts?page=4",
+      pagination: { prev: "/posts?page=3", next: "/posts?page=5" },
+    });
+
+    expect(html).toContain('<link rel="prev" href="https://docs.uniflowed.dev/posts?page=3"/>');
+    expect(html).toContain('<link rel="next" href="https://docs.uniflowed.dev/posts?page=5"/>');
+  });
+
+  it("keeps its own canonical URL rather than pointing at page one", async () => {
+    // The mistake this pair exists to make unnecessary. A paginated list whose
+    // every page is canonical to page one has told a search engine that pages
+    // two onwards are duplicates, and everything only linked from them stops
+    // being reachable.
+    const html = await documentFor({
+      canonical: "https://docs.uniflowed.dev/posts?page=4",
+      pagination: { prev: "https://docs.uniflowed.dev/posts?page=3" },
+    });
+
+    expect(html).toContain(
+      '<link rel="canonical" href="https://docs.uniflowed.dev/posts?page=4"/>',
+    );
+  });
+
+  it("emits only the end it has, on the first page of a list", async () => {
+    const html = await documentFor({ pagination: { next: "/posts?page=2" } });
+
+    expect(html).toContain('<link rel="next" href="/posts?page=2"/>');
+    expect(html).not.toContain('rel="prev"');
+  });
+});
+
+describe("structured data", () => {
+  it("is one script per entry, in the vocabulary a search engine reads", async () => {
+    const html = await documentFor({
+      title: "Install · uf",
+      jsonLd: [{ "@context": "https://schema.org", "@type": "TechArticle", name: "Install uf" }],
+    });
+
+    expect(html).toContain('<script type="application/ld+json">');
+    expect(html).toContain('"@type":"TechArticle"');
+  });
+
+  it("adds to what the layout declared rather than replacing it", async () => {
+    // The one field where the nearest declaration does not win. An
+    // `Organization` on the root layout and an `Article` on the page are two
+    // statements about one page — replacing would mean a page that describes
+    // itself silently deletes the site's description of itself.
+    const html = await documentFor(
+      { jsonLd: [{ "@type": "TechArticle" }] },
+      { jsonLd: [{ "@type": "Organization" }] },
+    );
+
+    expect(html).toContain('"@type":"Organization"');
+    expect(html).toContain('"@type":"TechArticle"');
+  });
+
+  it("cannot be closed from inside its own data", async () => {
+    // The escape that matters. A `</script>` in any string in the data would
+    // end the element early, and everything after it would be markup the page
+    // never wrote — which is the whole of the injection.
+    const html = await documentFor({
+      jsonLd: [{ "@type": "Article", headline: "</script><img src=x onerror=alert(1)>" }],
+    });
+
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("\\u003c/script");
+  });
+
+  it("is absent from a page that declares none", async () => {
+    const html = await documentFor({ title: "a page" });
+
+    expect(html).not.toContain("application/ld+json");
+  });
+});
+
+describe("useSeo", () => {
+  it("puts a component's own tags in the document the server writes", async () => {
+    // The case `metadata` cannot serve: a pager knows which page of the list
+    // it is drawing, and the route module that renders it does not. The tags
+    // have to reach the *prerendered* document, because a hook that only
+    // worked in a browser would be right on screen and missing from every
+    // crawler — which is exactly what `useHead` in `@uniflowed/web` says about
+    // itself.
+    component Pager() {
+      const seo = useSeo({ pagination: { prev: "/posts?page=1", next: "/posts?page=3" } });
+      return <nav>{seo}a pager</nav>;
+    }
+
+    const html = await documentOf({ default: Pager, metadata: { title: "Posts" } });
+
+    expect(html).toContain('<link rel="prev" href="/posts?page=1"/>');
+    expect(html).toContain('<link rel="next" href="/posts?page=3"/>');
+  });
+
+  it("resolves its URLs against the metadataBase the layout declared", async () => {
+    // The one thing a component three levels down cannot know, and the reason
+    // this is a hook rather than a handful of tags written by hand.
+    component Deep() {
+      const seo = useSeo({ canonical: "/posts?page=2" });
+      return <p>{seo}deep</p>;
+    }
+
+    const html = await documentOf(
+      { default: Deep },
+      { default: SiteLayout, metadata: { metadataBase: "https://docs.uniflowed.dev" } },
+    );
+
+    expect(html).toContain(
+      '<link rel="canonical" href="https://docs.uniflowed.dev/posts?page=2"/>',
     );
   });
 });
