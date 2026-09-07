@@ -8,9 +8,31 @@
 // a live region that is never announced, a cookie parser a `__proto__` can
 // poison.
 
+import { createRequire } from "node:module";
+
+import type * as React from "@uniflowed/react";
 import { describe, expect, it } from "@uniflowed/testing";
+import { RenderProvider } from "@uniflowed/hooks";
 import { fireEvent, render, screen } from "@uniflowed/react-testing";
-import { Announcer, Font, Image, Page, Picture, SkipLink, Time, relative } from "@uniflowed/web";
+import {
+  Announcer,
+  Font,
+  Image,
+  Page,
+  Picture,
+  SkipLink,
+  Time,
+  asInstant,
+  relative,
+} from "@uniflowed/web";
+
+// Loaded the way `hooks-ssr.test.js` loads it: through a synchronous require, so
+// that importing this file costs nothing until a test asks for server markup.
+// `renderToStaticMarkup` is what a prerender writes, and it reads no document —
+// which is the point of the `Time, in a prerender` block below.
+const server = createRequire(import.meta.url)("react-dom/server");
+
+const markupOf = (element: React.Node): string => String(server.renderToStaticMarkup(element));
 
 /**
  * The preload React hoisted into `<head>` for one href.
@@ -101,21 +123,47 @@ describe("Font", () => {
 
 describe("Time", () => {
   it("puts the exact instant in dateTime, whatever the text says", () => {
-    render(<Time value="2026-09-04T06:00:00.000Z" />);
+    render(<Time value="2026-09-04T06:00:00Z" />);
 
-    const element = screen.getByText("2026-09-04T06:00:00.000Z");
-    expect(element.getAttribute("datetime")).toBe("2026-09-04T06:00:00.000Z");
+    const element = screen.getByText("2026-09-04T06:00:00Z");
+    expect(element.getAttribute("datetime")).toBe("2026-09-04T06:00:00Z");
   });
 
   it("renders the same string a server would, so hydration matches", () => {
     // `toLocaleString` on a server in UTC and a browser in Tokyo disagree, and
     // React notices.
-    render(<Time value="2026-09-04T06:00:00.000Z" format="date" />);
+    render(<Time value="2026-09-04T06:00:00Z" format="date" />);
 
     expect(screen.getByText("2026-09-04")).toBeInTheDocument();
   });
 
-  it("accepts a Date, a string, or a number", () => {
+  it("writes the calendar date of the zone it was given, not of UTC", () => {
+    // 22:00 UTC is the following morning in Tokyo, and a date component that
+    // took the day from the instant would print yesterday for every reader east
+    // of the meridian.
+    render(<Time value="2026-09-04T22:00:00Z" format="date" zone="Asia/Tokyo" />);
+
+    expect(screen.getByText("2026-09-05")).toBeInTheDocument();
+  });
+
+  it("says which zone the wall clock it prints belongs to", () => {
+    // The zoned form is the one a reader can act on before hydration: an
+    // absolute instant they can read, with the offset that makes it unambiguous.
+    render(<Time value="2026-09-04T06:00:00Z" format="zoned" zone="Asia/Tokyo" />);
+
+    expect(screen.getByText("2026-09-04 15:00 +09:00")).toBeInTheDocument();
+  });
+
+  it("falls back to UTC rather than to the machine it is running on", () => {
+    // The default has to be a zone both renders agree on. The host's zone is the
+    // one thing that is guaranteed to differ between a server and a reader,
+    // which is the whole problem restated.
+    render(<Time value="2026-09-04T22:00:00Z" format="date" />);
+
+    expect(screen.getByText("2026-09-04")).toBeInTheDocument();
+  });
+
+  it("accepts an instant as a Date, a string, or a number", () => {
     const at = new Date("2026-01-01T00:00:00.000Z");
     const { container } = render(
       <>
@@ -128,8 +176,60 @@ describe("Time", () => {
     const times = container.querySelectorAll("time");
     expect(times.length).toBe(3);
     for (const time of times) {
-      expect(time.getAttribute("datetime")).toBe("2026-01-01T00:00:00.000Z");
+      expect(time.getAttribute("datetime")).toBe("2026-01-01T00:00:00Z");
     }
+  });
+
+  it("refuses a date with no time, which is not an instant", () => {
+    // `new Date("2026-09-04")` guesses a midnight, and which midnight has
+    // changed between browsers. Temporal refuses the question and so does this.
+    expect(() => asInstant("2026-09-04")).toThrow();
+  });
+});
+
+describe("Time, in a prerender", () => {
+  it("puts the deterministic text in the markup a server sends", () => {
+    // The claim the whole module exists to keep: what a server writes is a
+    // function of the instant and a zone name, so a browser in any zone
+    // reproduces it exactly and React finds nothing to complain about. Rendered
+    // through `react-dom/server` rather than into a document, because a server
+    // has no document and this is the markup that goes on the wire.
+    const markup = markupOf(<Time value="2026-09-04T06:00:00Z" format="local" zone="Asia/Tokyo" />);
+
+    // The attribute's spelling is React's — HTML attribute names are
+    // case-insensitive, and the DOM test above is what checks a browser reads it
+    // — so what is asserted here is the text and the instant beside it.
+    expect(markup).toContain(">2026-09-04 15:00 +09:00</time>");
+    expect(markup).toContain("2026-09-04T06:00:00Z");
+  });
+
+  it("takes its zone from the render, so the browser can reproduce it", () => {
+    // Without a `zone` prop the component asks the render what zone it was made
+    // in. That answer travels in the markup — the `<script>` below is
+    // `RenderProvider`'s — which is what lets the browser render the same string
+    // before it knows anything about the server. 22:00 UTC is already the 5th in
+    // Tokyo, so the date is the assertion that the zone was actually used.
+    const markup = markupOf(
+      <RenderProvider at={Date.UTC(2026, 8, 4, 22, 0, 0)} timeZone="Asia/Tokyo" seed="fixedseed">
+        <Time value="2026-09-04T22:00:00Z" format="date" />
+      </RenderProvider>,
+    );
+
+    expect(markup).toContain(">2026-09-05<");
+    expect(markup).toContain('"timeZone":"Asia/Tokyo"');
+    expect(markup).toContain('"seed":"fixedseed"');
+  });
+
+  it("renders the same bytes twice from the same anchor", () => {
+    // Two renders of the same tree, which is what a prerender and the hydration
+    // after it are. Nothing here reads a clock, so nothing here can differ.
+    const page = (
+      <RenderProvider at={Date.UTC(2026, 8, 4, 6, 0, 0)} timeZone="UTC" seed="fixedseed">
+        <Time value="2026-09-04T06:00:00Z" format="relative" />
+      </RenderProvider>
+    );
+
+    expect(markupOf(page)).toBe(markupOf(page));
   });
 });
 

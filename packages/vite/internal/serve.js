@@ -240,12 +240,26 @@ export function assetsFromManifest(manifest) {
  * naming rather than papering over, and it is the failure path of a request
  * that already went wrong — not the ordinary one this exists for.
  *
- * @param {{beginRequest: (request: Request) => {run: <T>(body: () => Promise<T>) => Promise<T>, settle: () => Promise<void>}}} entry
+ * @param {{beginRequest: (request: Request) => {context: object, run: <T>(body: () => Promise<T>) => Promise<T>, settle: () => Promise<void>}}} entry
  * @param {Request} request
  * @param {() => Promise<mixed>} body
  */
 export async function withRequest(entry, request, body) {
-  const { run, settle } = entry.beginRequest(request);
+  const lifecycle = entry.beginRequest(request);
+  const { run, settle } = lifecycle;
+  // What this host can do, put on the request the way `createFetchHandler`
+  // puts it on the one it owns. `uf dev` and `uf build --compile` reach a
+  // route handler without going through that function, and a handler that
+  // streams events or queues work has to get the same answer from all four
+  // front doors — a capability that is present under `uf start` and absent
+  // under `uf dev` is the difference this whole seam exists to remove.
+  //
+  // `nodeCapabilities`, because both of those *are* a Node process with a
+  // socket: a body reaches the client as it is written, and the process is
+  // still there afterwards. Neither passes an upgrader or a queue, because uf
+  // defines both and implements neither.
+  const { nodeCapabilities } = await deployment();
+  lifecycle.context.capabilities ??= nodeCapabilities();
   try {
     return await run(body);
   } finally {
@@ -274,11 +288,16 @@ export async function withRequest(entry, request, body) {
  * @param {{entry: object, assets: object, cache?: object}} build
  */
 export function createApplicationHandler({ entry, assets, cache }) {
-  const ready = deployment().then(({ createFetchHandler, createCacheStore }) =>
+  const ready = deployment().then(({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
     createFetchHandler({
       app: entry,
       document: assets,
       cache: cacheFor(cache, createCacheStore),
+      // `uf preview` and `uf start` are a Node process with a socket, which is
+      // what a deployed `--adapter node` build is too — so a route handler
+      // that streams events answers the same way in the preview it is checked
+      // in and in the deployment it ends up as. See `withRequest` above.
+      capabilities: nodeCapabilities(),
     }),
   );
   return async function handle(request) {

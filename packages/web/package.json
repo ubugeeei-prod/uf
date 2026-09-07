@@ -16,12 +16,15 @@
     "./head": "./head.js",
     "./media": "./media.js",
     "./regions": "./regions.js",
-    "./time": "./time.js"
+    "./time": "./time.js",
+    "./vitals": "./vitals.js"
   },
   "files": [
     "*.js"
   ],
   "dependencies": {
+    "@uniflowed/core": "0.0.0-alpha.12",
+    "@uniflowed/hooks": "0.0.0-alpha.12",
     "@uniflowed/react": "0.0.0-alpha.12"
   }
 }

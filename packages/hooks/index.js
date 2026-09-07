@@ -50,7 +50,7 @@
 //
 // # How the package is laid out
 //
-// Eight modules beside this one, split by what a hook's subject is — because
+// Nine modules beside this one, split by what a hook's subject is — because
 // that is the question a reader looking for one actually asks:
 //
 // - `lifecycle.js` — the component itself: mounted, previous, run once.
@@ -58,6 +58,8 @@
 //   toggle, counter, list, set, cycle, undo/redo, storage.
 // - `timing.js` — when something runs: intervals, timeouts, debounce,
 //   throttle, frames, idleness, and the clock behind "3 minutes ago".
+// - `render.js` — what a render has to fix rather than derive: the instant it
+//   was made at, and the seed anything random on the page is drawn from.
 // - `async.js` — one promise: its states, its abort signal, its retries.
 // - `browser.js` — the ambient environment: viewport, scroll, connection,
 //   position, permissions, preferences.
@@ -66,6 +68,10 @@
 // - `keyboard.js` — what is being pressed: a chord, and a held key.
 // - `channels.js` — a value that came from outside the page: another tab, the
 //   system clipboard.
+// - `events.js` — a stream the server is pushing, and where its reconnection
+//   is. Not `channels.js`, whose boundary is deliberately everything except
+//   the server, and not `@uniflowed/query`, because there is no cache entry
+//   and nothing to revalidate: a connection is a third thing.
 //
 // The two that are easiest to confuse are `browser.js` and `dom.js`, so each
 // says so in its own header: `browser.js` needs no ref because there is one
@@ -94,7 +100,9 @@
 // intersection, mutations, hover, focus-within, click-outside, long press,
 // element scroll, the element as state; key chords and held keys; storage with
 // cross-tab sync;
-// broadcast channels; the clipboard. `tests/library/hooks.test.js` covers
+// broadcast channels; the clipboard; a server-sent event stream, including the
+// one case the platform's own reconnection gives up on; the render anchor and
+// the seeded stream in `render.js`. `tests/library/hooks.test.js` covers
 // behaviour and cleanup, and `tests/library/hooks-ssr.test.js` renders the
 // whole surface in a process that has no DOM at all.
 //
@@ -134,7 +142,14 @@ export type {
 } from "./browser.js";
 export type { UseBroadcastReturn, UseClipboardReturn } from "./channels.js";
 export type { ListenerOptions, ListenerTarget, MutationOptions, Ref } from "./dom.js";
+export type {
+  EventSourceOptions,
+  EventStreamStatus,
+  ServerEvent,
+  UseEventSourceReturn,
+} from "./events.js";
 export type { KeyComboOptions } from "./keyboard.js";
+export type { RenderEnvelope } from "./render.js";
 export type {
   UseCounterReturn,
   UseCycleReturn,
@@ -194,7 +209,17 @@ export {
   useScroll,
 } from "./dom.js";
 export { useKeyCombo, useKeyHeld } from "./keyboard.js";
+export {
+  RENDER_ID,
+  RenderProvider,
+  useRandom,
+  useRenderEnvelope,
+  useRenderTimeZone,
+  useRenderedAt,
+  useShuffled,
+} from "./render.js";
 export { useBroadcast, useClipboard } from "./channels.js";
+export { useEventSource } from "./events.js";
 export {
   useCounter,
   useCycle,

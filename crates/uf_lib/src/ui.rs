@@ -93,10 +93,28 @@ pub fn ui_components() -> Vec<UiComponent> {
         UiComponent::new(
             "Combobox",
             &[
-                "Root", "Label", "Input", "List", "Option", "Empty", "Status",
+                "Root",
+                "Label",
+                "Input",
+                "List",
+                "Option",
+                "Group",
+                "GroupLabel",
+                "Empty",
+                "Status",
             ],
             UiRuntime::Client,
         ),
+        // Deliberately not implemented, and listed so that the decision is
+        // visible where somebody would look for the component rather than only
+        // in a documentation page. A command palette is a `Combobox` in a
+        // `Dialog` — every part below already exists — so a seventh module
+        // would be a second spelling of two that are already there, and one
+        // more surface to keep in step with both.
+        //
+        // The one thing it would genuinely add is a palette with no results
+        // that still traps focus, which is a `Dialog` question rather than a
+        // `Command` one. `docs/app/reference/ui` shows the composition.
         UiComponent::new(
             "Command",
             &["Root", "Input", "List", "Item", "Group", "Empty"],

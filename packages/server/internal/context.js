@@ -22,6 +22,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { CacheOptions } from "./cache-store.js";
+import type { ServerCapabilities } from "./capabilities.js";
 
 /** A read-only view of one request's headers. */
 export type HeaderStore = {
@@ -84,6 +85,21 @@ export type RequestContext = {
    * about, pointed at a cache.
    */
   cache: CacheOptions | null,
+  /**
+   * What the host answering this request can do, or `null`.
+   *
+   * Beside the cache, and set the same way and at the same moment, because it
+   * is the same kind of fact: something the *host* knows that a route handler
+   * has no other way to ask about. `eventStream`, `upgradeWebSocket` and
+   * `enqueue` all read it, and each refuses by naming the target rather than
+   * failing as a dropped connection somewhere downstream.
+   *
+   * `null` means no host said, which is what every request looked like before
+   * this field existed. The three readers treat it as "cannot", because the
+   * alternative — assuming a host that says nothing can hold a socket open —
+   * is the failure this is here to prevent.
+   */
+  capabilities: ServerCapabilities | null,
 };
 
 /**
@@ -175,6 +191,7 @@ export function contextFor(request: Request): RequestContext {
     deferred: [],
     requestStateReads: 0,
     cache: null,
+    capabilities: null,
   };
 }
 

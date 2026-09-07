@@ -15,7 +15,7 @@
 //
 // # How the package is laid out
 //
-// Five modules beside this one, each named after the mistake it prevents
+// Six modules beside this one, each named after the mistake it prevents
 // rather than after its place in a build:
 //
 // - `media.js` — the elements that load bytes, and the layout shifts and
@@ -27,6 +27,15 @@
 // - `cookie.js` — one value with two readers, and no `node:async_hooks` in a
 //   browser bundle.
 // - `head.js` — what a component decides to put in `<head>` while it runs.
+// - `vitals.js` — the five measurements the browser already takes of the
+//   page, and the only place in the package that could send anything anywhere.
+//
+// `vitals.js` is the odd one out and belongs here anyway. The other five are
+// about not causing a bad number; it is about reading the number, and it is
+// the same subject seen from the other end — an `Image` without dimensions and
+// a `Font` without `crossOrigin` are exactly what an LCP measures. Splitting
+// measurement into its own package would have put the diagnosis one install
+// away from the cure.
 //
 // They sit here, not under an `internal/`, and each has its own subpath. The
 // directory is the table of contents: a reader who opens the package sees five
@@ -53,8 +62,8 @@
 export type { FontAsset, ImageAsset, Loading, Source } from "./media.js";
 export { Font, Image, Picture } from "./media.js";
 
-export type { TimeFormat } from "./time.js";
-export { Time, relative } from "./time.js";
+export type { TimeFormat, TimeValue } from "./time.js";
+export { Time, asInstant, relative } from "./time.js";
 
 export { Announcer, Layout, Page, SkipLink } from "./regions.js";
 
@@ -63,3 +72,14 @@ export { useHead } from "./head.js";
 
 export type { CookieOptions } from "./cookie.js";
 export { useCookie } from "./cookie.js";
+
+export type {
+  CollectOptions,
+  NavigationType,
+  Rating,
+  Vital,
+  VitalName,
+  VitalsReport,
+  VitalsReporter,
+} from "./vitals.js";
+export { VITALS_ENDPOINT, collectVitals, useVitals, vitalsBeacon } from "./vitals.js";

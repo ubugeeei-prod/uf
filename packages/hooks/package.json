@@ -16,8 +16,10 @@
     "./browser": "./browser.js",
     "./channels": "./channels.js",
     "./dom": "./dom.js",
+    "./events": "./events.js",
     "./keyboard": "./keyboard.js",
     "./lifecycle": "./lifecycle.js",
+    "./render": "./render.js",
     "./state": "./state.js",
     "./timing": "./timing.js"
   },
@@ -25,6 +27,7 @@
     "*.js"
   ],
   "dependencies": {
+    "@uniflowed/core": "0.0.0-alpha.12",
     "@uniflowed/react": "0.0.0-alpha.12"
   },
   "peerDependencies": {

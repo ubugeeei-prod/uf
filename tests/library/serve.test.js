@@ -65,6 +65,10 @@ function entryWith(options: {
     /** Every document this entry was asked for, so a test can ask what became of one. */
     bodies,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
+    // No action, and the real answer for a build that declares none: the
+    // endpoint declines every request that carries no id, which is what puts
+    // it in the order below without changing what anything else answers.
+    callAction: async () => null,
     dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {
       const answer = options.render
@@ -245,6 +249,34 @@ describe("the static handler", () => {
       expect(await response?.text()).toBe("<p>guide</p>");
       expect(response?.headers.get("content-type")).toBe("text/html; charset=utf-8");
     }
+  });
+
+  /**
+   * ubugeeei-prod/uf#550: the containment check was textual, so a path that
+   * read as inside the root opened a file outside it.
+   *
+   * `dist/` is written by the build, but `public/` is copied verbatim from
+   * whatever the author — or a dependency's install script — put there. The
+   * same shape as the tarball traversals in `docs/security.md`, at the serving
+   * end rather than the extraction end.
+   */
+  it("refuses a symlink that leaves the root, and serves one that does not", async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "uf-outside-"));
+    fs.writeFileSync(path.join(outside, "secret.txt"), "the private key");
+
+    const root = directoryWith({ "inside.txt": "public", "deep/target.txt": "also public" });
+    fs.symlinkSync(path.join(outside, "secret.txt"), path.join(root, "escape.txt"));
+    fs.symlinkSync(path.join(root, "deep/target.txt"), path.join(root, "stays.txt"));
+    const serveStatic = createStaticHandler({ root });
+
+    expect(await serveStatic(request("/escape.txt"))).toBe(null);
+    // Indistinguishable from a file that is not there, which is what it should
+    // look like: a 404 that differed would say whether the target exists.
+    expect(await serveStatic(request("/nothing-at-all.txt"))).toBe(null);
+    // A link that stays inside still works, because that is a thing people do
+    // on purpose.
+    expect(await (await serveStatic(request("/stays.txt")))?.text()).toBe("also public");
+    expect(await (await serveStatic(request("/inside.txt")))?.text()).toBe("public");
   });
 
   it("declines a path that is not a file, so the application can render it", async () => {

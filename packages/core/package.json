@@ -12,11 +12,17 @@
   },
   "exports": {
     ".": "./index.js",
-    "./native": "./internal/native-runtime.js"
+    "./clock": "./clock.js",
+    "./native": "./internal/native-runtime.js",
+    "./random": "./random.js",
+    "./temporal": "./temporal.js"
   },
   "files": [
+    "clock.js",
     "index.js",
-    "internal/*.js"
+    "internal/*.js",
+    "random.js",
+    "temporal.js"
   ],
   "dependencies": {
     "@uniflowed/config": "0.0.0-alpha.12",
