@@ -131,6 +131,18 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Input", "List", "Item", "Group", "Empty"],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/context-menu.js`, which is `menu.js` with
+        // the two things that make a context menu a component rather than an
+        // `oncontextmenu` handler: it opens at the *pointer* through the
+        // positioner's virtual anchor, and it opens from the keyboard —
+        // `Shift+F10` and the `ContextMenu` key — because a command reachable
+        // only by right-click is a WCAG 2.1.1 failure. Long press is the touch
+        // spelling of the same gesture.
+        //
+        // There is no `Shortcut`: the keystroke drawn beside a command is a
+        // `<span>` with no behaviour and no ARIA of its own, which is a style
+        // rather than a part. The parts below are `Menu`'s, because the body of
+        // a context menu *is* a menu.
         UiComponent::new(
             "ContextMenu",
             &[
@@ -138,9 +150,14 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "Trigger",
                 "Body",
                 "Item",
+                "CheckboxItem",
+                "RadioGroup",
+                "RadioItem",
                 "Separator",
-                "Shortcut",
+                "Group",
+                "Label",
                 "Sub",
+                "SubTrigger",
             ],
             UiRuntime::Client,
         ),
@@ -208,11 +225,28 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Split,
         ),
+        // Implemented in `packages/ui/field.js`, and listed here for the first
+        // time: it shipped with #276 and this table never learned about it,
+        // while carrying a `Form` entry for a component that does not exist.
+        //
+        // `Control` is a render function rather than an element, because a field
+        // wraps a select, a textarea or somebody else's component as often as an
+        // input, and each needs the same attributes on whatever it renders.
+        // There is no `Group` part: a group is `Field.Root group`, because what
+        // changes is the root's role and its label's element rather than
+        // anything a new part would render.
         UiComponent::new(
-            "DropdownMenu",
-            &["Root", "Trigger", "Body", "Item", "Separator", "Shortcut"],
+            "Field",
+            &["Root", "Label", "Control", "Description", "Error"],
             UiRuntime::Client,
         ),
+        // `Root`, `Field`, `Label`, `Control`, `Message` and `Submit` is
+        // shadcn's Form over react-hook-form, and uf does not ship a component
+        // by that name: the same job is `@uniflowed/form` for the state and
+        // `Field` above for the markup, joined by `useFieldSource` — which is
+        // where it has to live, because `@uniflowed/ui` is published and
+        // `@uniflowed/form` is not, and `tools/ci/publishable.sh` refuses that
+        // dependency. The contract below is about the pair.
         UiComponent::new(
             "Form",
             &["Root", "Field", "Label", "Control", "Message", "Submit"],
@@ -244,6 +278,17 @@ pub fn ui_components() -> Vec<UiComponent> {
         UiComponent::new("Label", &["Root"], UiRuntime::Server),
         // Implemented in `packages/ui/menu.js`, and the base the menu-shaped
         // components above and below it are built from.
+        //
+        // **This is shadcn's Dropdown Menu.** There is no fourth entry and no
+        // alias export: a dropdown menu is a menu whose trigger is a button,
+        // which is what `Trigger` is, and a second name for one component is a
+        // second surface to keep in step. `ContextMenu` and `Menubar` are the
+        // two that genuinely differ, and each says how in its own comment.
+        //
+        // `CheckboxItem`, `RadioGroup` and `RadioItem` are the checkable kinds
+        // all three menus share. `ITEM_SELECTOR` named their roles before there
+        // was a component that rendered them, so the arrow keys and the
+        // typeahead already stepped across them.
         UiComponent::new(
             "Menu",
             &[
@@ -251,6 +296,9 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "Trigger",
                 "Body",
                 "Item",
+                "CheckboxItem",
+                "RadioGroup",
+                "RadioItem",
                 "Separator",
                 "Group",
                 "Label",
@@ -259,9 +307,30 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Client,
         ),
+        // Implemented in `packages/ui/menubar.js`: a row of `Menu`s with a
+        // keyboard map the set has and a single menu does not. One tab stop for
+        // the whole bar, arrows between the top-level menus, and — the part
+        // that is always missing — arrows *while a menu is open* that close it
+        // and open the adjacent one, so File → Edit → View needs no `Escape`
+        // between them. `Menu` is the value of the bar's `open`, which is why
+        // it is a part rather than a nesting convention.
         UiComponent::new(
             "Menubar",
-            &["Root", "Menu", "Trigger", "Body", "Item"],
+            &[
+                "Root",
+                "Menu",
+                "Trigger",
+                "Body",
+                "Item",
+                "CheckboxItem",
+                "RadioGroup",
+                "RadioItem",
+                "Separator",
+                "Group",
+                "Label",
+                "Sub",
+                "SubTrigger",
+            ],
             UiRuntime::Client,
         ),
         // Implemented in `packages/ui/navigation-menu.js`, and deliberately not

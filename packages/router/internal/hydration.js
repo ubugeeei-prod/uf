@@ -84,10 +84,21 @@
 // seed decided once and read by both sides (ubugeeei-prod/uf#554) — and this is
 // for the ones that still do.
 //
-// It does not reach the terminal either. `uf dev`'s diagnostics come up the
-// driver's event channel from the Node process, and a hydration mismatch
-// happens in the browser, which has no channel to send one back on. Naming
-// that here is more use than a half-built one: see ubugeeei-prod/uf#508.
+// # It does reach the terminal
+//
+// It did not, once. `uf dev`'s diagnostics come up the driver's event channel
+// from the Node process, and a hydration mismatch happens in the browser, which
+// had no channel to send one back on — so this report existed in an overlay and
+// in the console, and had to be noticed by somebody who knew to look. There is
+// a channel now: `./diagnostics.js` posts to `/__uf/diagnostic`, `uf dev`
+// answers it, and the same words this module formats for the overlay are
+// printed by the same renderer that prints a type error. See
+// ubugeeei-prod/uf#583, and #508 for where the gap was named.
+//
+// The overlay stays. It is in front of the reader who caused the mismatch by
+// editing the page, and the terminal is for the one who did not.
+
+import { reportDiagnostic } from "./diagnostics.js";
 
 /** Which of the usual causes the difference looks like. */
 export type HydrationCause = "variable-input" | "browser-only" | "invalid-nesting" | "unknown";
@@ -813,6 +824,13 @@ function paragraph(document: Document, text: string, className: string | null): 
  * `reportError`, which is what React would have done: this callback replaces
  * React's default rather than adding to it, so anything it swallows is
  * swallowed for good.
+ *
+ * A mismatch goes to three places, and all three say the same words because all
+ * three come out of [`formatHydrationReport`]: the overlay, for the reader
+ * looking at the page; the console, for a headless run, a CI browser and a
+ * reader who closed the panel; and `uf dev`'s terminal, through
+ * [`reportDiagnostic`], for the reader who is not looking at the browser at
+ * all. See ubugeeei-prod/uf#583.
  */
 export function hydrationErrorHandler(
   container: Node,
@@ -848,6 +866,19 @@ export function hydrationErrorHandler(
     // console is where a headless run, a CI browser and a reader who closed
     // the panel all still see the report.
     console.error(text);
+    // And the terminal, where every other uf diagnostic already is. The
+    // headline is the first line and the rest is the detail, which is the
+    // shape the channel carries and is why the formatter puts the sentence
+    // first: one report, one wording, three places. No position goes with it —
+    // a mismatch is a fact about a DOM node rather than about a line of a
+    // file, and inventing a file and a line to earn a code frame would send
+    // the reader somewhere that is not the answer.
+    const [headlineLine, ...rest] = text.split("\n");
+    reportDiagnostic({
+      severity: "error",
+      message: headlineLine,
+      detail: rest,
+    });
   };
 }
 

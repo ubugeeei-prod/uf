@@ -233,14 +233,38 @@ describe("a handler's deferred work", () => {
 });
 
 describe("one context for the whole request", () => {
-  it("shows a handler what the guard above it did", async () => {
+  it("gives a guard and the handler under it one answer about draft mode", async () => {
     // Two contexts on one request was the other half of the bug: the runner
-    // built one and the dispatcher built another, so a guard that turned draft
-    // mode on was talking to a context the handler underneath could not see.
+    // built one and the dispatcher built another, so a guard and the handler
+    // underneath it were reading two different objects. Draft mode is the
+    // sharpest thing to ask both, because it is a fact about the request that
+    // neither of them established — the host read it off a signed cookie
+    // before either ran (ubugeeei-prod/uf#282), and both have to see it.
+    const enabling = createDispatcher({
+      handlers: [
+        route("/api/preview", {
+          GET: () => {
+            draftMode().enable();
+            return new Response("on");
+          },
+        }),
+      ],
+    });
+    const issued = await serving(
+      get("/api/preview"),
+      async () => enabling(get("/api/preview")),
+      () => {},
+    );
+    const set = (issued?.headers.getSetCookie() ?? []).find((value) =>
+      value.startsWith("__Host-uf.draft="),
+    );
+    const cookie = (set ?? "").slice(0, (set ?? "").indexOf(";"));
+
+    const seenByGuard: Array<boolean> = [];
     const runMiddleware = createMiddlewareRunner({
       middleware: [
         guard("/", () => {
-          draftMode().enable();
+          seenByGuard.push(draftMode().isEnabled);
         }),
       ],
     });
@@ -250,14 +274,37 @@ describe("one context for the whole request", () => {
       ],
     });
 
-    const request = get("/api/post");
+    const request = get("/api/post", { headers: { cookie } });
     const response = await serving(
       request,
       async () => (await runMiddleware(request)) ?? (await dispatch(request)),
       () => {},
     );
 
+    expect(seenByGuard).toEqual([true]);
     expect(await response?.json()).toEqual({ draft: true });
+  });
+
+  it("refuses a guard that tries to turn draft mode on, and names where it belongs", async () => {
+    // The context is shared; the *authority* to change draft mode is not. A
+    // guard may decline, and a guard that turned draft mode on and then let the
+    // request through would have decided something with nowhere to be written.
+    const runMiddleware = createMiddlewareRunner({
+      middleware: [
+        guard("/", () => {
+          draftMode().enable();
+        }),
+      ],
+    });
+
+    const request = get("/api/post");
+    await expect(
+      serving(
+        request,
+        async () => runMiddleware(request),
+        () => {},
+      ),
+    ).rejects.toThrow("a route handler");
   });
 
   it("drains a guard's callback and a handler's as one ordered list", async () => {

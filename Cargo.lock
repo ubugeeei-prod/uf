@@ -3529,6 +3529,7 @@ dependencies = [
  "thiserror",
  "uf_assets",
  "uf_bundle",
+ "uf_runtime",
 ]
 
 [[package]]
@@ -3620,12 +3621,14 @@ dependencies = [
  "criterion",
  "phf",
  "serde",
+ "serde_json",
  "thiserror",
  "uf_config",
  "uf_flow",
  "uf_infra",
  "uf_react_compiler",
  "uf_router",
+ "uf_transform",
 ]
 
 [[package]]
@@ -3648,10 +3651,12 @@ dependencies = [
 name = "uf_pm"
 version = "0.0.0-alpha.13"
 dependencies = [
+ "base64",
  "camino",
  "compact_str",
  "serde",
  "serde_json",
+ "sha2",
  "smallvec",
  "tempfile",
  "thiserror",

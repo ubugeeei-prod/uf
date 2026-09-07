@@ -5,6 +5,7 @@
 export type {
   CapabilityJsHost,
   CoverageThresholds,
+  Permissions,
   RuleLevel,
   TaskDefinition,
   UniflowedConfig,

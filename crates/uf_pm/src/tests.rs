@@ -276,3 +276,21 @@ fn a_directory_that_merely_looks_like_a_submodule_is_still_ours() {
     names.sort_unstable();
     assert_eq!(names, ["@demo/core", "demo"]);
 }
+
+/// ubugeeei-prod/uf#540: the plan resolves against `pm.registry`, and only
+/// falls back to `publish.registry` for a project that never set the new one.
+#[test]
+fn the_plan_resolves_against_the_registry_uf_reads_from() {
+    let mut config = UniflowedConfig::default();
+    config.publish.registry = CompactString::const_new("https://npm.company.example");
+    assert_eq!(
+        PackageManagerPlan::infer_from_config(&config).registry,
+        "https://npm.company.example"
+    );
+
+    config.pm.registry = Some(CompactString::const_new("https://mirror.company.example"));
+    let plan = PackageManagerPlan::infer_from_config(&config);
+    assert_eq!(plan.registry, "https://mirror.company.example");
+    // And the publish target is not what a resolver reads.
+    assert_ne!(plan.registry, config.publish.registry);
+}

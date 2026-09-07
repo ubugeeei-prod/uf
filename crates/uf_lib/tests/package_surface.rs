@@ -1427,7 +1427,7 @@ fn declared_uniflowed_dependencies(manifest: &Value) -> BTreeSet<String> {
 #[test]
 fn a_loader_uf_injects_is_declared_by_the_package_that_needs_it() {
     // Package -> what `uf` loads into the host for it. One entry today, from
-    // the single `installed_package` call in `commands/test.rs` that is not
+    // the single `uniflowed_package` call in `commands/test.rs` that is not
     // the package the user asked for. Add a line when a command grows another.
     const INJECTED: &[(&str, &str)] = &[("test", "@uniflowed/host")];
 

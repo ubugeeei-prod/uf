@@ -54,6 +54,57 @@
 // set of spies, and two of everything this package assumes there is one of. A
 // *mocked* package still gets a URL of its own, from its revision — being
 // stood in for is exactly the case where identity has to be given up.
+//
+// # Bun, and the three doors that are shut
+//
+// Bun is a declared host, and a suite that can replace a module on one host and
+// not the other is a suite a person cannot move between them
+// (ubugeeei-prod/uf#419). Bun has no `registerHooks`, and the mechanism it does
+// have is the plugin API `bun-preload.js` already uses for the transform. This
+// section is what a run of Bun 1.1.27 said when each way of using it was tried,
+// written down because "it did not work" is the kind of thing that gets tried
+// twice — and because each of the three looks obviously right until it is run.
+//
+// The whole design turns on giving the stand-in an identity of its own, so all
+// three questions are "where does *somewhere else* go":
+//
+//   * **In the query string**, the way Node does it. An `onResolve` that
+//     answers with a path carrying `?uf-modules=1.0` is met with
+//     `ENOENT reading "file:/…"`, and a plain `import("./x.js?n=1")` written in
+//     a source file never returns at all. #419 supposes this one works; it does
+//     not, on this version.
+//   * **In a plugin namespace**, the way esbuild-shaped plugins serve a virtual
+//     module. `{ path, namespace }` is honoured for a dynamic `import()` and
+//     refused for an `import` declaration — `InvalidURL while resolving
+//     package`, from the entry point and from a module three deep alike, with
+//     the path plain, suffixed, prefixed, and with the importer served through
+//     the transform's own `onLoad`. A mock only a dynamic import can see would
+//     miss the case the feature exists for: a module that imports its client at
+//     the top and calls it while it is being evaluated.
+//   * **In another file.** A stand-in written to disk and resolved to by path
+//     is an ordinary module, and every kind of import reaches it — as long as
+//     it existed when the process started. A file created *after* that is
+//     `ENOENT reading "file:/…"` even though `Bun.resolveSync` finds it and
+//     `import()` of the same absolute path loads it, so a mock registered
+//     while the suite runs cannot be written down anywhere Bun will read.
+//
+// Bun's own `mock.module` does all of this and is available outside `bun test`.
+// It is not the answer here, and the reason is above: it maintains live
+// bindings, so it reaches back into modules that have already imported the real
+// one. That is the wider meaning this package deliberately does not have — see
+// "What a mock does not do" in `@uniflowed/test`'s `internal/modules.js` — and
+// adopting it on one host is exactly the "one API, two meanings" that rule
+// exists to prevent.
+//
+// One more thing for whoever opens one of the doors: `Bun.resolveSync`
+// re-enters the plugin's own `onResolve`, so a hook that calls it needs a
+// re-entrancy guard. Without one the first mocked import recurses up the
+// directory tree until the resolver runs out of parents, and the symptom is a
+// resolution that never returns rather than an error that says why.
+//
+// So `uft.mock` raises `UnsupportedError` on Bun, naming the host and what it
+// would take, and `crates/uf_cli/tests/bun_host.rs` starts a real Bun and holds
+// it to that. Until one of the three doors opens, that message is the feature.
 
 import * as nodeModule from "node:module";
 
@@ -107,6 +158,10 @@ export function moduleKey(url) {
  * no loader in `@uniflowed/host` at all. `@uniflowed/test` turns a `false` here
  * into an error that names the host rather than a mock that quietly does
  * nothing.
+ *
+ * Bun's plugin API is not a second answer, and "Bun, and the three doors that
+ * are shut" at the top of this file is why — it is a `false` on purpose rather
+ * than a `true` nobody wired up.
  */
 export function interceptionSupported() {
   return typeof nodeModule.registerHooks === "function";
