@@ -7,6 +7,17 @@
 // *before* `hydrateRoot`, so the first client render is synchronous and
 // matches the server's markup exactly.
 //
+// # A hydration that fails says what differed
+//
+// React reports a mismatch with one sentence and a list of the six things that
+// usually cause it, and leaves the reader to find which node of the two
+// thousand on the page was the one. This module is the only place that can do
+// better, because it is the only place that runs between the parser finishing
+// and React starting: `internal/hydration.js` takes a copy of the server's
+// markup here, and compares it against the repaired tree when React reports.
+// Development only, and dynamically imported so a production bundle has no path
+// to it. See ubugeeei-prod/uf#508.
+//
 // # A route can decline to be hydrated
 //
 // uf's server-component analysis decides which routes have a `"use client"`
@@ -65,7 +76,30 @@ export async function hydrate(options: {|
 
   const { App } = options;
   const container = document.getElementById(ROOT_ID) ?? document;
+
+  // The server's markup, and the reporter that will read it, in development
+  // only. Both have to be in place *before* `hydrateRoot`: React repairs a
+  // mismatched subtree by rendering over it, so the bytes the server sent exist
+  // for exactly the moment between the parser finishing and this line.
+  //
+  // `import.meta.hot` is the gate because it is the one signal that is right in
+  // all three places this module is evaluated. Vite defines it while serving
+  // and replaces it with `undefined` in a build, so the branch is statically
+  // dead there; Node leaves it undefined, so `tests/library/rsc-split.test.js`
+  // imports this file without a bundler and gets the production path. The
+  // import is dynamic so that the overlay is not merely shaken out of a
+  // production bundle but never reachable from one.
+  let recovery = null;
+  if (import.meta.hot != null) {
+    const { captureServerMarkup, hydrationErrorHandler } = await import("./internal/hydration.js");
+    recovery = hydrationErrorHandler(container, captureServerMarkup(container), document);
+  }
+
   startTransition(() => {
-    hydrateRoot(container, <App url={url} initial={resolved} />);
+    hydrateRoot(
+      container,
+      <App url={url} initial={resolved} />,
+      recovery == null ? undefined : { onRecoverableError: recovery },
+    );
   });
 }
