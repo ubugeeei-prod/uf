@@ -40,7 +40,8 @@ import {
   revalidatePath,
   revalidateTag,
 } from "@uniflowed/server/cache";
-import { cookies, headers } from "@uniflowed/server";
+import { cookies, draftMode, headers } from "@uniflowed/server";
+import { createDispatcher } from "@uniflowed/router/handler";
 import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 
@@ -602,6 +603,56 @@ describe("the route cache", () => {
 
     expect(first.headers.get("x-uf-cache")).toBe("BYPASS");
     expect(second.headers.get("x-uf-cache")).toBe("BYPASS");
+    expect(app.renders.length).toBe(2);
+  });
+
+  it("is bypassed entirely for a request in draft mode", async () => {
+    // The other direction from every case above. Those are about what the
+    // cache refuses to *store*; this is about what it refuses to *answer* with.
+    // A stored entry is a document from before the draft existed, so serving it
+    // to the editor who came to look at the draft answers a different question
+    // from the one they asked — and draft mode would be a feature that works
+    // on every page except the ones anybody looks at twice.
+    // ubugeeei-prod/uf#282.
+    const { app, handle } = servingWith({
+      handler: createDispatcher({
+        handlers: [
+          {
+            path: "/api/preview",
+            params: [],
+            file: "app/api/preview/_uf.route.js",
+            load: async () => ({
+              GET: () => {
+                draftMode().enable();
+                return new Response("on");
+              },
+            }),
+          },
+        ],
+      }),
+      render: () => {
+        cacheLife({ revalidate: 60 });
+      },
+    });
+
+    expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("MISS");
+    expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("HIT");
+    expect(app.renders.length).toBe(1);
+
+    const issued = await serve(handle, app, "/api/preview");
+    const set =
+      issued.headers.getSetCookie().find((value) => value.startsWith("__Host-uf.draft=")) ?? "";
+    const cookie = set.slice(0, set.indexOf(";"));
+
+    const drafted = await serve(handle, app, "/posts", { headers: { cookie } });
+
+    // No `x-uf-cache` at all, because the request never reached the store: a
+    // `BYPASS` would mean it went in and was refused, and the point is that it
+    // did not go in.
+    expect(drafted.headers.get("x-uf-cache")).toBe(null);
+    expect(app.renders.length).toBe(2);
+    // And the entry is still there for everybody else.
+    expect((await serve(handle, app, "/posts")).headers.get("x-uf-cache")).toBe("HIT");
     expect(app.renders.length).toBe(2);
   });
 

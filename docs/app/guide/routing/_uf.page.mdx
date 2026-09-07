@@ -632,6 +632,59 @@ reporting — and leave you unable to tell a 500 you meant from one you caused.
 
 A handler is not prerendered and its module never reaches the browser.
 
+## Draft mode: previewing what is not published
+
+A CMS previews unpublished content by linking to a route handler that turns
+draft mode on and redirects. Every request after that carries a signed cookie,
+`draftMode().isEnabled` is `true` for the whole of it — a guard, a handler and
+the page all see the same answer — and neither the route cache nor the
+prerendered document in `dist/` is allowed to answer it.
+
+```js
+// app/api/preview/_uf.route.js
+// @flow
+import { draftMode } from "@uniflowed/server";
+
+export function GET(request: Request): Response {
+  const url = new URL(request.url);
+  if (url.searchParams.get("token") !== process.env.CMS_PREVIEW_TOKEN) {
+    return new Response("no", { status: 401 });
+  }
+  draftMode().enable();
+  return Response.redirect(new URL(url.searchParams.get("to") ?? "/", request.url), 307);
+}
+```
+
+A page then asks:
+
+```js
+import { draftMode } from "@uniflowed/server";
+
+export default async function Post({ params }: PageProps): Promise<Node> {
+  const post = await load(params.id, { draft: draftMode().isEnabled });
+  return <article>{post.body}</article>;
+}
+```
+
+**`enable()` and `disable()` belong in a route handler or a server action, and
+nowhere else.** They write a cookie, and a cookie is part of a response — so
+they are allowed exactly where a response is being produced, and calling one
+from a render or from a middleware is a `DraftModeError` that says so. A
+middleware that wants draft mode on redirects to the handler that turns it on.
+
+**The token check is yours.** uf checks that the cookie is one it issued and
+has not expired; it does not and cannot check who asked for it, because only
+your application knows what an editor is. A preview handler with no check is an
+open door to everything the site has not published.
+
+The cookie is `__Host-`prefixed, `Secure`, `HttpOnly`, `SameSite=Lax` and good
+for an hour, and its value is an HMAC over its own expiry — so it cannot be
+forged and a holder cannot extend it. The key is `UF_DRAFT_SECRET`:
+
+| Variable | Meaning |
+| --- | --- |
+| `UF_DRAFT_SECRET` | The key that signs the draft cookie. At least 32 bytes, and shared by every instance of the deployment. Without it uf generates one per process, which is right for `uf dev` and wrong behind a load balancer: the cookie stops working when the process restarts and a second instance never accepts it. uf says so in a `warn` line the first time it issues one. |
+
 ## QUERY: the GET whose parameters did not fit in a URL
 
 `QUERY` is a safe, idempotent method that carries a body. It is what a search

@@ -64,10 +64,12 @@
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 
-import { send } from "./node.js";
+import { reportMalformedRequests, send } from "./node.js";
 
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
+import { carriesDraftCookie } from "./internal/draft.js";
+import { processLogger } from "./log.js";
 
 /**
  * What a compiled binary can do, plus whatever the deployment supplied.
@@ -281,6 +283,15 @@ export async function serve(options: ServeOptions): Promise<{|
     });
   });
 
+  // Bytes this server's parser refuses never reach `handle`, so without this
+  // the one front door that carries its own runtime would be the one that
+  // answers `400` and records it nowhere — the state ubugeeei-prod/uf#405
+  // describes, in the deployment that has the least else to look at. The
+  // budget and what is in the line are argued where the function is;
+  // `processLogger()` because this module takes no logger and a compiled binary
+  // has no terminal but the one it was started in.
+  reportMalformedRequests(server, processLogger());
+
   const host = options.host ?? argument("--host") ?? process.env.HOST ?? "127.0.0.1";
   const port = options.port ?? Number(argument("--port") ?? process.env.PORT ?? 3000);
 
@@ -380,6 +391,8 @@ export function createHandler(
     const method = (request.method ?? "GET").toUpperCase();
     const url = new URL(request.url ?? "/", "http://localhost");
     const pathname = decodePath(url.pathname);
+    const cookie = request.headers.cookie;
+    const drafting = carriesDraftCookie(typeof cookie === "string" ? cookie : null);
 
     if (pathname != null && (method === "GET" || method === "HEAD")) {
       const file = files.get(assetKey(pathname));
@@ -389,7 +402,16 @@ export function createHandler(
       }
       // A document is revalidated where an asset is cached, because a deploy
       // replaces documents and gives assets a new hashed name.
-      const page = files.get(documentKey(pathname));
+      //
+      // Not for a draft request, and the reasoning is `../node.js`'s static
+      // handler's: an embedded document is what the site said before the draft
+      // existed, and an editor who came to look at the draft asked a different
+      // question. The cookie's *name* decides it here — the request has not
+      // begun yet, so there is no verified answer to read, and what a forged
+      // cookie buys is a live render of a page that is public anyway. The
+      // assets above are untouched, because a chunk is the same bytes either
+      // way. See ubugeeei-prod/uf#282.
+      const page = drafting ? null : files.get(documentKey(pathname));
       if (page != null) {
         sendBytes(response, method, 200, page.type, DOCUMENT_CACHE_CONTROL, page.bytes());
         return;
