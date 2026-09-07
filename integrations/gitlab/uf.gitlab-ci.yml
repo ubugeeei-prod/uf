@@ -33,6 +33,13 @@ variables:
   # Pin this. `latest` is the newest release including prereleases — which is
   # every release uf has published so far — so it moves under a pipeline that
   # did not change, and it is the one value the cache below cannot help with.
+  #
+  # It is also the only value that asks GitHub's API which release is newest,
+  # and anonymous calls to that API are rate limited *by IP* — which on shared
+  # runners is an IP you have no control over. A pinned version builds the
+  # download URL directly and never goes near it. `install.sh` will use
+  # `GITHUB_TOKEN` if the environment has one, and GitLab does not hand you a
+  # GitHub token, so pinning is the answer here rather than a variable.
   UF_VERSION: "latest"
   # Where the installer is fetched from. Point it at a mirror, or at a raw URL
   # on a pinned tag, if a pipeline must not depend on this host.

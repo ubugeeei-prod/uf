@@ -38,6 +38,16 @@ inputs:
       useful for a fork or a rehearsal of the release process.
     required: false
     default: ubugeeei-prod/uf
+  token:
+    description: >-
+      A GitHub token, used only to ask the API which release is newest — and
+      only when `version` is "latest", because a pinned version needs no API
+      call at all. Anonymous calls are rate limited per IP and a runner's IP is
+      shared with the rest of the fleet, so without one this step fails
+      intermittently with "no release found". The default is the workflow's own
+      token, which needs no permissions beyond the default `contents: read`.
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   version:
@@ -98,6 +108,7 @@ runs:
         UF_BIN_DIR: ${{ steps.paths.outputs.bin-dir }}
         SETUP_URL: ${{ inputs.setup-url }}
         CACHED: ${{ steps.restore.outputs.cache-hit }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         set -euo pipefail
         uf_bin="${UF_BIN_DIR}/uf"

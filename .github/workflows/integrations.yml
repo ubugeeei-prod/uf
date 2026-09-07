@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   action:
-    name: setup-uf (${{ matrix.os }})
+    name: setup-uf (${{ matrix.os }}, ${{ matrix.version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -48,6 +48,13 @@ jobs:
         # Ubuntu one x86_64, so between them the matrix covers every target the
         # installer can select on a hosted runner.
         os: [ubuntu-latest, macos-latest]
+        # Both ways a version is resolved, because they are different code
+        # paths in the installer and only one of them talks to the API: a
+        # pinned version builds the download URL directly, and `latest` asks
+        # which release is newest. The pinned leg is what stays green when the
+        # API is unreachable; the `latest` leg is what notices that the default
+        # every one of these integrations ships still works.
+        version: [latest, 0.0.0-alpha.10]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -60,7 +67,7 @@ jobs:
         id: setup
         uses: $/integrations/github-actions
         with:
-          version: latest
+          version: ${{ matrix.version }}
 
       # `uf` on PATH, not by full path: the action's last step is what puts it
       # there, and running the binary directly would pass while that step was

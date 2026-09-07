@@ -118,6 +118,15 @@ integration runs `uf --version` out of the restored directory before trusting
 it, because a cache that lost a symlink, or one restored onto an architecture
 the key did not distinguish, is a hit that can run nothing.
 
+There is a third reason, and it is the one that will bite a pipeline first.
+`latest` is the only value that asks GitHub's API which release is newest, and
+anonymous calls to that API are rate limited *by IP* — on a hosted runner, an
+IP shared with every other job on the fleet. So a pipeline on `latest` fails
+intermittently with `no release found` for reasons that have nothing to do with
+it. The GitHub action passes the workflow's own token through and is fine;
+GitLab and CircleCI hand you no GitHub token, so pin the version there. A
+pinned version builds the download URL directly and never reaches the API.
+
 ## What is actually being run
 
 All three fetch and run

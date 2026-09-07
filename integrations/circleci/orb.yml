@@ -38,7 +38,10 @@ commands:
           was published under (uf@0.0.0-alpha.10), or "latest". Pin it.
           "latest" is the newest release including prereleases, which is every
           release uf has published so far, so it moves under a config that did
-          not change.
+          not change — and it is the only value that asks GitHub's API which
+          release is newest, where anonymous callers are rate limited by an IP
+          a shared runner does not control. A pinned version builds the
+          download URL directly and never goes near the API.
         type: string
         default: latest
       cache:
