@@ -78,6 +78,9 @@ decisions are:
 | `"use server"` export that is not an async function | Rejected at build time; React's calling convention makes this a correctness *and* a safety issue | `uf_rsc::graph` |
 | SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | uf has no proxying upgrade, and the one it does have cannot become one: `upgradeWebSocket(request)` upgrades the *inbound* connection the host is already answering, takes no address, and reaches no upstream. The host's own upgrader is a value the deployment passes where the server is built, never a name resolved from a request. A proxying upgrade would need the allowlist in its first commit rather than after one | `tests/library/transports.test.js` |
 | Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
+| A draft-mode cookie anybody can set for themselves — a flag rather than a token, so unpublished content is gated by a value you can type | The value is an expiry and an HMAC-SHA256 over it — domain-separated `uf-draft-v1`, length-prefixed, keyed with the deployment's secret, the same construction `crates/uf_rsc/src/action.rs` argues for under a different name — compared in constant time, with the expiry *inside* the signature so a holder cannot extend it and checked against uf's clock as well as by `Max-Age`. `__Host-` prefixed, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, one name for every scheme so there is no second name a subdomain could plant. The key is `UF_DRAFT_SECRET`, refused below 32 bytes rather than stretched, and a per-process one otherwise with a `warn` saying what that costs | `tests/library/route-handler.test.js` |
+| A cookie or a response header set from inside a render, at a moment when the headers may already be on the wire | `headers()` and `cookies()` are read-only, and `draftMode().enable()` — the one case that needs a response — is allowed only where a response is being produced: a route handler or a server action, marked by `asResponder`. Anywhere else, a guard included, it is a named `DraftModeError` rather than a decision nothing writes down | `tests/library/server.test.js`, `tests/library/request-lifecycle.test.js` |
+| Draft content served out of a shared cache, or a published document served to somebody who came to see the draft | A request in draft mode never reaches the route cache and is never answered with a prerendered document — from `dist/` under `uf start` and every adapter, and from the embedded copy in a compiled binary. The other direction holds too: reading `draftMode()` counts as reading request state, so a render that consulted it is never stored | `tests/library/cache.test.js`, `tests/library/serve.test.js`, `tests/library/standalone.test.js` |
 | XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
 ### The argument boundary
@@ -185,7 +188,8 @@ answered where the record is built rather than at each call site.
 | An inbound `X-Request-Id` becoming the id `uf` correlates by | `uf` generates the request id and never takes it from the request. A client-chosen id can be identical on a million requests, which defeats the only thing an id is for, and it lands in a log line | `packages/server/internal/context.js` |
 | A request id rendered into a document that is then cached, so every later visitor is told they are the first one | `requestId()` counts as a read of request state, exactly as `cookies()` does, so the route cache refuses to store the render. `logger()` deliberately does not: an id that reached a log line has not made the document personal | `packages/server/index.js`, `tests/library/log.test.js` |
 | A log line written into `uf`'s own control channel | The default sink writes every level to `console.error`. In the process that runs `uf start` and `uf preview`, stdout is `@uniflowed/vite`'s JSON event channel and `console.info` goes to stdout on Node, so choosing the stream by level would put a log line in the middle of a protocol — intermittently, and only under traffic | `packages/server/internal/log.js` |
-| A request Node's own parser refuses, answered `400` by the runtime and recorded nowhere | `serve` attaches a `clientError` handler that writes the same `400` the default one does and reports it at `warn`, with the error's `code` and nothing else — Node puts the offending bytes on `error.rawPacket`, and those are whatever the client sent | `packages/server/node.js` |
+| A request Node's own parser refuses, answered `400` by the runtime and recorded nowhere | Every server uf ships — `serve`, and the compiled binary's — attaches a `clientError` handler that writes the same `400` the default one does and reports it at `warn` with the error's `code` and nothing else; Node puts the offending bytes on `error.rawPacket`, and those are whatever the client sent | `tests/library/log.test.js` |
+| That same line as an amplifier: a malformed request is two dozen bytes to send, and one line to write is a disk and a retention window somebody else gets to spend | Twenty lines a minute per server, then a count of what the budget hid written once when the next window opens. A flood therefore costs a fixed number of lines and still says how big it was. The `400` is answered whether or not a line was written, because the budget bounds the log and not the protocol | `tests/library/log.test.js` |
 | Unbounded work from a field a handler passed to a logger | Values are walked to a fixed depth with a fixed number of keys per object and entries per array, and strings are cut | `packages/server/internal/log.js`, `tests/library/log.test.js` |
 
 ## Package manager
@@ -271,6 +275,38 @@ what code the toolchain executes.
 | A symlink inside the project pointing out of it defeats a purely lexical containment check | The joined path is resolved and containment is re-checked against the canonical root, compared as path components rather than string prefixes | `uf_plugin::resolve` |
 | Unbounded config text as a denial-of-service or allocation vector | Plugin names have an explicit byte ceiling and control bytes are refused, so no config text reaches a resolver as a NUL- or newline-bearing string | `uf_plugin::resolve` |
 | A config plugin shadowing a built-in stage, silently replacing part of the toolchain | The `uf:` prefix is reserved, and two plugins with one name is a typed error that names both positions rather than a silent override | `uf_plugin::resolve` |
+
+## Permissions the toolchain enforces
+
+`uf test`, `uf transform`, `uf fmt`'s non-Flow delegation and the Vite driver
+all execute JavaScript uf did not write — a test body, a plugin, a config file —
+on a host that hands it the whole machine. A test that reads `~/.ssh` should
+have to say so.
+
+Deno's contribution to this class of tool was never the runtime; it was that a
+program declares what it may reach and gets nothing it did not ask for. Node has
+`--permission`, Bun has nothing, and uf runs on all three — so **uf owns the
+model** and translates it, one `permissions` block in `uf.config.js` per
+project. `docs/hosts.md` is the per-host table; this row is the decision behind
+it.
+
+| Concern | Decision in `uf` | Test |
+| --- | --- | --- |
+| A test body, plugin or config file reading anything the developer can — `~/.ssh`, `~/.aws`, `/etc` — because the toolchain starts its host with no restrictions at all | `permissions` in `uf.config.js` is a deny-by-default set that `uf test` puts in force on every worker. Declared entries are *added to* what uf itself needs to load and transform the project, so what the set denies is the rest of the machine rather than the project's own files — which is written down where it is implemented, because a reader who expected the other meaning would be surprised in the direction that matters | `crates/uf_cli/tests/permissions.rs` runs a real Flow test under Node's permission model and asserts the *body* saw `ERR_ACCESS_DENIED`, with a control run that asserts the same read succeeds without the block |
+| A permission a host cannot enforce, accepted and quietly meaning something weaker — the failure mode this document's standard exists to prevent | Refused, naming the categories and a host that can. Node has no network or environment dimension at all and `--allow-child-process` is every program or none, so `net`, `env` and `run` stop the run there rather than being dropped; Bun has no model, so any declared set stops the run. Deno enforces all five | `uf_runtime::tests::permissions`, `crates/uf_cli/tests/permissions.rs` |
+| A silent all-access grant surviving a declaration — Deno's `-A`, which uf passed unconditionally and which no later flag takes back | `HostCommand::with_permissions` removes `-A` rather than appending to it. Without that the run would read as sandboxed in `uf explain` and be wide open in fact, which is worse than the unsandboxed run it replaced | `uf_test::host::tests` |
+| A typo in the block — `permissions: { nett: [...] }` — parsing to a set with no network at all, in a project that believes it declared one | `deny_unknown_fields` on this block alone. Every other section of `uf.config.js` ignores an unknown key, which is right where that means an option from a newer uf; here it means a permission nobody granted and nobody was told about | `uf_config::tests`, `crates/uf_cli/tests/permissions.rs` |
+| An entry that a host's own argument syntax would split into a grant nobody wrote — `/tmp/a,/etc` under Deno's comma-separated `--allow-read` | Refused with the entry quoted. There is no quoting to reach for and dropping it would narrow the set without saying so, so the only answer that cannot widen it is to stop | `uf_runtime::tests::permissions` |
+| The grants uf makes for itself being invisible, so nobody can check them | `uf explain test` prints, per permission, how many entries the project declared, how many uf added, and which flag enforces it. On Node the two additions are `--allow-worker` (the module hooks run on a loader thread) and `--allow-child-process` (every module is transformed by a `uf transform` child), neither of which Node can scope — so a test can still start a program, and `docs/hosts.md` says so in as many words rather than leaving it to be discovered | `crates/uf_cli/tests/permissions.rs` |
+
+The install-script half of the same question is `pm.allowLifecycleScripts` and
+`--ignore-scripts`, under [Dependency install scripts](#dependency-install-scripts).
+
+**Only `uf test` is wired so far**, and that is the sharpest of the four — a
+test body is code uf did not write, running on a host uf started, in a
+repository somebody has just cloned. `uf transform`, `uf fmt`'s non-Flow
+delegation and the Vite driver are not, and neither is the application at run
+time (ubugeeei-prod/uf#535).
 
 ## Environment variables
 

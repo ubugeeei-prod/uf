@@ -65,6 +65,11 @@ serde_json.workspace = true
 # assert against the cache bound by its constant rather than by a
 # number copied out of it.
 uf_infra = { path = "../uf_infra" }
+# The same, for `tests/deno_host.rs`: it runs Deno with the arguments
+# `uf_runtime::permissions` produces rather than with arguments the test
+# wrote, which is the difference between checking enforcement and
+# checking that a `format!` still works.
+uf_runtime = { path = "../uf_runtime" }
 assert_cmd.workspace = true
 image.workspace = true
 similar-asserts.workspace = true

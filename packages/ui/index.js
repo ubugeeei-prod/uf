@@ -98,7 +98,13 @@
 //   than what they replaced. Each module's header says what it gives that the
 //   plain element does not; if it ever stops being true, the component should
 //   be deleted rather than fixed.
-// - `menu.js` — the arrow keys, typeahead, submenus and `Escape` stacking.
+// - `menu.js`, `context-menu.js` and `menubar.js` — the arrow keys, typeahead,
+//   submenus and `Escape` stacking, and the two components that are that
+//   behaviour opened differently. A context menu is opened by the right button,
+//   by `Shift+F10` and by a long press, and opens at a *point*; a menubar is a
+//   row of them with one tab stop and arrows that walk between the open menus.
+//   shadcn's fourth menu, Dropdown Menu, is `menu.js` under another name and is
+//   deliberately not a second export.
 // - `combobox.js` — `aria-activedescendant` over a filtered list, the count a
 //   screen reader is told, and the option groups that make a command palette a
 //   composition rather than a seventh module.
@@ -138,7 +144,7 @@
 // is by primitive because that is the unit a reader looks for, the unit a
 // bundler drops, and the unit the WAI-ARIA practices are written in.
 //
-// `internal/` holds nine modules and nothing else, each a rule the primitives
+// `internal/` holds ten modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
 // `merge-props.js` (the caller's props go on first, the component's semantics
 // last), `controlled-state.js` (what "controlled" means here),
@@ -151,8 +157,10 @@
 // fit where it was asked to go), `focus.js` (which elements a reader can reach,
 // which a focus trap and a popover want opposite things from), and
 // `hover-intent.js` (what WCAG requires of content shown on hover or focus,
-// which is three clauses and one mechanism). Each says in its own header why it
-// is unreachable rather than exported. There is no `internal/props.js`-shaped
+// which is three clauses and one mechanism), and `menu-tree.js` (the chain of
+// open menus the three menu components share, and what `Escape` and choosing an
+// item are defined in terms of). Each says in its own header why it is
+// unreachable rather than exported. There is no `internal/props.js`-shaped
 // bag of helpers: a module that cannot say what it is about does not belong in
 // this package.
 
@@ -191,6 +199,7 @@ import {
   CalendarRoot,
 } from "./calendar.js";
 import { Checkbox } from "./checkbox.js";
+import { ContextMenuRoot, ContextMenuTrigger } from "./context-menu.js";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "./collapsible.js";
 import {
   ComboboxEmpty,
@@ -237,15 +246,19 @@ import { HoverCardBody, HoverCardRoot, HoverCardTrigger } from "./hover-card.js"
 import { InputOtpGroup, InputOtpRoot, InputOtpSeparator, InputOtpSlot } from "./input-otp.js";
 import {
   MenuBody,
+  MenuCheckboxItem,
   MenuGroup,
   MenuItem,
   MenuLabel,
+  MenuRadioGroup,
+  MenuRadioItem,
   MenuRoot,
   MenuSeparator,
   MenuSub,
   MenuSubTrigger,
   MenuTrigger,
 } from "./menu.js";
+import { MenubarMenu, MenubarRoot, MenubarTrigger } from "./menubar.js";
 import {
   NavigationMenuBody,
   NavigationMenuItem,
@@ -375,6 +388,20 @@ export { dismissAllToasts, dismissToast, toast, updateToast };
  *     <Field.Description>We will not share it.</Field.Description>
  *     <Field.Error>{error}</Field.Error>
  *   </Field.Root>
+ *
+ * Inside a form, `field` replaces the hand-written `invalid`: the form says
+ * whether the field is wrong and what the message is, and the field composes
+ * every `aria-*` from that in one place. `@uniflowed/form`'s `useFieldSource`
+ * is what produces one, and `field.js`'s header says why the hook lives there
+ * rather than here.
+ *
+ *   const email = useFieldSource(form, "email", { required: "We need one" });
+ *   <Field.Root field={email}>…<Field.Error /></Field.Root>
+ *
+ * `group` is for a set with no single control to point a `<label for>` at — a
+ * radio group, a checkbox group, three selects making a date. The root becomes
+ * `role="group"` named by the label, and the description and the error describe
+ * the set.
  */
 export const Field = {
   Root: FieldRoot,
@@ -761,6 +788,77 @@ export const Menu = {
   Trigger: MenuTrigger,
   Body: MenuBody,
   Item: MenuItem,
+  CheckboxItem: MenuCheckboxItem,
+  RadioGroup: MenuRadioGroup,
+  RadioItem: MenuRadioItem,
+  Separator: MenuSeparator,
+  Group: MenuGroup,
+  Label: MenuLabel,
+  Sub: MenuSub,
+  SubTrigger: MenuSubTrigger,
+};
+
+/**
+ * The same menu, opened by the right button — and by the keyboard.
+ *
+ * `Shift+F10`, the `ContextMenu` key and a long press all open it, because a
+ * command reachable only by right-click is reachable only by a pointer, which
+ * is a WCAG 2.1.1 failure. `context-menu.js` says why the trigger is in the tab
+ * order and when to take it out again.
+ *
+ * The body needs an `aria-label`: its trigger is a table row or a canvas rather
+ * than a short name, so unlike `Menu.Body` it cannot name itself after one.
+ *
+ *   <ContextMenu.Root>
+ *     <ContextMenu.Trigger>{row}</ContextMenu.Trigger>
+ *     <ContextMenu.Body aria-label="Row actions">
+ *       <ContextMenu.Item onSelect={rename}>Rename…</ContextMenu.Item>
+ *       <ContextMenu.CheckboxItem defaultChecked>Show hidden</ContextMenu.CheckboxItem>
+ *     </ContextMenu.Body>
+ *   </ContextMenu.Root>
+ */
+export const ContextMenu = {
+  Root: ContextMenuRoot,
+  Trigger: ContextMenuTrigger,
+  Body: MenuBody,
+  Item: MenuItem,
+  CheckboxItem: MenuCheckboxItem,
+  RadioGroup: MenuRadioGroup,
+  RadioItem: MenuRadioItem,
+  Separator: MenuSeparator,
+  Group: MenuGroup,
+  Label: MenuLabel,
+  Sub: MenuSub,
+  SubTrigger: MenuSubTrigger,
+};
+
+/**
+ * A row of menus that behaves as one control: File, Edit, View.
+ *
+ * One tab stop for the whole bar, arrows between the menus, and — the part that
+ * is always missing — arrows *while a menu is open* that close it and open the
+ * next one, so a reader walks File → Edit → View without pressing Escape.
+ *
+ *   <Menubar.Root aria-label="Main">
+ *     <Menubar.Menu value="file">
+ *       <Menubar.Trigger>File</Menubar.Trigger>
+ *       <Menubar.Body>
+ *         <Menubar.Item onSelect={open}>Open…</Menubar.Item>
+ *       </Menubar.Body>
+ *     </Menubar.Menu>
+ *   </Menubar.Root>
+ */
+export const Menubar = {
+  Root: MenubarRoot,
+  Menu: MenubarMenu,
+  Trigger: MenubarTrigger,
+  // `Menu.Body` itself: a bar's menu is a root menu, and `menubar.js`'s header
+  // says why a wrapper with the same defaults would be a second place to drift.
+  Body: MenuBody,
+  Item: MenuItem,
+  CheckboxItem: MenuCheckboxItem,
+  RadioGroup: MenuRadioGroup,
+  RadioItem: MenuRadioItem,
   Separator: MenuSeparator,
   Group: MenuGroup,
   Label: MenuLabel,

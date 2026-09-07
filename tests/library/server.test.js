@@ -8,8 +8,14 @@
 // response.
 
 import { describe, expect, it } from "@uniflowed/testing";
-import { after, cookies, draftMode, headers } from "@uniflowed/server";
-import { contextFor, drainDeferred, parseCookies, runWithContext } from "@uniflowed/server/host";
+import { DraftModeError, after, cookies, draftMode, headers } from "@uniflowed/server";
+import {
+  beginRequest,
+  contextFor,
+  drainDeferred,
+  parseCookies,
+  runWithContext,
+} from "@uniflowed/server/host";
 
 /** A request with the given headers. */
 function request(init: { readonly [string]: string }): Request {
@@ -112,24 +118,55 @@ describe("parsing a cookie header", () => {
 });
 
 describe("draftMode", () => {
-  it("is off until it is turned on", () => {
+  it("is off on a request that carries no draft cookie", () => {
     handling({}, () => {
-      expect(draftMode().isEnabled).toBe(false);
-      draftMode().enable();
-      expect(draftMode().isEnabled).toBe(true);
-      draftMode().disable();
       expect(draftMode().isEnabled).toBe(false);
     });
   });
 
-  it("belongs to the request, not to the module", () => {
-    handling({}, () => {
-      draftMode().enable();
+  it("belongs to the request, not to the module", async () => {
+    const first = beginRequest(request({}));
+    await first.run(async () => {
+      first.context.draft = true;
+      expect(draftMode().isEnabled).toBe(true);
     });
 
-    handling({}, () => {
+    await beginRequest(request({})).run(async () => {
       expect(draftMode().isEnabled).toBe(false);
     });
+  });
+
+  // The refusal, and it is the point rather than a guard rail. `enable()`
+  // writes a cookie and a cookie is part of a response, so it belongs where a
+  // response is being produced — and a render is the case the read-only rule
+  // for `headers()` and `cookies()` exists for. Where it *is* allowed is
+  // `route-handler.test.js`, which drives a real dispatcher.
+  it("refuses enable() where nothing owns the response", () => {
+    handling({}, () => {
+      expect(() => draftMode().enable()).toThrow(DraftModeError);
+      expect(() => draftMode().enable()).toThrow("a route handler");
+    });
+  });
+
+  it("refuses disable() there too, and names the operation", () => {
+    handling({}, () => {
+      let raised: mixed = null;
+      try {
+        draftMode().disable();
+      } catch (error) {
+        raised = error;
+      }
+      expect(raised instanceof DraftModeError).toBe(true);
+      expect(raised instanceof DraftModeError ? raised.operation : null).toBe("disable");
+    });
+  });
+
+  it("reading it counts as reading request state, so the route cache refuses the render", () => {
+    const context = contextFor(request({}));
+    runWithContext(context, () => {
+      draftMode();
+    });
+    expect(context.requestStateReads).toBe(1);
   });
 });
 

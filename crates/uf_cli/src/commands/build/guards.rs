@@ -27,14 +27,23 @@
 //!   guard is not in the file, and the person about to deploy is the one who
 //!   knows which of the two is being served.
 //!
-//! `build.staticBuild` is the setting that would decide it — a project that
-//! has declared it ships static files and nothing else has asked for two
-//! things that cannot both be true, and refusing is then the honest answer.
-//! It is documented as "prerender everything and emit no server bundle" and is
-//! read by nothing: the build emits a server bundle either way. Refusing on a
-//! flag that changes nothing else about the build would be inventing the
-//! declaration rather than honouring it, so that half waits for
-//! ubugeeei-prod/uf#385.
+//! `build.staticBuild` is the setting that decides it, and since
+//! ubugeeei-prod/uf#385 it does. A project that has declared it ships static
+//! files and nothing else has asked for two things that cannot both be true,
+//! so a middleware under such a build is a **refusal** rather than a row in
+//! this table — and the same is true of `rendering.modes: ["ssg"]`, which is
+//! the same declaration about the routes instead of about the artefact.
+//!
+//! That refusal is not made here, and the reason is the shape of one message
+//! rather than a preference. Three things need a server — a middleware, a
+//! route handler, and a route that cannot be prerendered — and only the
+//! builder knows all three: whether a page exports `generateStaticParams` is a
+//! property of the module, and `uf` does not evaluate modules. Refusing the
+//! middleware here and the other two in the builder would tell a project with
+//! both to fix one, rebuild, and be told about the next; so the whole list is
+//! refused in one place, and this table is reached only by a build that emits
+//! a server. See `renderingPlan` in `@uniflowed/vite`'s `driver.js`, and
+//! `uf_config`'s `RenderingPlan` for the decision it is handed.
 //!
 //! What is not optional is saying something. `docs/security.md` and #260 are
 //! both about the same failure: an authorisation check that looks enforced and

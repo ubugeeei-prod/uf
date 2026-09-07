@@ -536,10 +536,35 @@ impl Default for ReactConfig {
     }
 }
 
+/// What a project permits `uf build` to produce.
+///
+/// [`modes`](Self::modes) is an **allowlist**, not a request. It does not ask
+/// for a rendering strategy; it says which ones this project is willing to
+/// deploy, and the build picks between them per route — a route with no
+/// parameters is prerendered, a route with parameters is prerendered if its
+/// page exports `generateStaticParams`, and anything left over is rendered per
+/// request.
+///
+/// The distinction matters because those two answers are deployed to different
+/// places. A prerendered document is a file a CDN serves; a route rendered per
+/// request needs a process. A project that has already chosen a static host
+/// says `["ssg"]`, and the build's job is then to **refuse** a route it could
+/// only serve with a server rather than to write a `dist/` with a hole in it.
+/// That refusal is the whole reason this list is read: until
+/// ubugeeei-prod/uf#336 nothing read it, `["ssr"]` was accepted and silently
+/// meant SSG, and `["ssg"]` on a project with a per-request route produced a
+/// build that 404s once it is deployed and nowhere before.
+///
+/// See [`crate::RenderingPlan`] for what the build makes of it, together with
+/// [`crate::BuildConfig::static_build`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct RenderingConfig {
+    /// The rendering strategies this project will deploy, in no order.
+    ///
+    /// The default is all four, which is "decide per route and deploy a
+    /// server" — the behaviour every uf project had before anything read this.
     pub modes: Vec<RenderingMode>,
     pub cache: CacheConfig,
 }
@@ -558,13 +583,52 @@ impl Default for RenderingConfig {
     }
 }
 
+/// One rendering strategy a project may allow.
+///
+/// Two of the four are implemented, and the enum keeps all four because the
+/// list is an allowlist: naming a strategy uf cannot do yet permits something
+/// that never happens, which costs nothing, where *removing* the name would
+/// make today's `uf.config.js` files fail to parse. What is refused is a list
+/// that allows **only** unimplemented strategies — see
+/// [`crate::ConfigError::NoImplementedRenderingMode`] — because that is a
+/// project asking for a build uf cannot produce at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RenderingMode {
+    /// Partial prerendering. **Planned**; allowed and never selected.
     Ppr,
+    /// Rendered per request, by `uf start`, `uf preview` or a deploy adapter.
+    /// **Implemented.**
     Ssr,
+    /// Prerendered to a document at build time. **Implemented.**
     Ssg,
+    /// Incremental static regeneration. **Planned**; allowed and never
+    /// selected. `rendering.cache` and ubugeeei-prod/uf#277 are the half of it
+    /// that exists.
     Isr,
+}
+
+impl RenderingMode {
+    /// The spelling a `uf.config.js` uses.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ppr => "ppr",
+            Self::Ssr => "ssr",
+            Self::Ssg => "ssg",
+            Self::Isr => "isr",
+        }
+    }
+
+    /// Whether `uf build` can select this strategy for a route today.
+    ///
+    /// `ppr` and `isr` are declared and unwritten. They are not refused on
+    /// their own — see the type's documentation — but a project that allows
+    /// nothing else is refused, and this is the predicate that decides it.
+    #[must_use]
+    pub const fn is_implemented(self) -> bool {
+        matches!(self, Self::Ssr | Self::Ssg)
+    }
 }
 
 /// Which of uf's caches a project has turned on.

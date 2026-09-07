@@ -187,3 +187,32 @@ pub fn bun_ready() -> bool {
     eprintln!("skipping: `bun` is not on PATH");
     false
 }
+
+/// Whether a test that runs Deno can run here: `deno` on PATH.
+///
+/// The same policy as [`bun_ready`], word for word, and for a reason that is
+/// almost the opposite. Bun's tests check that a host uf claims to support
+/// works; Deno's check the *boundary* — which of uf's parts run there, which do
+/// not, and that the permission set uf translates is one Deno actually
+/// enforces. A skip there is worse than a skip elsewhere, because
+/// `uf_runtime::HostSupport`'s Deno row names this file as the thing that keeps
+/// its claims honest, and a row backed by a test nobody ran is the state of
+/// affairs the table exists to end.
+///
+/// Set `UF_ALLOW_FIXTURE_SKIP=1` on a machine that genuinely has no Deno; CI
+/// sets nothing and so can never skip.
+pub fn deno_ready() -> bool {
+    if std::process::Command::new("deno")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+    {
+        return true;
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "this test needs `deno` on PATH and there is none, so it would prove nothing"
+    );
+    eprintln!("skipping: `deno` is not on PATH");
+    false
+}
