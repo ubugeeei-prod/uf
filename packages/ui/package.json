@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/ui",
-  "version": "0.0.0-alpha.9",
+  "version": "0.0.0-alpha.10",
   "description": "Headless, accessible React components whose composition Flow checks, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -48,8 +48,8 @@
     "internal"
   ],
   "dependencies": {
-    "@uniflowed/hooks": "0.0.0-alpha.9",
-    "@uniflowed/react": "0.0.0-alpha.9"
+    "@uniflowed/hooks": "0.0.0-alpha.10",
+    "@uniflowed/react": "0.0.0-alpha.10"
   },
   "peerDependencies": {
     "react": ">=19"
