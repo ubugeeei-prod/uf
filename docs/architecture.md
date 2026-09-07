@@ -325,7 +325,10 @@ between them left the project's cache permanently cold
 ([#406](https://github.com/ubugeeei-prod/uf/issues/406)). Four answers per
 record, least recently used first, so a project checked many ways stays bounded.
 The cap is a bound on disk and never on correctness: a digest still has to match
-exactly, and a record with no answer for this batch is a miss like any other.
+exactly, and a record with no answer for this batch is a miss like any other. It
+is the inner of two bounds — the directory-wide sweep described below is the
+outer one, and it was already the ceiling before a record held more than one
+answer.
 
 A process that cannot name its own binary caches nothing in either direction,
 and an entry that is unreadable, out of date, over its bounds, or about another

@@ -15,9 +15,10 @@
 use std::fs;
 use std::time::Duration;
 
-use crate::cache::{CheckCache, MAX_RECORD_ANSWERS, Record};
-use crate::{CheckLimits, CheckReport, Source, check_sources_cached};
 use tempfile::TempDir;
+
+use crate::cache::{CachedAnswer, CheckCache, MAX_RECORD_ANSWERS, Record};
+use crate::{CheckLimits, CheckReport, Source, check_sources_cached};
 
 /// The limits `uf check` runs under, which bound the file and never the clock.
 ///
@@ -640,6 +641,46 @@ fn a_file_checked_many_ways_keeps_a_bounded_number_of_answers() {
         "`mode.js` is filed under its own text and still hits; `app.js`'s \
          answer for this batch was evicted"
     );
+}
+
+#[test]
+fn a_record_claiming_more_answers_than_the_bound_is_refused_whole() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+    let first = check(&cache, &limits(), &NOISY);
+
+    // A record is a file anything can write, and a document claiming more
+    // answers than `MAX_RECORD_ANSWERS` is not one this build wrote. It is
+    // refused whole rather than trusted as far as the bound: reading the first
+    // four answers out of a document somebody else authored is still reading
+    // it, and the bound exists to cap what a read costs, not to repair a file.
+    let directory = project.path().join(".uf").join("cache").join("check");
+    let mut inflated = 0;
+    for entry in fs::read_dir(&directory).unwrap() {
+        let path = entry.unwrap().path();
+        let mut record: Record =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).expect("a record we wrote");
+        while record.answers.len() <= MAX_RECORD_ANSWERS {
+            record.answers.push(CachedAnswer {
+                dependencies: format!("padding-{}", record.answers.len()),
+                diagnostics: Vec::new(),
+            });
+        }
+        fs::write(&path, serde_json::to_string(&record).unwrap()).unwrap();
+        inflated += 1;
+    }
+    assert_eq!(inflated, NOISY.len(), "one record per file was written");
+
+    let second = check(&cache, &limits(), &NOISY);
+
+    assert_eq!(
+        second.files_from_cache, 0,
+        "a record over its bound is a miss, not a partial read"
+    );
+    assert_eq!(rendered(&second), rendered(&first));
 }
 
 /// [`NOISY`] with one file's text replaced.
