@@ -91,7 +91,7 @@ fn the_lint_payload_is_machine_shaped() {
         files_checked: 2,
         unavailable: Vec::new(),
     };
-    let payload = lint_payload(LintCommand::Lint, &report);
+    let payload = lint_payload(LintCommand::Lint, &report, None);
 
     assert_eq!(payload["command"], json!("uf lint"));
     assert_eq!(payload["filesChecked"], json!(2));
@@ -146,4 +146,11 @@ fn patterns_that_matched_nothing_are_named_in_order() {
     assert_eq!(quoted_list(&patterns), "`a`, `b` and `c`");
     assert_eq!(quoted_list(&patterns[..1]), "`a`");
     assert_eq!(quoted_list(&patterns[..2]), "`a` and `b`");
+}
+
+#[test]
+fn the_word_fix_pluralises_the_way_english_does() {
+    assert_eq!(fix_count(0), "0 fixes");
+    assert_eq!(fix_count(1), "1 fix");
+    assert_eq!(fix_count(2), "2 fixes");
 }

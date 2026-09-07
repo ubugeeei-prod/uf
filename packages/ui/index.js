@@ -85,7 +85,19 @@
 // One root module per primitive, each with its own `exports` subpath, each
 // named after the thing it implements:
 //
-// - `dialog.js` — the focus trap, focus restore, scroll lock and inert page.
+// - `dialog.js` — the focus trap, focus restore, scroll lock and inert page,
+//   and the three props the four components below it differ from it by.
+// - `alert-dialog.js`, `sheet.js`, `drawer.js` and `sidebar.js` — the four
+//   built on that one. An alert dialog is modal and cannot be dismissed by
+//   pressing beside it; a sheet is a dialog with an edge; a drawer is a sheet
+//   with a gesture, and therefore with WCAG 2.5.7's keyboard equivalent of it;
+//   a sidebar is most often neither modal nor a dialog, and becomes both on a
+//   narrow viewport.
+// - `carousel.js`, `scroll-area.js` and `input-otp.js` — the three that replace
+//   something the browser already does, and so the three that have to be better
+//   than what they replaced. Each module's header says what it gives that the
+//   plain element does not; if it ever stops being true, the component should
+//   be deleted rather than fixed.
 // - `menu.js` — the arrow keys, typeahead, submenus and `Escape` stacking.
 // - `combobox.js` — `aria-activedescendant` over a filtered list, and the
 //   count a screen reader is told.
@@ -150,6 +162,26 @@ import {
   AccordionRoot,
   AccordionTrigger,
 } from "./accordion.js";
+import {
+  AlertDialogAction,
+  AlertDialogBody,
+  AlertDialogCancel,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogRoot,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./alert-dialog.js";
+import {
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPause,
+  CarouselPrevious,
+  CarouselRoot,
+} from "./carousel.js";
 import { Checkbox } from "./checkbox.js";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "./collapsible.js";
 import {
@@ -172,8 +204,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./dialog.js";
+import {
+  DrawerBody,
+  DrawerClose,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHandle,
+  DrawerHeader,
+  DrawerOverlay,
+  DrawerRoot,
+  DrawerTitle,
+  DrawerTrigger,
+} from "./drawer.js";
 import { FieldControl, FieldDescription, FieldError, FieldLabel, FieldRoot } from "./field.js";
 import { HoverCardBody, HoverCardRoot, HoverCardTrigger } from "./hover-card.js";
+import { InputOtpGroup, InputOtpRoot, InputOtpSeparator, InputOtpSlot } from "./input-otp.js";
 import {
   MenuBody,
   MenuGroup,
@@ -204,6 +249,7 @@ import { PopoverBody, PopoverRoot, PopoverTrigger } from "./popover.js";
 import { Progress } from "./progress.js";
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable.js";
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaViewport } from "./scroll-area.js";
 import {
   SelectGroup,
   SelectGroupLabel,
@@ -215,6 +261,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select.js";
+import {
+  SheetBody,
+  SheetClose,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetRoot,
+  SheetTitle,
+  SheetTrigger,
+} from "./sheet.js";
+import {
+  SidebarBody,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarItem,
+  SidebarRoot,
+  SidebarTrigger,
+} from "./sidebar.js";
 import { SliderRange, SliderRoot, SliderThumb, SliderTrack } from "./slider.js";
 import { Switch } from "./switch.js";
 import {
@@ -248,6 +313,14 @@ import { TooltipBody, TooltipProvider, TooltipRoot, TooltipTrigger } from "./too
 
 export type { AccordionType } from "./accordion.js";
 export type { ActivationMode } from "./tabs.js";
+// What a modal announces itself as, for a caller who holds one in a variable.
+// Two members, not a string: see `dialog.js`.
+export type { DialogRole } from "./dialog.js";
+// Which edge of the viewport a sheet or a drawer is attached to. `Sidebar` has
+// its own two-member union, because a sidebar is never on the top or bottom.
+export type { Edge } from "./sheet.js";
+export type { InputOtpKind } from "./input-otp.js";
+export type { SidebarSide } from "./sidebar.js";
 // Where an anchored overlay opens, for a caller who holds one in a variable or
 // a prop of their own. Unions rather than strings, so `side="botom"` is a type
 // error at the call rather than an overlay that quietly opens somewhere else.
@@ -446,6 +519,199 @@ export const Dialog = {
   Title: DialogTitle,
   Description: DialogDescription,
   Close: DialogClose,
+};
+
+/**
+ * The confirmation: modal, announced as an alert, and not dismissible by a
+ * press beside it.
+ *
+ * Focus lands on `Cancel` rather than on the first thing in the dialog, and the
+ * description is required — `role="alertdialog"` exists to announce one, so an
+ * alert dialog without it interrupts the reader to say nothing.
+ *
+ *   <AlertDialog.Root>
+ *     <AlertDialog.Trigger>Delete</AlertDialog.Trigger>
+ *     <AlertDialog.Overlay />
+ *     <AlertDialog.Body>
+ *       <AlertDialog.Header>
+ *         <AlertDialog.Title>Delete this project?</AlertDialog.Title>
+ *         <AlertDialog.Description>This cannot be undone.</AlertDialog.Description>
+ *       </AlertDialog.Header>
+ *       <AlertDialog.Footer>
+ *         <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+ *         <AlertDialog.Action onClick={remove}>Delete</AlertDialog.Action>
+ *       </AlertDialog.Footer>
+ *     </AlertDialog.Body>
+ *   </AlertDialog.Root>
+ */
+export const AlertDialog = {
+  Root: AlertDialogRoot,
+  Trigger: AlertDialogTrigger,
+  Overlay: AlertDialogOverlay,
+  Body: AlertDialogBody,
+  Header: AlertDialogHeader,
+  Footer: AlertDialogFooter,
+  Title: AlertDialogTitle,
+  Description: AlertDialogDescription,
+  Action: AlertDialogAction,
+  Cancel: AlertDialogCancel,
+};
+
+/**
+ * A modal dialog attached to an edge of the viewport.
+ *
+ * `side` is a union rather than a class name, and every part reports it as
+ * `data-side` — the same attribute `Popover.Body` writes, so one stylesheet
+ * rule covers every overlay in this package.
+ *
+ *   <Sheet.Root side="left">
+ *     <Sheet.Trigger>Filters</Sheet.Trigger>
+ *     <Sheet.Overlay />
+ *     <Sheet.Body>
+ *       <Sheet.Title>Filters</Sheet.Title>
+ *       <Sheet.Close>Done</Sheet.Close>
+ *     </Sheet.Body>
+ *   </Sheet.Root>
+ */
+export const Sheet = {
+  Root: SheetRoot,
+  Trigger: SheetTrigger,
+  Overlay: SheetOverlay,
+  Body: SheetBody,
+  Header: SheetHeader,
+  Footer: SheetFooter,
+  Title: SheetTitle,
+  Description: SheetDescription,
+  Close: SheetClose,
+};
+
+/**
+ * The sheet you can drag away, with the keyboard that can do everything the
+ * drag can.
+ *
+ * `Drawer.Handle` is a `role="slider"` over the snap points: the arrow keys
+ * move between them, `Home` and `End` go to the ends, and the closing key at
+ * the smallest snap point closes it. WCAG 2.5.7 also wants a single-pointer
+ * alternative, so a drawer with a handle and no `Drawer.Close` raises.
+ *
+ *   <Drawer.Root side="bottom" snapPoints={[0.4, 1]}>
+ *     <Drawer.Trigger>Details</Drawer.Trigger>
+ *     <Drawer.Overlay />
+ *     <Drawer.Body>
+ *       <Drawer.Handle label="Resize the details" />
+ *       <Drawer.Title>Details</Drawer.Title>
+ *       <Drawer.Close>Close</Drawer.Close>
+ *     </Drawer.Body>
+ *   </Drawer.Root>
+ */
+export const Drawer = {
+  Root: DrawerRoot,
+  Trigger: DrawerTrigger,
+  Overlay: DrawerOverlay,
+  Body: DrawerBody,
+  Handle: DrawerHandle,
+  Header: DrawerHeader,
+  Footer: DrawerFooter,
+  Title: DrawerTitle,
+  Description: DrawerDescription,
+  Close: DrawerClose,
+};
+
+/**
+ * Navigation beside the page, which becomes a modal sheet on a narrow one.
+ *
+ * `Sidebar.Item` takes a `label` and keeps it as the button's accessible name
+ * the moment the sidebar collapses to icons — which is the whole reason a
+ * collapsing sidebar is a component rather than a class.
+ *
+ *   <Sidebar.Root defaultOpen={fromCookie}>
+ *     <Sidebar.Trigger>Menu</Sidebar.Trigger>
+ *     <Sidebar.Body label="Main">
+ *       <Sidebar.Item label="Settings">
+ *         <Gear /> Settings
+ *       </Sidebar.Item>
+ *     </Sidebar.Body>
+ *   </Sidebar.Root>
+ */
+export const Sidebar = {
+  Root: SidebarRoot,
+  Trigger: SidebarTrigger,
+  Header: SidebarHeader,
+  Body: SidebarBody,
+  Footer: SidebarFooter,
+  Item: SidebarItem,
+};
+
+/**
+ * Slides, one at a time, that a reader can stop and cannot fall into.
+ *
+ * `Carousel.Pause` is WCAG 2.2.2's mechanism and must be the first focusable
+ * thing inside the carousel; the slides that are not showing are `inert`, so
+ * `Tab` cannot reach a link nobody can see.
+ *
+ *   <Carousel.Root autoplay={5000} count={3} label="Featured">
+ *     <Carousel.Pause />
+ *     <Carousel.Content>
+ *       <Carousel.Item index={0}>…</Carousel.Item>
+ *       <Carousel.Item index={1}>…</Carousel.Item>
+ *       <Carousel.Item index={2}>…</Carousel.Item>
+ *     </Carousel.Content>
+ *     <Carousel.Previous />
+ *     <Carousel.Next />
+ *   </Carousel.Root>
+ */
+export const Carousel = {
+  Root: CarouselRoot,
+  Content: CarouselContent,
+  Item: CarouselItem,
+  Pause: CarouselPause,
+  Previous: CarouselPrevious,
+  Next: CarouselNext,
+};
+
+/**
+ * An overflow container a keyboard can actually scroll.
+ *
+ * `role="region"`, a name and `tabindex="0"`, because a scroll container is not
+ * focusable in every browser and one that is not is one a keyboard reader can
+ * see the top of and nothing else.
+ *
+ *   <ScrollArea.Root label="Release notes">
+ *     <ScrollArea.Viewport>…</ScrollArea.Viewport>
+ *     <ScrollArea.Scrollbar orientation="vertical" />
+ *   </ScrollArea.Root>
+ */
+export const ScrollArea = {
+  Root: ScrollAreaRoot,
+  Viewport: ScrollAreaViewport,
+  Scrollbar: ScrollAreaScrollbar,
+};
+
+/**
+ * A one-time code: six boxes drawn over one real `<input>`.
+ *
+ * One input, so `autocomplete="one-time-code"` works, a paste fills every box,
+ * and a form submits one value under one name.
+ *
+ *   <InputOtp.Root label="One-time code" length={6} name="code">
+ *     <InputOtp.Group>
+ *       <InputOtp.Slot index={0} />
+ *       <InputOtp.Slot index={1} />
+ *       <InputOtp.Slot index={2} />
+ *     </InputOtp.Group>
+ *     <InputOtp.Separator>-</InputOtp.Separator>
+ *     <InputOtp.Group>
+ *       <InputOtp.Slot index={3} />
+ *       <InputOtp.Slot index={4} />
+ *       <InputOtp.Slot index={5} />
+ *     </InputOtp.Group>
+ *   </InputOtp.Root>
+ */
+export const InputOtp = {
+  Root: InputOtpRoot,
+  Group: InputOtpGroup,
+  Slot: InputOtpSlot,
+  Separator: InputOtpSeparator,
 };
 
 /**

@@ -291,13 +291,13 @@ reference, with every flag and exit code.
 | `uf preview`, `uf start` | Serve that build — through Vite, or through uf's own server with no bundler in the process |
 | `uf test` | Scheduling and reporting in Rust, one file per worker, bodies on the host |
 | `uf fmt` | Flow printed from Meta's parser to match Prettier; JSON, CSS and TypeScript handed to Biome |
-| `uf lint` | uf's rules and Flow's built-in lints, one pass, one report |
+| `uf lint` | uf's rules and Flow's built-in lints, one pass, one report; `--fix` writes the fixes it can make |
 | `uf check` | Flow's own inference. uf has no second opinion about your types |
 | `uf install` | The project's package manager, with lifecycle scripts refused |
 | `uf add`, `uf remove`, `uf update`, `uf why` | The same manager, one dependency at a time, rewriting the lockfile and the store |
 | `uf run`, `ufx` | A task from `uf.config.js`; a package's binary |
 | `uf info`, `uf inspect`, `uf explain` | What uf found, what your config resolved to, and which provider does each stage of a command |
-| `uf prepare` | The code generation and checks a commit should not go without |
+| `uf prepare` | The code generation and checks a commit should not go without; `--fix` makes the checks write |
 | `uf lsp` | The language server, over stdio |
 | `uf env`, `uf use`, `uf upgrade` | The JavaScript hosts a project pins, the shared store they live in, and the uf that runs it |
 
