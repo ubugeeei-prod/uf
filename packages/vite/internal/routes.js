@@ -316,11 +316,21 @@ export function routeFromSegments(segments) {
   return { path: routePath, pattern: routePath.replace(/:(\w+)\*/g, "*$1"), params };
 }
 
-/** Virtual module ids the router plugin serves. */
+/**
+ * Virtual module ids the router plugin serves.
+ *
+ * `actions` is the one that does not come from this file's directory scan: it
+ * is generated from the RSC manifest by `internal/rsc.js`, because which
+ * `"use server"` exports are callable endpoints is an answer about the module
+ * graph and not about the filesystem. It is here because it is a virtual
+ * module id and this is where they are named, and because
+ * `serverModuleSource` below is the only thing that imports it.
+ */
 export const VIRTUAL = Object.freeze({
   routes: "virtual:uf/routes",
   client: "virtual:uf/client",
   server: "virtual:uf/server",
+  actions: "virtual:uf/actions",
 });
 
 /**
@@ -558,6 +568,16 @@ hydrate({ App, routes, notFound, errors });
  * request — one decides whether the router is reached at all, the others
  * decide what the router renders when it is.
  *
+ * `callAction` goes between the two, and its position is the same argument
+ * made twice. Below `runMiddleware`, because an action call is a request to a
+ * path and the guard on that path is owed the same say over it as over the
+ * page — which is why the call is a `POST` to the page's own URL rather than
+ * to a reserved one. Above `dispatch`, because a request that names an action
+ * has named it: letting it fall through to a route handler that happens to sit
+ * at the same path would answer somebody's action with somebody else's
+ * function. It declines every request that carries no action id, so a project
+ * with no actions pays one `headers.get` per request and nothing else.
+ *
  * `internal/serve.js` and `driver.js` call them in that order, and
  * `packages/vite/index.js` does the same for a project driving Vite itself.
  *
@@ -583,11 +603,13 @@ hydrate({ App, routes, notFound, errors });
  */
 export function serverModuleSource(appEntry) {
   return `import {
+  createActionDispatcher,
   createDispatcher,
   createMiddlewareRunner,
   createRenderer,
 } from "@uniflowed/router/server";
 import { routes, handlers, middleware, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
+import { actions } from ${JSON.stringify(VIRTUAL.actions)};
 import App from ${JSON.stringify(appEntry)};
 export { routes, handlers, middleware, notFound, errors };
 export { beginRequest } from "@uniflowed/router/server";
@@ -595,6 +617,7 @@ const renderer = createRenderer({ App, routes, notFound, errors });
 export const render = renderer.render;
 export const prerender = renderer.prerender;
 export const dispatch = createDispatcher({ handlers });
+export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
 `;
 }

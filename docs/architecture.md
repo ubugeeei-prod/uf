@@ -530,6 +530,25 @@ reached; `hydrate` returns without mounting the route, because the document the
 server wrote is the whole of it, and a link into it is a document navigation
 rather than a client render.
 
+Below a route, one unit is split: a `"use server"` module. `@uniflowed/vite`
+answers the browser's copy of that file with one `createServerReference` per
+callable export — an id and a `fetch`, and none of the module's body, its
+imports, or anything only they reached. The graph colours such a module server
+for the same reason, so the analysis and the bundle agree rather than each
+describing the other. What is *not* split is a Server Component above a
+boundary: uf's client hydrates by re-rendering the matched tree from the same
+modules the server used, so dropping one needs a Flight-shaped payload uf does
+not have. See ubugeeei-prod/uf#252.
+
+A call is a `POST` to the page's own URL carrying `uf-action: <id>`, so the
+middleware guarding that path runs above it and no path is reserved. Every host
+runs it between the guard and the route handlers — `uf dev`, `uf preview`,
+`uf start`, a compiled binary, and all four deploy adapters, which share one
+`handler.js`. What may cross in either direction is a closed grammar of plain
+JSON data, applied by `packages/router/internal/action-wire.js` on both sides
+and by Flow at build time; `docs/security.md` has the boundary and what is
+deliberately outside it.
+
 One thing does still come back. A uf build links the stylesheets it finds in
 the *client* graph, so a route removed from that graph outright loses its rules
 — from every page of the site, because the linked sheets are the whole graph's.

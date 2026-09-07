@@ -1354,7 +1354,7 @@ fn preview_and_start_serve_the_whole_of_a_build() {
 /// is one line of Cloudflare's documentation: the binding answers a `Request`
 /// with a `Response`, and with a `404` where there is no such asset, which is
 /// what `"not_found_handling": "none"` means.
-const ASK_THE_ARTEFACT: &str = r#"import fs from "node:fs";
+const ARTEFACT_DOORS: &str = r#"import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -1452,6 +1452,14 @@ const ask = async (label, url, init) => {
   process.stdout.write(`${label} ${response.status} ${body}\n`);
 };
 
+"#;
+
+/// What the `served-app` artefact is asked.
+///
+/// Four questions, chosen so that each says something a static host could not:
+/// a route handler for a `GET` and for a `POST` with a body, a route with
+/// parameters and no `generateStaticParams`, and the project's own 404.
+const SERVED_APP_QUESTIONS: &str = r#"
 await ask("handler-get", "/api/health");
 await ask("handler-post", "/api/health", { method: "POST", body: JSON.stringify({ name: "uf" }) });
 await ask("rendered", "/posts/hello-world");
@@ -1461,6 +1469,54 @@ await ask("missing", "/definitely-not-a-page/");
 if (adapter === "edge" || adapter === "serverless") {
   await ask("prerendered", "/guide/");
 }
+"#;
+
+/// What the `rsc-split-app` artefact is asked: one server action, five ways.
+///
+/// The id is read out of the manifest the build copied into `static/`, because
+/// it is keyed on a per-build secret and there is nowhere else it could come
+/// from — which is the point of it. The five are the call itself, the call
+/// with a cookie the action reads, and the three refusals a browser can be
+/// made to attempt from somewhere else: another origin, an id nobody has, and
+/// a content type a cross-origin form could have produced.
+///
+/// A `POST` to the page's own URL, because that is where an action call goes:
+/// no path is reserved for it, and the middleware guarding that page is the
+/// one that runs above the call.
+const SERVER_ACTION_QUESTIONS: &str = r#"
+const rscManifest = JSON.parse(
+  fs.readFileSync(path.join(staticDir, "uf-rsc-manifest.json"), "utf8"),
+);
+const actionId = rscManifest.serverActions[0].id;
+const post = (headers, body) => ({ method: "POST", headers, body });
+const dialable = {
+  origin: "http://127.0.0.1",
+  host: "127.0.0.1",
+  "content-type": "application/json",
+  "uf-action": actionId,
+};
+
+await ask("action", "/counter", post(dialable, JSON.stringify({ args: [4] })));
+await ask(
+  "action-cookie",
+  "/counter",
+  post({ ...dialable, cookie: "visitor=ada" }, JSON.stringify({ args: [1] })),
+);
+await ask(
+  "action-cross-origin",
+  "/counter",
+  post({ ...dialable, origin: "http://evil.example" }, JSON.stringify({ args: [1] })),
+);
+await ask(
+  "action-unknown-id",
+  "/counter",
+  post({ ...dialable, "uf-action": "0".repeat(64) }, JSON.stringify({ args: [1] })),
+);
+await ask(
+  "action-form-content-type",
+  "/counter",
+  post({ ...dialable, "content-type": "text/plain" }, "args=1"),
+);
 "#;
 
 /// Build one adapter's artefact and copy it out of the checkout.
@@ -1504,9 +1560,18 @@ fn deploy_and_copy(root: &Path, adapter: &str) -> (String, tempfile::TempDir) {
     (stdout, empty)
 }
 
-/// Ask the copied artefact the four questions, with [`ASK_THE_ARTEFACT`].
-fn ask_the_artefact(empty: &Path, adapter: &str) -> String {
-    fs::write(empty.join("ask.mjs"), ASK_THE_ARTEFACT).unwrap();
+/// Ask the copied artefact `questions`, through [`ARTEFACT_DOORS`].
+///
+/// The doors are one half and the questions the other, because two fixtures
+/// now have something to ask and the four ways into an artefact are the same
+/// for both of them. A second copy of those four would be a second place for
+/// the seam to be described, which is the thing this test exists to deny.
+fn ask_the_artefact(empty: &Path, adapter: &str, questions: &str) -> String {
+    fs::write(
+        empty.join("ask.mjs"),
+        format!("{ARTEFACT_DOORS}{questions}"),
+    )
+    .unwrap();
     let answered = Command::new("node")
         .arg("ask.mjs")
         .arg(adapter)
@@ -1718,7 +1783,11 @@ fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
     );
     let deployed = empty.path().join("app");
     assert_artefact_shape("node", &deployed);
-    assert_artefact_answers(&ask_the_artefact(empty.path(), "node"));
+    assert_artefact_answers(&ask_the_artefact(
+        empty.path(),
+        "node",
+        SERVED_APP_QUESTIONS,
+    ));
 
     if !loopback_ready() {
         return;
@@ -1802,7 +1871,7 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
         let (_, empty) = deploy_and_copy(&root, adapter);
         assert_artefact_shape(adapter, &empty.path().join("app"));
 
-        let answers = ask_the_artefact(empty.path(), adapter);
+        let answers = ask_the_artefact(empty.path(), adapter, SERVED_APP_QUESTIONS);
         assert_artefact_answers(&answers);
 
         let shared: Vec<String> = shared_answers(&answers)
@@ -3233,6 +3302,209 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
     assert_eq!(proximity("app/_content/almanac.js"), "isolated");
 }
 
+/// A `"use server"` module becomes a reference in the browser and a function
+/// on the server, and nothing of it reaches `dist/`.
+///
+/// The half of ubugeeei-prod/uf#252 that is smaller than a route.
+/// `the_client_bundle_loses_a_route_that_needs_no_javascript` above asserts
+/// that a route no boundary reaches keeps its page out of the browser; this
+/// asserts the other unit — one module, inside a route the browser certainly
+/// does need, replaced by an id and a `fetch`.
+///
+/// Three things have to be true of the emitted JavaScript at once, and the
+/// third is the one the issue names:
+///
+/// 1. the reference is there, so the button has something to call;
+/// 2. the action's own body and the module it reached for are not, because a
+///    `"use server"` module is code the browser never evaluates;
+/// 3. `node:async_hooks` is not there either. `@uniflowed/server` imports it,
+///    the action calls `cookies()`, and "a page that calls `cookies()` puts
+///    that import in the browser's graph, and nothing stops it" is the
+///    sentence in ubugeeei-prod/uf#252 this replaces.
+///
+/// Marker strings rather than identifiers, for the reason the fixture's README
+/// gives: a production bundle renames identifiers and keeps string literals.
+#[test]
+fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
+    if !fixture_ready() {
+        return;
+    }
+    let _split = split_lock();
+    let root = rsc_split_app_root();
+
+    let output = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let dist = root.join("dist");
+    let scripts = client_scripts(&dist);
+    assert!(
+        !scripts.is_empty(),
+        "the build emitted no client JavaScript at all, so nothing below proves anything"
+    );
+    let bundle = scripts
+        .iter()
+        .map(|(name, source)| format!("// {name}\n{source}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // 1. The reference, named by the `module#export` the manifest keys.
+    assert!(
+        bundle.contains("app/counter/_actions/tally.js#recordCount"),
+        "the client bundle has no reference to the action the counter calls:\n{}",
+        script_names(&scripts)
+    );
+
+    // 2. And nothing of the module the reference stands in for.
+    for absent in [
+        "tally-marker-only-the-server-runs-this",
+        "ledger-marker-the-browser-must-never-see",
+    ] {
+        assert!(
+            !bundle.contains(absent),
+            "{absent:?} is server-only and reached the browser:\n{}",
+            script_names(&scripts)
+        );
+    }
+
+    // 3. The import that made this worth doing.
+    assert!(
+        !bundle.contains("async_hooks"),
+        "`@uniflowed/server` reached the browser through the action:\n{}",
+        script_names(&scripts)
+    );
+
+    // The server bundle is the other half of the same sentence: what the
+    // browser does not have, the server does, and it is the same build. Read
+    // as a whole rather than one file, because the action module is a lazy
+    // `import()` in the generated table and Rollup gives it a chunk of its own
+    // — which is what `virtual:uf/actions` asked for, so that a project's
+    // actions are not imported by every request.
+    let server = server_bundle(&root.join(".uf/build/server"));
+    assert!(
+        server.contains("tally-marker-only-the-server-runs-this"),
+        "the action is missing from the server bundle, so nothing could answer a call"
+    );
+
+    // The id in the browser is the id the server dials into. Read out of the
+    // manifest rather than recomputed: it is an HMAC over a per-build secret,
+    // so there is nowhere else it could come from — which is the point of it.
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join("uf-rsc-manifest.json")).unwrap())
+            .unwrap();
+    let actions = manifest["serverActions"].as_array().unwrap();
+    assert_eq!(actions.len(), 1, "manifest: {manifest}");
+    assert_eq!(actions[0]["module"], "app/counter/_actions/tally.js");
+    assert_eq!(actions[0]["export"], "recordCount");
+    let id = actions[0]["id"].as_str().unwrap();
+    assert_eq!(
+        id.len(),
+        64,
+        "an action id is 64 hex characters, got {id:?}"
+    );
+    assert!(
+        id.bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+        "an action id is lowercase hexadecimal, got {id:?}"
+    );
+    assert!(
+        bundle.contains(id),
+        "the browser holds a different id from the one the manifest published:\n{}",
+        script_names(&scripts)
+    );
+    assert!(
+        server.contains(id),
+        "the server's table does not carry the id the browser was given"
+    );
+
+    // And the summary counts it, so a reader sees that the build produced an
+    // endpoint rather than only an analysis.
+    assert_eq!(
+        summary_value(&stdout, "server actions"),
+        "1",
+        "the summary must count the callable action:\n{stdout}"
+    );
+}
+
+/// Every adapter serves the same server action, and refuses the same calls.
+///
+/// ubugeeei-prod/uf#447 established that the four deploy targets answer
+/// identically, and `handler.js` being byte-for-byte the same file in all of
+/// them is why. A server action is answered by that file, so it is answered by
+/// all four or by none — and this is what says so, rather than the reasoning.
+///
+/// It is a second four-adapter test rather than five more questions in the
+/// first because it needs a different fixture: `served-app` has no
+/// `"use client"` module anywhere, so it can declare no callable action, and
+/// giving it one would change what the split does to it and what three other
+/// tests measure.
+#[test]
+fn every_adapter_answers_the_same_server_action_call() {
+    if !fixture_ready() {
+        return;
+    }
+    let _split = split_lock();
+    let root = rsc_split_app_root();
+
+    let mut answers: Option<(String, String)> = None;
+    for adapter in ["node", "edge", "serverless", "container"] {
+        let (_, empty) = deploy_and_copy(&root, adapter);
+        let said = ask_the_artefact(empty.path(), adapter, SERVER_ACTION_QUESTIONS);
+
+        // The action ran, inside the request the host began, and answered with
+        // what the server made of the argument — `tallyFor(4)` is `9`, and the
+        // marker is the string the browser's copy of the bundle does not have.
+        assert!(
+            said.contains("action 200")
+                && said.contains("\"total\":9")
+                && said.contains("tally-marker-only-the-server-runs-this"),
+            "the `{adapter}` artefact did not run the action:\n{said}"
+        );
+        // `cookies()` inside an action answers about the request that carried
+        // the call, which is the whole reason an action is not a static import.
+        assert!(
+            said.contains("\"visitor\":\"ada\""),
+            "the `{adapter}` artefact did not run the action inside its request:\n{said}"
+        );
+        // And the three refusals, each with its own status so that a reader of
+        // this file can see which guard is which.
+        for expected in [
+            "action-cross-origin 403",
+            "action-unknown-id 404",
+            "action-form-content-type 415",
+        ] {
+            assert!(
+                said.contains(expected),
+                "the `{adapter}` artefact answered {expected:?} differently:\n{said}"
+            );
+        }
+        // Nothing about the build leaks out of a refusal.
+        assert!(
+            !said.contains("tally-marker-only-the-server-runs-this/ledger")
+                || said
+                    .matches("tally-marker-only-the-server-runs-this")
+                    .count()
+                    == 2,
+            "a refusal carried something about the build:\n{said}"
+        );
+
+        match &answers {
+            None => answers = Some((adapter.to_owned(), said)),
+            Some((first, expected)) => similar_asserts::assert_eq!(
+                expected,
+                &said,
+                "the `{}` and `{}` artefacts answered differently",
+                first,
+                adapter
+            ),
+        }
+    }
+}
+
 /// One output directory, one test building it — with the lock the other two
 /// fixtures have, because the next test written against this one will race it.
 static SPLIT: Mutex<()> = Mutex::new(());
@@ -3265,6 +3537,31 @@ fn client_scripts(dist: &Path) -> Vec<(String, String)> {
     }
     scripts.sort();
     scripts
+}
+
+/// Every `.js` file the server build emitted, concatenated.
+///
+/// `.js` and not `.js.map`, for the reason [`client_scripts`] gives, and the
+/// whole directory rather than `server.js`: the generated action and route
+/// tables load their modules with `import()`, so an action is a chunk beside
+/// the entry rather than inside it.
+fn server_bundle(directory: &Path) -> String {
+    let mut sources = Vec::new();
+    for root in [directory.to_path_buf(), directory.join("assets")] {
+        let Ok(entries) = fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if !entry.file_name().to_string_lossy().ends_with(".js") {
+                continue;
+            }
+            if let Ok(source) = fs::read_to_string(entry.path()) {
+                sources.push(source);
+            }
+        }
+    }
+    sources.sort();
+    sources.join("\n")
 }
 
 /// Every stylesheet the client build emitted, concatenated.
