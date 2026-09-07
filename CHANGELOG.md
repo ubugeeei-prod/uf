@@ -14,17 +14,26 @@ scope-tied fork, a runtime built once, a stream that can be written to, and a
 schedule that carries a value. `@uniflowed/ui` gained the four built on `Dialog`
 and the three that replace something the browser already does.
 
-And `uf lint --fix` writes the fixes a catalogue had been holding for the
-language server alone, with a safe/unsafe line that is a field on the fix rather
-than a decision each caller makes.
+`rendering.cache` stopped being four booleans that reached a manifest and
+changed nothing: the route cache and the fetch cache are real, with time and tag
+revalidation, and the two that are not implemented now fail the config load by
+name rather than loading cleanly and meaning nothing. And `uf lint --fix` writes
+the fixes a catalogue had been holding for the language server alone, with a
+safe/unsafe line that is a field on the fix rather than a decision each caller
+makes.
 
 ### Added
 
+- **server, config**: the cache the four booleans were describing (#469)
 - **ui**: the four built on Dialog, and the three that replace the browser (#462)
 - **lint, prepare**: `uf lint --fix` writes the fixes the catalogue already knew (#455)
 - **state, hooks**: six utility names, an asynchronous storage, one guard kept twice (#461)
 - **effect**: the plumbing five shapes were missing (#463)
 - **form**: a field read at its own type, and values that arrive later (#460)
+
+### Fixed
+
+- **test**: the stub formatter is run once before it is relied on (#468)
 
 ### Internal
 
