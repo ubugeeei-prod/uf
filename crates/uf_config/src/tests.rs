@@ -767,3 +767,82 @@ fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
         "a setting the project wrote has to survive the round trip"
     );
 }
+
+#[test]
+fn the_registry_uf_reads_from_defaults_to_the_one_it_publishes_to() {
+    // ubugeeei-prod/uf#540: a project that has only ever set `publish.registry`
+    // keeps resolving against it, and is told which key to move to.
+    let source =
+        r#"export default defineConfig({ publish: { registry: "https://npm.company.example" } });"#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let read = parsed.read_registry();
+    assert_eq!(read.url, "https://npm.company.example");
+    assert_eq!(read.source, RegistrySource::PublishFallback);
+    assert!(read.source.is_deprecated());
+    assert!(
+        read.source
+            .deprecation()
+            .is_some_and(|line| line.contains("pm.registry"))
+    );
+}
+
+#[test]
+fn pm_registry_is_the_one_uf_resolves_against_and_publish_registry_stays_publish() {
+    let source = r#"
+        export default defineConfig({
+          pm: { registry: "https://mirror.company.example" },
+          publish: { registry: "https://npm.company.example" },
+        });
+    "#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let read = parsed.read_registry();
+    assert_eq!(read.url, "https://mirror.company.example");
+    assert_eq!(read.source, RegistrySource::Pm);
+    assert!(!read.source.is_deprecated());
+    assert_eq!(read.source.deprecation(), None);
+    // The publish target is untouched: the two settings answer two questions.
+    assert_eq!(parsed.publish.registry, "https://npm.company.example");
+}
+
+#[test]
+fn a_project_that_sets_neither_registry_is_not_warned_about_a_key_it_never_wrote() {
+    let config = UniflowedConfig::default();
+    let read = config.read_registry();
+
+    assert_eq!(read.url, DEFAULT_REGISTRY);
+    assert_eq!(read.source, RegistrySource::Default);
+    assert!(!read.source.is_deprecated());
+}
+
+#[test]
+fn a_scope_can_be_bound_to_a_registry_and_provenance_can_be_turned_off() {
+    let source = r#"
+        export default defineConfig({
+          pm: {
+            registry: "https://mirror.company.example",
+            scopes: { "@company": "https://npm.company.example" },
+            provenance: "off",
+          },
+        });
+    "#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(
+        parsed.scope_registries().collect::<Vec<_>>(),
+        vec![("@company", "https://npm.company.example")]
+    );
+    assert_eq!(parsed.pm.provenance, ProvenanceMode::Off);
+    assert!(!parsed.pm.provenance.reads_attestations());
+    // The default is the other way round: attestations are read.
+    assert!(
+        UniflowedConfig::default()
+            .pm
+            .provenance
+            .reads_attestations()
+    );
+}
