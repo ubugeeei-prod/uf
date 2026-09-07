@@ -215,4 +215,227 @@ fi
 [ -e "${work}/missing/bin/uf" ] && fail "missing: uf was linked anyway"
 pass "a nonexistent version fails and installs nothing"
 
+# 8. ORIGIN. The attack the sha256 beside the archive cannot see: a release
+#    host that serves a tampered archive *and* a checksum that matches it. The
+#    local check passes — the bytes are the bytes that host advertised — and the
+#    binary is the attacker's. This is ubugeeei-prod/uf#551, and the second
+#    opinion is what catches it: another host, not under the same control,
+#    holding the digest of the archive that was actually published.
+#
+#    Both hosts are 127.0.0.1 here and differ by port, which is what
+#    `uf_host_of` compares: scheme, host and port together.
+mirror_root="${work}/mirror/uf"
+mkdir -p "${mirror_root}/${version}"
+cp "${release_dir}/${archive}.sha256" "${mirror_root}/${version}/"
+
+mirror_port="$(python3 -c 'import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()')"
+python3 -m http.server "$mirror_port" --bind 127.0.0.1 --directory "${work}/mirror" \
+  >"${work}/mirror.log" 2>&1 &
+mirror_pid=$!
+cleanup_mirror() {
+  [ -n "${mirror_pid:-}" ] && kill "$mirror_pid" 2>/dev/null || true
+}
+trap 'cleanup; cleanup_mirror' EXIT INT TERM
+
+ready=0
+i=0
+while [ "$i" -lt 100 ]; do
+  if curl -fsS "http://127.0.0.1:${mirror_port}/uf/${version}/${archive}.sha256" \
+    >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  i=$((i + 1))
+  python3 -c 'import time; time.sleep(0.05)'
+done
+[ "$ready" -eq 1 ] || fail "mirror server never came up (see ${work}/mirror.log)"
+mirror_base="http://127.0.0.1:${mirror_port}/uf"
+
+#    The honest release still installs, and says the other host agrees.
+run_installer agree UF_VERSION="$version" UF_CHECKSUM_BASE="$mirror_base" \
+  >"${work}/agree.log" 2>&1 \
+  || fail "an honest release with a second opinion failed to install:
+$(cat "${work}/agree.log")"
+grep -q "agrees" "${work}/agree.log" \
+  || fail "the second opinion was not reported:
+$(cat "${work}/agree.log")"
+pass "a second-opinion checksum from another host is fetched and agreed with"
+
+#    Now the release host is compromised: a different archive, and a checksum
+#    that matches it. Nothing on that host disagrees with anything.
+#    A working archive, so the only thing wrong with this install is where it
+#    came from. An archive that merely failed to unpack would be caught by
+#    something else and would prove nothing about the origin check.
+forged="${site}/forged"
+mkdir -p "$forged"
+python3 - "${forged}/${archive}" <<'EOF'
+import io, sys, tarfile, time
+
+with tarfile.open(sys.argv[1], "w:gz") as tar:
+    for name in ("bin/uf", "bin/ufr", "bin/ufx"):
+        data = b"#!/bin/sh\necho pwned\n"
+        info = tarfile.TarInfo(name)
+        info.size = len(data)
+        info.mode = 0o755
+        info.mtime = int(time.time())
+        tar.addfile(info, io.BytesIO(data))
+EOF
+if command -v sha256sum >/dev/null 2>&1; then
+  forged_sha="$(sha256sum "${forged}/${archive}" | awk '{print $1}')"
+else
+  forged_sha="$(shasum -a 256 "${forged}/${archive}" | awk '{print $1}')"
+fi
+printf '%s  %s\n' "$forged_sha" "$archive" > "${forged}/${archive}.sha256"
+printf 'forged\n' > "${forged}/VERSION"
+mkdir -p "${mirror_root}/forged"
+cp "${release_dir}/${archive}.sha256" "${mirror_root}/forged/"
+
+#    Without a second opinion it installs, because the checksum is honest about
+#    the bytes that host served. That is the hole, stated as a test.
+run_installer forged_alone UF_VERSION=forged >"${work}/forged-alone.log" 2>&1 \
+  || fail "the transit check should still pass on a self-consistent forgery:
+$(cat "${work}/forged-alone.log")"
+grep -q "origin not proven" "${work}/forged-alone.log" \
+  || fail "an install with no origin evidence must say so:
+$(cat "${work}/forged-alone.log")"
+pass "a self-consistent forgery passes the transit check, and the installer says so"
+
+#    With one, it does not install at all.
+if run_installer forged UF_VERSION=forged UF_CHECKSUM_BASE="$mirror_base" \
+  >"${work}/forged.log" 2>&1; then
+  fail "an archive two hosts disagree about was installed"
+fi
+grep -q "two hosts disagree" "${work}/forged.log" \
+  || fail "the disagreement was not the reason it was refused:
+$(cat "${work}/forged.log")"
+[ -e "${work}/forged/bin/uf" ] && fail "forged: uf was linked anyway"
+pass "an archive two hosts disagree about is refused, naming both"
+
+# 9. `require` refuses an install whose origin nothing established, rather than
+#    reporting it. This is what the release smoke job runs with.
+if run_installer required UF_VERSION="$version" UF_VERIFY_ORIGIN=require \
+  >"${work}/required.log" 2>&1; then
+  fail "UF_VERIFY_ORIGIN=require installed a release with no origin evidence"
+fi
+grep -q "origin of .* could not be established" "${work}/required.log" \
+  || fail "require failed for the wrong reason:
+$(cat "${work}/required.log")"
+pass "UF_VERIFY_ORIGIN=require refuses an install nothing vouched for"
+
+# 10. A second opinion from the host that served the archive is the first
+#     opinion again. Counting it would be the exact mistake #551 is about, so
+#     it is named as not independent — and `require` still refuses.
+if run_installer same_host UF_VERSION="$version" UF_VERIFY_ORIGIN=require \
+  UF_CHECKSUM_BASE="$base" >"${work}/same-host.log" 2>&1; then
+  fail "a checksum from the archive's own host was accepted as a second opinion"
+fi
+grep -q "same host as the archive" "${work}/same-host.log" \
+  || fail "the same-host checksum was not called out:
+$(cat "${work}/same-host.log")"
+pass "a checksum from the archive's own host is not counted as a second opinion"
+
+# 11. A typo in the switch itself must stop, not quietly install under `auto`.
+if run_installer typo UF_VERSION="$version" UF_VERIFY_ORIGIN=requires \
+  >"${work}/typo.log" 2>&1; then
+  fail "a misspelled UF_VERIFY_ORIGIN installed anyway"
+fi
+grep -q "is not one uf understands" "${work}/typo.log" \
+  || fail "the misspelled value was not named:
+$(cat "${work}/typo.log")"
+pass "a misspelled UF_VERIFY_ORIGIN stops rather than falling back to auto"
+
+
+# 12. THE SIGNATURE. Everything above proves origin by making an attacker hold
+#     two hosts; this proves it by making them hold a signing identity they
+#     cannot have. `cosign` is stubbed — the point is not that Sigstore's
+#     cryptography works, it is that the installer asks the right question and
+#     believes the answer.
+#
+#     The stub agrees only when the installer pinned both a certificate
+#     identity and an OIDC issuer. A `cosign verify-blob` with neither accepts
+#     a signature by anybody, which would turn this whole check into
+#     decoration, so the stub refuses to be the thing that let it pass.
+signed="${site}/signed"
+mkdir -p "$signed"
+cp "${release_dir}/${archive}" "${release_dir}/${archive}.sha256" "$signed/"
+printf 'signed\n' > "${signed}/VERSION"
+# The bundle's bytes are never read here: cosign is what reads them, and cosign
+# is the stub. What matters is that one is served at all.
+printf '{"mediaType":"application/vnd.dev.sigstore.bundle+json;version=0.3"}\n' \
+  > "${signed}/${archive}.sigstore"
+
+stub_ok="${work}/stub-ok"
+mkdir -p "$stub_ok"
+cat > "${stub_ok}/cosign" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$@" > "${COSIGN_ARGS:-/dev/null}"
+case " $* " in
+  *" --certificate-identity-regexp "*) ;;
+  *)
+    echo "stub cosign: the installer pinned no certificate identity" >&2
+    exit 1
+    ;;
+esac
+case " $* " in
+  *" --certificate-oidc-issuer "*) ;;
+  *)
+    echo "stub cosign: the installer pinned no OIDC issuer" >&2
+    exit 1
+    ;;
+esac
+exit 0
+STUB
+chmod +x "${stub_ok}/cosign"
+
+run_installer signed UF_VERSION=signed PATH="${stub_ok}:${PATH}" \
+  UF_VERIFY_ORIGIN=require COSIGN_ARGS="${work}/cosign-args" \
+  >"${work}/signed.log" 2>&1 \
+  || fail "a signed release did not install under UF_VERIFY_ORIGIN=require:
+$(cat "${work}/signed.log")"
+grep -q "signed by ${UF_REPO:-ubugeeei-prod/uf}" "${work}/signed.log" \
+  || fail "the signature was not reported as the origin:
+$(cat "${work}/signed.log")"
+[ -x "${work}/signed/bin/uf" ] || fail "signed: uf was not linked"
+#     And the identity it pinned is anchored at both ends: the repository, and
+#     the workflow file inside it. An identity that matched any workflow in the
+#     repository, or any repository, would verify a signature uf did not make.
+grep -q 'yml@$' "${work}/cosign-args" \
+  || fail "the certificate identity was not anchored past the workflow file:
+$(cat "${work}/cosign-args")"
+grep -qF 'workflows/release' "${work}/cosign-args" \
+  || fail "the certificate identity did not name the release workflow:
+$(cat "${work}/cosign-args")"
+grep -qF "${UF_REPO:-ubugeeei-prod/uf}" "${work}/cosign-args" \
+  || fail "the certificate identity did not name the repository:
+$(cat "${work}/cosign-args")"
+pass "a signature that verifies establishes origin, and the identity is pinned"
+
+# 13. The attack the signature is for: a release host that serves an archive, a
+#     matching checksum, and a signature that is not uf's. Every local check
+#     agrees with itself. Only the identity disagrees, and that is enough.
+stub_bad="${work}/stub-bad"
+mkdir -p "$stub_bad"
+cat > "${stub_bad}/cosign" <<'STUB'
+#!/bin/sh
+echo "Error: no matching signatures" >&2
+exit 1
+STUB
+chmod +x "${stub_bad}/cosign"
+
+if run_installer wrongly_signed UF_VERSION=signed PATH="${stub_bad}:${PATH}" \
+  >"${work}/wrongly-signed.log" 2>&1; then
+  fail "an archive signed by somebody else was installed"
+fi
+grep -q "would not verify the signature" "${work}/wrongly-signed.log" \
+  || fail "the refusal did not say the signature was the reason:
+$(cat "${work}/wrongly-signed.log")"
+[ -e "${work}/wrongly_signed/bin/uf" ] && fail "wrongly_signed: uf was linked anyway"
+#     And it refuses under the default, not only under `require`: a signature
+#     that is present and wrong is never a warning.
+pass "an archive signed by somebody else is refused under the default setting"
+
 echo "test-install: all cases passed"

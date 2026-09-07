@@ -14,8 +14,10 @@ uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
 uf_react_compiler = { path = "../uf_react_compiler" }
 uf_router = { path = "../uf_router" }
+uf_transform = { path = "../uf_transform" }
 phf.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
