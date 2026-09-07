@@ -224,6 +224,13 @@ pub fn invocation(
         }
     };
 
+    // The project's own, last, so they win over uf's defaults — a project that
+    // wants a line width other than `fmt.lineWidth`, or a parser option uf has
+    // never heard of, says so here rather than in a second configuration file.
+    // Nothing in this list can turn a check into a write; `uf_config` refuses
+    // those where the config is read, which is before anything runs.
+    arguments.extend(config.non_flow.arguments.iter().cloned());
+
     Some(Invocation {
         program: program.into(),
         arguments,
