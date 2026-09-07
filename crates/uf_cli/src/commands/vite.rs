@@ -29,7 +29,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
 use uf_config::env_files::ProjectEnv;
 use uf_config::{CapabilityJsHost, UniflowedConfig};
-use uf_term::{CodeFrame, DiagnosticLevel, Status};
+use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Status, Tone};
 
 use crate::commands::builder::Builder;
 use crate::ui::Ui;
@@ -194,6 +194,24 @@ pub(crate) enum Event {
         prerendered: u64,
         per_request: Vec<String>,
     },
+    /// A `.env` file `uf dev` read, or would read, was added, changed or
+    /// removed.
+    ///
+    /// uf reads the `.env` cascade in Rust before the driver starts, and
+    /// `envDir: false` turns Vite's own file loading off so that `uf dev`,
+    /// `uf build`, `uf test` and `uf run` cannot get two answers. The cost was
+    /// that nothing watched them; this event is the driver saying "the values
+    /// you gave me are stale", and the answer is a restart with the files read
+    /// again. See ubugeeei-prod/uf#428.
+    EnvChanged { file: String },
+    /// Something the browser reported through `uf dev`'s diagnostic channel.
+    ///
+    /// A hydration mismatch, a web-vitals measurement — anything a page can
+    /// see and the Node process cannot. Every other uf diagnostic reaches the
+    /// terminal the developer already has open, and a browser-only one had to
+    /// be noticed in a window that may not be in front. See
+    /// ubugeeei-prod/uf#583 and `@uniflowed/vite`'s `internal/diagnostics.js`.
+    Diagnostic(BrowserDiagnostic),
     /// How the client route table came out of the server-component split.
     ///
     /// Emitted by `@uniflowed/vite` while it generates the *client* copy of the
@@ -225,6 +243,30 @@ pub(crate) struct DriverError {
     pub(crate) line: Option<usize>,
     pub(crate) column: Option<usize>,
     pub(crate) frame: Option<String>,
+}
+
+/// A diagnostic a browser produced, on its way to the terminal.
+///
+/// The shape is deliberately close to [`DriverError`]'s, because the rendering
+/// is the same rendering: a code frame when there is a position to draw one
+/// around, and a status line with its detail indented under it when there is
+/// not. A browser usually has the second kind — a hydration mismatch is a fact
+/// about a DOM node rather than about a line of a file — and the point of the
+/// channel is that it still reads like every other uf diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserDiagnostic {
+    /// How loudly it reads. `Info` is a report rather than a problem.
+    pub(crate) severity: LogLevel,
+    /// The headline: one line, the thing that happened.
+    pub(crate) message: String,
+    /// The page the browser was on, which is what makes it reproducible.
+    pub(crate) origin: Option<String>,
+    /// Everything under the headline, one line per line.
+    pub(crate) detail: Vec<String>,
+    /// A source position, for the rare report that has one.
+    pub(crate) file: Option<String>,
+    pub(crate) line: Option<usize>,
+    pub(crate) column: Option<usize>,
 }
 
 impl Event {
@@ -295,6 +337,22 @@ impl Event {
                 prerendered: number("prerendered").unwrap_or(0),
                 per_request: list("perRequest"),
             },
+            Some("env-changed") => Self::EnvChanged {
+                file: text("file").unwrap_or_default(),
+            },
+            Some("diagnostic") => Self::Diagnostic(BrowserDiagnostic {
+                severity: match text("severity").as_deref() {
+                    Some("error") => LogLevel::Error,
+                    Some("warn") => LogLevel::Warn,
+                    _ => LogLevel::Info,
+                },
+                message: text("message").unwrap_or_else(|| String::from("the browser reported")),
+                origin: text("origin"),
+                detail: list("detail"),
+                file: text("file"),
+                line: number("line").and_then(|n| usize::try_from(n).ok()),
+                column: number("column").and_then(|n| usize::try_from(n).ok()),
+            }),
             Some("rsc-split") => Self::RscSplit {
                 pages: number("pages").unwrap_or(0),
                 routes: number("routes").unwrap_or(0),
@@ -318,10 +376,17 @@ impl Event {
 /// A running driver.
 pub(crate) struct Driver {
     child: Child,
-    /// Held open on purpose; see the module docs.
-    _stdin: ChildStdin,
+    /// Held open on purpose; see the module docs. `None` once [`Driver::stop`]
+    /// has closed it, which is how the driver is asked to exit.
+    _stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
 }
+
+/// How long a driver gets to exit after its stdin closes, before it is killed.
+const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How often to ask whether it has gone.
+const STOP_POLL: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// Everything a second Vite run of one build needs to find.
 ///
@@ -440,7 +505,7 @@ impl Driver {
             .ok_or_else(|| anyhow!("driver stdout was not piped"))?;
         Ok(Self {
             child,
-            _stdin: stdin,
+            _stdin: Some(stdin),
             stdout: BufReader::new(stdout),
         })
     }
@@ -462,6 +527,37 @@ impl Driver {
             }
             return Ok(Some(Event::parse(&line)));
         }
+    }
+
+    /// Ask the driver to go, and wait until it has.
+    ///
+    /// Closing stdin is the ask: the driver exits when its stdin closes, which
+    /// is the same mechanism that stops a dev server outliving the `uf` that
+    /// started it (see the module docs). Waiting is the point — a restart that
+    /// spawned the next driver before this one released its socket would find
+    /// the port taken, and Vite's answer to a taken port is to move to the next
+    /// free one, so the server would come back somewhere nobody was looking.
+    ///
+    /// A driver that does not go within [`STOP_GRACE`] is killed. It is not
+    /// expected and it is not worth hanging a terminal over: the process being
+    /// waited for is one that has already been told to leave.
+    pub(crate) fn stop(&mut self) {
+        // Dropped, which closes the pipe. `Option` only so that this can take
+        // it; nothing else reads the field.
+        self._stdin = None;
+        let deadline = std::time::Instant::now() + STOP_GRACE;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) | Err(_) => return,
+                Ok(None) => {}
+            }
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(STOP_POLL);
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 
     /// Wait for the driver to exit, failing when it did not exit cleanly.
@@ -532,6 +628,75 @@ pub(crate) fn render_error(ui: &mut Ui, root: &Utf8Path, error: &DriverError) ->
     anyhow!("{headline}")
 }
 
+/// Render a diagnostic the browser sent, the way uf renders its own.
+///
+/// The severity decides the mark and the colour, so a web-vitals report whose
+/// numbers are all good reads as information and a `poor` one reads as a
+/// failure — which is the whole point of putting them in the terminal rather
+/// than in a log somebody greps afterwards.
+///
+/// A code frame when the browser gave a file and a line, and a status line with
+/// the detail indented under it when it did not. The second is the ordinary
+/// case: a hydration mismatch names a DOM node and two values, and inventing a
+/// position for it would send the reader to a line that is not the answer. The
+/// page the report came from is printed either way, because a diagnostic
+/// nobody can reproduce is a diagnostic nobody can fix.
+///
+/// Nothing here reaches the network. What is rendered arrived from the page on
+/// the other end of this machine's own dev server and goes to this terminal.
+pub(crate) fn render_diagnostic(ui: &mut Ui, root: &Utf8Path, diagnostic: &BrowserDiagnostic) {
+    let status = match diagnostic.severity {
+        LogLevel::Info => Status::Info,
+        LogLevel::Warn => Status::Warn,
+        LogLevel::Error => Status::Error,
+    };
+    let level = match diagnostic.severity {
+        LogLevel::Info => DiagnosticLevel::Note,
+        LogLevel::Warn => DiagnosticLevel::Warning,
+        LogLevel::Error => DiagnosticLevel::Error,
+    };
+    let path = diagnostic.file.as_deref().map(|file| {
+        Utf8Path::new(file)
+            .strip_prefix(root)
+            .map_or(file, Utf8Path::as_str)
+            .to_owned()
+    });
+
+    ui.render_err(|renderer, out| {
+        match (path.as_deref(), diagnostic.line) {
+            (Some(path), Some(line)) => renderer.code_frame(
+                out,
+                &CodeFrame {
+                    level,
+                    rule: None,
+                    message: &diagnostic.message,
+                    path,
+                    line,
+                    column: diagnostic.column.map_or(1, |column| column + 1),
+                    span: 1,
+                    source_line: None,
+                    label: None,
+                },
+            ),
+            _ => renderer.status(out, status, &diagnostic.message),
+        }
+        if let Some(origin) = &diagnostic.origin {
+            // `page` rather than `at`, which is what every other uf diagnostic
+            // uses for a location: what follows is the URL the browser was on
+            // and not the place the problem is, and the hydration report's own
+            // detail already has an `at` naming the DOM node. Two `at` lines in
+            // one report pointing at two different things is worse than one
+            // word that is not the house word.
+            renderer.key_values(out, 2, &[KeyValue::toned("page", origin, Tone::Muted)]);
+        }
+        for line in &diagnostic.detail {
+            out.push_str("  ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    });
+}
+
 /// Render a log event as a status line. Info lines from a build are noise
 /// next to uf's own phases and are dropped.
 pub(crate) fn render_log(ui: &mut Ui, level: LogLevel, message: &str) {
@@ -598,6 +763,67 @@ mod tests {
                 pages: 2
             }
         );
+    }
+
+    /// The two events `uf dev` alone reads, and the shape each has to survive
+    /// the channel in.
+    ///
+    /// `diagnostic` is the one that arrives from a *browser*, through the dev
+    /// server, so every field of it is optional and none of it can be trusted
+    /// to be there — a report with no severity is information rather than a
+    /// parse failure, because dropping it would be losing the only trace of
+    /// something a page saw.
+    #[test]
+    fn the_dev_server_reads_a_restart_and_a_browser_report() {
+        assert_eq!(
+            Event::parse(r#"{"event":"env-changed","file":"/p/.env.local","change":"change"}"#),
+            Event::EnvChanged {
+                file: String::from("/p/.env.local"),
+            }
+        );
+
+        let event = Event::parse(
+            r#"{"event":"diagnostic","severity":"warn","message":"web vitals: LCP is poor",
+                "origin":"http://127.0.0.1:5173/","detail":["LCP 3200 ms — poor"]}"#,
+        );
+        assert_eq!(
+            event,
+            Event::Diagnostic(BrowserDiagnostic {
+                severity: LogLevel::Warn,
+                message: String::from("web vitals: LCP is poor"),
+                origin: Some(String::from("http://127.0.0.1:5173/")),
+                detail: vec![String::from("LCP 3200 ms — poor")],
+                file: None,
+                line: None,
+                column: None,
+            })
+        );
+
+        // A report with a position gets a code frame on the other side, so all
+        // three fields have to come through.
+        let positioned = Event::parse(
+            r#"{"event":"diagnostic","severity":"error","message":"boom",
+                "file":"/p/app/x.js","line":3,"column":4}"#,
+        );
+        assert!(matches!(
+            positioned,
+            Event::Diagnostic(BrowserDiagnostic {
+                severity: LogLevel::Error,
+                line: Some(3),
+                column: Some(4),
+                ..
+            })
+        ));
+
+        // And one with nothing on it is still a diagnostic: losing it would be
+        // losing the only trace of whatever the page saw.
+        assert!(matches!(
+            Event::parse(r#"{"event":"diagnostic"}"#),
+            Event::Diagnostic(BrowserDiagnostic {
+                severity: LogLevel::Info,
+                ..
+            })
+        ));
     }
 
     #[test]

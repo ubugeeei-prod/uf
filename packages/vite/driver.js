@@ -6,6 +6,7 @@
 // `uf start` spawn.
 //
 //   <host> driver.js dev     --root <dir> [--mode <m>] [--host <h>] [--port <n>] [--strict-port]
+//                            [--uf-env-file <file>]...
 //   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
 //                            [--prerender everything|possible|nothing]
 //                            [--static-build] [--because <sentence>]
@@ -20,6 +21,12 @@
 // files it selected have already been read, by `uf`, into this process's
 // environment — see `viteConfig` below and `crates/uf_config/src/env_files.rs`.
 // `start` has no Vite in it and therefore no mode.
+//
+// `--uf-env-file` names those files, one flag each, so `dev` can watch them and
+// say when one moved; nothing here reads their contents. The prefix is load
+// bearing: node claims `--env-file` for itself and honours it wherever it
+// appears on the command line, script arguments included, so a driver argument
+// by that name is an argument node eats and then exits 9 over.
 //
 // `uf` in Rust owns the terminal; this process owns Vite. They talk over
 // stdout, one JSON event per line (see `./internal/events.js`), and the driver
@@ -36,7 +43,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { emit, errorEvent, eventLogger, reportRenderError } from "./internal/events.js";
+import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { send, toRequest } from "./internal/http.js";
 import { withProjectConfig } from "./merge.js";
@@ -52,6 +59,16 @@ import {
 function argument(name) {
   const at = process.argv.indexOf(name);
   return at === -1 ? null : process.argv[at + 1];
+}
+
+/** Every value of a repeated argument, in the order they were given. */
+function argumentAll(name) {
+  const values = [];
+  for (let at = 0; at < process.argv.length; at += 1) {
+    if (process.argv[at] === name && process.argv[at + 1] != null)
+      values.push(process.argv[at + 1]);
+  }
+  return values;
 }
 
 function flag(name) {
@@ -184,26 +201,21 @@ async function viteConfig(config, mode) {
  * Vite in middleware mode serves nothing on its own: with no `index.html` at
  * the project root it answers every navigation with "Cannot GET /", which is
  * what `uf dev` used to do for every project it started. A uf project has no
- * `index.html` — the document comes from a layout — so the server has to render
- * it, which is what this middleware does:
+ * `index.html` — the document comes from a layout — so the server has to
+ * render it.
  *
- *   1. load the server entry through `ssrLoadModule`, so it is transformed the
- *      same way the browser's copy is and picks up edits without a restart;
- *   2. run the middleware guarding this path, which may answer instead;
- *   3. render the URL, pointing the client script at the dev entry rather than
- *      at a built asset;
- *   4. hand the HTML to `transformIndexHtml`, which is what injects the HMR
- *      client and lets any Vite plugin see the document.
+ * That rendering is **not** here. It is one middleware, in `./index.js`'s
+ * `configureServer`, and this function installs none of its own. It used to
+ * install a second one, and two middlewares rendering the same request is how
+ * `uf dev` came to answer a route handler with a page and a redirect without
+ * its `Location`: `configureServer`'s post hook runs inside `createServer`,
+ * and anything added here runs after it returns, so of the two the plugin's
+ * was always the one that decided. See ubugeeei-prod/uf#349 and #338, and the
+ * comment above that middleware for what it now has to do.
  *
- * Step 4 is why `uf dev` collects the stream instead of piping it: Vite's HTML
- * hook takes a whole document and any plugin may rewrite any part of it, so
- * there is no first byte to send until it has run. `uf start` and `uf preview`
- * have no such hook and stream — see `internal/serve.js` — and it is worth
- * being clear that this is a property of the development server rather than of
- * the renderer. Streaming through the transform is ubugeeei-prod/uf#374.
- *
- * Anything Vite already serves — a module, a public file — never reaches this,
- * because the middleware runs after Vite's own.
+ * What is left here is the half that is genuinely the driver's: the Vite
+ * config, the socket, the event channel back to `uf`, and the two watchers
+ * below.
  */
 async function dev() {
   const { createServer } = await import("vite");
@@ -213,100 +225,6 @@ async function dev() {
   // and always passes the answer. The fallback is for a driver started by hand.
   const inline = await viteConfig(config, argument("--mode") ?? "development");
   const server = await createServer({ ...inline, appType: "custom" });
-
-  // In dev the browser loads the client entry from Vite, not from a manifest;
-  // its stylesheets arrive through that module rather than as <link> tags.
-  const assets = { scripts: [`/@id/${VIRTUAL.client}`], styles: [], preloads: [] };
-
-  server.middlewares.use(async (request, response, next) => {
-    const url = request.originalUrl ?? request.url ?? "/";
-    // Declared out here so the catch below can still settle: a request that
-    // failed is a request that happened, and a middleware that logged its
-    // arrival is owed its callback either way.
-    let lifecycle = null;
-    try {
-      const entry = await server.ssrLoadModule(VIRTUAL.server);
-      const asRequest = await toRequest(request, server.config);
-
-      // The request begins here and ends when the document has been written,
-      // which is what `after()` promises and what `uf preview`, `uf start` and
-      // a compiled binary all do too — a middleware that logs a response's
-      // status has to mean the same thing in development as in production.
-      // `entry.beginRequest` rather than an import: the storage that holds the
-      // request belongs to the application's own copy of `@uniflowed/server`.
-      // See `internal/serve.js` and ubugeeei-prod/uf#389.
-      lifecycle = entry.beginRequest(asRequest);
-      const answered = await lifecycle.run(async () => {
-        // Middleware first, above everything: it guards a subtree, so it has to
-        // run for a page, for a route handler, and for a path under it that
-        // matches neither. Running it inside the dispatcher and again inside the
-        // renderer would have left `/dashboard/typo` unguarded and run it twice
-        // for a path that is both.
-        const guarded = await entry.runMiddleware(asRequest);
-        if (guarded != null) {
-          await send(response, guarded);
-          return true;
-        }
-
-        // A server action next, below the guard and above the handlers. It
-        // declines every request that carries no action id, so this costs a
-        // page request one header lookup; and it answers every request that
-        // carries one, refusals included, so an action can never fall through
-        // to a route handler that happens to sit at the URL it was posted to.
-        const acted = await entry.callAction(asRequest);
-        if (acted != null) {
-          await send(response, acted);
-          return true;
-        }
-
-        // Route handlers next, and for every method: a handler is the only
-        // thing that answers a POST, and it may also answer a GET for a path
-        // that has no page.
-        const handled = await entry.dispatch(asRequest);
-        if (handled != null) {
-          await send(response, handled);
-          return true;
-        }
-
-        // Only a navigation reaches the renderer. A page cannot answer a POST,
-        // and letting one try would turn a missing handler into a rendered page
-        // with a 200 rather than a 404.
-        if (request.method !== "GET" && request.method !== "HEAD") {
-          return false;
-        }
-
-        const result = await entry.render(url, assets, {
-          // A boundary that threw after the shell went out. `result.error` cannot
-          // carry it — the caller already has the result by then — so the
-          // terminal hears about it here or not at all.
-          onError: (error) => reportRenderError(server, url, error),
-        });
-        if (result.error != null) reportRenderError(server, url, result.error);
-        const html = await server.transformIndexHtml(url, await result.text());
-        response.statusCode = result.status ?? 200;
-        response.setHeader("content-type", "text/html; charset=utf-8");
-        response.end(html);
-        return true;
-      });
-
-      if (!answered) {
-        // The one path where uf is not the one writing the response: a
-        // non-navigation nothing claimed goes back to Vite's chain. The guard
-        // has still run and may have deferred work, so `close` — the socket
-        // saying the response is over, however it ended — is the only honest
-        // signal left that the bytes are out.
-        response.once("close", lifecycle.settle);
-        next();
-        return;
-      }
-      await lifecycle.settle();
-    } catch (error) {
-      if (lifecycle != null) await lifecycle.settle();
-      // Map the stack back onto the Flow source before it reaches the overlay.
-      if (error instanceof Error) server.ssrFixStacktrace(error);
-      next(error);
-    }
-  });
 
   await server.listen();
   const urls = server.resolvedUrls ?? { local: [], network: [] };
@@ -318,6 +236,7 @@ async function dev() {
     ),
   });
   watchSources(server);
+  watchEnvFiles(server);
 
   const shutdown = async () => {
     await server.close();
@@ -360,6 +279,45 @@ function watchSources(server) {
   for (const event of ["add", "change", "unlink"]) {
     server.watcher.on(event, (file) => {
       if (isSource(file)) changed();
+    });
+  }
+}
+
+/**
+ * Restart the server when one of the `.env` files uf read changes.
+ *
+ * uf reads the `.env` cascade itself, in Rust, before this process starts —
+ * one parser, one precedence, one answer for every command (see `viteConfig`
+ * above and `crates/uf_config/src/env_files.rs`) — and `envDir: false` turns
+ * Vite's own file loading off so there cannot be two answers. The cost of that
+ * was that nothing watched them: a value edited while `uf dev` ran changed
+ * nothing until somebody restarted the command by hand, and the guide had to
+ * document it as a limitation. See ubugeeei-prod/uf#428.
+ *
+ * `uf` passes the files it would consult with `--uf-env-file`, one per file, in
+ * cascade order, whether or not each exists today — a `.env.local` *created*
+ * while the server runs changes the answer exactly as much as an edit to one
+ * that was already there, and watching only what was read would have missed
+ * it. They are added to Vite's watcher explicitly because they are in no
+ * module graph, which is the same reason the RSC manifest is added in
+ * `index.js`.
+ *
+ * What is emitted is "these values are stale", and the Rust side restarts this
+ * process with the files re-read. A restart rather than a hot update is the
+ * honest granularity: a prefixed value reaches the browser by substitution
+ * into the bundle, so a new value has to be substituted again, and every
+ * module that read one has to be re-evaluated. Vite's watcher is still the
+ * only watcher — a second one over the same tree, in Rust, would be a second
+ * answer to "did this file change".
+ */
+function watchEnvFiles(server) {
+  const files = argumentAll("--uf-env-file").map((file) => path.resolve(root, file));
+  if (files.length === 0) return;
+  const watched = new Set(files);
+  server.watcher.add(files);
+  for (const event of ["add", "change", "unlink"]) {
+    server.watcher.on(event, (file) => {
+      if (watched.has(path.resolve(file))) emit("env-changed", { file, change: event });
     });
   }
 }

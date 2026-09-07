@@ -39,7 +39,7 @@ use anyhow::{Context, Result};
 use camino::Utf8Path;
 use uf_config::{ResolvedConfig, load_config};
 use uf_lint::{LintError, LintReport, SourceFile, lint_source};
-use uf_project::{ProjectFile, scan_source_files};
+use uf_project::{ProjectFile, scan_selected_source_files};
 
 use super::{FORMATTED_AWAY, Safety, apply, fix_for, plan};
 use crate::support::selects;
@@ -103,7 +103,11 @@ pub(crate) struct FixSummary {
 /// what `uf lint` would say if they ran it themselves.
 pub(crate) fn fix_project(cwd: &Utf8Path, paths: &[String], mode: FixMode) -> Result<FixSummary> {
     let resolved = load_config(cwd)?;
-    let scan = scan_source_files(&resolved.root, &resolved.config)?;
+    // The same discovery `uf lint` runs, told the same paths: a `.gitignore`d
+    // file that was named is reported by the report this run prints
+    // afterwards, so a fix pass that could not see it would print a diagnostic
+    // it had silently declined to fix.
+    let scan = scan_selected_source_files(&resolved.root, &resolved.config, paths)?;
     let mut files: Vec<ProjectFile> = scan
         .files
         .into_iter()
