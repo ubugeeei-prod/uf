@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/router",
-  "version": "0.0.0-alpha.11",
+  "version": "0.0.0-alpha.12",
   "description": "The file-system router for Flow React applications: matching, layouts, loaders, navigation, server rendering and hydration.",
   "type": "module",
   "license": "MIT",
@@ -31,6 +31,6 @@
     "react-dom": ">=19"
   },
   "dependencies": {
-    "@uniflowed/server": "0.0.0-alpha.11"
+    "@uniflowed/server": "0.0.0-alpha.12"
   }
 }

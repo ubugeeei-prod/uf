@@ -1,5 +1,35 @@
 # Changelog
 
+## uf@0.0.0-alpha.12
+
+_2026-09-07_
+
+The command line says what it does. `uf create app` took one optional argument
+that was a template when it named one and a directory when it did not, so
+`uf create app react` and `uf create app my-site` did two different things and
+neither spelling said which; it is `uf new <path>` and `uf init` now, with
+`--lib` for a library, and the old spelling still works and is no longer
+listed. `uf ls`, `uf audit` and `uf search` reach three more of the things a
+person does to a dependency tree — and where a manager has no such
+command, which is Yarn and bun for `search`, uf says so rather than running a
+manager the project did not choose. `uf clean` removes what a rebuild writes
+again, with the line drawn at the network: never `node_modules` unless asked,
+and never a lockfile at all.
+
+And a link to the documentation shows a card rather than a cropped logo.
+`og:title` and `og:description` fall back to the page's own title and
+description, so a page that has said what it is called has said what its card
+is called; `og:type` and the image's alt text are there too. `brand/og.png` is
+the mark and the name on the dark ground — 1200×630, rendered from
+`brand/og.html`, which is CSS somebody can read.
+
+### Added
+
+- **router, docs**: the share card a page already had the words for (#533)
+- **cli**: uf clean, and a boundary at the network (#532)
+- **cli**: uf init and uf new, and one fewer way to install in uf info (#489)
+- **pm**: `uf ls`, `uf audit`, `uf search` and `uf uninstall` (#525)
+
 ## uf@0.0.0-alpha.11
 
 _2026-09-07_
