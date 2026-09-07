@@ -31,8 +31,33 @@ component SiteLayout(children: React.Node) {
   return <div className="site">{children}</div>;
 }
 
-/** The document a single route with this metadata renders to. */
-async function documentFor(metadata: Metadata, layoutMetadata?: Metadata): Promise<string> {
+/**
+ * A root layout that renders the whole document, which is the other of the two
+ * shapes `internal/stream.js` chooses between.
+ */
+component OwnDocument(children: React.Node) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+
+/**
+ * The document a single route with this metadata renders to.
+ *
+ * `layout` is how a test asks for the other document shape: with none, the app
+ * renders only content and uf wraps it in the shell.
+ */
+async function documentFor(
+  metadata: Metadata,
+  layoutMetadata?: Metadata,
+  layout?: React.ComponentType<empty>,
+): Promise<string> {
+  const Layout = layout ?? SiteLayout;
   const { prerender } = createRenderer({
     App: routerView("./app"),
     routes: [
@@ -43,9 +68,9 @@ async function documentFor(metadata: Metadata, layoutMetadata?: Metadata): Promi
         file: "app/guide/_uf.page.js",
         page: () => Promise.resolve({ default: Page, metadata }),
         layouts:
-          layoutMetadata == null
+          layoutMetadata == null && layout == null
             ? []
-            : [() => Promise.resolve({ default: SiteLayout, metadata: layoutMetadata })],
+            : [() => Promise.resolve({ default: Layout, metadata: layoutMetadata })],
       },
     ],
     notFound: [],
@@ -276,6 +301,97 @@ describe("a Twitter card", () => {
     const html = await documentFor({ title: "no card here" });
 
     expect(html).not.toContain("twitter:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Where the tags land, which is a different question from what they say
+// ---------------------------------------------------------------------------
+//
+// Every assertion above is a `toContain` over the document, and a `toContain`
+// passes wherever in the document the tag is. `Head` relies on React hoisting a
+// `<title>`, a `<meta>` and a `<link>` into `<head>`, and React does that for a
+// document *it* rendered — an app whose root layout writes `<html>`. uf's own
+// shell is not one, so with it every tag landed inside `<div id="uf-root">`,
+// where a crawler ignores the canonical link and the share card has no title.
+// Nothing said so, and the difference between the two shapes is what makes it
+// worth a section of its own. See ubugeeei-prod/uf#547.
+
+/** Whether `tag` appears in the document's head rather than in its body. */
+function inHead(html: string, tag: string): boolean {
+  const at = html.indexOf(tag);
+  return at !== -1 && at < html.indexOf("</head>");
+}
+
+describe("the head of a document uf wrote the shell for", () => {
+  it("carries the canonical link, which is worth nothing in the body", async () => {
+    // Google ignores a `rel="canonical"` outside the head, so a project on the
+    // shell was quietly getting worse SEO than one that had written six lines
+    // of `<html>` — with nothing anywhere to say which it had.
+    const html = await documentFor({
+      metadataBase: "https://docs.uniflowed.dev",
+      canonical: "/guide",
+    });
+
+    expect(inHead(html, '<link rel="canonical"')).toBe(true);
+    expect(html).toContain('id="uf-root"');
+  });
+
+  it("carries the share card too, and the description", async () => {
+    const html = await documentFor({
+      title: "The manual",
+      description: "Everything uf does.",
+      openGraph: { images: ["https://docs.uniflowed.dev/og.png"] },
+      twitter: { card: "summary_large_image" },
+    });
+
+    expect(inHead(html, '<meta name="description"')).toBe(true);
+    expect(inHead(html, 'property="og:title"')).toBe(true);
+    expect(inHead(html, 'property="og:image"')).toBe(true);
+    expect(inHead(html, 'name="twitter:card"')).toBe(true);
+  });
+
+  it("carries exactly one title, from the metadata rather than from two places", async () => {
+    // The shell wrote a `<title>` of its own from `resolved.metadata.title`,
+    // which is the same string `Head` renders — so a document had two, and only
+    // the one in the head was where a browser looks.
+    const html = await documentFor({ title: "The manual" });
+
+    expect(inHead(html, "<title>The manual</title>")).toBe(true);
+    expect(html.split("<title>").length - 1).toBe(1);
+  });
+
+  it("leaves the page's own markup in the body", async () => {
+    // The hoist takes the run of head elements the markup opens with and
+    // nothing else. A page is still a page.
+    const html = await documentFor({ title: "The manual" });
+
+    const root = html.indexOf('<div id="uf-root">');
+    expect(root).toBeGreaterThan(html.indexOf("</head>"));
+    expect(html.indexOf("a page")).toBeGreaterThan(root);
+  });
+
+  it("puts them in the same place as a document the app renders itself", async () => {
+    // The check the issue asked for, and the shape of the claim: the two
+    // document shapes are supposed to be a choice about who writes `<html>`,
+    // not a choice about whether the metadata works. A silent difference
+    // between them is the part that was not acceptable.
+    const metadata = {
+      title: "The manual",
+      description: "Everything uf does.",
+      canonical: "https://docs.uniflowed.dev/guide",
+    };
+    const shell = await documentFor(metadata);
+    const owned = await documentFor(metadata, undefined, OwnDocument);
+
+    // The two really are the two shapes, so the comparison below means
+    // something: one is wrapped in uf's shell and the other is not.
+    expect(shell).toContain('id="uf-root"');
+    expect(owned).not.toContain('id="uf-root"');
+    for (const tag of ["<title>The manual</title>", 'name="description"', 'rel="canonical"']) {
+      expect(inHead(shell, tag)).toBe(true);
+      expect(inHead(owned, tag)).toBe(true);
+    }
   });
 });
 
