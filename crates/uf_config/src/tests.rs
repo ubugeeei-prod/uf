@@ -464,6 +464,91 @@ fn parses_flow_config() {
     assert!(config.app.builtins.native_test_runner);
 }
 
+/// The two cache switches uf implements are read and carried.
+///
+/// They reach `@uniflowed/vite`'s generated server entry and `uf preview`, and
+/// from there `createFetchHandler`'s `cache` option. Before ubugeeei-prod/uf#277
+/// they reached `dist/uf-build-manifest.json` and nothing else, which is
+/// indistinguishable from this assertion passing over a switch nobody reads —
+/// so the assertion that matters is in `tests/library/cache.test.js`, and this
+/// one only says the value survives the parse.
+#[test]
+fn reads_the_two_cache_switches_that_are_implemented() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        r#"
+            export default defineConfig({
+              app: { rendering: { cache: { route: true, fetch: true } } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let config = load_config_file(&path).unwrap();
+
+    assert!(config.app.rendering.cache.route);
+    assert!(config.app.rendering.cache.fetch);
+    assert!(!config.app.rendering.cache.data);
+    assert!(!config.app.rendering.cache.actions);
+}
+
+/// A cache uf does not have is refused where it is asked for.
+///
+/// Not ignored and not warned about. `rendering.cache.data: true` used to load
+/// cleanly, reach the build manifest and change nothing anywhere — the exact
+/// shape ubugeeei-prod/uf#277 objects to. A project that asks for a data cache
+/// has to be told there is not one, and the config file is the only place where
+/// telling them costs nothing.
+#[test]
+fn refuses_a_cache_switch_uf_does_not_implement() {
+    for key in ["data", "actions"] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+        fs::write(
+            &path,
+            format!(
+                "export default defineConfig({{ app: {{ rendering: {{ cache: {{ {key}: true }} }} }} }});"
+            ),
+        )
+        .unwrap();
+
+        let error = load_config_file(&path).expect_err("a cache uf does not have is refused");
+
+        assert!(
+            matches!(&error, ConfigError::UnimplementedCache { key: named, .. } if *named == key),
+            "{key}: {error:?}"
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("rendering.cache.{key}")),
+            "{message}"
+        );
+        assert!(message.contains("277"), "{message}");
+    }
+}
+
+/// `false` is the default and says the same thing with or without a cache.
+#[test]
+fn a_cache_switch_that_is_off_is_never_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        r#"
+            export default defineConfig({
+              app: { rendering: { cache: { data: false, actions: false } } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let config = load_config_file(&path).unwrap();
+
+    assert!(!config.app.rendering.cache.data);
+}
+
 #[test]
 fn discovers_config_from_child_directory() {
     let dir = tempfile::tempdir().unwrap();

@@ -86,8 +86,37 @@ function deployment() {
   deploymentModules ??= Promise.all([
     import("@uniflowed/server/fetch"),
     import("@uniflowed/server/node"),
-  ]).then(([application, host]) => ({ ...application, ...host }));
+    import("@uniflowed/server/cache"),
+  ]).then(([application, host, cache]) => ({ ...application, ...host, ...cache }));
   return deploymentModules;
+}
+
+/**
+ * The cache `rendering.cache` describes, or `undefined` for no cache at all.
+ *
+ * `undefined` rather than a store with both switches off, and the difference is
+ * visible from an application: a handler with no `cache` installs nothing on
+ * the request, so `revalidateTag()` raises "there is not one here" instead of
+ * reporting that it expired nothing. A project that turned the cache off should
+ * be told that it did, not handed a cache that quietly does nothing.
+ *
+ * One store per server process, built when the handler is, which is the whole
+ * of what "in memory, per process" means in practice: `uf preview` and
+ * `uf start` each hold one, and two of them running at once share nothing.
+ *
+ * The store's own options are not configurable from `uf.config.js` and are not
+ * named here: `rendering.cache` has four keys and no fifth, and a parameter
+ * threaded through for a setting nobody can set would be the shape of
+ * configurability with none of the substance.
+ *
+ * @param {{route?: boolean, fetch?: boolean} | undefined} declared
+ * @param {(options?: object) => object} createCacheStore
+ */
+function cacheFor(declared, createCacheStore) {
+  const route = declared?.route === true;
+  const fetchCache = declared?.fetch === true;
+  if (!route && !fetchCache) return undefined;
+  return { store: createCacheStore(), route, fetch: fetchCache };
 }
 
 /**
@@ -238,11 +267,19 @@ export async function withRequest(entry, request, body) {
  * forgets is not left to discover it: `entry.runMiddleware` refuses outside a
  * request and names what establishes one. See "Who owns the request" above.
  *
- * @param {{entry: object, assets: object}} build
+ * `cache` is `rendering.cache` from `uf.config.js`, straight through: this is
+ * the point where four switches that used to reach a JSON file and nothing else
+ * become a store a request can hit. See ubugeeei-prod/uf#277.
+ *
+ * @param {{entry: object, assets: object, cache?: object}} build
  */
-export function createApplicationHandler({ entry, assets }) {
-  const ready = deployment().then(({ createFetchHandler }) =>
-    createFetchHandler({ app: entry, document: assets }),
+export function createApplicationHandler({ entry, assets, cache }) {
+  const ready = deployment().then(({ createFetchHandler, createCacheStore }) =>
+    createFetchHandler({
+      app: entry,
+      document: assets,
+      cache: cacheFor(cache, createCacheStore),
+    }),
   );
   return async function handle(request) {
     return (await ready)(request);
@@ -272,11 +309,11 @@ export function createStaticHandler({ root }) {
  * project whose handler path collides with a file in `public/` behaves one way
  * when it is checked and the other way when it is deployed.
  *
- * @param {{entry: object, assets: object, distDir: string}} build
+ * @param {{entry: object, assets: object, distDir: string, cache?: object}} build
  */
-export function createServeHandler({ entry, assets, distDir }) {
+export function createServeHandler({ entry, assets, distDir, cache }) {
   const serveStatic = createStaticHandler({ root: distDir });
-  const application = createApplicationHandler({ entry, assets });
+  const application = createApplicationHandler({ entry, assets, cache });
   return async function handle(request) {
     return (await serveStatic(request)) ?? (await application(request));
   };
