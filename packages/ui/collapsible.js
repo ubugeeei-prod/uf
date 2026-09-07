@@ -23,16 +23,29 @@
 // `internal/disclosure.js` explains what is done instead, and why React needs a
 // hook to say it.
 //
-// # No height, yet
+// # The height, for a stylesheet that animates it
 //
-// A collapsible that animates open needs the height its content *would* have,
-// which a stylesheet cannot compute — the obvious `useElementSize` from
-// `@uniflowed/hooks/dom` measures the element while it is hidden and reports
-// zero, which is exactly the moment the number is wanted. Getting it right
-// means a measuring pass with the panel briefly laid out and not painted, and
-// that is a piece of work of its own rather than a line to be added here — #330.
-// This component ships without it rather than with a custom property that reads
-// `0px`.
+// `measure` puts the height the content *would* have on
+// `Collapsible.Content` as `--uf-collapsible-height`, correct while the panel
+// is still closed — which is the only moment it is any use, because
+// `height: 0 → var(--uf-collapsible-height)` is a transition that has to know
+// its destination before it starts. `internal/disclosure.js` holds the
+// measuring pass and says why the obvious ways of asking all answer zero, and
+// why the prop is opt-in rather than always on.
+//
+//   [data-collapsible-content] {
+//     overflow: hidden;
+//     transition: height 150ms;
+//     height: 0;
+//   }
+//   [data-collapsible-content]:not([hidden]) {
+//     height: var(--uf-collapsible-height);
+//   }
+//
+// The selector is the caller's — a class, a `data-*` of their own, whatever
+// they already style with. This package emits the number and no styles at all,
+// which is the same division `internal/anchor.js` keeps for a popover: a
+// stylesheet can say *how* to move, and only the component can say how far.
 
 "use client";
 
@@ -41,7 +54,7 @@ import { createContext, useContext, useId, useMemo, useRef, useState } from "@un
 
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
-import { usePresence, useUntilFound } from "./internal/disclosure.js";
+import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 type CollapsibleState = {|
@@ -51,6 +64,8 @@ type CollapsibleState = {|
   /** Whether a `Collapsible.Content` is rendered, so the trigger names one that exists. */
   readonly present: boolean,
   readonly registerContent: (present: boolean) => void,
+  /** Whether the content carries its measured height; see the module header. */
+  readonly measure: boolean,
 |};
 
 const CollapsibleContext: React.Context<CollapsibleState | null> = createContext(null);
@@ -76,14 +91,15 @@ export component CollapsibleRoot(
   defaultOpen?: boolean = false,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
+  measure?: boolean = false,
 ) {
   const contentId = `${useId()}-content`;
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
   const [present, setPresent] = useState(false);
 
   const state = useMemo(
-    () => ({ contentId, open: isOpen, setOpen, present, registerContent: setPresent }),
-    [contentId, isOpen, setOpen, present],
+    () => ({ contentId, open: isOpen, setOpen, present, registerContent: setPresent, measure }),
+    [contentId, isOpen, setOpen, present, measure],
   );
 
   return <CollapsibleContext.Provider value={state}>{children}</CollapsibleContext.Provider>;
@@ -131,6 +147,7 @@ export component CollapsibleContent(children: React.Node, ...rest: Rest) {
   const contentRef = useRef<HTMLElement | null>(null);
   usePresence(collapsible.registerContent);
   useUntilFound(contentRef, collapsible.open);
+  useMeasuredHeight(contentRef, collapsible.measure);
 
   return (
     <div
