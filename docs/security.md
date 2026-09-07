@@ -51,7 +51,7 @@ decisions are:
 | A deny list weakened by project configuration | `dev.fs.deny` entries are handed to Vite's `server.fs.deny` on top of its built-in list (`.env`, `.env.*`, `*.{crt,pem}`, `**/.git/**`); there is no configuration that removes a built-in entry | `packages/vite/driver.js` |
 | A dev server that outlives the command that started it | The driver's stdin is a pipe `uf` holds open and never writes to; when `uf` exits, for any reason, the pipe closes and the driver exits | `uf_cli::commands::vite` |
 | A different `uf` on PATH transforming the project's modules | The driver is told which binary started it (`UF_BINARY`) and every transform goes through that one — including the ones answered from `.uf/cache/transform`, whose entries are keyed by the size and modification time of the binary that wrote them, so a different or rebuilt `uf` misses rather than inherits, and a host that cannot identify its binary caches nothing at all | `uf_cli::commands::vite`, `packages/host/transform.js`, `packages/host/internal/node-hooks.js` |
-| A rebuilt `uf` reporting the type errors the previous one found | `.uf/cache/check` entries are keyed by the size and modification time of the binary that wrote them, alongside the limits the check ran under and a digest of every signature the file depends on; a rebuilt `uf`, a changed limit, or a moved declaration in a dependency all miss rather than inherit, and a process that cannot identify its own binary caches nothing at all. A record that is truncated, of the wrong shape, or about another file is a miss | `uf_check::cache`, `uf_check::tests::cache` |
+| A rebuilt `uf` reporting the type errors the previous one found | `.uf/cache/check` entries are keyed by the size and modification time of the binary that wrote them, alongside every limit that can change what a check reports and a digest of every signature the file depends on; a rebuilt `uf`, a changed limit, or a moved declaration in a dependency all miss rather than inherit, and a process that cannot identify its own binary caches nothing at all. One record carries an answer per batch the file has been checked in — at most four, so a project checked many ways stays bounded — and each is believed only under the exact dependency digest it was computed with, so a whole-project run and a path-scoped one share a record without ever sharing an answer. A record that is truncated, of the wrong shape, about another file, or over its bound on answers or diagnostics is a miss | `uf_check::cache`, `uf_check::tests::cache` |
 | A cache directory growing until the disk is full, and the sweep that stops it | The three answer caches — `.uf/cache/check`, `.uf/cache/transform` and `.uf/cache/task` — are each bounded at 128 MiB and swept to 96 MiB, coldest entry first. The sweep only ever unlinks — it never truncates or rewrites, so a concurrent reader sees a whole entry or none — it never removes a file used in the last minute, which is what keeps it away from a temporary another process is about to rename into place, and it does not follow symbolic links, so a link planted in a cache directory cannot make `uf` delete what it points at | `uf_infra::cache` |
 | Unbounded work from a hostile module | Every stage of the transform has a ceiling — source size, tree depth — and a typed error above it; the transform service runs on a thread with a fixed large stack so a pathological input fails with a message | `uf_transform` |
 | Inbound headers that steer dispatch — [CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927)'s class | Vite's middleware chain is the only dispatch, and `uf` adds one middleware: render a document for a `GET`/`HEAD` whose `Accept` includes `text/html` and whose path has no file extension. It reads nothing else from the request | `packages/vite/index.js` |
@@ -77,6 +77,8 @@ decisions are:
 | Directive parsing bugs — `"use client"` accepted when not the first statement, or built from a template literal | The directive is only recognized as a plain string literal in leading directive position; everything else is a typed diagnostic | `uf_rsc::directive` |
 | `"use server"` export that is not an async function | Rejected at build time; React's calling convention makes this a correctness *and* a safety issue | `uf_rsc::graph` |
 | SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | uf has no proxying upgrade, and the one it does have cannot become one: `upgradeWebSocket(request)` upgrades the *inbound* connection the host is already answering, takes no address, and reaches no upstream. The host's own upgrader is a value the deployment passes where the server is built, never a name resolved from a request. A proxying upgrade would need the allowlist in its first commit rather than after one | `tests/library/transports.test.js` |
+| Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
+| XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
 ### The argument boundary
 
@@ -134,9 +136,6 @@ to choose: a client that wants to skip the guard on `/dashboard` posts the same
 id to `/`. **A server action is the unit of authorization**, the way a route
 handler is, and a `"use server"` function that relies on a path guard having
 run is a function with a hole in it.
-| SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | Upgrade targets are resolved against an allowlist; no request-derived value selects an upstream host | todo |
-| Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
-| XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
 ## Signing in
 
@@ -206,6 +205,9 @@ answered where the record is built rather than at each call site.
 | Shell injection through the `packageManager` field | Parsed by a hand-written single-pass parser with no regex (ReDoS), and `Invocation.program` comes only from a fixed program table, so no manifest text can name a program or inject an argument | `uf_pm::detect` |
 | Prototype-pollution keys in manifest JSON | `__proto__`, `constructor`, and `prototype` are reported and dropped wherever manifest JSON becomes a map | `uf_pm::detect` |
 | Terminal escape sequences in a package name, injected into a progress display that steers the cursor | Every name taken out of a manager's output is stripped of control characters and length-capped before it can be drawn, and the redrawn region cuts each row to a fixed width, so no registry text can move the cursor | `uf_pm::progress` |
+| Dependency confusion: a private name answered by the public registry | A scope bound in `pm.scopes` resolves from that registry and nowhere else — no fallback, because the fallback is the attack. `uf install` refuses a lockfile whose bound-scope package was resolved elsewhere, or that does not record where it came from at all | `uf_pm::confusion` |
+| A tarball that is not the one anybody attested to | `uf install` reads the provenance attestation of every package that arrived or moved and refuses one whose subject digest is not the lockfile's; an attestation copied from another package, or rewritten under a real transparency-log entry, is refused with its own message | `uf_pm::provenance` |
+| A registry read that goes to the wrong host because uf had one registry setting | `pm.registry` is the one uf reads from and `publish.registry` is where `uf publish` pushes. The old spelling still resolves, and says once which key to move to | `uf_config::UniflowedConfig::read_registry` |
 
 ### Dependency install scripts
 
@@ -345,6 +347,11 @@ the allow-list in the first commit rather than after one.
   prerelease release: npm exchanges the workflow's id-token for `npm publish`
   and nothing else, and putting a token in this repository's secrets to widen
   that would give away the property. See `tools/release/promote-latest.sh`.
+- Every release archive is signed with keyless Sigstore from the release
+  workflow's own OIDC identity, so there is no signing key to store or lose,
+  and `install.sh` verifies the bundle against that identity before it unpacks
+  anything. `UF_VERIFY_ORIGIN=require` in the release smoke job means a release
+  whose signature does not verify never reaches a user.
 - `upstream/flow` is pinned to a specific commit and is subject to the same
   review as any other dependency bump.
 - `cargo-fuzz` builds on every pull request that touches the workspace, and
@@ -382,13 +389,64 @@ Where the code comes from, asked with the same directness.
 | A registry read leaks credentials | Packument reads are HTTPS only — `http://` refused, loopback included — a URL with an authority is refused outright, and curl is given `--proto =https --proto-redir =https` so a `301` cannot undo either | `crates/uf_pm/src/registry.rs` |
 | uf's own npm publish uses a long-lived token | It does not have one. Publishing is OIDC trusted publishing, bound to `publish.yml`; there is no npm token in the repository or its secrets | `.github/workflows/publish.yml` |
 | A compromised GitHub Action | Every action is pinned to a commit SHA and `zizmor` gates the workflows in CI | `.github/workflows/` |
-| **A compromised release host** | **Not answered yet.** `install.sh` verifies a SHA-256 that it downloads from the same host as the archive, so it proves transit and not origin. [#551](https://github.com/ubugeeei-prod/uf/issues/551) | — |
-| **A package published by a taken-over account** | **Not answered yet.** npm publishes provenance attestations and uf reads none of them; an integrity hash says the bytes are what uf resolved, not that they came from the source the package claims. [#552](https://github.com/ubugeeei-prod/uf/issues/552) | — |
-| **Dependency confusion** | **Not answered yet.** A scope cannot be bound to a registry, so a private name has nothing stopping a public answer. [#553](https://github.com/ubugeeei-prod/uf/issues/553) | — |
+| A compromised release host | The release workflow signs every archive with keyless Sigstore, and `install.sh` verifies the bundle against the certificate identity of `release.yml` in this repository and GitHub's OIDC issuer — a root that is not on the release host. A bundle that verifies proves **origin**; the SHA-256 beside the archive proves **transit** and never proved more. A signature that is present and does not verify refuses the install and prints cosign's own reason, because a signature by somebody else and a `cosign` too old to read the bundle exit alike and are not alike. Where `cosign` is not installed, `UF_CHECKSUM_BASE` gives a second opinion from a host that did not serve the archive; the release's own smoke job runs `UF_VERIFY_ORIGIN=require`, so a uf release cannot ship without an origin anybody can check | `infra/cloudflare/setup-assets/install.sh`, `tools/release/test-install.sh` |
+| A package published by a taken-over account | `uf install` reads the npm provenance attestation of every package it brought in or moved, and **refuses** one that is not about the tarball being installed. `uf pm approve-builds` shows the same in an `attested` column, at the moment a package is about to be allowed to run code. Absence is reported, never refused — most of npm publishes none. What this proves and does not prove is below, and the signature itself is still unverified: [#552](https://github.com/ubugeeei-prod/uf/issues/552) tracks the rest | `uf_pm::provenance` |
+| Dependency confusion | `pm.scopes` binds a scope to a registry, and a name in a bound scope is resolved from that registry **and nowhere else** — there is no fallback to the public one, because the fallback *is* the attack. `uf install` refuses a lockfile that resolves a bound scope from anywhere else, before the manager runs and again on what it wrote, naming the package, the bound registry and the one that answered | `uf_pm::confusion`, `uf_pm::registry` |
 
-The rows that say "not answered yet" are the point of both tables. A list where
-every row says "handled" is a list nobody checked, and the three above are open
-issues rather than sentences.
+A row that says "not answered yet" is the point of both tables: a list where
+every row says "handled" is a list nobody checked. The three that used to be
+here are closed by the section below, which is careful to say how far.
+
+### What a signature and an attestation actually prove
+
+Two of the answers above are partial, and a partial answer stated as a whole
+one is worse than the gap it papers over.
+
+**`install.sh`, the archive.** The SHA-256 beside the archive proves *transit*:
+the bytes on the machine are the bytes that host advertised, which catches a
+truncated download, a corrupting proxy or a cache serving half a file. It
+proves nothing about *origin*, and never did — the archive and the checksum
+come from the same host, so whoever can replace one can replace the other. The
+Sigstore signature is what proves origin, verified against a certificate
+identity and an OIDC issuer that the release host does not control. Where
+`cosign` is absent the second opinion is weaker and is described as such: two
+operators agreeing about the bytes, not who built them.
+
+One thing is deliberately not yet true: the installer's default is
+`UF_VERIFY_ORIGIN=auto`, which **reports** an install nothing vouched for rather
+than refusing it. Every release published before signing existed carries no
+bundle, and a default of `require` would make each of them uninstallable by the
+current script — so the strict default waits until every installable release is
+signed, and until then the release smoke job is what holds the line.
+
+**`uf install`, a package.** uf checks that an attestation *binds to the
+artefact in front of it*: the DSSE envelope is an in-toto statement and carries
+a signature at all; the subject is this package at this version, compared as a
+decoded purl rather than as a string; the subject's SHA-512 is the SHA-512 the
+lockfile pins; and where the bundle carries a Rekor entry, the payload hash
+that entry records is the SHA-256 of the statement actually served. Between
+them those refuse an attestation copied from another package, one whose digest
+was edited to match a swapped tarball, and a statement rewritten underneath a
+genuine transparency-log entry.
+
+**uf does not verify the Sigstore signature on an attestation.** That needs an
+ECDSA verification against a Fulcio certificate, its chain, and its OIDC
+identity extensions — a cryptographic stack uf does not link, and will not grow
+inside a package-manager module by accident. Until it does, a registry that is
+*itself* hostile can serve a self-consistent attestation naming any repository
+it likes and the checks above will pass. What is closed today is the attacker
+who can replace an artefact but not rewrite the whole attestation around it,
+and the reporting that makes an absent attestation visible at all — which is
+the signal a taken-over publishing account produces: a package that had
+provenance and stops having it. [#552](https://github.com/ubugeeei-prod/uf/issues/552)
+stays open for the signature.
+
+**The confusion check reads the lockfile, not the wire.** It proves every
+package in a bound scope was resolved from the registry the project said that
+scope lives on. It does not prove the bound registry is honest, and it says
+nothing about a scope nobody bound. A lockfile format uf does not parse as a
+tree — pnpm's YAML, yarn's own syntax, bun's binary format — yields no
+findings, which is an absence of evidence rather than evidence of absence.
 
 ## Reporting
 
