@@ -282,6 +282,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump, force } => commands::release::release(&cwd, ui, bump, force),
         Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
+        Commands::Routes { command } => commands::routes::routes(&cwd, ui, command),
         Commands::Run {
             mode,
             concurrency,

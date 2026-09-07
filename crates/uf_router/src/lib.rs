@@ -1,4 +1,5 @@
 pub mod reserved;
+pub mod scaffold;
 
 use std::fs;
 
