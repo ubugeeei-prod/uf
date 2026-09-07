@@ -75,6 +75,7 @@ decisions are:
 | Server-code leak: a `"use client"` module importing server-only code | The RSC graph rejects the edge at build time as an error, not a warning | `uf_rsc::graph` |
 | Directive parsing bugs — `"use client"` accepted when not the first statement, or built from a template literal | The directive is only recognized as a plain string literal in leading directive position; everything else is a typed diagnostic | `uf_rsc::directive` |
 | `"use server"` export that is not an async function | Rejected at build time; React's calling convention makes this a correctness *and* a safety issue | `uf_rsc::graph` |
+| SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | uf has no proxying upgrade, and the one it does have cannot become one: `upgradeWebSocket(request)` upgrades the *inbound* connection the host is already answering, takes no address, and reaches no upstream. The host's own upgrader is a value the deployment passes where the server is built, never a name resolved from a request. A proxying upgrade would need the allowlist in its first commit rather than after one | `tests/library/transports.test.js` |
 
 ### The argument boundary
 

@@ -176,6 +176,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "useElementSize",
                 "useElementState",
                 "useEventListener",
+                "useEventSource",
                 "useFocusWithin",
                 "useGeolocation",
                 "useHover",
