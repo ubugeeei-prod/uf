@@ -53,6 +53,7 @@ import {
 
 import type { BorderStyle } from "./capability.js";
 import type { KeyEvent } from "./keys.js";
+import type { MouseEvent } from "./mouse.js";
 import type {
   AlignItems,
   AlignSelf,
@@ -124,10 +125,60 @@ export type TextStyleProps = {
   readonly strikethrough?: boolean,
 };
 
+/**
+ * The mouse handlers a node can carry, under OpenTUI's names.
+ *
+ * Every one of them receives events that started on this box *or on anything
+ * inside it*, because a mouse event bubbles: a panel can handle a click
+ * anywhere in it without every child forwarding one. `event.target` says which
+ * box the pointer is over and `event.currentTarget` says which box is handling
+ * it, exactly as they do in a browser, and `event.stopPropagation()` is how a
+ * child keeps one to itself.
+ *
+ * A captured drag is the one case where those two are not on the same path:
+ * the event goes to the box the press landed on — `event.source` — while
+ * `event.target` keeps naming what the pointer has since moved over, because
+ * that is what a drag handler needs in order to know what it would drop onto.
+ *
+ * Nothing arrives unless the application asked `render` for the mouse. A tree
+ * with handlers on it and `mouse: false` is not an error and is not silently
+ * broken either — it is an application that has not turned the device on, and
+ * `testRender` turns it on by default so that a test does not have to.
+ */
+export type MouseProps = {
+  /** Every mouse event, after the handler for its own type. */
+  readonly onMouse?: (event: MouseEvent) => void,
+  readonly onMouseDown?: (event: MouseEvent) => void,
+  readonly onMouseUp?: (event: MouseEvent) => void,
+  /** The pointer moved over this box with nothing held down. */
+  readonly onMouseMove?: (event: MouseEvent) => void,
+  /** The pointer moved with a button held, since it was pressed on this box. */
+  readonly onMouseDrag?: (event: MouseEvent) => void,
+  /** That drag ended, wherever the pointer had reached. */
+  readonly onMouseDragEnd?: (event: MouseEvent) => void,
+  /** A drag that began somewhere else ended here; `event.source` says where. */
+  readonly onMouseDrop?: (event: MouseEvent) => void,
+  /** The pointer entered this box, or a box inside it. */
+  readonly onMouseOver?: (event: MouseEvent) => void,
+  /** And left it. */
+  readonly onMouseOut?: (event: MouseEvent) => void,
+  /** The wheel turned; `event.scroll` says which way. */
+  readonly onMouseScroll?: (event: MouseEvent) => void,
+};
+
 /** Everything a `Box` accepts beyond its children. */
 export type BoxProps = {
+  ...MouseProps,
   ...BoxLayoutProps,
   ...TextStyleProps,
+  /**
+   * A name for this box, carried by the mouse events it is involved in.
+   *
+   * `event.target`, `event.currentTarget` and `event.source` are ids rather
+   * than nodes, so a box that a drop has to be able to name needs one. Nothing
+   * else reads it, and two boxes with the same id are not an error — the
+   * events simply cannot tell them apart.
+   */
   readonly id?: string,
   readonly style?: BoxLayoutProps,
   readonly backgroundColor?: ColorValue,
@@ -225,12 +276,29 @@ export type ScrollBoxProps = {
  * layout is what lets the caller ask for the bottom without knowing where the
  * bottom is.
  *
- * # What it does not do yet
+ * # The wheel is an event, not a behaviour
  *
- * No mouse wheel — there is no mouse input in this package at all
- * (ubugeeei-prod/uf#314) — and no horizontal scrolling: a terminal column is
- * not a pixel, and content wider than the window is nearly always content that
- * should have wrapped.
+ * A wheel over this box arrives as `onMouseScroll`, and moving the offset is
+ * still the caller's — the same rule as the keys, for the same reason. Three
+ * lines is the whole of it:
+ *
+ * ```js
+ * <ScrollBox
+ *   height={10}
+ *   scrollTop={top}
+ *   onMouseScroll={(event) => {
+ *     setTop((row) => Math.max(0, row + (event.scroll?.direction === "up" ? -3 : 3)));
+ *   }}
+ * />
+ * ```
+ *
+ * Three rows a notch is this example's choice, not this component's: how far a
+ * notch goes is a question about the content — a log, a form, a picture — and
+ * a component that answered it would be answering it for all three.
+ *
+ * There is still no horizontal scrolling: a terminal column is not a pixel,
+ * and content wider than the window is nearly always content that should have
+ * wrapped.
  */
 export component ScrollBox(
   children?: React.Node,

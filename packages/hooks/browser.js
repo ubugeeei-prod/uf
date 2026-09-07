@@ -77,11 +77,14 @@
 // nothing for a snapshot to return until it does, and `useScrollLock` writes.
 // Each says so where it is defined.
 //
-// `useHash` is a store whose event the browser only half provides —
-// `hashchange` and `popstate` cover what a reader does, and a `pushState` fires
-// neither — so it keeps a registry of its own subscribers and announces its own
-// writes, the way `useStorage` does. That is a store with a gap named in it,
-// not a fourth kind of hook.
+// `useHash` is a store with three subscriptions instead of one, because no
+// single event covers the fragment. `hashchange` and `popstate` cover what a
+// reader does; `history.pushState` fires neither, so a registry of its own
+// subscribers covers what the hook itself writes; and `currententrychange`,
+// where the Navigation API exists, covers the case neither of those reaches —
+// a `pushState` made by other code, the router's own included. That is a store
+// whose gap has shrunk to the browsers without the Navigation API, not a
+// fourth kind of hook.
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "@uniflowed/react";
 
@@ -146,6 +149,29 @@ export type BrowserHistory = {
   ...
 };
 
+/**
+ * The part of the Navigation API this module listens to.
+ *
+ * One event, and deliberately only one. `currententrychange` fires after the
+ * current history entry has changed *for any reason* — a link, the back
+ * button, and the two calls that fire nothing else, `history.pushState` and
+ * `history.replaceState`. It is the only thing the platform offers that hears
+ * a fragment written by code other than the writer, which is what makes
+ * `useHash` able to see `@uniflowed/router`'s own navigation.
+ *
+ * `navigate` and `navigateerror` are not here: intercepting a navigation is
+ * the router's business, and a hook that reads the fragment has no opinion
+ * about whether one should happen.
+ *
+ * Optional on [`BrowserWindow`], because this is an addition rather than the
+ * base — see `useHash` for which browsers have it and what the others get.
+ */
+export type BrowserNavigation = {
+  readonly addEventListener: (type: "currententrychange", listener: () => mixed) => void,
+  readonly removeEventListener: (type: "currententrychange", listener: () => mixed) => void,
+  ...
+};
+
 /** The Network Information object, which only Chromium has. */
 export type NetworkConnection = {
   readonly downlink?: number,
@@ -170,6 +196,7 @@ export type BrowserWindow = {
   readonly navigator: BrowserNavigator,
   readonly location?: ?BrowserLocation,
   readonly history?: ?BrowserHistory,
+  readonly navigation?: ?BrowserNavigation,
   readonly localStorage?: ?Storage,
   readonly sessionStorage?: ?Storage,
   readonly innerWidth: number,
@@ -346,25 +373,45 @@ export hook useDocumentVisible(serverValue: boolean = true): boolean {
  *
  * Module-level, because neither `history.pushState` nor `history.replaceState`
  * fires anything: a component that writes the fragment has to tell the others
- * itself, and there is nothing in the platform that will do it. The same
- * registry shape as `useStorage`'s, and balanced under Strict Mode for the same
- * reason — `subscribe` adds and the cleanup it returns removes.
+ * itself, and in a browser without the Navigation API there is nothing in the
+ * platform that will do it. The same registry shape as `useStorage`'s, and
+ * balanced under Strict Mode for the same reason — `subscribe` adds and the
+ * cleanup it returns removes.
+ *
+ * It is kept where `currententrychange` exists rather than being switched off
+ * there. The two overlap — a write through this hook is heard twice — and that
+ * costs nothing, because `useSyncExternalStore` compares the snapshot and the
+ * fragment is a string that has not changed between the two notifications.
+ * Switching it off, on the other hand, would make the hook's own writes depend
+ * on a feature detection, so a browser that reported a `navigation` object it
+ * did not fire events from would silently lose the guarantee that has held
+ * since this hook existed.
  */
 const fragmentListeners: Set<() => void> = new Set();
 
 /** Listen for every change to the fragment this tab can hear about. */
 function subscribeToFragment(notify: () => void): () => void {
   const win = browserWindow();
+  // Read once and closed over, so the cleanup removes the listener from the
+  // object it was added to. A `navigation` that appeared or vanished between
+  // the two would otherwise leave a listener behind on a hook that unmounted.
+  const navigation = win?.navigation;
   fragmentListeners.add(notify);
   // `hashchange` covers an anchor the reader clicked and an address bar they
   // edited; `popstate` covers back and forward, which fires only the second of
   // the two when the entry it lands on differs by more than the fragment.
   win?.addEventListener("hashchange", notify);
   win?.addEventListener("popstate", notify);
+  // And `currententrychange` covers the case the other two and the registry
+  // between them still miss: a `pushState` or `replaceState` made by code that
+  // is not this hook. `@uniflowed/router` makes exactly that call on every
+  // client navigation, which is why the gap was never hypothetical.
+  navigation?.addEventListener("currententrychange", notify);
   return () => {
     fragmentListeners.delete(notify);
     win?.removeEventListener("hashchange", notify);
     win?.removeEventListener("popstate", notify);
+    navigation?.removeEventListener("currententrychange", notify);
   };
 }
 
@@ -452,12 +499,36 @@ function notifyFragment(): void {
  * is what a tab strip wants: eleven tab clicks should not be eleven presses of
  * the back button.
  *
- * What this cannot see is a fragment some other code changed with
- * `history.pushState`, because that fires no event of any kind — not
- * `hashchange`, not `popstate`. Writes made through this hook announce
- * themselves to every other component using it; a `pushState` made anywhere
- * else is invisible to every listener the platform offers, and naming that is
- * more use than pretending otherwise.
+ * # What it hears, and where
+ *
+ * `history.pushState` and `history.replaceState` fire no event of any kind —
+ * not `hashchange`, not `popstate` — so what a hook can see depends on where
+ * the write came from and on what the browser has:
+ *
+ * | The write | Everywhere | Without the Navigation API |
+ * | --- | --- | --- |
+ * | the reader: an anchor, the address bar, back and forward | seen | seen |
+ * | this hook's own setter | seen | seen |
+ * | `pushState` from other code — `@uniflowed/router`'s navigation | seen | **not seen** |
+ *
+ * The first two are `hashchange`, `popstate` and the module's own registry.
+ * The third is `currententrychange`, which fires after the current history
+ * entry changes for any reason at all, and which is the only thing the
+ * platform offers that hears a write the writer did not announce.
+ *
+ * "Without the Navigation API" is now a narrow set: Chrome and Edge have had
+ * it since 102 (2022), Safari since 26.2 and Firefox since 147 — but a reader
+ * on an older Safari or Firefox is a reader this column describes, and there
+ * the registry is still the whole answer. A router navigation that changes
+ * only the fragment leaves such a page showing the section it was on.
+ *
+ * The fragment is deliberately not on `RouteInfo` — `useRoute()` cannot answer
+ * this question and should not learn to. A `RouteInfo` is what a *request*
+ * resolved to, and the browser strips the fragment before the request goes
+ * out, so a field for it would be one the server could never fill and the two
+ * renders would disagree about. This hook is the one answer, and
+ * `currententrychange` is what makes it a complete one on the browsers that
+ * have it rather than a second reading of a value the router also holds.
  */
 export hook useHash(): [
   string,
