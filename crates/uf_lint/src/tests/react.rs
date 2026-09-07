@@ -214,3 +214,31 @@ fn a_default_export_outside_a_template_is_still_this_modules() {
 
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
 }
+
+/// ubugeeei-prod/uf#477: a hook called in an object literal is not a
+/// conditional call.
+///
+/// The reproduction from the issue, reported through `uf lint` rather than
+/// through the validator, because that is where a reader met it: ten store
+/// selections gathered into one object gave ten errors, in a rule a project
+/// cannot switch off on its own.
+#[test]
+fn hooks_rules_accepts_a_hook_called_in_an_object_literal() {
+    let diagnostics = lint_js(
+        "react/hooks-rules",
+        "// @flow\nimport { useState } from \"react\";\n\nexport hook useThing(): { a: number, b: number } {\n  const bag = {\n    a: useState(0)[0],\n    b: useState(1)[0],\n  };\n\n  return bag;\n}\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+/// And the same literal inside a condition is still a conditional call.
+#[test]
+fn hooks_rules_still_rejects_an_object_literal_built_conditionally() {
+    let diagnostics = lint_js(
+        "react/hooks-rules",
+        "// @flow\nimport { useState } from \"react\";\n\nexport hook useThing(flag: boolean): { a: number } | null {\n  if (flag) {\n    return { a: useState(0)[0] };\n  }\n  return null;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
