@@ -169,7 +169,7 @@ export class AssetService {
    * Resize and re-encode one image.
    *
    * Resolves to the manifest the component reads: `{ width, height, format,
-   * variants, blur, declined, note }`. Every field is named here rather than
+   * variants, blur, declined, note, cached }`. Every field is named here rather than
    * passed through, which is deliberate and is the bug `transform.js` records
    * next door: a shim that copies three of four fields drops the fourth
    * silently, and the caller sees `undefined` rather than an error.
@@ -197,6 +197,12 @@ export class AssetService {
       height: image.height ?? null,
       format: image.format,
       variants: image.variants ?? [],
+      // Whether `uf assets` answered from its cache rather than doing the
+      // work. Named for the same reason every other field is: a caller
+      // measuring a warm build has to be able to tell one from a cold one,
+      // and a field that is dropped here reads as `undefined` rather than as
+      // an error.
+      cached: reply.cached === true,
       blur: image.blur ?? null,
       declined: image.declined ?? [],
       note: image.note ?? null,
@@ -257,6 +263,7 @@ export class AssetService {
       sourceBytes: font.sourceBytes,
       subset: font.subset ?? null,
       subsetDeclined: font.subsetDeclined ?? null,
+      cached: reply.cached === true,
       css: font.css,
     };
   }
@@ -289,27 +296,41 @@ export class AssetService {
       width: icon.width,
       height: icon.height,
       symbol: icon.symbol,
+      cached: reply.cached === true,
     };
   }
 
   /**
-   * Assemble the sprite from every icon this service has been asked about.
+   * Assemble one sprite out of the icons the caller says the build reached.
+   *
+   * The set is an argument rather than something this service accumulated,
+   * and the reason is a lifetime: a build closes this process in `buildEnd`,
+   * which runs before `generateBundle`, so a service that remembered would be
+   * asked for the sprite by a fresh process that had seen nothing. The caller
+   * outlives the service and is therefore what remembers.
    *
    * Ask for it once, after the graph is built. Asking earlier gets a correct
    * sprite of the icons reached *so far*, which is not the same sprite.
    *
    * @param {object} options
    * @param {string} options.outDir where the sprite is written
+   * @param {ReadonlyArray<object>} options.icons every icon `icon()` returned
    */
   async sprite(options) {
     const reply = await this.#send({
       kind: "sprite",
       id: "uf:icon-sprite",
       outDir: options.outDir,
+      icons: options.icons ?? [],
     });
     const sprite = reply.sprite;
     if (sprite == null) throw new AssetError("uf:icon-sprite", "uf assets returned no sprite");
-    return { file: sprite.file, markup: sprite.markup, bytes: sprite.bytes, symbols: sprite.symbols };
+    return {
+      file: sprite.file,
+      markup: sprite.markup,
+      bytes: sprite.bytes,
+      symbols: sprite.symbols,
+    };
   }
 
   /**
@@ -334,6 +355,7 @@ export class AssetService {
       height: og.height,
       bytes: og.bytes,
       alt: og.alt,
+      cached: reply.cached === true,
     };
   }
 

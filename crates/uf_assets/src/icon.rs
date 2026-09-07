@@ -311,17 +311,30 @@ fn refuse_dangerous(path: &Utf8Path, raw: &str) -> Result<(), IconError> {
     }
     // An event-handler attribute: ` on…=`. The leading space is what keeps
     // this off attributes that merely end in something like `version="on"`.
+    //
+    // Bytes throughout, never a string slice: an icon may carry any UTF-8 —
+    // a `<title>` with an accent in it is an ordinary thing for a labelled
+    // icon set to ship — and slicing a `str` at an offset that is not a code
+    // point boundary panics rather than failing the import.
     let bytes = lower.as_bytes();
     for (index, window) in bytes.windows(3).enumerate() {
-        let rest = &lower[index + 3..];
-        if window == b" on"
-            && let Some(equals) = rest.find(['=', '>', ' '])
-            && equals > 0
-            && rest.as_bytes()[equals] == b'='
-            && rest[..equals].chars().all(|c| c.is_ascii_alphabetic())
+        if window != b" on" {
+            continue;
+        }
+        let after = index + 3;
+        let Some(length) = bytes[after..]
+            .iter()
+            .position(|byte| matches!(byte, b'=' | b'>' | b' '))
+        else {
+            continue;
+        };
+        let name = &bytes[after..after + length];
+        if !name.is_empty()
+            && bytes[after + length] == b'='
+            && name.iter().all(u8::is_ascii_alphabetic)
         {
             return Err(refuse(
-                &format!("the attribute on{}", &rest[..equals]),
+                &format!("the attribute on{}", String::from_utf8_lossy(name)),
                 "an on… attribute is a script in an attribute",
             ));
         }

@@ -73,7 +73,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { AssetService, ICON_PREFIX, ICON_SPRITE, assetKind } from "@uniflowed/host/assets";
+import {
+  AssetService,
+  ICON_PREFIX,
+  ICON_SPRITE,
+  OG_EXTENSION,
+  assetKind,
+} from "@uniflowed/host/assets";
 
 /** Where transformed assets are kept, relative to the project root. */
 export const CACHE_DIR = ".uf/cache/assets";
@@ -95,6 +101,27 @@ export const DEV_PREFIX = "@uf-asset/";
  * time and the sprite is not knowable then; see the `sprite` branch of `load`.
  */
 const SPRITE_PLACEHOLDER = "__UF_ICON_SPRITE__";
+
+/**
+ * What a `*.og.json` import resolves to.
+ *
+ * A card cannot keep its own id, and the reason is worth writing down because
+ * nothing about `enforce: "pre"` prevents it. Vite's JSON handling is a
+ * *native* rolldown plugin, `builtin:vite-json`, and it selects modules by
+ * **id**: anything still ending in `.json` when its `transform` runs is put
+ * through a JSON parser, whatever an earlier `load` returned. Ordering the
+ * hooks does not help, because the module this plugin loads is JavaScript
+ * under a name that says JSON — and the parser's answer is
+ * `expected value at line 1 column 1`.
+ *
+ * So the id changes rather than the order. The card resolves to
+ * `\0uf-og:<absolute path>.js`: `\0` is the convention for a module that is
+ * not a file, and the trailing extension is what takes it out of every
+ * `.json` filter in the pipeline.
+ */
+const OG_PREFIX = "\0uf-og:";
+/** Appended to that id so it does not end in `.json`. See [`OG_PREFIX`]. */
+const OG_SUFFIX = ".js";
 
 /**
  * The module source for one transformed asset.
@@ -206,6 +233,16 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
   const transformed = new Map();
   /** Whether anything imported the sprite at all. */
   let spriteRequested = false;
+  /**
+   * Every icon this build has reached, by symbol id.
+   *
+   * Here and not in the `uf assets` process, because this closure outlives it:
+   * a build closes the service in `buildEnd`, which runs *before*
+   * `generateBundle`, and a build with a client environment and a server one
+   * has two bundles and one set of icons between them. The plugin is what
+   * spans a build, so the plugin is what remembers.
+   */
+  const reachedIcons = new Map();
 
   const cacheDir = () => path.resolve(root, CACHE_DIR);
   /**
@@ -281,13 +318,41 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
     // themselves. Returning the id unchanged rather than a `\0`-prefixed one
     // keeps it readable in a stack trace and in `vite --debug`, and nothing
     // else in the pipeline claims the `uf:` scheme.
-    resolveId(id) {
-      if (!iconsOn) return null;
-      if (id === ICON_SPRITE || id.startsWith(ICON_PREFIX)) return id;
-      return null;
+    //
+    // A card is the opposite case: it has to *lose* its name, because the name
+    // is what the native JSON plugin claims it by. See `OG_PREFIX`.
+    async resolveId(id, importer, options) {
+      if (iconsOn && (id === ICON_SPRITE || id.startsWith(ICON_PREFIX))) return id;
+      if (!ogOn || !id.toLowerCase().endsWith(OG_EXTENSION)) return null;
+      // Compared against the id as written, so a query is never claimed:
+      // `./card.og.json?raw` and `?url` still reach the file, because a query
+      // is Vite's.
+      const resolved = await this.resolve(id, importer, { ...options, skipSelf: true });
+      if (resolved == null || resolved.external || !existsSync(resolved.id)) return resolved;
+      return `${OG_PREFIX}${resolved.id}${OG_SUFFIX}`;
     },
 
     async load(id) {
+      if (id.startsWith(OG_PREFIX)) {
+        const file = id.slice(OG_PREFIX.length, -OG_SUFFIX.length);
+        // Watched by hand, because the module id is no longer the file's path
+        // and nothing else would associate the two. Without this a dev server
+        // never redraws a card whose template was edited.
+        this.addWatchFile(file);
+        return loadAsset.call(this, {
+          kind: "og",
+          file,
+          transformed,
+          service: ensureService(),
+          cacheDir: cacheDir(),
+          baseUrl: baseUrl(),
+          assetsDir,
+          isBuild,
+          images,
+          fonts,
+        });
+      }
+
       const kind = claims(id);
       if (kind == null) return null;
 
@@ -304,7 +369,10 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
         // icon and is exactly right afterwards, which is the trade a dev
         // server makes everywhere else too.
         if (isBuild) return assetModuleSource({ markup: SPRITE_PLACEHOLDER });
-        const sprite = await ensureService().sprite({ outDir: cacheDir() });
+        const sprite = await ensureService().sprite({
+          outDir: cacheDir(),
+          icons: [...reachedIcons.values()],
+        });
         return assetModuleSource({ markup: sprite.markup });
       }
 
@@ -322,6 +390,7 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
           name: resolved.name,
         });
         this.addWatchFile(resolved.file);
+        reachedIcons.set(asset.id, asset);
         invalidateSprite();
         return assetModuleSource({
           id: asset.id,
@@ -357,17 +426,28 @@ export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, comm
     // every run depending on module order.
     async generateBundle(_options, bundle) {
       if (!iconsOn || !spriteRequested) return;
-      const sprite = await ensureService().sprite({ outDir: cacheDir() });
-      this.emitFile({ type: "asset", fileName: `${assetsDir}/${sprite.file}`, source: sprite.markup });
+      const sprite = await ensureService().sprite({
+        outDir: cacheDir(),
+        icons: [...reachedIcons.values()],
+      });
+      // Inlined into the chunk and *not* emitted as a file of its own. An
+      // external sprite would be the better answer if it worked — one file
+      // cached across every page — but `<use href="sprite.svg#id">` does not
+      // resolve across documents in any version of Safari and is blocked
+      // cross-origin in Chrome, so the file would be dead weight in `dist/`
+      // and in `uf_bundle`'s size report. `uf assets` still writes it into the
+      // cache directory, which is where the dev server reads it from.
+      //
       // The placeholder is replaced rather than the module re-run: by
       // `generateBundle` the chunk is already generated, and the sprite is one
-      // string in it.
+      // string literal in it.
+      //
+      // A function replacement, because a plain string one would interpret
+      // `$&` and `$'` — and an icon is somebody else's markup.
+      const escaped = JSON.stringify(sprite.markup).slice(1, -1);
       for (const chunk of Object.values(bundle)) {
         if (chunk.type === "chunk" && chunk.code.includes(SPRITE_PLACEHOLDER)) {
-          chunk.code = chunk.code.replace(
-            new RegExp(SPRITE_PLACEHOLDER, "g"),
-            JSON.stringify(sprite.markup).slice(1, -1),
-          );
+          chunk.code = chunk.code.replaceAll(SPRITE_PLACEHOLDER, () => escaped);
         }
       }
     },

@@ -941,8 +941,11 @@ pub(crate) fn pack_woff(sfnt: &[u8]) -> Result<Vec<u8>, String> {
     out.extend_from_slice(&(count as u16).to_be_bytes());
     out.extend_from_slice(&0u16.to_be_bytes());
     out.extend_from_slice(&(sfnt.len() as u32).to_be_bytes());
-    // Font revision, then the four offset/length pairs for the optional
-    // metadata and private blocks, none of which uf writes.
+    // The two version fields, then the five words describing the optional
+    // metadata and private blocks — offset, compressed length and original
+    // length for the metadata, offset and length for the private data — none
+    // of which uf writes. Forty-four bytes of header in total, which is what
+    // the first record's offset is measured from.
     out.extend_from_slice(&[0u8; 4]);
     out.extend_from_slice(&[0u8; 20]);
     for record in &records {

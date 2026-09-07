@@ -31,6 +31,26 @@
 //! manifest whose files are gone is treated as a miss and the work is redone.
 //! That check is a `stat` per file, which is what makes it safe to trust the
 //! rest of the entry without re-reading it.
+//!
+//! # Why this is not swept, when the other caches are
+//!
+//! [`uf_infra::cache`] puts a byte cap on `.uf/cache/transform`, `check` and
+//! `task`, and deliberately leaves `.uf/cache/assets` alone: its entries are
+//! build *outputs* read back later in the same run, and evicting one is a
+//! question about that pipeline's lifecycle rather than about bytes. A
+//! manifest is written into that same directory and inherits the exemption,
+//! which is the right answer for the reason that module gives rather than by
+//! accident.
+//!
+//! The growth those caches have and this one does not is a *generation*: their
+//! keys carry the identity of the `uf` binary, so rebuilding uf orphans every
+//! entry at once. Nothing here is keyed on the toolchain — an image is keyed
+//! by its own bytes and its own parameters — so an upgrade orphans nothing, and
+//! a manifest is a few hundred bytes beside the megabytes of images it
+//! describes. It cannot be the thing that fills a disk without the files it
+//! names filling it first.
+
+use std::fmt::Write as _;
 
 use camino::Utf8Path;
 use serde::{Serialize, de::DeserializeOwned};
@@ -55,8 +75,10 @@ const CACHE_VERSION: &str = "uf-assets/cache/v1";
 
 /// A value, and whether it came from the cache.
 ///
-/// The flag is not decoration: `uf explain build` reports it, and a benchmark
-/// that cannot tell a warm run from a cold one is measuring nothing.
+/// The flag is not decoration. It is on every reply of the `uf assets`
+/// protocol as `cached`, which is how the tests below assert that a second
+/// build does no work and how a benchmark tells a warm run from a cold one —
+/// and a benchmark that cannot is measuring nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cached<T> {
     /// The manifest.
@@ -82,7 +104,10 @@ pub fn cache_key(domain: &str, parts: &[&[u8]]) -> String {
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(32);
     for byte in &digest[..16] {
-        hex.push_str(&format!("{byte:02x}"));
+        // 128 bits of a SHA-256, which is the same truncation `crate::name`
+        // makes and for the same reason: a collision needs 2^64 distinct
+        // inputs, and the inputs here are the files of one project.
+        write!(hex, "{byte:02x}").expect("writing to a String cannot fail");
     }
     hex
 }

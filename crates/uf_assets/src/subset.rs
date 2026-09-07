@@ -251,10 +251,15 @@ pub fn plan(sfnt: &[u8], mode: &SubsetMode) -> Result<SubsetPlan, String> {
 
     let readable = ab_glyph::FontRef::try_from_slice(sfnt)
         .map_err(|error| format!("uf could not read the font's character map: {error}"))?;
-    let covered: Vec<u32> = readable
+    // `codepoint_ids` is documented as unordered, and everything below wants
+    // it sorted: the buckets are emitted as `unicode-range` runs, and a
+    // `text` subset looks characters up in it.
+    let mut covered: Vec<u32> = readable
         .codepoint_ids()
         .map(|(_, character)| character as u32)
         .collect();
+    covered.sort_unstable();
+    covered.dedup();
     if covered.is_empty() {
         return Err(String::from(
             "the font's cmap maps no characters, so there is nothing to split it along",
@@ -268,7 +273,7 @@ pub fn plan(sfnt: &[u8], mode: &SubsetMode) -> Result<SubsetPlan, String> {
             let mut wanted: Vec<u32> = text
                 .chars()
                 .map(|character| character as u32)
-                .filter(|code| covered.binary_search(code).is_ok() || covered.contains(code))
+                .filter(|code| covered.binary_search(code).is_ok())
                 .collect();
             wanted.sort_unstable();
             wanted.dedup();

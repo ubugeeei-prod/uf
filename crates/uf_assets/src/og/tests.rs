@@ -1,7 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 
 use super::{Background, OgError, OgRequest, OgTemplate, draw, unsupported_reason};
-use crate::testfont::font_with;
+use crate::testfont::{font_with, font_with_blanks};
 
 fn temp() -> (tempfile::TempDir, Utf8PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -195,21 +195,68 @@ fn every_script_uf_cannot_shape_is_named_by_the_predicate() {
         ('\u{0915}', "Brahmic"),                 // Devanagari ka
         ('\u{0E01}', "does not separate words"), // Thai ko kai
         ('\u{0301}', "combining mark"),          // combining acute
-        ('\u{1F600}', "colour glyph"),           // grinning face
-        ('\u{200D}', "colour glyph"),            // zero-width joiner
+        ('\u{200D}', "joins the characters"),    // zero-width joiner
+        ('\u{FE0F}', "joins the characters"),    // emoji variation selector
         ('\t', "control character"),
+        ('\n', "control character"),
     ] {
         let reason = unsupported_reason(character)
             .unwrap_or_else(|| panic!("{character:?} should be refused"));
         assert!(reason.contains(expected), "{character:?}: {reason}");
     }
-    // And the ones it must not refuse, or the feature draws nothing.
-    for character in ['A', 'z', '0', ' ', '—', 'Ω', 'Д', '中', 'é'] {
+    // And the ones it must not refuse, or the feature draws nothing. The
+    // symbols are here on purpose: whether a check mark or an arrow can be
+    // drawn is a question about the font, which the font is asked, and not
+    // about the block it happens to share with the emoji.
+    for character in ['A', 'z', '0', ' ', '—', 'Ω', 'Д', '中', 'é', '✓', '→', '★'] {
         assert!(
             unsupported_reason(character).is_none(),
             "{character:?} was refused"
         );
     }
+}
+
+#[test]
+fn a_glyph_the_font_has_no_outline_for_is_refused_rather_than_left_as_a_gap() {
+    // A colour or bitmap glyph — COLR, sbix, CBDT — has metrics an outline
+    // rasteriser will happily advance past and nothing to draw, so the card
+    // comes out with a hole the exact width of the character and looks
+    // deliberate. An empty glyph is what that looks like to `ab_glyph`.
+    let (_guard, dir) = temp();
+    let covered: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,-★"
+        .chars()
+        .collect();
+    std::fs::write(
+        dir.join("Test.ttf"),
+        font_with_blanks(&covered, &['\u{2605}']),
+    )
+    .unwrap();
+    let source = dir.join("card.og.json");
+    std::fs::write(
+        &source,
+        serde_json::to_vec(&serde_json::json!({ "title": "Rated \u{2605}", "font": "Test.ttf" }))
+            .unwrap(),
+    )
+    .unwrap();
+
+    let error = draw(&OgRequest {
+        source: &source,
+        out_dir: &dir.join("out"),
+    })
+    .unwrap_err();
+
+    assert!(error.to_string().contains("colour or bitmap"), "{error}");
+    // And the same font draws the characters it does have outlines for.
+    std::fs::write(
+        &source,
+        serde_json::to_vec(&serde_json::json!({ "title": "Rated", "font": "Test.ttf" })).unwrap(),
+    )
+    .unwrap();
+    draw(&OgRequest {
+        source: &source,
+        out_dir: &dir.join("out"),
+    })
+    .expect("the rest of the font is fine");
 }
 
 #[test]

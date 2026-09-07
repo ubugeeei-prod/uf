@@ -293,3 +293,51 @@ fn a_file_that_is_not_an_svg_is_a_message_naming_it() {
     .unwrap_err();
     assert!(error.to_string().contains("no <svg> element"), "{error}");
 }
+
+#[test]
+fn an_icon_with_a_multibyte_character_in_it_is_read_rather_than_panicked_over() {
+    // The scan for `on…=` walked every byte offset and sliced the string at
+    // `index + 3` before checking whether the window matched, so any icon
+    // carrying a non-ASCII character — a `<title>` in a language with an
+    // accent, which is exactly what a labelled icon set ships — sliced the
+    // string in the middle of a code point and panicked. A panic in the asset
+    // service takes the whole build's asset pass with it.
+    let (_guard, dir) = temp();
+    let path = write(
+        &dir,
+        "café.svg",
+        r#"<svg viewBox="0 0 8 8"><title>café — préféré</title><circle cx="4" cy="4" r="3"/></svg>"#,
+    );
+
+    let asset = icon(&IconRequest {
+        source: &path,
+        name: "cafe",
+    })
+    .unwrap();
+
+    assert_eq!(asset.view_box, "0 0 8 8");
+    assert!(asset.symbol.contains("café"), "{}", asset.symbol);
+}
+
+#[test]
+fn an_event_handler_is_still_refused_when_the_file_is_not_ascii() {
+    // The other half of the fix: making the scan boundary-safe must not make
+    // it blind. This file has both a multi-byte character and an `onload`.
+    let (_guard, dir) = temp();
+    let path = write(
+        &dir,
+        "trap.svg",
+        r#"<svg viewBox="0 0 8 8"><title>café</title><circle onload="steal()" r="3"/></svg>"#,
+    );
+
+    let error = icon(&IconRequest {
+        source: &path,
+        name: "trap",
+    })
+    .unwrap_err();
+
+    assert!(
+        matches!(&error, IconError::Refused { found, .. } if found.contains("onload")),
+        "{error}"
+    );
+}

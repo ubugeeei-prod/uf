@@ -24,6 +24,16 @@
 /// must be inside the basic multilingual plane: the format 4 `cmap` written
 /// below covers no more than that.
 pub fn font_with(characters: &[char]) -> Vec<u8> {
+    font_with_blanks(characters, &[])
+}
+
+/// As [`font_with`], but the characters in `blank` get an empty glyph.
+///
+/// Two equal `loca` offsets is how a font says "this character has metrics and
+/// no outline", which is exactly what a colour or bitmap glyph looks like to an
+/// outline rasteriser. [`crate::og`] refuses those rather than advancing past
+/// them and leaving a gap, and that refusal needs a font that has one.
+pub fn font_with_blanks(characters: &[char], blank: &[char]) -> Vec<u8> {
     let mut characters = characters.to_vec();
     characters.sort_unstable();
     characters.dedup();
@@ -32,11 +42,20 @@ pub fn font_with(characters: &[char]) -> Vec<u8> {
 
     let mut glyf = Vec::new();
     let mut loca = Vec::new();
-    // `.notdef` is an empty glyph: two equal offsets, which is how a font says
-    // a glyph has no outline.
+    // `loca` has one more entry than the font has glyphs, because an entry is
+    // the *start* of a glyph and the last glyph needs an end. Getting that
+    // wrong costs exactly the last glyph in the font, silently, which is a
+    // thing to write down rather than to rediscover.
+    //
+    // The first two are both zero: `.notdef` is an empty glyph, which is what
+    // two equal offsets mean, and it is glyph 0 while the `cmap` below assigns
+    // characters from glyph 1.
     loca.extend_from_slice(&0u32.to_be_bytes());
-    for _ in characters {
-        glyf.extend_from_slice(&square());
+    loca.extend_from_slice(&0u32.to_be_bytes());
+    for character in characters {
+        if !blank.contains(character) {
+            glyf.extend_from_slice(&square());
+        }
         loca.extend_from_slice(&(glyf.len() as u32).to_be_bytes());
     }
 

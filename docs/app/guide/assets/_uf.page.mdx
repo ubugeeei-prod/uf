@@ -139,17 +139,13 @@ is [`skera`](https://github.com/googlefonts/fontations), Google Fonts' Rust port
 of HarfBuzz's `hb-subset`, so the glyph closure, the `GSUB`/`GPOS` pruning and
 the `cmap` rebuild are the same ones the rest of the web's fonts go through.
 
-An import that knows exactly what it renders can say so instead:
-
-```js
-import display from "./Display.ttf?…";  // not this — see below
-```
-
-There is no import syntax for it yet. `uf assets` takes a `text` field per
-request and the Vite plugin does not expose one, because the characters a face
-is cut to are a property of one use of it and there is no way for an import to
-say them without a query — and a query is Vite's. Until there is, `text`
-subsetting is reachable from the protocol and not from a `.js` file.
+There is a second, **lossy** mode — cutting a face down to a named string —
+and it is reachable from the `uf assets` protocol and not yet from a `.js`
+file. The characters a face is cut to are a property of one *use* of it rather
+than of the project, so it wants to be said at the import, and an import can
+only carry a query — which is Vite's. Until that is resolved, `text`
+subsetting is something a tool driving `uf assets` can ask for and an
+application cannot.
 
 **Why the default is `none`.** Subsetting is lossy by construction: a glyph that
 was removed is a character the page can no longer draw. A build cannot see the
@@ -170,7 +166,9 @@ pushed your own stylesheet down the same connection.
 ```
 
 for a face that does not paint the first screen. `app.builtins.fonts.preload`
-sets the default for every import.
+sets the default for every import, and `preload={true}` overrides it the other
+way for a page that does need the face early. One link is the most `Font` ever
+emits.
 
 ## An icon
 
@@ -196,7 +194,13 @@ export component Layout(children: React.Node) {
 to markup. `uf:icon-sprite` is one `<svg>` holding a `<symbol>` for **every icon
 the build reached, and no others**.
 
-That last part is what a runtime icon library cannot do. At runtime nothing
+The sprite is **inlined** into the document rather than fetched. An external
+sprite would be the better answer if it worked — one file cached across every
+page — but `<use href="sprite.svg#id">` has never resolved across documents in
+Safari and is blocked cross-origin in Chrome, so a sprite file in `dist/` would
+be weight nothing could use.
+
+That last part — "and no others" — is what a runtime icon library cannot do. At runtime nothing
 knows which of a set's nine hundred icons an application imported, so the
 library ships all of them or asks you to import each one as its own component
 and repeat the same `<svg>` wrapper nine hundred times. A build resolved every
@@ -298,9 +302,16 @@ drawing it:
 - **Thai, Lao, Khmer, Myanmar**, which do not separate words with spaces, so
   there is nothing to break lines on;
 - **combining marks**, which are placed over their base by `GPOS`;
-- **emoji**, which are colour glyphs in `COLR`, `sbix` or `CBDT`;
+- **a zero-width joiner or a variation selector**, each of which says several
+  code points are one glyph;
 - **a character the font has no glyph for**, because drawing `.notdef` gives a
-  row of empty boxes that reads as a bug in whatever is showing the card.
+  row of empty boxes that reads as a bug in whatever is showing the card;
+- **a character the font draws from a colour or bitmap table** — `COLR`,
+  `sbix`, `CBDT` — which is what an emoji usually is. That one is asked of the
+  font rather than guessed from the character's block, so a check mark or an
+  arrow your font has an outline for is drawn rather than refused for living
+  near the emoji, and an emoji it has only in colour is refused rather than
+  advanced past as a gap of exactly the right width.
 
 A card that is wrong is worse than a card that does not exist, because the build
 said it succeeded.

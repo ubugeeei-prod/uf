@@ -624,13 +624,16 @@ export component Page() {
         ),
         (
             "card.og.json",
-            r#"{
+            // `r##` and not `r#`: the accent is a hex colour, so the file
+            // contains the sequence `"#`, which is what closes an `r#"` raw
+            // string.
+            r##"{
   "eyebrow": "Testing",
   "title": "A card the build drew",
   "subtitle": "from a template and a font",
   "accent": "#7c8cff"
 }
-"#,
+"##,
         ),
     ]
 }
@@ -655,15 +658,30 @@ fn a_build_emits_a_sprite_of_the_icons_it_reached_and_no_others() {
         .expect("the page is prerendered");
 
     // The icon is a `<use>` into the sprite, not another copy of the path.
-    let at = html.find("<use").unwrap_or_else(|| panic!("no <use> in:\n{html}"));
-    let href = &html[at..at + 80];
-    assert!(href.contains("#uf-icon-star-"), "{href}");
-    // The sprite is inline and holds the symbol that `<use>` points at.
-    assert!(html.contains("<symbol id=\"uf-icon-star-"), "no symbol in:\n{html}");
+    let at = html
+        .find("<use")
+        .unwrap_or_else(|| panic!("no <use> in:\n{html}"));
+    // To the end of the tag rather than a fixed number of bytes: a fixed
+    // window runs off the end of a document that is shorter than expected,
+    // and then the failure is a slice panic instead of the assertion that
+    // would have said what was actually missing.
+    let tag = html[at..].split_once('>').map_or("", |(open, _)| open);
+    assert!(tag.contains("#uf-icon-star-"), "{tag}");
+    // The sprite is inline and holds the symbol that `<use>` points at. This
+    // is the assertion that catches an empty sprite, which is what a service
+    // that accumulated the icons itself produced: the plugin closes it in
+    // `buildEnd`, before `generateBundle` asks for the sprite.
+    assert!(
+        html.contains("<symbol id=\"uf-icon-star-"),
+        "the sprite has no symbol in:\n{html}"
+    );
     // `dot.svg` exists in the project and nothing imported it. A sprite that
     // held it would be the whole directory, which is what a runtime icon
     // library does and what this exists not to do.
-    assert!(!html.contains("uf-icon-dot-"), "the sprite holds an icon nothing imported");
+    assert!(
+        !html.contains("uf-icon-dot-"),
+        "the sprite holds an icon nothing imported"
+    );
 }
 
 #[test]

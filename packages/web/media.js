@@ -404,7 +404,9 @@ export component Picture(
  * every bucket downloads the whole family up front, which is what the split
  * existed to stop, and four preloaded faces have pushed the page's own
  * stylesheet down the same connection. Pass `preload={false}` for a face that
- * does not paint the first screen.
+ * does not paint the first screen, and `preload={true}` for one the project's
+ * `app.builtins.fonts.preload` turned off but this page needs — the prop wins
+ * over the build in both directions, and one link is still the most it emits.
  *
  * `crossOrigin` is set unconditionally and deliberately: a font is fetched in
  * CORS mode whatever its origin, so a preload without it is a *second*,
@@ -452,28 +454,38 @@ export component Font(
   const url: string = typeof src === "string" ? src : src.src;
   const finalType = type ?? asset?.type ?? "font/woff2";
 
-  // Which files to preload, and it is never all of them. A font hosted whole
-  // has one face and the build decided whether to preload it; a family split
-  // by `unicode-range` has one marked and the rest deliberately unmarked. A
-  // string `src` has no manifest to have decided anything, so it keeps the
-  // behaviour it always had.
-  const faces = asset?.faces ?? [];
-  const marked =
-    faces.length > 0
-      ? faces.filter((face) => face.preload)
+  // Which file to preload, and it is never more than one. A font hosted whole
+  // has a single face and the build decided whether to preload it; a family
+  // split by `unicode-range` has one face marked and the rest deliberately
+  // unmarked. A string `src` has no manifest to have decided anything, so it
+  // keeps the behaviour it always had.
+  const declared = asset?.faces ?? [];
+  const all =
+    declared.length > 0
+      ? declared
       : [{ url, mime: finalType, bytes: 0, bucket: null, unicodeRange: null, preload: true }];
-  const wanted = preload === false ? [] : preload === true ? marked.slice(0, 1) : marked;
+  // The prop overrides the build in both directions: `false` emits no link at
+  // all, and `true` emits one for the primary face even when the build left
+  // every face unmarked — otherwise `preload` would be a prop that can only
+  // ever say no, which is not what a boolean looks like.
+  const chosen =
+    preload === false
+      ? null
+      : (all.find((face) => face.preload) ?? (preload === true ? all[0] : null));
 
-  const links = wanted.map((face) => (
-    <link
-      key={face.url}
-      rel="preload"
-      as="font"
-      href={face.url}
-      type={face.mime}
-      crossOrigin={crossOrigin}
-    />
-  ));
+  const links =
+    chosen == null
+      ? []
+      : [
+          <link
+            key={chosen.url}
+            rel="preload"
+            as="font"
+            href={chosen.url}
+            type={chosen.mime}
+            crossOrigin={crossOrigin}
+          />,
+        ];
   if (asset == null) return <>{links}</>;
 
   return (
@@ -523,6 +535,22 @@ export component IconSprite(sprite: SpriteAsset) renders React.Node {
       // historically been the one to enforce it.
       style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
       aria-hidden={true}
+      // A sprite is a serialised subtree and `dangerouslySetInnerHTML` is the
+      // only way to put one in the DOM: React has no other spelling for
+      // "these elements already exist as markup", and rebuilding the symbols
+      // as elements would mean parsing SVG in the browser, which is the thing
+      // this feature exists to have already done at build time.
+      //
+      // What the rule is protecting against is a string that reaches this
+      // attribute from a request, a form, a database — anything a person can
+      // put a `<script>` into. This one cannot be any of those. It is
+      // assembled by `uf assets` from files in the repository, and that
+      // assembly *refuses* rather than strips: a `<script>`, a
+      // `<foreignObject>`, an `on…` attribute, a `javascript:` value or a
+      // reference out of the file fails the build with the file named. So the
+      // only markup that can arrive here is markup a build already read and
+      // accepted, which is the same trust boundary as the rest of the bundle.
+      // uf-lint-disable-next-line security/no-dangerously-set-inner-html
       dangerouslySetInnerHTML={{ __html: sprite.markup }}
     />
   );

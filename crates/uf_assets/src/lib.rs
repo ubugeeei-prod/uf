@@ -83,4 +83,4 @@ mod testfont;
 #[cfg(test)]
 mod tests;
 
-pub use testfont::font_with as test_font;
+pub use testfont::{font_with as test_font, font_with_blanks as test_font_with_blanks};

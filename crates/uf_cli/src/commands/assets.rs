@@ -21,7 +21,7 @@
 //!  "baseUrl": "/assets/", "subset": "ranges"}
 //! {"kind": "icon",  "id": "/abs/icons/star.svg", "outDir": "…", "name": "star"}
 //! {"kind": "og",    "id": "/abs/app/card.og.json", "outDir": "…"}
-//! {"kind": "sprite", "id": "uf:icon-sprite", "outDir": "…"}
+//! {"kind": "sprite", "id": "uf:icon-sprite", "outDir": "…", "icons": [ … ]}
 //! ```
 //!
 //! Everything but `kind`, `id` and `outDir` is optional and falls back to the
@@ -44,14 +44,22 @@
 //! build's whole asset pass with it, and the plugin turns the message into a
 //! diagnostic naming the import.
 //!
-//! # The sprite, and why this process is the one that assembles it
+//! # The sprite, and why the caller carries the set
 //!
 //! An icon sprite has to hold exactly the icons a build reached, which is
-//! knowable only after the build has resolved its imports and only by
-//! something that saw all of them. This service is that thing: one process for
-//! the whole build, replying to every `icon` request, so it accumulates the
-//! set and answers a `sprite` request from it. A `sprite` request before any
-//! icon is not an error — it is an empty sprite, which is the correct answer
+//! knowable only after the build has resolved its imports. The obvious way to
+//! do that here is to accumulate every `icon` reply in this process and answer
+//! a `sprite` request from what has accumulated — and it is wrong, because
+//! this process does not live as long as a build. The Vite plugin closes it in
+//! `buildEnd`, which runs *before* `generateBundle`, so the sprite would be
+//! assembled by a fresh process that had seen nothing; and a build with a
+//! client environment and a server one has two bundles and one set of icons
+//! between them.
+//!
+//! So a `sprite` request carries its own `icons`, and every request in this
+//! protocol is answerable from itself. The plugin is what spans the build and
+//! is therefore what remembers; this is a function. A `sprite` request with no
+//! icons is not an error — it is an empty sprite, which is the correct answer
 //! for a project that imported none.
 //!
 //! # Caching
@@ -119,6 +127,12 @@ struct Request {
     /// Icon: the name it was imported under.
     #[serde(default)]
     name: Option<String>,
+    /// Sprite: every icon the build reached, as this service described them.
+    ///
+    /// Sent back rather than remembered here; see the module documentation for
+    /// why this process is the wrong place to accumulate them.
+    #[serde(default)]
+    icons: Vec<uf_assets::IconAsset>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -180,17 +194,13 @@ pub(crate) fn assets_service(cwd: &Utf8Path) -> Result<()> {
 }
 
 fn serve(input: impl Read, out: &mut impl Write, project: &ProjectAssets) -> Result<()> {
-    // Every icon this process has answered for, which is the set the sprite is
-    // assembled from. It lives for the life of the process because that is
-    // exactly the life of the build.
-    let mut reached: Vec<uf_assets::IconAsset> = Vec::new();
     for line in BufReader::new(input).lines() {
         let line = line.context("reading an asset request")?;
         if line.trim().is_empty() {
             continue;
         }
         let reply = match serde_json::from_str::<Request>(&line) {
-            Ok(request) => handle(&request, project, &mut reached),
+            Ok(request) => handle(&request, project),
             Err(error) => Reply {
                 error: Some(format!("malformed request: {error}")),
                 ..Reply::default()
@@ -223,18 +233,14 @@ fn failed(id: &str, error: impl std::fmt::Display) -> Reply {
     }
 }
 
-fn handle(
-    request: &Request,
-    project: &ProjectAssets,
-    reached: &mut Vec<uf_assets::IconAsset>,
-) -> Reply {
+fn handle(request: &Request, project: &ProjectAssets) -> Reply {
     let source = Utf8Path::new(&request.id);
     match request.kind {
         Kind::Image => image(request, project, source),
         Kind::Font => font(request, project, source),
-        Kind::Icon => icon(request, project, source, reached),
+        Kind::Icon => icon(request, project, source),
         Kind::Og => og(request, project, source),
-        Kind::Sprite => sprite(request, reached),
+        Kind::Sprite => sprite(request),
     }
 }
 
@@ -382,12 +388,7 @@ fn font(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply 
     }
 }
 
-fn icon(
-    request: &Request,
-    project: &ProjectAssets,
-    source: &Utf8Path,
-    reached: &mut Vec<uf_assets::IconAsset>,
-) -> Reply {
+fn icon(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply {
     if !project.icons.enabled {
         return failed(
             &request.id,
@@ -417,20 +418,15 @@ fn icon(
         },
     );
     match produced {
-        Ok(cached) => {
-            // Recorded on a hit as well as a miss: the sprite holds the icons
-            // this *build* reached, and a build whose second run cached
-            // everything still reached all of them.
-            if !reached.iter().any(|seen| seen.id == cached.value.id) {
-                reached.push(cached.value.clone());
-            }
-            Reply {
-                id: request.id.clone(),
-                icon: Some(cached.value),
-                cached: cached.hit,
-                ..Reply::default()
-            }
-        }
+        // The reply carries the whole `<symbol>`, on a cache hit as well as a
+        // miss: it is what the caller puts in the sprite, and a build whose
+        // second run cached everything still reached every icon.
+        Ok(cached) => Reply {
+            id: request.id.clone(),
+            icon: Some(cached.value),
+            cached: cached.hit,
+            ..Reply::default()
+        },
         Err(error) => failed(&request.id, error),
     }
 }
@@ -510,9 +506,9 @@ fn og(request: &Request, project: &ProjectAssets, source: &Utf8Path) -> Reply {
     }
 }
 
-fn sprite(request: &Request, reached: &[uf_assets::IconAsset]) -> Reply {
+fn sprite(request: &Request) -> Reply {
     match uf_assets::sprite(&SpriteRequest {
-        icons: reached,
+        icons: &request.icons,
         out_dir: &request.out_dir,
     }) {
         Ok(sprite) => Reply {
@@ -872,7 +868,13 @@ mod tests {
             });
             input.push_str(&format!("{request}\n"));
         }
-        let sprite = serde_json::json!({ "kind": "sprite", "id": "uf:icon-sprite", "outDir": out });
+        let asked = replies(&input);
+        // The caller carries the set back, which is what makes every request
+        // answerable from itself — see the module documentation.
+        let sprite = serde_json::json!({
+            "kind": "sprite", "id": "uf:icon-sprite", "outDir": out,
+            "icons": [asked[0]["icon"].clone(), asked[1]["icon"].clone()],
+        });
         input.push_str(&format!("{sprite}\n"));
         let replies = replies(&input);
 

@@ -404,7 +404,7 @@ describe("Font, given a family split by unicode-range", () => {
     fallbackFamily: "Noto Fallback",
     fontFamily: '"Noto", "Noto Fallback", "Arial"',
     type: "font/woff",
-    css: "@font-face{font-family:\"Noto\";src:url(\"/assets/Noto.11aa-latin.woff\") format(\"woff\");unicode-range:U+20-7E;}",
+    css: '@font-face{font-family:"Noto";src:url("/assets/Noto.11aa-latin.woff") format("woff");unicode-range:U+20-7E;}',
     subset: "ranges",
     subsetDeclined: null,
     faces: [
@@ -458,6 +458,21 @@ describe("Font, given a family split by unicode-range", () => {
     expect(preloads()).toEqual([]);
   });
 
+  it("preloads the primary face when the page asks and the build did not", () => {
+    // `app.builtins.fonts.preload: false` marks nothing, and a page that
+    // paints with this face has to be able to say so. A `preload` prop that
+    // could only ever turn a preload off would not be a boolean.
+    const unmarked = split();
+    render(
+      <Font
+        src={{ ...unmarked, faces: unmarked.faces.map((face) => ({ ...face, preload: false })) }}
+        preload={true}
+      />,
+    );
+
+    expect(preloads()).toEqual(["/assets/Noto.11aa-latin.woff"]);
+  });
+
   it("still declares every bucket, because the browser chooses between them", () => {
     const { container } = render(<Font src={split()} />);
     const style = globalThis.document.head.querySelector(
@@ -491,7 +506,9 @@ describe("Icon and IconSprite", () => {
   it("is announced when it is the control and hidden when it is not", () => {
     // The decision people make backwards. An unlabelled icon button is
     // announced as "button"; a labelled icon beside its own text is read twice.
-    const labelled = render(<Icon icon={star()} label="Favourite" />).container.querySelector("svg");
+    const labelled = render(<Icon icon={star()} label="Favourite" />).container.querySelector(
+      "svg",
+    );
     expect(labelled?.getAttribute("role")).toBe("img");
     expect(labelled?.getAttribute("aria-label")).toBe("Favourite");
     expect(labelled?.getAttribute("aria-hidden")).toBe(null);
@@ -544,7 +561,12 @@ describe("OgImage", () => {
   });
 
   it("leaves a URL that is already absolute alone", () => {
-    render(<OgImage card={{ ...card(), url: "https://cdn.example.com/og.png" }} origin="https://example.com" />);
+    render(
+      <OgImage
+        card={{ ...card(), url: "https://cdn.example.com/og.png" }}
+        origin="https://example.com"
+      />,
+    );
 
     expect(meta("og:image")).toBe("https://cdn.example.com/og.png");
   });

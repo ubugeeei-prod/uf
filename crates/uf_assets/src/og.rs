@@ -44,11 +44,13 @@
 //! * **Not JSX, and not HTML.** The input is a `.og.json` file: a fixed set of
 //!   fields, not a document. There is no element tree, no CSS, no cascade.
 //! * **Left-to-right, uncomplicated scripts only.** Arabic joins, Hebrew runs
-//!   right to left, Devanagari reorders, Thai has no word spaces, a combining
-//!   mark needs `GPOS` to sit over its base, and an emoji needs a colour glyph
-//!   table. Every one of those needs a shaper. uf has none, so it **rejects**
-//!   text containing them, naming the character, rather than laying the
-//!   codepoints out left to right and producing a picture of nonsense.
+//!   right to left, Devanagari reorders, Thai has no word spaces, and a
+//!   combining mark needs `GPOS` to sit over its base. Every one of those
+//!   needs a shaper. uf has none, so it **rejects** text containing them,
+//!   naming the character, rather than laying the codepoints out left to right
+//!   and producing a picture of nonsense. A character the *font* cannot draw
+//!   as an outline — a missing glyph, or an emoji it has only in colour — is
+//!   refused too, by asking the font rather than by guessing from the block.
 //! * **No font of its own.** uf embeds no typeface: a template says which font
 //!   file to draw with, and a template with text and no font is refused. A
 //!   toolchain that shipped a default font would ship a licence with it.
@@ -133,8 +135,9 @@ pub enum OgError {
     /// The whole point of the module. See [`unsupported_reason`].
     #[error(
         "{path} cannot be drawn: {field} contains {character:?} (U+{codepoint:04X}), and {reason}. \
-         uf draws a template with no shaping engine, so it refuses this rather than emitting an \
-         image of the wrong glyphs in the wrong order. Draw this card yourself and import the PNG"
+         uf draws a declared template rather than rendering a document, so it refuses this rather \
+         than emitting a card that is wrong in a way nobody looks at. Draw this card yourself and \
+         import the PNG"
     )]
     Unsupported {
         /// The template.
@@ -473,13 +476,22 @@ fn check_and_collect<'a>(
 /// * **mark positioning** — a combining mark is placed over its base by
 ///   `GPOS`, and without it the mark lands at the base's advance width, next
 ///   to the letter instead of on it;
-/// * **colour glyphs** — an emoji is a `COLR`, `sbix` or `CBDT` glyph, and
-///   `ab_glyph` rasterises outlines. A ZWJ sequence is several code points
-///   that are one picture.
+/// * **sequences** — a zero-width joiner or a variation selector says that
+///   several code points are one picture, which is a decision `GSUB` makes.
 ///
 /// Latin, Greek, Cyrillic, CJK and the punctuation around them are placed
 /// correctly by advance width and legacy `kern`, which is why they are not
 /// here.
+///
+/// What is deliberately *not* here is a list of emoji and symbol blocks. This
+/// predicate is about layout; whether the font can draw a character at all is
+/// a question about the font, and `reject_missing_glyphs` asks it directly —
+/// a character the font has no glyph for, or draws from a `COLR`, `sbix` or
+/// `CBDT` table rather than an outline, is refused there. Testing the font
+/// beats testing a block range in both directions: a check mark or an arrow
+/// the font has an outline for is drawn instead of being refused for being
+/// near the emoji, and an emoji the font has only in colour is refused
+/// instead of being drawn as a blank of the right width.
 #[must_use]
 pub fn unsupported_reason(character: char) -> Option<&'static str> {
     let code = character as u32;
@@ -505,13 +517,16 @@ pub fn unsupported_reason(character: char) -> Option<&'static str> {
             "it belongs to a script that does not separate words with spaces, so uf cannot break \
              its lines"
         }
-        // Zero-width joiner, variation selectors, and the emoji planes.
-        0x200D | 0xFE00..=0xFE0F | 0x1F000..=0x1FBFF | 0x2600..=0x27BF | 0x1FE00..=0x1FE0F => {
-            "an emoji is a colour glyph in a COLR, sbix or CBDT table, and uf rasterises outlines"
+        // Zero-width joiner and the variation selectors: each says that
+        // several code points are one glyph, which is a GSUB substitution.
+        0x200D | 0xFE00..=0xFE0F | 0xE0100..=0xE01EF => {
+            "it joins the characters around it into one glyph, which a shaping engine substitutes"
         }
         // A control character has no glyph and no defined placement. Tab is
-        // included: its width depends on a tab stop nothing here defines.
-        0x00..=0x08 | 0x09..=0x1F | 0x7F..=0x9F => {
+        // included: its width depends on a tab stop nothing here defines, and
+        // so is a newline: this is a template with a wrapping algorithm of its
+        // own, and a line break inside a field would fight it.
+        0x00..=0x1F | 0x7F..=0x9F => {
             "a control character has no glyph and no width uf can place it at"
         }
         _ => return None,
@@ -519,10 +534,23 @@ pub fn unsupported_reason(character: char) -> Option<&'static str> {
     Some(reason)
 }
 
-/// Refuse a character the font itself has no glyph for.
+/// Refuse a character this font cannot put an outline on the page for.
 ///
-/// Drawing `.notdef` produces a row of empty boxes, which looks like a bug in
-/// whatever is displaying the card rather than a missing glyph in the font.
+/// Two failures, both silent if they are not caught here, and both a property
+/// of the font rather than of the script — which is why they are asked of the
+/// font instead of guessed from a block range in [`unsupported_reason`]:
+///
+/// * **no glyph at all.** Drawing `.notdef` produces a row of empty boxes,
+///   which looks like a bug in whatever is displaying the card rather than a
+///   missing glyph in the font.
+/// * **a glyph with no outline.** A colour or bitmap glyph — `COLR`, `sbix`,
+///   `CBDT` — has metrics `ab_glyph` will happily advance past and nothing to
+///   rasterise, so it draws as a gap of exactly the right width. That is the
+///   worst of the failure modes available here, because the card looks
+///   deliberate.
+///
+/// Whitespace is exempt from the second: a space is a glyph with an advance
+/// and no outline by definition, and so are the other separators.
 fn reject_missing_glyphs(
     path: &Utf8Path,
     font: &ab_glyph::FontRef<'_>,
@@ -530,19 +558,24 @@ fn reject_missing_glyphs(
 ) -> Result<(), OgError> {
     for (field, text) in lines {
         for character in text.chars() {
-            if character == ' ' {
+            let id = font.glyph_id(character);
+            let reason = if id == GlyphId(0) {
+                "the font has no glyph for it, and uf will not draw the empty box a missing \
+                 glyph renders as"
+            } else if !character.is_whitespace() && font.outline(id).is_none() {
+                "the font draws it from a colour or bitmap table (COLR, sbix or CBDT) rather \
+                 than as an outline, and uf rasterises outlines — drawing it would leave a gap \
+                 the exact width of the character"
+            } else {
                 continue;
-            }
-            if font.glyph_id(character) == GlyphId(0) {
-                return Err(OgError::Unsupported {
-                    path: path.to_owned(),
-                    field,
-                    character,
-                    codepoint: character as u32,
-                    reason: "the font has no glyph for it, and uf will not draw the empty box a \
-                             missing glyph renders as",
-                });
-            }
+            };
+            return Err(OgError::Unsupported {
+                path: path.to_owned(),
+                field,
+                character,
+                codepoint: character as u32,
+                reason,
+            });
         }
     }
     Ok(())
@@ -575,10 +608,12 @@ fn load_font(path: &Utf8Path, font: &Utf8Path) -> Result<Vec<u8>, OgError> {
     })
 }
 
-/// One laid-out line of text, and how wide it came out.
+/// One laid-out line of text.
+///
+/// A newtype rather than a bare `String` so that [`wrap`]'s return type says
+/// what it holds: lines, not words and not the original text.
 struct Line {
     text: String,
-    width: f32,
 }
 
 /// Break `text` into lines no wider than `limit` at `size`.
@@ -600,20 +635,14 @@ fn wrap(font: &ab_glyph::FontRef<'_>, text: &str, size: f32, limit: f32) -> Vec<
         if measure(font, size, &candidate) <= limit || current.is_empty() {
             current = candidate;
         } else {
-            let width = measure(font, size, &current);
             lines.push(Line {
                 text: std::mem::take(&mut current),
-                width,
             });
             current = word.to_owned();
         }
     }
     if !current.is_empty() {
-        let width = measure(font, size, &current);
-        lines.push(Line {
-            text: current,
-            width,
-        });
+        lines.push(Line { text: current });
     }
     lines
 }
@@ -852,7 +881,6 @@ fn draw_line(
         pen += scaled.h_advance(id);
         previous = Some(id);
     }
-    let _ = line.width;
 }
 
 /// Composite one source colour over one destination pixel.
