@@ -740,7 +740,12 @@ and a worker whose imports are pre-bundled, neither of which is done.
 the Rust lint/typecheck/format/test work, and the transform every module goes
 through. Users never write `vite.config.*`.
 
-`uf dev` and `uf build` start `@uniflowed/vite`'s driver on the project's
+Vite is the **default builder**, and `builder.module` in `uf.config.js` selects
+another. The contract between `uf` and a builder is written out under [The
+builder contract](#the-builder-contract) below; the rest of this section
+describes `@uniflowed/vite`, which is one implementation of it.
+
+`uf dev` and `uf build` start the builder's driver on the project's
 Capability JS Host — Node.js, Bun or Deno, whichever `uf.config.js` names and
 the machine has — and keep the terminal: the driver writes one JSON event per
 line and `uf` renders them. The driver loads `uf.config.js` (through `uf
@@ -762,6 +767,85 @@ under `.uf/build/server/`, never in `dist/`), and every static route
 prerendered to `dist/<route>/index.html` — with `generateStaticParams` on a
 page enumerating a parameterised route. `uf` then measures `dist/` and
 enforces `build.budgets`.
+
+### What gets rendered when
+
+The third pass has three answers per route, not two, and which ones a project
+allows is `app.rendering.modes` and `build.staticBuild`. `uf` resolves those
+two together into a *rendering plan* (`uf_config`'s `RenderingPlan`) and hands
+the builder one word — `everything`, `possible` or `nothing` — because they
+only mean something read together and three commands read them.
+
+| Route | Answer |
+| --- | --- |
+| no parameters | prerendered |
+| parameters, page exports `generateStaticParams` | prerendered, once per set |
+| parameters, no `generateStaticParams` | rendered per request |
+| any page exporting `dynamic = "force-dynamic"` | rendered per request |
+| a `_uf.route.js` handler, or anything under a `_uf.middleware.js` | answered per request |
+
+Under a plan of `everything` — `rendering.modes: ["ssg"]`, or
+`build.staticBuild` — a route in one of the last three rows is a **build
+error** naming it and both ways out, because there is no process to render it
+and a `dist/` with a hole in it is a 404 nobody sees until the deploy. Under
+`nothing` no document is written at all, which is what `["ssr"]` has always
+claimed to mean and, until it was read, did not.
+
+`build.staticBuild` additionally removes `.uf/build/server/` once the last
+document is written: the bundle is a build intermediate — the prerender renders
+through it — and the declaration is about what the build leaves behind. So
+`uf start` refuses for such a project, being the one command that loads it, and
+`uf preview` serves the output directory the way a static host would.
+`--adapter` and `--compile` still work, because each links the application
+again from source rather than reading that bundle.
+
+### The builder contract
+
+A builder is a directory with a `package.json` and a driver module. uf spawns
+the driver on the Capability JS Host, holds its stdin open, and reads one JSON
+event per line from its stdout; the driver exits when that stdin closes, so it
+cannot outlive the command that started it. `builder.module` in `uf.config.js`
+selects one, and `uf explain build` names the one that will run and its
+version.
+
+**What the package declares**, under `uf.builder` in its manifest: `driver`,
+the module to spawn (default `./driver.js`), and `preload.bun`, a module handed
+to Bun's `--preload` because Bun has no `module.register` — a path inside the
+builder, or a package specifier such as `@uniflowed/host/bun-preload`.
+Optional; a builder that transforms nothing needs neither.
+
+**What uf hands the driver**: a subcommand, then arguments.
+
+| Command | Arguments | What it does |
+| --- | --- | --- |
+| `dev` | `--root --mode [--host --port --strict-port]` | Serves the project, rendering every navigation |
+| `build` | `--root --mode --out-dir --prerender --because [--static-build]` | Writes the client bundle, the server bundle and the prerendered documents |
+| `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build]` | Serves the build through the builder's own preview server |
+| `start` | `--root --out-dir [--host --port]` | Serves the build with no bundler in the process |
+| `compile` | `--root --mode --out-dir --assets --bundle` | Links the application into one module, for `uf build --compile` |
+| `deploy` | `--root --mode --out-dir --adapter --work --output` | Links the application into a directory to copy |
+| `config` | `--root` | Prints `uf.config.js` as JSON, for the Rust side to read |
+
+`--mode` is what uf resolved from `--mode`, `.uniflowed/profile` and
+`env.active`; the `.env` files it selected have already been read, by uf, into
+the driver's environment. `--prerender` is the rendering plan above and
+`--because` is the sentence to quote when refusing, so a refusal in the builder
+names the same config key a refusal in uf does. `UF_BINARY` names the `uf` that
+started it, and `UF_RSC_MANIFEST` the server-component analysis.
+
+**What the driver says**, one JSON object per line, `{"event": "...", ...}`:
+`config-loaded`, `phase`, `log`, `listening`, `page`, `page-failed`,
+`rendering`, `rsc-split`, `source-changed`, `done`, `config` and `error`. The
+full shape of each is `Event` in `crates/uf_cli/src/commands/vite.rs`, which is
+the only reader. A command a builder has not implemented is answered with
+`error` and a message naming the ones it has — never with silence and a zero
+exit, which would be a build that produced nothing and said it succeeded.
+
+**Readiness.** The seam is Implemented; `@uniflowed/vite` is the only builder
+uf ships, and `crates/uf_cli/tests/fixtures/paper-builder` is a second
+implementation that exists to keep the contract honest rather than to be used.
+A production builder for Rolldown, rspack or esbuild is Planned
+([#549](https://github.com/ubugeeei-prod/uf/issues/549)).
 
 `@uniflowed/router` is the runtime the virtual modules call into: matching
 (`[param]`, `[...rest]`, `(group)`, most specific wins), nested layouts,

@@ -1,0 +1,12 @@
+{
+  "name": "paper-builder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A second implementation of uf's builder contract, for proving the seam has nothing Vite-shaped in it.",
+  "type": "module",
+  "uf": {
+    "builder": {
+      "driver": "./driver.js"
+    }
+  }
+}

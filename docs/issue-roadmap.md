@@ -114,7 +114,14 @@
 - [ ] Require client components to opt in with `"use client";`.
 - [ ] Require server actions to opt in with `"use server";`.
 - [ ] Support RSC graph splitting.
-- [ ] Support PPR, SSR, SSG, and ISR.
+- [ ] Support PPR, SSR, SSG, and ISR. SSG and SSR are **Implemented** and are
+      selected per route: a page is prerendered, or rendered per request by
+      `uf start`, `uf preview` or a deploy adapter, and `dynamic =
+      "force-dynamic"` is how a page with no parameters chooses the second.
+      `app.rendering.modes` is the project's allowlist over the two, and a
+      route it cannot honour is a build error naming it rather than a document
+      that never existed (#336, #385). PPR and ISR are **Planned**: naming one
+      is allowed and selects nothing, and a list naming only those is refused.
 - [x] Keep route, fetch, action, and data cache defaults OFF — and make two of
       them mean something when they are on. `route` and `fetch` reach a store
       with time and tag revalidation; `data` and `actions` are refused by the

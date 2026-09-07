@@ -10,6 +10,14 @@
     "url": "git+https://github.com/ubugeeei-prod/uf.git",
     "directory": "packages/vite"
   },
+  "uf": {
+    "builder": {
+      "driver": "./driver.js",
+      "preload": {
+        "bun": "@uniflowed/host/bun-preload"
+      }
+    }
+  },
   "exports": {
     ".": "./index.js",
     "./driver": "./driver.js",

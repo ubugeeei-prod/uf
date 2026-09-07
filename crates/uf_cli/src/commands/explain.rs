@@ -16,10 +16,11 @@ use anyhow::{Result, bail};
 use camino::Utf8Path;
 use serde_json::json;
 use uf_config::env_files;
-use uf_config::{DeployAdapter, ResolvedConfig, load_config};
+use uf_config::{DeployAdapter, Prerender, RenderingPlan, ResolvedConfig, load_config};
 use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
 use uf_term::KeyValue;
 
+use crate::commands::builder;
 use crate::commands::task::fetchable;
 use crate::support::{DEVELOPMENT, PRODUCTION, TEST, project_label};
 use crate::ui::Ui;
@@ -671,8 +672,8 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "dev server",
-            provider: "vite (@uniflowed/vite driver)".to_string(),
-            detail: "module graph, HMR, plugin pipeline".to_string(),
+            provider: builder_provider(resolved),
+            detail: "module graph, HMR, plugin pipeline — through the builder's driver".to_string(),
         },
         transform_stage(),
         assets_stage(resolved),
@@ -682,6 +683,25 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "server-renders each request, route handlers first".to_string(),
         },
     ]
+}
+
+/// Which builder is about to run, and which build of it.
+///
+/// Both halves, because ubugeeei-prod/uf#549 asks both questions: a project
+/// that swapped the builder wants to see the swap took, and a project pinned
+/// to a build of it that is not uf's wants to see *that*. The version comes
+/// from the resolved package's own manifest rather than from anything uf
+/// records, so it is the copy that will run.
+///
+/// A builder that cannot be resolved is named as the failure it is rather than
+/// silently reported as `vite`: `uf explain` exists so that a person does not
+/// have to guess what a command will do, and "the builder you named is not
+/// installed" is exactly the answer they came for.
+fn builder_provider(resolved: &ResolvedConfig) -> String {
+    match builder::resolve(&resolved.root, &resolved.config) {
+        Ok(builder) => builder.label(),
+        Err(error) => format!("{} (unresolved: {error})", resolved.config.builder.module),
+    }
 }
 
 fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
@@ -697,22 +717,60 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         assets_stage(resolved),
         Stage {
             name: "bundle",
-            // Vite, not what Vite uses inside it. A project chose Vite — it is
-            // in their config — and did not choose the bundler underneath, so
+            // The builder the project selected, and not what it uses inside
+            // it. A project chose Vite — it is in their config, explicitly or
+            // by default — and did not choose the bundler underneath, so
             // naming that one would hand them something to reason about that
             // they never picked. `uf_plugin`'s naming invariant enforces this,
             // and it is the finer point of red line 7: uf names the providers
             // it orchestrates, and a provider's internals stay the provider's.
-            provider: "vite".to_string(),
-            detail: "client bundle, then the server bundle".to_string(),
+            provider: builder_provider(resolved),
+            detail: match RenderingPlan::resolve(&resolved.config).emits_a_server() {
+                true => "client bundle, then the server bundle".to_string(),
+                // Said, because the difference is the whole of what
+                // `build.staticBuild` does and none of it is visible from the
+                // output directory. The bundle is still built — the prerender
+                // renders through it — and then removed.
+                false => "client bundle, then a server bundle the build removes".to_string(),
+            },
         },
-        Stage {
-            name: "prerender",
-            provider: "@uniflowed/router".to_string(),
-            detail: "every route without parameters, to static HTML".to_string(),
-        },
+        prerender_stage(resolved),
         adapter_stage(resolved),
     ]
+}
+
+/// What the build renders now, and what it leaves to a server.
+///
+/// The answer to a question `uf explain build` could not answer until
+/// ubugeeei-prod/uf#336: `app.rendering.modes` and `build.staticBuild` select
+/// between three behaviours, and a reader looking at `dist/` cannot tell which
+/// one ran — a route with no document could be one the build refused to write,
+/// one it was told not to write, or one that failed.
+fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
+    let plan = RenderingPlan::resolve(&resolved.config);
+    let detail = match plan.prerender() {
+        Prerender::Everything => {
+            "every route, to static HTML; a route that can only be answered per request is an \
+             error naming it"
+                .to_string()
+        }
+        Prerender::Possible => {
+            "every route it can, to static HTML; the rest are rendered per request".to_string()
+        }
+        Prerender::Nothing => {
+            "nothing: `app.rendering.modes` allows no `ssg`, so every route is rendered per \
+             request"
+                .to_string()
+        }
+    };
+    Stage {
+        name: "prerender",
+        provider: match plan.source().key() {
+            Some(key) => format!("@uniflowed/router ({key})"),
+            None => "@uniflowed/router".to_string(),
+        },
+        detail,
+    }
 }
 
 /// Which deploy adapter a build will write for, named rather than assumed.
@@ -785,7 +843,7 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
-            provider: "vite (preview)".to_string(),
+            provider: format!("{} (preview)", builder_provider(resolved)),
             detail: format!(
                 "serves {} directly, with `vite.preview` in effect",
                 resolved.config.build.out_dir
@@ -793,14 +851,64 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "requests vite did not answer",
-            provider: "@uniflowed/server".to_string(),
-            detail: "route handlers, then a render — from .uf/build/server/server.js".to_string(),
+            // A build that emits no server has nothing mounted behind Vite's
+            // file server, which is what makes this preview the right check
+            // for it. Naming `@uniflowed/server` here anyway would describe a
+            // graph this command does not have — the same rule `start_stages`
+            // follows about `@uniflowed/vite`.
+            provider: match RenderingPlan::resolve(&resolved.config).emits_a_server() {
+                true => "@uniflowed/server".to_string(),
+                false => "none".to_string(),
+            },
+            detail: match RenderingPlan::resolve(&resolved.config).emits_a_server() {
+                true => {
+                    "route handlers, then a render — from .uf/build/server/server.js".to_string()
+                }
+                false => format!(
+                    "nothing: {} emits no server, so a 404 here is the 404 a static host gives",
+                    plan_key(resolved)
+                ),
+            },
         },
     ]
 }
 
+/// The config key that made this a build with no server, for a message that
+/// has to name one.
+fn plan_key(resolved: &ResolvedConfig) -> &'static str {
+    RenderingPlan::resolve(&resolved.config)
+        .source()
+        .key()
+        .unwrap_or("this project")
+}
+
 /// `uf start`, whose answer is that nothing here is Vite's.
+///
+/// Or that there is nothing to start. A project that emits no server is
+/// refused by the command, so the plan says so here rather than describing a
+/// socket nobody can bind — `uf explain` naming a stage that cannot run is the
+/// black box red line 7 exists to prevent.
 fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let plan = RenderingPlan::resolve(&resolved.config);
+    if !plan.emits_a_server() {
+        return vec![
+            Stage {
+                name: "configuration",
+                provider: "uf".to_string(),
+                detail: "uf.config.js; the build is read, not rebuilt".to_string(),
+            },
+            Stage {
+                name: "server",
+                provider: "none".to_string(),
+                detail: format!(
+                    "`uf start` refuses: {}. Deploy {} to a static host, or check it with \
+                     `uf preview`",
+                    plan.because(),
+                    resolved.config.build.out_dir
+                ),
+            },
+        ];
+    }
     vec![
         Stage {
             name: "configuration",

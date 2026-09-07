@@ -34,8 +34,9 @@ use uf_router::write_router_manifest;
 use uf_rsc::RSC_MANIFEST_ENV;
 use uf_term::{KeyValue, Status, Tone};
 
+use crate::commands::builder;
 use crate::commands::lint::identifier_span;
-use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
+use crate::commands::vite::{Driver, Event, render_error, render_log, resolve_host};
 use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
@@ -75,7 +76,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     }
 
     let host = resolve_host(&resolved.config)?;
-    let package = package_dir(&root)?;
+    let builder = builder::resolve(&root, &resolved.config)?;
     let _ = write_router_manifest(&root, &resolved.config)?;
 
     let env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
@@ -90,7 +91,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     server_components.prime();
     let mut driver = Driver::spawn(
         &host,
-        &package,
+        &builder,
         &root,
         "dev",
         &driver_args,
@@ -168,6 +169,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             | Event::Phase { .. }
             | Event::Page { .. }
             | Event::PageFailed { .. }
+            | Event::Rendering { .. }
             | Event::RscSplit { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}

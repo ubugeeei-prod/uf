@@ -3626,3 +3626,366 @@ fn script_names(scripts: &[(String, String)]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+/// `crates/uf_cli/tests/fixtures/paper-builder`.
+fn paper_builder_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/paper-builder")
+}
+
+/// A page with parameters and no `generateStaticParams`, which is the one
+/// route shape a prerender cannot produce a file for.
+const UNPRERENDERABLE_PAGE: (&str, &str) = (
+    "app/posts/[slug]/_uf.page.js",
+    "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport default component Post(params: { readonly slug: string }) {\n  return <h1>{params.slug}</h1>;\n}\n",
+);
+
+/// A `uf.config.js` with `body` merged into `defineConfig`.
+fn config_with(body: &str) -> String {
+    format!(
+        "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\nexport default defineConfig({{\n{body}}});\n"
+    )
+}
+
+/// `uf build` in `root`, as `(succeeded, stdout + stderr)`.
+fn build_output(root: &Path) -> (bool, String) {
+    let output = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), said)
+}
+
+/// `rendering.modes: ["ssg"]` is a project saying it deploys to a static host.
+///
+/// Before ubugeeei-prod/uf#336 the list was read by nothing: this project
+/// built, `dist/` had no document for `/posts/:slug`, and the first anyone
+/// heard of it was a 404 from the CDN. The build now refuses, names the route
+/// and names both ways out — which is the guide's "reject unsupported
+/// configurations clearly rather than silently changing semantics", applied to
+/// the config that was silently changed.
+#[test]
+fn a_route_that_needs_a_server_fails_a_build_that_allows_only_ssg() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push(UNPRERENDERABLE_PAGE);
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"ssg\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(
+        said.contains("/posts/:slug"),
+        "the route is not named:\n{said}"
+    );
+    assert!(
+        said.contains("generateStaticParams"),
+        "the first way out is not named:\n{said}"
+    );
+    assert!(
+        said.contains("\"ssr\"") && said.contains("app.rendering.modes"),
+        "the second way out is not named:\n{said}"
+    );
+    // No half-built output: the refusal happens before a document is written,
+    // so a project that has just narrowed the list does not end up with a
+    // `dist/` that looks complete and is not.
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a refused build wrote a document anyway"
+    );
+}
+
+/// The other half of #336's "Done": the same project, both modes allowed.
+#[test]
+fn allowing_ssr_beside_ssg_builds_the_same_project() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push(UNPRERENDERABLE_PAGE);
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"ssg\", \"ssr\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    // Prerendered where it could be, and the rest reported rather than
+    // silently missing — the report that did not exist before #250.
+    assert!(project.path().join("dist/index.html").is_file());
+    assert!(
+        said.contains("answered by a server") && said.contains("/posts/:slug"),
+        "the build did not say which routes need one:\n{said}"
+    );
+}
+
+/// `rendering.modes: ["ssr"]` used to mean SSG, because SSG was all there was.
+#[test]
+fn allowing_only_ssr_prerenders_nothing() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"ssr\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a build that allows no `ssg` prerendered a document anyway:\n{said}"
+    );
+    // And there is still something to answer with: the whole point of the
+    // setting is that the server renders every request.
+    assert!(
+        project.path().join(".uf/build/server/server.js").is_file(),
+        "no server bundle:\n{said}"
+    );
+}
+
+/// `build.staticBuild` is documented as "prerender everything and emit no
+/// server bundle", and was read by nothing. See ubugeeei-prod/uf#385.
+#[test]
+fn a_static_build_emits_no_server_bundle() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  build: { staticBuild: true },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(
+        project.path().join("dist/index.html").is_file(),
+        "the documents are the whole output, and there are none:\n{said}"
+    );
+    assert!(
+        !project.path().join(".uf/build/server/server.js").exists(),
+        "the build emitted the server bundle it said it would not:\n{said}"
+    );
+
+    // And `uf start` refuses by name, rather than failing later on a missing
+    // file. It is the one command that reads the bundle this build removed,
+    // and for a project deploying documents there is no deployment that runs
+    // uf at all: a `uf start` that quietly served the files would be uf
+    // answering requests the real host answers.
+    let start = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("start")
+        .output()
+        .unwrap();
+    assert!(!start.status.success());
+    let said = String::from_utf8_lossy(&start.stderr).to_string();
+    assert!(said.contains("staticBuild"), "{said}");
+    assert!(said.contains("static host"), "{said}");
+
+    // `uf explain start` says the same thing without running anything, which
+    // is what red line 7 asks of every stage of every command.
+    let explained = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "start"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(plan.contains("refuses"), "{plan}");
+}
+
+/// A middleware under a build with no server is two declarations that cannot
+/// both be true, and #385 says to refuse rather than warn.
+#[test]
+fn a_static_build_refuses_the_middleware_it_could_never_run() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/dashboard/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>secrets</main>;\n}\n",
+    ));
+    files.push((
+        "app/dashboard/_uf.middleware.js",
+        "// @flow\n\nexport default function middleware(request: Request): Response | void {\n  if (!request.headers.has(\"cookie\")) {\n    return Response.redirect(new URL(\"/\", request.url), 302);\n  }\n}\n",
+    ));
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  build: { staticBuild: true },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(
+        said.contains("/dashboard"),
+        "the guard is not named:\n{said}"
+    );
+    assert!(
+        said.contains("once per request"),
+        "the refusal does not say why:\n{said}"
+    );
+}
+
+/// The third rendering decision, and the one that had no name.
+///
+/// `generateStaticParams` says "prerender these"; nothing said "never
+/// prerender this", so a route with no parameters whose content depends on the
+/// request could not be kept out of `dist/`. See ubugeeei-prod/uf#336.
+#[test]
+fn a_page_that_forces_dynamic_is_left_to_the_server() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/now/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-dynamic\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(project.path().join("dist/index.html").is_file());
+    assert!(
+        !project.path().join("dist/now/index.html").exists(),
+        "a page that said not to prerender it was prerendered:\n{said}"
+    );
+    assert!(said.contains("/now"), "the route is not reported:\n{said}");
+}
+
+/// A `dynamic` uf does not implement is refused rather than ignored.
+#[test]
+fn a_dynamic_value_uf_does_not_implement_is_named() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/now/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-static\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(said.contains("force-static"), "{said}");
+    assert!(said.contains("force-dynamic"), "{said}");
+}
+
+/// The seam is a seam: a builder that is not `@uniflowed/vite` runs.
+///
+/// `paper-builder` has no bundler in it — it walks the router root and writes
+/// a document per route — so nothing it satisfies can be Vite-shaped. That is
+/// the whole assertion, and it is ubugeeei-prod/uf#549's: until this, Vite was
+/// not one implementation of a contract, it was reached by name from four
+/// commands.
+#[test]
+fn a_second_builder_is_resolved_named_and_driven() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    copy_tree(
+        &paper_builder_root(),
+        &project.path().join("tools/paper-builder"),
+    );
+    project.write(
+        "uf.config.js",
+        &config_with("  builder: { module: \"./tools/paper-builder\" },\n"),
+    );
+
+    // Named before it runs, which is red line 7: a person should be able to
+    // ask which provider a command will use without running it.
+    let explained = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(
+        plan.contains("./tools/paper-builder 0.1.0"),
+        "`uf explain build` did not name the builder and its version:\n{plan}"
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    let index = fs::read_to_string(project.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("data-paper-builder=\"/\""),
+        "the second builder did not write the document:\n{index}"
+    );
+}
+
+/// A builder the project named and did not install is a sentence, not a stack.
+#[test]
+fn a_builder_that_is_not_there_is_refused_by_name() {
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  builder: { module: \"@someone/rolldown-builder\" },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "{said}");
+    assert!(said.contains("@someone/rolldown-builder"), "{said}");
+    assert!(said.contains("uf install"), "{said}");
+}
+
+/// The served fixture's build says which of its routes need a server.
+///
+/// The fixture exists because the docs site is static: it has a route handler
+/// and two routes with parameters and no `generateStaticParams`, which are
+/// exactly the things `uf build` used to leave out of `dist/` without saying
+/// so. Asserted against the build manifest rather than a running server, so it
+/// needs no socket.
+#[test]
+fn the_served_fixture_records_every_route_a_server_has_to_answer() {
+    if !fixture_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let (succeeded, said) = build_output(&root);
+    assert!(succeeded, "{said}");
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let rendering = &manifest["rendering"];
+    assert_eq!(rendering["prerender"], serde_json::json!("possible"));
+    assert_eq!(rendering["server"], serde_json::json!(true));
+    let per_request: Vec<&str> = rendering["perRequest"]
+        .as_array()
+        .expect("the manifest records what the build left to a server")
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    for expected in ["/posts/:slug", "/slow/:id", "/api/health"] {
+        assert!(
+            per_request.contains(&expected),
+            "{expected} is missing from {per_request:?}"
+        );
+    }
+    // And it is reported, not only recorded.
+    assert!(
+        said.contains("answered by a server"),
+        "the build did not report them:\n{said}"
+    );
+}

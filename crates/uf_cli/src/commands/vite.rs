@@ -1,11 +1,17 @@
-//! Driving Vite from `uf dev` and `uf build`.
+//! Driving a builder from `uf dev`, `uf build`, `uf preview` and `uf start`.
 //!
-//! Vite is the dev server, bundler and plugin system, and it runs in
-//! JavaScript. `uf` starts it through `@uniflowed/vite`'s driver on the
-//! project's Capability JS Host — Node.js, Bun or Deno, whichever
-//! `uf.config.js` names and the machine has — and keeps the terminal for
-//! itself: the driver writes one JSON event per line to stdout and this module
-//! renders them.
+//! The dev server, the bundler and the plugin system run in JavaScript. `uf`
+//! starts them through a **builder's driver** on the project's Capability JS
+//! Host — Node.js, Bun or Deno, whichever `uf.config.js` names and the machine
+//! has — and keeps the terminal for itself: the driver writes one JSON event
+//! per line to stdout and this module renders them.
+//!
+//! Which builder that is comes from [`super::builder`], and Vite is only the
+//! default. Nothing in this file names it: the subcommands, the arguments and
+//! the [`Event`] vocabulary below are the *contract*, written down in full in
+//! `docs/architecture.md`, and `@uniflowed/vite` is one implementation of it.
+//! That distinction is ubugeeei-prod/uf#549, and it is red line 3 — a default
+//! is a default, not a dependency.
 //!
 //! Two things about the process are deliberate. The driver is told which `uf`
 //! binary started it (`UF_BINARY`), so every module it transforms goes
@@ -25,13 +31,8 @@ use uf_config::env_files::ProjectEnv;
 use uf_config::{CapabilityJsHost, UniflowedConfig};
 use uf_term::{CodeFrame, DiagnosticLevel, Status};
 
+use crate::commands::builder::Builder;
 use crate::ui::Ui;
-
-/// The driver module inside `@uniflowed/vite`.
-const DRIVER: &str = "driver.js";
-
-/// Bun's counterpart to Node's loader hooks, registered with `--preload`.
-const BUN_PRELOAD: &str = "bun-preload.js";
 
 /// A JavaScript host that can run the driver.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,32 +133,6 @@ fn is_executable(path: &std::path::Path) -> bool {
     path.is_file()
 }
 
-/// Locate `@uniflowed/vite` from the project root, walking up through
-/// `node_modules` the way module resolution does.
-pub(crate) fn package_dir(root: &Utf8Path) -> Result<Utf8PathBuf> {
-    installed_package(root, "vite", DRIVER)
-}
-
-/// The directory of an installed `@uniflowed/<name>`, found by walking up.
-///
-/// `marker` is a file the package must contain, which is what distinguishes an
-/// installed package from a directory that merely has the right name — a
-/// workspace link that has not been built, most often.
-pub(crate) fn installed_package(root: &Utf8Path, name: &str, marker: &str) -> Result<Utf8PathBuf> {
-    let mut directory = Some(root);
-    while let Some(current) = directory {
-        let candidate = current.join("node_modules/@uniflowed").join(name);
-        if candidate.join(marker).is_file() {
-            return Ok(candidate);
-        }
-        directory = current.parent();
-    }
-    bail!(
-        "`@uniflowed/{name}` is not installed for {root}; add it to the project's dependencies \
-         and run the package manager (`uf install`)"
-    )
-}
-
 /// What the driver reported, one line at a time.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Event {
@@ -201,6 +176,24 @@ pub(crate) enum Event {
     /// because nothing that listens is incremental — a second answer to "which
     /// file" would be a promise the recompute does not keep.
     SourceChanged,
+    /// What the build decided to render when.
+    ///
+    /// Emitted once, after the route table exists and before the first
+    /// document is written. `prerender` is the policy `uf` passed in —
+    /// `everything`, `possible` or `nothing`, from [`uf_config::Prerender`] —
+    /// and `per_request` is every route this build is *not* writing a file
+    /// for, including the route handlers and the middleware, which never had
+    /// one.
+    ///
+    /// It exists because that list was invisible. A build printed the pages it
+    /// wrote and said nothing at all about the routes it skipped, so a project
+    /// whose `/posts/:slug` was silently absent from `dist/` found out from a
+    /// 404 after the deploy. See ubugeeei-prod/uf#250 and #336.
+    Rendering {
+        prerender: String,
+        prerendered: u64,
+        per_request: Vec<String>,
+    },
     /// How the client route table came out of the server-component split.
     ///
     /// Emitted by `@uniflowed/vite` while it generates the *client* copy of the
@@ -297,6 +290,11 @@ impl Event {
                 error: failure(),
             },
             Some("source-changed") => Self::SourceChanged,
+            Some("rendering") => Self::Rendering {
+                prerender: text("prerender").unwrap_or_default(),
+                prerendered: number("prerendered").unwrap_or(0),
+                per_request: list("perRequest"),
+            },
             Some("rsc-split") => Self::RscSplit {
                 pages: number("pages").unwrap_or(0),
                 routes: number("routes").unwrap_or(0),
@@ -339,8 +337,8 @@ pub(crate) struct Driver {
 pub(crate) struct LinkContext<'a> {
     /// The JavaScript host the driver runs on.
     pub(crate) host: &'a Host,
-    /// The directory `@uniflowed/vite` is resolved from.
-    pub(crate) package: &'a Utf8Path,
+    /// The builder that produced the first bundle, and will produce this one.
+    pub(crate) builder: &'a Builder,
     /// The project root.
     pub(crate) root: &'a Utf8Path,
     /// Where `uf build` wrote the client bundle and the prerendered documents.
@@ -377,24 +375,29 @@ impl Driver {
     /// a file that names it must not be able to answer it.
     pub(crate) fn spawn(
         host: &Host,
-        package: &Utf8Path,
+        builder: &Builder,
         root: &Utf8Path,
         command: &str,
         args: &[String],
         env: &ProjectEnv,
         extra: &[(&str, &str)],
     ) -> Result<Self> {
-        let driver = package.join(DRIVER);
+        let driver = builder.driver.as_path();
         let mut process = Command::new(host.program.as_std_path());
         match host.kind {
             CapabilityJsHost::Node => {
                 process.arg(driver.as_str());
             }
             CapabilityJsHost::Bun => {
-                process
-                    .arg("--preload")
-                    .arg(package.join(BUN_PRELOAD).as_str())
-                    .arg(driver.as_str());
+                // Only when the builder declared one. Bun has no
+                // `module.register`, so a builder that transforms Flow needs
+                // its hooks installed this way — and a builder that does not
+                // transform anything needs no preload, which is why the flag
+                // is the builder's to ask for rather than uf's to assume.
+                if let Some(preload) = &builder.bun_preload {
+                    process.arg("--preload").arg(preload);
+                }
+                process.arg(driver.as_str());
             }
             CapabilityJsHost::Deno => {
                 process.args(["run", "-A"]).arg(driver.as_str());
@@ -632,26 +635,5 @@ mod tests {
             );
             assert!(host.program.is_file());
         }
-    }
-
-    #[test]
-    fn a_missing_package_is_named_with_the_fix() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8Path::from_path(dir.path()).unwrap();
-        let error = package_dir(root).unwrap_err().to_string();
-        assert!(error.contains("@uniflowed/vite"), "{error}");
-        assert!(error.contains("uf install"), "{error}");
-    }
-
-    #[test]
-    fn the_package_is_found_up_the_tree() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8Path::from_path(dir.path()).unwrap();
-        let package = root.join("node_modules/@uniflowed/vite");
-        std::fs::create_dir_all(&package).unwrap();
-        std::fs::write(package.join(DRIVER), "").unwrap();
-        let nested = root.join("apps/docs");
-        std::fs::create_dir_all(&nested).unwrap();
-        assert_eq!(package_dir(&nested).unwrap(), package);
     }
 }

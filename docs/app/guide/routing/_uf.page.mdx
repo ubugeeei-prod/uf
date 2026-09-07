@@ -581,6 +581,51 @@ fails to start rather than accepting handshakes all day and delivering nothing.
 A durable queue is accepted everywhere, because pushing to one is not draining
 it.
 
+## When a route is rendered
+
+`uf build` writes a document for a route when it can, and leaves the rest to a
+server. Which one happens is a property of the page, and there are two ways to
+say so.
+
+A page with parameters is prerendered only if it enumerates them:
+
+```js
+// app/posts/[slug]/_uf.page.js
+export function generateStaticParams(): $ReadOnlyArray<{ readonly slug: string }> {
+  return [{ slug: "hello-world" }, { slug: "second-post" }];
+}
+```
+
+Without it, nothing knows what the URLs are, so `/posts/:slug` is rendered per
+request instead.
+
+A page with **no** parameters is prerendered by default, and says otherwise for
+itself:
+
+```js
+// app/now/_uf.page.js
+export const dynamic = "force-dynamic";
+```
+
+`generateStaticParams` cannot express that — there are no parameters to
+generate — which is why this exists. Use it for a page whose content depends on
+the request: one that reads `cookies()` or `headers()`, or that has to be fresh
+on every visit. `"auto"` is the default and is the same as not writing the line.
+
+Next.js's other two values, `"force-static"` and `"error"`, are *constraints* on
+what a page may do, and uf does not check them yet. A page that names one fails
+the build rather than being quietly rendered as `"auto"`.
+
+Route handlers and middleware are always per request; there is no version of
+either that a file can be written for.
+
+`uf build` lists everything it wrote no document for, under `answered by a
+server`. If your project deploys to a static host, say so with
+[`app.rendering.modes`](/reference/config#renderingmodes) or
+[`build.staticBuild`](/reference/config#buildstaticbuild) and that list becomes
+a build error naming the route — which is the difference between finding out
+now and finding out from a 404.
+
 ## Types for routes
 
 `uf build` and `uf dev` write a `router.js` next to your config, declaring the

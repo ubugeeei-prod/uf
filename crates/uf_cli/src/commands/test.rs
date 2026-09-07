@@ -30,7 +30,8 @@ use uf_test::{
 };
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
-use crate::commands::vite::{installed_package, resolve_host};
+use crate::commands::builder::uniflowed_package;
+use crate::commands::vite::resolve_host;
 
 use crate::support::{TEST, plural, project_env, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
@@ -311,7 +312,7 @@ pub(crate) fn test_host(
     // and runs on a Capability JS Host; nothing in that path is Vite's, and
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
     // loads.
-    let loader = installed_package(root, "host", "register.js")?;
+    let loader = uniflowed_package(root, "host", "register.js")?;
     let worker = loader
         .parent()
         .map(|scope| scope.join("test/worker.js"))
