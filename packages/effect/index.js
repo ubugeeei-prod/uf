@@ -194,6 +194,15 @@
 // same reason. It is a checker gap to close, not a reason to put a retry
 // policy back inside a runtime.
 
+// The two impure reads a schedule needs, and the only two in this package.
+// They come from `@uniflowed/core` rather than from the host so that a retry
+// timetable can be *asserted* — a test installs a clock, advances it, and reads
+// the delay the policy chose — instead of being observed by waiting for it.
+// `schedule.js` has always taken both as arguments; this is the other end of
+// that decision, and until now the other end was `Date.now()`.
+import { currentClock } from "@uniflowed/core/clock";
+import { currentRandom } from "@uniflowed/core/random";
+
 import { scheduleStart, scheduleStep } from "./schedule.js";
 import type { Schedule, ScheduleDecision, ScheduleState } from "./schedule.js";
 
@@ -1910,7 +1919,7 @@ function allowedBy<T>(
  * is a policy that gives up on a rejection. `options` says the same thing at
  * the call site; both have to allow an attempt.
  *
- * `Date.now()` is read once per decision and passed to the schedule, which is
+ * The clock is read once per decision and passed to the schedule, which is
  * what lets `fixed` subtract the time the attempt itself took, and what keeps
  * `scheduleStep` a pure function of its arguments. The random factor a
  * `jittered` schedule needs is drawn in the same place and for the same reason.
@@ -1922,7 +1931,7 @@ export function retry<A, E, R>(
 ): Effect<A, E, R> {
   return makeEffect({
     run: async (runContext) => {
-      let state = scheduleStart(Date.now());
+      let state = scheduleStart(currentClock().now());
       let settled = await runKernel(self, runContext);
       while (settled.kind === "failure" && !isInterrupted(runContext)) {
         const cause = settled.cause;
@@ -1939,7 +1948,13 @@ export function retry<A, E, R>(
             // step on has no answer and giving up is the total one.
             return settled;
           }
-          decision = scheduleStep(schedule, state, found.error, Date.now(), Math.random());
+          decision = scheduleStep(
+            schedule,
+            state,
+            found.error,
+            currentClock().now(),
+            currentRandom().next(),
+          );
         } catch (error) {
           return defect(error);
         }
@@ -1997,7 +2012,7 @@ export function repeat<A, E, R>(
 ): Effect<number, E, R> {
   return makeEffect({
     run: async (runContext) => {
-      let state = scheduleStart(Date.now());
+      let state = scheduleStart(currentClock().now());
       let output = state.output;
       let settled = await runKernel(self, runContext);
       while (settled.kind === "success") {
@@ -2010,7 +2025,13 @@ export function repeat<A, E, R>(
           if (!worthRepeating(value, options)) {
             return success(output);
           }
-          decision = scheduleStep(schedule, state, value, Date.now(), Math.random());
+          decision = scheduleStep(
+            schedule,
+            state,
+            value,
+            currentClock().now(),
+            currentRandom().next(),
+          );
         } catch (error) {
           return defect(error);
         }
