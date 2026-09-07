@@ -1,14 +1,48 @@
 # Changelog
 
+## uf@0.0.0-alpha.10
+
+_2026-09-07_
+
+Four packages caught up with what people compare them to. `packages/form` reads
+a field at its own type instead of at `mixed` — the position its own header took,
+that Flow has "no way to say the type at this path", turned out to be stronger
+than what the checker refuses. `packages/state` gained six of `jotai/utils` and
+an asynchronous storage, and declined seven more with a reason for each.
+`packages/effect` gained the plumbing five shapes were missing: a queue, a
+scope-tied fork, a runtime built once, a stream that can be written to, and a
+schedule that carries a value. `@uniflowed/ui` gained the four built on `Dialog`
+and the three that replace something the browser already does.
+
+And `uf lint --fix` writes the fixes a catalogue had been holding for the
+language server alone, with a safe/unsafe line that is a field on the fix rather
+than a decision each caller makes.
+
+### Added
+
+- **ui**: the four built on Dialog, and the three that replace the browser (#462)
+- **lint, prepare**: `uf lint --fix` writes the fixes the catalogue already knew (#455)
+- **state, hooks**: six utility names, an asynchronous storage, one guard kept twice (#461)
+- **effect**: the plumbing five shapes were missing (#463)
+- **form**: a field read at its own type, and values that arrive later (#460)
+
+### Internal
+
+- **release**: a build budget a cold cache fits inside (#465)
+
 ## uf@0.0.0-alpha.9
 
 _2026-09-07_
 
+> **This version reached npm and not the release page.** Its
+> `x86_64-apple-darwin` build was cancelled at the sixty-minute job timeout, so
+> no binaries were published and `curl -fsSL https://setup.uniflowed.dev | sh`
+> skips it. The seventeen `@uniflowed/*` packages are on the registry at
+> `0.0.0-alpha.9`. See #464; the budget is raised in alpha.10.
+
 The release where several things uf claimed became things uf does. `Image` and
 `Font` had been the markup and none of the pipeline; they now resize, re-encode,
-`srcset`, self-host a font and match its fallback metrics. `uf lint --fix`
-writes the fixes a catalogue had been holding for the language server alone.
-`uf test --coverage` measures the author's Flow lines rather than the JavaScript
+`srcset`, self-host a font and match its fallback metrics. `uf test --coverage` measures the author's Flow lines rather than the JavaScript
 they compile to. And `@uniflowed/ui` grew a positioning engine and the three
 overlay components that need one.
 
