@@ -56,6 +56,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { reset } from "./internal/registry.js";
 import { resetModuleState } from "./internal/modules.js";
 import { run } from "./internal/run.js";
+import { unstubAllEnvs, unstubAllGlobals } from "./internal/namespace.js";
 
 /** What `uf` sends for one file. */
 type Request = {|
@@ -140,6 +141,16 @@ function write(event: { readonly [string]: mixed }): void {
 async function runFile(request: Request, generation: number): Promise<void> {
   const started = performance.now();
   reset();
+  // Every environment variable and global the previous file replaced goes back
+  // too. A spy lives in the registry `reset` clears, but a stub is a write to
+  // something the whole process shares: `uft.stubEnv("NODE_ENV", "production")`
+  // stays set for every later file this worker serves, and `uf test` fans files
+  // across workers by size, so which files those are changes with the timings
+  // file. That is a suite whose result depends on its schedule — and worse, one
+  // whose failure names the file that read the value rather than the file that
+  // wrote it. See ubugeeei-prod/uf#417.
+  unstubAllEnvs();
+  unstubAllGlobals();
   // Every module this file stood in for goes back, before the next file can
   // import one of them and be handed the previous file's stand-in. A worker
   // serves many files out of one module registry, so this is the difference

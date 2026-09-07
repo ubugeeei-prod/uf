@@ -7,6 +7,11 @@
 // the three reset verbs, which are easy to conflate, and `spyOn`'s restore,
 // which has to put an inherited method back without leaving a copy behind.
 
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { UnsupportedError, describe, expect, it, uft } from "@uniflowed/test";
 
 describe("uft.fn", () => {
@@ -250,4 +255,287 @@ describe("a binding this host cannot give", () => {
     expect(String(error)).toContain("uft.mock");
     expect(String(error)).toContain("this host has no synchronous module hooks");
   });
+});
+
+// Whether a stub outlives the file that set it, driven through a real worker.
+//
+// `uft.stubEnv` writes to `process.env` and `uft.stubGlobal` writes to
+// `globalThis`, and both of those belong to the process rather than to the file
+// being run. A worker serves many files out of one process, so "the stub is
+// undone" is a claim about the seam between two files, and there is no way to
+// see it from inside one: by the time a case could look, it is the case being
+// described. The runner did not undo them at all — `unstubAllEnvs` and
+// `unstubAllGlobals` were defined, exported, and called by nothing
+// (ubugeeei-prod/uf#417).
+//
+// So this drives a worker the way `crates/uf_test/src/host.rs` does — a request
+// per line on its stdin, one JSON event per line back — exactly as
+// `module-mock.test.js` does for the leak one seam over, and for the same
+// reason: a worker serving a second file after a first is the whole subject,
+// and two workers would have nothing to confuse.
+//
+// **It cannot pass by luck.** `uf test` fans files across workers by size, so
+// under the real scheduler these two files might never share a process and the
+// bug would hide behind a timings file. Here both requests are written to one
+// worker's stdin and that worker queues them strictly in order, so the second
+// file always runs in the process the first one left behind. That is also why
+// the bug was worth finding this way rather than waiting for it: under the
+// scheduler the file that fails is the one that *read* the leaked value, not
+// the one that wrote it.
+//
+// The fixtures go to a temporary directory rather than beside this file: `uf
+// test` discovers by reading a file rather than by naming it, so a fixture in
+// this workspace that registers cases would be collected and run by the very
+// suite that is supposed to be running it. Nothing out there has a
+// `node_modules` to resolve `@uniflowed/test` from, so they reach it by path.
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repository = path.resolve(here, "..", "..");
+
+/**
+ * A variable the worker is started with, so the *restore* is tested too.
+ *
+ * `unstubAllEnvs` has two branches — put the old value back, or delete a name
+ * that was never there — and a fixture that only stubs names nobody set
+ * exercises one of them. This one is in the worker's environment before it
+ * starts, so the first file replaces something real and the second file has to
+ * see the original rather than the stub or nothing.
+ */
+const PRESENT = "UF_STUB_PRESENT";
+
+/** A variable nothing sets, so putting it back means deleting it. */
+const ABSENT = "UF_STUB_ABSENT";
+
+/**
+ * The file that stubs, and the two globals it treats differently.
+ *
+ * `ufStubKept` is assigned before it is stubbed, which makes it the global
+ * `stubGlobal` has to *restore* rather than delete. The assignment itself is
+ * the file's own doing rather than a stub, so it is deliberately still there
+ * for the next file: uf puts back what uf replaced, and nothing else.
+ */
+const FIRST = `
+describe("the file that stubs", () => {
+  it("replaces what it was told to replace", () => {
+    globalThis.ufStubKept = "the file wrote this";
+    uft.stubEnv("${ABSENT}", "stubbed");
+    uft.stubEnv("${PRESENT}", "stubbed");
+    uft.stubGlobal("ufStubAdded", "stubbed");
+    uft.stubGlobal("ufStubKept", "stubbed");
+    console.log(
+      "first " +
+        [
+          process.env.${ABSENT},
+          process.env.${PRESENT},
+          globalThis.ufStubAdded,
+          globalThis.ufStubKept,
+        ]
+          // Rendered one by one rather than by \`join\`, which writes an absent
+          // value as an empty string — and "gone" is exactly what this asserts.
+          .map((value) => String(value))
+          .join(" "),
+    );
+  });
+});
+`;
+
+/** The file that observes, in the process the first one left behind. */
+const SECOND = `
+describe("the next file in the same worker", () => {
+  it("sees the process the worker started with", () => {
+    console.log(
+      "second " +
+        [
+          process.env.${ABSENT},
+          process.env.${PRESENT},
+          globalThis.ufStubAdded,
+          globalThis.ufStubKept,
+        ]
+          // Rendered one by one rather than by \`join\`, which writes an absent
+          // value as an empty string — and "gone" is exactly what this asserts.
+          .map((value) => String(value))
+          .join(" "),
+    );
+  });
+});
+`;
+
+/** One request, in the shape `host.rs` writes it. */
+type StubRequest = {|
+  readonly file: string,
+  readonly timeoutMs: number,
+  readonly generation: number,
+|};
+
+/** One line the worker wrote back. */
+type StubEvent = { event: string, status?: string, text?: string };
+
+/**
+ * How this host starts a worker, mirroring `HostCommand::with_flow_loader`.
+ *
+ * The same shape as `module-mock.test.js` and `event-generation.test.js`: the
+ * worker imports Flow, so it needs the host's loader, and each host registers
+ * one its own way. Deno has none in `@uniflowed/host` yet, so it cannot run
+ * this at all; a named failure is better than a skip that reads like a pass.
+ */
+function stubLoaderArguments(): Array<string> {
+  const host = path.basename(process.execPath);
+  if (host.startsWith("node")) {
+    const register = path.join(repository, "packages", "host", "register.js");
+    return ["--enable-source-maps", "--import", pathToFileURL(register).href];
+  }
+  if (host.startsWith("bun")) {
+    return ["--preload", path.join(repository, "packages", "host", "bun-preload.js")];
+  }
+  throw new Error(`no Flow loader for ${host}: this test drives the worker uf would have started`);
+}
+
+/**
+ * What a finished worker's stdout means, given how the worker ended.
+ *
+ * How it ended is half the answer and stdout cannot carry it. A worker that
+ * wrote every event a case expects and then died — a crash in a teardown, a
+ * `process.exit(1)` on the way out, a kill from the outside — leaves output
+ * indistinguishable from a healthy run's, so a reader of the events alone
+ * would call the case passed. Both are therefore checked here, and a
+ * non-clean exit throws with the code and the signal in it, because
+ * `code=null, signal=SIGSEGV` and `code=1, signal=null` send whoever reads
+ * the failure to two different places.
+ *
+ * Separate from [`runStubsInWorker`] so that the case below can state the rule
+ * without arranging a crash: a test that had to kill a real worker to prove
+ * this would be testing Node's process handling rather than this file's.
+ */
+function eventsFromWorker(
+  code: number | null,
+  signal: string | null,
+  written: string,
+): Array<StubEvent> {
+  if (code !== 0 || signal != null) {
+    throw new Error(
+      `the worker did not exit cleanly: code=${String(code)}, signal=${String(signal)}`,
+    );
+  }
+  try {
+    return written
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    throw new Error(`the worker wrote something that is not an event: ${String(error)}`);
+  }
+}
+
+/**
+ * Run `requests` in one worker and collect every event it wrote.
+ *
+ * The environment is this process's, plus [`PRESENT`] and minus [`ABSENT`], so
+ * the two names mean what the fixtures assume however the suite was started.
+ * The rest is inherited because that is where `UF_PROJECT_ROOT` and `UF_BINARY`
+ * are: `uf test` sets both, so the nested worker transforms through the same
+ * binary and shares its transform cache instead of building a second one.
+ */
+function runStubsInWorker(requests: Array<StubRequest>): Promise<Array<StubEvent>> {
+  const environment = { ...process.env, [PRESENT]: "the worker started with this" };
+  delete environment[ABSENT];
+
+  return new Promise((resolve, reject) => {
+    const worker = path.join(repository, "packages", "test", "worker.js");
+    const child = spawn(process.execPath, [...stubLoaderArguments(), worker], {
+      env: environment,
+      // Its stderr is the host's own noise and is not part of the report;
+      // inherited so a person debugging this sees it, as `host.rs` does.
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    let written = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      written += String(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code: number | null, signal: string | null) => {
+      try {
+        resolve(eventsFromWorker(code, signal, written));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    child.stdin.end(requests.map((request) => `${JSON.stringify(request)}\n`).join(""));
+  });
+}
+
+/**
+ * How long a case that starts a worker may take.
+ *
+ * A Node start, the Flow loader and two file imports are seconds of work rather
+ * than milliseconds, and they run beside eleven other workers, so the default
+ * per-case budget is not the right measure of them.
+ */
+const WORKER_BUDGET = { timeout: 120_000 };
+
+describe("how the worker ended is part of what it said", () => {
+  /**
+   * The case the events cannot show.
+   *
+   * Every assertion below this reads a list of events, and that list is the
+   * same whether the worker finished or crashed on its way out — so a stub
+   * lifetime that "held" in a worker which then segfaulted would be reported
+   * as held. The exit is checked before the output is parsed at all.
+   */
+  it("takes a clean exit as the condition for reading the output", () => {
+    const written = '{"event":"output","text":"held"}\n';
+
+    expect(eventsFromWorker(0, null, written)).toEqual([{ event: "output", text: "held" }]);
+    expect(() => eventsFromWorker(1, null, written)).toThrow("code=1");
+    expect(() => eventsFromWorker(null, "SIGKILL", written)).toThrow("signal=SIGKILL");
+    // A worker that exited cleanly and wrote nothing is a worker that ran no
+    // file, not a failure: the cases below assert what is in the list.
+    expect(eventsFromWorker(0, null, "")).toEqual([]);
+  });
+
+  it("says a line that is not an event is not an event", () => {
+    expect(() => eventsFromWorker(0, null, "not json\n")).toThrow("not an event");
+  });
+});
+
+describe("a stub does not outlive the file that set it", () => {
+  it(
+    "is undone by the time the same worker runs the next file",
+    async () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), "uf-stub-lifetime-"));
+      try {
+        const entry = pathToFileURL(path.join(repository, "packages", "test", "index.js")).href;
+        const write = (name: string, source: string) => {
+          const file = path.join(directory, name);
+          fs.writeFileSync(file, `import { describe, it, uft } from "${entry}";\n${source}`);
+          return file;
+        };
+
+        const events = await runStubsInWorker([
+          { file: write("first.js", FIRST), generation: 1, timeoutMs: 60_000 },
+          { file: write("second.js", SECOND), generation: 2, timeoutMs: 60_000 },
+        ]);
+
+        const printed = events
+          .filter((event) => event.event === "output")
+          .map((event) => String(event.text).trimEnd());
+
+        // The first line is here so that a `stubEnv` which stubbed nothing
+        // could not make the second one true. The second line is the issue: the
+        // name that was not there is gone rather than left holding "stubbed",
+        // the one that was there is back to what the worker started with, and
+        // the global the file assigned itself is untouched.
+        expect(printed).toEqual([
+          "first stubbed stubbed stubbed stubbed",
+          "second undefined the worker started with this undefined the file wrote this",
+        ]);
+        expect(
+          events.filter((event) => event.event === "test").map((event) => String(event.status)),
+        ).toEqual(["passed", "passed"]);
+      } finally {
+        fs.rmSync(directory, { force: true, recursive: true });
+      }
+    },
+    WORKER_BUDGET,
+  );
 });
