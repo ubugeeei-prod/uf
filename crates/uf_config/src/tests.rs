@@ -814,38 +814,6 @@ fn a_rule_is_switched_off_by_saying_so() {
     assert!(config.lint.rules.len() > 50, "the table shrank");
 }
 
-/// A misspelled rule used to do nothing at all, which is the same quiet
-/// failure one level down: the project sees no change and has no way to learn
-/// why.
-#[test]
-fn a_rule_uf_does_not_have_is_refused_with_the_one_it_probably_meant() {
-    let error = serde_json::from_value::<UniflowedConfig>(serde_json::json!({
-        "lint": { "rules": { "flow/unclear-types": "warn" } }
-    }))
-    .expect_err("a misspelled rule");
-
-    let message = error.to_string();
-    assert!(message.contains("is not a lint rule"), "{message}");
-    assert!(
-        message.contains("did you mean `flow/unclear-type`"),
-        "{message}"
-    );
-}
-
-/// And nothing is suggested when nothing is near, because a wrong suggestion
-/// sends the reader to a rule they did not want.
-#[test]
-fn a_name_that_resembles_no_rule_gets_no_suggestion() {
-    let error = serde_json::from_value::<UniflowedConfig>(serde_json::json!({
-        "lint": { "rules": { "totally/made-up": "warn" } }
-    }))
-    .expect_err("a name that is not a rule");
-
-    let message = error.to_string();
-    assert!(message.contains("is not a lint rule"), "{message}");
-    assert!(!message.contains("did you mean"), "{message}");
-}
-
 /// The permission set a project declares, read as written.
 #[test]
 fn parses_a_permission_set() {
@@ -986,4 +954,108 @@ fn a_scope_can_be_bound_to_a_registry_and_provenance_can_be_turned_off() {
             .provenance
             .reads_attestations()
     );
+}
+
+/// Naming one rule changes that rule, not the size of the linter.
+///
+/// The regression for ubugeeei-prod/uf#475. `lint.rules` used to *be* the rule
+/// table, so the config below described a one-rule linter: `flow/syntax`,
+/// `react/hooks-rules` and fifty others were not lowered, they were gone, and
+/// the run that no longer looked for them passed.
+#[test]
+fn naming_one_lint_rule_keeps_the_rest_of_uf_s_table() {
+    let source = r#"
+        import { defineConfig } from "@uniflowed/config";
+
+        export default defineConfig({
+          lint: { rules: { "flow/unclear-type": "warn" } },
+        });
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let defaults = UniflowedConfig::default();
+    assert_eq!(parsed.lint.rules.len(), defaults.lint.rules.len());
+    assert_eq!(parsed.lint.rules["flow/unclear-type"], RuleLevel::Warn);
+    // The three named in the issue, and the one whose loss is worst: a project
+    // that lowers a rule to a warning must not stop being told its sources do
+    // not parse.
+    for kept in [
+        "flow/syntax",
+        "react/hooks-rules",
+        "flow/nested-component",
+        "flow/mixed-import-and-require",
+    ] {
+        assert_eq!(
+            parsed.lint.rules.get(kept).copied(),
+            defaults.lint.rules.get(kept).copied(),
+            "{kept} lost its default level"
+        );
+    }
+}
+
+/// Switching a rule off is still spelled `"off"`, and still works.
+#[test]
+fn a_rule_set_to_off_is_off_and_its_neighbours_are_not() {
+    let source = r#"
+        export default {
+          lint: { rules: { "uniflowed/no-tabs": "off" } },
+        };
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(parsed.lint.rules["uniflowed/no-tabs"], RuleLevel::Off);
+    assert_eq!(
+        parsed.lint.rules["uniflowed/no-trailing-whitespace"],
+        RuleLevel::Error
+    );
+}
+
+/// A rule id this uf does not know is carried rather than refused.
+///
+/// `uf_lint` owns the catalogue and reports an unknown id where it can say
+/// something useful about it. Refusing the config here would make a uf
+/// downgrade — or a config written for the next release — unrunnable.
+#[test]
+fn an_unknown_rule_id_is_kept_rather_than_rejected() {
+    let source = r#"
+        export default {
+          lint: { rules: { "future/rule-from-a-newer-uf": "error" } },
+        };
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(
+        parsed.lint.rules["future/rule-from-a-newer-uf"],
+        RuleLevel::Error
+    );
+    assert_eq!(
+        parsed.lint.rules.len(),
+        UniflowedConfig::default().lint.rules.len() + 1
+    );
+}
+
+/// Serializing a config and reading it back is the identity.
+///
+/// Merging makes this true rather than accidental: the serialized map names
+/// every rule, so laying it over the defaults reproduces it exactly. Anything
+/// that round-trips a config through JSON — `uf inspect --json`, a plugin host
+/// — depends on it.
+#[test]
+fn a_serialized_config_reads_back_with_the_same_rule_table() {
+    let mut config = UniflowedConfig::default();
+    config.lint.rules.insert(
+        CompactString::const_new("flow/unclear-type"),
+        RuleLevel::Off,
+    );
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let parsed: UniflowedConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert_eq!(parsed.lint.rules, config.lint.rules);
 }

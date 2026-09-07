@@ -12,102 +12,54 @@ pub struct LintConfig {
     pub files: Vec<CompactString>,
     pub flow: FlowLintConfig,
     pub ignore: Vec<CompactString>,
-    /// Rule levels, merged over uf's table rather than replacing it.
-    ///
-    /// # Why merging
-    ///
-    /// `#[serde(default)]` fills this in when the key is absent and replaces it
-    /// wholesale when it is present, so naming one rule switched the other
-    /// fifty-three off — silently. On this workspace that turned 236 errors
-    /// into 203 warnings the moment a config appeared, and the thirty-three
-    /// that vanished were `react/hooks-rules`, `flow/nested-component` and
-    /// `flow/mixed-import-and-require` findings: not fixed, just no longer
-    /// looked for. `flow/syntax` went with them, so a project that lowered
-    /// `unclear-type` to a warning also stopped being told its sources do not
-    /// parse (ubugeeei-prod/uf#475).
-    ///
-    /// Nothing said so. The reference documents this as "rule levels" over a
-    /// default table, which reads as an override map, and no command printed
-    /// how many rules ran. A project could not tell it had switched the linter
-    /// off.
-    ///
-    /// Merging is what the documentation already described, and switching a
-    /// rule off is what `"off"` is for.
-    #[serde(deserialize_with = "rules_over_the_default_table")]
+    /// Rule levels, **merged over** [`DEFAULT_LINT_RULES`] rather than
+    /// replacing it. See [`rules_over_defaults`].
+    #[serde(deserialize_with = "rules_over_defaults")]
     pub rules: BTreeMap<CompactString, RuleLevel>,
 }
 
-/// uf's table, with the project's levels written over it.
+/// Read `lint.rules` as changes to uf's table, not as the whole of it.
 ///
-/// # Errors
+/// A map field deserializes to exactly what the document said, and for this
+/// one field that is the wrong answer in a way nothing reports. `lint: { rules:
+/// { "flow/unclear-type": "warn" } }` used to *be* the rule table: the other
+/// fifty-odd rules were not lowered or turned off, they stopped existing, and
+/// `uf lint` stopped looking for them. `flow/syntax` went with them, so a
+/// project that lowered one rule to a warning also stopped being told its
+/// sources do not parse. The run then passed, which is the part that makes it
+/// severe rather than surprising — a green build that means nothing looks
+/// exactly like a green build that means something. See
+/// ubugeeei-prod/uf#475.
 ///
-/// When a name is not a rule uf has. A misspelled rule silently does nothing,
-/// which is the same class of quiet failure as the one above: a project writes
-/// `flow/unclear-types`, sees no change, and has no way to find out why. The
-/// message names the closest rule uf does have, because the mistake is almost
-/// always one character.
-fn rules_over_the_default_table<'de, D>(
+/// So the defaults are laid down first and the document is applied on top of
+/// them. Every level in the table is still reachable: `"off"` is what switches
+/// a rule off, and it says so at the point it is written. What is no longer
+/// reachable is switching a rule off *by not mentioning it*, which nobody
+/// could have meant to ask for.
+///
+/// A rule id uf does not know is kept rather than rejected. Deserialization is
+/// not where that is decided: `uf_lint` owns the catalogue, a config may name
+/// a rule a newer uf added or an older one retired, and refusing the whole
+/// config over one unknown key would make a uf downgrade unrunnable.
+fn rules_over_defaults<'de, D>(
     deserializer: D,
 ) -> Result<BTreeMap<CompactString, RuleLevel>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let named = BTreeMap::<CompactString, RuleLevel>::deserialize(deserializer)?;
     let mut rules = default_lint_rules();
-    for (name, level) in named {
-        if !rules.contains_key(&name) {
-            let closest = nearest_rule(&name);
-            return Err(serde::de::Error::custom(match closest {
-                Some(rule) => format!("`{name}` is not a lint rule; did you mean `{rule}`?"),
-                None => format!("`{name}` is not a lint rule"),
-            }));
-        }
-        rules.insert(name, level);
+    for (rule, level) in BTreeMap::<CompactString, RuleLevel>::deserialize(deserializer)? {
+        rules.insert(rule, level);
     }
     Ok(rules)
 }
 
-/// uf's own table, as a map.
+/// uf's rule table, as a fresh map.
 fn default_lint_rules() -> BTreeMap<CompactString, RuleLevel> {
     DEFAULT_LINT_RULES
         .into_iter()
         .map(|(rule, level)| (CompactString::const_new(rule), level))
         .collect()
-}
-
-/// The rule `name` was most likely meant to be.
-///
-/// Levenshtein against every rule uf has, accepting the nearest within a third
-/// of the name's length — close enough that a typo lands and far enough that
-/// two genuinely different rules do not suggest each other. `None` when nothing
-/// is near, because a wrong suggestion is worse than none: it sends the reader
-/// to a rule they did not want.
-fn nearest_rule(name: &str) -> Option<&'static str> {
-    let budget = (name.len() / 3).max(1);
-    DEFAULT_LINT_RULES
-        .into_iter()
-        .map(|(rule, _)| (rule, distance(name, rule)))
-        .filter(|(_, distance)| *distance <= budget)
-        .min_by_key(|(_, distance)| *distance)
-        .map(|(rule, _)| rule)
-}
-
-/// Levenshtein distance, two rows rather than a matrix.
-fn distance(left: &str, right: &str) -> usize {
-    let right: Vec<char> = right.chars().collect();
-    let mut previous: Vec<usize> = (0..=right.len()).collect();
-    let mut current = vec![0usize; right.len() + 1];
-    for (row, from) in left.chars().enumerate() {
-        current[0] = row + 1;
-        for (column, to) in right.iter().enumerate() {
-            let substitute = previous[column] + usize::from(from != *to);
-            current[column + 1] = substitute
-                .min(previous[column + 1] + 1)
-                .min(current[column] + 1);
-        }
-        std::mem::swap(&mut previous, &mut current);
-    }
-    previous[right.len()]
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,7 +116,11 @@ pub enum FlowLintParser {
 /// Each rule's full rationale, category, and one-line description live on its
 /// `uf_lint::RuleDescriptor`; `uf_lint` has a test asserting this table and that
 /// catalogue agree exactly, in both directions, so the two cannot drift apart.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 56] = [
+///
+/// A project's `lint.rules` is merged **over** this table rather than replacing
+/// it — see [`rules_over_defaults`] for what naming one rule used to do to the
+/// other fifty.
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -239,6 +195,28 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 56] = [
     ("uniflowed/no-npm-script-invocation", RuleLevel::Error),
     // A typo'd suppression silently stops enforcing a rule.
     ("uniflowed/unknown-lint-suppression", RuleLevel::Error),
+    // An image with no text alternative is unreadable to the people who need
+    // the alternative, and the fix is mechanical: the words the image carries,
+    // or `alt=""` when it carries none.
+    ("a11y/alt-text", RuleLevel::Error),
+    // The quietest bug on this list. A misspelled `aria-*` is not rejected by
+    // the browser, not reported by React and not read by anything: the control
+    // is unlabelled and there is no symptom at all.
+    ("a11y/aria-props", RuleLevel::Error),
+    // Style, and a claim about a document uf cannot see the whole of: a `<h1>`
+    // in a layout and a `<h3>` in a card are only a skip if the one renders
+    // inside the other. `warn`, and compared within one function body.
+    ("a11y/heading-order", RuleLevel::Warn),
+    // A label attached to nothing leaves its field with no accessible name and
+    // makes the label itself dead to a click. Both are defects, not opinions.
+    ("a11y/label-has-associated-control", RuleLevel::Error),
+    // A handler only a mouse can reach is a feature a keyboard user does not
+    // have. Reported only where neither a `role` nor a key handler is present,
+    // which is where nobody has considered the keyboard at all.
+    ("a11y/no-static-element-interactions", RuleLevel::Error),
+    // `<p><div>` is a hydration bug rather than a style opinion: the browser's
+    // parser repairs it before React sees it, and the repair is the mismatch.
+    ("markup/no-invalid-nesting", RuleLevel::Error),
     // Style preferences during the migration to Flow component/hook syntax.
     ("react/component-syntax", RuleLevel::Warn),
     ("react/hook-syntax", RuleLevel::Warn),
@@ -279,6 +257,10 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 56] = [
     ("router/unsupported-segment", RuleLevel::Error),
     ("package/no-npm-scripts", RuleLevel::Error),
     ("fetch/no-global-override", RuleLevel::Error),
+    // `import.meta.hot.accept(...)` throws in a production build, and the
+    // guard Vite's own documentation writes around it does not refine in Flow.
+    // One shape crashes a build and the other fails `uf check`; both block.
+    ("vite/hot-needs-optional-chaining", RuleLevel::Error),
     // XSS and arbitrary code execution: never a warning.
     ("security/no-dangerously-set-inner-html", RuleLevel::Error),
     ("security/no-eval", RuleLevel::Error),

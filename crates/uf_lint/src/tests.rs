@@ -22,6 +22,7 @@ mod security;
 mod server;
 mod structure;
 mod suppression;
+mod tree;
 mod unavailable;
 mod uniflowed;
 

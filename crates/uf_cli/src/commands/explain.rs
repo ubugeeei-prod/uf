@@ -39,7 +39,7 @@ struct Stage {
 /// delegate nothing — `info`, `inspect`, `explain`, `completion`, `create` —
 /// are absent on purpose: there is no provider to name, and an entry saying
 /// "uf" three times would be a list of nothing.
-const KNOWN: &[&str] = &[
+pub(crate) const KNOWN: &[&str] = &[
     "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
     "install", "add", "remove", "update", "patch", "pm", "catalog", "why", "upgrade", "use", "env",
     "prepare", "publish", "release", "lsp",
