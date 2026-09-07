@@ -8,6 +8,8 @@
 //   <host> driver.js dev     --root <dir> [--mode <m>] [--host <h>] [--port <n>] [--strict-port]
 //                            [--uf-env-file <file>]...
 //   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
+//                            [--prerender everything|possible|nothing]
+//                            [--static-build] [--because <sentence>]
 //   <host> driver.js compile --root <dir> [--mode <m>] [--out-dir <dir>] --assets <file> --bundle <dir>
 //   <host> driver.js deploy  --root <dir> [--mode <m>] [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
 //   <host> driver.js preview --root <dir> [--mode <m>] [--out-dir <dir>] [--host <h>] [--port <n>]
@@ -344,37 +346,57 @@ async function preview() {
   const { preview: startPreview } = await import("vite");
   const config = await loadConfig();
   const inline = await viteConfig(config, argument("--mode") ?? "production");
-  const build = await loadBuild({
-    root,
-    outDir: inline.build.outDir,
-    serverDir: path.join(".uf", "build", "server"),
-  });
+  // A build that declared it emits no server has none to mount. `uf` refuses
+  // `uf start` for such a project and lets this one through, because a preview
+  // of files *is* the deployment: what a static host does with `dist/` is
+  // exactly what Vite's preview server does with it, and mounting a request
+  // handler behind it would make this preview right about a deployment that is
+  // not the one happening. See `uf_cli`'s `commands::serve`.
+  const staticBuild = flag("--static-build");
+  const build = staticBuild
+    ? null
+    : await loadBuild({
+        root,
+        outDir: inline.build.outDir,
+        serverDir: path.join(".uf", "build", "server"),
+      });
 
   const server = await startPreview({ ...inline, appType: "custom" });
-  const handle = createServeHandler({ ...build, cache: config.app?.rendering?.cache });
-  server.middlewares.use(async (request, response, next) => {
-    try {
-      const asRequest = await toRequest(request, server.config);
-      // The same lifecycle `uf start` gets from `nodeListener`, spelled out
-      // because this door is Vite's connect chain rather than a bare
-      // `node:http` server: the whole request runs inside it, and it settles
-      // once `send` has returned. A preview whose `after()` fired at a
-      // different moment from the production server's would be a preview that
-      // is checked and believed and wrong.
-      await withRequest(build.entry, asRequest, async () => {
-        await send(response, await handle(asRequest));
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
+  if (build != null) {
+    const handle = createServeHandler({ ...build, cache: config.app?.rendering?.cache });
+    server.middlewares.use(async (request, response, next) => {
+      try {
+        const asRequest = await toRequest(request, server.config);
+        // The same lifecycle `uf start` gets from `nodeListener`, spelled out
+        // because this door is Vite's connect chain rather than a bare
+        // `node:http` server: the whole request runs inside it, and it settles
+        // once `send` has returned. A preview whose `after()` fired at a
+        // different moment from the production server's would be a preview that
+        // is checked and believed and wrong.
+        await withRequest(build.entry, asRequest, async () => {
+          await send(response, await handle(asRequest));
+        });
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
 
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
     local: urls.local,
     network: urls.network,
-    routes: build.entry.routes.map((route) => route.path),
-    handlers: build.entry.handlers.map((handler) => handler.path),
+    // From the filesystem when there is no bundle to ask, which is the same
+    // scan `dev` reports from. The count is what a reader checks the build
+    // against, so answering "0 routes" for a static site that has thirty would
+    // be the report being wrong about the thing it exists to report.
+    routes:
+      build == null
+        ? scanRoutes(path.resolve(root, config.app?.router?.root ?? "app")).routes.map(
+            (route) => route.path,
+          )
+        : build.entry.routes.map((route) => route.path),
+    handlers: build == null ? [] : build.entry.handlers.map((handler) => handler.path),
   });
 
   const shutdown = async () => {
@@ -456,6 +478,15 @@ async function build() {
   const inline = await viteConfig(config, mode);
   const outDir = path.resolve(root, inline.build.outDir);
   const serverDir = path.join(root, ".uf", "build", "server");
+  // How much of the route table to prerender, and whether the server bundle
+  // survives the build. Both are `uf`'s answer rather than this file's: they
+  // come from two settings in `uf.config.js` that only mean something read
+  // together, and `uf_config`'s `RenderingPlan` is where they are. A driver
+  // started by hand gets the behaviour every uf build had before either
+  // setting was read.
+  const prerender = argument("--prerender") ?? "possible";
+  const staticBuild = flag("--static-build");
+  const because = argument("--because") ?? "this build prerenders every route";
 
   // 1. The client: everything the browser loads, with a manifest so the
   //    server render knows which script and stylesheet tags to write.
@@ -488,11 +519,39 @@ async function build() {
     },
   });
 
-  // 3. Every static route, rendered to an HTML document.
+  // 3. Which routes this build renders when, and every route it renders now.
+  //
+  //    The decision comes from `uf.config.js` and is made in Rust — see
+  //    `uf_config`'s `RenderingPlan` — because `app.rendering.modes` and
+  //    `build.staticBuild` are two settings that have to be read together. It
+  //    arrives here as one word, and this is where it meets the route table.
   emit("phase", { name: "prerender" });
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
   const assets = assetsFromManifest(manifest);
-  const pages = await staticPaths(server.routes);
+  const plan = await renderingPlan(server, prerender);
+  emit("rendering", {
+    prerender,
+    prerendered: plan.urls.length,
+    perRequest: plan.perRequest.map((route) => route.path),
+  });
+  // A build that has to prerender everything, and a route it cannot: the
+  // refusal ubugeeei-prod/uf#336 and ubugeeei-prod/uf#385 are both about.
+  // Before the loop below, so no document is written for a build that is not
+  // going to be one, and with the whole list rather than the first item — a
+  // project that has just narrowed `rendering.modes` wants to see every route
+  // the narrowing costs it, not one per rebuild.
+  if (prerender === "everything" && plan.perRequest.length > 0) {
+    const listed = plan.perRequest.map((entry) => `  ${entry.path} — ${entry.why}`).join("\n");
+    emit("error", {
+      message:
+        `${plan.perRequest.length} ${plural(plan.perRequest.length, "route")} in this project ` +
+        `can only be answered by a server, and ${because}\n${listed}\n\n` +
+        "Give each page a `generateStaticParams` and take out the handlers and middleware, or " +
+        'allow `"ssr"` in `app.rendering.modes` and deploy a server.',
+    });
+    process.exit(1);
+  }
+  const pages = plan.urls;
 
   // A route that throws fails *that route*, and the rest of the build still
   // happens. This loop had no `try`: the first page to throw rejected out of
@@ -556,7 +615,11 @@ async function build() {
   // host would then serve uf's error page to every visitor who mistyped a URL,
   // and nothing between the throw and the deploy would have mentioned it.
   let attempted = pages.length;
-  if (server.notFound.some((boundary) => boundary.path === "/")) {
+  // Not for a build that prerenders nothing. `404.html` is a file a static
+  // host serves for every path it has no file for, and a project whose
+  // `rendering.modes` allows only `ssr` has no such host: its not-found
+  // boundary is rendered per request, by the server, with the right status.
+  if (prerender !== "nothing" && server.notFound.some((boundary) => boundary.path === "/")) {
     attempted += 1;
     // `/404` rather than `/__uf_not_found__`: the internal path is how the
     // router is asked, and the file the reader is looking for is `404.html`.
@@ -602,6 +665,16 @@ async function build() {
     });
     process.exit(1);
   }
+
+  // `build.staticBuild` is "prerender everything and emit no server bundle",
+  // and this is the second half of it. The bundle is still *built*: the
+  // prerender renders through it, so a build with no server bundle at any
+  // point would be a build with no documents either. What the declaration is
+  // about is what is left behind — so it goes once the last document is
+  // written, and `uf start`, `uf preview` and every server adapter then find
+  // nothing to serve, which is the honest outcome for a project that said it
+  // deploys files.
+  if (staticBuild) rmSync(serverDir, { recursive: true, force: true });
 
   emit("done", { outDir: path.relative(root, outDir), pages: pages.length });
   process.exit(0);
@@ -1172,24 +1245,127 @@ function readManifest(outDir) {
 }
 
 /**
- * The URLs to prerender: every route without parameters, plus every set of
- * parameters a page's `generateStaticParams` returns.
+ * What this build renders now, and what it leaves for a server.
+ *
+ * The rendering decision, per route, and it has three answers rather than the
+ * two `staticPaths` used to have:
+ *
+ *   * **prerender it** — a route with no parameters, or a route whose page
+ *     exports `generateStaticParams`, once per set of parameters it returns;
+ *   * **leave it to the server** — a route with parameters and no
+ *     `generateStaticParams`, or a page that has said `export const dynamic =
+ *     "force-dynamic"`;
+ *   * **refuse** — which is not decided here. This function reports what it
+ *     found and the caller, which knows whether the project allows a server,
+ *     is the one that turns "there is a route here a static host cannot
+ *     answer" into an error.
+ *
+ * `dynamic` is the spelling ubugeeei-prod/uf#336 asked for: a route with *no*
+ * parameters whose content depends on the request had no way to say so, and
+ * `generateStaticParams` cannot say it — there are no parameters to generate.
+ * It is Next.js's name for the same declaration, because a person arriving
+ * from `app/` should not have to learn a second word for a decision they have
+ * already made once.
+ *
+ * Two of Next's four values are missing and are not silently accepted:
+ * `"force-static"` and `"error"` are refused by name, because each is a
+ * *constraint* on a page that uf does not yet check, and accepting one would
+ * be reading a declaration and ignoring it — the failure the two issues behind
+ * this function are about.
+ *
+ * Handlers and middleware are in the same list, and they belong there: this is
+ * the list of things that need a process, and a `_uf.route.js` needs one more
+ * obviously than any page does. They carry no per-route render — the build has
+ * never written a file for either — so they appear only when the answer might
+ * be a refusal.
+ *
+ * @param {{routes: Route[], handlers: Handler[], middleware: Middleware[]}} server
+ * @param {"everything" | "possible" | "nothing"} prerender
  */
-async function staticPaths(routes) {
+async function renderingPlan(server, prerender) {
   const urls = [];
-  for (const route of routes) {
+  const perRequest = [];
+
+  // Nothing is prerendered and nothing is refused, so no page module is
+  // loaded: a project that renders everything per request should not pay for
+  // a `generateStaticParams` this build will not call.
+  if (prerender === "nothing") {
+    return {
+      urls,
+      perRequest: server.routes.map((route) => ({
+        path: route.path,
+        why: "this build prerenders nothing",
+      })),
+    };
+  }
+
+  for (const route of server.routes) {
+    // Every page module, and not only the parameterised ones: `dynamic` is a
+    // declaration any page can make. A module that cannot be imported at all
+    // is a failure of *that route*, so a route with no parameters goes into
+    // the prerender anyway and the loop below reports it the way it has always
+    // reported a page that throws — named, with the rest of the build still
+    // happening. A parameterised one still rejects out of the build, which is
+    // what it did before there was anything else to load a page module for.
+    let module;
+    try {
+      module = await route.page();
+    } catch (error) {
+      if (route.params.length > 0) throw error;
+      urls.push(route.path);
+      continue;
+    }
+    const declared = module.dynamic ?? "auto";
+    if (declared !== "auto" && declared !== "force-dynamic") {
+      throw new Error(
+        `uf: ${route.file} exports \`dynamic = ${JSON.stringify(declared)}\`, and uf reads ` +
+          '`"auto"` and `"force-dynamic"`. `"force-static"` and `"error"` are Next.js values ' +
+          "for constraints uf does not check yet, and accepting one would be reading a " +
+          "declaration and ignoring it.",
+      );
+    }
+    if (declared === "force-dynamic") {
+      perRequest.push({
+        path: route.path,
+        why: 'its page exports `dynamic = "force-dynamic"`',
+      });
+      continue;
+    }
     if (route.params.length === 0) {
       urls.push(route.path);
       continue;
     }
-    const module = await route.page();
     const generate = module.generateStaticParams;
-    if (typeof generate !== "function") continue;
+    if (typeof generate !== "function") {
+      perRequest.push({
+        path: route.path,
+        why: "it has parameters and its page exports no `generateStaticParams`",
+      });
+      continue;
+    }
     for (const params of await generate()) {
       urls.push(fillParams(route.path, params));
     }
   }
-  return urls;
+
+  for (const handler of server.handlers ?? []) {
+    perRequest.push({
+      path: handler.path,
+      why: "it is a route handler, and a handler answers a request rather than producing a file",
+    });
+  }
+  for (const entry of server.middleware ?? []) {
+    // A middleware is reported by the path it guards rather than by the route
+    // it guards, which is why it cannot be folded into the loop above: it runs
+    // for a page, for a handler, and for a path under it that is neither, so
+    // "which route is this" has no single answer.
+    perRequest.push({
+      path: `${entry.path === "/" ? "" : entry.path}/*`,
+      why: "a middleware guards it, and a middleware runs once per request",
+    });
+  }
+
+  return { urls, perRequest };
 }
 
 function fillParams(routePath, params) {

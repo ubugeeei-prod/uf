@@ -47,7 +47,9 @@ import {
   recordingLogger,
   silentLogger,
 } from "@uniflowed/server/log";
-import { nodeListener } from "@uniflowed/server/node";
+import { nodeListener, reportMalformedRequests } from "@uniflowed/server/node";
+import { createServer } from "node:http";
+import { Duplex } from "node:stream";
 
 /** Run `body` as if handling a request for `url` carrying `init`. */
 function handling<T>(url: string, body: () => T, init?: { readonly [string]: string }): T {
@@ -545,5 +547,127 @@ describe("the line a finished request leaves behind", () => {
     await listen(incoming("GET", "/nope"), outgoing());
 
     expect(records[0].level).toBe("warn");
+  });
+});
+
+/**
+ * The request that never became one.
+ *
+ * ubugeeei-prod/uf#405. Bytes Node's own parser refuses never reach a request
+ * listener: `http.Server` answers `400 Bad Request`, closes the socket and,
+ * with no `clientError` handler attached, says so to nobody. A day was spent
+ * chasing a streaming bug that was a space in a request target, with the
+ * server's stderr empty the whole time.
+ *
+ * No socket is bound here, which is the point of the shape as much as of the
+ * sandbox: a `stream.Duplex` handed to an `http.Server` as a connection drives
+ * the real llhttp parser, so what these cases assert is the runtime's own
+ * refusal rather than a simulation of it.
+ */
+describe("a request the parser refused", () => {
+  /** An `http.Server` with uf's reporting on it, and the records it writes. */
+  function refusing(options?: {| readonly level?: "debug" | "info" | "warn" | "error" |}) {
+    const { logger: log, records } = recordingLogger(options);
+    const server = createServer(() => {});
+    reportMalformedRequests(server, log);
+    return { records, server };
+  }
+
+  /** Feed `bytes` to `server` down a connection that is not a socket. */
+  async function speak(server: mixed, bytes: string): Promise<string> {
+    const written: Array<string> = [];
+    const connection = new Duplex({
+      read() {},
+      write(chunk, encoding, callback) {
+        written.push(String(chunk));
+        callback();
+      },
+    });
+    // $FlowFixMe[prop-missing] - a `node:http` server, structurally.
+    server.emit("connection", connection);
+    connection.push(bytes);
+    // One turn of the loop is all the parser needs; it rejects on the first
+    // line rather than on a body it is waiting for.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return written.join("");
+  }
+
+  it("says what was refused, and why, in uf's own voice", async () => {
+    const { records, server } = refusing();
+
+    // A request target may not contain a space. This is the exact line that
+    // went on the wire in the investigation the issue is written from.
+    await speak(server, "GET /slow/build --adapter node HTTP/1.1\r\nHost: x\r\n\r\n");
+
+    expect(records.length).toBe(1);
+    expect(records[0].level).toBe("warn");
+    expect(records[0].message).toBe("malformed request");
+    // llhttp's own enumeration, which is the half that says what to fix.
+    expect(records[0].fields.code).toBe("HPE_INVALID_CONSTANT");
+  });
+
+  it("still answers with Node's own 400, byte for byte", async () => {
+    const { server } = refusing();
+
+    const answer = await speak(server, "GET /a b HTTP/1.1\r\nHost: x\r\n\r\n");
+
+    // This change is about saying so, not about answering differently:
+    // replacing the default handler means taking over its job as well.
+    expect(answer).toBe("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+  });
+
+  it("never puts the bytes the client sent in the record", async () => {
+    const { records, server } = refusing();
+
+    await speak(server, "GET /a b HTTP/1.1\r\nX-Secret: hunter2\r\n\r\n");
+
+    // Node hangs the offending packet on `error.rawPacket`, and that is
+    // whatever the client sent — the one thing `docs/security.md`'s logging
+    // section exists to keep out of a log line.
+    expect(records.length).toBe(1);
+    expect(Object.keys(records[0].fields)).toEqual(["code"]);
+    expect(String(records[0].message) + String(records[0].fields.code)).not.toContain("hunter2");
+  });
+
+  it("bounds the lines a flood can cost, and says how many it hid", async () => {
+    // The log-volume question, answered rather than left to be discovered on a
+    // public address: a malformed request is two dozen bytes to send, so a line
+    // per rejection is an amplifier. Twenty a minute, then a count.
+    const { records, server } = refusing();
+    const bad = "GET /a b HTTP/1.1\r\nHost: x\r\n\r\n";
+
+    for (let sent = 0; sent < 25; sent += 1) {
+      await speak(server, bad);
+    }
+
+    expect(records.length).toBe(20);
+    expect(records.every((record) => record.message === "malformed request")).toBe(true);
+
+    // The next window opens, and what the last one hid is one record with a
+    // count on it — the number an operator wants from a flood, since the
+    // individual lines of one are all the same line.
+    const clock = manualClock(Temporal.Now.instant().epochMilliseconds + 61_000);
+    const restore = setClock(clock.clock);
+    try {
+      await speak(server, bad);
+    } finally {
+      restore();
+    }
+
+    expect(records[20].message).toBe("malformed requests not logged");
+    expect(records[20].fields.count).toBe(5);
+    expect(records[21].message).toBe("malformed request");
+  });
+
+  it("answers the 400 whether or not it wrote a line about it", async () => {
+    // The budget bounds the *log*, and must not bound the protocol: a client
+    // past the twentieth rejection still gets told what happened to it.
+    const { server } = refusing();
+    const bad = "GET /a b HTTP/1.1\r\nHost: x\r\n\r\n";
+    for (let sent = 0; sent < 20; sent += 1) {
+      await speak(server, bad);
+    }
+
+    expect(await speak(server, bad)).toBe("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
   });
 });

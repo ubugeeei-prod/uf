@@ -246,6 +246,16 @@ export class TransformService {
   #pending = [];
   #identity;
   #failure = null;
+  /**
+   * Whether the host is currently held open for this service.
+   *
+   * `true` before the constructor's first release, because that is what a
+   * freshly spawned child and its pipes are: referenced. Starting it `false`
+   * would make that release a no-op and leave the service holding the host
+   * from the moment it was made, which is the bug this field exists to end
+   * rather than a second spelling of it.
+   */
+  #held = true;
 
   /**
    * @param {object} [options]
@@ -311,8 +321,29 @@ export class TransformService {
    * on whatever host started it, and a runtime that has no notion of
    * referenced handles has nothing to do here — it is not an error, it is a
    * runtime whose loop already ends when the work does.
+   *
+   * # Why the current state is tracked rather than set every time
+   *
+   * On Node `ref()` and `unref()` set a flag, so calling either twice is the
+   * same as calling it once and a caller may say what it wants as often as it
+   * likes. **On Bun they count**, and that difference is a hang: two modules
+   * imported at the same time are two `transform` calls, which is two `ref`s,
+   * and the first reply to arrive leaves one request outstanding and so asks
+   * to hold again — three `ref`s against the one `unref` the drain performs.
+   * The host then never exits, which is ubugeeei-prod/uf#418's symptom
+   * returning by another route: `bun --preload @uniflowed/host/bun-preload`
+   * ran a program of three or more Flow modules, printed its output and sat
+   * there. Two modules were sequential, so it looked fine; anything that
+   * imports `@uniflowed/test` was not.
+   *
+   * Tracking the state and acting only on the edge is one `ref` per held
+   * period and one `unref` per release on both runtimes, which is what a
+   * counting implementation needs and what a flag implementation cannot tell
+   * apart.
    */
   #holdHost(hold) {
+    if (hold === this.#held) return;
+    this.#held = hold;
     const method = hold ? "ref" : "unref";
     this.#child[method]?.();
     this.#child.stdin?.[method]?.();

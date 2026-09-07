@@ -28,8 +28,9 @@
 //
 // Because a toggle button is a button, and a button activates on both. That is
 // the same reasoning `switch.js` gives for `Enter`, and the opposite of
-// `checkbox.js`, which leaves `Enter` alone because a checkbox is something a
-// reader answers on their way to submitting a form.
+// `checkbox.js`, where `Enter` submits the form rather than touching the
+// control — because a checkbox is something a reader answers on their way to
+// submitting a form, and that is what the native one does with the key.
 //
 // # It is `disabled`, not `aria-disabled`
 //

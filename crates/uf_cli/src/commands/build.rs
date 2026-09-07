@@ -1,8 +1,10 @@
 //! `uf build`: banner, per-phase timings, a summary, and what was produced.
 //!
-//! The build is Vite's, driven through `@uniflowed/vite` on the project's
-//! JavaScript host (see [`super::vite`]): a client bundle, a server bundle,
-//! and every static route prerendered to HTML. uf's own phases run around it:
+//! The build belongs to the project's **builder** — `@uniflowed/vite` unless
+//! `builder.module` names another — driven on the project's JavaScript host
+//! (see [`super::builder`] for which one and [`super::vite`] for the protocol):
+//! a client bundle, a server bundle, and the routes this project prerenders,
+//! as HTML. uf's own phases run around it:
 //! the config, the route table and its generated types, the server-component
 //! analysis and its diagnostics, and — once Vite has written `dist/` — the
 //! shipped-size report and the budgets it enforces.
@@ -26,23 +28,22 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, load_config};
+use uf_config::{DeployAdapter, Prerender, RenderingPlan, load_config};
 use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
-    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscDiagnostic,
-    RscSeverity, analyze_project,
+    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
+    RscDiagnostic, RscSeverity, analyze_project,
 };
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, PhaseTimer, Status, Table, Tone, Tree,
     format_duration,
 };
 
+use crate::commands::builder;
 use crate::commands::compile;
 use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
-use crate::commands::vite::{
-    Driver, Event, LinkContext, package_dir, render_error, render_log, resolve_host,
-};
+use crate::commands::vite::{Driver, Event, LinkContext, render_error, render_log, resolve_host};
 use crate::support::{
     PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
 };
@@ -102,6 +103,13 @@ struct ViteBuild {
     pages: Vec<Prerendered>,
     /// Warnings Vite logged, shown after the summary.
     warnings: Vec<String>,
+    /// Every route this build wrote no document for, from the driver.
+    ///
+    /// Reported rather than derived: which routes a prerender skipped depends
+    /// on what each page module exports, and `uf` does not evaluate page
+    /// modules. `None` when the builder said nothing, which is what an older
+    /// `@uniflowed/vite` does.
+    per_request: Option<Vec<String>>,
     /// How the client route table came out of the server-component split.
     ///
     /// `(pages kept, routes)`, reported by the plugin that generated the table
@@ -125,6 +133,11 @@ pub(crate) fn build(
     progress.draw("loading configuration");
     let resolved = timer.measure("config", || load_config(cwd))?;
     let root = resolved.root.clone();
+    // What this project said a build may produce, resolved once. Two settings
+    // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
+    // them apart at the four places below is how they would come to disagree;
+    // see `uf_config`'s `RenderingPlan`.
+    let plan = RenderingPlan::resolve(&resolved.config);
 
     progress.tick("discovering routes");
     let routes = timer.measure("routes", || {
@@ -188,7 +201,7 @@ pub(crate) fn build(
 
     progress.tick("resolving the JavaScript host");
     let host = resolve_host(&resolved.config)?;
-    let package = package_dir(&root)?;
+    let builder = builder::resolve(&root, &resolved.config)?;
     // `production` unless the project or the command line said another mode,
     // which is what selects `.env.production` over `.env.development` — the
     // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
@@ -205,19 +218,29 @@ pub(crate) fn build(
     };
     // The same rule for the same reason: an adapter nobody has written is a
     // sentence, and a sentence is cheaper before the bundle than after it.
+    // Not refused for a build that emits no server, and the distinction is
+    // worth being explicit about. `build.staticBuild` is a claim about what
+    // the *ordinary* build leaves behind, and `.uf/build/server` is what it
+    // removes; `--adapter` and `--compile` link the application again from
+    // source and read none of it, so each still produces a correct artefact —
+    // a static site inside a Worker, or inside one executable, is a
+    // deployment somebody wants. What such a project cannot do is `uf start`,
+    // which has a bundle to load and does not have it; that is refused in
+    // `commands::serve`, where it is a fact rather than an opinion.
     let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
+    // The fourth thing that needs a process, and the only one `uf` can see
+    // without evaluating a module. Checked here rather than in the builder for
+    // exactly that reason — see `refuse_unanswerable_actions`.
+    refuse_unanswerable_actions(plan, &rsc, adapter, standalone)?;
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
         let mut driver = Driver::spawn(
             &host,
-            &package,
+            &builder,
             &root,
             "build",
-            &[
-                String::from("--out-dir"),
-                resolved.config.build.out_dir.to_string(),
-            ],
+            &build_arguments(&resolved.config.build.out_dir, plan),
             &env,
             &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
         )?;
@@ -239,6 +262,7 @@ pub(crate) fn build(
                     );
                     let _ = render_error(ui, &root, &error);
                 }
+                Event::Rendering { per_request, .. } => report.per_request = Some(per_request),
                 Event::RscSplit { pages, routes } => report.split = Some((pages, routes)),
                 Event::Log { level, message } => match level {
                     crate::commands::vite::LogLevel::Warn => report.warnings.push(message),
@@ -300,6 +324,17 @@ pub(crate) fn build(
             "file": page.file,
             "middleware": page.middleware,
         })).collect::<Vec<_>>(),
+        // What this build decided to render when, and every route it wrote no
+        // document for. The same list the summary prints, as data: a deploy
+        // step needs to know whether the output directory is the whole
+        // application or half of it, and that is not a question it can answer
+        // by looking at the files.
+        "rendering": {
+            "prerender": plan.prerender().as_str(),
+            "server": plan.emits_a_server(),
+            "declaredBy": plan.source().key(),
+            "perRequest": vite.per_request.clone().unwrap_or_default(),
+        },
         "runtime": {
             "default": resolved.config.app.runtime.default,
             "capabilityJsHost": &resolved.config.app.runtime.capability_js_host,
@@ -340,7 +375,7 @@ pub(crate) fn build(
     // once: the second Vite run of a build has to see what the first one saw.
     let link = LinkContext {
         host: &host,
-        package: &package,
+        builder: &builder,
         root: &root,
         out_dir: &out_dir,
         env: &env,
@@ -416,6 +451,17 @@ pub(crate) fn build(
         .filter(|(pages, routes)| pages < routes)
         .map(|(pages, routes)| format!("{pages} of {routes}"));
     let action_count = rsc.callable_action_count().to_string();
+    // What the build decided, in the words a reader can act on. Named in the
+    // summary rather than left to be inferred from a page count, because "the
+    // build wrote no document for /posts/:slug" and "the build is broken" look
+    // identical from `dist/`.
+    let rendering = match plan.prerender() {
+        Prerender::Everything => "every route prerendered",
+        Prerender::Possible => "prerendered where it can be, the rest per request",
+        Prerender::Nothing => "nothing prerendered; every route per request",
+    };
+    let per_request = vite.per_request.clone().unwrap_or_default();
+    let per_request_count = per_request.len().to_string();
     let diagnostic_count = rsc.graph.diagnostics().len().to_string();
 
     let mut outputs = vec![
@@ -556,6 +602,7 @@ pub(crate) fn build(
             &diagnostic_count,
             Tone::Number,
         ));
+        summary_rows.push(KeyValue::new("rendering", rendering));
         renderer.key_values(out, 2, &summary_rows);
         renderer.blank(out);
 
@@ -630,6 +677,21 @@ pub(crate) fn build(
         );
         renderer.blank(out);
 
+        if !per_request.is_empty() {
+            renderer.heading(out, 2, "answered by a server");
+            renderer.key_values(
+                out,
+                4,
+                &[KeyValue::toned("routes", &per_request_count, Tone::Number)],
+            );
+            let mut table = Table::new(vec![Column::left("route")]);
+            for route in &per_request {
+                table.push(vec![Cell::toned(route, Tone::Accent)]);
+            }
+            renderer.table(out, 4, &table);
+            renderer.blank(out);
+        }
+
         if !guarded_rows.is_empty() {
             renderer.heading(out, 2, "guards");
             let mut table = Table::new(vec![
@@ -658,6 +720,94 @@ pub(crate) fn build(
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)
+}
+
+/// Refuse a build that leaves a callable server action with nowhere to run.
+///
+/// A `"use server"` export the browser can reach is an HTTP endpoint. The
+/// client bundle carries a `createServerReference` for it — an id and a
+/// `fetch` — so the button is wired either way; what a build with no server
+/// removes is the thing at the other end. Nothing between that build and the
+/// first person to click reports it, and what they get is whatever the static
+/// host does with an unknown path. That is the same failure the rest of this
+/// change is about, one layer below the route table: a `dist/` with a hole in
+/// it, found from a 404.
+///
+/// # Why here and not in the builder
+///
+/// [`guards`] argues that the three route-shaped reasons a build
+/// needs a server — a page with parameters and no `generateStaticParams`, a
+/// route handler, a middleware — belong in **one** refusal, in the builder,
+/// because telling a project to fix one, rebuild, and hear about the next is
+/// three builds to learn three facts. A server action is not one of the three:
+/// it is not a route, uf finds it without evaluating a module (the RSC
+/// analysis has already run), and its fix is a different sentence. Refusing it
+/// here costs the reader nothing they would otherwise have been told in the
+/// same breath, and it happens before the bundle rather than after it.
+///
+/// # Why an adapter or `--compile` lifts it
+///
+/// Both link the application again from source and write something that can
+/// answer a request, so the endpoint exists in what they produce.
+/// `build.staticBuild` is a claim about the ordinary output directory, and a
+/// build that also emits a server has honoured the claim and answered the
+/// action. It is the same distinction the `deploy::resolve` call site makes
+/// about the server bundle.
+fn refuse_unanswerable_actions(
+    plan: RenderingPlan,
+    rsc: &RscAnalysis,
+    adapter: Option<DeployAdapter>,
+    standalone: bool,
+) -> Result<()> {
+    if plan.emits_a_server() || adapter.is_some() || standalone {
+        return Ok(());
+    }
+    let mut listed = rsc
+        .registry
+        .callable_actions()
+        .map(|action| format!("  {} — {}", action.module, action.export))
+        .collect::<Vec<_>>();
+    if listed.is_empty() {
+        return Ok(());
+    }
+    // Sorted, because the registry's order follows the module scan and a
+    // message that reorders itself between two builds of the same tree is a
+    // message nobody can diff.
+    listed.sort();
+    bail!(
+        "{} in this project {} callable from the browser, and {}\n{}\n\n\
+         A `\"use server\"` export the browser can reach is an endpoint, and a deployment of \
+         documents has nothing to answer it with. Keep the module out of the client's reach, \
+         or drop `build.staticBuild` and deploy a server — `uf build --adapter <target>` and \
+         `uf build --compile` each write one.",
+        plural(listed.len(), "server action"),
+        if listed.len() == 1 { "is" } else { "are" },
+        plan.because(),
+        listed.join("\n"),
+    )
+}
+
+/// What `driver.js build` is told, beyond where to put the output.
+///
+/// Three arguments, and the third is the interesting one. `--prerender` and
+/// `--static-build` are the decision; `--because` is the *sentence* the
+/// decision came from, so a refusal in the builder quotes the same config key
+/// a refusal in `uf` does. Without it the driver would have to reconstruct
+/// "which setting made this a static build" from a flag that no longer says,
+/// and the two halves of one rule would tell a reader to look in two places.
+fn build_arguments(out_dir: &str, plan: RenderingPlan) -> Vec<String> {
+    let mut args = vec![
+        String::from("--out-dir"),
+        out_dir.to_string(),
+        String::from("--prerender"),
+        plan.prerender().as_str().to_string(),
+        String::from("--because"),
+        plan.because(),
+    ];
+    if !plan.emits_a_server() {
+        args.push(String::from("--static-build"));
+    }
+    args
 }
 
 /// Print the RSC analysis's diagnostics, grouped by module.

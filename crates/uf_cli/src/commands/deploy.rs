@@ -204,7 +204,7 @@ pub(crate) fn deploy(
 ) -> Result<Deployed> {
     let LinkContext {
         host,
-        package,
+        builder,
         root,
         out_dir,
         env,
@@ -223,7 +223,7 @@ pub(crate) fn deploy(
 
     let mut driver = Driver::spawn(
         host,
-        package,
+        builder,
         root,
         "deploy",
         &[

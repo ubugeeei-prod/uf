@@ -45,10 +45,12 @@ import {
   createRoot,
   nextUpdate,
   pressKey,
+  pressMouse,
   renderFrame,
   resize,
 } from "./internal/host.js";
-import { createKeyDecoder } from "./keys.js";
+import type { InputEvent } from "./keys.js";
+import { createInputDecoder } from "./keys.js";
 
 /** Enter the alternate screen buffer, so the shell's scrollback survives. */
 const ENTER_ALTERNATE = "\u001b[?1049h";
@@ -71,6 +73,25 @@ const CLEAR = "\u001b[2J\u001b[H";
  */
 const ENABLE_PASTE = "\u001b[?2004h";
 const DISABLE_PASTE = "\u001b[?2004l";
+/**
+ * Ask the terminal to report the mouse, in the four modes that answer.
+ *
+ * `?1000h` turns reporting on at all — presses and releases. `?1002h` adds
+ * motion while a button is held, which is what makes a drag a sequence rather
+ * than a press and a release somewhere else. `?1003h` adds motion with nothing
+ * held, which is the only way `over` and `out` can fire before a reader has
+ * clicked anything; it is the expensive one, since crossing the screen is a
+ * report per cell, and it is included because a hover that only worked
+ * mid-drag would not be a hover. `?1006h` asks for the SGR encoding, which is
+ * the one `mouse.js` decodes and the only one that works past column 223.
+ *
+ * Turned off in the reverse order on the way out, and turned on only when the
+ * application asked for the mouse: a terminal in these modes stops doing its
+ * own click-and-drag text selection, so an application that does not read the
+ * mouse must not take that away from the reader.
+ */
+const ENABLE_MOUSE = "\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1006h";
+const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1003l\u001b[?1002l\u001b[?1000l";
 
 /** What `render` gives back. */
 export type Handle = {
@@ -136,7 +157,33 @@ export type RenderOptions = {
    * what a progress display wants.
    */
   readonly alternateScreen?: boolean,
+  /**
+   * Whether to ask the terminal to report the mouse.
+   *
+   * Off by default, which is a deliberate difference from OpenTUI's renderer.
+   * Mouse reporting is not free to a *reader*: a terminal in it stops handling
+   * click-and-drag itself, so selecting a line to copy out of an application
+   * that ignores the mouse anyway needs a modifier key the reader has to know
+   * about. An application that handles the mouse is trading that away on
+   * purpose; one that does not should not trade it away by default.
+   */
+  readonly mouse?: boolean,
 };
+
+/**
+ * Hand one decoded event to the renderer.
+ *
+ * The two drivers — a terminal and a test — read the same decoder and so face
+ * the same union, and routing it in one place is what keeps them from drifting
+ * into two answers about what a mouse report does.
+ */
+function deliver(renderer: Renderer, event: InputEvent): void {
+  if (event.kind === "mouse") {
+    pressMouse(renderer, event);
+    return;
+  }
+  pressKey(renderer, event);
+}
 
 /** Mount a tree into a renderer and return the pieces both drivers need. */
 function mount(element: React.Node, renderer: Renderer) {
@@ -160,6 +207,7 @@ export function testRender(
     readonly width?: number,
     readonly height?: number,
     readonly capabilities?: Capabilities,
+    readonly mouse?: boolean,
   } = {},
 ): TestHandle {
   const width = options.width ?? FALLBACK_COLUMNS;
@@ -169,19 +217,24 @@ export function testRender(
     glyphs: "unicode",
     tty: "interactive",
   };
-  const renderer = createRenderer(width, height, capabilities);
+  // On by default here and off in `render`, and the difference is the whole
+  // reason the option exists: what `render` weighs is a terminal it would take
+  // click-and-drag selection away from, and there is no terminal here. A test
+  // that presses the mouse should not have to remember to enable it, and one
+  // that wants to assert an application ignores the mouse can say so.
+  const renderer = createRenderer(width, height, capabilities, options.mouse ?? true);
   const root = mount(element, renderer);
   const produced: Array<Update> = [];
 
   // The same decoder a real terminal driver holds, for the same reason: a
   // test that delivers a paste in two `press` calls is testing what an
   // operating system does to a large one.
-  const decoder = createKeyDecoder();
+  const decoder = createInputDecoder();
 
   const handle: TestHandle = {
     press(input: string) {
-      for (const key of decoder.push(input)) {
-        pressKey(renderer, key);
+      for (const event of decoder.push(input)) {
+        deliver(renderer, event);
       }
     },
     update() {
@@ -241,7 +294,8 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
   // the terminal's shape its own way — the thing the other duplications in
   // this package exist to prevent.
   const size = detectSize(env, stdout);
-  const renderer = createRenderer(size.columns, size.rows, capabilities);
+  const mouse = (options.mouse ?? false) && interactive;
+  const renderer = createRenderer(size.columns, size.rows, capabilities, mouse);
 
   let stopped = false;
   let scheduled = false;
@@ -272,13 +326,19 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
   };
 
   if (interactive) {
-    stdout.write((alternateScreen ? ENTER_ALTERNATE : "") + HIDE_CURSOR + ENABLE_PASTE + CLEAR);
+    stdout.write(
+      (alternateScreen ? ENTER_ALTERNATE : "") +
+        HIDE_CURSOR +
+        ENABLE_PASTE +
+        (mouse ? ENABLE_MOUSE : "") +
+        CLEAR,
+    );
   }
 
-  const decoder = createKeyDecoder();
+  const decoder = createInputDecoder();
   const onData = (chunk: string) => {
-    for (const key of decoder.push(String(chunk))) {
-      pressKey(renderer, key);
+    for (const event of decoder.push(String(chunk))) {
+      deliver(renderer, event);
     }
     draw();
   };
@@ -343,7 +403,12 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
         if (stdin.pause != null) {
           stdin.pause();
         }
-        stdout.write(DISABLE_PASTE + SHOW_CURSOR + (alternateScreen ? LEAVE_ALTERNATE : "\n"));
+        stdout.write(
+          (mouse ? DISABLE_MOUSE : "") +
+            DISABLE_PASTE +
+            SHOW_CURSOR +
+            (alternateScreen ? LEAVE_ALTERNATE : "\n"),
+        );
       } else {
         // Nobody was watching, so nothing has been written yet. The last frame
         // goes out once, as text, which is what a log can carry.

@@ -17,7 +17,11 @@ on every runtime and deploys anywhere, including as a single executable file.
   everything anybody actually writes is uf's, because `uf.config.js` is where
   a task's meaning is written down and `vp run` cannot read it.
 - Keep Vite itself as the internal bundler, dev server, and plugin system, but
-  make `uf.config.js` the only user-authored config entry.
+  make `uf.config.js` the only user-authored config entry — and keep it the
+  *default* rather than the only answer: `builder.module` names any module
+  satisfying the contract in `docs/architecture.md`, and `uf explain build`
+  says which one will run. A production builder that is not Vite does not
+  exist yet and is Planned.
 - Reach the feature surface of the tools a user would otherwise reach for —
   Next.js for the framework, Bun and Vite for the toolchain, shadcn/ui for the
   components, Effect, Jotai and React Hook Form for the libraries. Where uf
@@ -60,7 +64,7 @@ rather than a note:
 
 | Claim | Today | |
 | --- | --- | --- |
-| Runs on every runtime | Node and Bun. `HostKind::Deno` loads no Flow; the edge runtimes have no host at all | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
+| Runs on every runtime | Node and Bun, each with a test that starts the binary. Deno loads no Flow and the edge runtimes have no host at all; the per-host matrix is [docs/hosts.md](hosts.md) | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
 | Builds a standalone binary | `uf build --compile` writes one, and needs Bun on PATH to do it; cross-compiling to another platform does not exist | [#310](https://github.com/ubugeeei-prod/uf/issues/310) |
 | Deploys anywhere | `uf build --adapter` writes for `node`, `container`, `edge`, `serverless` and `static`, and no server output has ever been deployed to a real platform; `bun` and `deno` are names in a config struct, waiting on a benchmark | [#391](https://github.com/ubugeeei-prod/uf/issues/391) |
 | Inference reaches the end of a program | It does: a type imported by its published name resolves, from the workspace or from `node_modules`. What is left is a dependency that opts into no Flow, which is `any` by Flow's own rule | [#248](https://github.com/ubugeeei-prod/uf/issues/248), [#403](https://github.com/ubugeeei-prod/uf/issues/403) |
@@ -83,7 +87,9 @@ in `uf`.
   side is done: `uf fmt` prints from the official parser's syntax tree and
   matches Prettier on a fixture corpus.
 - `uf build` and `uf dev` run on Vite through `@uniflowed/vite`, with every
-  module going through `uf transform` (done).
+  module going through `uf transform` (done) — and through the builder seam
+  rather than by name, so `@uniflowed/vite` is one implementation of a written
+  contract rather than a dependency four commands reach for (done).
 - Keep `uf.config.js` as the single config and task surface; generated projects
   do not use npm scripts, and task execution goes through Vite Task.
 - Keep app execution runtime-agnostic through Capability JS Hosts: Node.js,

@@ -1138,6 +1138,28 @@ impl Server {
         Self { child }
     }
 
+    /// The port the server announced, once it has announced one.
+    ///
+    /// `uf dev --port 0` binds a free port and prints it as the `local` URL,
+    /// and reading it back here is what [`dev_serves_the_docs_site_through_
+    /// vite`] does instead of choosing a port itself. Waiting for the line is
+    /// also waiting for the server: a process that never gets as far as
+    /// listening never prints one, so the budget covers both and the failure
+    /// carries [`evidence`].
+    fn bound_port(&mut self, said: &Mutex<String>, budget: Duration) -> Option<u16> {
+        let deadline = Instant::now() + budget;
+        loop {
+            let announced = said.lock().ok().and_then(|said| announced_port(&said));
+            if announced.is_some() {
+                return announced;
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
     /// Everything the server has said, and whether it is still running.
     ///
     /// This is the whole point of the change: the failure that sent me here was
@@ -1172,13 +1194,77 @@ impl Drop for Server {
 /// That is the shape of both CI failures so far: one where nothing ever
 /// answered, and one where something answered and then went away.
 ///
-/// Retrying is honest here because the subject is "the dev server serves the
-/// docs site", not "binding a port works first time". It is capped, it only
+/// Retrying is honest here because the subject is "this server serves this
+/// application", not "binding a port works first time". It is capped, it only
 /// covers the window *before* the first answer, and every attempt's output is
-/// reported if the last one fails — so a genuinely broken dev server fails
-/// three times and prints three servers' reasons, which is more than the one
-/// line this used to give.
+/// reported if the last one fails — so a genuinely broken server fails three
+/// times and prints three servers' reasons, which is more than the one line
+/// this used to give.
+///
+/// [`dev_serves_the_docs_site_through_vite`] no longer needs it: `uf dev
+/// --port 0` asks the operating system for a port through the process that
+/// then holds it, and prints the answer, so there is no window to lose. The
+/// commands that have no such flag are still here, and this is still the best
+/// available answer for them.
 const PORT_ATTEMPTS: usize = 3;
+
+/// The port in the first `http://host:port` URL a server has printed, if any.
+///
+/// Deliberately not a parse of the banner's *shape*: it looks for a URL and
+/// reads the number off the end of its authority, so colour, the word in front
+/// of it and the order of the lines are all free to change. A banner parse that
+/// quietly found nothing is how a dev server answering every request with
+/// "Cannot GET /" once passed this file, so the one caller treats `None` as a
+/// failure with the server's own account attached rather than as "carry on".
+fn announced_port(said: &str) -> Option<u16> {
+    let start = said.find("http://")? + "http://".len();
+    let authority = said[start..]
+        .split(|ch: char| ch == '/' || ch == '\u{1b}' || ch.is_whitespace())
+        .next()?;
+    let (_, port) = authority.rsplit_once(':')?;
+    port.parse().ok()
+}
+
+/// Reading the port a server announced, without a server that announced one.
+///
+/// A test of a test helper, which is unusual and is the honest way to write
+/// this one: what [`announced_port`] has to get right is the *shapes* a banner
+/// comes in — coloured, uncoloured, with a second URL under the first — and
+/// arranging those through a real dev server would be arranging them through
+/// the thing under test.
+mod announced {
+    use super::announced_port;
+
+    #[test]
+    fn the_port_is_read_off_the_first_url_whatever_is_around_it() {
+        assert_eq!(
+            announced_port("\n  local  http://127.0.0.1:51873/\n  routes 12\n"),
+            Some(51873)
+        );
+        // `uf dev` renders the URL through a tone, so the line arrives wrapped
+        // in escape sequences on a terminal and bare when `NO_COLOR` is set.
+        // Both are the same answer.
+        assert_eq!(
+            announced_port("  local  \u{1b}[36mhttp://127.0.0.1:4321/\u{1b}[0m"),
+            Some(4321)
+        );
+        // The first, not the last: `--host` adds a `network` URL underneath,
+        // and it is the same server on the same port.
+        assert_eq!(
+            announced_port("local http://127.0.0.1:8080/\nnetwork http://10.0.0.2:8080/"),
+            Some(8080)
+        );
+    }
+
+    #[test]
+    fn nothing_is_nothing_rather_than_a_number_out_of_the_host() {
+        assert_eq!(announced_port(""), None);
+        assert_eq!(announced_port("uf dev\n  engine vite\n"), None);
+        // No port in the authority. Splitting on the last `:` would otherwise
+        // read `1` out of `127.0.0.1` and send every request somewhere absurd.
+        assert_eq!(announced_port("local http://127.0.0.1/"), None);
+    }
+}
 
 #[test]
 fn dev_serves_the_docs_site_through_vite() {
@@ -1186,44 +1272,38 @@ fn dev_serves_the_docs_site_through_vite() {
         return;
     }
     let root = docs_root();
-    let mut refused = Vec::new();
+    let said = Mutex::new(String::new());
 
-    for attempt in 1..=PORT_ATTEMPTS {
-        let port = free_port();
-        let said = Mutex::new(String::new());
-
-        let served = std::thread::scope(|scope| {
-            // Wait for the port to answer rather than for a line of the banner
-            // to look a particular way. Parsing the rendered banner made this
-            // test depend on colour and on the exact wording, and a parse that
-            // quietly found nothing ended the test before it asserted anything
-            // — which is how a dev server that answered every request with
-            // "Cannot GET /" passed it.
-            let mut server =
-                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
-            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
-                assert_page(&mut server, port, &said, &body);
-                return true;
-            }
-            refused.push(format!(
-                "attempt {attempt} on port {port}: {}",
+    std::thread::scope(|scope| {
+        // `--port 0`, and the server says which port it got. The alternative —
+        // bind zero, read the number, close the listener, and hand it to `uf
+        // dev` — is a race nothing manages: anything on the machine can take
+        // the port in between, and Vite moving to the next free one produces a
+        // server that is up somewhere this test is not asking about. That is
+        // the second half of ubugeeei-prod/uf#234, and asking the operating
+        // system once, through the process that will hold the socket, is the
+        // fix the issue prefers to a retry.
+        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
                 server.evidence(&said)
-            ));
-            // Inside the scope on purpose: the drain threads end when the
-            // pipes close, and the pipes close when the child does.
-            drop(server);
-            false
-        });
-
-        if served {
-            return;
-        }
-    }
-
-    panic!(
-        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
-        refused.join("\n\n")
-    );
+            );
+        };
+        // Then wait for the port to answer rather than trusting the line that
+        // named it: `listening` is emitted from the driver, and what this test
+        // is about is whether a request reaches a rendered page.
+        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
+            panic!(
+                "the dev server announced port {port} and did not answer on it\n{}",
+                server.evidence(&said)
+            );
+        };
+        assert_page(&mut server, port, &said, &body);
+        // Inside the scope on purpose: the drain threads end when the pipes
+        // close, and the pipes close when the child does.
+        drop(server);
+    });
 }
 
 /// Everything the served page and the routes have to be, once one is served.
@@ -4262,4 +4342,425 @@ fn script_names(scripts: &[(String, String)]) -> String {
         .map(|(name, source)| format!("  {name} ({} bytes)", source.len()))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// `crates/uf_cli/tests/fixtures/paper-builder`.
+fn paper_builder_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/paper-builder")
+}
+
+/// A page with parameters and no `generateStaticParams`, which is the one
+/// route shape a prerender cannot produce a file for.
+const UNPRERENDERABLE_PAGE: (&str, &str) = (
+    "app/posts/[slug]/_uf.page.js",
+    "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport default component Post(params: { readonly slug: string }) {\n  return <h1>{params.slug}</h1>;\n}\n",
+);
+
+/// A `uf.config.js` with `body` merged into `defineConfig`.
+fn config_with(body: &str) -> String {
+    format!(
+        "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\nexport default defineConfig({{\n{body}}});\n"
+    )
+}
+
+/// `uf build` in `root`, as `(succeeded, stdout + stderr)`.
+fn build_output(root: &Path) -> (bool, String) {
+    let output = uf().arg("--cwd").arg(root).arg("build").output().unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), said)
+}
+
+/// `rendering.modes: ["ssg"]` is a project saying it deploys to a static host.
+///
+/// Before ubugeeei-prod/uf#336 the list was read by nothing: this project
+/// built, `dist/` had no document for `/posts/:slug`, and the first anyone
+/// heard of it was a 404 from the CDN. The build now refuses, names the route
+/// and names both ways out — which is the guide's "reject unsupported
+/// configurations clearly rather than silently changing semantics", applied to
+/// the config that was silently changed.
+#[test]
+fn a_route_that_needs_a_server_fails_a_build_that_allows_only_ssg() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push(UNPRERENDERABLE_PAGE);
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"ssg\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(
+        said.contains("/posts/:slug"),
+        "the route is not named:\n{said}"
+    );
+    assert!(
+        said.contains("generateStaticParams"),
+        "the first way out is not named:\n{said}"
+    );
+    assert!(
+        said.contains("\"ssr\"") && said.contains("app.rendering.modes"),
+        "the second way out is not named:\n{said}"
+    );
+    // No half-built output: the refusal happens before a document is written,
+    // so a project that has just narrowed the list does not end up with a
+    // `dist/` that looks complete and is not.
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a refused build wrote a document anyway"
+    );
+}
+
+/// The other half of #336's "Done": the same project, both modes allowed.
+#[test]
+fn allowing_ssr_beside_ssg_builds_the_same_project() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push(UNPRERENDERABLE_PAGE);
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"ssg\", \"ssr\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    // Prerendered where it could be, and the rest reported rather than
+    // silently missing — the report that did not exist before #250.
+    assert!(project.path().join("dist/index.html").is_file());
+    assert!(
+        said.contains("answered by a server") && said.contains("/posts/:slug"),
+        "the build did not say which routes need one:\n{said}"
+    );
+}
+
+/// `rendering.modes: ["ssr"]` used to mean SSG, because SSG was all there was.
+#[test]
+fn allowing_only_ssr_prerenders_nothing() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"ssr\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a build that allows no `ssg` prerendered a document anyway:\n{said}"
+    );
+    // And there is still something to answer with: the whole point of the
+    // setting is that the server renders every request.
+    assert!(
+        project.path().join(".uf/build/server/server.js").is_file(),
+        "no server bundle:\n{said}"
+    );
+}
+
+/// `build.staticBuild` is documented as "prerender everything and emit no
+/// server bundle", and was read by nothing. See ubugeeei-prod/uf#385.
+#[test]
+fn a_static_build_emits_no_server_bundle() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  build: { staticBuild: true },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(
+        project.path().join("dist/index.html").is_file(),
+        "the documents are the whole output, and there are none:\n{said}"
+    );
+    assert!(
+        !project.path().join(".uf/build/server/server.js").exists(),
+        "the build emitted the server bundle it said it would not:\n{said}"
+    );
+
+    // And `uf start` refuses by name, rather than failing later on a missing
+    // file. It is the one command that reads the bundle this build removed,
+    // and for a project deploying documents there is no deployment that runs
+    // uf at all: a `uf start` that quietly served the files would be uf
+    // answering requests the real host answers.
+    let start = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("start")
+        .output()
+        .unwrap();
+    assert!(!start.status.success());
+    let said = String::from_utf8_lossy(&start.stderr).to_string();
+    assert!(said.contains("staticBuild"), "{said}");
+    assert!(said.contains("static host"), "{said}");
+
+    // `uf explain start` says the same thing without running anything, which
+    // is what red line 7 asks of every stage of every command.
+    let explained = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "start"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(plan.contains("refuses"), "{plan}");
+}
+
+/// A middleware under a build with no server is two declarations that cannot
+/// both be true, and #385 says to refuse rather than warn.
+#[test]
+fn a_static_build_refuses_the_middleware_it_could_never_run() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/dashboard/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>secrets</main>;\n}\n",
+    ));
+    files.push((
+        "app/dashboard/_uf.middleware.js",
+        "// @flow\n\nexport default function middleware(request: Request): Response | void {\n  if (!request.headers.has(\"cookie\")) {\n    return Response.redirect(new URL(\"/\", request.url), 302);\n  }\n}\n",
+    ));
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  build: { staticBuild: true },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(
+        said.contains("/dashboard"),
+        "the guard is not named:\n{said}"
+    );
+    assert!(
+        said.contains("once per request"),
+        "the refusal does not say why:\n{said}"
+    );
+}
+
+/// The fourth thing that needs a process, and the one that is not a route.
+///
+/// A `"use server"` export the browser can reach is an endpoint: the client
+/// bundle carries a `createServerReference` that `fetch`es it, so the button
+/// is wired whether or not anything answers. A build that emits no server
+/// emits no answer, and nothing between that build and the first click said
+/// so.
+///
+/// The project is `rsc-split-app` rather than a page written for this test.
+/// That fixture is what the server-action split is already measured against
+/// and `app/counter/_actions/tally.js` is exactly the module this refusal is
+/// about; it is copied rather than built in place because the assertion is
+/// about a `uf.config.js` the fixture does not have and should not grow.
+///
+/// The other direction — a `staticBuild` project with no actions builds, and
+/// builds without a server bundle — is
+/// `a_static_build_emits_no_server_bundle` above.
+#[test]
+fn a_static_build_refuses_the_server_actions_it_could_never_answer() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[(
+        "app.js",
+        "// @flow\nimport { routerView } from \"@uniflowed/router\";\n\nexport default routerView(\"./app\");\n",
+    )]);
+    copy_tree(
+        &rsc_split_app_root().join("app"),
+        &project.path().join("app"),
+    );
+    project.write(
+        "uf.config.js",
+        &config_with("  build: { staticBuild: true },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(
+        said.contains("app/counter/_actions/tally.js"),
+        "the module is not named:\n{said}"
+    );
+    assert!(
+        said.contains("staticBuild"),
+        "the declaration that caused it is not quoted:\n{said}"
+    );
+    assert!(
+        said.contains("--adapter") && said.contains("--compile"),
+        "the two builds that do answer an action are not named:\n{said}"
+    );
+    // Refused before the bundle, so the reader does not pay for a build that
+    // was never going to be one — and there is no half-written `dist/` to
+    // mistake for a finished deployment.
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a refused build wrote a document anyway"
+    );
+}
+
+/// The third rendering decision, and the one that had no name.
+///
+/// `generateStaticParams` says "prerender these"; nothing said "never
+/// prerender this", so a route with no parameters whose content depends on the
+/// request could not be kept out of `dist/`. See ubugeeei-prod/uf#336.
+#[test]
+fn a_page_that_forces_dynamic_is_left_to_the_server() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/now/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-dynamic\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(project.path().join("dist/index.html").is_file());
+    assert!(
+        !project.path().join("dist/now/index.html").exists(),
+        "a page that said not to prerender it was prerendered:\n{said}"
+    );
+    assert!(said.contains("/now"), "the route is not reported:\n{said}");
+}
+
+/// A `dynamic` uf does not implement is refused rather than ignored.
+#[test]
+fn a_dynamic_value_uf_does_not_implement_is_named() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/now/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-static\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(said.contains("force-static"), "{said}");
+    assert!(said.contains("force-dynamic"), "{said}");
+}
+
+/// The seam is a seam: a builder that is not `@uniflowed/vite` runs.
+///
+/// `paper-builder` has no bundler in it — it walks the router root and writes
+/// a document per route — so nothing it satisfies can be Vite-shaped. That is
+/// the whole assertion, and it is ubugeeei-prod/uf#549's: until this, Vite was
+/// not one implementation of a contract, it was reached by name from four
+/// commands.
+#[test]
+fn a_second_builder_is_resolved_named_and_driven() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    copy_tree(
+        &paper_builder_root(),
+        &project.path().join("tools/paper-builder"),
+    );
+    project.write(
+        "uf.config.js",
+        &config_with("  builder: { module: \"./tools/paper-builder\" },\n"),
+    );
+
+    // Named before it runs, which is red line 7: a person should be able to
+    // ask which provider a command will use without running it.
+    let explained = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(
+        plan.contains("./tools/paper-builder 0.1.0"),
+        "`uf explain build` did not name the builder and its version:\n{plan}"
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    let index = fs::read_to_string(project.path().join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("data-paper-builder=\"/\""),
+        "the second builder did not write the document:\n{index}"
+    );
+}
+
+/// A builder the project named and did not install is a sentence, not a stack.
+#[test]
+fn a_builder_that_is_not_there_is_refused_by_name() {
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  builder: { module: \"@someone/rolldown-builder\" },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "{said}");
+    assert!(said.contains("@someone/rolldown-builder"), "{said}");
+    assert!(said.contains("uf install"), "{said}");
+}
+
+/// The served fixture's build says which of its routes need a server.
+///
+/// The fixture exists because the docs site is static: it has a route handler
+/// and two routes with parameters and no `generateStaticParams`, which are
+/// exactly the things `uf build` used to leave out of `dist/` without saying
+/// so. Asserted against the build manifest rather than a running server, so it
+/// needs no socket.
+#[test]
+fn the_served_fixture_records_every_route_a_server_has_to_answer() {
+    if !fixture_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let (succeeded, said) = build_output(&root);
+    assert!(succeeded, "{said}");
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let rendering = &manifest["rendering"];
+    assert_eq!(rendering["prerender"], serde_json::json!("possible"));
+    assert_eq!(rendering["server"], serde_json::json!(true));
+    let per_request: Vec<&str> = rendering["perRequest"]
+        .as_array()
+        .expect("the manifest records what the build left to a server")
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    for expected in ["/posts/:slug", "/slow/:id", "/api/health"] {
+        assert!(
+            per_request.contains(&expected),
+            "{expected} is missing from {per_request:?}"
+        );
+    }
+    // And it is reported, not only recorded.
+    assert!(
+        said.contains("answered by a server"),
+        "the build did not report them:\n{said}"
+    );
 }

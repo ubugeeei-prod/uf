@@ -38,9 +38,18 @@
 // `@uniflowed/server/host`, once per request, around everything that answers
 // it — and the guard, the handler or page underneath it, and the render all
 // see that one context. So `cookies()` in a guard and `cookies()` in the page
-// it guards are the same cookies, `draftMode().enable()` in a guard is visible
-// to what it guards, and every `after()` on the request is one ordered list
-// the host drains after the response has gone.
+// it guards are the same cookies, `draftMode().isEnabled` gives a guard and
+// the page under it the same answer, and every `after()` on the request is one
+// ordered list the host drains after the response has gone.
+//
+// *Changing* draft mode is not a guard's to do, and that is a separate rule
+// with a separate reason: `enable()` writes a cookie, a cookie is part of a
+// response, and a guard may decline — so a guard that turned draft mode on and
+// then let the request through would have made a decision with nowhere to be
+// written. `asResponder` marks the two calls that do own a response, a route
+// handler and a server action, and `draftMode().enable()` refuses anywhere
+// else by name. A guard that wants draft mode on answers with a redirect to
+// the handler that turns it on. See ubugeeei-prod/uf#282.
 //
 // It used to be the other way, and it is worth saying why that was wrong
 // rather than merely different: this module built its own context and drained
@@ -140,8 +149,8 @@ export function createMiddlewareRunner(options: {|
       const middleware = pick(await record.load(), record.file);
       // In the host's context, not one of this module's own. Two middleware on
       // the same path see the same cookies, and so does the handler or the page
-      // underneath them: `draftMode().enable()` in a guard is visible to what
-      // it guards, and every `after()` on the request lands in one ordered list
+      // underneath them: `draftMode().isEnabled` is one answer for the whole
+      // request, and every `after()` on the request lands in one ordered list
       // that the host drains once, after the response has gone.
       const result = await middleware(request, { params, searchParams: url.searchParams });
       if (result != null) {

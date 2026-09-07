@@ -20,6 +20,31 @@
 //   * `Tab` closes the menu and carries on through the page, rather than
 //     walking the reader through thirty items they have already dismissed.
 //
+// # This is shadcn's Dropdown Menu
+//
+// Under that name it is a fourth component; here it is this one. A dropdown
+// menu is a menu whose trigger is a button, which is what `Menu.Trigger` is, so
+// there is no second module and no alias export — a second spelling of a
+// component is a second surface to keep in step, and `index.js` argues against
+// one at greater length. `context-menu.js` and `menubar.js` are the two that
+// genuinely differ, and each of their headers says in what.
+//
+// # Choosing an item, and the item that should not close the menu
+//
+// `onSelect` receives the click and may answer it. `preventDefault()` means "I
+// handled this and the menu stays open", which is the contract
+// `internal/merge-props.js` already uses between a caller's handler and a
+// component's, and the one Radix settled on for this exact question. A
+// `closeOnSelect` prop is the same answer given once for a part rather than per
+// press.
+//
+// The defaults differ between the item kinds because the platform's do. A
+// command closes the menu — running it and leaving the menu open is a state no
+// native menu has been in. A *checkable* item does not: "show hidden files"
+// toggled three times is one visit to the menu everywhere except in a component
+// library, and a checkbox that closed the menu would make checking three boxes
+// mean opening the menu three times.
+//
 // # Focus moves; `aria-activedescendant` does not appear here
 //
 // A menu moves *real* DOM focus onto its items. That is what WAI-ARIA
@@ -56,6 +81,10 @@
 // answer `submenuKeys` gives about the *keys*: the submenu opens the way the
 // page reads, and the arrow that opens it points at where it went.
 //
+// A context menu opens at a point instead, which is the one thing the
+// positioner did not do; `internal/menu-tree.js` carries that rectangle and
+// `internal/anchor.js` says what it replaces.
+//
 // # Items are found in the document, not in a registry
 //
 // `internal/roving-focus.js` explains why. The short version is that mount
@@ -67,6 +96,7 @@
 import * as React from "@uniflowed/react";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -90,80 +120,35 @@ import {
   useTypeahead,
 } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
-import type { Direction } from "./internal/roving-focus.js";
+import {
+  ITEM_SELECTOR,
+  MENU_SELECTOR,
+  MenuAnchorContext,
+  MenuContext,
+  MenuLevel,
+  MenuListContext,
+  closeTree,
+  submenuKeys,
+  useMenu,
+  useTriggerRegistration,
+} from "./internal/menu-tree.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 /**
- * Anything that plays the part of a menu item, including the two checkable
- * kinds a caller may write themselves. The keyboard has to move between all of
- * them, so the selector names all of them rather than only what this package
- * ships.
- */
-const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
-
-/** What owns an item: the nearest menu, so a submenu keeps its own. */
-const MENU_SELECTOR = '[role="menu"]';
-
-/**
- * Which arrow key opens a submenu, and which closes it.
+ * The part of a click a menu item's `onSelect` may read and answer.
  *
- * The WAI-ARIA menu pattern puts a submenu on the *inline end*, so it opens to
- * the right of a left-to-right menu and to the left of a right-to-left one, and
- * the key that opens it is the one pointing at it. Written out as
- * `ArrowRight` to open and `ArrowLeft` to close, an RTL reader pressed the key
- * aimed at the submenu and closed the menu they were standing in — which is
- * worse than nothing happening, because it loses their place.
+ * Inexact, because what arrives is React's synthetic event and this names only
+ * the two members the contract is about: calling `preventDefault()` keeps the
+ * menu open, and the component reads `defaultPrevented` afterwards to find out.
+ * A caller who wants the rest of the event has it — this is the promise, not
+ * the object.
  */
-function submenuKeys(direction: Direction): {| readonly open: string, readonly close: string |} {
-  return direction === "rtl"
-    ? { open: "ArrowLeft", close: "ArrowRight" }
-    : { open: "ArrowRight", close: "ArrowLeft" };
-}
-
-type MenuState = {|
-  readonly base: string,
-  readonly open: boolean,
-  readonly setOpen: (open: boolean) => void,
-  /** What opened this menu, and what focus goes back to when it closes. */
-  readonly triggerRef: { current: HTMLElement | null },
-  /**
-   * Which end the menu should open onto, written by whatever opened it.
-   *
-   * A ref rather than state because it is an instruction for the next commit,
-   * not a value anything renders: `ArrowUp` on a closed menu opens it *and*
-   * lands on the last item, and re-rendering the trigger to say so would be a
-   * render whose only purpose is to carry a message to an effect.
-   */
-  readonly pendingFocus: { current: "first" | "last" | null },
-  /** The menu this one hangs off, or null for the outermost. */
-  readonly parent: MenuState | null,
-  /**
-   * Whether a trigger is rendered, so the body only names one that exists.
-   *
-   * A menu opened by `defaultOpen` in a page that never renders a trigger is a
-   * real arrangement, and an `aria-labelledby` pointing at the id that trigger
-   * *would* have had makes a screen reader announce nothing at all.
-   */
-  readonly triggered: boolean,
-  readonly registerTrigger: (present: boolean) => void,
-|};
-
-const MenuContext: React.Context<MenuState | null> = createContext(null);
-
-/**
- * The roving tab stop of one open menu.
- *
- * Provided by `Menu.Body` rather than by the root, because a submenu is a
- * second list with a tab stop of its own: nesting the provider is what stops
- * the parent menu and the submenu from fighting over which item is `tabindex=0`.
- */
-type MenuListState = {|
-  readonly activeId: string | null,
-  readonly setActiveId: (id: string | null) => void,
-|};
-
-const MenuListContext: React.Context<MenuListState | null> = createContext(null);
+export type MenuSelect = {
+  readonly defaultPrevented: boolean,
+  readonly preventDefault: () => mixed,
+  ...
+};
 
 /** The id of a group's label, so `Menu.Group` only claims one that exists. */
 type MenuGroupState = {|
@@ -173,54 +158,13 @@ type MenuGroupState = {|
 
 const MenuGroupContext: React.Context<MenuGroupState | null> = createContext(null);
 
-hook useMenu(part: string): MenuState {
-  const state = useContext(MenuContext);
-  if (state == null) {
-    throw new Error(`${part} must be rendered inside a Menu.Root`);
-  }
-  return state;
-}
+/** What a `Menu.RadioGroup` tells the items inside it. */
+type MenuRadioState = {|
+  readonly value: string | null,
+  readonly choose: (value: string) => void,
+|};
 
-/**
- * Tell the menu that a trigger for it is in the document.
- *
- * `Menu.Body` names its trigger with `aria-labelledby`, and it may only do that
- * while there is one to name — a menu opened by `defaultOpen` in a page with no
- * trigger would otherwise point at an id nothing has, and a screen reader given
- * a dangling `aria-labelledby` announces nothing at all rather than falling back
- * to the element's own content.
- */
-hook useTriggerRegistration(menu: MenuState): void {
-  const register = menu.registerTrigger;
-  useEffect(() => {
-    register(true);
-    return () => register(false);
-  }, [register]);
-}
-
-/** Every menu from `menu` outwards, innermost first. */
-function ancestry(menu: MenuState): Array<MenuState> {
-  const chain = [];
-  let at: MenuState | null = menu;
-  while (at != null) {
-    chain.push(at);
-    at = at.parent;
-  }
-  return chain;
-}
-
-/**
- * Close this menu and every menu it hangs off.
- *
- * Choosing an item in a submenu dismisses the whole thing — leaving the parent
- * menu open after a command has run is a state no native menu has ever been in,
- * and it leaves the reader looking at a menu whose action already happened.
- */
-function closeTree(menu: MenuState): void {
-  for (const each of ancestry(menu)) {
-    each.setOpen(false);
-  }
-}
+const MenuRadioContext: React.Context<MenuRadioState | null> = createContext(null);
 
 /**
  * A menu and its trigger.
@@ -264,37 +208,6 @@ export component MenuSub(
       {children}
     </MenuLevel>
   );
-}
-
-/** One level of the menu tree. Shared by `Menu.Root` and `Menu.Sub`. */
-component MenuLevel(
-  children: React.Node,
-  parent: MenuState | null,
-  defaultOpen: boolean,
-  open?: boolean,
-  onOpenChange?: (open: boolean) => void,
-) {
-  const base = useId();
-  const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
-  const triggerRef = useRef<HTMLElement | null>(null);
-  const pendingFocus = useRef<"first" | "last" | null>(null);
-  const [triggered, setTriggered] = useState(false);
-
-  const state = useMemo(
-    () => ({
-      base,
-      open: isOpen,
-      setOpen,
-      triggerRef,
-      pendingFocus,
-      parent,
-      triggered,
-      registerTrigger: setTriggered,
-    }),
-    [base, isOpen, setOpen, parent, triggered],
-  );
-
-  return <MenuContext.Provider value={state}>{children}</MenuContext.Provider>;
 }
 
 /** The button that opens the menu. */
@@ -348,7 +261,14 @@ export component MenuTrigger(children: React.Node, ...rest: Rest) {
  * `Space` from being buttons.
  */
 export component MenuBody(
-  children: renders* (MenuItem | MenuSeparator | MenuGroup | MenuSub),
+  children: renders* (
+    | MenuItem
+    | MenuCheckboxItem
+    | MenuRadioGroup
+    | MenuSeparator
+    | MenuGroup
+    | MenuSub
+  ),
   align?: Align = "start",
   alignOffset?: number = 0,
   avoidCollisions?: boolean = true,
@@ -361,6 +281,9 @@ export component MenuBody(
   const bodyRef = useRef<HTMLElement | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const typeahead = useTypeahead();
+  // A point to open at, when whatever opened this menu was a pointer rather
+  // than a button. Null for every menu that hangs off a trigger.
+  const point = useContext(MenuAnchorContext);
 
   // Pulled out because they are stable for the life of the menu, which is what
   // lets the effect below depend on `open` alone. Keyed on the context object
@@ -378,6 +301,7 @@ export component MenuBody(
   const anchored = useAnchor({
     align,
     alignOffset,
+    anchorRect: point,
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
@@ -539,6 +463,52 @@ export component MenuBody(
 }
 
 /**
+ * Everything an item of any of the three kinds needs from the menu around it.
+ *
+ * One hook rather than three copies, because the three differ in their role and
+ * their state and in nothing else: the same id, the same roving tab stop, the
+ * same "a disabled item is announced and stepped over", and the same rule about
+ * when a press closes the tree.
+ */
+hook useMenuItem(
+  part: string,
+  disabled: boolean,
+  closeOnSelect: boolean,
+  onSelect: ((event: MenuSelect) => mixed) | void,
+  act: (() => void) | void,
+): {|
+  readonly id: string,
+  readonly onClick: (event: MenuSelect) => void,
+  readonly onFocus: () => void,
+  readonly tabIndex: number,
+|} {
+  const menu = useMenu(part);
+  const list = useContext(MenuListContext);
+  const id = useId();
+  const setActiveId = list?.setActiveId;
+
+  return {
+    id,
+    onClick: (event: MenuSelect) => {
+      if (disabled) {
+        return;
+      }
+      act?.();
+      onSelect?.(event);
+      // The caller's answer, read after they have had the event: a
+      // `preventDefault()` in `onSelect` is "I handled this, leave the menu
+      // open", which is the same sentence `composeHandlers` reads between a
+      // caller's handler and this package's.
+      if (closeOnSelect && !event.defaultPrevented) {
+        closeTree(menu);
+      }
+    },
+    onFocus: () => setActiveId?.(id),
+    tabIndex: list?.activeId === id ? 0 : -1,
+  };
+}
+
+/**
  * One command in the menu.
  *
  * A disabled item is `aria-disabled` rather than `disabled`, so it stays in the
@@ -550,33 +520,164 @@ export component MenuBody(
 export component MenuItem(
   children: React.Node,
   disabled?: boolean = false,
-  onSelect?: () => mixed,
+  closeOnSelect?: boolean = true,
+  onSelect?: (event: MenuSelect) => mixed,
   ...rest: Rest
 ) {
-  const menu = useMenu("Menu.Item");
-  const list = useContext(MenuListContext);
-  const id = useId();
+  const item = useMenuItem("Menu.Item", disabled, closeOnSelect, onSelect, undefined);
   const passed = withoutComposed(rest, ["onClick", "onFocus"]);
-  const setActiveId = list?.setActiveId;
 
   return (
     <button
       {...passed}
       aria-disabled={disabled ? "true" : undefined}
-      id={id}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (disabled) {
-          return;
-        }
-        onSelect?.();
-        closeTree(menu);
-      })}
+      id={item.id}
+      onClick={composeHandlers(rest.onClick, item.onClick)}
       // The roving tab stop follows real focus rather than leading it, so a
       // pointer that moves focus and a key that moves focus agree without the
       // two of them having to be kept in step by hand.
-      onFocus={composeHandlers(rest.onFocus, () => setActiveId?.(id))}
+      onFocus={composeHandlers(rest.onFocus, item.onFocus)}
       role="menuitem"
-      tabIndex={list?.activeId === id ? 0 : -1}
+      tabIndex={item.tabIndex}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * An item that carries a state of its own: "show hidden files".
+ *
+ * `role="menuitemcheckbox"` with `aria-checked`, which is the role the arrow
+ * keys and the typeahead have always stepped across — `ITEM_SELECTOR` named it
+ * before there was a component that rendered it. What a caller could not
+ * hand-roll on `Menu.Item` is the rest: the controlled-and-uncontrolled
+ * contract `internal/controlled-state.js` states for everything here, and a
+ * press that does *not* dismiss the menu.
+ *
+ * There is no third state. `aria-checked="mixed"` belongs to a checkbox that
+ * summarises other checkboxes — `checkbox.js` has it, and a menu item is a
+ * command rather than a summary of a table's rows.
+ */
+export component MenuCheckboxItem(
+  children: React.Node,
+  checked?: boolean,
+  defaultChecked?: boolean = false,
+  onCheckedChange?: (checked: boolean) => void,
+  disabled?: boolean = false,
+  // A menu the reader is still ticking boxes in stays open; see the module
+  // header for why this default is the opposite of `Menu.Item`'s.
+  closeOnSelect?: boolean = false,
+  onSelect?: (event: MenuSelect) => mixed,
+  ...rest: Rest
+) {
+  const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
+  const toggle = useCallback(() => setOn(!on), [on, setOn]);
+  const item = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
+  const passed = withoutComposed(rest, ["onClick", "onFocus"]);
+
+  return (
+    <button
+      {...passed}
+      aria-checked={on ? "true" : "false"}
+      aria-disabled={disabled ? "true" : undefined}
+      id={item.id}
+      onClick={composeHandlers(rest.onClick, item.onClick)}
+      onFocus={composeHandlers(rest.onFocus, item.onFocus)}
+      role="menuitemcheckbox"
+      tabIndex={item.tabIndex}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * A set of items of which exactly one is chosen.
+ *
+ * The *group* owns the value, which is what makes this a component rather than
+ * a convention: `aria-checked="true"` has to be on one item and `"false"` on
+ * the others, and a caller holding a value per item gets two checked ones the
+ * first time a render is skipped. `role="group"` is what ties them together for
+ * a reader — the items are `menuitemradio`, and a reader is told "2 of 3".
+ *
+ * `onValueChange` promises a `string` while the state is `string | null`, for
+ * the reason `radio-group.js` gives at greater length: "nothing chosen yet" is
+ * a state the group starts in and never an event it reports, because no gesture
+ * inside it unchooses an answer.
+ */
+export component MenuRadioGroup(
+  children: renders* (MenuRadioItem | MenuLabel | MenuSeparator),
+  defaultValue?: string | null = null,
+  value?: string | null,
+  onValueChange?: (value: string) => void,
+  ...rest: Rest
+) {
+  const base = useId();
+  const [labelled, setLabelled] = useState(false);
+  const report = useCallback(
+    (next: string | null) => {
+      if (next != null) {
+        onValueChange?.(next);
+      }
+    },
+    [onValueChange],
+  );
+  const [selected, select] = useControlled<string | null>(value, defaultValue, report);
+
+  const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
+  const radio = useMemo(
+    () => ({ value: selected, choose: (next: string) => select(next) }),
+    [selected, select],
+  );
+
+  return (
+    <MenuGroupContext.Provider value={group}>
+      <MenuRadioContext.Provider value={radio}>
+        <div {...rest} aria-labelledby={labelled ? group.labelId : undefined} role="group">
+          {children}
+        </div>
+      </MenuRadioContext.Provider>
+    </MenuGroupContext.Provider>
+  );
+}
+
+/**
+ * One answer in a `Menu.RadioGroup`.
+ *
+ * Choosing it reports the group's new value and leaves the menu open, which is
+ * what a sort order or a zoom level in a native menu does; `closeOnSelect` is
+ * the way to say otherwise for a choice that ends the visit.
+ */
+export component MenuRadioItem(
+  children: React.Node,
+  value: string,
+  disabled?: boolean = false,
+  closeOnSelect?: boolean = false,
+  onSelect?: (event: MenuSelect) => mixed,
+  ...rest: Rest
+) {
+  const group = useContext(MenuRadioContext);
+  if (group == null) {
+    throw new Error("Menu.RadioItem must be rendered inside a Menu.RadioGroup");
+  }
+  const choose = group.choose;
+  const pick = useCallback(() => choose(value), [choose, value]);
+  const item = useMenuItem("Menu.RadioItem", disabled, closeOnSelect, onSelect, pick);
+  const passed = withoutComposed(rest, ["onClick", "onFocus"]);
+
+  return (
+    <button
+      {...passed}
+      aria-checked={group.value === value ? "true" : "false"}
+      aria-disabled={disabled ? "true" : undefined}
+      id={item.id}
+      onClick={composeHandlers(rest.onClick, item.onClick)}
+      onFocus={composeHandlers(rest.onFocus, item.onFocus)}
+      role="menuitemradio"
+      tabIndex={item.tabIndex}
       type="button"
     >
       {children}
@@ -673,7 +774,7 @@ export component MenuGroup(children: React.Node, ...rest: Rest) {
 }
 
 /**
- * The heading of a `Menu.Group`.
+ * The heading of a `Menu.Group` or a `Menu.RadioGroup`.
  *
  * `role="presentation"` because the group already carries the name: leaving it
  * as ordinary content would have a reader hear the heading once as the group's
