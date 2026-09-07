@@ -1048,6 +1048,26 @@ pub enum ConfigError {
         "unsupported config expression in {path}; use `export default defineConfig({{ ... }})`"
     )]
     UnsupportedExpression { path: Utf8PathBuf },
+    /// A cache switch that is `true` and means nothing.
+    ///
+    /// `rendering.cache` has four keys and uf implements two of them. Reading
+    /// `data: true` and carrying on would put the switch in
+    /// `dist/uf-build-manifest.json` and change no behaviour anywhere — which
+    /// is precisely the state ubugeeei-prod/uf#277 objects to, and it was that
+    /// state for all four keys. Refusing is the only answer that cannot be
+    /// mistaken for a cache: a project that sets it is asking for caching it
+    /// will not get, and the failure has to happen where the request was made
+    /// rather than in production where it was not honoured.
+    #[error(
+        "{path}: rendering.cache.{key} is true, and uf has no {key} cache. \
+         It would reach the build manifest and change nothing. \
+         `route` and `fetch` are the two that are implemented; \
+         see ubugeeei-prod/uf#277 for what the other two need."
+    )]
+    UnimplementedCache {
+        path: Utf8PathBuf,
+        key: &'static str,
+    },
 }
 
 pub fn load_config(start: impl AsRef<Utf8Path>) -> Result<ResolvedConfig, ConfigError> {
@@ -1109,15 +1129,37 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
                     path: path.to_path_buf(),
                 }
             })?;
-            json5::from_str(&json5).map_err(|source| ConfigError::Parse {
-                path: path.to_path_buf(),
-                message: source.to_string(),
-            })
+            let config: UniflowedConfig =
+                json5::from_str(&json5).map_err(|source| ConfigError::Parse {
+                    path: path.to_path_buf(),
+                    message: source.to_string(),
+                })?;
+            check_cache_switches(path, &config.app.rendering.cache)?;
+            Ok(config)
         }
         _ => Err(ConfigError::UnsupportedExpression {
             path: path.to_path_buf(),
         }),
     }
+}
+
+/// Refuse a cache switch uf would read and not honour.
+///
+/// Only the two that are unimplemented, and only when a project turned one
+/// *on*: `false` is the default and says the same thing whether or not there is
+/// an implementation behind it. `route` and `fetch` reach
+/// `@uniflowed/server/cache` through the generated server entry and through
+/// `uf preview`/`uf start`, so they are checked by the suite rather than here.
+fn check_cache_switches(path: &Utf8Path, cache: &CacheConfig) -> Result<(), ConfigError> {
+    for (on, key) in [(cache.data, "data"), (cache.actions, "actions")] {
+        if on {
+            return Err(ConfigError::UnimplementedCache {
+                path: path.to_path_buf(),
+                key,
+            });
+        }
+    }
+    Ok(())
 }
 
 pub fn extract_config_object(source: &str) -> Option<String> {
