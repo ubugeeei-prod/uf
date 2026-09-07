@@ -3493,6 +3493,7 @@ dependencies = [
  "uf_test",
  "uf_transform",
  "uf_tui",
+ "walkdir",
 ]
 
 [[package]]

@@ -33,10 +33,14 @@ listing it here rather than trusting anyone to remember:
    that has been one for too long.
 2. **A type that is `any` under another name.** `flow/unclear-type` catches the
    spelling. It does not catch a type that is technically not `any` and still
-   tells the caller nothing, and it does not catch inference that stops at a
-   package boundary — which is what
-   [#248](https://github.com/ubugeeei-prod/uf/issues/248) is: 145 of the 581
-   errors `uf check` reports on this repository are one resolver bug.
+   tells the caller nothing. Inference that stopped at a package boundary was
+   the worst case of it and is fixed: a bare specifier resolves through the
+   manifest that publishes it ([#248](https://github.com/ubugeeei-prod/uf/issues/248)),
+   and the batch a check runs over is the closure of what the files asked about
+   import, `node_modules` included
+   ([#403](https://github.com/ubugeeei-prod/uf/issues/403)). `uf check` reports
+   1,883 errors over this repository's 357 checked files, and they are errors
+   about types rather than about the resolver.
 3. **A feature that works for the demo.** Every fix in this repository carries
    a test that fails before it and passes after, and the corpus tests run the
    formatter over 8,100 modules nobody here wrote. That is the standard, and
@@ -53,7 +57,7 @@ rather than a note:
 | Runs on every runtime | Node and Bun. `HostKind::Deno` loads no Flow; the edge runtimes have no host at all | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
 | Builds a standalone binary | `uf build --compile` writes one, and needs Bun on PATH to do it; cross-compiling to another platform does not exist | [#310](https://github.com/ubugeeei-prod/uf/issues/310) |
 | Deploys anywhere | `uf build --adapter` writes for `node`, `container`, `edge` and `serverless`, and no output has ever been deployed to a real platform; `bun`, `deno` and `static` are names in a config struct | [#391](https://github.com/ubugeeei-prod/uf/issues/391) |
-| Inference reaches the end of a program | A type imported by its published name resolves to nothing | [#248](https://github.com/ubugeeei-prod/uf/issues/248) |
+| Inference reaches the end of a program | It does: a type imported by its published name resolves, from the workspace or from `node_modules`. What is left is a dependency that opts into no Flow, which is `any` by Flow's own rule | [#248](https://github.com/ubugeeei-prod/uf/issues/248), [#403](https://github.com/ubugeeei-prod/uf/issues/403) |
 | Everything implemented reaches a user | Ten implemented packages are on nobody's npm; `@uniflowed/tui` is a contract nobody can run | [#210](https://github.com/ubugeeei-prod/uf/issues/210), [#247](https://github.com/ubugeeei-prod/uf/issues/247) |
 
 The threat model that every one of these must satisfy is in

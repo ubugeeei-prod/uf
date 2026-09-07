@@ -1,0 +1,115 @@
+# The `setup-uf` action, run.
+#
+# `tools/ci/integrations-agree.sh` checks that the three integrations name
+# variables the installer reads. It cannot check that the action *works*: that
+# needs a runner, a network, and a published release to install. This does.
+#
+# It is separate from `Toolchain` on purpose. That workflow builds `uf` from
+# this checkout and is what gates a pull request; this one installs the *last
+# published* release, so it fails when a release is broken rather than when a
+# branch is — which is a different question and belongs to a different red
+# check. It is also the only workflow here that would fail with no code change
+# at all, the day `setup.uniflowed.dev` stops answering.
+name: Integrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - integrations/**
+      - .github/workflows/integrations.yml
+      - infra/cloudflare/setup-assets/install.sh
+  pull_request:
+    paths:
+      - integrations/**
+      - .github/workflows/integrations.yml
+      - infra/cloudflare/setup-assets/install.sh
+  # A release can break the action without either changing, so once a week and
+  # on request.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  # Read the repository, and nothing else. The token this passes to the action
+  # is only ever used to ask which release is newest.
+  contents: read
+
+env:
+  # The release the `pinned` legs install. A published one, deliberately: those
+  # legs exist to prove that the deployed installer and a real release still
+  # agree, so they must not be pointed at something this branch has not shipped.
+  PINNED: 0.0.0-alpha.10
+
+concurrency:
+  group: integrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  action:
+    name: setup-uf (${{ matrix.os }}, ${{ matrix.resolves }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # Two runner families, because between them they cover every target the
+      # installer can select on a hosted runner: the macOS runner is aarch64
+      # and the Ubuntu one x86_64.
+      #
+      # And two questions, which need different installers to answer.
+      #
+      # `pinned` runs the installer that is *deployed* at
+      # `setup.uniflowed.dev`, exactly as a user's pipeline would, against a
+      # release that is published. It is the leg that fails the day the host
+      # stops answering or a release archive goes missing — and it needs no
+      # GitHub API call, so nothing else can make it flaky.
+      #
+      # `latest` runs the installer *in this checkout*, over `file://`. It has
+      # to: `latest` is the path that asks the API which release is newest, and
+      # a change to that path — the `GITHUB_TOKEN` this action passes, say — is
+      # not at `setup.uniflowed.dev` until it is released. A pull request that
+      # tested the deployed script would be testing the version it is
+      # proposing to replace.
+      #
+      # Both dimensions in the base matrix rather than in `include:`, because an
+      # `include:` entry whose keys are absent from the base is applied to every
+      # combination — two of them would overwrite each other and quietly leave
+      # one question unasked.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        resolves: [pinned, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The action under test, from this repository at this commit rather than
+      # from a tag, so a pull request tests the version it is proposing.
+      # `$/` rather than `./`: the same-repository form does not depend on what
+      # is on the runner's filesystem when the step runs, which is what lets
+      # GitHub treat it as fully pinned.
+      - name: Install uf
+        id: setup
+        uses: $/integrations/github-actions
+        with:
+          version: ${{ matrix.resolves == 'latest' && 'latest' || env.PINNED }}
+          setup-url: ${{ matrix.resolves == 'latest' && format('file://{0}/infra/cloudflare/setup-assets/install.sh', github.workspace) || 'https://setup.uniflowed.dev' }}
+
+      # `uf` on PATH, not by full path: the action's last step is what puts it
+      # there, and running the binary directly would pass while that step was
+      # broken.
+      - name: uf answers by name
+        run: |
+          uf --version
+          ufx --version
+          test "$(uf --version | awk '{ print $2 }')" = '${{ steps.setup.outputs.version }}'
+
+      # An installed toolchain that cannot scaffold and check a project is not
+      # installed in any sense the user cares about. This is the first five
+      # minutes, run: create, install, check.
+      - name: A project it scaffolds checks clean
+        run: |
+          set -eu
+          work="$(mktemp -d)"
+          cd "$work"
+          uf create app react smoke
+          cd smoke
+          uf install
+          uf check

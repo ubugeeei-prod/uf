@@ -1,0 +1,147 @@
+name: Set up uf
+description: >-
+  Install the uf toolchain and put uf, ufr and ufx on PATH, so a workflow can
+  run uf check, uf test and uf build without building anything from source.
+author: ubugeeei
+
+branding:
+  icon: box
+  color: purple
+
+inputs:
+  version:
+    description: >-
+      The release to install: a version such as 0.0.0-alpha.10, the tag it was
+      published under (uf@0.0.0-alpha.10), or "latest". Pin it. "latest" is the
+      newest release including prereleases, which is every release uf has
+      published so far, and it changes under a workflow that did not change.
+    required: false
+    default: latest
+  cache:
+    description: >-
+      Cache the installed toolchain between runs. Ignored when version is
+      "latest": a cache keyed on the word "latest" would answer with whatever
+      release happened to be newest the first time the workflow ran, and go on
+      answering with it after a newer one shipped. Pin the version to cache it.
+    required: false
+    default: "true"
+  setup-url:
+    description: >-
+      Where to fetch the installer from. The default is the same script
+      `curl -fsSL https://setup.uniflowed.dev | sh` runs; point it at a mirror
+      or a pinned raw URL if a workflow must not depend on that host.
+    required: false
+    default: https://setup.uniflowed.dev
+  repository:
+    description: >-
+      The GitHub repository the release archives are downloaded from. Only
+      useful for a fork or a rehearsal of the release process.
+    required: false
+    default: ubugeeei-prod/uf
+  token:
+    description: >-
+      A GitHub token, used only to ask the API which release is newest — and
+      only when `version` is "latest", because a pinned version needs no API
+      call at all. Anonymous calls are rate limited per IP and a runner's IP is
+      shared with the rest of the fleet, so without one this step fails
+      intermittently with "no release found". The default is the workflow's own
+      token, which needs no permissions beyond the default `contents: read`.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The version that was installed, as `uf --version` reports it.
+    value: ${{ steps.install.outputs.version }}
+  bin-dir:
+    description: The directory holding the `uf`, `ufr` and `ufx` symlinks.
+    value: ${{ steps.paths.outputs.bin-dir }}
+  cache-hit:
+    description: >-
+      Whether the toolchain came from the cache rather than a download. From
+      the install step rather than from the restore, because a key that matched
+      is not a toolchain that runs: a restore whose binary cannot answer is
+      followed by a download, and reporting that as a hit would describe the
+      lookup instead of the outcome.
+    value: ${{ steps.install.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # Windows first, and as a failure rather than a skip. A workflow whose
+    # matrix quietly does nothing on one leg is worse than one that stops: the
+    # legs that did run go green, and the report says the matrix passed.
+    - name: Refuse Windows, with the reason
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        echo "::error::uf publishes macOS and Linux binaries only. Use a linux or macos runner, or run uf under WSL2."
+        exit 1
+
+    - name: Resolve paths
+      id: paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Under the runner tool cache, which is what it is for and what a
+        # self-hosted runner is configured to keep. Not $HOME/.local, because
+        # actions/cache restores into the workspace's filesystem and a
+        # self-hosted runner may share $HOME between jobs.
+        root="${RUNNER_TOOL_CACHE}/uf"
+        {
+          echo "root=${root}"
+          echo "bin-dir=${root}/bin"
+        } >> "$GITHUB_OUTPUT"
+
+    # Only for a pinned version: see the `cache` input for why "latest" is not
+    # cacheable by key.
+    - name: Restore the toolchain
+      id: restore
+      if: inputs.cache == 'true' && inputs.version != 'latest'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ steps.paths.outputs.root }}
+        key: uf-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}
+
+    - name: Install uf
+      id: install
+      shell: bash
+      env:
+        UF_VERSION: ${{ inputs.version }}
+        UF_REPO: ${{ inputs.repository }}
+        UF_INSTALL_ROOT: ${{ steps.paths.outputs.root }}
+        UF_BIN_DIR: ${{ steps.paths.outputs.bin-dir }}
+        SETUP_URL: ${{ inputs.setup-url }}
+        CACHED: ${{ steps.restore.outputs.cache-hit }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        uf_bin="${UF_BIN_DIR}/uf"
+        # A restored cache is only believed after the binary in it answers. An
+        # archive that unpacked into a cache and then lost a symlink, or a
+        # runner whose architecture changed under the same key, both look like
+        # a hit and neither can run anything.
+        if [ "${CACHED:-}" = "true" ] && [ -x "$uf_bin" ] && "$uf_bin" --version >/dev/null 2>&1; then
+          echo "uf ${UF_VERSION} restored from the cache"
+          echo "cache-hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "cache-hit=false" >> "$GITHUB_OUTPUT"
+          # The installer writes its progress to stderr and the binary to
+          # UF_BIN_DIR. It verifies the archive's sha256 against the checksum
+          # published beside it before unpacking, which is the reason to run it
+          # rather than to curl a tarball here.
+          curl -fsSL "$SETUP_URL" | sh
+        fi
+        "$uf_bin" --version
+        echo "version=$("$uf_bin" --version | awk '{ print $2 }')" >> "$GITHUB_OUTPUT"
+
+    - name: Save the toolchain
+      if: inputs.cache == 'true' && inputs.version != 'latest' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ steps.paths.outputs.root }}
+        key: uf-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}
+
+    - name: Put uf on PATH
+      shell: bash
+      run: echo "${{ steps.paths.outputs.bin-dir }}" >> "$GITHUB_PATH"

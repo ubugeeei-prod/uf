@@ -263,9 +263,10 @@ saying so — which is the one thing on this page that cost a rebuild to discove
 
 `notFound()` is written `throw notFound()` here. It does throw on its own, and
 [the routing page](/guide/routing) describes it that way; the `throw` is for the
-type checker, which cannot yet see through an import to a package
-([issue #248](https://github.com/ubugeeei-prod/uf/issues/248)) and so still
-believes `article` may be `null` on the next line.
+type checker. It reads the router's real signature now — `notFound(): empty` —
+and that is still not enough, because Flow ends a branch on a `throw`
+*statement* and has no analysis that says a call which cannot return does not
+return. Without the `throw`, `article` is still `null` on the next line.
 
 ## The layout
 
@@ -273,11 +274,12 @@ believes `article` may be `null` on the next line.
 
 ```js
 // @flow
+import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 
 import { SavedCount } from "./SavedCount.js";
 
-export component Layout(children: mixed) {
+export component Layout(children: React.Node) {
   return (
     <html lang="en">
       <head>
@@ -297,13 +299,16 @@ export component Layout(children: mixed) {
 }
 ```
 
-`children: mixed`, not `React.Node`, and that is not a stylistic choice.
-`uf check` resolves a type imported from a relative module — the `Article` above
-proves it — and does not yet resolve one imported by a package name, so
-`React.Node` from `@uniflowed/react` is an any-typed value and using it as an
-annotation is an error. `mixed` is what the scaffold writes, for the same
-reason. [Issue #248](https://github.com/ubugeeei-prod/uf/issues/248) is the work
-that changes this line back.
+`React.Node` is a type imported by a package name, and `uf check` resolves it
+the same way it resolves the `Article` above: through `@uniflowed/react`'s own
+manifest in `node_modules` and the `exports` map in it. That line used to read
+`children: mixed`, because the checker resolved no package and an annotation
+written against an any-typed value is an error rather than a weak type.
+[#248](https://github.com/ubugeeei-prod/uf/issues/248) and
+[#403](https://github.com/ubugeeei-prod/uf/issues/403) are the two halves of
+the work that changed it back. The scaffold still writes `mixed`, for a reason
+that has not gone away: it runs before `uf install`, so nothing is resolvable
+when it writes.
 
 A layout stays mounted while you navigate between pages under it, so the
 header's count survives navigation without being lifted anywhere.
@@ -681,7 +686,7 @@ whole claim is that these are real cannot start there.
 uf check
 ────────
 
-  files checked  15
+  files checked  14
   errors         0
   warnings       0
   rules skipped  16
@@ -696,25 +701,33 @@ uf check
 
 ✓ no problems
 
-  types checked  15
-  inference      28.0ms
-  builtins       54.7ms (cold)
+  types checked  105
+  asked about    14 of 105
+  inference      786.5ms
+  builtins       28.8ms (cold)
 
   › these imports are typed as any; uf resolved no module for them
-    - @uniflowed/config
-    - @uniflowed/form
-    - @uniflowed/router
-    - @uniflowed/state
-    - @uniflowed/test
-    - and 2 more
+    - @uniflowed/cell
+    - @uniflowed/host/module-mocks
+    - @uniflowed/react-testing
+    - @uniflowed/validator
+    - node:async_hooks
+    - and 1 more
 ```
 
 </figure>
 
-The last paragraph is the honest part, and it is where `children: mixed` came
-from. Nothing above is checked *against* the router's or the form's real types
-yet — [issue #248](https://github.com/ubugeeei-prod/uf/issues/248) is the work
-that changes that, and `flow` itself checks what uf cannot.
+Fourteen files were asked about and a hundred and five were typed: the other
+ninety-one are the `@uniflowed` packages this application imports, read out of
+`node_modules` so that everything above is checked *against* the router's and
+the form's real types rather than against `any`. Six names are left over, and
+each is a different reason: `@uniflowed/host/module-mocks` says `@noflow` on
+purpose, because the loader runs before any transform exists; `@uniflowed/cell`,
+`@uniflowed/react-testing` and `@uniflowed/validator` are packages the ones
+above import and this project has not installed; and `node:async_hooks` and
+`node:module` are runtime builtins Flow's library definitions do not declare.
+An import that is typed as `any` is named, so that the hole is stated rather
+than silent.
 
 `uf fmt --check` exits 0 on every file in this page, which is how they were
 written: the code here was formatted by the tool rather than by hand.
@@ -843,7 +856,7 @@ around.
 | `stylex.create` compiles to class names and no stylesheet reaches `dist/` | Styling this application with uf's own default | [#306](https://github.com/ubugeeei-prod/uf/issues/306) |
 | React Compiler diagnostics say `a function:` and name no file | 38 warnings in the build above, none actionable | [#307](https://github.com/ubugeeei-prod/uf/issues/307) |
 | A component test prints Node's `--localstorage-file` warning | The `uf test` transcript above | [#308](https://github.com/ubugeeei-prod/uf/issues/308) |
-| A type imported by package name is `any` | `children: mixed`, `throw notFound()` | [#248](https://github.com/ubugeeei-prod/uf/issues/248) |
+| A call that cannot return does not end the branch | `throw notFound()`, where `notFound(): empty` would do | Flow's own; no analysis for it |
 
 ## Where to go next
 

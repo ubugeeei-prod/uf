@@ -492,8 +492,25 @@ esac
 #
 # Parsed with sed rather than jq, because an installer cannot require a JSON
 # parser to be installed before it can install anything.
+#
+# `GITHUB_TOKEN` is used when it is set, and only here. Anonymous calls to the
+# GitHub API are rate limited *per IP*, and a CI runner's IP is shared with
+# every other job on the fleet — so this is the one step of the install that
+# fails for reasons that have nothing to do with the caller, intermittently,
+# with `no release found`. A pinned `UF_VERSION` never reaches this function at
+# all; `latest` on CI is what needs the token.
+#
+# Sent to `api.github.com` and to nothing else. The token never reaches the
+# download below, which is a redirect to a storage host and has no business
+# seeing it.
 newest_prerelease_tag() {
-  curl -fsSL -H 'accept: application/vnd.github+json' \
+  github_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  if [ -n "$github_token" ]; then
+    set -- -H "authorization: Bearer ${github_token}"
+  else
+    set --
+  fi
+  curl -fsSL -H 'accept: application/vnd.github+json' "$@" \
     "https://api.github.com/repos/${repo}/releases?per_page=1" 2>/dev/null |
     tr ',' '\n' |
     sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
@@ -520,8 +537,17 @@ elif [ "$requested_version" = "latest" ]; then
     tag="$(newest_prerelease_tag)"
     version="${tag#uf@}"
     if [ -z "$version" ]; then
-      uf_fail "no release found for ${repo}" \
-        "set UF_VERSION to install a specific release"
+      # Named separately, because the two causes need different answers: a
+      # repository with no releases is a mistake in `UF_REPO`, and a rate
+      # limited API call is a CI runner that needs `GITHUB_TOKEN` in its
+      # environment.
+      if [ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then
+        uf_fail "no release found for ${repo}" \
+          "set UF_VERSION to install a specific release"
+      else
+        uf_fail "no release found for ${repo}" \
+          "GitHub rate limits anonymous callers by IP; set GITHUB_TOKEN, or set UF_VERSION"
+      fi
     fi
     channel_url="https://github.com/${repo}/releases/download/uf@${version}"
   fi

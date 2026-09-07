@@ -169,10 +169,24 @@ impl WorkspacePackages {
             }
         }
     }
+
+    /// The manifest that publishes `specifier`'s package, if the batch holds
+    /// one.
+    ///
+    /// A caller assembling a batch needs this and not just the file: a check
+    /// that is handed `packages/cell/index.js` but not
+    /// `packages/cell/package.json` cannot resolve `@uniflowed/cell` at all,
+    /// because the manifest is where the name comes from. So whatever pulls a
+    /// package's file into a batch has to pull the manifest that named it in
+    /// alongside. See [`super::closure`].
+    pub(super) fn manifest_of(&self, specifier: &str) -> Option<&str> {
+        let (name, _) = split(specifier)?;
+        Some(self.by_name.get(name)?.manifest_path.as_str())
+    }
 }
 
 /// Whether a batch path is a package manifest.
-fn is_manifest(path: &str) -> bool {
+pub(super) fn is_manifest(path: &str) -> bool {
     path == MANIFEST || path.ends_with("/package.json")
 }
 

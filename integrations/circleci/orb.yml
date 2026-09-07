@@ -1,0 +1,212 @@
+version: 2.1
+
+description: >
+  Install the uf toolchain and put uf, ufr and ufx on PATH, so a job can run
+  uf check, uf test and uf build without building anything from source.
+  uf publishes macOS and Linux binaries for x86_64 and aarch64; there is no
+  Windows build, so the `windows` executor is not supported.
+
+display:
+  home_url: https://uniflowed.dev
+  source_url: https://github.com/ubugeeei-prod/uf
+
+# --- Executors -------------------------------------------------------------
+
+executors:
+  default:
+    description: >
+      A glibc Linux image with curl and tar, which is everything the installer
+      needs. Alpine is deliberately not offered: uf ships a
+      `*-unknown-linux-gnu` binary and a glibc binary does not start on musl.
+    parameters:
+      tag:
+        type: string
+        default: "24.04"
+    docker:
+      - image: cimg/base:<< parameters.tag >>
+
+# --- Commands --------------------------------------------------------------
+
+commands:
+  install:
+    description: >
+      Install uf and add it to PATH for every later step in the job.
+    parameters:
+      version:
+        description: >
+          The release to install: a version such as 0.0.0-alpha.10, the tag it
+          was published under (uf@0.0.0-alpha.10), or "latest". Pin it.
+          "latest" is the newest release including prereleases, which is every
+          release uf has published so far, so it moves under a config that did
+          not change — and it is the only value that asks GitHub's API which
+          release is newest, where anonymous callers are rate limited by an IP
+          a shared runner does not control. A pinned version builds the
+          download URL directly and never goes near the API.
+        type: string
+        default: latest
+      cache:
+        description: >
+          Cache the installed toolchain between jobs. Ignored when `version` is
+          "latest": a cache keyed on the word "latest" answers with whatever
+          release was newest the first time the workflow ran, and goes on
+          answering with it after a newer one ships.
+        type: boolean
+        default: true
+      install-dir:
+        description: >
+          Where the toolchain is unpacked. Under the home directory so that a
+          job which checks out no repository can still install one. Written
+          with a leading `~` because that is the one form `save_cache` expands;
+          the steps below expand it themselves for the shell, which does not
+          expand a `~` inside quotes.
+        type: string
+        default: ~/.local/share/uf
+      setup-url:
+        description: >
+          Where the installer is fetched from. Point it at a mirror, or at a
+          raw URL on a pinned tag, if a job must not depend on this host.
+        type: string
+        default: https://setup.uniflowed.dev
+      repository:
+        description: >
+          The GitHub repository the release archives are downloaded from. Only
+          useful for a fork or a rehearsal of the release process.
+        type: string
+        default: ubugeeei-prod/uf
+    steps:
+      # PATH first, and in its own step, because CircleCI reads $BASH_ENV at
+      # the start of every *later* step and not during the one that wrote it.
+      # A job that appended to it after installing would have uf on PATH for
+      # the steps that follow and not for the check that it worked.
+      - run:
+          name: Put uf on PATH
+          command: |
+            set -eu
+            install_dir="<< parameters.install-dir >>"
+            case "$install_dir" in "~"/*) install_dir="${HOME}/${install_dir#"~/"}" ;; esac
+            echo "export PATH=\"${install_dir}/bin:\$PATH\"" >> "$BASH_ENV"
+      - when:
+          condition:
+            and:
+              - << parameters.cache >>
+              - not:
+                  equal: [latest, << parameters.version >>]
+          steps:
+            - restore_cache:
+                keys:
+                  - uf-v1-{{ arch }}-<< parameters.version >>
+      - run:
+          name: Install uf << parameters.version >>
+          environment:
+            UF_VERSION: << parameters.version >>
+            UF_REPO: << parameters.repository >>
+          command: |
+            set -eu
+            install_dir="<< parameters.install-dir >>"
+            case "$install_dir" in "~"/*) install_dir="${HOME}/${install_dir#"~/"}" ;; esac
+            UF_INSTALL_ROOT="$install_dir"
+            UF_BIN_DIR="${install_dir}/bin"
+            export UF_INSTALL_ROOT UF_BIN_DIR
+            # A restored cache is believed only when the binary in it answers.
+            # A cache that lost a symlink, or one restored onto a different
+            # architecture, looks like a hit and can run nothing — and `{{ arch }}`
+            # does not distinguish every image a key could be shared across.
+            if [ "$UF_VERSION" != "latest" ] && [ -x "${UF_BIN_DIR}/uf" ] \
+              && "${UF_BIN_DIR}/uf" --version >/dev/null 2>&1; then
+              echo "uf ${UF_VERSION} restored from the cache"
+            else
+              # The installer verifies the archive's sha256 against the
+              # checksum published beside it before unpacking. That is the
+              # reason to run it rather than to fetch a tarball here.
+              curl -fsSL "<< parameters.setup-url >>" | sh
+            fi
+            "${UF_BIN_DIR}/uf" --version
+      - when:
+          condition:
+            and:
+              - << parameters.cache >>
+              - not:
+                  equal: [latest, << parameters.version >>]
+          steps:
+            - save_cache:
+                key: uf-v1-{{ arch }}-<< parameters.version >>
+                paths:
+                  - << parameters.install-dir >>
+
+# --- Jobs ------------------------------------------------------------------
+#
+# One job, parameterised by the command to run, rather than three that differ
+# by one line. A workflow names it three times if it wants three.
+
+jobs:
+  run:
+    description: >
+      Check out the repository, install uf, and run one uf command.
+    parameters:
+      command:
+        description: The uf command to run, for example `uf check`.
+        type: string
+        default: uf check
+      version:
+        type: string
+        default: latest
+      cache:
+        type: boolean
+        default: true
+      executor:
+        type: executor
+        default: default
+    executor: << parameters.executor >>
+    steps:
+      - checkout
+      - install:
+          version: << parameters.version >>
+          cache: << parameters.cache >>
+      - run:
+          name: << parameters.command >>
+          command: << parameters.command >>
+
+# --- Examples --------------------------------------------------------------
+
+examples:
+  check-and-test:
+    description: >
+      Lint, type check and test a uf project on every push, with the toolchain
+      cached between runs.
+    usage:
+      version: 2.1
+      orbs:
+        uf: uniflowed/uf@1
+      workflows:
+        ci:
+          jobs:
+            - uf/run:
+                name: check
+                version: 0.0.0-alpha.10
+                command: uf check
+            - uf/run:
+                name: test
+                version: 0.0.0-alpha.10
+                command: uf test
+
+  install-in-your-own-job:
+    description: >
+      Use the command directly when a job does more than run one uf command.
+    usage:
+      version: 2.1
+      orbs:
+        uf: uniflowed/uf@1
+      jobs:
+        build:
+          executor: uf/default
+          steps:
+            - checkout
+            - uf/install:
+                version: 0.0.0-alpha.10
+            - run: uf build
+            - store_artifacts:
+                path: dist
+      workflows:
+        ci:
+          jobs:
+            - build

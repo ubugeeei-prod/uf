@@ -352,6 +352,13 @@ export default defineConfig({
     "install:banner": "tools/ci/install-banner-fits.sh",
     "scripts:parse": "tools/ci/scripts-parse.sh",
     "scripts:parse:test": "tools/ci/test-scripts-parse.sh",
+    // And that `integrations/` and the installer still agree. The three CI
+    // integrations configure `install.sh` entirely through the environment,
+    // and nothing else in this repository reads both sides — a renamed
+    // variable would leave them passing something nothing reads, the
+    // installer would fall back to its defaults, and the failure would be
+    // `uf: command not found` in somebody else's pipeline.
+    integrations: "tools/ci/integrations-agree.sh",
     lockfile: "tools/ci/lockfile-in-sync.sh",
     // The check reads the lock rather than regenerating it, so every way a
     // lock can fall behind has to be written down as a case. Its first
@@ -395,6 +402,7 @@ export default defineConfig({
         "install:banner",
         "scripts:parse",
         "scripts:parse:test",
+        "integrations",
         "release:closure",
         "publishable",
         "publishable:test",

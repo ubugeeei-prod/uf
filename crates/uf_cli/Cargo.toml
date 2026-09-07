@@ -44,6 +44,7 @@ uf_plugin = { path = "../uf_plugin" }
 uf_pm = { path = "../uf_pm" }
 uf_prepare = { path = "../uf_prepare" }
 uf_project = { path = "../uf_project" }
+walkdir.workspace = true
 uf_rm = { path = "../uf_rm" }
 uf_router = { path = "../uf_router" }
 uf_rsc = { path = "../uf_rsc" }

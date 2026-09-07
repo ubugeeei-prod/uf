@@ -42,31 +42,37 @@ The list above is Flow's. This one is uf's, and it is the more useful one,
 because it is the part that can be fixed and the part that will bite you this
 week.
 
-**Types stop at the module boundary.** `uf check` runs Flow's own inference,
-and today it resolves no modules: every import is `any`, and the report says
-which ones rather than leaving you to discover it.
+**There is a library definition for everything, and Flow has fewer.** A
+TypeScript project gets `@types/*` for practically any package that ships no
+types of its own, and a `node:` builtin is described down to its overloads.
+Flow's own library definitions cover the DOM, the standard library and React,
+and stop well short of that. `uf check` resolves a dependency that opts into
+Flow with `@flow` — it reads the package's manifest out of `node_modules`,
+follows its `exports` map and types your code against the package's real
+declarations — and a dependency that does not is Flow's *unchecked module*: the
+import is `any`, and the report names it rather than leaving you to find out.
 
 <figure className="terminal">
 
 ```
-  types checked  1
-  inference      821.3µs
-  builtins       72.9ms (cold)
+  types checked  31
+  asked about    8 of 31
+  inference      196.7ms
+  builtins       26.6ms (cold)
 
   › these imports are typed as any; uf resolved no module for them
-    - ./a.js
+    - @uniflowed/host/module-mocks
+    - node:async_hooks
+    - node:module
 ```
 
 </figure>
 
-That is a two-file project where `b.js` assigns the result of a function
-returning `string` to a `number` and nothing complains, because the function
-came from the other file. Cross-module inference is the next step in
-[`docs/architecture.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md),
-and
-[issue #248](https://github.com/ubugeeei-prod/uf/issues/248) counts what the
-related resolver bug costs on this repository: 145 of 581 reported errors — 31%
-— are one thing, a type imported by its published name resolving to nothing.
+That is `uf create app react` with its dependencies installed: eight files of
+the project's own, and twenty-three modules read out of `node_modules` to type
+them against. What is left in the list is one file that says `@noflow` on
+purpose and two `node:` builtins Flow does not declare. Under TypeScript that
+list would be empty, and that is the row.
 
 **Vite's client API has no Flow types.** A TypeScript project gets
 `import.meta.glob`, `import.meta.hot`, `import.meta.env` and the ambient
