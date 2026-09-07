@@ -447,10 +447,16 @@ describe("the render anchor, prerendered", () => {
       </RenderProvider>,
     );
 
+    // A `<meta>` rather than the `<script>` this used to be, and React hoists
+    // it: in a document React rendered it lands in `<head>`, and in a tree
+    // that is not one it lands at the front, which is the run `@uniflowed/
+    // router`'s shell lifts into the head it wrote itself. That is what lets
+    // the router render this above a root layout that owns `<html>`, which is
+    // what ubugeeei-prod/uf#559 needed.
     expect(markup).toBe(
-      '<script id="__uf_render" type="application/json">' +
-        '{"at":1788501600000,"timeZone":"Asia/Tokyo","seed":"fixedseed"}' +
-        "</script><p>page</p>",
+      '<meta name="uf:render" ' +
+        'content="{&quot;at&quot;:1788501600000,&quot;timeZone&quot;:&quot;Asia/Tokyo&quot;,' +
+        '&quot;seed&quot;:&quot;fixedseed&quot;}"/><p>page</p>',
     );
   });
 
@@ -476,18 +482,65 @@ describe("the render anchor, prerendered", () => {
     expect(first).toContain("2026-09-04T06:00:00Z Asia/Tokyo");
   });
 
-  it("escapes a seed that would otherwise end the script early", () => {
+  it("escapes a seed that would otherwise close the carrier", () => {
     // A seed is uf's own eight base-36 characters, so this cannot happen today.
-    // It is checked because the carrier is a `<script>`, and a `<script>` whose
-    // contents are not escaped is the oldest injection there is — the guard has
-    // to be in the encoder rather than in an assumption about the value.
+    // It is checked because the carrier holds a value, and a value that can end
+    // the element it is written in is the oldest injection there is. The guard
+    // moved when the carrier did: an attribute is escaped by React and decoded
+    // by the parser, so `JSON.stringify` is the whole of the encoding and the
+    // element cannot be closed from inside it.
     const markup = markupOf(
-      <RenderProvider at={ANCHOR} timeZone="UTC" seed="</script><script>alert(1)">
+      <RenderProvider at={ANCHOR} timeZone="UTC" seed={'"><script>alert(1)</script>'}>
         <p>page</p>
       </RenderProvider>,
     );
 
-    expect(markup).not.toContain("</script><script>alert(1)");
-    expect(markup).toContain("\\u003c/script>");
+    expect(markup).not.toContain("<script>alert(1)");
+    expect(markup).toContain("&lt;script&gt;alert(1)");
+  });
+
+  it("is one carrier and one envelope however many providers are nested", () => {
+    // The rule ubugeeei-prod/uf#559 turns on: the router renders one of these
+    // above every application, so an application that renders its own is
+    // nested inside that one. Adding a second envelope would put two answers
+    // in the document and the client would read the first — so a nested
+    // provider replaces, and writes nothing.
+    const markup = markupOf(
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="outer">
+        <RenderProvider seed="inner">
+          <p>page</p>
+        </RenderProvider>
+      </RenderProvider>,
+    );
+
+    expect(markup.split("uf:render").length - 1).toBe(1);
+    expect(markup).toContain("&quot;seed&quot;:&quot;outer&quot;");
+    expect(markup).not.toContain("&quot;seed&quot;:&quot;inner&quot;");
+  });
+
+  it("gives a nested provider the fields it overrode and inherits the rest", () => {
+    component Probe() {
+      const at = useRenderedAt();
+      const zone = useRenderTimeZone();
+      const drawn = useRandom("featured").next();
+      return <output>{`${at.toString()} ${zone} ${drawn.toFixed(6)}`}</output>;
+    }
+
+    const outer = markupOf(
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="outer">
+        <Probe />
+      </RenderProvider>,
+    );
+    const inner = markupOf(
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="outer">
+        <RenderProvider seed="inner">
+          <Probe />
+        </RenderProvider>
+      </RenderProvider>,
+    );
+
+    // The instant and the zone come down from above; only the seed changed.
+    expect(inner).toContain("2026-09-04T06:00:00Z Asia/Tokyo");
+    expect(inner).not.toBe(outer);
   });
 });

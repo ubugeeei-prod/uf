@@ -205,10 +205,15 @@ describe("Time, in a prerender", () => {
 
   it("takes its zone from the render, so the browser can reproduce it", () => {
     // Without a `zone` prop the component asks the render what zone it was made
-    // in. That answer travels in the markup — the `<script>` below is
-    // `RenderProvider`'s — which is what lets the browser render the same string
-    // before it knows anything about the server. 22:00 UTC is already the 5th in
-    // Tokyo, so the date is the assertion that the zone was actually used.
+    // in. That answer travels in the markup — the `<meta name="uf:render">`
+    // below is `RenderProvider`'s — which is what lets the browser render the
+    // same string before it knows anything about the server. 22:00 UTC is
+    // already the 5th in Tokyo, so the date is the assertion that the zone was
+    // actually used.
+    //
+    // The envelope is an attribute value, so React escapes the quotes that
+    // `JSON.stringify` wrote and the parser gives them back: `&quot;` here is
+    // the same two fields, in the carrier's own spelling.
     const markup = markupOf(
       <RenderProvider at={Date.UTC(2026, 8, 4, 22, 0, 0)} timeZone="Asia/Tokyo" seed="fixedseed">
         <Time value="2026-09-04T22:00:00Z" format="date" />
@@ -216,8 +221,8 @@ describe("Time, in a prerender", () => {
     );
 
     expect(markup).toContain(">2026-09-05<");
-    expect(markup).toContain('"timeZone":"Asia/Tokyo"');
-    expect(markup).toContain('"seed":"fixedseed"');
+    expect(markup).toContain("&quot;timeZone&quot;:&quot;Asia/Tokyo&quot;");
+    expect(markup).toContain("&quot;seed&quot;:&quot;fixedseed&quot;");
   });
 
   it("renders the same bytes twice from the same anchor", () => {

@@ -16,6 +16,7 @@
 // silently ignored by the machine that reads it.
 
 import * as React from "@uniflowed/react";
+import { useRandom, useRenderedAt } from "@uniflowed/hooks";
 import { routerView, useSeo } from "@uniflowed/router";
 import type { LayoutModule, Metadata, PageModule } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
@@ -641,5 +642,153 @@ describe("useSeo", () => {
     expect(html).toContain(
       '<link rel="canonical" href="https://docs.uniflowed.dev/posts?page=2"/>',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Where a `useSeo` tag lands, which is the same question one layer down
+// ---------------------------------------------------------------------------
+//
+// ubugeeei-prod/uf#547 was "metadata renders into the body on uf's fallback
+// shell", and #566 answered it by keeping uf's own `<head>` open until React's
+// tags arrive and lifting the leading run of `<title>`/`<meta>`/`<link>` into
+// it. ubugeeei-prod/uf#570 asks the same question about `useSeo`, which returns
+// elements the caller renders — so the tags are written wherever the caller is,
+// which is below that leading run.
+//
+// They are not, and the reason is worth writing down rather than rediscovering:
+// **React does the hoisting first.** A `<title>`, a `<meta>` and a `<link>` are
+// hoistable elements, and Fizz emits every one it found while rendering the
+// *shell* at the front of its output — before the markup they were written
+// inside, at any depth. uf's "leading run" is therefore not "the tags the route
+// module rendered": it is every hoistable element in the shell, already
+// gathered by React. The shell is complete before React writes a byte, so this
+// costs nothing and holds nothing.
+//
+// What it does not cover is a tag inside a `<Suspense>` boundary that resolves
+// *after* the shell — a deferred loader's page. That tag is in a later chunk by
+// construction, the head has gone, and React moves it into `document.head` on
+// the client where there is one. The routing guide already says the rule that
+// follows from it: a route that wants to stream keeps its metadata static.
+//
+// So the tests below are #570's answer rather than a fix for it: `useSeo` deep
+// in a tree, on both document shapes, asserted — because "it happens to work"
+// and "it is guaranteed to keep working" are different claims, and only the
+// second one survives the next change to `hoisted`.
+
+/** A component three levels down from the page that declares a tag of its own. */
+component Pagination() {
+  const seo = useSeo({
+    canonical: "https://docs.uniflowed.dev/posts?page=2",
+    pagination: { prev: "/posts?page=1", next: "/posts?page=3" },
+  });
+  return <nav className="pager">{seo}page 2</nav>;
+}
+
+component DeepPage() {
+  return (
+    <article>
+      <section>
+        <Pagination />
+      </section>
+    </article>
+  );
+}
+
+describe("a tag a component renders on its way past", () => {
+  it("reaches the head from as deep in the tree as it was written", async () => {
+    // The shape #570 feared: on the fallback shell, a tag written below the
+    // leading run would land inside `<div id="uf-root">`, where a crawler
+    // ignores a canonical link. It does not, and nothing here asserted that it
+    // does not — which is the whole difference between a behaviour and a
+    // guarantee.
+    const html = await documentOf({ default: DeepPage, metadata: { title: "Posts" } });
+
+    expect(html).toContain('id="uf-root"');
+    expect(inHead(html, '<link rel="canonical"')).toBe(true);
+    expect(inHead(html, '<link rel="prev"')).toBe(true);
+    expect(inHead(html, '<link rel="next"')).toBe(true);
+    // And the component's own markup is still where the component is.
+    expect(html.indexOf("page 2")).toBeGreaterThan(html.indexOf("</head>"));
+  });
+
+  it("puts them in the same place as a document the app renders itself", async () => {
+    // The claim #547 made and #570 extends: the two document shapes are a
+    // choice about who writes `<html>`, not about whether the metadata works.
+    const shell = await documentOf({ default: DeepPage, metadata: { title: "Posts" } });
+    const owned = await documentOf(
+      { default: DeepPage, metadata: { title: "Posts" } },
+      {
+        default: OwnDocument,
+      },
+    );
+
+    expect(shell).toContain('id="uf-root"');
+    expect(owned).not.toContain('id="uf-root"');
+    for (const tag of ['rel="canonical"', 'rel="prev"', 'rel="next"']) {
+      expect(inHead(shell, tag)).toBe(true);
+      expect(inHead(owned, tag)).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The anchor a uf application has without asking for one
+// ---------------------------------------------------------------------------
+//
+// `RenderProvider` fixes the render's instant, zone and seed, writes them into
+// the markup and reads them back on the client, which is what makes
+// `useRenderedAt` and `useRandom` agree across hydration. An application that
+// did not render one got no error — it got a silent mismatch on every page with
+// a clock or a shuffle on it. A guarantee that depends on remembering to opt in
+// is not one, so `routerView` renders it. See ubugeeei-prod/uf#559.
+//
+// It is asserted here rather than in `hooks-ssr.test.js` because what makes it
+// possible is where the carrier lands: a `<meta>`, hoisted into the head of
+// both document shapes, which is this file's subject.
+
+describe("the render anchor", () => {
+  it("is in the document without the application having said anything", async () => {
+    const html = await documentOf({ default: Page, metadata: { title: "Posts" } });
+
+    expect(inHead(html, '<meta name="uf:render"')).toBe(true);
+    expect(html.split('name="uf:render"').length - 1).toBe(1);
+  });
+
+  it("is in the head of an app-owned document too, and only once", async () => {
+    // The shape the carrier had to change for: a `<script>` rendered above a
+    // root layout that owns `<html>` would have gone *before* the document.
+    const owned = await documentOf(
+      { default: Page, metadata: { title: "Posts" } },
+      {
+        default: OwnDocument,
+      },
+    );
+
+    expect(owned.indexOf("<!doctype html>")).toBe(0);
+    expect(inHead(owned, '<meta name="uf:render"')).toBe(true);
+    expect(owned.split('name="uf:render"').length - 1).toBe(1);
+  });
+
+  it("hands the tree an instant and a seed that a second render reproduces", async () => {
+    // The point of the anchor rather than the shape of it: two renders of the
+    // same route produce the same numbers, which is what hydration compares.
+    component Clock() {
+      const at = useRenderedAt();
+      const drawn = useRandom("featured").next();
+      return <output>{`${at.toString()} ${drawn.toFixed(6)}`}</output>;
+    }
+
+    const first = await documentOf({ default: Clock });
+    const anchor = first.match(/name="uf:render" content="([^"]*)"/);
+    expect(anchor).not.toBe(null);
+    const envelope = JSON.parse(
+      (anchor?.[1] ?? "").replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">"),
+    );
+    expect(typeof envelope.at).toBe("number");
+    expect(typeof envelope.seed).toBe("string");
+
+    // The instant in the markup is the instant the tree was handed.
+    expect(first).toContain(new Date(envelope.at).toISOString().replace(".000Z", "Z"));
   });
 });
