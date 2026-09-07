@@ -218,6 +218,14 @@ Every command that walks the project — `uf fmt`, `uf lint`, `uf check`,
 A directory holding a `.git` of its own is another repository — a submodule,
 or a checkout that happens to live inside yours — and is never walked.
 
+**Naming a path overrides `.gitignore`.** `uf fmt src/wasm` reads `src/wasm`
+whether or not git is told to ignore it: the ignore file says what your *source*
+is, not what you may ask about, and a generated file is exactly the thing you
+point at when you want to know why it will not compile. `uf lint`, `uf check`
+and `uf test` do the same, and it is where `rg`, `prettier` and `biome` draw the
+line too. `.uf` and `.git` are the exception: pointing at them does not make
+them yours.
+
 Flow defaults every built-in lint to `off`. uf does not: a linter nobody
 switches on catches nothing. Every rule's level and the reason for it is in
 uf's rule table, and a test asserts the table matches the descriptors.

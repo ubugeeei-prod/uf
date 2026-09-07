@@ -209,6 +209,40 @@ pub fn scan_source_files(
     root: &Utf8Path,
     config: &UniflowedConfig,
 ) -> Result<SourceScan, ProjectError> {
+    scan_selected_source_files(root, config, &[])
+}
+
+/// The same walk, told which paths the caller asked for by name.
+///
+/// # Why naming a path overrides `.gitignore`
+///
+/// `.gitignore` says which files are not the project's *source*. It does not
+/// say which files a person may ask about, and those are different questions:
+/// a generated file is exactly the thing somebody points at when they want to
+/// know why it will not compile.
+///
+/// This is not hypothetical. `tests/library/module-mock.test.js` writes a
+/// fixture into a gitignored directory — deliberately, so a run killed half way
+/// through does not leave it in the workspace — and then asks
+/// `uf check tests/library/<fixture>` about it by name. Applying the ignore to
+/// an explicitly named path answered "no diagnostics" for a file that has one,
+/// which is the worst shape of wrong: silence that reads as success.
+///
+/// Every tool in this class draws the line here. `rg`, `prettier` and `biome`
+/// all read a path you name and skip one you did not.
+///
+/// `.uf` and `.git` are *not* suspended by naming them: uf's own working
+/// directory and somebody else's repository do not become this project's source
+/// by being pointed at.
+///
+/// # Errors
+///
+/// The same as [`scan_source_files`].
+pub fn scan_selected_source_files(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    selected: &[String],
+) -> Result<SourceScan, ProjectError> {
     let mut files = Vec::new();
     let mut unreadable = Vec::new();
     // `.gitignore` is the list the project already keeps of what is not its
@@ -328,8 +362,73 @@ pub fn scan_source_files(
             kind,
         });
     }
+    // A second pass over the paths the caller named, with the ignore files off.
+    // Two walks rather than one, because the walker applies `.gitignore` as it
+    // descends and there is no per-path way to suspend it — and because a
+    // reader can see what each of the two is for.
+    for named in selected {
+        let start = root.join(named.trim_start_matches("./"));
+        if !start.exists() {
+            continue;
+        }
+        let root_path = root.as_std_path().to_path_buf();
+        let walk = WalkBuilder::new(&start)
+            .hidden(false)
+            .git_ignore(false)
+            .git_global(false)
+            .git_exclude(false)
+            .ignore(false)
+            .parents(false)
+            .filter_entry(move |entry| {
+                entry.path() == root_path
+                    || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                    || !entry.path().join(".git").exists()
+            })
+            .build();
+        for entry in walk.flatten() {
+            if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+                continue;
+            }
+            let Ok(path) = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()) else {
+                continue;
+            };
+            // `ALWAYS_IGNORED` and `lint.ignore` still apply: naming a path
+            // says "this one too", not "everything uf knows to stay out of".
+            let Some(kind) = SourceKind::from_path(&path) else {
+                continue;
+            };
+            if is_ignored(root, &path, config) {
+                continue;
+            }
+            let relative_path = path
+                .strip_prefix(root)
+                .map(|path| path.as_str().to_string())
+                .unwrap_or_else(|_| path.as_str().to_string());
+            if files
+                .iter()
+                .any(|file: &ProjectFile| file.relative_path == relative_path)
+            {
+                continue;
+            }
+            match fs::read_to_string(&path) {
+                Ok(source) => files.push(ProjectFile {
+                    kind,
+                    absolute_path: path,
+                    relative_path,
+                    source,
+                }),
+                Err(error) => unreadable.push(UnreadableFile {
+                    relative_path,
+                    reason: error.to_string(),
+                }),
+            }
+        }
+    }
+
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    files.dedup_by(|a, b| a.relative_path == b.relative_path);
     unreadable.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    unreadable.dedup_by(|a, b| a.relative_path == b.relative_path);
     Ok(SourceScan { files, unreadable })
 }
 
