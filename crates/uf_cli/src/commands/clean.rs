@@ -39,6 +39,7 @@ use crate::support::{plural, project_label};
 use crate::ui::Ui;
 
 /// One directory `uf clean` considered.
+#[derive(Debug)]
 struct Target {
     /// Project-relative, as the reader knows it.
     label: String,
@@ -77,10 +78,10 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
         push(&mut targets, root, "node_modules", "an install");
     }
 
-    let removed = targets
-        .iter()
-        .filter(|target| target.bytes > 0 || target.files > 0)
-        .collect::<Vec<_>>();
+    // Every target that exists, empty or not. Filtering out the empty ones
+    // reported "nothing to remove" and left the directory sitting there, which
+    // is the one outcome a reader who ran `uf clean` did not ask for.
+    let removed = targets.iter().collect::<Vec<_>>();
 
     let project = project_label(root).to_string();
     if removed.is_empty() {
@@ -163,28 +164,53 @@ pub(crate) fn clean(cwd: &Utf8Path, ui: &mut Ui, deps: bool, dry_run: bool) -> R
     Ok(())
 }
 
-/// Add `relative` to the list, measured, unless it is not there or is already
-/// inside something else on the list.
+/// Add `relative` to the list, measured, unless it is not there, is not under
+/// the project, or is already covered by something on the list.
 ///
-/// The nesting check is what keeps `dist/docs` from being counted and then
-/// removed a second time under `dist/` — where the second removal is not an
-/// error but the size in the table would be wrong, which is the number the
-/// reader is deciding on.
+/// # Why the containment check
+///
+/// `build.outDir` and `docs.outDir` come from `uf.config.js`, so `relative` is
+/// whatever a project wrote — `"../.."`, or an absolute path, are both things
+/// a person types by mistake at two in the morning. A command that deletes
+/// must not be one config typo away from deleting a directory nobody named:
+/// the resolved path has to be a strict descendant of the project root, and a
+/// target that is not is skipped rather than removed.
+///
+/// Canonicalised first, because `root/dist/../..` is a parent directory that
+/// `starts_with` alone reads as a child. The root is canonicalised too — a
+/// symlinked checkout otherwise fails its own test.
+///
+/// # Why the nesting check works in both directions
+///
+/// A project may set `build.outDir` to `dist/client` and leave `docs.outDir`
+/// at `dist`. The first is pushed, and skipping the second because it
+/// *contains* one already listed would leave `dist/docs` on disk after a
+/// `uf clean` that reported success. So a new target that contains existing
+/// ones replaces them, and one contained by an existing target is skipped —
+/// either way the list ends up as the outermost directories and nothing is
+/// counted, or missed, twice.
 fn push(targets: &mut Vec<Target>, root: &Utf8Path, relative: &str, cost: &'static str) {
     let path = root.join(relative);
     if !path.is_dir() {
         return;
     }
-    if targets
-        .iter()
-        .any(|target| path.starts_with(&target.path) || target.path.starts_with(&path))
-    {
+    let (Ok(real), Ok(real_root)) = (path.canonicalize_utf8(), root.canonicalize_utf8()) else {
+        return;
+    };
+    // Strict: the root itself is not a target, and `uf clean` in a project
+    // whose `outDir` is `"."` must not remove the project.
+    if real == real_root || !real.starts_with(&real_root) {
         return;
     }
-    let (bytes, files) = measure(&path);
+    if targets.iter().any(|target| real.starts_with(&target.path)) {
+        return;
+    }
+    targets.retain(|target| !target.path.starts_with(&real));
+
+    let (bytes, files) = measure(&real);
     targets.push(Target {
         label: relative.to_owned(),
-        path,
+        path: real,
         cost,
         bytes,
         files,

@@ -106,6 +106,66 @@ fn a_nested_output_directory_is_counted_once() {
     assert_eq!(targets[0].files, 2, "both files are under dist");
 }
 
+/// And in the other order, which is the one that used to lose a directory.
+///
+/// `build.outDir: "dist/client"` with `docs.outDir` left at `dist` pushed the
+/// child first, and the parent was then skipped for containing it — so
+/// `uf clean` removed `dist/client`, reported success, and left `dist/docs`
+/// where it was.
+#[test]
+fn an_ancestor_replaces_the_children_already_listed() {
+    let dir = project();
+    let root = root_of(&dir);
+    fs::create_dir_all(root.join("dist/client")).expect("a directory");
+    fs::write(root.join("dist/client/app.js"), "1\n").expect("a file");
+    let mut targets = Vec::new();
+
+    push(&mut targets, root, "dist/client", "a rebuild");
+    push(&mut targets, root, "dist", "a docs rebuild");
+
+    assert_eq!(targets.len(), 1, "the child was left beside its parent");
+    assert!(targets[0].path.ends_with("dist"), "{:?}", targets[0].path);
+    assert_eq!(targets[0].files, 3, "every file under dist is counted");
+}
+
+/// A directory that exists and holds nothing is still a directory somebody
+/// asked to have removed.
+#[test]
+fn an_empty_output_directory_is_removed_rather_than_reported_as_nothing() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = root_of(&dir);
+    fs::write(root.join("uf.config.js"), "// @flow\nexport default {};\n").expect("a config");
+    fs::write(root.join("package.json"), "{ \"name\": \"c\" }\n").expect("a manifest");
+    fs::create_dir_all(root.join("dist")).expect("a directory");
+
+    run(root, false, false);
+
+    assert!(!root.join("dist").exists(), "an empty dist survived");
+}
+
+/// `build.outDir` comes from `uf.config.js`, and a command that deletes must
+/// not be one typo away from deleting a directory nobody named.
+#[test]
+fn a_configured_output_outside_the_project_is_refused() {
+    let outer = tempfile::tempdir().expect("a temporary directory");
+    let outer_root = root_of(&outer);
+    let root = outer_root.join("project");
+    fs::create_dir_all(&root).expect("a project directory");
+    fs::write(root.join("uf.config.js"), "// @flow\nexport default {};\n").expect("a config");
+    fs::write(root.join("package.json"), "{ \"name\": \"c\" }\n").expect("a manifest");
+    // The thing a `../..` would take with it.
+    fs::create_dir_all(outer_root.join("sibling")).expect("a directory");
+    fs::write(outer_root.join("sibling/keep.txt"), "keep\n").expect("a file");
+
+    let mut targets = Vec::new();
+    push(&mut targets, &root, "../sibling", "a rebuild");
+    push(&mut targets, &root, "..", "a rebuild");
+    push(&mut targets, &root, ".", "a rebuild");
+
+    assert!(targets.is_empty(), "{targets:?} escaped the project");
+    assert!(outer_root.join("sibling/keep.txt").is_file());
+}
+
 /// And a project with nothing to remove says so rather than failing.
 #[test]
 fn a_clean_project_is_not_an_error() {

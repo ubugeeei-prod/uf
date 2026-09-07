@@ -719,7 +719,7 @@ only read: `pnpm audit --fix` rewrites a lockfile.
 ### uf clean [--deps] [--dry-run]
 
 Removes what a rebuild would write again: the build's output, the documentation
-site's if it is elsewhere, and `.uf/` — uf's own per-project state, which is the
+site's output if it is elsewhere, and `.uf/` — uf's own per-project state, which is the
 transform and check caches and the resolved config.
 
 Not `node_modules` unless `--deps` says so. **The line is the network**:
@@ -734,6 +734,10 @@ last one.
 
 It prints what it removed and how much. `--dry-run` prints the same table and
 removes nothing.
+
+A configured `outDir` outside the project is refused rather than removed:
+`build.outDir` comes from `uf.config.js`, and a command that deletes must not
+be one typo away from taking a directory nobody named.
 
 ## Environment
 
