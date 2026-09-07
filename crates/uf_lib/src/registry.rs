@@ -838,10 +838,12 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &[
                 "Accordion",
                 "AlertDialog",
+                "Calendar",
                 "Carousel",
                 "Checkbox",
                 "Collapsible",
                 "Combobox",
+                "DatePicker",
                 "Dialog",
                 "Drawer",
                 "Field",
