@@ -259,6 +259,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             NativeModuleKind::Framework,
             Stability::Experimental,
             &[
+                "DraftModeError",
                 "OutsideRequestError",
                 "after",
                 "cookies",

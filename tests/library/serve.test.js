@@ -312,6 +312,31 @@ describe("the static handler", () => {
     expect(await serveStatic(request("/feed.xml", { method: "POST", body: "" }))).toBe(null);
   });
 
+  it("does not hand a draft request a prerendered document, but still serves its assets", async () => {
+    // A file in `dist/` is what the site said before the draft existed, so an
+    // editor who came to look at the draft has to reach the renderer instead.
+    // Only documents: a stylesheet and a chunk are the same bytes either way,
+    // and skipping those would leave the page unstyled and unhydrated for no
+    // gain at all. ubugeeei-prod/uf#282.
+    const root = directoryWith({
+      "guide/index.html": "<p>published</p>",
+      "assets/client.js": "export {};",
+    });
+    const serveStatic = createStaticHandler({ root });
+    const drafting = { headers: { cookie: "__Host-uf.draft=1.whatever" } };
+
+    expect(await serveStatic(request("/guide", drafting))).toBe(null);
+    expect(await serveStatic(request("/guide/", drafting))).toBe(null);
+    expect(await (await serveStatic(request("/assets/client.js", drafting)))?.text()).toBe(
+      "export {};",
+    );
+
+    // And the same request without the cookie is answered off disk as before,
+    // which is what makes the line above about draft mode rather than about
+    // documents.
+    expect(await (await serveStatic(request("/guide")))?.text()).toBe("<p>published</p>");
+  });
+
   it("names a type it knows and downloads one it does not", async () => {
     const root = directoryWith({ "a.css": "body{}", "b.bin": "x" });
     const serveStatic = createStaticHandler({ root });

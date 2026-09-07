@@ -30,15 +30,17 @@
 // it returns is deliberately awkward to call from a single place — `run` wraps
 // deciding the response, `settle` follows writing it.
 //
-// # `insideRequest` and `noteRoute` are called from inside one
+// # `asResponder`, `insideRequest` and `noteRoute` are called from inside one
 //
-// Both are here anyway, because the audience is what decides the subpath and
-// the audience for both is a framework rather than an application. They are
+// All three are here anyway, because the audience is what decides the subpath
+// and the audience for all three is a framework rather than an application. They are
 // what `@uniflowed/router` needs and a page must never touch: one asks whether
-// a host did its half, and the other records which route pattern claimed the
-// request so that the host's log line can say `/orders/:id` instead of
-// `/orders/8813`. Neither answers anything *about* the request, which is the
-// test for whether something belongs in the root instead.
+// a host did its half, one records which route pattern claimed the request so
+// that the host's log line can say `/orders/:id` instead of `/orders/8813`, and
+// `asResponder` marks the call that owns the response — which is what makes
+// `draftMode().enable()` legal in a route handler and refused in a render.
+// None of the three answers anything *about* the request, which is the test for
+// whether something belongs in the root instead.
 //
 // # Which module's copy
 //
@@ -57,6 +59,7 @@ export type {
 } from "./internal/context.js";
 
 export {
+  asResponder,
   beginRequest,
   contextFor,
   drainDeferred,
