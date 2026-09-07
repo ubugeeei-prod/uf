@@ -23,6 +23,24 @@
 // build's reasons, and the only symptom was an answer that made no sense.
 // `rm -rf .uf/cache/transform` was the cure, and finding that out cost a
 // debugging session while `@uniflowed/stylex`'s preset was being written.
+//
+// # What takes entries back out, and why it is not here
+//
+// Nothing in this file. Every write below is an addition — a source edit
+// orphans one entry the moment it lands, and a rebuild of `uf` orphans a whole
+// generation at once — so the directory only ever grew, at about 330 modules
+// and 9 MB per build of this repository, until `uf` itself started bounding
+// it: `uf transform` sweeps this directory to 128 MiB, coldest entries first,
+// when it starts. See `uf_infra::cache` for the policy and ubugeeei-prod/uf#218 for the
+// three options it was chosen from.
+//
+// It belongs there rather than here for two reasons that point the same way. A
+// `readdir` and a `stat` over thousands of entries, in JavaScript, on every
+// host start is the repository-wide work uf's own guide says must be native.
+// And `uf transform` is started only when something actually has to be
+// compiled, which is the only thing that adds to this directory — so the sweep
+// happens exactly when it can have grown, and a fully warm run, which spawns
+// no `uf` at all, pays nothing and needs to pay nothing.
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";

@@ -272,6 +272,123 @@ fn collects_source_files_and_ignores_generated_dirs() {
     assert_eq!(files[0].relative_path, "app/index.js");
 }
 
+/// ubugeeei-prod/uf#483: a generated file the project already told git to
+/// ignore is not the project's to format.
+///
+/// `src/wasm/` holds wasm-bindgen glue and a `.gitignore` of `*`. `uf fmt
+/// --check` failed on a clean checkout as soon as it was built, `uf fmt`
+/// rewrote a file the next build overwrote, and the only way out was keeping
+/// uf away from the whole tree. `.gitignore` is the list the project already
+/// keeps of what is not its source, so every command reads it and they agree
+/// by construction.
+#[test]
+fn a_file_git_is_told_to_ignore_is_not_the_projects_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src/wasm")).unwrap();
+    fs::write(root.join("src/app.js"), "// @flow\n").unwrap();
+    fs::write(root.join("src/wasm/.gitignore"), "*\n").unwrap();
+    fs::write(root.join("src/wasm/glue.js"), "// generated\n").unwrap();
+    // A root-level entry too, because the two are matched by different rules.
+    fs::write(root.join(".gitignore"), "generated.js\n").unwrap();
+    fs::write(root.join("src/generated.js"), "// generated\n").unwrap();
+
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/app.js"]
+    );
+}
+
+/// `.gitignore` says what the project's source *is*. It does not say what a
+/// person may ask about, and those are different questions.
+///
+/// `tests/library/module-mock.test.js` is the case that found this: it writes a
+/// fixture into a gitignored directory — deliberately, so a killed run leaves
+/// nothing behind — and then asks `uf check` about it by name. Applying the
+/// ignore answered "no diagnostics" for a file that has one, which is silence
+/// that reads as success.
+#[test]
+fn naming_an_ignored_path_is_asking_about_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src/wasm")).unwrap();
+    fs::write(root.join(".gitignore"), "src/wasm\n").unwrap();
+    fs::write(root.join("src/app.js"), "// @flow\n").unwrap();
+    fs::write(root.join("src/wasm/glue.js"), "// generated\n").unwrap();
+    let config = UniflowedConfig::default();
+
+    // Not named: it is not the project's source.
+    let discovered = scan_source_files(&root, &config).unwrap().files;
+    assert_eq!(
+        discovered
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/app.js"]
+    );
+
+    // Named: it is what was asked about.
+    let asked = scan_selected_source_files(&root, &config, &["src/wasm".to_owned()])
+        .unwrap()
+        .files;
+    assert!(
+        asked
+            .iter()
+            .any(|file| file.relative_path == "src/wasm/glue.js"),
+        "{asked:?}"
+    );
+    // And naming one path does not turn every ignore off everywhere else.
+    assert_eq!(asked.len(), 2, "{asked:?}");
+}
+
+/// Naming a path says "this one too", not "everything uf knows to stay out
+/// of". `.uf` is uf's own working directory and does not become the project's
+/// source by being pointed at.
+#[test]
+fn naming_ufs_own_directory_does_not_open_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join(".uf/cache")).unwrap();
+    fs::write(root.join(".uf/cache/thing.js"), "// @flow\n").unwrap();
+
+    let asked = scan_selected_source_files(&root, &UniflowedConfig::default(), &[".uf".to_owned()])
+        .unwrap()
+        .files;
+
+    assert!(asked.is_empty(), "{asked:?}");
+}
+
+/// And a negated entry is honoured too, because a `.gitignore` is a program
+/// rather than a list and half-reading one is worse than not reading it.
+#[test]
+fn a_gitignore_negation_puts_a_file_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join(".gitignore"), "src/*.js\n!src/kept.js\n").unwrap();
+    fs::write(root.join("src/dropped.js"), "// @flow\n").unwrap();
+    fs::write(root.join("src/kept.js"), "// @flow\n").unwrap();
+
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/kept.js"]
+    );
+}
+
 /// A file that is not UTF-8 is reported, and the rest of the project is
 /// still discovered.
 ///

@@ -19,7 +19,7 @@
 //! absent, so a checkout that never ran `npm ci` still passes `cargo test`
 //! and a CI runner that forgot to will say so rather than silently cover less.
 //! `uf build --compile` needs Bun as well, and skips on the same terms; see
-//! [`bun_ready`].
+//! `support::bun_ready`, which `tests/bun_host.rs` shares.
 //!
 //! Two tests here assert about an *artefact* rather than about a server: the
 //! directory `uf build --adapter node` writes and the file `uf build
@@ -42,7 +42,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use support::{Project, assert_plain, uf, uf_path};
+use support::{Project, assert_plain, bun_ready, uf, uf_path};
 
 /// The repository's `docs/` directory.
 fn docs_root() -> PathBuf {
@@ -2448,30 +2448,6 @@ fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&s
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
     response
-}
-
-/// Whether a standalone binary can be produced here: Bun on PATH.
-///
-/// The same policy as [`fixture_ready`] and for the same reason. `uf build
-/// --compile` embeds Bun's runtime, so a machine without `bun` cannot produce
-/// one — and a test that quietly passed on such a machine would be the second
-/// way this repository has learned that a silent skip reads exactly like a
-/// green run.
-fn bun_ready() -> bool {
-    if Command::new("bun")
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
-    {
-        return true;
-    }
-    assert!(
-        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
-        "`uf build --compile` needs `bun` on PATH and there is none, so this test would \
-         prove nothing"
-    );
-    eprintln!("skipping: `bun` is not on PATH");
-    false
 }
 
 /// The whole claim, end to end: one file, an empty directory, a served page.

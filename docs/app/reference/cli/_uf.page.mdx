@@ -242,6 +242,22 @@ filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
 lives — not a second application.
 
+The one thing `handler.js` does say per target is what that target can do,
+because two of the answers differ:
+
+| Target | A body reaches the client as it is produced | The process outlives the response |
+| --- | --- | --- |
+| `node`, `container` | yes | yes |
+| `edge` | yes | no — the isolate may be torn down once the response is out |
+| `serverless` | no — a Lambda response is a JSON value, so the body is read to the end first | no |
+
+A route handler that returns an event stream, takes a WebSocket, or queues work
+asks through those, and is refused by name rather than by a connection nobody
+serves: an event stream on `serverless` fails where the handler builds it
+instead of timing out, and a WebSocket upgrader or an in-process queue handed
+to a target that cannot keep it fails where the host is wired instead of on the
+first connection. [Routing](/guide/routing) has the whole table and the API.
+
 The difference from `uf start` is what the host must already have. `uf start`
 reads `dist/` and `.uf/build/server` and needs the project's `node_modules`
 around them, because the server bundle leaves `react` and `react-dom` as bare
@@ -980,8 +996,27 @@ toolchain use [`uf use`](#uf-use-toolchain)
 
 ### uf release BUMP
 
-Bumps the version — `patch`, `minor`, `major`, `alpha`, `beta`, `rc` — and
-tags it.
+Plans the next version — `patch`, `minor`, `major` or `alpha` — writes its
+`CHANGELOG.md` section from the commits since the last release tag, and writes
+the plan to `.uf/release.json`. It does not move the version in the workspace
+and it does not tag: `tools/release/bump-version.sh` is the first, and the tag
+is a step of its own.
+
+The version it plans is the one compiled into the binary running it, which is
+the right source — the binary that cuts a release is the binary being released
+— and it means an out-of-date binary plans a version the tree has already
+published. Rewriting that version's section replaces a release's notes with a
+later release's commits, so `uf release` refuses instead: a version that is
+already tagged is refused outright, and a section that exists but has no tag is
+a release being prepared and is refused until `--force` says the rewrite is
+meant ([#457](https://github.com/ubugeeei-prod/uf/issues/457)).
+
+It also names the commits in the range whose subject carries no `(#NNN)`.
+GitHub writes that number when it squash-merges, and a commit that did not get
+one is invisible to everything downstream that identifies a change by its
+number — so those are the lines to place by hand, and the ones
+`tools/ci/changelog-covers-the-release.sh` asks to see cited by their summary or
+their hash ([#443](https://github.com/ubugeeei-prod/uf/issues/443)).
 
 ### uf publish
 

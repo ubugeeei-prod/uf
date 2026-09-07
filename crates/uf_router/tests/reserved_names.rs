@@ -17,11 +17,18 @@
 //! the table is the router's, so a role no router resolves belongs in the first
 //! and not the second. `story` is that role today, and naming it here is what
 //! makes adding a second one a decision somebody has to write down.
+//!
+//! The directory names are the second half. `@team` and `(.)photo` are Next.js
+//! conventions uf does not implement, and until ubugeeei-prod/uf#267 *neither*
+//! router had an opinion about them: both fell through to a literal URL
+//! segment, so a project that wrote one got `/@team` and no error. They agree
+//! about that now, and the tests at the bottom are what keeps them agreeing —
+//! a spelling one refuses and the other serves is worse than the hole was.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use uf_router::ReservedRole;
+use uf_router::{ReservedRole, RouteSegment, classify_route_segment};
 
 /// Roles that are reserved names without being anything the router resolves.
 ///
@@ -40,11 +47,15 @@ const NOT_THE_ROUTERS: &[ReservedRole] = &[ReservedRole::Story];
 /// names are every `"_uf.…"` string inside it — no JavaScript parser needed,
 /// and a table that stops having that shape fails loudly below rather than
 /// quietly matching nothing.
-fn build_router_names() -> BTreeSet<String> {
-    let source = std::fs::read_to_string(
+fn build_router_source() -> String {
+    std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/vite/internal/routes.js"),
     )
-    .expect("the build router is in this repository");
+    .expect("the build router is in this repository")
+}
+
+fn build_router_names() -> BTreeSet<String> {
+    let source = build_router_source();
 
     let table = source
         .split_once("export const RESERVED = Object.freeze({")
@@ -100,6 +111,64 @@ fn every_role_the_router_resolves_is_in_the_build_router() {
             "`ReservedRole::{role:?}` is a reserved name the build router does not scan for, so \
              `uf lint` accepts a file name nothing resolves. Add it to `RESERVED` in \
              `packages/vite/internal/routes.js`, or to `NOT_THE_ROUTERS` here with a reason"
+        );
+    }
+}
+
+/// The directory names the build router refuses, read out of its own source.
+///
+/// The same technique as `build_router_names`, for the same reason: a copy of
+/// the list here would be a third place the grammar is written down, and this
+/// file exists to stop the second one drifting.
+fn build_router_unsupported_segments() -> BTreeSet<String> {
+    let source = build_router_source();
+
+    let table = source
+        .split_once("export const UNSUPPORTED_SEGMENTS = Object.freeze([")
+        .expect("`UNSUPPORTED_SEGMENTS` is a frozen array literal; if it is not, this test is out of date")
+        .1
+        .split_once("]);")
+        .expect("the literal is closed")
+        .0;
+
+    let names: BTreeSet<String> = table
+        .split('"')
+        .filter(|value| !value.trim().is_empty() && !value.contains(','))
+        .map(str::to_owned)
+        .collect();
+
+    assert!(
+        names.len() > 1,
+        "read {} name(s) out of the build router's list, which is not a list:\n{table}",
+        names.len()
+    );
+    names
+}
+
+#[test]
+fn both_routers_refuse_the_same_directory_spellings() {
+    let build_router = build_router_unsupported_segments();
+    let grammar: BTreeSet<String> = RouteSegment::UNSUPPORTED_EXAMPLES
+        .iter()
+        .map(|segment| (*segment).to_owned())
+        .collect();
+
+    assert_eq!(
+        grammar, build_router,
+        "`RouteSegment::UNSUPPORTED_EXAMPLES` and `UNSUPPORTED_SEGMENTS` in \
+         `packages/vite/internal/routes.js` name different directory spellings, so one router \
+         refuses a directory the other serves as a URL"
+    );
+}
+
+#[test]
+fn every_spelling_the_build_router_refuses_is_unsupported_here() {
+    for segment in build_router_unsupported_segments() {
+        assert!(
+            !classify_route_segment(&segment).is_supported(),
+            "`packages/vite/internal/routes.js` refuses `{segment}` and \
+             `uf_router::classify_route_segment` calls it a route, so `uf build` would generate a \
+             `RoutePath` for a directory the build router will not serve"
         );
     }
 }

@@ -355,17 +355,144 @@ fn release_writes_the_changelog_for_the_version_it_cuts() {
     assert!(changelog.contains("- rename"), "{changelog}");
     assert!(!changelog.contains("### Added"), "{changelog}");
 
-    // Cutting the same release again replaces the section rather than
-    // stacking a second one.
+    // Every one of those subjects carries no `(#NNN)`, and the run says so:
+    // they are the lines nothing downstream can find by number. See #443.
+    assert!(
+        stdout.contains("3 commits in the range carry no pull request number"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("- rename"), "{stdout}");
+    let plan: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join(".uf/release.json")).unwrap()).unwrap();
+    assert_eq!(
+        plan["unnumbered"].as_array().map(Vec::len),
+        Some(3),
+        "{plan}"
+    );
+
+    // Cutting the same release again would replace the section, and a section
+    // that is already there is not rewritten without being asked. #457.
     let again = uf()
         .arg("--cwd")
         .arg(root)
         .args(["release", "alpha"])
         .output()
         .unwrap();
-    assert!(again.status.success());
+    assert!(!again.status.success());
+    let stderr = String::from_utf8(again.stderr).unwrap();
+    assert!(stderr.contains("already has a section"), "{stderr}");
+    assert!(stderr.contains("--force"), "{stderr}");
+    let untouched = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
+    similar_asserts::assert_eq!(untouched, changelog);
+
+    // And with `--force` it replaces the section rather than stacking a second
+    // one, which is what a release being prepared needs.
+    let forced = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["release", "alpha", "--force"])
+        .output()
+        .unwrap();
+    assert!(
+        forced.status.success(),
+        "{}",
+        String::from_utf8_lossy(&forced.stderr)
+    );
     let twice = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
     similar_asserts::assert_eq!(twice, changelog);
+}
+
+/// `uf release` refuses to rewrite a version that has already gone out.
+///
+/// The version comes from `env!("CARGO_PKG_VERSION")` — the binary that cuts a
+/// release is the binary being released — and there was no guard against being
+/// an *old* binary. `uf@0.0.0-alpha.7`'s binary in a tree already released as
+/// alpha.8 planned alpha.8 again, rewrote the published section with the
+/// commits since that tag, deleted the thirty-eight lines of summary and
+/// hand-placed entries in it, and reported success. See #457.
+///
+/// The tree here is arranged the same way: the tag for the version this binary
+/// is about to plan already exists, which can only mean the tree is ahead of
+/// the binary.
+#[test]
+fn release_refuses_a_version_that_is_already_tagged() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let git = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "uf")
+            .env("GIT_AUTHOR_EMAIL", "uf@example.com")
+            .env("GIT_COMMITTER_NAME", "uf")
+            .env("GIT_COMMITTER_EMAIL", "uf@example.com")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+
+    git(&["init", "--quiet", "--initial-branch", "main"]);
+    fs::write(root.join("a.txt"), "one\n").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "--quiet", "-m", "feat(cli): the first thing"]);
+
+    // The version this binary will plan, so that the tag for it can exist
+    // before it runs. `uf release alpha` moves the alpha component by one.
+    let current = env!("CARGO_PKG_VERSION");
+    let next = current.split_once("-alpha.").map_or_else(
+        || format!("{current}-alpha.0"),
+        |(core, alpha)| format!("{core}-alpha.{}", alpha.parse::<u64>().unwrap() + 1),
+    );
+    let tag = format!("uf@{next}");
+
+    // The published section, with a summary a person wrote by hand.
+    let published = format!(
+        "# Changelog\n\n## {tag}\n\n_2026-09-07_\n\nThe release that made the published tool work.\n\n### Fixed\n\n- **host**: the file `@uniflowed/host` exports is one it publishes (#410)\n"
+    );
+    fs::write(root.join("CHANGELOG.md"), &published).unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "--quiet", "-m", "chore(release): the notes"]);
+    git(&["tag", &tag]);
+
+    fs::write(root.join("b.txt"), "two\n").unwrap();
+    git(&["add", "-A"]);
+    git(&[
+        "commit",
+        "--quiet",
+        "-m",
+        "fix(fmt): a later release's commit",
+    ]);
+
+    for args in [
+        vec!["release", "alpha"],
+        // `--force` does not cover a version that has been tagged.
+        vec!["release", "alpha", "--force"],
+    ] {
+        let output = uf().arg("--cwd").arg(root).args(&args).output().unwrap();
+        assert!(!output.status.success(), "{args:?} was allowed");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            stderr.contains(&format!("{tag} is already released")),
+            "{stderr}"
+        );
+        assert!(stderr.contains(current), "{stderr}");
+        assert!(stderr.contains("older than the tree"), "{stderr}");
+        // And the published section is exactly as it was.
+        similar_asserts::assert_eq!(
+            fs::read_to_string(root.join("CHANGELOG.md")).unwrap(),
+            published
+        );
+        assert!(
+            !root.join(".uf/release.json").exists(),
+            "a plan was written"
+        );
+    }
 }
 
 /// A directory with no git history still gets a release plan.

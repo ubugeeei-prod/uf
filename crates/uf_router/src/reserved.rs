@@ -1,4 +1,5 @@
-//! The `_uf.*` reserved file-name grammar.
+//! The names `uf` reserves inside the router root: the `_uf.*` files, and the
+//! directory spellings that are not ordinary URL segments.
 //!
 //! `uf` reserves the `_uf.` prefix inside the router root so a project cannot
 //! accidentally shadow a framework file. A reserved name is
@@ -33,6 +34,28 @@
 //! the tests did their job — adding it here alone left
 //! `every_role_the_router_resolves_is_in_the_build_router` failing until
 //! `RESERVED` in the build router named it too.
+//!
+//! # Directory names
+//!
+//! [`classify_route_segment`] is the other half, and it is here for the reason
+//! the file names are: it is one grammar with three readers. A file name says
+//! what a file *does*; a directory name says what a segment *is* — `(group)`
+//! is not a URL segment, `[name]` captures one, `[...name]` captures the rest,
+//! and everything else is a literal.
+//!
+//! That list had a hole in it, in the direction of a feature uf does not have.
+//! Next.js spells a parallel route `@team` and an intercepting route
+//! `(.)photo`, and both fell through to "literal" here and in the build
+//! router: `@team` became the URL `/@team`, `(.)photo` became `/(.)photo` —
+//! `(` and `)` are not a group unless the segment *ends* in `)` — and the
+//! generated `RoutePath` union contained both, so `route("/@team", …)` type
+//! checked. A convention silently served as a URL is worse than one that is
+//! not supported: the project looks like it works.
+//!
+//! So [`RouteSegment::Slot`] and [`RouteSegment::Interception`] are names in
+//! this grammar without being routes. Both routers refuse them, `uf lint`
+//! reports them, and the refusal says which feature the spelling belongs to.
+//! See ubugeeei-prod/uf#267.
 
 use std::str::FromStr;
 
@@ -41,6 +64,21 @@ use std::str::FromStr;
 pub enum ReservedRole {
     /// Wraps a route subtree.
     Layout,
+    /// Wraps a route subtree, and remounts on every navigation.
+    ///
+    /// A layout persists — that is the whole point of one, and it is why a
+    /// sidebar keeps its scroll position when the page under it changes. A
+    /// template is the same wrapper with the opposite answer to the same
+    /// question, for the cases where persistence is the wrong default: an
+    /// enter animation that should play again, a `useEffect` that should run
+    /// again, state that should start over.
+    ///
+    /// It is one of [`route_parts`](ReservedRole::route_parts), unlike the
+    /// boundaries: a template is part of the rendered route rather than
+    /// something that renders instead of it. It sits inside its own segment's
+    /// layout and outside everything below, which is where its `key` has to be
+    /// for a remount to mean "this segment and what is under it".
+    Template,
     /// Renders a route.
     Page,
     /// Runs before a route resolves.
@@ -90,6 +128,7 @@ impl ReservedRole {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Layout => "layout",
+            Self::Template => "template",
             Self::Page => "page",
             Self::Middleware => "middleware",
             Self::NotFound => "not-found",
@@ -108,9 +147,10 @@ impl ReservedRole {
     /// Two `all` in one module meaning two different things is the drift this
     /// module exists to prevent, one level up.
     #[must_use]
-    pub const fn all() -> [Self; 8] {
+    pub const fn all() -> [Self; 9] {
         [
             Self::Layout,
+            Self::Template,
             Self::Page,
             Self::Middleware,
             Self::NotFound,
@@ -128,9 +168,12 @@ impl ReservedRole {
     /// renders instead of the route rather than as part of it, and a `loading`
     /// renders while it is not there yet — so none of the five composes a
     /// route, though all five are reserved names.
+    ///
+    /// A `template` does compose one. It is a layout that remounts, and the
+    /// rendered route contains it exactly the way it contains a layout.
     #[must_use]
-    pub const fn route_parts() -> [Self; 3] {
-        [Self::Layout, Self::Page, Self::Middleware]
+    pub const fn route_parts() -> [Self; 4] {
+        [Self::Layout, Self::Template, Self::Page, Self::Middleware]
     }
 }
 
@@ -140,6 +183,7 @@ impl FromStr for ReservedRole {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "layout" => Ok(Self::Layout),
+            "template" => Ok(Self::Template),
             "page" => Ok(Self::Page),
             "middleware" => Ok(Self::Middleware),
             "not-found" => Ok(Self::NotFound),
@@ -305,6 +349,165 @@ pub fn classify_reserved_file(file_name: &str) -> ReservedName {
     ReservedName::Recognized(ReservedFile { role, variant })
 }
 
+// ---------------------------------------------------------------------------
+// Directory names
+// ---------------------------------------------------------------------------
+
+/// What a directory name inside the router root means to the route path.
+///
+/// The borrow is the part of the name that carries information: a parameter's
+/// name, an interception's target. `Literal` borrows the whole segment, so a
+/// caller can `match` once rather than matching and then re-reading the input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteSegment<'a> {
+    /// `(marketing)` — organises files without appearing in the URL.
+    Group,
+    /// `[slug]` — captures one URL segment, under the borrowed name.
+    Param(&'a str),
+    /// `[...path]` — captures the rest of the URL, under the borrowed name.
+    CatchAll(&'a str),
+    /// An ordinary URL segment, spelled exactly as the directory is.
+    Literal(&'a str),
+    /// `@team` — a parallel-route slot. Not a route uf can serve.
+    ///
+    /// A slot is a route that matches into a *named place* rather than into
+    /// the one page a URL has, and a layout renders several of them at once,
+    /// each with its own loading and error state. uf's `RouteRecord` is one
+    /// page and a list of layouts and `RouteView` composes exactly that, so
+    /// there is no second child to give a layout and no place to put one.
+    Slot(&'a str),
+    /// `(.)photo`, `(..)photo`, `(...)photo`, `(..)(..)photo` — an intercepting
+    /// route. Not a route uf can serve.
+    ///
+    /// Interception matches a path *from within a segment* and renders it
+    /// there, leaving the URL alone. That needs the router to know where a
+    /// navigation came from, which is a change to what a navigation is: uf's
+    /// `navigate` has a destination and nothing else.
+    Interception {
+        /// The `(.)`-style prefix, as written.
+        marker: &'a str,
+        /// What follows it — the route being intercepted.
+        route: &'a str,
+    },
+}
+
+impl RouteSegment<'_> {
+    /// One directory name per spelling uf refuses.
+    ///
+    /// Here so that `tests/reserved_names.rs` can hold the build router to the
+    /// same list, the way it already holds it to [`ReservedRole`]. A spelling
+    /// one router refuses and the other serves is the disagreement this module
+    /// exists to prevent, and the two are separate implementations.
+    pub const UNSUPPORTED_EXAMPLES: &'static [&'static str] = &[
+        "@team",
+        "(.)photo",
+        "(..)photo",
+        "(...)photo",
+        "(..)(..)photo",
+    ];
+
+    /// Whether uf serves a segment spelled this way.
+    ///
+    /// False for the two Next.js conventions uf has reserved without
+    /// implementing. Refusing is the point: they used to be literals.
+    #[must_use]
+    pub const fn is_supported(&self) -> bool {
+        !matches!(self, Self::Slot(_) | Self::Interception { .. })
+    }
+
+    /// Why uf refuses a directory spelled this way, or [`None`] when it
+    /// serves it.
+    ///
+    /// One sentence for the reader and one for the author: which feature the
+    /// spelling belongs to, and that the directory is refused rather than
+    /// served as a URL — because being served as a URL is what used to happen,
+    /// and a person who reads only "unsupported" would reasonably assume it
+    /// was ignored.
+    ///
+    /// Here rather than on `RouterError` so `uf lint` says the same thing the
+    /// build does. Two messages for one refusal is how a linter ends up
+    /// disagreeing with the compiler about what is wrong.
+    #[must_use]
+    pub fn unsupported_reason(&self, segment: &str) -> Option<String> {
+        match self {
+            Self::Slot(_) => Some(format!(
+                "`{segment}` is a parallel-route slot, and uf does not have parallel routes — a \
+                 route here renders in one place, so there is nothing for a slot to render into. \
+                 It is refused rather than served as the URL segment `/{segment}`, which is what \
+                 it used to become. Rename the directory; a URL segment that really starts with \
+                 `@` has no spelling in this grammar, so capture it with a `[param]`. \
+                 https://github.com/ubugeeei-prod/uf/issues/267"
+            )),
+            Self::Interception { route, .. } => Some(format!(
+                "`{segment}` is an intercepting route, and uf does not have interception — a \
+                 navigation carries where it is going and not where it came from, so nothing here \
+                 could match `{route}`. It is refused rather than served as the URL segment \
+                 `/{segment}`, which is what it used to become. Move the route to the path it \
+                 belongs at, or rename the directory. \
+                 https://github.com/ubugeeei-prod/uf/issues/267"
+            )),
+            Self::Group | Self::Param(_) | Self::CatchAll(_) | Self::Literal(_) => None,
+        }
+    }
+}
+
+/// Classify one directory name from the router root.
+///
+/// Takes a single segment, not a path, for the reason
+/// [`classify_reserved_file`] takes a file name: a caller that passed a path
+/// would get an answer about a string no router ever classifies.
+#[must_use]
+pub fn classify_route_segment(segment: &str) -> RouteSegment<'_> {
+    if let Some(name) = segment.strip_prefix('@') {
+        return RouteSegment::Slot(name);
+    }
+    if let Some((marker, route)) = interception_marker(segment) {
+        return RouteSegment::Interception { marker, route };
+    }
+    // After the interception test, and that order is the whole difference
+    // between the two: a group *ends* in `)` and an interception marker is a
+    // prefix with a route after it. `(.)` on its own is neither a marker nor a
+    // convention anybody writes, and stays the group it has always been.
+    if segment.starts_with('(') && segment.ends_with(')') {
+        return RouteSegment::Group;
+    }
+    if let Some(name) = segment
+        .strip_prefix("[...")
+        .and_then(|name| name.strip_suffix(']'))
+    {
+        return RouteSegment::CatchAll(name);
+    }
+    if let Some(name) = segment
+        .strip_prefix('[')
+        .and_then(|name| name.strip_suffix(']'))
+    {
+        return RouteSegment::Param(name);
+    }
+    RouteSegment::Literal(segment)
+}
+
+/// The `(.)`-style prefix of `segment` and the route after it, if it has one.
+///
+/// One or more of `(.)`, `(..)` and `(...)`, which is every marker Next.js
+/// defines — `(..)(..)` is two of them and not a fourth spelling — followed by
+/// something for them to intercept. A marker with nothing after it is not an
+/// interception, because there is no route named.
+fn interception_marker(segment: &str) -> Option<(&str, &str)> {
+    let mut consumed = 0;
+    while let Some(open) = segment[consumed..].strip_prefix('(') {
+        let Some(close) = open.find(')') else { break };
+        let inner = &open[..close];
+        if inner.is_empty() || inner.len() > 3 || !inner.bytes().all(|byte| byte == b'.') {
+            break;
+        }
+        consumed += close + 2;
+    }
+    if consumed == 0 || consumed == segment.len() {
+        return None;
+    }
+    Some((&segment[..consumed], &segment[consumed..]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +610,22 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn a_template_is_a_layout_that_remounts_and_is_part_of_a_route() {
+        // The third of the three features ubugeeei-prod/uf#267 asked for, and
+        // the cheapest: a reserved role, a table that nests the way layouts
+        // already do, and a `key` on the element in `RouteView`.
+        assert_eq!(recognized("_uf.template.js").role, ReservedRole::Template);
+        assert_eq!(
+            recognized("_uf.template.native.js").variant,
+            ReservedVariant::Native
+        );
+        assert!(
+            ReservedRole::route_parts().contains(&ReservedRole::Template),
+            "a template composes a route the way a layout does"
+        );
     }
 
     #[test]
@@ -528,6 +747,120 @@ mod tests {
                 classify_reserved_file(name).is_unknown(),
                 "{name} should be unknown"
             );
+        }
+    }
+
+    #[test]
+    fn the_three_segment_kinds_a_route_path_is_built_from() {
+        assert_eq!(classify_route_segment("(marketing)"), RouteSegment::Group);
+        assert_eq!(
+            classify_route_segment("[slug]"),
+            RouteSegment::Param("slug")
+        );
+        assert_eq!(
+            classify_route_segment("[...path]"),
+            RouteSegment::CatchAll("path")
+        );
+        assert_eq!(
+            classify_route_segment("posts"),
+            RouteSegment::Literal("posts")
+        );
+        for segment in ["(marketing)", "[slug]", "[...path]", "posts"] {
+            assert!(classify_route_segment(segment).is_supported(), "{segment}");
+        }
+    }
+
+    #[test]
+    fn a_slot_is_named_rather_than_served_as_a_url() {
+        // `@team` used to be the literal URL segment `/@team`, in both routers
+        // and in the generated `RoutePath`. See ubugeeei-prod/uf#267.
+        assert_eq!(classify_route_segment("@team"), RouteSegment::Slot("team"));
+        assert!(!classify_route_segment("@team").is_supported());
+        // Not a slot: the `@` has to start the segment, so a scoped-looking
+        // name in the middle is an ordinary literal.
+        assert_eq!(
+            classify_route_segment("mail@example"),
+            RouteSegment::Literal("mail@example")
+        );
+    }
+
+    #[test]
+    fn every_interception_marker_next_defines_is_recognized() {
+        for (segment, marker) in [
+            ("(.)photo", "(.)"),
+            ("(..)photo", "(..)"),
+            ("(...)photo", "(...)"),
+            ("(..)(..)photo", "(..)(..)"),
+        ] {
+            assert_eq!(
+                classify_route_segment(segment),
+                RouteSegment::Interception {
+                    marker,
+                    route: "photo"
+                },
+                "{segment}"
+            );
+            assert!(!classify_route_segment(segment).is_supported(), "{segment}");
+        }
+    }
+
+    #[test]
+    fn a_group_is_still_a_group() {
+        // The near-miss that made `(.)photo` a literal in the first place: the
+        // test for a group is that the segment *ends* in `)`, which `(.)photo`
+        // does not. Reading the parenthesis alone would have turned every
+        // route group into an interception.
+        for name in ["(marketing)", "(.)", "(..)", "(shop)", "(a.b)"] {
+            assert_eq!(classify_route_segment(name), RouteSegment::Group, "{name}");
+            assert!(classify_route_segment(name).is_supported(), "{name}");
+        }
+    }
+
+    #[test]
+    fn every_unsupported_example_is_one_of_the_two_kinds() {
+        for segment in RouteSegment::UNSUPPORTED_EXAMPLES {
+            let classified = classify_route_segment(segment);
+            assert!(
+                !classified.is_supported(),
+                "{segment} is listed as unsupported and classifies as a route"
+            );
+            let reason = classified
+                .unsupported_reason(segment)
+                .unwrap_or_else(|| panic!("{segment} is refused without a reason"));
+            // The refusal has to say it is a refusal. "Not supported" reads as
+            // "ignored", and being quietly ignored is what this replaced.
+            assert!(reason.contains("refused"), "{segment}: {reason}");
+            assert!(reason.contains(segment), "{segment}: {reason}");
+        }
+    }
+
+    #[test]
+    fn a_segment_uf_serves_has_no_reason_to_refuse_it() {
+        for segment in ["(marketing)", "[slug]", "[...path]", "posts"] {
+            assert_eq!(
+                classify_route_segment(segment).unsupported_reason(segment),
+                None,
+                "{segment}"
+            );
+        }
+    }
+
+    #[test]
+    fn segment_classification_does_not_panic_on_odd_input() {
+        for name in [
+            "",
+            "(",
+            ")",
+            "@",
+            "(.",
+            "(....)x",
+            "()x",
+            "[",
+            "[...]",
+            "(.)(",
+            "\u{1f600}",
+        ] {
+            let _ = classify_route_segment(name);
         }
     }
 

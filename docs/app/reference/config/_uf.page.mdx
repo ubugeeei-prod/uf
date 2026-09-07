@@ -92,7 +92,7 @@ your source tree; the reasoning is in
 | `entries` | `["app.js"]` | Entry modules |
 | `outDir` | `"dist"` | Output directory |
 | `sourcemap` | `true` | Emit source maps |
-| `staticBuild` | `false` | Prerender everything and emit no server bundle |
+| `staticBuild` | `false` | Declared, and read by nothing yet — the build emits a server bundle either way ([#385](https://github.com/ubugeeei-prod/uf/issues/385)) |
 | `budgets` | unset | Size budgets that fail the build when exceeded |
 | `hooks` | `{}` | Commands to run around the build |
 
@@ -177,6 +177,29 @@ of it.
 | `maxBlankLines` | `1` | Consecutive blank lines kept |
 | `flow.parser` | `"official-flow-rust"` | The parser Flow files are formatted with |
 | `nonFlow.formatter` | `"biome"` | Who formats JSON, CSS and TypeScript: `"biome"`, `"prettier"` or `"none"` |
+| `nonFlow.arguments` | `[]` | Extra arguments, passed to that formatter verbatim |
+
+`nonFlow.arguments` is a list of strings and not a shape, on purpose. uf does
+not re-declare another tool's options — every option it copied would be one
+that needed a uf release before anybody could use it — and it does not have to,
+because an argument list reaches every option biome or prettier has now or adds
+later.
+
+A Tailwind 4 project needs biome's CSS parser told about `@theme`:
+
+```js
+export default defineConfig({
+  fmt: { nonFlow: { arguments: ["--css-parse-tailwind-directives=true"] } },
+});
+```
+
+and needs no second configuration file for it.
+
+The arguments go **after** uf's own, so they win: a project that wants a line
+width other than `fmt.lineWidth` for its stylesheets can say so. The one thing
+they may not do is turn a check into a write — `--write`, `--fix` and their
+spellings are refused where the configuration is read, because `uf fmt --check`
+changing files is the failure nobody sees: a green CI job and a rewritten tree.
 
 ## lint
 
@@ -188,6 +211,43 @@ of it.
 | `ignore` | `[]` | Globs to skip |
 | `flow.builtins` | `"mixed"` | Run Flow's own lints alongside uf's |
 | `flow.parser` | `"official-flow-rust"` | The parser used to read Flow files |
+
+`ignore` is read by `uf lint`, `uf fmt`, `uf check` and `uf test` alike, which
+its name does not say — see the note below.
+
+## What counts as your project
+
+Every command that walks the project — `uf fmt`, `uf lint`, `uf check`,
+`uf test`, `uf doc` — reads the same three things, in this order:
+
+1. **`.gitignore`.** A file git is told to ignore is generated output, and
+   generated output is not yours to format, lint or check. This is the list
+   you already keep, so the commands agree by construction rather than by four
+   configuration keys you have to hold in step. `.ignore` files are read too,
+   and negations (`!kept.js`) work, because a `.gitignore` is a program rather
+   than a list and half-reading one is worse than not reading it.
+
+   Your **global** gitignore is deliberately *not* read: two people on one
+   repository have to get the same answer from `uf fmt --check`. Neither is a
+   `.gitignore` above the project root, which belongs to whatever the project
+   is sitting inside.
+
+2. **`.uf` and `.git`**, always, whatever the configuration says.
+
+3. **`lint.ignore`**, for anything left. It is named after one command and
+   read by all of them, which is a name that should change and has not yet
+   ([#575](https://github.com/ubugeeei-prod/uf/issues/575)).
+
+A directory holding a `.git` of its own is another repository — a submodule,
+or a checkout that happens to live inside yours — and is never walked.
+
+**Naming a path overrides `.gitignore`.** `uf fmt src/wasm` reads `src/wasm`
+whether or not git is told to ignore it: the ignore file says what your *source*
+is, not what you may ask about, and a generated file is exactly the thing you
+point at when you want to know why it will not compile. `uf lint`, `uf check`
+and `uf test` do the same, and it is where `rg`, `prettier` and `biome` draw the
+line too. `.uf` and `.git` are the exception: pointing at them does not make
+them yours.
 
 Flow defaults every built-in lint to `off`. uf does not: a linter nobody
 switches on catches nothing. Every rule's level and the reason for it is in

@@ -513,16 +513,45 @@ export function roleOf(element: Element): string | null {
 /**
  * The name a screen reader would announce.
  *
- * `aria-label`, then the element `aria-labelledby` points at, then a label
- * element, then the element's own text. Not the whole specification — that is
- * a document of its own — but the order that decides almost every real case.
+ * The element `aria-labelledby` points at, then `aria-label`, then a label
+ * element, then the element's own text if its role is named by its content,
+ * then `title`, then nothing. Not the whole specification — that is a document
+ * of its own — but the order that decides almost every real case.
+ *
+ * # Why `aria-labelledby` is first
+ *
+ * It used to be second, which is the order a reader guesses and the opposite
+ * of the one `accname` specifies: an element carrying both is named by what
+ * `aria-labelledby` points at, and `aria-label` is the fallback for when it
+ * points at nothing. So
+ *
+ *     <button aria-label="Close" aria-labelledby="title">…</button>
+ *
+ * was announced by every browser as whatever `#title` says and found by this
+ * query as "Close". Nothing in this repository writes both at once, which is
+ * why it never bit — a component that did would have had a passing test and a
+ * reader hearing something else.
+ *
+ * "Points at nothing" is two cases and both fall through: an id that resolves
+ * to no element, and one that resolves to an element with no text. The second
+ * is what makes the reordering safe rather than merely correct — without it a
+ * label pointing at an empty span would name the button the empty string and
+ * never reach the `aria-label` underneath it.
+ *
+ * # Why the last resort is a role and not the text
+ *
+ * `textOf(element)` used to be the fallback for anything, and most elements
+ * are not named by their contents. A `<table>` with no `<caption>` was
+ * therefore called every cell in it — `getByRole("table", { name: "People" })`
+ * asking whether the name was "People Name Born Ada Lovelace 1815 …" — and so
+ * were `<figure>`, `<fieldset>`, `<section>` and every other container whose
+ * name ARIA says comes from its author. Only the roles in `NAME_FROM_CONTENT`
+ * are named by what is inside them; for the rest HTML-AAM's next step is the
+ * `title` attribute and the one after that is no name at all, which is what
+ * this returns. A query for `{ name: "" }` finds such an element and a query
+ * for its contents does not, which is the pair the fix is for.
  */
 export function accessibleName(element: Element): string {
-  const label = element.getAttribute("aria-label");
-  if (label != null && label !== "") {
-    return normalize(label);
-  }
-
   const labelledBy = element.getAttribute("aria-labelledby");
   if (labelledBy != null && labelledBy !== "") {
     // A loop rather than `.map().filter(Boolean).map()`: `filter(Boolean)`
@@ -536,9 +565,15 @@ export function accessibleName(element: Element): string {
         parts.push(textOf(target));
       }
     }
-    if (parts.length > 0) {
-      return normalize(parts.join(" "));
+    const named = normalize(parts.join(" "));
+    if (named !== "") {
+      return named;
     }
+  }
+
+  const label = element.getAttribute("aria-label");
+  if (label != null && label !== "") {
+    return normalize(label);
   }
 
   const id = element.getAttribute("id");
@@ -561,8 +596,56 @@ export function accessibleName(element: Element): string {
     return textOf(naming);
   }
 
-  return textOf(element);
+  if (NAME_FROM_CONTENT.has(roleOf(element) ?? "")) {
+    const content = textOf(element);
+    if (content !== "") {
+      return content;
+    }
+  }
+
+  return normalize(element.getAttribute("title") ?? "");
 }
+
+/**
+ * The roles whose accessible name is the text inside them.
+ *
+ * ARIA writes this per role as "name from: author, contents", and the list is
+ * short: a button, a link, a heading, a cell and the things a person chooses
+ * from. Every other role is named by its author — by `aria-label`, by
+ * `aria-labelledby`, or by whichever element the host language gives it — and
+ * for those the text inside is content rather than a name.
+ *
+ * A role uf has no mapping for is not in the set either, which is the same
+ * answer for the same reason: `roleOf` returns `null` for `<div>`, `<span>`,
+ * `<fieldset>` and `<figure>`, and none of those is named by what it holds.
+ * The two that HTML *does* name from inside — a `<fieldset>`'s `<legend>` and
+ * a `<figure>`'s `<figcaption>` — are already answered above by
+ * `namingChild`, which is a different rule and reaches one child rather than
+ * the whole subtree.
+ *
+ * The abstract roles are left out because nobody writes one, and `sectionhead`
+ * is the only one that would have belonged here.
+ */
+const NAME_FROM_CONTENT: Set<string> = new Set([
+  "button",
+  "cell",
+  "checkbox",
+  "columnheader",
+  "gridcell",
+  "heading",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "radio",
+  "row",
+  "rowheader",
+  "switch",
+  "tab",
+  "tooltip",
+  "treeitem",
+]);
 
 /** The child that names its parent, for the three elements HTML-AAM gives one. */
 const NAMING_CHILDREN: { readonly [string]: string } = {
