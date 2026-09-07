@@ -18,7 +18,9 @@
     "./fetch": "./fetch.js",
     "./host": "./host.js",
     "./lambda": "./lambda.js",
+    "./log": "./log.js",
     "./node": "./node.js",
+    "./oauth": "./oauth.js",
     "./queue": "./queue.js",
     "./socket": "./socket.js",
     "./standalone": "./standalone.js"
@@ -31,10 +33,15 @@
     "host.js",
     "index.js",
     "lambda.js",
+    "log.js",
     "node.js",
+    "oauth.js",
     "queue.js",
     "socket.js",
     "standalone.js",
     "internal/*.js"
-  ]
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.0.0-alpha.12"
+  }
 }

@@ -275,6 +275,36 @@ describe("Temporal.PlainDate", () => {
     expect(Temporal.PlainDate.compare(late, late)).toBe(0);
     expect(early.equals(late)).toBe(false);
   });
+
+  it("knows which day of the week it is, the way ISO 8601 counts them", () => {
+    // Monday is 1 and Sunday is 7, which is Temporal's numbering and not
+    // `Date`'s — `getUTCDay` calls Sunday 0, and a calendar grid built on that
+    // without the correction puts every week's first column one day out.
+    expect(Temporal.PlainDate.from("2026-10-01").dayOfWeek).toBe(4);
+    expect(Temporal.PlainDate.from("2026-10-04").dayOfWeek).toBe(7);
+    expect(Temporal.PlainDate.from("2026-10-05").dayOfWeek).toBe(1);
+  });
+
+  it("knows how long its month is, leap years included", () => {
+    expect(Temporal.PlainDate.from("2026-02-01").daysInMonth).toBe(28);
+    expect(Temporal.PlainDate.from("2028-02-14").daysInMonth).toBe(29);
+    expect(Temporal.PlainDate.from("2026-10-31").daysInMonth).toBe(31);
+    expect(Temporal.PlainDate.from("2026-11-01").daysInMonth).toBe(30);
+  });
+
+  it("prints itself in the reader's words, and never in another zone", () => {
+    const date = Temporal.PlainDate.from("2026-10-01");
+
+    expect(date.toLocaleString("en-GB", { month: "long", year: "numeric" })).toBe("October 2026");
+    expect(date.toLocaleString("en-GB", { weekday: "long" })).toBe("Thursday");
+    // A `PlainDate` has no zone, so it is formatted at midnight UTC and a
+    // `timeZone` in the options is dropped rather than honoured: anywhere west
+    // of it, honouring one would print the *previous* day, which is a caption
+    // reading September over a grid of October.
+    expect(date.toLocaleString("en-GB", { month: "long", timeZone: "America/Los_Angeles" })).toBe(
+      "October",
+    );
+  });
 });
 
 describe("Temporal.Duration", () => {

@@ -43,6 +43,8 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Tooltip` | A phrase on hover and focus that WCAG 2.1 SC 1.4.13 would accept | `tooltip.js` |
 | `HoverCard` | The preview a name expands into, with links `Tab` can reach | `hover-card.js` |
 | `Tabs` | Tabs: a roving `tabindex`, automatic or manual activation | `tabs.js` |
+| `Calendar` | A month as one tab stop: two axes, month boundaries, and a live region that says which month | `calendar.js` |
+| `DatePicker` | The field, the button and the calendar in a popover | `date-picker.js` |
 | `Toast` | Notifications: a live region that was already watching, and timers that stop | `toast.js` |
 | `Slider` | A value in a range, with the slider role on the thumb | `slider.js` |
 | `Resizable` | The window splitter: a separator that behaves like a slider | `resizable.js` |
@@ -882,10 +884,18 @@ measurements you cannot make from CSS:
 | `--uf-anchor-available-height` | How much room was left on the side it chose |
 | `--uf-anchor-shift` | How far it slid, so an arrow can be moved back |
 
-`Menu` and `Combobox` are not positioned by any of this yet: they still render
-where they are written, and adopting this module is the half of
-[ubugeeei-prod/uf#256](https://github.com/ubugeeei-prod/uf/issues/256) that is
-still open.
+`Menu.Body`, `Combobox.List` and `Select.List` use the same module, which is
+what makes it a primitive rather than three copies: a menu in a table row is no
+longer cut off at the row's edge, a menu near the bottom of a long page opens
+upwards and says `data-side="top"`, and a select's popup can be exactly as wide
+as the button it came out of because the button's width is written on it.
+
+A submenu asks for `side="inline-end"` rather than `side="right"`. `LogicalSide`
+is the four physical names plus `inline-start` and `inline-end`, which resolve
+against the trigger's own writing direction — so a submenu opens to the left in
+an Arabic page, which is the side the key that opens it already pointed at.
+`data-side` always reports the physical answer, because a stylesheet drawing an
+arrow needs the direction it will be drawn in.
 
 An overlay is `position: fixed`, which is also how it escapes an ancestor's
 `overflow: hidden` — a popover in a table row or a scroll container is not cut
@@ -906,6 +916,116 @@ declarative tier where it works and the measured one elsewhere would put the
 same overlay in two different places, and which one a reader got would depend on
 their browser. One tier both engines run is worth more than the faster one for
 some of them.
+
+## A month, and the field beside it
+
+A calendar is `role="grid"`: a row of column headers naming the days, rows of
+`gridcell`s, and one roving tab stop, so the whole month is one stop in the
+page's tab order. It is the one pattern `internal/roving-focus.js` does not
+cover, and `internal/date-grid.js` says why at length — the short version is that
+the movement is arithmetic on a date rather than an index in a list of elements,
+and that the cell an arrow key asks for is often one the grid has not rendered
+yet.
+
+```js
+// @flow
+import { Calendar } from "@uniflowed/ui";
+
+<Calendar.Root defaultValue="2026-10-14" onValueChange={setWhen}>
+  <Calendar.Previous>Previous month</Calendar.Previous>
+  <Calendar.Next>Next month</Calendar.Next>
+  <Calendar.Month />
+</Calendar.Root>;
+```
+
+### The keyboard
+
+| Key | What it does |
+| --- | --- |
+| `ArrowRight` / `ArrowLeft` | A day, mirrored in a right-to-left page |
+| `ArrowDown` / `ArrowUp` | A week |
+| `Home` / `End` | The ends of the *week*, not of the month |
+| `PageUp` / `PageDown` | The previous and next month |
+| `Shift` + either | The previous and next year |
+| `Enter`, `Space` | Choose the focused day |
+
+Running off the end of a month shows the next one **and** leaves focus on its
+first day — a cell that did not exist when the key was pressed, which is why the
+grid carries the same `pendingFocus` machinery `Menu.Body` uses to open onto its
+last item.
+
+### Three things a month of buttons in a grid does not do
+
+**An unavailable day stays reachable.** `isDateDisabled` marks a day
+`aria-disabled="true"` and the arrow keys still land on it. That is the
+deliberate opposite of what a disabled menu item does — `moveTo` steps over
+those — because a reader arrowing through October has to be able to pass over
+the days that cannot be booked. A grid that skipped them presents a month with
+holes in it and no way to find out what is in the holes.
+
+**The month is announced when it changes.** A sighted reader sees the caption
+change; a screen reader is told nothing, because nothing it was watching moved.
+`Calendar.Root` renders a `role="status"` that is in the document from the first
+render and empty until the month actually changes — the same constraint
+`Combobox.Status` documents, and the reason it is not a part a caller could
+forget to place.
+
+**Today and the selection are different marks.** `aria-current="date"` on today,
+`aria-selected="true"` on the chosen day, and nothing on the rest: a grid where
+every cell says `aria-selected="false"` makes a reader hear "not selected" on all
+thirty-one of them.
+
+### Dates are Temporal's
+
+Every date in and out is a `PlainDate` from `@uniflowed/temporal`, or the ISO
+8601 string it reads. Nothing here computes a month length or a day of the week
+with `Date` — a package that ships a temporal library and then reaches for
+`new Date(y, m + 1, 0)` is the opposite of building uf with uf, and `Date`'s
+zero-based months and local-timezone arithmetic are where calendar bugs come
+from. `PlainDate.dayOfWeek`, `PlainDate.daysInMonth` and
+`PlainDate.toLocaleString` were added to `@uniflowed/core/temporal` for this, in
+the shapes native Temporal already has.
+
+The month name, the day names and the day the week starts on come from the
+locale. `weekStartsOn` overrides it, and is what a test names so that a suite
+does not depend on the host's locale data.
+
+### Date Picker
+
+The composition, and the field is the control:
+
+```js
+// @flow
+import { Calendar, DatePicker } from "@uniflowed/ui";
+
+<DatePicker.Root onValueChange={setWhen} value={when}>
+  <DatePicker.Input aria-label="Arrive on" />
+  <DatePicker.Trigger>Choose a date</DatePicker.Trigger>
+  <DatePicker.Calendar>
+    <Calendar.Previous>Previous month</Calendar.Previous>
+    <Calendar.Next>Next month</Calendar.Next>
+    <Calendar.Month />
+  </DatePicker.Calendar>
+</DatePicker.Root>;
+```
+
+A date picker whose only input is the grid is slower for everybody who already
+knows the date and unusable for anybody who cannot operate a grid, so the text
+field is the primary control and the calendar is the second way in. `Escape` and
+a chosen date both put focus back in the *field*; the calendar opens with focus
+on the date rather than on the button that steps back a month, which is
+`Popover.Body`'s `initialFocus` meeting `Calendar.Root`'s `focusedDayRef`.
+
+`format` and `parse` are ISO 8601 both ways unless you pass your own. Reading
+`12/03/26` is the locale's date patterns — CLDR data, which is what
+`@uniflowed/temporal`'s calendar surface waits on the native runtime for — and a
+UI package that guessed at it would be a wrong date in production rather than a
+missing feature.
+
+**Range selection is not implemented.** One date. A range is two values with both
+ends announced, `aria-selected` across everything between them and a second set
+of keyboard rules for extending it; none of that is written, and a `value` that
+quietly accepted a pair would be the lookalike this package refuses.
 
 ## The four built on `Dialog`
 

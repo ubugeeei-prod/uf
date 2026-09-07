@@ -95,6 +95,19 @@ JSON
   printf '# Changelog\n\n## uf@%s\n\n_2026-01-01_\n' "$version" > "$root/CHANGELOG.md"
 }
 
+# A scratch tree with a release tag in it. The bump reads tags to know which
+# versions have gone out, and a directory that is not a repository has none —
+# which is the state every case above is in, and is why they see no tags.
+tag_it() {
+  root="$work/$1"
+  git -C "$root" init --quiet
+  git -C "$root" config user.email uf@example.com
+  git -C "$root" config user.name uf
+  git -C "$root" add -A
+  git -C "$root" -c commit.gpgsign=false commit --quiet -m "the tree that was released"
+  git -C "$root" tag "$2"
+}
+
 # The version a manifest declares, and the version it pins a sibling at.
 declares() { node -e 'process.stdout.write(String(require(process.argv[1]).version))' "$1"; }
 pins() { node -e 'const m=require(process.argv[1]);for(const f of ["dependencies","peerDependencies","devDependencies","optionalDependencies"])if(m[f]?.[process.argv[2]])process.stdout.write(m[f][process.argv[2]])' "$1" "$2"; }
@@ -183,6 +196,35 @@ case "$out" in
   *) fail "the failure does not say the version is missing: $out" ;;
 esac
 pass "a Cargo.toml with no version is still an error, not a silent success"
+
+# --- #457: a version that already went out is not a version to bump to -------
+# `uf release <bump>` reads the version it is planning off the binary running
+# it, so an old binary plans a version the tree has already published. It
+# refuses now; this is the same refusal one step later, where `git tag` would
+# otherwise fail after every file in the repository had been rewritten.
+scratch released 0.1.0
+printf '\n## uf@0.2.0\n\n_2026-01-02_\n' >> "$work/released/CHANGELOG.md"
+tag_it released "uf@0.2.0"
+run released 0.2.0
+[ "$status" -eq 2 ] || fail "a bump onto an already tagged version exited $status, not 2"
+case "$out" in
+  *"already tagged"*) ;;
+  *) fail "the refusal does not say the version is tagged: $out" ;;
+esac
+grep -q '^version = "0.1.0"$' "$work/released/Cargo.toml" || fail "the refusal still rewrote Cargo.toml"
+[ "$(declares "$work/released/packages/core/package.json")" = "0.1.0" ] || fail "the refusal still rewrote a package"
+pass "a bump onto a version that already has a tag is refused, and changes nothing"
+
+# --- and finishing a release that already tagged is still a no-op ------------
+# The version the tree is *on* is a different thing from the version it is
+# being moved to. A release that failed after tagging is finished by running
+# the bump again, and refusing that would take the resume away.
+scratch resume_tagged 0.2.0
+tag_it resume_tagged "uf@0.2.0"
+run resume_tagged 0.2.0
+[ "$status" -eq 0 ] || fail "a resumed bump was refused by the tag it had created: $out"
+grep -q '^version = "0.2.0"$' "$work/resume_tagged/Cargo.toml" || fail "the resume moved the workspace version"
+pass "the tag a release created does not block finishing that release"
 
 # --- the argument is checked before anything is touched ----------------------
 scratch args 0.1.0

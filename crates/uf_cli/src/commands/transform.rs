@@ -135,10 +135,38 @@ impl ProjectTransform {
     }
 }
 
+/// Where `packages/host/internal/node-hooks.js` files what this service
+/// compiles, relative to the project root it was started with.
+///
+/// Named here because this process is the only *native* thing that knows the
+/// directory exists: the entries are written by the loader, in JavaScript, and
+/// the loader is the wrong place to sweep them from. A `read_dir` and a `stat`
+/// per entry over thousands of files, in JavaScript, on every host start is
+/// exactly the repository-wide work `ubugeeei-redundancy.md` says belongs in
+/// Rust — and it would be paid by the run that needed it least, the fully warm
+/// one that compiles nothing and starts no `uf` at all.
+const TRANSFORM_CACHE: [&str; 3] = [".uf", "cache", "transform"];
+
 /// Serve transform requests until stdin closes.
 pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
     let resolved = load_config(cwd)?;
     let project = ProjectTransform::from_config(&resolved.config);
+
+    // A host starts this process only when it has something to compile, and
+    // compiling is the only thing that adds to the cache — so a sweep here
+    // runs exactly when the directory may have grown and never on a run that
+    // was answered entirely from disk. That is the whole reason the sweep
+    // lives at the service's door rather than on a timer or in `uf clean`.
+    //
+    // Under `cwd` and deliberately not under `resolved.root`, which is where
+    // `uf.config.js` was found and may be an ancestor. The loader computes its
+    // cache path from the root it was initialised with and spawns
+    // `uf --cwd <that root> transform`, so `cwd` is the one value the two
+    // sides are guaranteed to agree on — and sweeping a directory the loader
+    // is not writing to would be a bound that quietly bounds nothing.
+    let mut directory = cwd.to_path_buf().into_std_path_buf();
+    directory.extend(TRANSFORM_CACHE);
+    uf_infra::cache::sweep(&directory, uf_infra::cache::CacheBound::default());
 
     std::thread::Builder::new()
         .name(String::from("uf-transform"))

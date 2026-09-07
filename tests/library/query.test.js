@@ -18,7 +18,7 @@
 
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
-import { describe, expect, fn, it } from "@uniflowed/test";
+import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import {
   CancelledError,
@@ -51,6 +51,43 @@ const wait = (millis: number) => new Promise((resolve) => setTimeout(resolve, mi
 
 /** Real time passing, with React allowed to react to it. */
 const tick = (millis: number) => act(() => wait(millis));
+
+/**
+ * Move a clock the test installed itself, and let React catch up.
+ *
+ * The counterpart to `tick`, and the difference is what each one is entitled
+ * to claim. `tick` sleeps, so it promises *at least* `millis` and nothing at
+ * all about the most: `setTimeout(resolve, 10)` on a box running twelve
+ * workers comes back whenever this worker is scheduled again, and a case that
+ * left twenty milliseconds of slack against a thirty-millisecond `gcTime`
+ * failed when it came back twenty-one late — about one run in twenty, and
+ * more often the busier the machine was (ubugeeei-prod/uf#370). `advance` is
+ * the only thing moving the clock, so 29 means 29.
+ *
+ * Which is not only a fix for the flake: a boundary a test can *approach* is a
+ * boundary it cannot assert, and one it moves itself is one it can pin from
+ * both sides.
+ */
+const advance = (millis: number) => {
+  act(() => {
+    uft.advanceTimersByTime(millis);
+  });
+};
+
+/**
+ * Let promises that have already settled reach React.
+ *
+ * What `waitFor` does on a real clock, and what it cannot do on a fake one: it
+ * polls with `setTimeout`, so under a clock only the test moves it would poll
+ * once and then wait for a timer nobody is going to fire.
+ *
+ * Nothing here needs a timer anyway. A query function written as an `async`
+ * returning a value settles on the microtask queue, and an empty asynchronous
+ * `act` is exactly a drain of that queue with React allowed to render what
+ * came out of it. A case that waits on something a timer *does* drive advances
+ * the clock to it instead, which is the honest way to say so.
+ */
+const settle = () => act(async () => {});
 
 const withClient = (client: QueryClient, ui: React.Node) => (
   <QueryClientProvider client={client}>{ui}</QueryClientProvider>
@@ -407,6 +444,17 @@ describe("useQuery", () => {
     return <output>{data ?? "nothing"}</output>;
   }
 
+  // The one case here that installs a fake clock puts the real one back
+  // however that case ended, a throw included — which a line at the end of the
+  // body would not do. A leaked fake clock is the most expensive failure a
+  // shared worker can produce: the next file's `setTimeout` never fires and
+  // the run hangs with nothing on screen saying why. `useRealTimers` on a
+  // clock that was never faked does nothing, so this costs the other cases
+  // here a function call.
+  afterEach(() => {
+    uft.useRealTimers();
+  });
+
   it("shows nothing yet, then the value", async () => {
     const client = new QueryClient();
     render(withClient(client, <Thing queryFn={async () => "loaded"} />));
@@ -670,32 +718,51 @@ describe("useQuery", () => {
   });
 
   it("collects an entry after the last component leaves, unless it comes back", async () => {
+    // On a clock this test owns. The grace period is a `setTimeout` and
+    // nothing else, so real time bought no coverage here and cost the
+    // assertion below: `await tick(10)` promises *at least* ten milliseconds
+    // and says nothing about the most, which left twenty milliseconds of slack
+    // against a thirty-millisecond `gcTime`. A worker descheduled for
+    // twenty-one of them came back to an entry that had already been
+    // collected, the remount refetched, and the failure read `getByText
+    // "value": found nothing` under `<output>pending</output>` — naming this
+    // test rather than the machine that was busy (ubugeeei-prod/uf#370).
+    //
+    // A longer sleep would only have moved the same margin somewhere else. On
+    // a clock nothing but this test moves, the margin is gone and the boundary
+    // itself becomes the subject.
+    uft.useFakeTimers();
     const client = new QueryClient({ queries: { gcTime: 30 } });
     const queryFn = fn(async () => "value");
 
     const first = render(withClient(client, <Thing queryFn={queryFn} staleTime={60_000} />));
-    await waitFor(() => {
-      expect(screen.getByText("value")).toBeInTheDocument();
-    });
+    await settle();
+    expect(screen.getByText("value")).toBeInTheDocument();
 
     // Back within the grace period: the entry is still there, the timer was
     // cancelled, and the remount costs nothing.
     first.unmount();
-    await tick(10);
+    advance(10);
     const second = render(withClient(client, <Thing queryFn={queryFn} staleTime={60_000} />));
     expect(screen.getByText("value")).toBeInTheDocument();
     expect(queryFn.mock.calls.length).toBe(1);
 
-    // Away for longer than the grace period: collected, and coming back costs
-    // a request.
+    // And the grace period from both sides, which is the thing the case is
+    // actually about and which a sleep could only ever approach: the
+    // twenty-ninth millisecond after the last component left still has the
+    // entry, and the thirtieth is the one that collects it. A `gcTime` that
+    // was off by one in either direction would fail one of these two lines,
+    // and neither of them can be failed by a busy machine.
     second.unmount();
-    await tick(60);
+    advance(29);
+    expect(client.getQueryData(["thing"])).toBe("value");
+    advance(1);
     expect(client.getQueryData(["thing"])).toBe(undefined);
 
+    // Coming back after that costs a request.
     render(withClient(client, <Thing queryFn={queryFn} staleTime={60_000} />));
-    await waitFor(() => {
-      expect(screen.getByText("value")).toBeInTheDocument();
-    });
+    await settle();
+    expect(screen.getByText("value")).toBeInTheDocument();
     expect(queryFn.mock.calls.length).toBe(2);
   });
 

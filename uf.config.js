@@ -164,15 +164,23 @@ export default defineConfig({
     // check in the pipeline — which is why it is now in `ci` rather than
     // described there.
     //
-    // Zero errors and 14 warnings over 322 files. `uf lint` fails on errors
-    // only, so the warnings are not a countdown to a broken build: they are
+    // Zero errors, and every warning from one of four rules:
     // `react/component-syntax`, `react/no-default-export-component`,
-    // `flow/unsafe-getters-setters` and `react-native/platform-split` — four
-    // rules whose own rows in the default table call them style preferences,
-    // migration aids, or patterns that are legitimate in some code, which is
-    // exactly what `warn` is for. A rule that should block belongs at `error`
-    // in `crates/uf_config/src/lint.rs`; a warning that nobody intends to act
-    // on belongs at `off` with the argument written on its row.
+    // `flow/unsafe-getters-setters` and `react-native/platform-split`. `uf
+    // lint` fails on errors only, so those are not a countdown to a broken
+    // build — each of the four has a row in the default table calling it a
+    // style preference, a migration aid, or a pattern that is legitimate in
+    // some code, which is exactly what `warn` is for. A rule that should block
+    // belongs at `error` in `crates/uf_config/src/lint.rs`; a warning nobody
+    // intends to act on belongs at `off` with the argument written on its row.
+    //
+    // The condition rather than a count, deliberately. This paragraph used to
+    // say "14 warnings over 322 files"; the file count was wrong within a
+    // fortnight and would be wrong again the next time anybody added a file,
+    // and a number nobody can act on is not the fact a reader needs. What they
+    // need is whether the exclusion still holds, and that is a question about
+    // *which rules*, which only changes when somebody changes one.
+    // ubugeeei-prod/uf#433.
     //
     // Seven suppressions stand in the packages, each on the line, under the
     // paragraph that argues it: `Node<any>` and `Cell<any>` where Flow has no
@@ -385,6 +393,10 @@ export default defineConfig({
     // `uf@0.0.0-alpha.5` went out with twenty-two commits in it and twelve in
     // its notes: the section is written before the branch stops waiting for
     // CI, and what merges meanwhile is in the tarball and in nobody's notes.
+    // The unit is the commit and not the `(#NNN)` in its subject, which is the
+    // second way this went wrong: a commit GitHub did not stamp was not
+    // unmatched, it was uncounted, and `uf@0.0.0-alpha.8` shipped one while
+    // this check reported sixteen of sixteen.
     "release:changelog": "tools/ci/changelog-covers-the-release.sh",
     "release:changelog:test": "tools/ci/test-changelog-covers.sh",
     // `npm trust` binds a name the registry already has and cannot create
@@ -469,6 +481,30 @@ export default defineConfig({
       inputs: ["tools/ci/lockfile-in-sync.sh", "tools/ci/test-lockfile-in-sync.sh"],
     },
 
+    // And that the gate at the bottom of `ci.yml` still covers `ci.yml`. The
+    // `CI` job there is red unless every job it names came back `success`, and
+    // it is what stands between a `Toolchain` that does not compile and an
+    // armed auto-merge onto `main`. #367 is the morning before it existed:
+    // `Toolchain` failed to compile, every job that needs it reported
+    // `skipped`, GitHub counted five skipped required checks as satisfied, and
+    // the merge went through onto a `main` that `cargo check` exits 101 on.
+    //
+    // The gate only holds while its `needs:` names every job, which is a list
+    // somebody has to add to — the same shape as the drift that left this
+    // task list eight tasks behind the pipeline. So it is checked rather than
+    // trusted, along with the other ways a required context can come back
+    // `skipped` and be read as a pass.
+    "ci:gate": {
+      command: "tools/ci/gate-covers-every-job.sh",
+      // Every workflow, not just `ci.yml`: `Zizmor` is a required context and
+      // lives in `security.yml`.
+      inputs: [".github/workflows/*.yml", "tools/ci/gate-covers-every-job.sh"],
+    },
+    "ci:gate:test": {
+      command: "tools/ci/test-gate-covers-every-job.sh",
+      inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
+    },
+
     manifests: {
       command:
         "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
@@ -516,6 +552,8 @@ export default defineConfig({
         "release:bump:test",
         "release:changelog",
         "release:changelog:test",
+        "ci:gate",
+        "ci:gate:test",
         // Not `install:test`. It packages a release before installing it, and
         // packaging needs `wild-linker`, which CI installs in that job and a
         // laptop has no reason to have. A `uf run ci` that fails on a fresh
