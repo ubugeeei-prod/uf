@@ -17,7 +17,12 @@ import { describe, expect, fn, it } from "@uniflowed/test";
 import * as React from "@uniflowed/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, render, waitFor } from "@uniflowed/react-testing";
-import { cell, computed, read as readCell, write as writeCell } from "@uniflowed/cell";
+import {
+  derived as derivedCell,
+  read as readCell,
+  state as stateCell,
+  write as writeCell,
+} from "@uniflowed/cell";
 import {
   Provider,
   RESET,
@@ -1545,8 +1550,8 @@ describe("the React binding, rendered to markup", () => {
 
   it("renders a cell from the layer below through useCell", () => {
     // A route loader hands out cells, not atoms. Reading one takes no store.
-    const count = cell(3);
-    const doubled = computed(() => readCell(count) * 2);
+    const count = stateCell(3);
+    const doubled = derivedCell(() => readCell(count) * 2);
     component Doubled() {
       return <b>{useCell(doubled)}</b>;
     }

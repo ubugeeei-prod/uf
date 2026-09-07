@@ -438,6 +438,46 @@ write(draft, (current) => (current.state === "hasData" ? `${current.data}!` : "!
 write(draft, RESET);
 ```
 
+## The layer below
+
+Under the atoms is `@uniflowed/cell`, the dependency graph they are
+instantiated into. It has two constructors and no concept of a store:
+
+```js
+import { derived, read, state, subscribe, write } from "@uniflowed/cell";
+
+const count = state(0);
+const doubled = derived(() => read(count) * 2);
+
+subscribe(doubled, () => console.log(read(doubled)));
+write(count, 21); // 42
+```
+
+A cell holds its own value, and that is the whole difference. An atom is a
+*definition* that has a different value in every store; a cell *is* the value.
+So `read`, `write` and `subscribe` are spelled the same in both packages and
+take different arguments, and `useCell` is the one hook here that does not take
+a store. Reach for a cell when a value belongs to the process rather than to a
+tree — a route loader hands out cells — and reach for an atom otherwise.
+
+### Why `state` and `derived`
+
+They were `cell` and `computed` until
+[#521](https://github.com/ubugeeei-prod/uf/issues/521), and each named the
+machine rather than the value. `cell` named the node the call allocates, at the
+one place a reader is asking a different question — does this hold a value, or
+follow from one? `computed` named something that had already happened, for a
+value that is usually computed later and sometimes never. `state` and `derived`
+are the two answers to that question.
+
+Neither old spelling survives as a deprecated alias. `@uniflowed/cell` has
+never been published, so the names have never been importable and an alias
+would be a second name for one thing kept for nobody — the first release that
+carries this package carries `state` and `derived` and nothing else. The
+package keeps its own name: `Cell<T>` is what both constructors return, and
+importing from it at all means working with the graph directly, which is the
+moment "a node in a dependency graph" is the useful word.
+
 ## Coming from Jotai
 
 | Jotai | Here | Why |
@@ -464,14 +504,16 @@ Not implemented, each for a stated reason rather than for want of time:
 | `splitAtom` | Not a stub and not a few lines: the per-row atoms have to be memoised somewhere, and a `selector`'s read is handed a `get` and nothing else. Every version of it changes the store's model, which does not belong inside a utility |
 | `atomWithObservable` | The half that does not read other atoms is `atom(initial, { onMount })`. The half that does needs a mount that re-runs when a dependency changes, and `onMount` runs for the first subscriber and stops for the last — never in between |
 
-There is one thing with no Jotai analogue: `useCell` reads a
-[`@uniflowed/cell`](/reference/packages) cell directly, for the layer below this
-one.
+There is one thing with no Jotai analogue: `useCell` reads a cell from
+[the layer below](#the-layer-below) directly, with no store in the way.
 
 Every snippet on this page was run before it was published — as parts of a
-module, not as programs. Only the first fence stands on its own: the rest
-continue from it, most leave their `@uniflowed/state` import to it, and a few
-name something a real module would have declared — `base`, `storage`, `userId`,
-`fetchUser`, `first`, `second`, `user`, `rows`, `settings`, `send`, `indexedDb`
-— rather than repeating a setup that is not the point of the example. `tests/library/state.test.js` is where the behaviour above
-is pinned, with that setup written out — `uf test#library state.test.js`.
+module, not as programs. Two fences stand on their own — the first, and the one
+under *The layer below*, which is the only one that imports from another
+package. The rest continue from the first, most leave their `@uniflowed/state`
+import to it, and a few name something a real module would have declared —
+`base`, `storage`, `userId`, `fetchUser`, `first`, `second`, `user`, `rows`,
+`settings`, `send`, `indexedDb` — rather than repeating a setup that is not the
+point of the example. `tests/library/state.test.js` is where the behaviour above
+is pinned, with that setup written out — `uf test#library state.test.js`, and
+`cell.test.js` for the layer below.
