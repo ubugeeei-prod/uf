@@ -19,9 +19,11 @@
 //
 // The keyboard follows from the same distinction. `Space` toggles both. `Enter`
 // toggles a *switch*, because a switch is an operation and pressing Enter on
-// something that operates is what a reader expects — while `checkbox.js`
-// deliberately leaves `Enter` alone so that a checkbox inside a form still
-// submits it. That is the whole reason these are not one file with a flag.
+// something that operates is what a reader expects — while `checkbox.js` turns
+// `Enter` into the submission of the form the checkbox is in, which is what a
+// native `<input type="checkbox">` does with the key and what a reader
+// answering a question on their way to a submit button is asking for. That is
+// the whole reason these are not one file with a flag.
 
 "use client";
 

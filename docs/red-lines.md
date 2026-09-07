@@ -97,18 +97,38 @@ Vite's options one at a time — `host`, `port`, `strictPort`, `allowedHosts`,
 for a setting that already has one, and a second name is a thing to keep in
 sync.
 
-**Red line 3 is met for one provider.** `fmt.nonFlow.formatter` selects who
-formats the JSON, CSS and TypeScript uf's Flow printer has no business touching:
-Biome, Prettier, or nobody. uf runs the binary the project already has rather
-than linking one in — a project can upgrade its formatter without waiting for
-uf, which is the point — and translates uf's own settings into whichever
+**Red line 3 is met for two providers, and the second is the big one.**
+`builder.module` selects which builder `uf dev`, `uf build`, `uf preview` and
+`uf start` drive. Until ubugeeei-prod/uf#549, `@uniflowed/vite` was not one
+implementation of a seam — it was reached by name from four commands, which
+made Vite a dependency uf had rather than a provider uf orchestrates. The
+contract is written down in `docs/architecture.md`, `@uniflowed/vite` declares
+itself against it in its own manifest, `uf explain build` names the builder
+that will run and its version, and a second implementation with no bundler in
+it (`crates/uf_cli/tests/fixtures/paper-builder`) is exercised by the suite so
+that nothing uf asks a builder for can quietly become Vite-shaped again.
+
+What is *not* done is a builder anybody would use: Rolldown, rspack or esbuild
+behind that seam is separate, Planned work, and until one exists the seam is
+proven rather than populated. That is a smaller gap than it sounds — a red line
+about replaceability is met by the seam being real, not by uf shipping the
+replacement.
+
+The other is `fmt.nonFlow.formatter`, which selects who formats the JSON, CSS
+and TypeScript uf's Flow printer has no business touching: Biome, Prettier, or
+nobody. uf runs the binary the project already has rather than linking one in
+— a project can upgrade its formatter without waiting for uf, which is the
+point — and translates uf's own settings into whichever
 provider's vocabulary, so `fmt.indentWidth` means the same thing on both sides
 of the seam. `uf explain fmt` names the provider and the exact command.
 
 The rest are still aspirational. `LintEngine`, `FlowFormatParser`,
 `TaskRunnerEngine` and `PackageManagerResolver` are enumerations with one
 variant each: the shape of replaceability with none of the substance, which is
-what `NonFlowFormatter` was until something read it.
+what `NonFlowFormatter` was until something read it. Note that neither of the
+two seams that *are* met is an enumeration — a provider a project can replace
+has to be a name it can write, and an enum with one variant cannot become one
+without a release of uf.
 
 **Red line 5 is at risk.** `tools/release/bump-version.sh` sets every version
 in the repository to one value, and every `@uniflowed/*` package pins its

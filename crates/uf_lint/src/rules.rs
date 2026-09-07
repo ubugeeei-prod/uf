@@ -25,6 +25,10 @@ use framework::OWN_RULES;
 pub enum RuleCategory {
     /// Flow's own built-in lints plus Flow parse diagnostics.
     Flow,
+    /// Accessibility rules over JSX.
+    A11y,
+    /// HTML nesting rules: markup the browser's parser would rewrite.
+    Markup,
     /// Toolchain-wide hygiene rules.
     Uniflowed,
     /// React and Flow component/hook syntax rules.
@@ -39,6 +43,8 @@ pub enum RuleCategory {
     Package,
     /// `@uniflowed/fetch` rules.
     Fetch,
+    /// `@uniflowed/vite` rules.
+    Vite,
     /// Rules that exist to keep a known vulnerability class out of the codebase.
     Security,
 }

@@ -105,6 +105,12 @@ behaviour unless `dev.strictPort` says otherwise; it is a preference the project
 wrote down once, not an instruction you just gave. `--host HOST` binds a
 routable address, which requires a non-empty `dev.allowedHosts`.
 
+`--port 0` asks the operating system for a free one and prints the answer as the
+`local` URL, which is the whole of what it is for: a caller that has to know the
+port — a test, a script, a container that reads it back — otherwise has to pick
+one, release it, and hope nothing took it in between. That race is real, and it
+is why this exists; see [ubugeeei-prod/uf#234](https://github.com/ubugeeei-prod/uf/issues/234).
+
 `--mode MODE` runs in that mode instead of `development`, which is what chooses
 `.env.<mode>` and what the browser reads as `import.meta.env.MODE`; see
 [Environments](/guide/env).
@@ -124,6 +130,25 @@ under `guards`, and in `.uf/build/meta/uf-build-manifest.json` as
 `prerenderedUnderMiddleware` — a static host serves that file without running
 the guard, and which half of `dist/` you deploy is the one thing the build
 cannot know.
+
+Every route the build wrote **no** document for is listed too, under `answered
+by a server` and in the same manifest as `rendering.perRequest`: a page with
+parameters and no `generateStaticParams`, a page that exports `dynamic =
+"force-dynamic"`, a `_uf.route.js` handler. Those routes need a process, and
+until they were reported the only way to find out that `dist/` did not contain
+one was a 404 after the deploy.
+
+Which of the two a project will accept is
+[`app.rendering.modes`](/reference/config#renderingmodes) and
+[`build.staticBuild`](/reference/config#buildstaticbuild). A project that has
+said it deploys to a static host gets a build **error** naming the route
+instead of a `dist/` with a hole in it, and a project that has said it renders
+everything per request gets no prerendered documents at all. The summary's
+`rendering` row says which of the three happened.
+
+The builder that does all of this is [`builder.module`](/reference/config#builder),
+which is `@uniflowed/vite` unless a project names another; `uf explain build`
+prints the one that will run and its version.
 
 The build's own notes go in `.uf/build/meta/` rather than in the output
 directory: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
@@ -201,6 +226,12 @@ preview's `Host` header against it and a preview bound to a routable address
 with nothing allowed would refuse every request. `--mode MODE` chooses the
 `.env` files, `production` by default.
 
+For a project that emits no server — `build.staticBuild`, or a
+`rendering.modes` that allows only `ssg` — nothing is mounted behind the file
+server, and that is the point rather than a limitation: what a static host does
+with the output directory is exactly what this then does with it, so the
+preview is right about the deployment that is actually happening.
+
 ### uf start
 
 Serves the same build through uf's own server, with **no bundler in the
@@ -222,6 +253,12 @@ The `.env` files are read when the server starts, in `production` mode unless
 changed without rebuilding. A variable already set in the environment — which is
 how a container or a secret manager provides one — always wins over a file. See
 [Environments](/guide/env).
+
+A project whose build emits no server is **refused**, by name, rather than
+served: `build.staticBuild` says the build leaves documents behind, and a
+`uf start` that quietly served them would be uf answering requests the real
+host answers. Deploy the output directory to any static host, or check it with
+`uf preview`.
 
 ### uf build --adapter TARGET
 
@@ -498,11 +535,15 @@ Nothing is being decided on your behalf, so `--fix` applies it without asking.
 
 An **unsafe** fix is the edit the rule is asking for, spelled correctly, whose
 *correctness* rests on something the rule could not check. `export let count =
-0` → `export const count = 0` (`flow/non-const-var-export`) is the one uf has:
-the file still parses and still formats, and it throws at run time if anything
-reassigns the binding. It is not a guess at intent — a fix uf cannot spell at
-all is in neither tier — but it can change what the program does, so it waits
-to be asked for by name. Read the diff before committing it.
+0` → `export const count = 0` (`flow/non-const-var-export`) is one: the file
+still parses and still formats, and it throws at run time if anything reassigns
+the binding. `import.meta.hot.accept(…)` → `import.meta.hot?.accept(…)`
+(`vite/hot-needs-optional-chaining`) is the other, and it is the clearer
+illustration — in a dev server the two spellings are the same program, and in a
+build they are not, which is the bug being fixed and is still a change. Neither
+is a guess at intent — a fix uf cannot spell at all is in neither tier — but
+both can change what the program does, so they wait to be asked for by name.
+Read the diff before committing it.
 
 Most rules have no fix in either tier, and that is deliberate rather than
 unfinished: `flow/unclear-type` has three plausible answers, which is none, and

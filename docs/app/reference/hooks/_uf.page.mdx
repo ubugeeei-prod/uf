@@ -114,11 +114,21 @@ Three things to know about it:
   `element.scrollIntoView()` where scrolling was what you wanted.
 - **`replace` overwrites the current history entry.** Eleven tab clicks should
   not be eleven presses of the back button.
-- **It cannot see a `history.pushState` made elsewhere.** That call fires no
-  event of any kind — not `hashchange`, not `popstate` — so no listener the
-  platform offers would hear it. Writes made through `useHash` announce
-  themselves to every other component using it; a write made anywhere else is
-  invisible, and that is the platform's gap rather than the hook's choice.
+- **A `history.pushState` made elsewhere is seen where the Navigation API is.**
+  That call fires neither `hashchange` nor `popstate`, so the only listener that
+  hears it is `currententrychange` — which `useHash` subscribes to when the
+  browser has it. Chrome and Edge have had it since 102, Safari since 26.2 and
+  Firefox since 147. On an older Safari or Firefox the hook falls back to what
+  it can do without help: writes made through `useHash` announce themselves to
+  every other component using it, and a write made anywhere else — including
+  `@uniflowed/router`'s own navigation — is invisible there.
+
+The fragment is not on `RouteInfo`, and that is a decision rather than an
+omission. A `RouteInfo` is what a request resolved to; the browser strips the
+fragment before the request goes out, so a field for it would be one the server
+could never fill and the two renders would disagree about. `useHash` is the one
+place the fragment is read, and `currententrychange` is what makes that reading
+complete on the browsers that have it.
 
 ## The ones with no server answer
 

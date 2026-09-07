@@ -174,6 +174,8 @@ fn rule_id_answer(text: &str, column: usize) -> Option<Answer> {
 fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
     let category = match descriptor.category {
         RuleCategory::Flow => "Flow's own lint set",
+        RuleCategory::A11y => "accessibility rule",
+        RuleCategory::Markup => "HTML nesting rule",
         RuleCategory::Uniflowed => "uf house rule",
         RuleCategory::React => "React rule",
         RuleCategory::ReactNative => "React Native rule",
@@ -181,6 +183,7 @@ fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
         RuleCategory::Router => "router rule",
         RuleCategory::Package => "`package.json` rule",
         RuleCategory::Fetch => "`@uniflowed/fetch` rule",
+        RuleCategory::Vite => "`@uniflowed/vite` rule",
         RuleCategory::Security => "security rule",
     };
     let level = match descriptor.default_level {
