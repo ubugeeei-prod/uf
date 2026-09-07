@@ -14,6 +14,40 @@ fn npm_script_invocations_are_rejected() {
     assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 8));
 }
 
+/// ubugeeei-prod/uf#478: seventeen of this workspace's errors were a package
+/// manager's name appearing in text that is not a command.
+#[test]
+fn a_managers_name_that_does_not_head_a_command_is_not_an_invocation() {
+    for source in [
+        // A filename, which is what started it.
+        "// @flow\nexport const targets: string[] = [\"pnpm-workspace.yaml\", \"pnpm-lock.yaml\"];\n",
+        // A test's own title.
+        "// @flow\ntest(\"Node and pnpm are pinned once in package.json\", () => {});\n",
+        // A pattern that reads `packageManager` out of a manifest.
+        "// @flow\nexport const pinned = /^pnpm@(.+)$/;\n",
+        // A sentence.
+        "// @flow\nexport const note = \"we do not use yarn here\";\n",
+    ] {
+        let diagnostics = lint_js("uniflowed/no-npm-script-invocation", source);
+        assert!(diagnostics.is_empty(), "{source}\n{diagnostics:?}");
+    }
+}
+
+/// And the invocations it is actually about still fire, including the shape
+/// where the program is the whole string.
+#[test]
+fn a_managers_name_that_heads_a_command_is_still_an_invocation() {
+    for source in [
+        "// @flow\nspawn(\"pnpm install\");\n",
+        "// @flow\nspawn(\"pnpm\", [\"install\"]);\n",
+        "// @flow\nexport const command = `npx vite build`;\n",
+        "// @flow\nexport const command = \"yarn build\";\n",
+    ] {
+        let diagnostics = lint_js("uniflowed/no-npm-script-invocation", source);
+        assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:?}");
+    }
+}
+
 #[test]
 fn uf_task_invocations_are_accepted() {
     let diagnostics = lint_js(
