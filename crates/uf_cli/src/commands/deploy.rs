@@ -62,11 +62,11 @@ use std::fs;
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
-use uf_config::env_files::ProjectEnv;
 use uf_config::{DeployAdapter, DeployAnywhereConfig};
+use uf_rsc::RSC_MANIFEST_ENV;
 
 use crate::commands::compile::binary_name;
-use crate::commands::vite::{Driver, Event, Host, LogLevel, render_error, render_log};
+use crate::commands::vite::{Driver, Event, LinkContext, LogLevel, render_error, render_log};
 use crate::support::project_label;
 use crate::ui::Ui;
 
@@ -180,12 +180,16 @@ pub(crate) fn resolve(
 pub(crate) fn deploy(
     ui: &mut Ui,
     adapter: DeployAdapter,
-    host: &Host,
-    package: &Utf8Path,
-    root: &Utf8Path,
-    out_dir: &Utf8Path,
-    env: &ProjectEnv,
+    link: LinkContext<'_>,
 ) -> Result<Deployed> {
+    let LinkContext {
+        host,
+        package,
+        root,
+        out_dir,
+        env,
+        rsc_manifest,
+    } = link;
     let work = root.join(WORK_DIR);
     let directory = root.join(OUTPUT_DIR).join(adapter.as_str());
 
@@ -217,7 +221,11 @@ pub(crate) fn deploy(
             directory.to_string(),
         ],
         env,
-        &[],
+        // The same analysis `uf build`'s own Vite run had. `handler.js` is
+        // byte-for-byte identical in all four artefacts, so a `virtual:uf/actions`
+        // generated from no manifest here is every server action answering 404
+        // on every deploy target at once.
+        &[(RSC_MANIFEST_ENV, rsc_manifest.as_str())],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

@@ -149,6 +149,23 @@ export type {
 export { createMiddlewareRunner } from "./middleware.js";
 
 /**
+ * The endpoint a `"use server"` export is dialled at.
+ *
+ * Here rather than beside `@uniflowed/router/action`, which is the browser's
+ * half of the same feature and must stay reachable from a client component:
+ * this one refuses outside a request, so it imports `internal/request.js` and
+ * through it `node:async_hooks`. The two halves share `internal/action-wire.js`
+ * and nothing else, which is what keeps one grammar rather than two.
+ *
+ * `virtual:uf/server` calls it with the table `virtual:uf/actions` built from
+ * the RSC manifest, and every host runs it between the middleware and the
+ * route handlers. See `internal/action-endpoint.js` for what the endpoint
+ * refuses and why.
+ */
+export type { ActionModule, ActionRecord } from "./internal/action-endpoint.js";
+export { createActionDispatcher } from "./internal/action-endpoint.js";
+
+/**
  * What a URL turned out to be: a route to render, or a redirect to answer with.
  *
  * Tagged, and returned rather than thrown, because both entry points need the
