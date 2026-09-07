@@ -308,6 +308,20 @@ async function chunksOf(result: {
   }
 }
 
+/**
+ * `html` with the render anchor's envelope blanked out.
+ *
+ * The anchor is the one part of a document that is a fact about *this* render
+ * rather than about the route — see `RenderProvider` in
+ * `@uniflowed/hooks/render` — so two renders of one route differ there and
+ * nowhere else. Blanking the value rather than deleting the element keeps the
+ * element's position in the comparison: a document that hoisted the anchor
+ * somewhere else would still fail.
+ */
+function withoutTheAnchor(html: string): string {
+  return html.replace(/(<meta name="uf:render" content=")[^"]*"/, '$1"');
+}
+
 describe("rendering a route that suspends", () => {
   it("sends the layout and the fallback before the page resolves", async () => {
     const waited = deferred();
@@ -364,10 +378,21 @@ describe("rendering a route that suspends", () => {
   });
 
   it("gives the same document however the host takes it", async () => {
-    // A route that does not suspend, so the two renders are comparable: with a
-    // boundary in play React legitimately writes a different document depending
-    // on whether the page had already resolved when the shell was ready, and
-    // that difference is the feature rather than something to assert against.
+    // A route that does not suspend, so the three renders are comparable: with
+    // a boundary in play React legitimately writes a different document
+    // depending on whether the page had already resolved when the shell was
+    // ready, and that difference is the feature rather than something to assert
+    // against.
+    //
+    // The one thing that does differ between them is the render anchor.
+    // `routerView` renders a `RenderProvider` above every application
+    // (ubugeeei-prod/uf#559), and what it fixes is *this* render's instant and
+    // *this* render's seed — so three renders carry three envelopes, by
+    // construction rather than by accident. `withoutTheAnchor` takes that one
+    // element out and the rest is compared byte for byte; that every document
+    // has exactly one of them is asserted rather than assumed, because "the
+    // anchor is missing" and "the anchor is different" would otherwise look
+    // the same here.
     component Page() {
       return <p>the page is here</p>;
     }
@@ -381,8 +406,11 @@ describe("rendering a route that suspends", () => {
     const collected = await (await renderer.render("/", assets)).text();
     const streamed = await new Response((await renderer.render("/", assets)).stream()).text();
 
-    expect(piped.join("")).toBe(collected);
-    expect(streamed).toBe(collected);
+    for (const document of [piped.join(""), collected, streamed]) {
+      expect(document.split('name="uf:render"').length - 1).toBe(1);
+    }
+    expect(withoutTheAnchor(piped.join(""))).toBe(withoutTheAnchor(collected));
+    expect(withoutTheAnchor(streamed)).toBe(withoutTheAnchor(collected));
     expect(collected).toContain("the page is here");
   });
 });
