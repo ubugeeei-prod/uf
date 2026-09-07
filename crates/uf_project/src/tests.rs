@@ -272,6 +272,64 @@ fn collects_source_files_and_ignores_generated_dirs() {
     assert_eq!(files[0].relative_path, "app/index.js");
 }
 
+/// ubugeeei-prod/uf#483: a generated file the project already told git to
+/// ignore is not the project's to format.
+///
+/// `src/wasm/` holds wasm-bindgen glue and a `.gitignore` of `*`. `uf fmt
+/// --check` failed on a clean checkout as soon as it was built, `uf fmt`
+/// rewrote a file the next build overwrote, and the only way out was keeping
+/// uf away from the whole tree. `.gitignore` is the list the project already
+/// keeps of what is not its source, so every command reads it and they agree
+/// by construction.
+#[test]
+fn a_file_git_is_told_to_ignore_is_not_the_projects_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src/wasm")).unwrap();
+    fs::write(root.join("src/app.js"), "// @flow\n").unwrap();
+    fs::write(root.join("src/wasm/.gitignore"), "*\n").unwrap();
+    fs::write(root.join("src/wasm/glue.js"), "// generated\n").unwrap();
+    // A root-level entry too, because the two are matched by different rules.
+    fs::write(root.join(".gitignore"), "generated.js\n").unwrap();
+    fs::write(root.join("src/generated.js"), "// generated\n").unwrap();
+
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/app.js"]
+    );
+}
+
+/// And a negated entry is honoured too, because a `.gitignore` is a program
+/// rather than a list and half-reading one is worse than not reading it.
+#[test]
+fn a_gitignore_negation_puts_a_file_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join(".gitignore"), "src/*.js\n!src/kept.js\n").unwrap();
+    fs::write(root.join("src/dropped.js"), "// @flow\n").unwrap();
+    fs::write(root.join("src/kept.js"), "// @flow\n").unwrap();
+
+    let files = scan_source_files(&root, &UniflowedConfig::default())
+        .unwrap()
+        .files;
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/kept.js"]
+    );
+}
+
 /// A file that is not UTF-8 is reported, and the rest of the project is
 /// still discovered.
 ///
