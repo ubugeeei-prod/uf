@@ -62,6 +62,29 @@
 //! can change an answer is in one of the two, and anything unrecognised is
 //! treated as absent rather than believed.
 //!
+//! # Why a record holds several answers and not one
+//!
+//! A file is checked in more than one batch. `uf check` hands the checker the
+//! whole project; `uf check packages/form/watch.js` hands it the closure of one
+//! file, and an editor asking about the buffer in front of it hands over less
+//! again. The file's own text is the same in all of them, so they share a key
+//! — but they are different batches, so each computes a different dependency
+//! digest, and a record that held one digest could only ever remember the last
+//! one. The two runs then took each other's entry back, every file they both
+//! named, forever: alternating between them left the project's cache
+//! permanently cold. ubugeeei-prod/uf#406.
+//!
+//! So a record holds a *small map* from dependency digest to diagnostics
+//! instead of a single pair. Capped at [`MAX_RECORD_ANSWERS`], most recently
+//! used first, so a project checked twenty different ways does not grow twenty
+//! copies of every file — and so that flipping a dependency back and forth,
+//! on a bisect or a rebase, hits each way instead of missing both.
+//!
+//! Nothing about *believing* an answer changes: a digest still has to match
+//! exactly before its diagnostics are used, and a record that carries no answer
+//! for this batch's digest is a miss exactly as an empty one is. The cap is a
+//! bound on disk, never on correctness.
+//!
 //! # What is on disk
 //!
 //! One JSON document per file, under `.uf/cache/check/`, which `.gitignore`
@@ -81,7 +104,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
@@ -91,7 +114,11 @@ use crate::diagnostic::TypeDiagnostic;
 ///
 /// Bumped when the *document* changes shape. Not when the checker changes:
 /// that is the compiler identity in the key, which nobody has to remember.
-pub(crate) const RECORD_VERSION: u32 = 1;
+///
+/// `2` is the version that carries [`Record::answers`] instead of one digest
+/// and one diagnostic list; a `1` document is not read, so the change costs one
+/// cold run and cannot mis-read an old entry as a new one.
+pub(crate) const RECORD_VERSION: u32 = 2;
 
 /// Largest record this crate will read, in bytes.
 const MAX_RECORD_BYTES: u64 = 8 * 1024 * 1024;
@@ -99,8 +126,21 @@ const MAX_RECORD_BYTES: u64 = 8 * 1024 * 1024;
 /// Most imports one record may describe.
 const MAX_RECORD_REQUIRES: usize = 100_000;
 
-/// Most diagnostics one record may describe.
+/// Most diagnostics one record may describe, across every answer in it.
+///
+/// A total rather than a per-answer bound, so that holding several answers
+/// cannot multiply what one record costs to read.
 const MAX_RECORD_DIAGNOSTICS: usize = 100_000;
+
+/// Most answers one record keeps.
+///
+/// Four, because the batches a file is really checked in are few and named: the
+/// whole project, the closure of a directory someone is working in, the closure
+/// of the one file an editor has open, and one spare for whatever a bisect is
+/// flipping between. Past that the least recently used answer is dropped, which
+/// costs an inference the next time that batch comes back and can never cost a
+/// wrong answer.
+pub(crate) const MAX_RECORD_ANSWERS: usize = 4;
 
 /// A SHA-256 digest.
 pub(crate) type Digest = [u8; 32];
@@ -206,7 +246,24 @@ pub(crate) struct CachedRequire {
     pub(crate) declared: bool,
 }
 
-/// What one run worked out about one file.
+/// What one batch worked out about one file.
+///
+/// Everything a batch could disagree about is in here and nothing else: the
+/// digest that describes the batch, and the diagnostics that hold under it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CachedAnswer {
+    /// The dependency digest these diagnostics were computed under.
+    pub(crate) dependencies: String,
+    /// The diagnostics, exactly as the run that computed them reported them.
+    pub(crate) diagnostics: Vec<TypeDiagnostic>,
+}
+
+/// What every run that has checked one file worked out about it.
+///
+/// The fields above [`Record::answers`] are properties of the file and the
+/// compiler, both of which the key already covers, so every answer in one
+/// record agrees about them. The answers are where the batches differ.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Record {
@@ -222,10 +279,73 @@ pub(crate) struct Record {
     pub(crate) requires: Vec<CachedRequire>,
     /// Whether the file opted out of inference with `@noflow`.
     pub(crate) skipped: bool,
-    /// The dependency digest the diagnostics below were computed under.
-    pub(crate) dependencies: String,
-    /// The diagnostics, exactly as the run that computed them reported them.
-    pub(crate) diagnostics: Vec<TypeDiagnostic>,
+    /// One answer per batch this file has been checked in, most recently used
+    /// first, at most [`MAX_RECORD_ANSWERS`] of them.
+    pub(crate) answers: Vec<CachedAnswer>,
+}
+
+impl Record {
+    /// A record about `path` that knows what the file is and no answers yet.
+    pub(crate) fn new(
+        path: &str,
+        signature: Option<String>,
+        requires: Vec<CachedRequire>,
+        skipped: bool,
+    ) -> Self {
+        Self {
+            version: RECORD_VERSION,
+            path: path.to_compact_string(),
+            signature,
+            requires,
+            skipped,
+            answers: Vec::new(),
+        }
+    }
+
+    /// The diagnostics this record holds for `dependencies`, if it holds any.
+    ///
+    /// An exact digest match and nothing weaker: the digest exists to refuse an
+    /// answer computed against a different batch, and a record with four of
+    /// them refuses three of them every time.
+    pub(crate) fn answer(&self, dependencies: &str) -> Option<&[TypeDiagnostic]> {
+        self.answers
+            .iter()
+            .find(|answer| answer.dependencies == dependencies)
+            .map(|answer| answer.diagnostics.as_slice())
+    }
+
+    /// Remember `answer`, dropping any older answer for the same batch and
+    /// whatever falls off the end of [`MAX_RECORD_ANSWERS`].
+    ///
+    /// Most recently used first, so the answers a project actually alternates
+    /// between stay and a batch nobody has asked for since is what leaves.
+    pub(crate) fn remember(&mut self, answer: CachedAnswer) {
+        self.answers
+            .retain(|held| held.dependencies != answer.dependencies);
+        self.answers.insert(0, answer);
+        self.answers.truncate(MAX_RECORD_ANSWERS);
+    }
+
+    /// Move the answer for `dependencies` to the front, if there is one.
+    ///
+    /// A run answered entirely from disk writes nothing, so without this the
+    /// order in a record would record which batch *filled* it rather than which
+    /// batch keeps asking — and the batch a project checks every day would be
+    /// the one evicted by four one-off scoped runs.
+    pub(crate) fn touch(&mut self, dependencies: &str) -> bool {
+        let Some(position) = self
+            .answers
+            .iter()
+            .position(|answer| answer.dependencies == dependencies)
+        else {
+            return false;
+        };
+        if position > 0 {
+            let answer = self.answers.remove(position);
+            self.answers.insert(0, answer);
+        }
+        position > 0
+    }
 }
 
 /// Where a check keeps what it has already worked out.
@@ -285,10 +405,16 @@ impl CheckCache {
             return None;
         }
         let record: Record = serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
+        let diagnostics: usize = record
+            .answers
+            .iter()
+            .map(|answer| answer.diagnostics.len())
+            .sum();
         let sane = record.version == RECORD_VERSION
             && record.path == path
             && record.requires.len() <= MAX_RECORD_REQUIRES
-            && record.diagnostics.len() <= MAX_RECORD_DIAGNOSTICS;
+            && record.answers.len() <= MAX_RECORD_ANSWERS
+            && diagnostics <= MAX_RECORD_DIAGNOSTICS;
         sane.then_some(record)
     }
 
