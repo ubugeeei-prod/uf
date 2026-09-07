@@ -40,7 +40,10 @@ export const metadata: Metadata = {
   description:
     "The best React experience for Flow: run, build, test, format and lint from one command, without Babel or plugin assembly.",
   metadataBase: "https://docs.uniflowed.dev",
-  openGraph: { images: ["/brand/uf.png"] },
+  // No `title` or `description` here: they fall back to the document's, which
+  // is what a page that already said what it is called meant. `siteName` is
+  // the one a card cannot derive.
+  openGraph: { siteName: "uf", images: ["/brand/uf.png"] },
   twitter: { card: "summary_large_image", images: ["/brand/uf.png"] },
 };
 

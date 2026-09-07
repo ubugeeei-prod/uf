@@ -167,8 +167,30 @@ export type Metadata = {
    */
   readonly canonical?: string,
   readonly openGraph?: {
+    /**
+     * The title a share card shows.
+     *
+     * Falls back to `title`, because a page that has said what it is called
+     * has said what its card is called — and a site made to write it twice
+     * writes it twice once and then lets them drift.
+     */
     readonly title?: string,
+    /** The description a share card shows. Falls back to `description`. */
     readonly description?: string,
+    /**
+     * The Open Graph object type. `website` unless a page says otherwise.
+     *
+     * Defaulted rather than omitted because `og:type` is one of the four
+     * properties Open Graph requires, and a document without it is not an
+     * Open Graph document at all — so leaving it to every project to remember
+     * is leaving most of them without one.
+     */
+    readonly type?: string,
+    /**
+     * The name of the site the page belongs to, which a card prints above the
+     * title. Declared once on the root layout.
+     */
+    readonly siteName?: string,
     readonly images?: $ReadOnlyArray<string>,
   },
   readonly twitter?: {
@@ -1610,6 +1632,19 @@ function absoluteUrl(value: string, base: void | string): string {
 component Head(metadata: Metadata) {
   const { title, description, metadataBase, canonical, openGraph, twitter } = metadata;
   const href = canonical != null ? absoluteUrl(canonical, metadataBase) : null;
+  // A page that said what it is called has said what its card is called. Every
+  // site that had to write both wrote the same string twice, and the second
+  // one is the one that goes stale — the docs site shipped thirty pages whose
+  // share cards carried an image and no title at all.
+  //
+  // `??`, not `||`: an empty string is a decision, and a page that deliberately
+  // has no card title should get none rather than the document's.
+  const cardTitle = openGraph?.title ?? title;
+  const cardDescription = openGraph?.description ?? description;
+  // `og:type` is one of the four properties Open Graph requires. A default is
+  // the difference between a document with a card and a document without one,
+  // and `website` is right for everything that is not an article or a video.
+  const cardType = openGraph?.type ?? "website";
   return (
     <>
       {title != null ? <title>{title}</title> : null}
@@ -1619,9 +1654,17 @@ component Head(metadata: Metadata) {
           words, so one declaration answers both rather than asking a project
           to write the same URL twice and keep them in step. */}
       {href != null ? <meta property="og:url" content={href} /> : null}
-      {openGraph?.title != null ? <meta property="og:title" content={openGraph.title} /> : null}
-      {openGraph?.description != null ? (
-        <meta property="og:description" content={openGraph.description} />
+      {cardTitle != null ? <meta property="og:title" content={cardTitle} /> : null}
+      {cardDescription != null ? (
+        <meta property="og:description" content={cardDescription} />
+      ) : null}
+      {/* Only alongside something else. A document with `og:type` and nothing
+          more is not a card; it is one meta tag saying the page is a page. */}
+      {cardTitle != null || cardDescription != null || openGraph?.images != null ? (
+        <meta property="og:type" content={cardType} />
+      ) : null}
+      {openGraph?.siteName != null ? (
+        <meta property="og:site_name" content={openGraph.siteName} />
       ) : null}
       {openGraph?.images != null
         ? openGraph.images.map((image) => (
