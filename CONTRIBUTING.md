@@ -99,7 +99,16 @@ uf run fmt:check        # uf's own formatter, over this repository's Flow
 uf run test:lib         # uf test#library, the @uniflowed/* suite
 uf run docs:build       # uf build#docs
 uf run docs:dev         # uf dev#docs, to look at the site while editing it
+uf run docs:links       # every link in what the build wrote resolves
+uf run security:scan    # the threat model, the build's output, and `uf new`
 ```
+
+`docs:links` reads `docs/dist/docs`, so `docs:build` has to have run — or run
+`uf run docs:verify`, which is the two of them and the security scan over one
+build, and is what the `Docs build` job runs. It touches no network:
+`uf run docs:links:external` is the pass that does, it is not in `ci`, and a
+schedule runs it, because a check that fails when somebody else's host is slow
+is a check people learn to re-run until it goes green.
 
 `rust-toolchain.toml` pins `nightly-2026-08-01`, and every command above uses
 it. The pin is a requirement, not a preference: `uf` parses and type-checks Flow
