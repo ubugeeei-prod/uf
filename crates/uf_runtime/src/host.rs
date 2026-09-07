@@ -127,8 +127,9 @@ pub const HOSTS: &[HostSupport] = &[
         verified_by: Some("crates/uf_cli/tests/deno_host.rs"),
         missing: Some(
             "a Flow loader. Deno has no module hook to install one in, so this is an \
-             ahead-of-time transform and an import map rather than a `register.js` — and on the \
-             Deno line uf has measured, that map is what a bare specifier needs as well",
+             ahead-of-time transform and an import map rather than a `register.js` — a current \
+             Deno resolves `@uniflowed/test` from `node_modules` and then cannot parse it, \
+             because the package is Flow",
         ),
         tracking_issue: Some(246),
     },

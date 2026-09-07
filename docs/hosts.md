@@ -73,25 +73,27 @@ and it is not a small piece of work, because Deno's module system has no hook to
 install one in. Node has `register()` and Bun has `Bun.plugin`; Deno has
 neither, so the transform has to happen *before* the runtime sees the module —
 an ahead-of-time pass writing transformed output, plus an import map pointing
-the original specifiers at it.
+the original specifiers at it. Which is nearly the whole of the work: a current
+Deno already finds `@uniflowed/*` in `node_modules` on its own, and then stops
+at the first line of Flow it reads.
 
-That import map is needed twice over. `crates/uf_cli/tests/deno_host.rs` starts
-a real Deno and records exactly where the road stops. **Measured against Deno
-1.31**, which is the line ubugeeei-prod/uf#246 records and the one CI installs:
+`crates/uf_cli/tests/deno_host.rs` starts a real Deno and records exactly where
+the road stops:
 
-| What | Deno | Version-sensitive |
-| --- | --- | --- |
-| `node:` built-ins — `child_process`, `fs`, `path`, `readline` | work, so the transform client is not the obstacle | no |
-| a bare specifier resolved from `node_modules` | **none**: `import "@uniflowed/test"` is `Relative import path … not prefixed with /` | yes |
-| a global `process` | **absent**; `node:process` has the same object, and `packages/test/worker.js` uses the global on five lines | yes |
-| Flow syntax with no loader | `SyntaxError`, against the line you wrote | no |
+| What | Deno |
+| --- | --- |
+| `node:` built-ins — `child_process`, `fs`, `path`, `readline` | work, so the transform client is not the obstacle |
+| `import "@uniflowed/test"` | **fails**. Deno 1.31 resolves no bare specifier from `node_modules` at all; a current Deno 1.x resolves it, reaches `packages/test/index.js` and cannot parse it, because the package is Flow |
+| a global `process` | **absent** as of Deno 1.46; `node:process` has the same object, and `packages/test/worker.js` uses the global on five lines |
+| Flow syntax with no loader | `SyntaxError`, against the line you wrote |
 
-The last column is why the two middle rows gate themselves on the major version
-and say so when they step aside: a later Deno may have closed either, and a test
-asserting their absence on a version nobody ran it against would be the
-unchecked claim this page exists to end. Raising the line uf measures against is
-the first piece of the Deno work rather than a maintenance chore — and the Flow
-loader is untouched by it either way.
+The second row is the useful one, and it is why the test asserts the
+*disjunction* rather than either half: the resolution problem has already gone
+on a current Deno, and what is left is the Flow loader alone. The `process` row
+is still a fact about a version, so its test gates itself on the major version
+and says so when it steps aside — asserting a version's behaviour on a version
+nobody ran the test against would be the unchecked claim this page exists to
+end.
 
 So `uf test` on Deno refuses to start a worker and says which of those it is
 waiting for, rather than letting a syntax error in somebody's own test file be

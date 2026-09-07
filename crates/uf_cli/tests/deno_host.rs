@@ -15,8 +15,9 @@
 //!
 //! * Deno runs `node:` built-ins, so the transform service's own imports are not
 //!   the obstacle;
-//! * it resolves no bare specifier from `node_modules`, so
-//!   `import { it } from "@uniflowed/test"` cannot link there;
+//! * `import "@uniflowed/test"` does not load — on an older line because no
+//!   bare specifier resolves from `node_modules`, on a current one because it
+//!   resolves and the package it finds is Flow;
 //! * it has no global `process`, which `packages/test/worker.js` uses on five
 //!   lines; and
 //! * it rejects Flow syntax outright, which is what "no loader" means when you
@@ -73,15 +74,16 @@ fn deno_major() -> Option<u32> {
         .ok()
 }
 
-/// Whether this Deno is the line the two measurements below were taken against.
+/// Whether this Deno is the line the one measurement below was taken against.
 ///
-/// Two of the obstacles in this file are facts about a *version*: a global
-/// `process` and `node_modules` resolution are things a later Deno may have
-/// added, and ubugeeei-prod/uf#246 records them against Deno 1.31. Asserting
-/// their absence on a version nobody has run this against would be exactly the
-/// unchecked claim `uf_runtime::HOSTS` exists to end — so those two say which
-/// line they measured and step aside on any other, loudly. Everything else here
-/// holds on every Deno and is not gated.
+/// A global `process` is a fact about a *version*: a later Deno may have added
+/// one, and ubugeeei-prod/uf#246 records its absence against Deno 1.31.
+/// Asserting that on a version nobody has run this against would be exactly the
+/// unchecked claim `uf_runtime::HOSTS` exists to end — so it says which line it
+/// measured and steps aside on any other, loudly. Everything else here holds on
+/// every Deno and is not gated: the bare-specifier test asserts the disjunction
+/// rather than one version's half of it, which is what a version-independent
+/// measurement of the same obstacle looks like.
 fn deno_is_the_measured_line() -> bool {
     match deno_major() {
         Some(1) => true,
@@ -128,17 +130,25 @@ fn deno_loads_the_node_builtins_the_transform_client_imports() {
     );
 }
 
-/// The first obstacle: no bare specifier resolves.
+/// The first obstacle, whichever of its two forms this Deno has.
 ///
-/// Deno 1.x resolves a bare specifier through an import map or an `npm:`
-/// specifier and through nothing else — a `node_modules` directory beside the
-/// module is not a resolution root, with or without `--node-modules-dir`. So
-/// even a *plain JavaScript* test file cannot reach `@uniflowed/test` there,
-/// which is why the Deno row's "what it needs" names an import map beside the
-/// ahead-of-time transform: one artefact answers both.
+/// `import "@uniflowed/test"` cannot work on Deno, and *why* depends on the
+/// version — which is the whole reason this is a measurement rather than a
+/// sentence. Deno 1.31, the line ubugeeei-prod/uf#246 records, resolves no bare
+/// specifier from `node_modules` at all and stops at
+/// `Relative import path …`. A current Deno 1.x resolves it, reaches
+/// `packages/test/index.js`, and stops at `export type { … }` — because every
+/// `@uniflowed/*` package ships Flow and there is no loader.
+///
+/// Both are "a uf project does not load here", and the second is the more
+/// useful finding: the resolution half of the problem has already gone, and
+/// what is left is the Flow loader alone. Asserting only the first would have
+/// made this test a statement about one Deno wearing the name of Deno, which is
+/// the class of claim `uf_runtime::HOSTS` exists to end — so it asserts the
+/// disjunction, and names which half it saw when it fails.
 #[test]
-fn deno_resolves_no_bare_specifier_from_node_modules() {
-    if !deno_ready() || !deno_is_the_measured_line() {
+fn a_uf_package_cannot_be_imported_on_deno() {
+    if !deno_ready() {
         return;
     }
     let project = Project::new(&[("bare.js", "import \"@uniflowed/test\";\n")]);
@@ -148,10 +158,23 @@ fn deno_resolves_no_bare_specifier_from_node_modules() {
     let run = deno(&project, &[String::from("-A")], "bare.js");
 
     assert!(!run.success, "stdout:\n{}", run.stdout);
+    let unresolved = run.stderr.contains("Relative import path");
+    // Deno reports a Flow annotation, a type export or a `component` as a parse
+    // error against the file it found.
+    let unparsed = run.stderr.contains("could not be parsed");
     assert!(
-        run.stderr.contains("Relative import path"),
-        "stderr:\n{}",
+        unresolved || unparsed,
+        "a uf package must not load on Deno, and this failed for some third \
+         reason\nstderr:\n{}",
         run.stderr
+    );
+    eprintln!(
+        "deno stops at {}",
+        if unresolved {
+            "resolution: no bare specifier from node_modules"
+        } else {
+            "parsing: the package is Flow and there is no loader"
+        }
     );
 }
 
