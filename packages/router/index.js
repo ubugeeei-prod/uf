@@ -19,6 +19,7 @@ export type {
   AppProps,
   ErrorBoundary,
   ErrorModule,
+  JsonLd,
   LayoutModule,
   LinkPrefetch,
   LoaderArgs,
@@ -28,6 +29,7 @@ export type {
   NotFoundBoundary,
   PageModule,
   ResolvedRoute,
+  Robots,
   RouteError,
   RouteInfo,
   RouteMatch,
@@ -65,6 +67,7 @@ export {
   useLoaderData,
   useRoute,
   useRouter,
+  useSeo,
 } from "./internal/runtime.js";
 
 /** Props a page receives. */

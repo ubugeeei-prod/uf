@@ -367,6 +367,27 @@ pub struct NonFlowFormatConfig {
     /// requirement that is not met is an error. See ubugeeei-prod/uf#441.
     #[serde(skip)]
     pub chosen_by_project: bool,
+    /// Extra arguments, passed to the formatter verbatim.
+    ///
+    /// # Why this is a list of strings rather than a shape
+    ///
+    /// Red line 2 forbids uf mirroring an upstream tool's configuration
+    /// schema: every option uf re-declares is an option that needs a uf
+    /// release before anybody can use it. Red line 8 requires the opposite
+    /// direction — if the formatter can do it, a uf project can do it, without
+    /// waiting for uf.
+    ///
+    /// A list of arguments satisfies both, because uf declares nothing about
+    /// what is in it. A Tailwind 4 project writes
+    /// `["--css-parse-tailwind-directives=true"]` and needs no second
+    /// configuration file; the same field reaches every option biome or
+    /// prettier has now or adds later, and uf never has to know their names.
+    ///
+    /// Appended after uf's own arguments, so a project that wants a different
+    /// line width than `fmt.lineWidth` can say so — defaults are conveniences
+    /// (red line 9). The one thing it may not do is turn a check into a write:
+    /// see [`crate::forbidden_formatter_argument`].
+    pub arguments: Vec<CompactString>,
 }
 
 impl Default for NonFlowFormatConfig {
@@ -374,8 +395,29 @@ impl Default for NonFlowFormatConfig {
         Self {
             formatter: NonFlowFormatter::Biome,
             chosen_by_project: false,
+            arguments: Vec::new(),
         }
     }
+}
+
+/// The arguments a project may not put in `fmt.nonFlow.arguments`.
+///
+/// `uf fmt --check` is what runs in CI, and its whole contract is that it
+/// changes nothing. An argument that makes the formatter write anyway would
+/// turn a green check into a working tree nobody asked to have rewritten —
+/// silently, in a job whose output nobody reads when it passes.
+///
+/// Nothing else is refused. A project that passes a nonsensical option gets
+/// the formatter's own error, which is a better message than one uf could
+/// write about a flag it has never heard of.
+#[must_use]
+pub fn forbidden_formatter_argument(argument: &str) -> bool {
+    // `--write=false` is not a write, but it is also not something anybody
+    // types; the flag is matched on its name so that `--write` and
+    // `--write=true` are both caught, and a project meaning the third thing
+    // can say it in a way that does not read as the first.
+    let name = argument.split('=').next().unwrap_or(argument);
+    matches!(name, "--write" | "-w" | "--fix" | "--unsafe" | "--check")
 }
 
 /// Read by hand rather than derived, because the derive cannot tell "the
@@ -394,12 +436,25 @@ impl<'de> Deserialize<'de> for NonFlowFormatConfig {
         struct Fields {
             #[serde(default)]
             formatter: Option<NonFlowFormatter>,
+            #[serde(default)]
+            arguments: Vec<CompactString>,
         }
 
         let fields = Fields::deserialize(deserializer)?;
+        if let Some(argument) = fields
+            .arguments
+            .iter()
+            .find(|argument| forbidden_formatter_argument(argument))
+        {
+            return Err(serde::de::Error::custom(format!(
+                "fmt.nonFlow.arguments may not contain `{argument}`: it decides whether \
+                 `uf fmt --check` writes, and that is the command's own contract"
+            )));
+        }
         Ok(Self {
             formatter: fields.formatter.unwrap_or_default(),
             chosen_by_project: fields.formatter.is_some(),
+            arguments: fields.arguments,
         })
     }
 }

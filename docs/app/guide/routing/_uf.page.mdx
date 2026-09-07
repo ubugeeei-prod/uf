@@ -96,6 +96,11 @@ layouts already follow.
 `notFound()` thrown from a loader lands on the same boundary — the nearest one
 above the path being rendered, not the root one.
 
+A project that declares none anywhere still gets a usable 404: uf's own page
+renders inside the router root's layouts, so the masthead and the stylesheet are
+there and the reader can leave. Writing `app/_uf.not-found.js` replaces the page;
+it is not what makes the site appear around it.
+
 ## When a page throws
 
 `_uf.error.js` is the other boundary, resolved by the same nearest-ancestor
@@ -134,10 +139,10 @@ loader's, it re-runs the resolution; when it was the browser rendering, it
 mounts the page again.
 
 A project that declares no `_uf.error.js` still does not lose the document: uf
-renders its own page inside the outermost boundary. What it does not do is show
-the exception — that text is written for whoever deployed the application, so
-it goes to `uf dev`'s terminal instead, and `uf build` fails the route it
-belongs to.
+renders its own page, inside the router root's layouts for the same reason the
+404 is. What it does not do is show the exception — that text is written for
+whoever deployed the application, so it goes to `uf dev`'s terminal instead, and
+`uf build` fails the route it belongs to.
 
 A route that throws during `uf build` fails *that route*: the build reports the
 URL, writes every route that did render, and then exits non-zero. It does not
@@ -185,13 +190,30 @@ A segment with no `_uf.loading.js` gets no boundary at all. uf does not insert a
 invisible one: a page that suspends with nothing above it fails the way React
 says it should, rather than rendering as a blank document.
 
-What suspends today is a page that waits **while rendering** — `use()` on a
-promise, or a component that suspends. A page's `loader` is still awaited before
-the render begins, so a slow loader shows its fallback for no time; deferring it
-is [#373](https://github.com/ubugeeei-prod/uf/issues/373). `uf dev` also
-collects the document rather than streaming it, because Vite's HTML transform
-takes a whole one — [#374](https://github.com/ubugeeei-prod/uf/issues/374).
-`uf start`, `uf preview` and the deploy adapters stream.
+A page's `loader` streams too. When a route declares a `_uf.loading.js`, the
+server hands the page the loader's promise rather than its value and unwraps it
+inside the innermost boundary — so the layouts and the fallback go out while the
+loader is still running, which is what the fallback beside a slow loader was
+always meant to be for.
+
+Two rules come with that, and both are worth knowing rather than discovering:
+
+- **A route that generates metadata from its data waits.** `generateMetadata`
+  reads the loader's answer, metadata goes in the head, and the head is written
+  before the body. A page that wants to stream keeps its metadata static.
+- **A deferred loader has no say in the response.** The status line goes out
+  with the shell, so `notFound()` and `redirect()` thrown from a loader that was
+  deferred arrive at the error boundary rather than at the 404 page, and the
+  document is a 200. Nothing can undo bytes that have already been sent. A route
+  whose loader decides the response should not declare a `_uf.loading.js`.
+
+`uf build` never defers: a file being written to disk has no first paint to
+improve, so `prerender` resolves the loader and writes the finished page.
+
+`uf dev` also collects the document rather than streaming it, because Vite's
+HTML transform takes a whole one —
+[#374](https://github.com/ubugeeei-prod/uf/issues/374). `uf start`, `uf preview`
+and the deploy adapters stream.
 
 What none of this covers is a route handler. `_uf.route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting
@@ -241,6 +263,13 @@ why it works for a crawler that runs no JavaScript — unlike `useHead` from
 `@uniflowed/web`, which is a browser-only escape hatch for a component that is
 already on screen.
 
+The tags land in `<head>` whether or not the application renders its own
+`<html>`. React hoists them into a document it rendered itself; with uf's shell
+there is no such document, so uf lifts them into the head it wrote — which is
+the same head, in the same place, for both shapes. It used to be neither: on the
+shell every `og:` tag and the canonical link stayed in the body, where Google
+ignores a canonical.
+
 `metadataBase` is the site's origin, and it is what makes the rest correct.
 Open Graph and Twitter both require **absolute** image URLs, and a route module
 cannot know the host it will be served from — so `openGraph.images:
@@ -264,14 +293,113 @@ a search engine that the whole section is one page.
 by a different reader — `uf build`, in Rust, writing `<loc>` into
 `sitemap.xml`. A site that has both should keep them the same.
 
+### The rest of what a page says about itself
+
+`robots` is how a page asks not to be indexed. A page that declares nothing
+gets no `<meta name="robots">` at all, because "index, follow" is what a
+document without one already means — the tag exists to say something else:
+
+```js
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+```
+
+It is usually a **layout's** field rather than a page's. A preview tree, a
+staging section or an account area is `index: false` for everything under it,
+and saying so once is the only version of that which stays true when somebody
+adds a page. `maxSnippet` and `maxImagePreview` are the other two directives,
+and they change what a result looks like rather than whether there is one.
+
+`alternates.languages` maps a language tag to that translation's URL. The set
+has to be reciprocal — every page in it lists every other one *and itself*,
+which is what makes a search engine read them as translations rather than as
+duplicates — so it is normally the same map on every page of the set, declared
+on the layout they share. `"x-default"` is a tag like any other, and names
+what a reader with no matching language should be given:
+
+```js
+export const metadata: Metadata = {
+  alternates: { languages: { en: "/guide", ja: "/ja/guide", "x-default": "/guide" } },
+};
+```
+
+`pagination` is the two ends of a sequence, as `<link rel="prev">` and
+`<link rel="next">`. Keep each page's `canonical` pointing at **itself**:
+a paginated list whose every page is canonical to page one has told a search
+engine that pages two onwards are duplicates, and everything only linked from
+them stops being reachable.
+
+`jsonLd` is structured data, one `<script type="application/ld+json">` per
+entry. It is the one field that **adds** to what an outer layout declared
+instead of replacing it, because an `Organization` on the root layout and an
+`Article` on the page are two statements about one page rather than two
+answers to one question:
+
+```js
+export const metadata: Metadata = {
+  jsonLd: [
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Install uf",
+    },
+  ],
+};
+```
+
+The scripts render with the route rather than in `<head>`: React hoists a
+`<title>`, a `<meta>` and a `<link>`, and not a script whose body it has to
+carry. JSON-LD is read from anywhere in the document, so this costs nothing —
+it is worth knowing when reading the markup.
+
+### Metadata a component computes
+
+`metadata` and `generateMetadata` are declarations by a route module, and some
+of what a page has to say is decided further in. A pager knows which page of
+the list it is drawing; the route that renders it does not. `useSeo` is the
+same vocabulary from inside a render:
+
+```js
+import { useSeo } from "@uniflowed/router";
+
+export component Pager(page: number, of: number) {
+  const seo = useSeo({
+    pagination: {
+      prev: page > 1 ? `/posts?page=${page - 1}` : undefined,
+      next: page < of ? `/posts?page=${page + 1}` : undefined,
+    },
+  });
+
+  return <nav className="pager">{seo}…</nav>;
+}
+```
+
+It returns elements, and the caller renders them. That is not a stylistic
+choice: a hook that *wrote* to the head would have to do it in an effect, an
+effect does not run on a server, and the page would end up with tags that are
+right in a browser and missing from every crawler. Rendering is what puts a tag
+in a server-rendered head. `useHead` from `@uniflowed/web` is the browser-only
+escape hatch and says so about itself.
+
+The argument is a `Metadata`, the same type a route exports, so there is one
+vocabulary rather than two. What the hook adds over writing the tags by hand is
+`metadataBase` — the root layout declared it, a component three levels down
+cannot know it, and the relative URLs written here are resolved against it.
+
 | Field | Emits |
 | --- | --- |
 | `title` | `<title>` |
 | `description` | `<meta name="description">` |
 | `metadataBase` | nothing on its own; resolves the URLs below |
 | `canonical` | `<link rel="canonical">` and `og:url` |
-| `openGraph.title`, `.description`, `.images` | `og:title`, `og:description`, one `og:image` each |
-| `twitter.card`, `.site`, `.creator`, `.title`, `.description`, `.images` | `twitter:*`, under `name` rather than `property` |
+| `robots.index`, `.follow`, `.maxSnippet`, `.maxImagePreview` | one `<meta name="robots">`, only for what is declared |
+| `alternates.languages` | one `<link rel="alternate" hreflang>` each |
+| `pagination.prev`, `.next` | `<link rel="prev">`, `<link rel="next">` |
+| `jsonLd` | one `<script type="application/ld+json">` each; accumulates down the tree |
+| `openGraph.title`, `.description` | `og:title`, `og:description`, falling back to `title` and `description` |
+| `openGraph.type`, `.siteName`, `.images`, `.imageAlt` | `og:type` (`website` by default), `og:site_name`, one `og:image` each, `og:image:alt` |
+| `twitter.card`, `.site`, `.creator`, `.title`, `.description`, `.images`, `.imageAlt` | `twitter:*`, under `name` rather than `property` |
 
 ## Navigating
 
@@ -296,6 +424,47 @@ renders would have done on its own. Nothing about writing the link changes,
 and the page it lands on is the same page; the difference is a full load
 rather than a transition. `useRouter().push()` and the back button do the same
 thing for the same reason.
+
+### View transitions
+
+Every client navigation goes through `document.startViewTransition` where the
+browser has one. There is nothing to switch on: without a stylesheet the
+browser's default cross-fade is what a reader gets, and a browser that has no
+such method navigates exactly the way it did before.
+
+A route can name its transition, so one stylesheet can animate an arrival in
+the manual differently from an arrival anywhere else. The name reaches CSS as
+an attribute on the document element, set for as long as the transition runs:
+
+```js
+// app/guide/_uf.layout.js
+export const viewTransition = "manual";
+```
+
+```css
+html[data-uf-view-transition="manual"]::view-transition-old(root) {
+  animation: 120ms ease-out both fade-out;
+}
+```
+
+A page's own name wins over its layout's, which is the nearest-declaration rule
+`metadata` already follows. A layout is usually the right place: a section that
+animates one way throughout should say so once.
+
+**`prefers-reduced-motion` is honoured by the router**, not by the application.
+A reader who asked their system for less motion gets the cut they asked for,
+and there is no way for an application to override it — an application able to
+would eventually.
+
+`transition={false}` on a `Link`, or `{ transition: false }` on
+`useRouter().push()`, makes one navigation a cut. It is for a navigation that
+is a change of state rather than a change of place: a tab within a page, a
+filter written into the query string. `router.refresh()` never transitions,
+because it resolves the same URL again and a transition there would cross-fade
+a page into itself.
+
+None of this reaches the server. A transition is a client-only concern, and a
+prerendered document says nothing about one.
 
 ## Middleware
 
@@ -384,10 +553,11 @@ is the one thing to know before designing an application around handlers, and
 it is why `uf preview` exists: it is where you find out that what answered in
 development also answers from the build.
 
-One export per method: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
-`OPTIONS`. Anything else a module exports is a helper, not a method — a
-dispatcher that treated every export as one would answer requests with your
-utility functions.
+One export per method: `GET`, `HEAD`, `QUERY`, `POST`, `PUT`, `PATCH`,
+`DELETE`, `OPTIONS`. Anything else a module exports is a helper, not a method —
+a dispatcher that treated every export as one would answer requests with your
+utility functions, and one that treated every upper-case export as one would
+answer a `PURGE` with your constant.
 
 Three things the dispatcher does so every handler does not have to:
 
@@ -404,6 +574,152 @@ a bug, and turning it into a 500 here would hide it from the host's own error
 reporting — and leave you unable to tell a 500 you meant from one you caused.
 
 A handler is not prerendered and its module never reaches the browser.
+
+## QUERY: the GET whose parameters did not fit in a URL
+
+`QUERY` is a safe, idempotent method that carries a body. It is what a search
+with a page of filters has been faking with a `POST` for twenty years, and the
+difference is not cosmetic: a `POST` is not safe, so nothing may retry it,
+prefetch it or cache it, and every layer between the browser and the handler
+has to treat a search as a mutation.
+
+```js
+// app/api/search/_uf.route.js
+// @flow
+export async function QUERY(request: Request): Promise<Response> {
+  const filters = await request.json();
+  return Response.json(await search(filters));
+}
+```
+
+The client helper sends one:
+
+```js
+import { createFetch } from "@uniflowed/fetch";
+
+const api = createFetch({ baseURL: "/api" });
+const hits = await api.request("/search", { method: "QUERY", body: { filters } });
+```
+
+**What refuses it is the part worth knowing.** Nothing in uf does: the
+dispatcher matches `QUERY` like any other verb, and `@uniflowed/fetch` retries
+it like the other safe methods. What refuses it is the path in between.
+
+- **A proxy, CDN or firewall with a list of verbs** answers `405` or `501`
+  itself, so the request never arrives and the failure looks exactly like a
+  route that does not exist. `@uniflowed/fetch` says so in the error rather
+  than passing the status through, because that is the difference between an
+  afternoon and a status code.
+- **A cache in front of the application** must not store a `QUERY`: the method
+  is cacheable in principle, and the key includes the body, which almost
+  nothing implements. uf's own route cache is `GET`-only and stays that way.
+- **`<form>`, `XMLHttpRequest` and `EventSource`** cannot send it. `fetch` can,
+  in every browser and every runtime uf targets.
+
+There is no method-override header, and there will not be.
+`X-HTTP-Method-Override: QUERY` on a `POST` is the usual workaround and it is
+the shape of CVE-2025-29927 — an inbound header steering dispatch — which
+`docs/security.md` forbids. A route that has to work through infrastructure you
+do not control exports `POST` as well, in its own file, where a reader can see
+it.
+
+## Streams, sockets, and work that outlives the request
+
+A handler returns a `Response`, and a `Response` body may be a stream — so
+server-sent events need nothing new from the router:
+
+```js
+// app/api/progress/_uf.route.js
+// @flow
+import { eventStream } from "@uniflowed/server/events";
+
+export function GET(): Response {
+  return eventStream((sink) => {
+    const timer = setInterval(() => sink.send({ event: "tick", data: stateOfPlay() }), 1000);
+    return () => clearInterval(timer);
+  });
+}
+```
+
+`eventStream` writes the format, sets the four headers that stop a proxy
+buffering the whole stream until it ends, sends a heartbeat so an idle
+connection is not closed by something in the middle, and disconnects a reader
+that falls far enough behind rather than holding it in memory.
+`useEventSource` from `@uniflowed/hooks/events` is the other end: it reports
+the connection as state, and reopens the one case the browser's own
+reconnection gives up on — a response that was not an event stream, which is
+what a deployment restarting looks like.
+
+A WebSocket is a `GET` with `Upgrade: websocket` on it, so it is a handler too:
+
+```js
+// app/api/room/[id]/_uf.route.js
+// @flow
+import { upgradeWebSocket } from "@uniflowed/server/socket";
+
+export function GET(request: Request, context: HandlerContext): Response {
+  const { response, socket } = upgradeWebSocket(request);
+  socket.addEventListener("message", (event) => socket.send(String(event.data)));
+  return response;
+}
+```
+
+**uf defines the upgrade and your deployment supplies it.** Deno, Bun and
+Cloudflare each spell taking a socket differently and Node has no server-side
+`WebSocket` at all, so what uf owns is the shape they reduce to — a function
+from a `Request` to `{ response, socket }` — passed as `websocket` where the
+host is built. A built-in that wrapped one library would make uf the thing that
+decides which WebSocket library your project has, which is the failure
+`docs/red-lines.md` exists to prevent.
+
+And work that should outlive the response is a job:
+
+```js
+// @flow
+import { defineJob, enqueue } from "@uniflowed/server/queue";
+
+export const sendWelcome = defineJob({
+  name: "send-welcome",
+  retry: { attempts: 5 },
+  run: async (payload) => mail(payload.to),
+});
+
+export async function POST(request: Request): Promise<Response> {
+  const user = await create(await request.json());
+  await enqueue(sendWelcome, { to: user.email });
+  return Response.json(user, { status: 201 });
+}
+```
+
+**uf provides the job, the payload boundary, the retry policy and its backoff,
+and one backend that runs in this process.** Your deployment provides the two
+things no configuration flag can: storage that survives a restart, and a
+consumer — a process that is still there when no request is being answered.
+`memoryQueue` is an array, says so as `durable: false`, and is right for one
+long-lived process whose work can be lost. Delivery is at least once, so a job
+that charges a card needs its own idempotency key.
+
+A queue is not `after()`. `after()` runs a callback in this process once the
+response has gone, with no retry and no record it ever existed, which is right
+for a metric and wrong for anything a user would notice missing.
+
+### What each target can do
+
+The two questions that decide all three: does a response body reach the client
+as it is produced, and is the process still there once it has.
+
+| Target | Streams | Outlives the response | Event streams | WebSockets | In-process queue |
+| --- | --- | --- | --- | --- | --- |
+| `uf dev`, `uf preview`, `uf start` | yes | yes | yes | with an upgrader | yes |
+| `node`, `container`, `--compile` | yes | yes | yes | with an upgrader | yes |
+| `edge` | yes | no | yes | with an upgrader | **refused** |
+| `serverless` | no | no | **refused** | **refused** | **refused** |
+
+Refused means refused where the host is wired, before a single connection is
+accepted and dropped — a serverless deployment handed a WebSocket upgrader
+fails to start rather than accepting handshakes all day and delivering nothing.
+A durable queue is accepted everywhere, because pushing to one is not draining
+it.
 
 ## Types for routes
 

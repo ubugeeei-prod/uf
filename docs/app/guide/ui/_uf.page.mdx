@@ -284,6 +284,24 @@ highlight when the option it named is filtered away"*. `aria-activedescendant`
 is removed the moment the option it names leaves the document, so the attribute
 never points at an element that is not there.
 
+Options can be grouped, and a group is named by its own heading:
+
+```js
+<Combobox.List>
+  <Combobox.Group>
+    <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
+    <Combobox.Option value="FR">France</Combobox.Option>
+  </Combobox.Group>
+</Combobox.List>
+```
+
+`Combobox.Label` is the field's label and `Combobox.GroupLabel` is a group's,
+which is why there are two of them. The arrow keys cross a group boundary
+without stopping on the heading, and `Combobox.Status` counts options rather
+than headings. A command palette is this plus a `Dialog` and `useKeyCombo`,
+which is why there is no `Command` component — [the reference
+page](/reference/ui) writes the composition out.
+
 ## Checkbox and Switch
 
 ```js

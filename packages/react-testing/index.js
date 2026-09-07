@@ -22,6 +22,7 @@
 // portal is found, and on the result of `render`, which searches only what it
 // mounted.
 
+export type { EventInit, FireEvent, Firer } from "./internal/events.js";
 export type { Matcher, MatcherOptions } from "./internal/queries.js";
 export type { RenderResult } from "./internal/render.js";
 export type { Queries } from "./internal/screen.js";

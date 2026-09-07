@@ -86,7 +86,9 @@ const MAX_DEPTH = 32;
  *
  * @typedef {object} NotFoundBoundary
  * @property {string} path route path of the directory that declares it
- * @property {string} page absolute path of the page module
+ * @property {?string} page absolute path of the page module, or `null` for the
+ *   record the scan synthesises at the router root when a project declares
+ *   none — see `scanRoutes`
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
  * @property {boolean} mdx whether the page is MDX content
  */
@@ -103,7 +105,8 @@ const MAX_DEPTH = 32;
  *
  * @typedef {object} ErrorBoundary
  * @property {string} path route path of the directory that declares it
- * @property {string} module absolute path of the error module
+ * @property {?string} module absolute path of the error module, or `null` for
+ *   the synthesised root record
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
  */
 
@@ -153,6 +156,10 @@ export function scanRoutes(appRoot) {
   const errors = [];
   if (!isDirectory(appRoot)) return { routes, handlers, middleware, notFound, errors };
 
+  // The layouts in scope at the router root, kept because the two synthesised
+  // records below are made of them. See the note beside them.
+  let rootLayouts = [];
+
   const walk = (directory, segments, layouts, loading, depth) => {
     if (depth > MAX_DEPTH) return;
     const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
@@ -161,6 +168,9 @@ export function scanRoutes(appRoot) {
 
     const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS);
     const nextLayouts = ownLayout ? [...layouts, ownLayout] : layouts;
+    if (depth === 0) {
+      rootLayouts = nextLayouts;
+    }
 
     // Inside this directory's own layout, which is where Next.js puts it and
     // the only placement that makes sense: the fallback is what shows *within*
@@ -244,6 +254,30 @@ export function scanRoutes(appRoot) {
   };
 
   walk(appRoot, [], [], [], 0);
+
+  // A boundary at the router root for a project that declared none, carrying
+  // the root's layouts and no module of its own.
+  //
+  // Without it the router had no record to answer an unmatched URL with, so it
+  // answered with the framework's page and `layouts: []` — and a site whose
+  // root layout owns the masthead, the stylesheet and often `<html>` itself
+  // replied to a stale link with a white page saying 404, with no way to leave
+  // it. That was never the nearest-ancestor rule failing: the rule had nothing
+  // to find. `uf create` scaffolds neither boundary, so this is the state every
+  // new project is in until it writes one. See ubugeeei-prod/uf#351.
+  //
+  // Only when nothing is at `/` already. A `(group)` directory is not a URL
+  // segment, so `app/(marketing)/_uf.not-found.js` is a boundary at `/` too and
+  // adding a second one there would put a second answer at a path the URL
+  // cannot choose between.
+  const atRoot = (boundaries) => boundaries.some((boundary) => boundary.path === "/");
+  if (!atRoot(notFound)) {
+    notFound.push({ path: "/", page: null, layouts: rootLayouts, mdx: false });
+  }
+  if (!atRoot(errors)) {
+    errors.push({ path: "/", module: null, layouts: rootLayouts });
+  }
+
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
   handlers.sort(byPath);
@@ -448,6 +482,15 @@ export function routesModuleSource(table, options = {}) {
   }`;
   });
 
+  // A boundary the scan synthesised has no module to import — the framework's
+  // own page renders in its place — so it emits `null` where a declared one
+  // emits a loader, and a name for `file` rather than a path nothing wrote.
+  // See the note in `scanRoutes` and ubugeeei-prod/uf#351.
+  const SYNTHESISED = JSON.stringify("@uniflowed/router");
+  const boundaryModule = (file) =>
+    file == null ? "null" : `() => import(${JSON.stringify(file)})`;
+  const boundaryFile = (file) => (file == null ? SYNTHESISED : JSON.stringify(file));
+
   // A list, because a not-found is a segment file: every directory may declare
   // one and the router takes the nearest above the path. `layoutId` is the
   // same table the routes use, so a boundary that shares a layout with a page
@@ -456,8 +499,8 @@ export function routesModuleSource(table, options = {}) {
     (boundary) => `  {
     path: ${JSON.stringify(boundary.path)},
     mdx: ${boundary.mdx},
-    file: ${JSON.stringify(boundary.page)},
-    page: () => import(${JSON.stringify(boundary.page)}),
+    file: ${boundaryFile(boundary.page)},
+    page: ${boundaryModule(boundary.page)},
     layouts: [${boundary.layouts.map(layoutId).join(", ")}],
   }`,
   );
@@ -469,8 +512,8 @@ export function routesModuleSource(table, options = {}) {
   const errorEntries = (table.errors ?? []).map(
     (boundary) => `  {
     path: ${JSON.stringify(boundary.path)},
-    file: ${JSON.stringify(boundary.module)},
-    module: () => import(${JSON.stringify(boundary.module)}),
+    file: ${boundaryFile(boundary.module)},
+    module: ${boundaryModule(boundary.module)},
     layouts: [${boundary.layouts.map(layoutId).join(", ")}],
   }`,
   );

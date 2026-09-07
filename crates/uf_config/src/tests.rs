@@ -751,8 +751,19 @@ fn a_formatter_the_project_named_is_not_the_same_as_uf_s_default() {
 fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
     let mut config = FmtConfig::default();
     config.non_flow.chosen_by_project = true;
+    config.non_flow.arguments = vec!["--css-parse-tailwind-directives=true".into()];
 
     let json = serde_json::to_value(&config.non_flow).expect("serializes");
 
-    assert_eq!(json, serde_json::json!({ "formatter": "biome" }));
+    // Named rather than compared against the whole object: `chosenByProject`
+    // being absent is the fact this test is about, and asserting the exact
+    // shape made it fail the day the configuration grew a key it *should*
+    // carry.
+    assert_eq!(json.get("chosenByProject"), None, "{json}");
+    assert_eq!(json["formatter"], "biome");
+    assert_eq!(
+        json["arguments"],
+        serde_json::json!(["--css-parse-tailwind-directives=true"]),
+        "a setting the project wrote has to survive the round trip"
+    );
 }
