@@ -272,17 +272,53 @@ impl ReservedName {
     }
 }
 
+impl ReservedRole {
+    /// What this role may be written in.
+    ///
+    /// A page may be Markdown; nothing else may. A layout, a middleware and a
+    /// route handler are code — a layout wraps a subtree, a route handler
+    /// exports functions — and Markdown is not something either can be. The
+    /// two lists are `crate::PAGE_EXTENSIONS` and `crate::MODULE_EXTENSIONS`,
+    /// which the build's own router uses under the same names.
+    #[must_use]
+    pub const fn extensions(self) -> &'static [&'static str] {
+        match self {
+            // A `not-found` is a page in every way that matters, so it is one
+            // here too.
+            Self::Page | Self::NotFound => &crate::PAGE_EXTENSIONS,
+            // A story names a rendered state of a component, so it is code
+            // for the same reason a layout is.
+            Self::Layout
+            | Self::Middleware
+            | Self::Error
+            | Self::Loading
+            | Self::Route
+            | Self::Story => &crate::MODULE_EXTENSIONS,
+        }
+    }
+}
+
 /// Classify a bare file name against the reserved grammar.
 ///
 /// Takes a file name, not a path: callers already have one, and accepting a
 /// path here would invite a caller to pass an unnormalized one and get a
 /// different answer than the router did.
+///
+/// Every extension the build's own router accepts is a spelling of the same
+/// name — `.js`, `.jsx` and `.mdx` — so `_uf.page.mdx` is a page and not a
+/// misspelling of one. Reading only `.js` here made `router/reserved-files`
+/// report every `.mdx` page in a documentation site as a name uf does not
+/// define, which is the same drift as ubugeeei-prod/uf#437 in the rule that
+/// exists to catch drift.
 #[must_use]
 pub fn classify_reserved_file(file_name: &str) -> ReservedName {
     let Some(rest) = file_name.strip_prefix("_uf.") else {
         return ReservedName::NotReserved;
     };
-    let Some(rest) = rest.strip_suffix(".js") else {
+    let Some((rest, extension)) = crate::PAGE_EXTENSIONS.iter().find_map(|extension| {
+        rest.strip_suffix(extension)
+            .map(|stripped| (stripped, *extension))
+    }) else {
         return ReservedName::Unknown;
     };
 
@@ -290,6 +326,14 @@ pub fn classify_reserved_file(file_name: &str) -> ReservedName {
     let Some(Ok(role)) = segments.next().map(ReservedRole::from_str) else {
         return ReservedName::Unknown;
     };
+    // Which extensions a role may be written in is the role's own fact.
+    // `_uf.layout.mdx` reads as a layout and is not one — a layout is a
+    // component and Markdown cannot be one — so the build's router would never
+    // find it and `router/reserved-files` would never say why. Naming it
+    // unknown is what makes that file's silence audible.
+    if !role.extensions().contains(&extension) {
+        return ReservedName::Unknown;
+    }
     let variant = match segments.next() {
         None => ReservedVariant::Default,
         Some(segment) => match ReservedVariant::from_str(segment) {
@@ -517,18 +561,47 @@ mod tests {
     }
 
     #[test]
-    fn a_reserved_prefix_without_a_js_extension_is_rejected() {
-        for name in [
-            "_uf.page.ts",
-            "_uf.page.jsx",
-            "_uf.page.js.flow",
-            "_uf.page",
-        ] {
+    fn a_reserved_prefix_in_an_extension_nothing_runs_is_rejected() {
+        for name in ["_uf.page.ts", "_uf.page.js.flow", "_uf.page", "_uf.pagejs"] {
             assert!(
                 classify_reserved_file(name).is_unknown(),
                 "{name} should be unknown"
             );
         }
+    }
+
+    /// ubugeeei-prod/uf#437, #386: the build's router has accepted `.jsx` and
+    /// `.mdx` since it was written, and this said they were names uf does not
+    /// define.
+    #[test]
+    fn a_page_is_reserved_in_every_extension_the_build_runs() {
+        for name in ["_uf.page.js", "_uf.page.jsx", "_uf.page.mdx"] {
+            assert!(
+                !classify_reserved_file(name).is_unknown(),
+                "{name} should be a page"
+            );
+        }
+    }
+
+    /// And a role that cannot be Markdown is not, because a `_uf.layout.mdx`
+    /// the build would never load should be reported rather than accepted into
+    /// a silence.
+    #[test]
+    fn only_a_page_may_be_markdown() {
+        for name in ["_uf.layout.mdx", "_uf.middleware.mdx", "_uf.route.mdx"] {
+            assert!(
+                classify_reserved_file(name).is_unknown(),
+                "{name} is not something the build can load"
+            );
+        }
+        for name in ["_uf.layout.jsx", "_uf.middleware.jsx", "_uf.route.jsx"] {
+            assert!(
+                !classify_reserved_file(name).is_unknown(),
+                "{name} is a module the build loads"
+            );
+        }
+        // A `not-found` is a page, so it may be.
+        assert!(!classify_reserved_file("_uf.not-found.mdx").is_unknown());
     }
 
     #[test]

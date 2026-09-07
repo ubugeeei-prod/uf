@@ -17,6 +17,58 @@ pub const RESERVED_PAGE: &str = "_uf.page.js";
 pub const RESERVED_MIDDLEWARE: &str = "_uf.middleware.js";
 pub const RESERVED_ROUTE: &str = "_uf.route.js";
 
+/// The stem every reserved page is spelled with, without an extension.
+pub const RESERVED_PAGE_STEM: &str = "_uf.page";
+/// The stem every reserved layout is spelled with.
+pub const RESERVED_LAYOUT_STEM: &str = "_uf.layout";
+/// The stem every reserved middleware is spelled with.
+pub const RESERVED_MIDDLEWARE_STEM: &str = "_uf.middleware";
+
+/// What a page may be written in, in the order a directory holding two is
+/// resolved.
+///
+/// # Why this is a list and why it is here twice
+///
+/// `packages/vite/internal/routes.js` is the router the build actually runs,
+/// and it has accepted `.jsx` and `.mdx` since it was written. This crate
+/// accepted `.js` and nothing else, and it is the one `uf build` asks for the
+/// summary — so uf's own documentation site reported `routes 1` beside
+/// `prerendered pages 30`, with every `.mdx` page in the guide invisible
+/// (ubugeeei-prod/uf#437, and #386 for the `.jsx` half).
+///
+/// The lists are the same list written twice because one side is Rust and the
+/// other is JavaScript, which is exactly how they drifted. They are held
+/// together by a test that reads the JavaScript and compares — see
+/// `tests::the_two_routers_accept_the_same_extensions`. A shared spelling that
+/// nothing checks is not shared.
+pub const PAGE_EXTENSIONS: [&str; 3] = [".js", ".jsx", ".mdx"];
+
+/// What a layout, middleware or route handler may be written in.
+///
+/// No `.mdx`: a layout is a component and a route handler exports functions,
+/// and neither is something Markdown can be.
+pub const MODULE_EXTENSIONS: [&str; 2] = [".js", ".jsx"];
+
+/// The first spelling of `stem` that exists in `directory`.
+///
+/// First rather than "the only one", mirroring `findModule` in
+/// `packages/vite/internal/routes.js`: a directory holding both `_uf.page.js`
+/// and `_uf.page.mdx` resolves to the same one on both sides, which matters
+/// more than which one it is.
+fn find_module(directory: &Utf8Path, stem: &str, extensions: &[&str]) -> Option<Utf8PathBuf> {
+    extensions.iter().find_map(|extension| {
+        let candidate = directory.join(format!("{stem}{extension}"));
+        candidate.is_file().then_some(candidate)
+    })
+}
+
+/// Whether `name` is a reserved page in any of its spellings.
+fn is_reserved_page(name: &str) -> bool {
+    PAGE_EXTENSIONS
+        .iter()
+        .any(|extension| name == format!("{RESERVED_PAGE_STEM}{extension}"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteParamKind {
     Single,
@@ -217,7 +269,8 @@ pub fn discover_routes(
             path: app_root.clone(),
             source,
         })?;
-        if !entry.file_type().is_file() || entry.file_name() != RESERVED_PAGE {
+        if !entry.file_type().is_file() || !entry.file_name().to_str().is_some_and(is_reserved_page)
+        {
             continue;
         }
 
@@ -243,7 +296,7 @@ pub fn discover_routes(
 
         routes.push(Route {
             path: path.to_compact_string(),
-            has_layout: directory.join(RESERVED_LAYOUT).exists(),
+            has_layout: find_module(&directory, RESERVED_LAYOUT_STEM, &MODULE_EXTENSIONS).is_some(),
             middleware: middleware_chain(&app_root, &directory),
             directory,
             page,
@@ -268,8 +321,7 @@ fn middleware_chain(app_root: &Utf8Path, directory: &Utf8Path) -> Vec<Utf8PathBu
     let mut chain = Vec::new();
     let mut current = Some(directory);
     while let Some(dir) = current {
-        let file = dir.join(RESERVED_MIDDLEWARE);
-        if file.is_file() {
+        if let Some(file) = find_module(dir, RESERVED_MIDDLEWARE_STEM, &MODULE_EXTENSIONS) {
             chain.push(file);
         }
         if dir == app_root {
