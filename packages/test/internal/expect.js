@@ -289,29 +289,36 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  * Every entry returns a [`Verdict`] rather than throwing, which is what lets
  * `.not` reuse all of them.
  *
- * # The `any` in the indexer
+ * # Every entry takes `mixed`, and that is what makes the indexer sayable
  *
- * The entries do not agree about their arguments — `toBe` takes a `mixed`,
- * `toHaveLength` takes a `number`, `toBeCloseTo` takes two — and [`bind`]
- * applies whichever one it was asked for to a `$ReadOnlyArray<mixed>` it
- * collected from a caller. Parameters are contravariant, so one indexer cannot
- * describe both ends: `(...args: $ReadOnlyArray<mixed>)` rejects every entry
- * that wants a `number`, and `(...args: $ReadOnlyArray<empty>)` accepts every
- * entry and rejects the call.
+ * [`bind`] reaches an entry by a computed key and applies it to the
+ * `$ReadOnlyArray<mixed>` it collected from the caller, so the indexer has to
+ * describe a function that will accept those arguments. Parameters are
+ * contravariant, so an entry that demanded a `number` could not be described
+ * by one — `(...args: $ReadOnlyArray<mixed>)` rejects it, and
+ * `(...args: $ReadOnlyArray<empty>)` accepts it and rejects the call. That
+ * disagreement is why this indexer used to be written `$ReadOnlyArray<any>`,
+ * with a `flow/unclear-type` suppression on it.
  *
- * That is unchanged, and it is now the last of it. Where a caller used to meet
- * this indexer through an unbroken chain of `$FlowFixMe`, the published
- * surface is [`Expectation`] and the disagreement the indexer papers over is
- * written down there, one signature per name. What survives is a table reached
- * by a computed key inside this module, between `verdicts` and `bind` — two
- * functions in one file, neither of which a consumer can see — and narrowing
- * it means writing `bind`'s forty-one wrappers out by hand to avoid the
- * lookup. That is a second copy of the listing to keep in step with this one,
- * which is a worse trade than the suppression it removes.
+ * So the disagreement is gone instead of papered over: every entry here takes
+ * `mixed` and coerces what it needs, the way most of them — `toBe`,
+ * `toBeGreaterThan`, `toHaveAttribute` — already did. Nothing a caller can see
+ * got wider: `toHaveLength` still refuses a string and `toBeTypeOf` still
+ * refuses a word `typeof` never says, because those are [`Matchers`]'s
+ * signatures and [`Matchers`] is the published type. What changed is that the
+ * table behind them stopped claiming a narrower argument than the one `bind`
+ * can hand it, which is a claim that was never true. The `String(…)` and
+ * `Number(…)` calls that appeared with it are the coercion the runtime was
+ * already doing, said out loud, and each produces the same message the implicit
+ * one did for the same input.
+ *
+ * The alternative — narrowing the indexer by writing `bind`'s forty-one
+ * wrappers out to avoid the computed lookup — is a second copy of the listing
+ * to keep in step with [`Matchers`], and is a worse trade than either. See
+ * ubugeeei-prod/uf#402.
  */
 function verdicts(received: mixed): {
-  // uf-lint-disable-next-line flow/unclear-type
-  readonly [string]: (...args: $ReadOnlyArray<any>) => Verdict,
+  readonly [string]: (...args: $ReadOnlyArray<mixed>) => Verdict,
 } {
   const shown = () => render(received);
   const simple = (pass: boolean, what: string, expected?: mixed): Verdict => ({
@@ -386,14 +393,15 @@ function verdicts(received: mixed): {
         `to be at most ${render(expected)}`,
         expected,
       ),
-    toBeCloseTo: (expected: number, digits?: number) => {
-      const places = digits ?? 2;
+    toBeCloseTo: (expected: mixed, digits?: mixed) => {
+      const target = Number(expected);
+      const places = digits === undefined ? 2 : Number(digits);
       const tolerance = 10 ** -places / 2;
-      const difference = Math.abs((received as $FlowFixMe) - expected);
+      const difference = Math.abs((received as $FlowFixMe) - target);
       return simple(
         difference < tolerance,
-        `to be within ${tolerance} of ${expected}, but it is off by ${difference}`,
-        expected,
+        `to be within ${tolerance} of ${target}, but it is off by ${difference}`,
+        target,
       );
     },
     toContain: (expected: mixed) => {
@@ -419,22 +427,23 @@ function verdicts(received: mixed): {
         expected,
       );
     },
-    toHaveLength: (expected: number) => {
+    toHaveLength: (expected: mixed) => {
       const length = received == null ? undefined : (received as $FlowFixMe).length;
       return simple(
         length === expected,
-        `to have length ${expected}, not ${render(length)}`,
+        `to have length ${String(expected)}, not ${render(length)}`,
         expected,
       );
     },
-    toHaveProperty: (path: string, ...rest: $ReadOnlyArray<mixed>) => {
-      const found = propertyAt(received, path);
+    toHaveProperty: (path: mixed, ...rest: $ReadOnlyArray<mixed>) => {
+      const at = String(path);
+      const found = propertyAt(received, at);
       if (rest.length === 0) {
-        return simple(found.found, `to have a property at \`${path}\``);
+        return simple(found.found, `to have a property at \`${at}\``);
       }
       return simple(
         found.found && equals(found.value, rest[0]),
-        `to have \`${path}\` equal to ${render(rest[0])}, not ${render(found.value)}`,
+        `to have \`${at}\` equal to ${render(rest[0])}, not ${render(found.value)}`,
         rest[0],
       );
     },
@@ -454,16 +463,24 @@ function verdicts(received: mixed): {
         `to be an instance of ${render(expected)}`,
         expected,
       ),
-    toBeTypeOf: (expected: string) =>
+    toBeTypeOf: (expected: mixed) => {
+      const name = String(expected);
+      return simple(
+        typeof received === name,
+        `to be of type ${name}, not ${typeof received}`,
+        name,
+      );
+    },
+    toSatisfy: (predicate: mixed) =>
       simple(
-        typeof received === expected,
-        `to be of type ${expected}, not ${typeof received}`,
-        expected,
+        typeof predicate === "function" && predicate(received) === true,
+        "to satisfy the predicate",
       ),
-    toSatisfy: (predicate: (value: mixed) => boolean) =>
-      simple(predicate(received) === true, "to satisfy the predicate"),
-    toMatchSnapshot: (hint?: string): Verdict => {
-      const verdict = snapshot.matchSnapshot(received, hint);
+    toMatchSnapshot: (hint?: mixed): Verdict => {
+      const verdict = snapshot.matchSnapshot(
+        received,
+        hint === undefined ? undefined : String(hint),
+      );
       return {
         pass: verdict.pass,
         expected: verdict.expected ?? "(no snapshot yet)",
@@ -477,8 +494,11 @@ function verdicts(received: mixed): {
         negatedFailure: () => "expected the value not to match its snapshot",
       };
     },
-    toMatchInlineSnapshot: (expected?: string): Verdict => {
-      const verdict = snapshot.matchInlineSnapshot(received, expected);
+    toMatchInlineSnapshot: (expected?: mixed): Verdict => {
+      const verdict = snapshot.matchInlineSnapshot(
+        received,
+        expected === undefined ? undefined : String(expected),
+      );
       return {
         pass: verdict.pass,
         expected: verdict.expected ?? "(no inline snapshot yet)",
@@ -529,10 +549,14 @@ function verdicts(received: mixed): {
       requireSpy("toHaveBeenCalled");
       return simple(spyCalls().length > 0, "to have been called");
     },
-    toHaveBeenCalledTimes: (count: number) => {
+    toHaveBeenCalledTimes: (count: mixed) => {
       requireSpy("toHaveBeenCalledTimes");
       const actual = spyCalls().length;
-      return simple(actual === count, `to have been called ${count} times, not ${actual}`, count);
+      return simple(
+        actual === count,
+        `to have been called ${String(count)} times, not ${actual}`,
+        count,
+      );
     },
     toHaveBeenCalledWith: (...args: $ReadOnlyArray<mixed>) => {
       requireSpy("toHaveBeenCalledWith");
