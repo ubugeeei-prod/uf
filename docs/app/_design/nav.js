@@ -156,6 +156,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
       },
       {
+        href: "/guide/auth",
+        title: "Signing in",
+        blurb:
+          "A contract rather than a provider: PKCE, a single-use state, and a store you replace.",
+      },
+      {
         href: "/guide/logging",
         title: "Logging",
         blurb: "A structured logger, and a request id readable from inside a render.",

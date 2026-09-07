@@ -137,6 +137,38 @@ run is a function with a hole in it.
 | Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
 | XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
+## Signing in
+
+`@uniflowed/server/oauth` is the one part of `uf` where a mistake is somebody's
+account rather than somebody's afternoon. The decision that shapes the rest is
+that `uf` ships **no provider**: the seam is four strings and one function, and
+everything a provider has no opinion about — the state parameter, PKCE, the
+callback, the session — belongs to `uf`, because those are exactly the parts
+that go wrong.
+
+Two of the rules above do most of the work here. Rule 2: the `redirect_uri`
+sent to the token endpoint is the one stored when the authorization began, not
+one re-derived from the callback's headers — decide on the canonical form, then
+use the value you checked. Rule 3: the return path is checked against a closed
+shape rather than against a list of hosts.
+
+| Past failure | Structural decision in `uf` | Test |
+| --- | --- | --- |
+| A `state` parameter that is guessable, absent, or checked against something the attacker also controls — login CSRF, which ends with somebody signed into an account that is not theirs | 256 bits from `crypto.getRandomValues`, held server-side, compared in constant time against the record found through an `HttpOnly` cookie. The parameter alone proves the callback came from the provider; the cookie is what proves it came back to the browser that set out | `tests/library/oauth.test.js` |
+| A replayed callback — the same `state` and code spent twice | The pending record is read with `SessionStore.take`, one store operation that reads *and* removes. A `read` followed by a `destroy` has a window between them, and a window is all a replay needs | `tests/library/oauth.test.js` |
+| A subdomain planting a flow, or a session, in somebody else's browser | Both cookies are `__Host-` prefixed, `Secure`, `HttpOnly`, `Path=/` and `SameSite=Lax`. `Lax` is required rather than preferred: the provider's redirect back is a cross-site top-level navigation, and `Strict` would withhold the cookie on exactly that one. The name is decided once for the deployment rather than per request, so there is never a second name a reader might fall back to | `tests/library/oauth.test.js` |
+| An intercepted authorization code being worth something | PKCE with `S256`, always. There is no configuration for it and `plain` is not offered: a `plain` challenge *is* the verifier, so anything that can read the authorization URL can spend the code. The verifier never leaves the server | `tests/library/oauth.test.js` |
+| An open redirect on the way back in — `?return=//evil.example`, which wears this site's own domain | The return path must begin with `/` and not with `//` or `/\`, may hold no byte below `!` and no `DEL`, and is length-capped. Checked when it is stored and again when it is used, because what comes back from a store is what a store had | `tests/library/oauth.test.js` |
+| `Host`-header poisoning steering the `redirect_uri`, so the authorization code is delivered somewhere else | The `redirect_uri` sent with the exchange is read out of the stored pending record, so the two requests cannot disagree about it. The origin it was built from is the deployment's configured one where there is one and the request's own `Host` otherwise — never `X-Forwarded-Host` | `tests/library/oauth.test.js` |
+| Cross-site `POST` to an endpoint that changes state, authenticated by a cookie the browser attaches whether or not the caller meant it to | `Origin` is compared against `Host` — `new URL(request.url).host`, which is the `Host` header in every host `uf` ships — and against nothing else. A missing `Origin` is refused rather than allowed: every browser sends one on a `POST`, so a request without one is not a browser. No forwarded header is read anywhere in the flow | `tests/library/oauth.test.js` |
+| Session fixation: an id fixed before the victim signs in and held afterwards | A sign-in issues a new id and destroys whatever session the request arrived with. A refresh deliberately does *not* rotate — two concurrent refreshes would each write a new id and the second would sign the person out — so rotation happens at the one moment fixation is possible | `tests/library/oauth.test.js` |
+| A token in a response body, a shared cache, or a log line | Tokens stay in the store. `currentSession()` answers with the subject and the claims and never the tokens; `tokens()` is a separately named reader, so reaching for a credential is a decision. Every response from the flow carries `Cache-Control: no-store, private`, `Vary: Cookie` and `Referrer-Policy: no-referrer`, and no token, code or provider error text reaches a logger | `tests/library/oauth.test.js` |
+| A page that reads who is signed in being served to the next visitor from the route cache | `currentSession()` reads `cookies()`, which counts as a read of request state — the same counter `packages/server/fetch.js` compares across the whole render before storing a document. A page about one person is never stored | `tests/library/oauth.test.js` |
+| A client secret sent in the clear, or repeated back in a proxy log | The token endpoint is refused at configuration time unless it is `https`, or `http` on loopback, which is where every one of these is developed. The secret goes in an `Authorization: Basic` header rather than in the request body, which is the method RFC 6749 requires a server to accept | `tests/library/oauth.test.js` |
+| An unbounded response from a compromised or hostile token endpoint | The body is read in chunks against a 64 KiB ceiling and the stream is cancelled above it, rather than being buffered whole by `response.json()` | `packages/server/internal/oauth.js` |
+| Unverified OpenID Connect claims treated as an identity | `uf` does not decode an `id_token`. Verifying one means a JWKS fetch, a cache, an algorithm allow-list and a refusal of `alg: none`; half of that is worse than none of it, so the raw token is handed to the provider's own `identify` and `uf` claims nothing about it | — |
+| Unbounded session storage as a memory exhaustion anybody can reach — every authorize request writes a record and nothing makes the browser come back to spend it | The built-in store has an entry ceiling and drops expired entries first, then the oldest. It is documented as one process's memory; the four-method interface is the deliverable and a durable store is an adapter's | `packages/server/internal/oauth.js` |
+
 ## Logging
 
 A log is where attacker-chosen text is written and later read as a record of

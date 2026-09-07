@@ -20,6 +20,7 @@
     "./lambda": "./lambda.js",
     "./log": "./log.js",
     "./node": "./node.js",
+    "./oauth": "./oauth.js",
     "./queue": "./queue.js",
     "./socket": "./socket.js",
     "./standalone": "./standalone.js"
@@ -34,6 +35,7 @@
     "lambda.js",
     "log.js",
     "node.js",
+    "oauth.js",
     "queue.js",
     "socket.js",
     "standalone.js",
