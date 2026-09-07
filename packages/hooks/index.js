@@ -50,7 +50,7 @@
 //
 // # How the package is laid out
 //
-// Eight modules beside this one, split by what a hook's subject is — because
+// Nine modules beside this one, split by what a hook's subject is — because
 // that is the question a reader looking for one actually asks:
 //
 // - `lifecycle.js` — the component itself: mounted, previous, run once.
@@ -58,6 +58,8 @@
 //   toggle, counter, list, set, cycle, undo/redo, storage.
 // - `timing.js` — when something runs: intervals, timeouts, debounce,
 //   throttle, frames, idleness, and the clock behind "3 minutes ago".
+// - `render.js` — what a render has to fix rather than derive: the instant it
+//   was made at, and the seed anything random on the page is drawn from.
 // - `async.js` — one promise: its states, its abort signal, its retries.
 // - `browser.js` — the ambient environment: viewport, scroll, connection,
 //   position, permissions, preferences.
@@ -99,10 +101,10 @@
 // element scroll, the element as state; key chords and held keys; storage with
 // cross-tab sync;
 // broadcast channels; the clipboard; a server-sent event stream, including the
-// one case the platform's own reconnection gives up on.
-// `tests/library/hooks.test.js` covers behaviour and cleanup, and
-// `tests/library/hooks-ssr.test.js` renders the whole surface in a process that
-// has no DOM at all.
+// one case the platform's own reconnection gives up on; the render anchor and
+// the seeded stream in `render.js`. `tests/library/hooks.test.js` covers
+// behaviour and cleanup, and `tests/library/hooks-ssr.test.js` renders the
+// whole surface in a process that has no DOM at all.
 //
 // **Experimental.** `useGeolocation`, `useNetwork` and `usePermission`. The
 // shapes are settled and the cleanup is right, but the browsers disagree about
@@ -147,6 +149,7 @@ export type {
   UseEventSourceReturn,
 } from "./events.js";
 export type { KeyComboOptions } from "./keyboard.js";
+export type { RenderEnvelope } from "./render.js";
 export type {
   UseCounterReturn,
   UseCycleReturn,
@@ -206,6 +209,15 @@ export {
   useScroll,
 } from "./dom.js";
 export { useKeyCombo, useKeyHeld } from "./keyboard.js";
+export {
+  RENDER_ID,
+  RenderProvider,
+  useRandom,
+  useRenderEnvelope,
+  useRenderTimeZone,
+  useRenderedAt,
+  useShuffled,
+} from "./render.js";
 export { useBroadcast, useClipboard } from "./channels.js";
 export { useEventSource } from "./events.js";
 export {

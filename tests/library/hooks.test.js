@@ -11,9 +11,11 @@ import * as React from "@uniflowed/react";
 import { useRef, useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
+import { fixedClock, setClock } from "@uniflowed/core/clock";
 
 import { bodyOf, elementIn, parentOf } from "./dom.js";
 import {
+  RenderProvider,
   useAnimationFrame,
   useAsync,
   useBroadcast,
@@ -46,9 +48,13 @@ import {
   usePermission,
   usePreferredColorScheme,
   usePrevious,
+  useRandom,
+  useRenderTimeZone,
+  useRenderedAt,
   useScroll,
   useScrollLock,
   useSet,
+  useShuffled,
   useStableCallback,
   useStorage,
   useSupported,
@@ -1196,8 +1202,9 @@ describe("more timing hooks", () => {
     // The first goes through immediately; the rest are inside the window —
     // and on a clock nothing but this test moves, "inside the window" is a
     // fact rather than a hope that three `userEvent.click`s take less than
-    // fifty milliseconds. `useThrottledCallback` compares `Date.now()`, so on
-    // real time a slow enough third click let a second call through.
+    // fifty milliseconds. `useThrottledCallback` compares two readings of the
+    // installed clock, which with nothing installed is the host's, so on real
+    // time a slow enough third click let a second call through.
     expect(throttled.mock.calls.length).toBe(1);
 
     const debounce = screen.getByRole("button", { name: "debounce" });
@@ -1229,6 +1236,181 @@ describe("more timing hooks", () => {
     advance(40);
     // The version people write calls `setState` on a component that is gone.
     expect(body).not.toHaveBeenCalled();
+  });
+});
+
+describe("the render anchor", () => {
+  /** 2026-09-04T06:00:00Z, an instant a test picked rather than a clock. */
+  const ANCHOR = Date.UTC(2026, 8, 4, 6, 0, 0);
+
+  // Nothing here fakes a timer. The two cases that need to know what time it is
+  // install a clock instead, which is what `@uniflowed/core/clock` is for and is
+  // the stronger statement: a fake `setTimeout` would show that the hook agreed
+  // with the host, and this shows that it read the clock it was given.
+  const clocks: Array<() => void> = [];
+  afterEach(() => {
+    while (clocks.length > 0) {
+      const restore = clocks.pop();
+      if (restore != null) {
+        restore();
+      }
+    }
+  });
+
+  it("hands the same instant to every component under it", () => {
+    // The property the whole module exists for: two components that ask what
+    // time the page was rendered at must not get two answers, or the header and
+    // the footer disagree about what "today" is.
+    const seen = [];
+    component Probe() {
+      seen.push(useRenderedAt().epochMilliseconds);
+      return null;
+    }
+    render(
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="fixedseed">
+        <Probe />
+        <Probe />
+      </RenderProvider>,
+    );
+
+    expect(seen).toEqual([ANCHOR, ANCHOR]);
+  });
+
+  it("reports the zone the render was made in, not the reader's", () => {
+    // The second half of a hydration mismatch. A component that formatted in
+    // the reader's zone on the first pass could not match a server that
+    // formatted in its own, so what travels is the server's.
+    component Probe() {
+      return <output>{useRenderTimeZone()}</output>;
+    }
+    render(
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="fixedseed">
+        <Probe />
+      </RenderProvider>,
+    );
+
+    expect(screen.getByText("Asia/Tokyo")).toBeInTheDocument();
+  });
+
+  it("starts useNow at the anchor, so the first render matches the server's", () => {
+    // Without this, a prerendered page that shows a clock renders the server's
+    // instant and then the browser's, and React reports the difference. The
+    // clock installed here is a minute ahead of the anchor, so the two values
+    // collected say both halves at once: the first render is the server's
+    // instant, and the effect that runs once the markup has matched replaces it
+    // with the reader's.
+    clocks.push(setClock(fixedClock(ANCHOR + 60_000, "UTC")));
+    const seen = [];
+    component Probe() {
+      seen.push(useNow(null).getTime());
+      return null;
+    }
+    const { unmount } = render(
+      <RenderProvider at={ANCHOR} timeZone="UTC" seed="fixedseed">
+        <Probe />
+      </RenderProvider>,
+    );
+    unmount();
+
+    expect(seen[0]).toBe(ANCHOR);
+    expect(seen[seen.length - 1]).toBe(ANCHOR + 60_000);
+  });
+
+  it("leaves useNow reading the clock when there is no provider", () => {
+    // A client-only page has no other side to agree with, so the behaviour it
+    // has always had is the right one and this must not have changed it.
+    clocks.push(setClock(fixedClock(ANCHOR, "UTC")));
+    let seen = null;
+    component Probe() {
+      seen = useNow(null).getTime();
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    unmount();
+
+    expect(seen).toBe(ANCHOR);
+  });
+
+  it("gives two renders of one seed the same numbers", () => {
+    // What makes a shuffled list hydrate. The two renders below stand in for
+    // the server's and the browser's, and they are only the same because the
+    // seed came from the anchor rather than from `Math.random()`.
+    const draw = () => {
+      const seen = [];
+      component Probe() {
+        seen.push(useRandom("featured").next());
+        return null;
+      }
+      const { unmount } = render(
+        <RenderProvider at={ANCHOR} timeZone="UTC" seed="fixedseed">
+          <Probe />
+        </RenderProvider>,
+      );
+      unmount();
+      return seen[0];
+    };
+
+    expect(draw()).toBe(draw());
+  });
+
+  it("gives two labels independent streams whatever order they render in", () => {
+    // The bug this prevents only appears on a slow connection: with one shared
+    // stream, a boundary that resolves late on the server and early in the
+    // browser reorders every draw after it.
+    const drawn: { first: number | null, second: number | null } = { first: null, second: null };
+    component Sidebar() {
+      drawn.second = useRandom("sidebar").next();
+      return null;
+    }
+    component Featured() {
+      drawn.first = useRandom("featured").next();
+      return null;
+    }
+    const { unmount } = render(
+      <RenderProvider at={ANCHOR} timeZone="UTC" seed="fixedseed">
+        <Featured />
+        <Sidebar />
+      </RenderProvider>,
+    );
+    unmount();
+
+    const swapped: { first: number | null, second: number | null } = { first: null, second: null };
+    component SwappedProbe() {
+      swapped.second = useRandom("sidebar").next();
+      swapped.first = useRandom("featured").next();
+      return null;
+    }
+    const second = render(
+      <RenderProvider at={ANCHOR} timeZone="UTC" seed="fixedseed">
+        <SwappedProbe />
+      </RenderProvider>,
+    );
+    second.unmount();
+
+    expect(swapped.first).toBe(drawn.first);
+    expect(swapped.second).toBe(drawn.second);
+    expect(drawn.first).not.toBe(drawn.second);
+  });
+
+  it("shuffles a list the same way on both sides", () => {
+    const items = ["a", "b", "c", "d", "e"];
+    const order = () => {
+      let seen = null;
+      component Probe() {
+        seen = useShuffled(items, "featured").join("");
+        return null;
+      }
+      const { unmount } = render(
+        <RenderProvider at={ANCHOR} timeZone="UTC" seed="fixedseed">
+          <Probe />
+        </RenderProvider>,
+      );
+      unmount();
+      return seen;
+    };
+
+    expect(order()).toBe(order());
+    expect(order()).not.toBe(items.join(""));
   });
 });
 

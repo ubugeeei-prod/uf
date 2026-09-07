@@ -53,7 +53,7 @@
 // way when it is deployed.
 
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -278,6 +278,11 @@ export function createStaticHandler(options: {|
   readonly root: string,
 |}): (request: Request) => Promise<Response | null> {
   const rootDir = path.resolve(options.root);
+  // Resolved once, lazily: the root is fixed for the life of the handler, and a
+  // checkout reached through a symlink — which is every macOS `/tmp` — would
+  // otherwise fail its own containment test. Lazily because this is a
+  // constructor and it cannot await.
+  let realRoot: string | null = null;
 
   return async function serveStatic(request: Request): Promise<Response | null> {
     const method = request.method.toUpperCase();
@@ -288,6 +293,9 @@ export function createStaticHandler(options: {|
 
     const resolved = path.resolve(rootDir, `.${pathname}`);
     if (resolved !== rootDir && !resolved.startsWith(rootDir + path.sep)) return null;
+
+    realRoot ??= (await realpathOrNull(rootDir)) ?? rootDir;
+    const root = realRoot;
 
     // `/guide/` and `/guide` are the same prerendered document, and neither
     // spelling is the one a person types. `<path>.html` is last because a
@@ -301,6 +309,21 @@ export function createStaticHandler(options: {|
     for (const candidate of candidates) {
       const info = await statFile(candidate);
       if (info == null || !info.isFile()) continue;
+      // The containment check above is textual, and a symlink is how a path
+      // that reads as inside the root opens a file outside it. `dist/` is
+      // written by the build, but `public/` is copied verbatim from whatever
+      // the author — or a dependency's install script — put there, so the
+      // check has to be made again on the value that is actually opened.
+      // ubugeeei-prod/uf#550; the same shape as the tarball traversals in
+      // `docs/security.md`, at the serving end.
+      //
+      // A link that stays inside the root still works, because that is a thing
+      // people do on purpose. One that leaves is a 404, indistinguishable from
+      // a file that is not there — which is what it should look like.
+      const opened = await realpathOrNull(candidate);
+      if (opened == null || (opened !== root && !opened.startsWith(root + path.sep))) {
+        continue;
+      }
       const headers = {
         "content-type":
           CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream",
@@ -324,6 +347,21 @@ function decodePathname(pathname: string): string | null {
     return decoded.includes("\0") ? null : decoded;
   } catch {
     // A percent escape that is not one. There is no file behind it.
+    return null;
+  }
+}
+
+/**
+ * `fs.realpath`, or `null` when the path cannot be resolved.
+ *
+ * A broken symlink, a component that is not a directory, or a permission the
+ * process does not have all end here — and all of them mean the same thing to
+ * the caller: this is not a file to serve.
+ */
+async function realpathOrNull(file: string): Promise<string | null> {
+  try {
+    return await realpath(file);
+  } catch {
     return null;
   }
 }

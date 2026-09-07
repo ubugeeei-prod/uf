@@ -9,6 +9,9 @@
 // one".
 
 import { describe, expect, it } from "@uniflowed/test";
+import { manualClock, setClock } from "@uniflowed/core/clock";
+import type { Random } from "@uniflowed/core/random";
+import { setRandom } from "@uniflowed/core/random";
 
 import {
   acquireRelease,
@@ -711,6 +714,61 @@ describe("retry", () => {
 
     await runPromise(exit(retry(broken, { kind: "recurs", times: 5 })));
     expect(attempts).toBe(1);
+  });
+
+  it("takes its timetable from the injected clock rather than from the host", async () => {
+    // `recurUpTo` gives up once the wall clock has moved past its budget, so
+    // before `@uniflowed/core/clock` this behaviour could only be tested by
+    // spending the budget. Here the attempts move the clock themselves: three
+    // attempts of four hundred milliseconds each, against a budget of a
+    // thousand, and the third is the one that exhausts it.
+    const clock = manualClock(0, "UTC");
+    const restore = setClock(clock.clock);
+    try {
+      let attempts = 0;
+      const always = suspend(() => {
+        attempts += 1;
+        clock.advance(400);
+        return fail("still failing");
+      });
+
+      const result = await runPromise(exit(retry(always, { kind: "recurUpTo", millis: 1000 })));
+
+      expect(result.kind).toBe("failure");
+      expect(attempts).toBe(3);
+    } finally {
+      restore();
+    }
+  });
+
+  it("draws its jitter from the injected stream rather than from Math.random", async () => {
+    // A jittered schedule spreads its delay by a random factor, and a delay is
+    // not observable from here — so what is asserted is where the factor came
+    // from. A stream that counts is the only way to see that from outside, and
+    // seeing it is the point: `Math.random()` in a retry is a decision nothing
+    // can reproduce.
+    let draws = 0;
+    const counting: Random = {
+      next: () => {
+        draws += 1;
+        return 0.5;
+      },
+      integer: () => 0,
+      fork: () => counting,
+    };
+    const restore = setRandom(counting);
+    try {
+      const always = suspend(() => fail("still failing"));
+
+      await runPromise(
+        exit(retry(always, { kind: "jittered", schedule: { kind: "recurs", times: 2 } })),
+      );
+
+      // Two retries, one factor each; the third decision is the one that stops.
+      expect(draws).toBe(3);
+    } finally {
+      restore();
+    }
   });
 });
 

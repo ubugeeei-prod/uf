@@ -28,6 +28,7 @@ import { createRequire } from "node:module";
 import * as React from "@uniflowed/react";
 import { afterAll, beforeAll, describe, expect, it } from "@uniflowed/test";
 import {
+  RenderProvider,
   browserWindow,
   useAnimationFrame,
   useAsync,
@@ -63,9 +64,13 @@ import {
   usePreferredColorScheme,
   usePrefersReducedMotion,
   usePrevious,
+  useRandom,
+  useRenderTimeZone,
+  useRenderedAt,
   useScroll,
   useScrollLock,
   useSet,
+  useShuffled,
   useStorage,
   useSupported,
   useThrottledCallback,
@@ -352,5 +357,65 @@ describe("state and time, prerendered", () => {
     // effect, and an effect does not run during a prerender.
     expect(markupOf(<Probe />)).toBe("<output>null null true</output>");
     expect(started).toBe(0);
+  });
+});
+
+describe("the render anchor, prerendered", () => {
+  // This is the side of the handoff that goes first, and the only side that has
+  // no document to read from. `RenderProvider` has to notice that, decide the
+  // values itself, and write them where the other side will look — which is
+  // exactly what cannot be checked in a process that has a document, because
+  // there the read would succeed for the wrong reason.
+  const ANCHOR = Date.UTC(2026, 8, 4, 6, 0, 0);
+
+  it("writes what it decided into the markup, with nowhere to read it from", () => {
+    const markup = markupOf(
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="fixedseed">
+        <p>page</p>
+      </RenderProvider>,
+    );
+
+    expect(markup).toBe(
+      '<script id="__uf_render" type="application/json">' +
+        '{"at":1788501600000,"timeZone":"Asia/Tokyo","seed":"fixedseed"}' +
+        "</script><p>page</p>",
+    );
+  });
+
+  it("hands the tree the instant, the zone and a stream, and no clock", () => {
+    component Probe() {
+      const at = useRenderedAt();
+      const zone = useRenderTimeZone();
+      const drawn = useRandom("featured").next();
+      const order = useShuffled(["a", "b", "c"], "featured").join("");
+      return <output>{`${at.toString()} ${zone} ${drawn.toFixed(6)} ${order}`}</output>;
+    }
+    const page = (
+      <RenderProvider at={ANCHOR} timeZone="Asia/Tokyo" seed="fixedseed">
+        <Probe />
+      </RenderProvider>
+    );
+
+    // Byte-identical twice, which is the claim: nothing in that tree read a
+    // clock or a random number generator, so a second render — the browser's —
+    // has nothing it could produce differently.
+    const first = markupOf(page);
+    expect(first).toBe(markupOf(page));
+    expect(first).toContain("2026-09-04T06:00:00Z Asia/Tokyo");
+  });
+
+  it("escapes a seed that would otherwise end the script early", () => {
+    // A seed is uf's own eight base-36 characters, so this cannot happen today.
+    // It is checked because the carrier is a `<script>`, and a `<script>` whose
+    // contents are not escaped is the oldest injection there is — the guard has
+    // to be in the encoder rather than in an assumption about the value.
+    const markup = markupOf(
+      <RenderProvider at={ANCHOR} timeZone="UTC" seed="</script><script>alert(1)">
+        <p>page</p>
+      </RenderProvider>,
+    );
+
+    expect(markup).not.toContain("</script><script>alert(1)");
+    expect(markup).toContain("\\u003c/script>");
   });
 });
