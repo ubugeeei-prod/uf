@@ -48,6 +48,7 @@ use uf_pm::{
 use uf_term::{Cell, Column, KeyValue, Renderer, Status, Table, Tone, format_duration};
 
 use super::install::{chosen_by, lockfile_label, render_change_counts, render_change_table};
+use super::scripts_allowed;
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
 
@@ -72,6 +73,7 @@ pub(crate) fn add(
             operation: Operation::Add { kind },
             operands: specs,
             retry: retry_line("uf add", specs),
+            announced: false,
         },
     )
 }
@@ -86,12 +88,16 @@ pub(crate) fn remove(cwd: &Utf8Path, ui: &mut Ui, names: &[String]) -> Result<()
             operation: Operation::Remove,
             operands: names,
             retry: retry_line("uf remove", names),
+            announced: false,
         },
     )
 }
 
-/// `uf update [PACKAGE...]`.
-pub(crate) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result<()> {
+/// The manager's own update: everything moves inside the range it is declared
+/// with, and nothing else moves at all.
+///
+/// [`super::update`] is the command; this is the half of it that delegates.
+pub(super) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result<()> {
     delegate(
         cwd,
         ui,
@@ -100,6 +106,7 @@ pub(crate) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
             operation: Operation::Update,
             operands: packages,
             retry: retry_line("uf update", packages),
+            announced: false,
         },
     )
 }
@@ -109,7 +116,8 @@ pub(crate) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
 /// The one command here that changes nothing, so it neither takes the
 /// `install_workspace` guard — there is no install to guard — nor rewrites
 /// `uf.lock`. Asking why a package is installed must not install anything.
-/// `uf ls`, `uf audit` and `uf search`: read the project, change nothing.
+/// `uf ls`, `uf audit` and `uf search`: read the project, change nothing. And
+/// `uf patch`, which changes a temporary directory and not this project.
 ///
 /// The same shape as [`why`] and for the same reason — the manager's own
 /// output is the answer, so uf says who it is about to ask and then gets out
@@ -162,6 +170,46 @@ pub(crate) fn query(
     Ok(())
 }
 
+/// `uf patch NAME` and `uf patch --commit DIR`.
+///
+/// Two halves of one escape hatch: the first opens a copy of a dependency
+/// somewhere you can edit it and prints where, the second turns those edits
+/// into a patch file the install reapplies from then on.
+///
+/// The open half goes through [`query`], whose shape is exactly right for it:
+/// the manager's own output *is* the answer — a directory path you are about to
+/// `cd` into — so uf says which manager it is asking and then gets out of the
+/// way rather than printing a summary after it. Nothing about this project
+/// changes, so there is no lockfile to report on.
+///
+/// The commit half installs — it records the patch in the manifest and
+/// reinstalls the package it patched, whose scripts then run against code you
+/// have just edited — so it goes through [`delegate`], which refuses scripts,
+/// rewrites `uf.lock`, and reports what moved in the tree.
+///
+/// On npm, bun and Yarn 1 both halves are refused by name rather than attempted
+/// (see [`uf_pm::ManagerRunError::Unsupported`]). uf could run `patch-package`
+/// for them and it would even work; it would also be uf installing a dependency
+/// the project did not choose, on the one command whose entire purpose is to
+/// edit somebody else's code.
+pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> Result<()> {
+    let operands = [target.to_owned()];
+    if commit {
+        return delegate(
+            cwd,
+            ui,
+            &Request {
+                heading: "uf patch --commit",
+                operation: Operation::PatchCommit,
+                operands: &operands,
+                retry: format!("uf patch --commit {target}"),
+                announced: false,
+            },
+        );
+    }
+    query(cwd, ui, "uf patch", Operation::Patch, &operands)
+}
+
 pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     let resolved = load_config(cwd)?;
     let detection = detect_package_manager(&resolved.root);
@@ -203,19 +251,25 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
 }
 
 /// One delegated command that changes the project.
-struct Request<'a> {
+pub(super) struct Request<'a> {
     /// The banner and the heading, e.g. `uf add`.
-    heading: &'static str,
+    pub(super) heading: &'static str,
     /// What the manager is being asked to do.
-    operation: Operation<'a>,
+    pub(super) operation: Operation<'a>,
     /// The package specifiers or names, exactly as they were typed.
-    operands: &'a [String],
+    pub(super) operands: &'a [String],
     /// The line to tell someone to run again after they have fixed it.
-    retry: String,
+    pub(super) retry: String,
+    /// Whether the banner is already on the screen.
+    ///
+    /// `uf update --latest` draws its own, reports what it is about to rewrite,
+    /// rewrites it, and only then delegates the install. Drawing a second
+    /// banner in the middle of that would read as a second command.
+    pub(super) announced: bool,
 }
 
 /// Detect, refuse scripts, run the manager, and report both files.
-fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
+pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
     let started = Instant::now();
     // Before anything is read or written: a command that refuses its own
     // argument must not have rewritten `uf.lock` on the way to refusing it.
@@ -238,8 +292,11 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
     let tree_before = uf_pm::delta::snapshot(&resolved.root, manager);
 
     let project = project_label(&resolved.root).to_string();
+    let announced = request.announced;
     ui.render(|renderer, out| {
-        renderer.banner(out, request.heading, Some(&project));
+        if !announced {
+            renderer.banner(out, request.heading, Some(&project));
+        }
         renderer.blank(out);
     });
 
@@ -247,7 +304,7 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
         &resolved.root,
         request.operation,
         request.operands,
-        !plan.forbids_npm_scripts(),
+        scripts_allowed(&resolved.root, manager, &plan)?,
     )
     .map_err(|error| {
         failed_hint(
@@ -276,6 +333,7 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
 
     let report = DepsReport {
         heading: request.heading,
+        continued: request.announced,
         manager: outcome.manager.to_string(),
         chosen_by: chosen_by(&outcome.source, outcome.substituted),
         command: outcome.invocation.to_string(),
@@ -295,6 +353,8 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
 /// Everything one of these commands has to say once the manager has exited.
 struct DepsReport {
     heading: &'static str,
+    /// Whether this is the second half of a command that already reported.
+    continued: bool,
     manager: String,
     chosen_by: String,
     command: String,
@@ -364,6 +424,16 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
 /// not change the manifest, and both halves are worth saying.
 fn headline(report: &DepsReport) -> String {
     if report.manifest.is_empty() {
+        // `uf update --latest` rewrote the manifests itself and said so a few
+        // lines above; from the manager's side there was then nothing left to
+        // change. Saying "the manifest already said so" there would read as a
+        // denial of the line the reader just saw.
+        if report.continued {
+            return format!(
+                "{} in the tree",
+                plural(report.tree.changes.len(), "change")
+            );
+        }
         return format!(
             "the manifest already said so; {} in the tree",
             plural(report.tree.changes.len(), "change")

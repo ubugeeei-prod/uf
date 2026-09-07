@@ -48,6 +48,7 @@ use uf_term::{
     truncate_to_width,
 };
 
+use super::scripts_allowed;
 use crate::brand;
 use crate::commands::vite::resolve_host;
 use crate::support::{plural, project_label};
@@ -216,7 +217,7 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         let run = run_watched(
             &resolved.root,
             operation,
-            !plan.forbids_npm_scripts(),
+            scripts_allowed(&resolved.root, manager, &plan)?,
             &mut screen,
         );
         screen.close();
