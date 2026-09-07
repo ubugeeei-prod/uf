@@ -1351,6 +1351,64 @@ fn explain_says_which_commands_it_knows() {
     );
 }
 
+/// ubugeeei-prod/uf#425: tab completion offered a hand-maintained subset, so a
+/// person using it to find out what is explainable was told less than the
+/// truth.
+///
+/// The two lists had already drifted — `install`, `upgrade`, `run`, `exec` and
+/// `env` were all missing from the completion one, and `uf explain` answers
+/// every one of them. There is one list now, and this asserts the two surfaces
+/// agree from outside rather than by reading the same constant twice.
+#[test]
+fn completion_offers_every_command_explain_accepts() {
+    let dir = tempfile::tempdir().unwrap();
+    let offered = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["__complete", "explain", ""])
+        .output()
+        .unwrap();
+    let offered: Vec<String> = String::from_utf8(offered.stdout)
+        .unwrap()
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    assert!(offered.len() > 20, "{offered:?}");
+
+    // The refusal names every command it would have accepted, so it is the
+    // other surface's own answer rather than a second copy of the list.
+    let refused = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "deploy"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(refused.stderr).unwrap();
+    let accepted: Vec<&str> = stderr
+        .split_once("; it knows ")
+        .expect("the refusal lists what it knows")
+        .1
+        .split(',')
+        .map(str::trim)
+        .map(|word| word.trim_end_matches(['.', '\n']))
+        .filter(|word| !word.is_empty())
+        .collect();
+
+    for name in &offered {
+        assert!(
+            accepted.contains(&name.as_str()),
+            "`{name}` is offered by completion and not accepted by `uf explain`"
+        );
+    }
+    assert_eq!(
+        accepted.len(),
+        offered.len(),
+        "`uf explain` accepts something completion does not offer:\n{stderr}"
+    );
+}
+
 /// Commands that do their whole job in this binary, so there is no provider
 /// to name.
 ///
