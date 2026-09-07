@@ -57,8 +57,13 @@ outputs:
     description: The directory holding the `uf`, `ufr` and `ufx` symlinks.
     value: ${{ steps.paths.outputs.bin-dir }}
   cache-hit:
-    description: Whether the toolchain came from the cache rather than a download.
-    value: ${{ steps.restore.outputs.cache-hit == 'true' }}
+    description: >-
+      Whether the toolchain came from the cache rather than a download. From
+      the install step rather than from the restore, because a key that matched
+      is not a toolchain that runs: a restore whose binary cannot answer is
+      followed by a download, and reporting that as a hit would describe the
+      lookup instead of the outcome.
+    value: ${{ steps.install.outputs.cache-hit }}
 
 runs:
   using: composite
@@ -118,7 +123,9 @@ runs:
         # a hit and neither can run anything.
         if [ "${CACHED:-}" = "true" ] && [ -x "$uf_bin" ] && "$uf_bin" --version >/dev/null 2>&1; then
           echo "uf ${UF_VERSION} restored from the cache"
+          echo "cache-hit=true" >> "$GITHUB_OUTPUT"
         else
+          echo "cache-hit=false" >> "$GITHUB_OUTPUT"
           # The installer writes its progress to stderr and the binary to
           # UF_BIN_DIR. It verifies the archive's sha256 against the checksum
           # published beside it before unpacking, which is the reason to run it

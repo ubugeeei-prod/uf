@@ -96,7 +96,10 @@ done
 # nothing. An integration that skipped that would install nothing and put an
 # empty directory on `PATH`.
 for file in $integrations; do
-  grep -q -- '--version' "$file" ||
+  # Comment lines stripped first. Every one of these files *explains* the rule
+  # as well as applying it, and a check that reads the explanation would go on
+  # passing after the code below it was deleted.
+  grep -v '^[[:space:]]*#' "$file" | grep -q -- '--version' ||
     fail "$file never runs \`uf --version\`, so it cannot tell a broken cache from a good one"
 done
 

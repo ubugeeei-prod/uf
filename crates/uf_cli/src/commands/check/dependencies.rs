@@ -137,9 +137,24 @@ fn read_package(root: &Utf8Path, name: &str) -> Vec<SourceFile> {
     let mut paths = Vec::new();
     let walk = WalkDir::new(directory.as_std_path())
         .into_iter()
-        // A dependency's own dependencies are a package of their own: they are
-        // reached, if at all, by a specifier of their own, which brings them
-        // back through here under the name that named them.
+        // A dependency's own dependencies are read as packages of their own,
+        // from the *root* `node_modules`, when a specifier reaches one — never
+        // from the nested directory this skips. That is not Node's rule, and
+        // the difference is worth stating rather than discovering. Node
+        // resolves a bare specifier by climbing from the importing file, so
+        // `node_modules/foo/node_modules/bar` outranks the root's `bar` for
+        // code inside `foo`. Here the root copy wins, always.
+        //
+        // It is a rule rather than an oversight, because the alternative is
+        // not free: two versions of one name in one batch collide in
+        // `WorkspacePackages`, which indexes by published name and keeps the
+        // first. Reading both would make which types a file sees depend on the
+        // batch's order. So one copy is read per name, deterministically, and
+        // that is the hoisted one — which is the only copy a flat `npm
+        // install` produces anyway.
+        //
+        // A project that really does hold two versions of a Flow-typed package
+        // is typed against one of them. ubugeeei-prod/uf#486.
         .filter_entry(|entry| entry.depth() == 0 || entry.file_name() != INSTALLED);
     for entry in walk.flatten() {
         if !entry.file_type().is_file() {
