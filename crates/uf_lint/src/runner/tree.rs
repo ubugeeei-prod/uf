@@ -63,6 +63,23 @@
 //! worker's own stack is not enough. A module whose parse produced diagnostics
 //! is dropped rather than walked — `flow/syntax` has already reported it, and
 //! a recovered tree is the parser's best guess at a file nobody has fixed yet.
+//!
+//! # Why this is not [`super::react_tree`]'s parse
+//!
+//! Both runners read a tree and neither shares one, which looks like waste and
+//! is not. `react_tree` needs the **Babel-shaped** tree, because its answer
+//! comes from handing the module to the official React Compiler and comparing
+//! what came back; these rules need the **port's own typed tree**, because
+//! `jsx::Element` says which of its parts is an attribute and which is a child
+//! and a JSON object says neither without a schema written here. Converting
+//! one into the other is more work than parsing again, and a shared tree that
+//! served both would be a third shape neither of them wants.
+//!
+//! So a component module that both renders JSX and calls `useEffect` is parsed
+//! twice, and that is the honest cost. It is bounded by the gates above — a
+//! module with no JSX tag closer and no `import.meta` never reaches this
+//! runner at all — and `uf lint` over this repository, 422 files, still
+//! finishes in under a second.
 
 mod aria;
 

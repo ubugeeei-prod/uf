@@ -490,3 +490,114 @@ fn a_hook_inside_a_try_block_is_still_rejected() {
         [Finding::HookNotAtTopLevel, Finding::HookNotAtTopLevel]
     );
 }
+
+// --- An expression the statement evaluates once (ubugeeei-prod/uf#477) -------
+//
+// An object literal, a JSX container and a JSX attribute are all read exactly
+// once where they stand, so a hook called in one runs on every render in the
+// same order. Each of the accepting tests below is paired with a rejecting one
+// that puts the same literal somewhere the statement may not reach, because a
+// brace that stopped nesting everywhere would be a hole rather than a fix.
+
+#[test]
+fn a_hook_called_in_an_object_literal_is_accepted() {
+    // ubugeeei-prod/uf#477's own reproduction: a controller hook that builds
+    // its state as one object of store selections. Every call runs, in order,
+    // on every render.
+    accepts(
+        "hook useThing(): { a: number, b: number } {\n  const bag = {\n    a: useState(0)[0],\n    b: useState(1)[0],\n  };\n\n  return bag;\n}\n",
+    );
+}
+
+#[test]
+fn a_hook_called_in_a_nested_object_literal_is_accepted() {
+    accepts(
+        "component Page() {\n  const chrome = { header: { title: useTitle() } };\n  return <h1>{chrome.header.title}</h1>;\n}\n",
+    );
+}
+
+#[test]
+fn a_hook_called_in_an_object_literal_argument_is_accepted() {
+    accepts("component Page() {\n  render({ value: useValue() });\n  return null;\n}\n");
+}
+
+#[test]
+fn a_hook_called_in_an_object_literal_in_an_array_is_accepted() {
+    accepts(
+        "component Page() {\n  const rows = [{ value: useValue() }];\n  return <ul>{rows}</ul>;\n}\n",
+    );
+}
+
+#[test]
+fn a_hook_called_in_a_returned_object_literal_is_accepted() {
+    accepts("hook useThing(): { a: number } {\n  return { a: useState(0)[0] };\n}\n");
+}
+
+#[test]
+fn a_hook_called_in_a_jsx_attribute_is_accepted() {
+    accepts(
+        "component Page(items: Array<string>) {\n  return <Ctx.Provider value={useMemo(() => items, [items])} />;\n}\n",
+    );
+}
+
+#[test]
+fn a_hook_called_in_an_object_literal_inside_a_condition_is_rejected() {
+    // The literal does not nest; the `if` it stands in does.
+    assert_eq!(
+        findings(
+            "component Page(flag: boolean) {\n  if (flag) {\n    const bag = { a: useState(0)[0] };\n    return bag.a;\n  }\n  return null;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}
+
+#[test]
+fn a_hook_called_in_an_object_literal_inside_a_callback_is_rejected() {
+    // The callback is a plain function, and a plain function may not call
+    // hooks at all — the literal inside it changes nothing about that.
+    assert_eq!(
+        findings(
+            "component List(items: Array<string>) {\n  items.forEach(() => {\n    const bag = { a: useState(0)[0] };\n    return bag;\n  });\n  return null;\n}\n"
+        ),
+        [Finding::HookOutsideComponent]
+    );
+}
+
+#[test]
+fn a_hook_called_in_an_object_method_is_rejected() {
+    // `{ read() { … } }` puts a brace after a `)`, which is neither a JSX
+    // attribute nor a property value, so it keeps nesting and the call inside
+    // it is still reported. The finding under-describes it — a method body is
+    // a function, so the call is outside a component rather than merely nested
+    // — but the answer that matters is that a brace that stopped nesting
+    // everywhere would be a hole, and this one does not.
+    assert_eq!(
+        findings(
+            "component Page() {\n  const api = { read() { return useState(0); } };\n  return api.read;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}
+
+#[test]
+fn a_hook_called_in_a_switch_case_block_is_rejected() {
+    // `case 1: {` also puts a brace after a `:`, and that one is a block. It
+    // is told apart from a property value by what encloses it: a `case` cannot
+    // stand inside an object literal.
+    assert_eq!(
+        findings(
+            "component Page(mode: number) {\n  switch (mode) {\n    case 1: {\n      const [a] = useState(0);\n      return a;\n    }\n  }\n  return null;\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}
+
+#[test]
+fn a_hook_called_in_a_labelled_block_is_rejected() {
+    assert_eq!(
+        findings(
+            "component Page() {\n  setup: {\n    const [a] = useState(0);\n    return a;\n  }\n}\n"
+        ),
+        [Finding::HookNotAtTopLevel]
+    );
+}

@@ -242,12 +242,15 @@ pub(crate) fn build(
                     let _ = driver.finish("uf build");
                     return Err(failure);
                 }
-                // A build has no watcher, so `SourceChanged` never reaches
-                // it; it is in the match because the driver's channel is one
-                // vocabulary and every reader has to know the whole of it.
+                // A build has no watcher and no browser, so `SourceChanged`,
+                // `EnvChanged` and `Diagnostic` never reach it; they are in the
+                // match because the driver's channel is one vocabulary and
+                // every reader has to know the whole of it.
                 Event::ConfigLoaded { .. }
                 | Event::Listening { .. }
                 | Event::SourceChanged
+                | Event::EnvChanged { .. }
+                | Event::Diagnostic(_)
                 | Event::Done { .. }
                 | Event::Config { .. } => {}
             }

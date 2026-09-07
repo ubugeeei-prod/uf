@@ -44,7 +44,7 @@ use crate::runner::{
     run_flow_unsafe_object_assign, run_no_npm_script_invocation, run_no_tabs,
     run_no_trailing_whitespace, run_package_no_npm_scripts, run_react_compiler_rules,
     run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
-    run_react_no_default_export_component, run_router_reserved_files,
+    run_react_no_default_export_component, run_react_tree_rules, run_router_reserved_files,
     run_router_unsupported_segment, run_security_no_dangerously_set_inner_html,
     run_security_no_eval, run_server_no_client_secret, run_server_no_server_only_import_in_client,
     run_server_use_client_directive_position, run_server_use_server_actions, run_structure_rules,
@@ -242,6 +242,7 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_react_no_default_export_component(&scan, config, &mut diagnostics);
     run_react_compiler_rules(&scan, config, &mut diagnostics);
     run_react_native_platform_split(&scan, config, &mut diagnostics);
+    run_react_tree_rules(&scan, config, &mut diagnostics);
     run_structure_rules(&scan, config, &mut diagnostics);
 
     run_server_no_client_secret(&scan, config, &mut diagnostics);

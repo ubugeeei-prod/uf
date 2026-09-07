@@ -110,7 +110,7 @@
 //!   directive has to land before the first *statement* but after the docblock
 //!   comment that carries `@flow`, and finding that line means re-running the
 //!   comment scanner that `uf_lint` owns.
-//! - `security/*`, `fetch/no-global-override`, `react/*`,
+//! - `security/*`, `fetch/no-global-override`, most of `react/*`,
 //!   `uniflowed/no-npm-script-invocation` — these ask for a different design,
 //!   not a different spelling.
 //! - `a11y/alt-text` — the text an image carries is the one thing a linter
@@ -125,6 +125,18 @@
 //! - `a11y/label-has-associated-control`, `a11y/no-static-element-interactions`,
 //!   `markup/no-invalid-nesting` — each asks for markup to be rearranged, not
 //!   for a word to be swapped.
+//!
+//! # The two rules whose fix is waiting on a shape
+//!
+//! `react/no-derived-state-effect` and `react/no-redundant-memo` are the first
+//! rules here whose rewrite *is* mechanical and still cannot be spelled as a
+//! [`Fix`]. Both edits span lines and statements — deleting an effect and a
+//! `useState` and leaving one `const` behind, or unwrapping a call whose
+//! argument is a multi-line arrow — and both need text taken from the file
+//! rather than a `&'static str`. [`Fix`] is one line and one constant by
+//! design, and widening it is a change to `--fix`, `--fix-unsafe`, `uf
+//! prepare` and the editor's code actions all at once. It is the change the
+//! comment on [`Fix`] anticipates; it is not this catalogue growing a row.
 //!
 //! # Two fixes that touch the same bytes
 //!

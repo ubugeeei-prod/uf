@@ -120,7 +120,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 61] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -224,6 +224,23 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 61] = [
     ("react/hooks-rules", RuleLevel::Error),
     // Framework routes are wired by name; `warn` while the scaffold migrates.
     ("react/no-default-export-component", RuleLevel::Warn),
+    // An effect whose whole body writes state computed from its own
+    // dependencies. `error`, because the code is wrong rather than untidy: the
+    // component renders once with the value it had before the effect ran, and
+    // then again, so a user sees the stale one — and the fix is to move the
+    // expression into render, which is mechanical. The rule reports only the
+    // shape where that move is provably safe; `uf_lint::runner::react_tree`
+    // lists what it leaves alone and why.
+    ("react/no-derived-state-effect", RuleLevel::Error),
+    // A `useMemo`/`useCallback` the official React Compiler removed when it
+    // compiled the function around it. `warn`, not `error`: nothing is broken
+    // — the compiler already did the work, so the hand-written call is a
+    // second dependency array to keep correct rather than a defect — and
+    // deleting memoization is a refactor, which is not something a build
+    // should fail over. Off when `app.builtins.reactCompiler.enabled` is
+    // false, because then the hand-written one is the only memoization there
+    // is.
+    ("react/no-redundant-memo", RuleLevel::Warn),
     // Non-idempotent render breaks streaming SSR and hydration.
     ("react/no-render-side-effects", RuleLevel::Error),
     // Platform branches are a preference, not a correctness problem.
