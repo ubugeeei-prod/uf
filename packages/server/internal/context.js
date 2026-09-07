@@ -53,6 +53,36 @@ export type DraftMode = {
 export type RequestContext = {
   readonly headers: HeaderStore,
   readonly cookies: CookieStore,
+  /**
+   * What to call this request in a log line, in a trace, and in an error page.
+   *
+   * On the context for the same reason everything else here is, and the reason
+   * is sharper for an id than for anything above it: an id whose whole purpose
+   * is to tell two requests apart, kept in a module-level variable, would name
+   * whichever request set it last. Every line the first request wrote after the
+   * second one arrived would carry the second one's id, and the log would be
+   * wrong in a way that reads as though it were right.
+   *
+   * uf generates it and never takes it from the request. An `X-Request-Id` a
+   * client sent is text that client chose: it can be the same on a million
+   * requests, which defeats the one thing an id is for; it can be a megabyte;
+   * and it lands in a log line, which is a place `./log.js` spends its header
+   * explaining that attacker-chosen text does not belong. A deployment behind
+   * a proxy that already assigns ids has a real need here and it is not this
+   * field — it is a second, clearly-named one that says whose id it is, and it
+   * is not in this change.
+   */
+  readonly id: string,
+  /**
+   * The route pattern that claimed this request, or `null` if none has.
+   *
+   * `/orders/:id` rather than `/orders/8813`. Written by whichever part of
+   * `@uniflowed/router` matched — the handler dispatcher or the renderer —
+   * through [`noteRoute`], and read by the host when it writes the request's
+   * log line. Mutable because it is not known when the request begins: a host
+   * establishes the request before anything has looked at the path.
+   */
+  route: string | null,
   draft: boolean,
   /** Work deferred until the response has been sent. */
   readonly deferred: Array<() => mixed | Promise<mixed>>,
@@ -187,12 +217,61 @@ export function contextFor(request: Request): RequestContext {
       get: (name) => (Object.hasOwn(parsed(), name) ? parsed()[name] : null),
       has: (name) => Object.hasOwn(parsed(), name),
     },
+    id: newRequestId(),
+    route: null,
     draft: false,
     deferred: [],
     requestStateReads: 0,
     cache: null,
     capabilities: null,
   };
+}
+
+/**
+ * A name for one request.
+ *
+ * Generated eagerly rather than on the first read, which is the opposite of the
+ * decision two paragraphs above about the cookie header, and for a reason that
+ * survives being stated: nothing reads the cookies of a request for a
+ * stylesheet, and *everything* reads the id — the host writes it into the
+ * request's log line whether or not the application ever asked. A lazy value
+ * that is always used is a branch and a nullable field bought for nothing.
+ *
+ * `crypto.randomUUID` because every runtime this package runs on has Web Crypto
+ * as a global: Node since 19, Deno, Bun, and every worker runtime. Reaching for
+ * `node:crypto` instead would put an import in a module `../edge.js` bundles
+ * for a platform that has no such thing.
+ *
+ * It is random rather than a counter, and that is a decision rather than
+ * laziness. A counter is smaller and sorts, and it also says how many requests
+ * a process has served and lets one id be guessed from another — and ids end up
+ * in error pages shown to whoever hit the error, which is the wrong place to
+ * publish a traffic figure.
+ */
+function newRequestId(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * Record that `pattern` is the route this request turned out to be.
+ *
+ * Silent outside a request, and that is what makes it callable from the
+ * router's own matching code: `prerender` resolves routes at build time, where
+ * there is no request and nothing to record, and a function that threw there
+ * would push the check into every caller.
+ *
+ * Last writer wins, and the writers are chosen so that this means "the most
+ * specific thing that claimed the request". `@uniflowed/router`'s dispatcher
+ * calls it for a route handler and its renderer calls it for a page; the
+ * middleware runner deliberately does not. A guard covers a directory —
+ * `/dashboard` covers `/dashboard/typo`, which is a 404 — so recording the
+ * guard's path would label a request with a route it never reached.
+ */
+export function noteRoute(pattern: string): void {
+  const context = storage.getStore();
+  if (context != null) {
+    context.route = pattern;
+  }
 }
 
 /**

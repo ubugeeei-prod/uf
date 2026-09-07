@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/form",
-  "version": "0.0.0-alpha.12",
+  "version": "0.0.0-alpha.13",
   "description": "Forms that do not re-render: uncontrolled fields, narrow subscriptions and schema validation, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -25,8 +25,8 @@
     "internal"
   ],
   "dependencies": {
-    "@uniflowed/react": "0.0.0-alpha.12",
-    "@uniflowed/validator": "0.0.0-alpha.12"
+    "@uniflowed/react": "0.0.0-alpha.13",
+    "@uniflowed/validator": "0.0.0-alpha.13"
   },
   "peerDependencies": {
     "react": ">=19"

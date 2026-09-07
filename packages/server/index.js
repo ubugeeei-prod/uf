@@ -13,10 +13,13 @@
 // component, `uf:rsc` classifies it that way, and importing it from one is the
 // error that classification exists to produce.
 
-import type { CookieStore, DraftMode, HeaderStore } from "./internal/context.js";
+import type { CookieStore, DraftMode, HeaderStore, RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
+import type { LogFields, Logger } from "./internal/log.js";
+import { processLogger } from "./log.js";
 
 export type { CookieStore, DraftMode, HeaderStore } from "./internal/context.js";
+export type { LogFields, LogLevel, Logger } from "./internal/log.js";
 
 /**
  * Raised when a server function is called with no request to answer about.
@@ -109,6 +112,91 @@ export function draftMode(): DraftMode {
     disable: () => {
       context.draft = false;
     },
+  };
+}
+
+/**
+ * What this request is called, everywhere it is mentioned.
+ *
+ * The same string the host puts in the request's log line, so a page that
+ * renders it into an error message gives whoever hit the error something they
+ * can quote and an operator something they can search for. It is created when
+ * the request arrives and is readable from a loader, from a route handler and
+ * from a server component's render, without any of them being handed a request
+ * — which is only possible because it lives on the request context rather than
+ * in a module, and is the whole of ubugeeei-prod/uf#506's harder half.
+ *
+ * # It counts as reading request state, and `logger()` does not
+ *
+ * This one goes through `require$VaryingContext`, which is the difference
+ * between the two bindings and is not a detail. A component that renders the
+ * request id has rendered a document that is true of exactly one request; a
+ * route cache that stored it would answer every later visitor with the first
+ * one's id, which is the same failure as a cached `Set-Cookie` in a smaller
+ * hat. So reading it makes the render uncacheable, exactly as `cookies()` does.
+ *
+ * `logger()` below does not count, because the id it binds goes into a log line
+ * rather than into the document, and a page that logs must not thereby become a
+ * page uf refuses to cache.
+ */
+export function requestId(): string {
+  return require$VaryingContext("requestId").id;
+}
+
+/**
+ * Somewhere to say something about this request.
+ *
+ * The process logger — whatever `@uniflowed/server/log`'s `installLogger` was
+ * last given — with this request's id and matched route already bound, so a
+ * line written from six levels down inside a render can be joined to the
+ * request that caused it without anybody threading anything through.
+ *
+ * # It does not throw outside a request
+ *
+ * Every other binding in this module does, and the argument for that is in the
+ * header: they answer *about* a request, and outside one there is no honest
+ * answer to give. A logger is the exception because outside a request there is
+ * an honest answer — the same logger, writing the same line, without a request
+ * id on it. The alternative is a package whose logging call is the one call you
+ * cannot make from the code that handles a failure, which is where logging is
+ * worth the most.
+ *
+ * The route is read at the moment a line is written rather than bound once, and
+ * so is the process logger. Both change under a caller that is holding one of
+ * these: a loader logs before the render has begun and a component logs after
+ * the router has matched, so a route captured at construction would be `null`
+ * on lines of a request whose route is perfectly well known — and a host that
+ * calls `installLogger` after something has already taken a logger would
+ * otherwise be sending part of its output to the sink it replaced.
+ */
+export function logger(): Logger {
+  const context = currentContext();
+  return context == null ? processLogger() : boundLogger(context, {});
+}
+
+/**
+ * The process logger with this request's fields on it, resolved per line.
+ *
+ * Recursive, so a `child` of it is still one of these rather than a plain child
+ * of the process logger with the route frozen into it at the moment `child` was
+ * called.
+ */
+function boundLogger(context: RequestContext, extra: LogFields): Logger {
+  const fields = () => ({
+    requestId: context.id,
+    ...(context.route == null ? {} : { route: context.route }),
+    ...extra,
+  });
+  return {
+    // Read now rather than per line: a threshold is what a caller checks to
+    // decide whether building a field is worth it, and one that changed under
+    // them would make that check meaningless.
+    level: processLogger().level,
+    debug: (message, more) => processLogger().debug(message, { ...fields(), ...more }),
+    info: (message, more) => processLogger().info(message, { ...fields(), ...more }),
+    warn: (message, more) => processLogger().warn(message, { ...fields(), ...more }),
+    error: (message, more) => processLogger().error(message, { ...fields(), ...more }),
+    child: (more) => boundLogger(context, { ...extra, ...more }),
   };
 }
 

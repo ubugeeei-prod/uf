@@ -441,6 +441,18 @@ pub(crate) enum Commands {
         /// How far to move the version.
         #[arg(value_enum)]
         bump: ReleaseBump,
+        /// Rewrite a changelog section that is already there.
+        ///
+        /// `uf release` refuses to overwrite a section for the version it
+        /// planned, because a binary older than the tree plans a version the
+        /// tree has already published — and rewriting it replaces a release's
+        /// notes with a later release's commits. This says the section is one
+        /// being prepared and the rewrite is meant.
+        ///
+        /// It does not cover a version that has been tagged. That release went
+        /// out; its section is finished.
+        #[arg(long)]
+        force: bool,
     },
     /// Remove dependencies with the project's own package manager.
     ///

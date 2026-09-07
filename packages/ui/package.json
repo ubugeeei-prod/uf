@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/ui",
-  "version": "0.0.0-alpha.12",
+  "version": "0.0.0-alpha.13",
   "description": "Headless, accessible React components whose composition Flow checks, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -14,10 +14,12 @@
     ".": "./index.js",
     "./accordion": "./accordion.js",
     "./alert-dialog": "./alert-dialog.js",
+    "./calendar": "./calendar.js",
     "./carousel": "./carousel.js",
     "./checkbox": "./checkbox.js",
     "./collapsible": "./collapsible.js",
     "./combobox": "./combobox.js",
+    "./date-picker": "./date-picker.js",
     "./dialog": "./dialog.js",
     "./drawer": "./drawer.js",
     "./field": "./field.js",
@@ -48,8 +50,9 @@
     "internal"
   ],
   "dependencies": {
-    "@uniflowed/hooks": "0.0.0-alpha.12",
-    "@uniflowed/react": "0.0.0-alpha.12"
+    "@uniflowed/core": "0.0.0-alpha.13",
+    "@uniflowed/hooks": "0.0.0-alpha.13",
+    "@uniflowed/react": "0.0.0-alpha.13"
   },
   "peerDependencies": {
     "react": ">=19"

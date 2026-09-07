@@ -23,6 +23,7 @@
 // `internal/stream.js` holds the mechanics and says which React renderer serves
 // which.
 
+import { noteRoute } from "@uniflowed/server/host";
 import { ROOT_ID } from "./internal/document.js";
 import * as React from "react";
 
@@ -228,10 +229,21 @@ export function createRenderer(options: {|
    * Returning the redirect rather than throwing it keeps the two callers from
    * each having to remember that a redirect is the one thing `resolveMatch`
    * lets out.
+   *
+   * `onMatch` is what makes the request's log line say `/orders/:id` rather
+   * than `/orders/8813`. It is handed to `resolveMatch` rather than read off
+   * the route this returns, because a loader runs *inside* that call and a
+   * loader has things to log: recording the route afterwards would leave every
+   * line the loader wrote claiming to belong to no route at all. `noteRoute`
+   * does nothing outside a request, which is what lets `prerender` — a build,
+   * with no request anywhere — call the same function.
    */
   async function resolve(url: string, defer: boolean): Promise<Resolution> {
     try {
-      return { kind: "route", route: await resolveMatch(table, url, { defer }) };
+      return {
+        kind: "route",
+        route: await resolveMatch(table, url, { defer, onMatch: noteRoute }),
+      };
     } catch (error) {
       if (error instanceof RedirectError) {
         return { kind: "redirect", error };
