@@ -65,9 +65,11 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
 - **Runtimes.** Node.js and Bun load Flow. `HostKind::Deno` loads none, and the
   edge runtimes have no host at all
   ([#246](https://github.com/ubugeeei-prod/uf/issues/246)).
-- **Deployment.** `uf build --adapter node` writes a directory that runs on a
-  bare JavaScript runtime, and `--compile` writes a single executable file. The
-  other six adapters are names in an enum
+- **Deployment.** `uf build --adapter` writes for `node`, `container`, `edge`,
+  `serverless` and `static`, all five against one `@uniflowed/server/fetch`
+  handler, and `--compile` writes a single executable file. No server output
+  has ever been deployed to a real platform. `bun` and `deno` are names in an
+  enum, waiting on a benchmark
   ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - **Server Components.** `"use client"` and `"use server"` are scanned, graphed
   and manifested, and the build reads that: a route no client boundary reaches

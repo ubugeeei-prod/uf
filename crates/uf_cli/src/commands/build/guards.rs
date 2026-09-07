@@ -27,6 +27,17 @@
 //!   guard is not in the file, and the person about to deploy is the one who
 //!   knows which of the two is being served.
 //!
+//! # `--adapter static` is that missing fact, for one target
+//!
+//! A build asked for `--adapter static` has been told which of the two
+//! deployments is happening, so it stops having to warn: a middleware is a
+//! module a static host cannot run at all, and
+//! [`crate::commands::deploy::static_host`] refuses the project by name rather
+//! than shipping a guarded document unguarded. That closes this tension for
+//! the deployment where it is a security question, and leaves it open — as a
+//! report — for `dist/` copied somewhere by hand, which is the case nothing
+//! can know about.
+//!
 //! `build.staticBuild` is the setting that would decide it — a project that
 //! has declared it ships static files and nothing else has asked for two
 //! things that cannot both be true, and refusing is then the honest answer.

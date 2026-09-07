@@ -10,11 +10,18 @@
 // themselves are built, copied somewhere with no `node_modules` above them,
 // and asked.
 //
-// There are four adapters now, and three host halves rather than one:
-// `@uniflowed/server/node` for `node` and `container`, `@uniflowed/server/edge`
-// for a Cloudflare Worker, and `@uniflowed/server/lambda` for an AWS Lambda
-// invocation. Each of them wraps the *same* `createFetchHandler`, and the last
-// `describe` in this file is what says so out loud.
+// There are four adapters that run an application, and three host halves
+// rather than one: `@uniflowed/server/node` for `node` and `container`,
+// `@uniflowed/server/edge` for a Cloudflare Worker, and
+// `@uniflowed/server/lambda` for an AWS Lambda invocation. Each of them wraps
+// the *same* `createFetchHandler`, and the last `describe` in this file is
+// what says so out loud.
+//
+// `--adapter static` is the fifth and is not here, because it has no handler
+// to reuse: a static host runs nothing, so that target's whole implementation
+// is deciding whether the project may be served that way at all. That decision
+// is Rust — it needs the route table and what the prerender wrote — and lives
+// in `crates/uf_cli/src/commands/deploy/static_host.rs`.
 //
 // # The invariant that matters most
 //

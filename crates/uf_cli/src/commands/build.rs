@@ -27,7 +27,7 @@ use uf_bundle::{
     collect_assets, evaluate, write_report,
 };
 use uf_config::{DeployAdapter, load_config};
-use uf_router::{Route, discover_routes, write_router_manifest};
+use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscDiagnostic,
     RscSeverity, analyze_project,
@@ -132,6 +132,14 @@ pub(crate) fn build(
     })?;
     let router_manifest = timer.measure("router types", || {
         write_router_manifest(&resolved.root, &resolved.config)
+    })?;
+    // The other half of the same tree: the route handlers and middleware,
+    // which have no page and so appear in no `Route`. Only `--adapter static`
+    // reads them — a project that needs a server is one this target has to
+    // refuse by name — and the walk is one pass over a directory that was just
+    // walked, so it is done here rather than made conditional on a flag.
+    let server_modules = timer.measure("server modules", || {
+        discover_server_modules(&resolved.root, &resolved.config)
     })?;
 
     let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
@@ -349,6 +357,25 @@ pub(crate) fn build(
     // exclusion rather than the binary itself: `--compile` writes into
     // `dist/`, and `deploy` copies `dist/`.
     let deployed = match adapter {
+        // The one target that links nothing. `dist/` is already what a static
+        // host serves, so what this does instead of a second Vite run is
+        // decide whether this project can be served that way at all — and say
+        // which routes cannot be, rather than publishing the half that can.
+        Some(DeployAdapter::Static) => {
+            progress.tick("writing the static adapter's output");
+            let actions = rsc
+                .registry
+                .callable_actions()
+                .map(|action| (action.export.to_string(), action.module.clone()))
+                .collect::<Vec<_>>();
+            let site = deploy::SiteFacts {
+                routes: &routes,
+                server_modules: &server_modules,
+                pages: &vite.pages,
+                actions: &actions,
+            };
+            Some(timer.measure("adapter", || deploy::deploy_static(&root, &out_dir, site))?)
+        }
         Some(adapter) => {
             progress.tick(&format!(
                 "writing the {} adapter's output",
