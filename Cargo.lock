@@ -875,6 +875,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_common_semver"
+version = "0.0.0"
+
+[[package]]
 name = "flow_common_tarjan"
 version = "0.0.0"
 dependencies = [
@@ -913,6 +917,21 @@ name = "flow_common_xx"
 version = "0.0.0"
 dependencies = [
  "xxhash-rust",
+]
+
+[[package]]
+name = "flow_config"
+version = "0.0.0"
+dependencies = [
+ "flow_common",
+ "flow_common_semver",
+ "flow_data_structure_wrapper",
+ "flow_lint_settings",
+ "hostname",
+ "libc",
+ "regex",
+ "serde_json",
+ "starlark_map",
 ]
 
 [[package]]
@@ -1718,6 +1737,17 @@ name = "hmac-sha256"
 version = "1.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec9d92d097f4749b64e8cc33d924d9f40a2d4eb91402b458014b781f5733d60f"
+
+[[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
+]
 
 [[package]]
 name = "human_bytes"
@@ -3446,6 +3476,7 @@ dependencies = [
  "flow_aloc",
  "flow_common",
  "flow_common_errors",
+ "flow_config",
  "flow_data_structure_wrapper",
  "flow_flowlib",
  "flow_lazy",

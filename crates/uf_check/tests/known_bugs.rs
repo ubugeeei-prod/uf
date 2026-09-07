@@ -41,6 +41,7 @@ use uf_check::{CheckLimits, Source, TypeDiagnostic, check_source};
 fn check(path: &str, source: &str) -> Vec<TypeDiagnostic> {
     check_source(
         Source::new(path, source),
+        &[],
         &CheckLimits::default().without_timeout(),
     )
     .expect("the checker runs")
