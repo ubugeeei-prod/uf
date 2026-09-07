@@ -222,6 +222,45 @@ describe("retries", () => {
     await expect(client.request("/x")).rejects.toThrow("answered 503");
     expect(impl.calls.length).toBe(3);
   });
+
+  it("retries a QUERY, because a request that only reads cannot be half applied", async () => {
+    // The reason the method exists rather than being a POST everybody agrees
+    // not to repeat: it is defined as safe as well as idempotent, whatever the
+    // body carried.
+    const impl = scripted([json({}, 500), json({ ok: true })]);
+    const client = createFetch({ fetch: impl, retries: 1, retryDelay: 1 });
+    await expect(client.request("/search", { method: "QUERY" })).resolves.toEqual({ ok: true });
+    expect(impl.calls.length).toBe(2);
+  });
+});
+
+describe("QUERY", () => {
+  it("sends the body the URL could not hold", async () => {
+    const impl = scripted([json({ hits: 0 })]);
+    const client = createFetch({ fetch: impl });
+    await client.request("/search", { method: "QUERY", body: { filters: ["a", "b"] } });
+
+    expect(impl.calls[0].init.method).toBe("QUERY");
+    expect(impl.calls[0].init.body).toBe('{"filters":["a","b"]}');
+  });
+
+  it("says a 405 to a QUERY is probably not the application", async () => {
+    // A proxy, a CDN or a WAF with a list of verbs answers before the origin
+    // sees the request, so the failure looks exactly like a route that does
+    // not exist — from a server that never got the chance to have one. That is
+    // an afternoon of debugging unless the message says it.
+    const impl = scripted([json({}, 405)]);
+    const client = createFetch({ fetch: impl });
+    await expect(client.request("/search", { method: "QUERY" })).rejects.toThrow(
+      "proxy, CDN or firewall",
+    );
+  });
+
+  it("leaves the plain message alone for every other method", async () => {
+    const impl = scripted([json({}, 405)]);
+    const client = createFetch({ fetch: impl });
+    await expect(client.request("/x", { method: "DELETE" })).rejects.toThrow("answered 405");
+  });
 });
 
 describe("extend", () => {

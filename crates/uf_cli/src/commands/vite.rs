@@ -325,6 +325,36 @@ pub(crate) struct Driver {
     stdout: BufReader<ChildStdout>,
 }
 
+/// Everything a second Vite run of one build needs to find.
+///
+/// `--compile` and `--adapter` each link the application again, after the
+/// bundle `uf build` already produced, and each needs the same six answers:
+/// which host, which package directory, which project, which output directory,
+/// which environment, and where the React Server Components analysis was
+/// written. Passed as one value because six positional arguments beside a `Ui`
+/// and a target is the point at which the next one is added in the wrong
+/// place — and because `rsc_manifest` was added late and to only one of the
+/// two, which is exactly that failure.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LinkContext<'a> {
+    /// The JavaScript host the driver runs on.
+    pub(crate) host: &'a Host,
+    /// The directory `@uniflowed/vite` is resolved from.
+    pub(crate) package: &'a Utf8Path,
+    /// The project root.
+    pub(crate) root: &'a Utf8Path,
+    /// Where `uf build` wrote the client bundle and the prerendered documents.
+    pub(crate) out_dir: &'a Utf8Path,
+    /// The project's environment for this build.
+    pub(crate) env: &'a ProjectEnv,
+    /// The RSC manifest, so this run splits the way the first one did.
+    ///
+    /// Without it `virtual:uf/actions` is generated from no manifest, which is
+    /// an empty table, which is every server action answering `404` in the
+    /// artefact a person actually ships.
+    pub(crate) rsc_manifest: &'a Utf8Path,
+}
+
 impl Driver {
     /// Start `driver.js <command> --root <root> <args>` on `host`.
     ///

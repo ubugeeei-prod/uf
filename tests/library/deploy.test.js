@@ -114,6 +114,10 @@ function appWith(options: {
     // right copy to pass. `request-lifecycle.test.js` owns what it is for.
     beginRequest,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
+    // No action, and the real answer for a build that declares none: the
+    // endpoint declines every request that carries no id, which is what puts
+    // it in the order below without changing what anything else answers.
+    callAction: async () => null,
     dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {
       const answer = options.render

@@ -106,6 +106,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Resized, re-encoded and self-hosted at build time — and what that stops short of.",
       },
       {
+        href: "/guide/vitals",
+        title: "Web vitals",
+        blurb: "Five numbers the browser already has, and nothing that leaves the machine.",
+      },
+      {
         href: "/guide/ui",
         title: "Headless components",
         blurb: "Seven primitives: the keyboard, the ARIA, and no styles at all.",
