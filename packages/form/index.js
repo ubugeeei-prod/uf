@@ -268,6 +268,7 @@ export type {
 } from "./controller.js";
 
 export { FormProvider, useForm, useFormContext } from "./use-form.js";
+export { useFieldSource } from "./field.js";
 export { useFormState, useWatch } from "./watch.js";
 export { useFieldArray } from "./field-array.js";
 export { Controller, useController } from "./controller.js";

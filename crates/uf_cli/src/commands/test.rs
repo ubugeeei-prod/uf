@@ -21,7 +21,7 @@ use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
 use uf_config::load_config;
-use uf_project::{ProjectFile, scan_source_files};
+use uf_project::{ProjectFile, scan_selected_source_files};
 use uf_term::PhaseTimer;
 use uf_test::{
     Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
@@ -30,7 +30,8 @@ use uf_test::{
 };
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
-use crate::commands::vite::{installed_package, resolve_host};
+use crate::commands::builder::uniflowed_package;
+use crate::commands::vite::resolve_host;
 
 use crate::support::{TEST, plural, project_env, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
@@ -139,7 +140,11 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
 
     let resolved = load_config(cwd)?;
     let root = resolved.root.clone();
-    let scan = scan_source_files(&root, &resolved.config)?;
+    // Named paths override `.gitignore`, as they do for `uf lint` and
+    // `uf fmt`: a suite that writes its fixture into an ignored directory —
+    // `tests/library/module-mock.test.js` does, so a killed run leaves nothing
+    // behind — still has to be runnable by name.
+    let scan = scan_selected_source_files(&root, &resolved.config, &args.paths)?;
     let unreadable = unreadable_lines(&scan.unreadable);
     let files = scan.files;
     // Before anything is run. A file uf could not read might have been a test,
@@ -311,7 +316,7 @@ pub(crate) fn test_host(
     // and runs on a Capability JS Host; nothing in that path is Vite's, and
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
     // loads.
-    let loader = installed_package(root, "host", "register.js")?;
+    let loader = uniflowed_package(root, "host", "register.js")?;
     let worker = loader
         .parent()
         .map(|scope| scope.join("test/worker.js"))

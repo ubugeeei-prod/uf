@@ -54,6 +54,19 @@
 // are here because a long FAQ is nicer with them — but nothing about them takes
 // a header out of the tab order.
 //
+// # The height a stylesheet animates to
+//
+// `measure` on the root puts each panel's would-be height on it as
+// `--uf-collapsible-height` — one property name across both disclosure
+// components, because it is one measurement and a second name would be a second
+// rule to keep in step. `collapsible.js`'s header shows the stylesheet, and
+// `internal/disclosure.js` holds the measuring pass and the argument for the
+// opt-in.
+//
+// It is on `Accordion.Root` rather than on each `Accordion.Content` because a
+// forty-section FAQ is one decision, made once, rather than forty props that
+// have to agree.
+//
 // # How the sections are found
 //
 // By a `data-*` attribute of this package's own rather than by role, which is
@@ -81,7 +94,7 @@ import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { moveOnKey } from "./internal/roving-focus.js";
 import type { RovingSet } from "./internal/roving-focus.js";
-import { usePresence, useUntilFound } from "./internal/disclosure.js";
+import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /** Whether one section is open at a time, or any number of them. */
@@ -110,6 +123,8 @@ type AccordionState = {|
   /** Whether closing the last open section is allowed; only meaningful for `single`. */
   readonly closable: boolean,
   readonly type: AccordionType,
+  /** Whether each panel carries its measured height; see the module header. */
+  readonly measure: boolean,
 |};
 
 const AccordionContext: React.Context<AccordionState | null> = createContext(null);
@@ -160,6 +175,7 @@ export component AccordionRoot(
   defaultValue?: $ReadOnlyArray<string> = NOTHING,
   value?: $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
+  measure?: boolean = false,
   ...rest: Rest
 ) {
   const [open, setOpen] = useControlled<$ReadOnlyArray<string>>(value, defaultValue, onValueChange);
@@ -184,8 +200,8 @@ export component AccordionRoot(
   const state = useMemo(
     // `collapsible` only ever narrows a `single` accordion: in `multiple` mode
     // every section closes on its own, and there is no last one to protect.
-    () => ({ open, toggle, closable: type === "multiple" || collapsible, type }),
-    [open, toggle, type, collapsible],
+    () => ({ open, toggle, closable: type === "multiple" || collapsible, type, measure }),
+    [open, toggle, type, collapsible, measure],
   );
   const passed = withoutComposed(rest, ["onKeyDown"]);
 
@@ -312,10 +328,12 @@ export component AccordionTrigger(children: React.Node, ...rest: Rest) {
  * what `hidden` is upgraded to for it.
  */
 export component AccordionContent(children: React.Node, ...rest: Rest) {
+  const accordion = useAccordion("Accordion.Content");
   const item = useAccordionItem("Accordion.Content");
   const contentRef = useRef<HTMLElement | null>(null);
   usePresence(item.registerContent);
   useUntilFound(contentRef, item.open);
+  useMeasuredHeight(contentRef, accordion.measure);
 
   return (
     <div
