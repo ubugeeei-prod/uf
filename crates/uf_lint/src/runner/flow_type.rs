@@ -119,15 +119,44 @@ fn names_a_value(code: &str, at: usize, len: usize, outer: Enclosing) -> bool {
     // named rather than assumed from the colon alone, because a conditional
     // type's `? any : never` puts a real annotation in front of one too, and it
     // arrives with a `?` in front instead.
-    if after.is_some_and(|(_, byte)| byte == b':')
-        && before.is_none_or(|(_, byte)| matches!(byte, b'{' | b',' | b';'))
-    {
+    //
+    // What may stand between the opener and the key is the whole reason this is
+    // a list rather than one byte. `readonly any: …` and `+any: …` are the same
+    // property with its variance written down, and reading the `y` of `readonly`
+    // as "not an opener" reported Jest's `expect.any` matcher *name* as a type —
+    // which cost `@uniflowed/test` a suppression it should never have needed
+    // (ubugeeei-prod/uf#571). `any?: …` is the same key, optional.
+    if names_a_property_key(code, at, len, before) {
         return true;
     }
 
     // `expect.any(Function)` — the whole of an argument, in a list that is
     // being called rather than one that describes a function type.
     is_a_bare_argument(code, at, len, outer)
+}
+
+/// Whether the name at `at` is a property key in an object type.
+///
+/// A key is followed by `:`, or by `?:` when it is optional. In front of it may
+/// stand the object's opener, a separator, a variance sigil, or `readonly` — all
+/// of which say "a key comes next" and none of which is a type position.
+fn names_a_property_key(code: &str, at: usize, len: usize, before: Option<(usize, u8)>) -> bool {
+    let mut after = at + len;
+    // `any?: T`, which is the same key with a `?` on it.
+    if next_non_space(code, after).is_some_and(|(_, byte)| byte == b'?') {
+        let (index, _) = next_non_space(code, after).unwrap_or((after, b'?'));
+        after = index + 1;
+    }
+    if !next_non_space(code, after).is_some_and(|(_, byte)| byte == b':') {
+        return false;
+    }
+    // `+any` and `-any` are the covariant and contravariant spellings of the
+    // same key.
+    if before.is_none_or(|(_, byte)| matches!(byte, b'{' | b',' | b';' | b'+' | b'-')) {
+        return true;
+    }
+    // `readonly any: …`, which is the third spelling of it.
+    previous_word(code, at).is_some_and(|(_, word)| word == "readonly")
 }
 
 /// Whether the word at `at` is the right operand of `==`, `===`, `!=` or `!==`.
