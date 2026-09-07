@@ -177,6 +177,29 @@ of it.
 | `maxBlankLines` | `1` | Consecutive blank lines kept |
 | `flow.parser` | `"official-flow-rust"` | The parser Flow files are formatted with |
 | `nonFlow.formatter` | `"biome"` | Who formats JSON, CSS and TypeScript: `"biome"`, `"prettier"` or `"none"` |
+| `nonFlow.arguments` | `[]` | Extra arguments, passed to that formatter verbatim |
+
+`nonFlow.arguments` is a list of strings and not a shape, on purpose. uf does
+not re-declare another tool's options — every option it copied would be one
+that needed a uf release before anybody could use it — and it does not have to,
+because an argument list reaches every option biome or prettier has now or adds
+later.
+
+A Tailwind 4 project needs biome's CSS parser told about `@theme`:
+
+```js
+export default defineConfig({
+  fmt: { nonFlow: { arguments: ["--css-parse-tailwind-directives=true"] } },
+});
+```
+
+and needs no second configuration file for it.
+
+The arguments go **after** uf's own, so they win: a project that wants a line
+width other than `fmt.lineWidth` for its stylesheets can say so. The one thing
+they may not do is turn a check into a write — `--write`, `--fix` and their
+spellings are refused where the configuration is read, because `uf fmt --check`
+changing files is the failure nobody sees: a green CI job and a rewritten tree.
 
 ## lint
 

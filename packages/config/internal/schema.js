@@ -195,6 +195,16 @@ export type UniflowedConfig = {
     },
     readonly nonFlow?: {
       readonly formatter?: "biome" | "prettier" | "none",
+      /**
+       * Extra arguments, passed to that formatter verbatim.
+       *
+       * Strings rather than a shape, so that reaching one of biome's or
+       * prettier's own options never waits for a uf release — a Tailwind 4
+       * project writes `["--css-parse-tailwind-directives=true"]` and needs no
+       * second configuration file. An argument that would turn `uf fmt
+       * --check` into a write is refused where the config is read.
+       */
+      readonly arguments?: $ReadOnlyArray<string>,
     },
     readonly quotes?: "single" | "double",
     readonly semicolons?: boolean,
