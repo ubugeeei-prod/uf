@@ -229,3 +229,50 @@ fn writing_puts_the_file_in_the_project_root() {
         generate_server_action_types(&registry)
     );
 }
+
+#[test]
+fn a_project_with_an_action_holds_every_one_against_the_wire() {
+    let generated = generate_server_action_types(&a_project_with_one_action());
+
+    assert!(
+        generated.contains(
+            "import type { ActionArguments, ActionResult } from \"@uniflowed/router/action\";"
+        ),
+        "{generated}"
+    );
+    // One instantiation over `ServerActionName`, which is every action's name,
+    // so one line asks the question about all of them.
+    assert!(
+        generated.contains(
+            "export type ServerActionArgsFitTheWire = \
+             ActionArguments<ServerActionArgs<ServerActionName>>;"
+        ),
+        "{generated}"
+    );
+    assert!(
+        generated.contains(
+            "export type ServerActionResultsFitTheWire = \
+             ActionResult<ServerActionResult<ServerActionName>>;"
+        ),
+        "{generated}"
+    );
+}
+
+#[test]
+fn a_project_with_no_actions_names_no_wire_and_no_router() {
+    // `ServerActionName` is `empty` for an empty table, so the two lines would
+    // be asking about no function at all — and they would make a project that
+    // has never written `"use server"` import `@uniflowed/router/action` in a
+    // file `uf check` reads.
+    let generated = generate_server_action_types(&registry(&[], &[]));
+
+    assert!(!generated.contains("FitTheWire"), "{generated}");
+    assert!(
+        !generated.contains("@uniflowed/router/action"),
+        "{generated}"
+    );
+    assert!(
+        generated.contains("export type ServerActions = {};"),
+        "{generated}"
+    );
+}
