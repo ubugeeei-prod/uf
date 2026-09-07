@@ -61,6 +61,7 @@ fn parses_use_request_and_keeps_xdg_paths() {
     assert!(plan.auto_switch);
     assert!(plan.steps.contains(&RuntimeUseStep::WriteShim));
     assert!(plan.steps.contains(&RuntimeUseStep::ActivateVersion));
+    assert!(plan.steps.contains(&RuntimeUseStep::VerifyChecksum));
 }
 
 #[test]
