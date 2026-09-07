@@ -175,10 +175,12 @@ fn info_renders_the_brand_system() {
         stdout.contains("curl -fsSL https://setup.uniflowed.dev | sh"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("nix profile install github:ubugeeei-prod/uf#uf"),
-        "{stdout}"
-    );
+    // And one way to install, not three. `nix run` and `nix profile install`
+    // are ways to *run* uf; three lines under a heading called "distribution"
+    // read as three equal recommendations. The flake is unchanged and
+    // `/guide/install` still documents it.
+    assert!(!stdout.contains("nix profile install"), "{stdout}");
+    assert!(!stdout.contains("nix run"), "{stdout}");
 }
 
 #[test]
