@@ -604,6 +604,13 @@ function component typing and toward Flow component syntax. React Native support
 starts with platform split diagnostics for generic files that branch on
 `Platform.OS` or `Platform.select`.
 
+Because `uf_lint` reads the official Flow parser's tree, it also sees JSX
+exactly, and the `a11y/*` and `markup/*` rules are built in rather than a plugin
+— a rule that needs installing is a rule most projects do not have. The two sets
+are one pass over one tree, and the second is a correctness rule rather than a
+style opinion: `<p><div>` is repaired by the browser's parser before React sees
+it, and the repair is a hydration mismatch.
+
 ## Runtime Agnostic Direction
 
 `uf_lib` follows the Bun-style shape for builtin modules, but the user project

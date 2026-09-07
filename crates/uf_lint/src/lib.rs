@@ -48,6 +48,7 @@ use crate::runner::{
     run_router_unsupported_segment, run_security_no_dangerously_set_inner_html,
     run_security_no_eval, run_server_no_client_secret, run_server_no_server_only_import_in_client,
     run_server_use_client_directive_position, run_server_use_server_actions, run_structure_rules,
+    run_tree_rules,
 };
 use crate::scan::FileScan;
 use crate::suppression::UNKNOWN_SUPPRESSION_RULE;
@@ -255,6 +256,8 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
 
     run_security_no_dangerously_set_inner_html(&scan, config, &mut diagnostics);
     run_security_no_eval(&scan, config, &mut diagnostics);
+
+    run_tree_rules(&scan, config, &mut diagnostics);
 
     if !suppressions.is_empty() {
         diagnostics

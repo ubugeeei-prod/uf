@@ -2,7 +2,8 @@
 //!
 //! These are the rules that come from uf being a toolchain rather than a type
 //! checker: the router's file names, the server/client boundary, package layout,
-//! the fetch client, and the security set.
+//! the fetch client, the security set, and the accessibility and HTML-nesting
+//! rules that come free with reading the parser's tree.
 
 use uf_config::RuleLevel;
 
@@ -11,6 +12,55 @@ use crate::rules::{RuleCategory, RuleDescriptor};
 
 /// uf's own rules, on top of the Flow built-in set.
 pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
+    RuleDescriptor {
+        id: "a11y/alt-text",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`img`, `area` and `input type=\"image\"` need an `alt`",
+    },
+    RuleDescriptor {
+        id: "a11y/aria-props",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `aria-*` attribute must be one ARIA defines",
+    },
+    RuleDescriptor {
+        id: "a11y/heading-order",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "heading levels go down one at a time",
+    },
+    RuleDescriptor {
+        id: "a11y/label-has-associated-control",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a `label` must name a control, by `htmlFor` or by holding it",
+    },
+    RuleDescriptor {
+        id: "a11y/no-static-element-interactions",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `onClick` needs an element a keyboard can reach",
+    },
+    RuleDescriptor {
+        id: "markup/no-invalid-nesting",
+        category: RuleCategory::Markup,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "nest elements the HTML parser will leave where you wrote them",
+    },
+    RuleDescriptor {
+        id: "vite/hot-needs-optional-chaining",
+        category: RuleCategory::Vite,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "reach `import.meta.hot` through `?.`; `if` does not refine it",
+    },
     RuleDescriptor {
         id: "flow/syntax",
         category: RuleCategory::Flow,

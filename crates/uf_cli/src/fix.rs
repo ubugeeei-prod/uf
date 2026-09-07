@@ -41,7 +41,22 @@
 //! (see `uf_lint`'s `run_flow_deprecated_type`), so the four bytes it points
 //! at are a type annotation and nothing else.
 //!
-//! # The rule that has an unsafe fix
+//! # The rules that have an unsafe fix
+//!
+//! `vite/hot-needs-optional-chaining` — `import.meta.hot.accept(…)` becomes
+//! `import.meta.hot?.accept(…)`. Unsafe rather than safe by the definition
+//! above, and the distinction is the whole point of the rule: in a development
+//! server the two spellings are the same program, and in a build — where Vite
+//! replaces `import.meta.hot` with `undefined` — the first throws where the
+//! second does nothing. That difference is exactly the bug being fixed, and it
+//! is still a difference, so it is asked for by name.
+//!
+//! It is narrowed to the shape the rule can see whole: the reported column
+//! must still hold the literal text `import.meta.hot.`, so only the `.` after
+//! `hot` is ever replaced, and a line an editor has since changed gets
+//! nothing. Applying it inside a `if (import.meta.hot)` guard leaves the guard
+//! standing, which is correct and redundant; removing it would mean deleting a
+//! block, and a [`Fix`] is one line by design.
 //!
 //! `flow/non-const-var-export` — `export let x = 1` becomes `export const
 //! x = 1`. The edit is the whole of what the rule asks for and there is no
@@ -98,6 +113,18 @@
 //! - `security/*`, `fetch/no-global-override`, `react/*`,
 //!   `uniflowed/no-npm-script-invocation` — these ask for a different design,
 //!   not a different spelling.
+//! - `a11y/alt-text` — the text an image carries is the one thing a linter
+//!   cannot know. `alt=""` is right only for an image that carries nothing,
+//!   and inserting it on one that does is worse than the missing attribute:
+//!   the element then claims, to the software that would otherwise have
+//!   flagged it, that a person decided.
+//! - `a11y/aria-props`, `a11y/heading-order` — a near-miss spelling and a
+//!   heading level are both suggestions with a plausible wrong answer.
+//!   `aria-lable` is *probably* `aria-label`, and probably is not the bar; a
+//!   skipped heading is as often a missing section as a wrong number.
+//! - `a11y/label-has-associated-control`, `a11y/no-static-element-interactions`,
+//!   `markup/no-invalid-nesting` — each asks for markup to be rearranged, not
+//!   for a word to be swapped.
 //!
 //! # Two fixes that touch the same bytes
 //!
@@ -171,6 +198,7 @@ pub(crate) fn fix_for(diagnostic: &Diagnostic, line: &str) -> Option<Fix> {
     match diagnostic.rule {
         "flow/deprecated-type" => deprecated_type(diagnostic, line),
         "flow/non-const-var-export" => mutable_export(diagnostic, line),
+        "vite/hot-needs-optional-chaining" => hot_optional_chaining(diagnostic, line),
         _ => None,
     }
 }
@@ -299,6 +327,40 @@ fn deprecated_type(diagnostic: &Diagnostic, line: &str) -> Option<Fix> {
         start,
         end,
         replacement: "boolean",
+    })
+}
+
+/// `import.meta.hot.x` → `import.meta.hot?.x`, at the read the rule reported.
+///
+/// One byte becomes two: the `.` after `hot` becomes `?.`. Nothing else on the
+/// line is read or moved, so the fix applies to a call, a property read and an
+/// assignment target alike — and to the read inside a `if (import.meta.hot)`
+/// guard, which is left standing because a [`Fix`] is one line and that guard
+/// is a block.
+///
+/// The rule reports the start of the member expression, so the text at that
+/// column is `import.meta.hot.` when the line is still the one the rule saw.
+/// When it is not — an editor asking for actions against a stale range — the
+/// comparison fails and no fix is offered, which is the guard every fix here
+/// has.
+fn hot_optional_chaining(diagnostic: &Diagnostic, line: &str) -> Option<Fix> {
+    const READ: &str = "import.meta.hot.";
+
+    let start = diagnostic.column.checked_sub(1)?;
+    let end = start.checked_add(READ.len())?;
+    if line.get(start..end) != Some(READ) {
+        return None;
+    }
+    // The `.` this replaces is the last byte of the matched text.
+    let dot = end - 1;
+
+    Some(Fix {
+        title: "Reach `import.meta.hot` through `?.`",
+        safety: Safety::Unsafe,
+        line: diagnostic.line.saturating_sub(1),
+        start: dot,
+        end,
+        replacement: "?.",
     })
 }
 

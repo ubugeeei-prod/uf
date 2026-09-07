@@ -206,11 +206,25 @@ changing files is the failure nobody sees: a green CI job and a rewritten tree.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `engine` | `"rust"` | The lint engine |
-| `rules` | uf's table | Rule name to `"off"`, `"warn"` or `"error"` |
+| `rules` | uf's table | Rule name to `"off"`, `"warn"` or `"error"`, merged over uf's table |
 | `files` | all | Globs to lint |
 | `ignore` | `[]` | Globs to skip |
 | `flow.builtins` | `"mixed"` | Run Flow's own lints alongside uf's |
 | `flow.parser` | `"official-flow-rust"` | The parser used to read Flow files |
+
+`rules` is **changes to** uf's table, not the whole of it. Naming one rule
+changes that rule and leaves the rest at the level uf ships:
+
+```js
+export default defineConfig({
+  lint: { rules: { "flow/unclear-type": "warn" } },
+});
+```
+
+still runs every other rule, `flow/syntax` among them. To switch a rule off,
+say so — `"off"` — because a rule you did not mention is not a rule you asked
+to stop running, and a linter that quietly shrank to one rule reports a clean
+project either way ([#475](https://github.com/ubugeeei-prod/uf/issues/475)).
 
 `ignore` is read by `uf lint`, `uf fmt`, `uf check` and `uf test` alike, which
 its name does not say — see the note below.
