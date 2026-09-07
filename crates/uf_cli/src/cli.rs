@@ -359,6 +359,19 @@ pub(crate) enum Commands {
     /// process is what keeps it from paying start-up once per asset.
     #[command(hide = true)]
     Assets,
+    /// Remove what a rebuild would write again.
+    ///
+    /// The build's output, uf's own per-project state under `.uf/`, and the
+    /// caches. Not `node_modules` unless asked, and never a lockfile: the line
+    /// is the network, and a lockfile is an input.
+    Clean {
+        /// Also remove `node_modules`, which costs a network round trip.
+        #[arg(long)]
+        deps: bool,
+        /// Print what would be removed, and remove nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Lint the project without type checking it.
     Lint {
         /// Emit machine-readable JSON on stdout.
