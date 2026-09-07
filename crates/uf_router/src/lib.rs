@@ -304,6 +304,23 @@ pub fn discover_routes(
         let page = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
             .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
         let directory = page.parent().unwrap_or(&app_root).to_path_buf();
+        // One page per directory, and the walk is over files: a directory
+        // holding both `_uf.page.js` and `_uf.page.mdx` reached here twice and
+        // pushed two `/guide` routes, while the router the build runs called
+        // `findModule` once and rendered one of them. Two `Route`s with the
+        // same path put the same string in the generated `RoutePath` twice,
+        // counted the page twice in `uf build`'s summary, and gave
+        // `uf inspect` a route that is not served.
+        //
+        // Which spelling wins is [`find_module`]'s answer and nothing else's,
+        // so the precedence is written once, in `PAGE_EXTENSIONS`, and both
+        // routers read the same order. File names rather than whole paths,
+        // because the two are built from different halves of the walk.
+        if find_module(&directory, RESERVED_PAGE_STEM, &PAGE_EXTENSIONS)
+            .is_none_or(|resolved| resolved.file_name() != page.file_name())
+        {
+            continue;
+        }
         let relative = directory.strip_prefix(&app_root).unwrap_or(&directory);
         // Before the path is built, because the path is where the evidence
         // goes missing: `/docs/:slug*/edit` reads like a route, and only the

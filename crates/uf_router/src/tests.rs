@@ -422,10 +422,18 @@ fn the_two_routers_accept_the_same_extensions() {
 }
 
 /// The `[".js", ".jsx"]` on the right of `const NAME =`, as a list.
+///
+/// `export` is optional in front of it: the two lists are module-private in
+/// `routes.js` today, and exporting one is not a change that should turn this
+/// check off by making the list look renamed.
 fn extensions_named(source: &str, name: &str) -> Vec<&'static str> {
     let line = source
         .lines()
-        .find(|line| line.trim_start().starts_with(&format!("const {name} =")))
+        .find(|line| {
+            line.trim_start()
+                .trim_start_matches("export ")
+                .starts_with(&format!("const {name} ="))
+        })
         .unwrap_or_else(|| panic!("routes.js no longer declares {name}"));
     let list = line
         .split_once('[')
@@ -461,6 +469,58 @@ fn a_page_is_a_route_in_every_spelling_the_build_accepts() {
                 .collect::<Vec<_>>(),
             vec!["/guide"],
             "a `_uf.page{extension}` was not a route"
+        );
+    }
+}
+
+/// A directory holding two spellings of the page is one route, and it is the
+/// one the build renders.
+///
+/// The walk that finds pages is over *files*, so `app/guide/` with both
+/// `_uf.page.js` and `_uf.page.mdx` in it reached the route builder twice and
+/// produced two `/guide` routes — while `packages/vite/internal/routes.js`
+/// asks `findModule` once and renders exactly one of them. The generated
+/// `RoutePath` carried the same string twice, `uf build`'s summary counted the
+/// page twice, and `uf inspect` listed a route nothing serves.
+///
+/// Both halves are asserted, because "one route" alone would pass if the wrong
+/// spelling won: the surviving page has to be the file the build loads, which
+/// is the first entry of `PAGE_EXTENSIONS` that is present.
+#[test]
+fn a_directory_with_two_page_spellings_is_one_route() {
+    // Every non-empty subset of the spellings, so the assertion is about the
+    // order rather than about the one pair that motivated it.
+    for present in 1u32..(1 << PAGE_EXTENSIONS.len()) {
+        let spellings: Vec<&str> = PAGE_EXTENSIONS
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| present & (1 << index) != 0)
+            .map(|(_, extension)| *extension)
+            .collect();
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let root = camino::Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
+        let app = root.join("app/guide");
+        std::fs::create_dir_all(&app).expect("a directory");
+        for extension in &spellings {
+            std::fs::write(app.join(format!("_uf.page{extension}")), "// @flow\n").expect("a page");
+        }
+
+        let routes =
+            discover_routes(root, &uf_config::UniflowedConfig::default()).expect("discovery");
+
+        assert_eq!(
+            routes
+                .iter()
+                .map(|route| route.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/guide"],
+            "{spellings:?} in one directory is one route"
+        );
+        assert_eq!(
+            routes[0].page.file_name(),
+            Some(format!("_uf.page{}", spellings[0]).as_str()),
+            "{spellings:?} resolved to a page the build router would not have loaded"
         );
     }
 }
