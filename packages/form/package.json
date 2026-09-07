@@ -13,6 +13,7 @@
   "exports": {
     ".": "./index.js",
     "./controller": "./controller.js",
+    "./field": "./field.js",
     "./field-array": "./field-array.js",
     "./resolver": "./resolver.js",
     "./rules": "./rules.js",
@@ -26,6 +27,7 @@
   ],
   "dependencies": {
     "@uniflowed/react": "0.0.0-alpha.13",
+    "@uniflowed/ui": "0.0.0-alpha.13",
     "@uniflowed/validator": "0.0.0-alpha.13"
   },
   "peerDependencies": {

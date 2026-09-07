@@ -192,8 +192,15 @@ export type UniflowedConfig = {
   readonly build?: {
     readonly entries?: $ReadOnlyArray<string>,
     readonly outDir?: string,
+    // Prerender every route and leave no server bundle behind. Read together
+    // with `app.rendering.modes`; see docs/app/reference/config.
     readonly staticBuild?: boolean,
     readonly sourcemap?: boolean,
+  },
+  // Which builder uf drives. Vite is the default, not a dependency: any module
+  // satisfying the contract in docs/architecture.md can be named here.
+  readonly builder?: {
+    readonly module?: string,
   },
   readonly dev?: {
     readonly host?: string,

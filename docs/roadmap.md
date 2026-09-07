@@ -17,7 +17,11 @@ on every runtime and deploys anywhere, including as a single executable file.
   everything anybody actually writes is uf's, because `uf.config.js` is where
   a task's meaning is written down and `vp run` cannot read it.
 - Keep Vite itself as the internal bundler, dev server, and plugin system, but
-  make `uf.config.js` the only user-authored config entry.
+  make `uf.config.js` the only user-authored config entry — and keep it the
+  *default* rather than the only answer: `builder.module` names any module
+  satisfying the contract in `docs/architecture.md`, and `uf explain build`
+  says which one will run. A production builder that is not Vite does not
+  exist yet and is Planned.
 - Reach the feature surface of the tools a user would otherwise reach for —
   Next.js for the framework, Bun and Vite for the toolchain, shadcn/ui for the
   components, Effect, Jotai and React Hook Form for the libraries. Where uf
@@ -83,7 +87,9 @@ in `uf`.
   side is done: `uf fmt` prints from the official parser's syntax tree and
   matches Prettier on a fixture corpus.
 - `uf build` and `uf dev` run on Vite through `@uniflowed/vite`, with every
-  module going through `uf transform` (done).
+  module going through `uf transform` (done) — and through the builder seam
+  rather than by name, so `@uniflowed/vite` is one implementation of a written
+  contract rather than a dependency four commands reach for (done).
 - Keep `uf.config.js` as the single config and task surface; generated projects
   do not use npm scripts, and task execution goes through Vite Task.
 - Keep app execution runtime-agnostic through Capability JS Hosts: Node.js,

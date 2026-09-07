@@ -75,7 +75,15 @@ import {
   ComboboxList,
   ComboboxOption,
 } from "../../packages/ui/combobox.js";
-import { MenuBody, MenuGroup, MenuItem, MenuSeparator } from "../../packages/ui/menu.js";
+import {
+  MenuBody,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+} from "../../packages/ui/menu.js";
 import {
   NavigationMenuBody,
   NavigationMenuItem,
@@ -116,8 +124,9 @@ export const buttonInATabList: mixed = (
 
 // --- Menu.Body ---------------------------------------------------------------
 //
-// Four members, which is why the report says "union type" rather than naming
-// one: a menu owns items, rules, groups and submenus.
+// Six members, which is why the report says "union type" rather than naming
+// one: a menu owns commands, the two checkable kinds, rules, groups and
+// submenus.
 
 export const menu: mixed = (
   <MenuBody>
@@ -126,6 +135,10 @@ export const menu: mixed = (
     </MenuGroup>
     <MenuSeparator />
     <MenuItem>Save</MenuItem>
+    <MenuCheckboxItem>Show hidden files</MenuCheckboxItem>
+    <MenuRadioGroup defaultValue="name">
+      <MenuRadioItem value="name">Name</MenuRadioItem>
+    </MenuRadioGroup>
   </MenuBody>
 );
 
@@ -144,7 +157,7 @@ export const divInAMenu: mixed = (
 export const optionInAMenu: mixed = (
   <MenuBody>
     {
-      // expect: Either SelectOption element does not render MenuGroup
+      // expect: Either SelectOption element does not render MenuCheckboxItem
       <SelectOption value="GB">United Kingdom</SelectOption>
     }
   </MenuBody>

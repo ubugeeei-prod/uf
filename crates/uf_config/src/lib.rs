@@ -13,6 +13,7 @@ mod app;
 pub mod env_files;
 mod lint;
 pub mod plugins;
+mod rendering;
 mod runtime;
 
 pub use app::{
@@ -28,6 +29,7 @@ pub use lint::{
     FlowBuiltinLintMode, FlowLintConfig, FlowLintParser, LintConfig, LintEngine, RuleLevel,
 };
 pub use plugins::{ApplyCondition, HookOrder, PipelineMode, PluginEntry, PluginSpec};
+pub use rendering::{PlanSource, Prerender, RenderingPlan};
 pub use runtime::{
     CapabilityJsHost, CapabilityJsHostConfig, DeployAdapter, DeployAnywhereConfig,
     NativeServerAdapter, NativeServerConfig, RuntimeConfig, RuntimeEngine, ServerConfig,
@@ -42,6 +44,8 @@ pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 pub struct UniflowedConfig {
     pub app: AppConfig,
     pub build: BuildConfig,
+    /// Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive.
+    pub builder: BuilderConfig,
     pub dev: DevConfig,
     pub docs: DocsConfig,
     pub env: EnvConfig,
@@ -87,6 +91,46 @@ pub struct UniflowedConfig {
     /// ecosystem upgrade had to pass through. See `docs/red-lines.md`.
     pub vite: Option<serde_json::Value>,
     pub vrt: VrtConfig,
+}
+
+/// Which builder uf orchestrates.
+///
+/// Vite is the **default**, and `docs/red-lines.md` line 3 is the reason this
+/// key exists: every built-in provider must be replaceable, and until
+/// ubugeeei-prod/uf#549 this was the largest one in the toolchain with no seam
+/// at all — `@uniflowed/vite` was not one implementation of a contract, it was
+/// reached by name from four commands.
+///
+/// [`module`](Self::module) is a module specifier resolved the way any other
+/// provider is: a package name found by walking up `node_modules`, or a path
+/// starting with `.` or `/` that must stay inside the project. What is found
+/// has to satisfy the contract in `docs/architecture.md` — a driver executable
+/// by the project's Capability JS Host, speaking one JSON event per line — and
+/// nothing about that contract is Vite's.
+///
+/// This is not an `eject`. Red line 4 forbids one, and this is its opposite:
+/// the seam a project reaches for when the default is wrong is a *provider*
+/// swap, and it is reversible by deleting one line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct BuilderConfig {
+    /// The module that implements the builder contract.
+    ///
+    /// `"@uniflowed/vite"` unless a project says otherwise. A relative path is
+    /// resolved from the project root and may not climb out of it, which is
+    /// the same rule `uf_plugin` applies to a plugin: a config file is
+    /// untrusted input, and "run this file as the toolchain" is the most
+    /// dangerous thing it can say.
+    pub module: CompactString,
+}
+
+impl Default for BuilderConfig {
+    fn default() -> Self {
+        Self {
+            module: CompactString::const_new("@uniflowed/vite"),
+        }
+    }
 }
 
 impl UniflowedConfig {
@@ -1418,6 +1462,34 @@ pub enum ConfigError {
         path: Utf8PathBuf,
         key: &'static str,
     },
+    /// A `rendering.modes` that leaves the build with nothing it can do.
+    ///
+    /// The list is an allowlist, so naming a strategy uf has not written is
+    /// not itself an error — `["ssg", "isr"]` permits one thing that never
+    /// happens and one that does. A list that permits *only* strategies uf
+    /// has not written is different: there is no build behind it, and the two
+    /// honest readings of it — "prerender anyway" and "produce nothing" — are
+    /// both the silent semantic change the guide forbids.
+    #[error(
+        "{path}: app.rendering.modes is [{modes}], and uf implements none of them. \
+         `ssg` prerenders a route and `ssr` renders it per request; \
+         `ppr` and `isr` are planned and are never selected. \
+         Allow at least one of `ssg` and `ssr`."
+    )]
+    NoImplementedRenderingMode { path: Utf8PathBuf, modes: String },
+    /// `build.staticBuild` beside a `rendering.modes` that forbids `ssg`.
+    ///
+    /// Two declarations that cannot both be true: one says every route is
+    /// prerendered and no server is emitted, the other says a prerendered
+    /// route is not something this project deploys. Whichever were read second
+    /// would silently win, which is the failure ubugeeei-prod/uf#385 is about
+    /// one level down.
+    #[error(
+        "{path}: build.staticBuild prerenders every route, and app.rendering.modes does not \
+         allow `ssg`. Add `\"ssg\"` to the list, or drop `staticBuild` and deploy the server \
+         this project's routes need."
+    )]
+    StaticBuildWithoutSsg { path: Utf8PathBuf },
 }
 
 pub fn load_config(start: impl AsRef<Utf8Path>) -> Result<ResolvedConfig, ConfigError> {
@@ -1485,6 +1557,12 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
                     message: source.to_string(),
                 })?;
             check_cache_switches(path, &config.app.rendering.cache)?;
+            // What the project says a build may produce, checked where it was
+            // written. `rendering::check` refuses the two combinations that
+            // have no build behind them; `RenderingPlan::resolve` is
+            // infallible after it, which is why every caller downstream can
+            // ask for the plan without handling an error.
+            rendering::check(path, &config)?;
             Ok(config)
         }
         _ => Err(ConfigError::UnsupportedExpression {

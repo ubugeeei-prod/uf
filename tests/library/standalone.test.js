@@ -189,11 +189,11 @@ function recorder(options?: {| readonly full?: boolean |}) {
 }
 
 /** One request through a fresh handler, with what the application saw. */
-async function request(method: string, url: string) {
+async function request(method: string, url: string, headers?: { [string]: string }) {
   const { app, asked } = application();
   const handle = createHandler({ app, assets, document });
   const response = recorder();
-  await handle({ method, url, headers: { host: "example.test" } }, response);
+  await handle({ method, url, headers: { host: "example.test", ...headers } }, response);
   return { response, asked };
 }
 
@@ -602,5 +602,37 @@ describe("the guard on the path", () => {
     expect(response.statusCode).toBe(200);
     expect(asked.guarded).toEqual(["/about"]);
     expect(asked.rendered).toEqual(["/about"]);
+  });
+});
+
+describe("draft mode", () => {
+  it("renders instead of serving the embedded document", async () => {
+    // An embedded document is what the site said when it was built, so a
+    // request in draft mode has to reach the renderer. This is the one front
+    // door that answers a page before the request has begun, so the cookie's
+    // *name* is what decides it — the signature is checked below, where
+    // `draftMode().isEnabled` is read. ubugeeei-prod/uf#282.
+    const { response, asked } = await request("GET", "/guide", {
+      cookie: "__Host-uf.draft=1.whatever",
+    });
+
+    expect(asked.rendered).toEqual(["/guide"]);
+    expect(response.body()).toContain("rendered /guide");
+  });
+
+  it("still answers an embedded asset, because a chunk is a chunk", async () => {
+    const { response, asked } = await request("GET", "/assets/app-a1b2c3.js", {
+      cookie: "__Host-uf.draft=1.whatever",
+    });
+
+    expect(asked.rendered).toEqual([]);
+    expect(response.body()).toBe("console.log('hydrate')");
+  });
+
+  it("serves the embedded document to everybody else", async () => {
+    const { response, asked } = await request("GET", "/guide", { cookie: "session=abc" });
+
+    expect(asked.rendered).toEqual([]);
+    expect(response.body()).toContain("prerendered guide");
   });
 });
