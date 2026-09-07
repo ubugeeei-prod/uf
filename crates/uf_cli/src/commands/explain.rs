@@ -40,8 +40,8 @@ struct Stage {
 /// "uf" three times would be a list of nothing.
 const KNOWN: &[&str] = &[
     "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
-    "install", "add", "remove", "update", "why", "upgrade", "use", "env", "prepare", "publish",
-    "release", "lsp",
+    "install", "add", "remove", "update", "patch", "catalog", "why", "upgrade", "use", "env",
+    "prepare", "publish", "release", "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -75,6 +75,21 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
             &resolved,
             Operation::Update,
             "moves the lockfile to the newest versions the manifest ranges already allow",
+        ),
+        // The listing is uf's own — it reads the workspace's manifests and
+        // nothing else — and `uf catalog set` rewrites them and then delegates
+        // an install, which is the part with a provider worth naming.
+        "patch" => query_stages(
+            &resolved,
+            Operation::Patch,
+            "the manager extracts a copy of the package into a temporary directory and prints \
+             the path; `uf patch --commit` turns your edits into a patch file and reinstalls",
+        ),
+        "catalog" => dependency_stages(
+            &resolved,
+            Operation::Install,
+            "`uf catalog` reads the manifests and reports; `uf catalog set` rewrites the range \
+             in each of them and the manager installs what they now say",
         ),
         "why" => why_stages(&resolved),
         "ls" => query_stages(

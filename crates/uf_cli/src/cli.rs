@@ -578,6 +578,37 @@ pub(crate) enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Open a dependency for editing, and write the patch when you are done.
+    ///
+    /// `uf patch left-pad` prints a directory holding a copy of the package;
+    /// edit it, then `uf patch --commit <that directory>` writes the patch and
+    /// installs. The patch is reapplied by every install after that.
+    ///
+    /// pnpm and Yarn 2+ only. npm, bun and Yarn 1 have nothing equivalent, and
+    /// uf names `patch-package` rather than installing it for you — this is the
+    /// one command whose whole purpose is editing somebody else's code, and it
+    /// is not the place for uf to add a dependency the project did not choose.
+    Patch {
+        /// The package to open, or with `--commit` the directory to commit.
+        #[arg(value_name = "PACKAGE")]
+        target: String,
+        /// Write the patch from a directory `uf patch` opened, and install.
+        #[arg(long)]
+        commit: bool,
+    },
+    /// Show the versions a workspace shares, and change one everywhere.
+    ///
+    /// A package more than one manifest declares is a catalogue entry, and the
+    /// range they agree on is its value. `uf catalog` prints them and every
+    /// package whose manifests *dis*agree; `uf catalog set` makes them agree.
+    ///
+    /// pnpm's `catalog:` is a specifier only pnpm can resolve, so uf does not
+    /// invent a fifth one: it reports how many a project has and leaves pnpm to
+    /// resolve them. See ubugeeei-prod/uf#496.
+    Catalog {
+        #[command(subcommand)]
+        command: Option<CatalogCommand>,
+    },
     /// Re-read the workspace and record the package and runtime plan.
     ///
     /// It fetches nothing and it does not replace the uf binary, in spite of
@@ -773,6 +804,22 @@ pub(crate) enum ReleaseBump {
     Patch,
     Minor,
     Major,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum CatalogCommand {
+    /// Declare one range for a package in every manifest that has it.
+    Set {
+        /// The package.
+        #[arg(value_name = "NAME")]
+        name: String,
+        /// The range, for example `^19.0.0`.
+        #[arg(value_name = "RANGE")]
+        range: String,
+        /// Say what would change, and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

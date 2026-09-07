@@ -325,6 +325,15 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 paths,
             },
         ),
+        Commands::Patch { target, commit } => commands::pm::patch(&cwd, ui, &target, commit),
+        Commands::Catalog { command } => match command {
+            None => commands::pm::catalog(&cwd, ui),
+            Some(cli::CatalogCommand::Set {
+                name,
+                range,
+                dry_run,
+            }) => commands::pm::catalog_set(&cwd, ui, &name, &range, dry_run),
+        },
         Commands::Update {
             packages,
             latest,
