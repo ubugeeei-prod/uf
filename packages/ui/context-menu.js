@@ -151,6 +151,13 @@ export component ContextMenuTrigger(children: React.Node, ...rest: Rest) {
 
   return (
     <div
+      // Above the spread, alone, because it is the one attribute here a caller
+      // is invited to overrule: the module header promises `tabIndex={-1}` to a
+      // caller whose trigger already contains something focusable, and a prop
+      // written *after* `{...passed}` wins over the caller's silently — which
+      // is a documented escape hatch that does nothing. Everything below the
+      // spread is this component's own and stays there.
+      tabIndex={0}
       {...passed}
       aria-haspopup="menu"
       id={`${menu.base}-trigger`}
@@ -182,7 +189,6 @@ export component ContextMenuTrigger(children: React.Node, ...rest: Rest) {
         // registered as the menu's *name*; see the module header.
         menu.triggerRef.current = element;
       })}
-      tabIndex={0}
     >
       {children}
     </div>

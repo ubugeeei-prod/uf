@@ -65,7 +65,7 @@
 // gives the right number one frame late, which is the jank this removes.
 //
 // So `useMeasuredHeight` lays the panel out without painting it: inline
-// `display`, `position: absolute` and `visibility: hidden`, read, restore. Two
+// `display`, `position: absolute` and `visibility: hidden`, read, restore. Four
 // things about that are not obvious:
 //
 //   * It overrides `display` inline rather than removing `hidden`. The
@@ -78,6 +78,19 @@
 //     `hidden="until-found"` is `content-visibility: hidden`, which does not lay
 //     its subtree out either. Defeating one of the two and not the other
 //     measures zero on exactly the panels this package ships.
+//   * It sets `height: auto` in the same pass, for the same reason and against
+//     the very rule this property exists for. A closed panel is `height: 0` —
+//     that is the half of `height: 0 → var(--uf-collapsible-height)` that is
+//     always on — so a panel laid out with the stylesheet still applying
+//     measures zero and writes `0px` back into the property it was asked to
+//     fill. Defeating `display` and not `height` is the same mistake as
+//     defeating `display` and not `content-visibility`, one declaration along.
+//   * And it pins the width, because taking a box out of flow makes it
+//     shrink-to-fit against its containing block — the nearest positioned
+//     ancestor, which on most pages is the viewport. Text that wraps to four
+//     lines where the panel lives measures one line there. The width it would
+//     have in flow is its parent's content box; when that cannot be read the
+//     pass leaves the width alone rather than inventing one.
 //
 // It is opt-in, and that is the honest answer to "it should cost nothing on a
 // page that never animates". Whether a stylesheet reads the property is not
@@ -139,12 +152,54 @@ export hook useUntilFound(ref: { current: HTMLElement | null }, open: boolean): 
 export const HEIGHT_PROPERTY: string = "--uf-collapsible-height";
 
 /**
+ * The width `element` would have in flow, as a CSS length, or nothing.
+ *
+ * Taking the panel out of flow to measure it costs shrink-to-fit: an absolutely
+ * positioned box with `width: auto` is as wide as its *content* wants to be,
+ * bounded by its containing block — which is the nearest positioned ancestor
+ * and, on most pages, is the viewport rather than the panel's parent. A
+ * paragraph that wraps to four lines in a sidebar measures one line there, and
+ * the number written into the property is then a height the panel never has.
+ *
+ * The width it would have in flow is its parent's content box, which is what
+ * `getComputedStyle` reports for `width` on a laid-out element. Nothing is
+ * returned when the answer is not a length — a parent that is itself
+ * `display: none`, or a DOM with no layout to report — and the pass then does
+ * what it did before rather than pinning a width it had to guess.
+ */
+function widthInFlow(element: HTMLElement): string | null {
+  const parent = element.parentElement;
+  const view: $FlowFixMe = element.ownerDocument?.defaultView;
+  if (parent == null || view == null || typeof view.getComputedStyle !== "function") {
+    return null;
+  }
+  const width: mixed = view.getComputedStyle(parent).width;
+  return typeof width === "string" && width.endsWith("px") ? width : null;
+}
+
+/**
  * The height `element` has, or would have if it were not hidden.
  *
  * The measuring pass, and the reason this module has a header section about it.
  * An open panel is measured where it stands; a closed one is briefly laid out
  * and not painted. Either way this reads layout, which is a synchronous reflow
  * — the caller is the one that decides it is worth paying.
+ *
+ * # The two things a closed panel is not, and has to be made
+ *
+ * Laying it out is necessary and is not sufficient, because the stylesheet this
+ * property exists for is `height: 0` on the closed panel and
+ * `height: var(--uf-collapsible-height)` on the open one. A panel laid out with
+ * that rule still applying measures **zero**, the property is written back as
+ * `0px`, and the transition has a destination of nothing — the bug the whole
+ * hook was written to avoid, arriving through the rule it was written for. So
+ * `height: auto` is set inline for the pass, exactly as `display` is: not
+ * because the panel wants an inline height but because the author declaration
+ * has to be defeated for one synchronous read and put back.
+ *
+ * `width` is the same argument for the other axis and is `widthInFlow`'s. Both
+ * are restored with everything else; a stylesheet is never left fighting an
+ * inline declaration this wrote.
  */
 function heightOf(element: HTMLElement): number {
   if (!element.hasAttribute("hidden")) {
@@ -152,23 +207,39 @@ function heightOf(element: HTMLElement): number {
   }
   const style = element.style;
   const before = {
+    boxSizing: style.boxSizing,
     contentVisibility: style.getPropertyValue("content-visibility"),
     display: style.display,
+    height: style.height,
     position: style.position,
     visibility: style.visibility,
+    width: style.width,
   };
   // Out of flow and unpainted, so nothing below the panel moves and no frame
-  // shows it. `display` last of the three is not significant; all four are one
-  // style recalculation.
+  // shows it. The order is not significant; this is all one style
+  // recalculation, paid for by the single read below.
   style.display = "block";
   style.setProperty("content-visibility", "visible");
   style.position = "absolute";
   style.visibility = "hidden";
+  style.height = "auto";
+  const width = widthInFlow(element);
+  if (width != null) {
+    // `border-box`, because what fills the parent's content width in flow is
+    // the panel's margin box rather than its content box: measuring a padded
+    // panel content-box wide would make it wider than it will ever be and its
+    // text shorter than it will ever wrap to.
+    style.boxSizing = "border-box";
+    style.width = width;
+  }
   const height = element.getBoundingClientRect().height;
+  style.boxSizing = before.boxSizing;
   style.display = before.display;
   style.setProperty("content-visibility", before.contentVisibility);
+  style.height = before.height;
   style.position = before.position;
   style.visibility = before.visibility;
+  style.width = before.width;
   return height;
 }
 

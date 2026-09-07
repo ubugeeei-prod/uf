@@ -1810,6 +1810,33 @@ describe("Context menu", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("lets a caller take the trigger out of the tab order", () => {
+    render(
+      <ContextMenu.Root>
+        <ContextMenu.Trigger tabIndex={-1}>
+          <button type="button">Invoice 2026-04</button>
+        </ContextMenu.Trigger>
+        <ContextMenu.Body aria-label="Row actions">
+          <ContextMenu.Item>Rename…</ContextMenu.Item>
+        </ContextMenu.Body>
+      </ContextMenu.Root>,
+    );
+    // The escape hatch the module header offers a caller whose trigger already
+    // contains something focusable — two hundred rows is otherwise two hundred
+    // extra stops. A `tabIndex` written after the caller's spread would win
+    // over it silently, which is a documented promise that does nothing.
+    const trigger = screen.getByRole("button", { name: "Invoice 2026-04" }).parentElement;
+    expect(trigger).toHaveAttribute("tabindex", "-1");
+    // And the keys still arrive, because the handler is on the trigger and the
+    // event bubbles up to it from whatever the caller put inside.
+    screen.getByRole("button", { name: "Invoice 2026-04" }).focus();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Invoice 2026-04" }), {
+      key: "F10",
+      shiftKey: true,
+    });
+    expect(screen.getByRole("menuitem", { name: "Rename…" })).toHaveFocus();
+  });
+
   it("still has the keyboard map of a menu inside it", async () => {
     render(<Row />);
     const trigger = screen.getByText("Invoice 2026-04");
@@ -6021,6 +6048,81 @@ describe("Switch and Checkbox", () => {
     expect(onSubmit).toHaveBeenCalled();
   });
 
+  it("submits through the default button the form owns from outside it", () => {
+    let submitter = null;
+    render(
+      <div>
+        <form
+          id="signup"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitter = (event.nativeEvent as $FlowFixMe).submitter;
+          }}
+        >
+          <Checkbox aria-label="Subscribe" />
+        </form>
+        <button form="signup" type="submit">
+          Sign up
+        </button>
+      </div>,
+    );
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    // A form's default button is the first submit button *it owns*, which is
+    // not the same as the first one inside it: a footer button beside the form
+    // is the everyday spelling, and a subtree search never sees it. Missing it
+    // falls through to a submission with no submitter, which is the one thing
+    // passing the button was for.
+    expect(submitter).toBe(screen.getByRole("button", { name: "Sign up" }));
+  });
+
+  it("leaves a buttonless form alone when two of its fields block submission", () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input aria-label="Email" type="email" />
+        <input aria-label="Password" type="password" />
+        <Checkbox aria-label="Remember me" />
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    // What the platform does, which is the whole claim: a form with no submit
+    // button submits implicitly only while at most one field blocks it, and
+    // `Enter` in either of these two text fields does nothing in any browser.
+    // `requestSubmit()` does not know that rule, so this component applies it.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(control).not.toBeChecked();
+  });
+
+  it("submits a buttonless form with one blocking field, which is the search box", () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input aria-label="Query" type="search" />
+        <Checkbox aria-label="Match case" />
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    // The other side of the same rule. A checkbox is not a blocking field, so
+    // one search box and any number of checkboxes still submits.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
   it("does nothing on Enter outside a form", () => {
     render(<Checkbox aria-label="Subscribe" />);
     const control = screen.getByRole("checkbox");
@@ -6718,6 +6820,56 @@ describe("the height a closed disclosure would have", () => {
     };
   }
 
+  /**
+   * A panel with the documented stylesheet on it, `height: 0` and all.
+   *
+   * `.panel { height: 0 }` with `.panel:not([hidden]) { height: var(…) }` is the
+   * rule the property exists for, and the first half of it is *in force while
+   * the panel is closed* — which is the moment the pass runs. So laying the
+   * panel out is not enough on its own: an author `height: 0` that nothing
+   * overrides measures zero however visible the box has been made. The stub
+   * answers the way a browser would, which means only an inline `height` beats
+   * it.
+   */
+  function styledClosed(element: HTMLElement, height: number): void {
+    (element as $FlowFixMe).getBoundingClientRect = () => {
+      const laidOut = !element.hasAttribute("hidden") || element.style.display !== "";
+      const flattened = element.style.height === "" || element.style.height === "0px";
+      const box = laidOut && !flattened ? height : 0;
+      return { bottom: box, height: box, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0 };
+    };
+  }
+
+  /**
+   * A panel whose text wraps, so its height depends on the width it is given.
+   *
+   * The other half of laying a hidden panel out: `position: absolute` makes a
+   * box shrink-to-fit against its containing block rather than against its
+   * parent, so the same paragraph is `unwrapped` tall out of flow and `wrapped`
+   * tall where the panel actually lives.
+   */
+  function wrapsAt(
+    element: HTMLElement,
+    at: string,
+    heights: { unwrapped: number, wrapped: number },
+  ): void {
+    (element as $FlowFixMe).getBoundingClientRect = () => {
+      const laidOut = !element.hasAttribute("hidden") || element.style.display !== "";
+      const box = laidOut ? (element.style.width === at ? heights.wrapped : heights.unwrapped) : 0;
+      return { bottom: box, height: box, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0 };
+    };
+  }
+
+  /** A parent with a width, in a DOM that computes none. */
+  function widthOfEveryParent(width: string): () => void {
+    const host: $FlowFixMe = window;
+    const previous = host.getComputedStyle;
+    host.getComputedStyle = () => ({ width });
+    return () => {
+      host.getComputedStyle = previous;
+    };
+  }
+
   /** A `ResizeObserver` this file can fire by hand; there is none in this DOM. */
   const resizeCallbacks: Array<() => void> = [];
   function installResizeObserver(): () => void {
@@ -6769,10 +6921,57 @@ describe("the height a closed disclosure would have", () => {
       // And the pass put everything back: still hidden, still findable, and no
       // inline layout left behind for a stylesheet to fight.
       expect(content).toHaveAttribute("hidden");
+      expect(content.style.boxSizing).toBe("");
       expect(content.style.display).toBe("");
+      expect(content.style.height).toBe("");
       expect(content.style.position).toBe("");
       expect(content.style.visibility).toBe("");
+      expect(content.style.width).toBe("");
     } finally {
+      restore();
+    }
+  });
+
+  it("beats the `height: 0` the stylesheet has on while the panel is closed", () => {
+    const restore = installResizeObserver();
+    try {
+      render(<Details measure />);
+      const content = screen.getByText("the small print");
+      styledClosed(content, 120);
+      remeasure();
+
+      // Laying the panel out is half the job. The other half is the author
+      // declaration this property exists to replace: a panel measured with
+      // `height: 0` still applying reports zero and writes back the `0px` the
+      // caller asked it to fill, which is the whole bug wearing the rule it was
+      // written for. Defeating `display` and not `height` is the same mistake
+      // as defeating `display` and not `content-visibility`.
+      expect(heightOf(content)).toBe("120px");
+      expect(content.style.height).toBe("");
+    } finally {
+      restore();
+    }
+  });
+
+  it("measures at the width the panel has in flow, not shrink-to-fit", () => {
+    const restore = installResizeObserver();
+    const restoreWidths = widthOfEveryParent("300px");
+    try {
+      render(<Details measure />);
+      const content = screen.getByText("the small print");
+      wrapsAt(content, "300px", { unwrapped: 40, wrapped: 120 });
+      remeasure();
+
+      // Out of flow a box is as wide as its content wants to be, bounded by its
+      // containing block — the nearest positioned ancestor, which on most pages
+      // is the viewport. A paragraph that wraps to four lines in a sidebar
+      // measures one line there, and the property then holds a height the panel
+      // never has.
+      expect(heightOf(content)).toBe("120px");
+      expect(content.style.width).toBe("");
+      expect(content.style.boxSizing).toBe("");
+    } finally {
+      restoreWidths();
       restore();
     }
   });
