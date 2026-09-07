@@ -485,24 +485,26 @@ function classify(message: string, difference: HydrationDifference | null): Hydr
   if (difference == null) {
     return "unknown";
   }
-  if (difference.kind === "extra" || difference.kind === "missing") {
-    return "browser-only";
-  }
+  // An attribute present on one side and absent on the other is a different
+  // question from one whose value differs, and `?? ""` below erases it: the
+  // empty strings exist for `sameShape`, which has nothing to compare when a
+  // side rendered nothing at all.
+  const oneSided = difference.server == null || difference.client == null;
   const server = difference.server ?? "";
   const client = difference.client ?? "";
-  if (difference.kind === "text") {
-    if (server.trim() === "" || client.trim() === "") {
-      return "browser-only";
-    }
-    return sameShape(server, client) ? "variable-input" : "unknown";
-  }
-  if (difference.kind === "attribute" && (difference.server == null || difference.client == null)) {
-    return "browser-only";
-  }
-  if (difference.kind === "attribute" && sameShape(server, client)) {
-    return "variable-input";
-  }
-  return "unknown";
+  // Every kind is named, so a kind added to `DifferenceKind` stops this file
+  // compiling rather than arriving in somebody's overlay as "unknown".
+  return match (difference.kind) {
+    "extra" | "missing" => "browser-only",
+    // Text on one side and whitespace on the other is a node that only one
+    // render produced, not two renders that disagreed about a value.
+    "text" if (server.trim() === "" || client.trim() === "") => "browser-only",
+    "text" => sameShape(server, client) ? "variable-input" : "unknown",
+    "attribute" if (oneSided) => "browser-only",
+    "attribute" => sameShape(server, client) ? "variable-input" : "unknown",
+    // The two trees hold different nodes here, which says nothing about why.
+    "node-type" | "tag" => "unknown",
+  };
 }
 
 const EXPLANATIONS: { readonly [HydrationCause]: string } = {

@@ -131,19 +131,26 @@ there is no combination of fields left to interpret.
 ```js
 // @flow
 const where = useGeolocation();
-switch (where.status) {
-  case "idle":        // enabled: false — nobody asked for a watch
-  case "unsupported": // a server render, or a browser without geolocation
-  case "pending":     // the reader has been asked and has not answered
-  case "located":     // where.position is a Geoposition, guaranteed
-  case "failed":      // where.error, and no earlier fix to fall back on
-}
+const label = match (where) {
+  // enabled: false — nobody asked for a watch
+  {status: "idle"} => "Not watching",
+  // a server render, or a browser without geolocation
+  {status: "unsupported"} => "This device cannot say",
+  // the reader has been asked and has not answered
+  {status: "pending"} => "Locating…",
+  // `position` is a Geoposition, guaranteed
+  {status: "located", position: const at} => `${at.latitude}, ${at.longitude}`,
+  // `error`, and no earlier fix to fall back on
+  {status: "failed", error: const error} => error.message,
+};
 ```
 
 The record it replaced could represent eight states, four of which could never
 happen, and `position == null` meant "no browser", "not asked", "refused" and
 "still waiting" at once. Flow now refuses to read `position` on any state that
-does not have one.
+does not have one, and `match` is how a caller reaches it: the binding in the
+`"located"` arm is the only place `position` exists, and dropping an arm stops
+the file compiling rather than falling through to the next one.
 
 `useNetwork` puts the three fields that arrive together behind one nullable
 object, and keeps `online` — the field almost every caller wants — flat:

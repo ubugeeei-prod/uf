@@ -230,6 +230,41 @@ describe("saying which of the usual causes it was", () => {
   });
 
   /**
+   * An attribute is classified by the same two questions as text — is one side
+   * missing, and do the digits move — and the answers point at different
+   * mistakes: a `width` computed from `innerWidth` against a `src` chosen by a
+   * coin flip. The three cases are asserted together because the classifier
+   * reaches them through one arm each, and a fourth kind arriving in
+   * `DifferenceKind` must not quietly land in any of them.
+   */
+  it("reads an attribute by whether it is one-sided and whether its digits move", () => {
+    expect(
+      reportFor(
+        '<div><img alt="" src="/a.png" width="10"/></div>',
+        '<div><img alt="" src="/a.png" width="12"/></div>',
+      ).cause,
+    ).toBe("variable-input");
+    expect(
+      reportFor('<div><img alt=""/></div>', '<div><img alt="" data-width="1200"/></div>').cause,
+    ).toBe("browser-only");
+    expect(
+      reportFor('<div><img alt="" src="/a.png"/></div>', '<div><img alt="" src="/b.png"/></div>')
+        .cause,
+    ).toBe("unknown");
+  });
+
+  /**
+   * Two different nodes in the same place — a `<span>` where the server sent a
+   * `<b>`, an element where it sent text — say that the trees diverged, and
+   * nothing about why. Naming a cause there would be a guess, and a guess sends
+   * the reader looking for a clock that was never in the file.
+   */
+  it("gives no cause for two trees that hold different nodes", () => {
+    expect(reportFor("<div><span>x</span></div>", "<div><b>x</b></div>").cause).toBe("unknown");
+    expect(reportFor("<div>x</div>", "<div><b>x</b></div>").cause).toBe("unknown");
+  });
+
+  /**
    * Nesting is the one cause the trees cannot show, because the parser has
    * already moved the node by the time either tree exists. React's own error is
    * the signal, and it is read before anything else.
