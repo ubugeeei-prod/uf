@@ -2458,10 +2458,12 @@ fn fmt_check_ignores_the_package_manifest() {
 
 /// `uf env use` records the profile, and says which files it selected.
 ///
-/// It writes `.uniflowed/profile`. It used to write `.uniflowed/env`, which is
-/// the directory `uf env install` links this project's toolchain into — so
-/// whichever of the two ran second broke the other. What reads the profile back
-/// is `tests/env_files.rs`; this is about what a person types and sees.
+/// It writes `.uf/profile`, which is where the project's other state is. It
+/// used to write `.uniflowed/env` — the path `uf env install` linked the
+/// toolchain into — so whichever of the two ran second broke the other; the
+/// links are beside the store now and there is nothing left to collide with.
+/// What reads the profile back is `tests/env_files.rs`; this is about what a
+/// person types and sees.
 #[test]
 fn env_use_records_the_active_environment() {
     let dir = tempfile::tempdir().unwrap();
@@ -2483,7 +2485,10 @@ fn env_use_records_the_active_environment() {
     assert!(stdout.contains("✓ mode staging"), "{stdout}");
     assert!(stdout.contains(".env.staging"), "{stdout}");
     assert_eq!(
-        fs::read_to_string(dir.path().join(".uniflowed/profile")).unwrap(),
+        fs::read_to_string(dir.path().join(".uf/profile")).unwrap(),
         "staging\n"
     );
+    // And nowhere else. `.uf/` is the one directory uf keeps per-project state
+    // in; `.uniflowed/` was a second one that no `.gitignore` knew about.
+    assert!(!dir.path().join(".uniflowed").exists());
 }

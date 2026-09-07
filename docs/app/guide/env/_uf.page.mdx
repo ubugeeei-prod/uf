@@ -51,7 +51,7 @@ uf env install · my-app
   - node@24.14.0  installed
   - pnpm@9.15.0  installed
 
-✓ 5 executables linked into .uniflowed/env/bin
+✓ 5 executables linked into ~/.local/share/uf/envs/my-app-4f2a1c8e93b0d571/bin
 ```
 
 Each tool is unpacked once, into a store keyed by tool, version and platform —
@@ -59,12 +59,15 @@ Each tool is unpacked once, into a store keyed by tool, version and platform —
 links to the same copy. Two projects on the same Node share it; a third on a
 different one gets its own, and neither disturbs the other.
 
-Nothing is written outside the store and the repository. There is no `sudo`
-step, no shell profile to edit, and no version manager to initialise in your
-`.zshrc`. The download's checksum is verified before anything is unpacked,
-against the digest the publisher ships beside the archive.
+uf writes in three places and no others: the store, the per-project link
+directory beside it, and `.uf/profile` in the repository once you have picked
+an environment. There is no `sudo` step, no shell profile to edit, and no
+version manager to initialise in your `.zshrc`. The download's checksum is
+verified before anything is unpacked, against the digest the publisher ships
+beside the archive.
 
-The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides it.
+The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides
+it; the links live beside it under `uf/envs`, and `$UF_ENVS` overrides those.
 
 ## Using it
 
@@ -74,9 +77,16 @@ The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides it.
 v24.14.0
 ```
 
-`uf env exec` puts `.uniflowed/env/bin` in front of `PATH` for one command and
-runs it, exiting with whatever the command exited with. The shell you are in is
+`uf env exec` puts that directory in front of `PATH` for one command and runs
+it, exiting with whatever the command exited with. The shell you are in is
 unchanged, and so is every other repository on the machine.
+
+The links are beside the store rather than inside the project, in a directory
+named for the project and keyed by its path — which keeps the property that
+made them per-project in the first place: two checkouts on different Node
+versions sit beside each other and neither is "active". What it drops is a
+directory nobody wrote, nobody reads and every `.gitignore` had to know about.
+`$UF_ENVS` moves them.
 
 That is the whole model, and it is `nix develop`'s: an environment is something
 a directory *has*, not something a shell is switched into. Nothing has to be
@@ -183,9 +193,9 @@ Four ways to say otherwise, and they are tried in this order:
 
 1. `--mode <name>` on the command: `uf build --mode staging` reads
    `.env.staging` and builds with `import.meta.env.MODE === "staging"`.
-2. The profile `uf env use <name>` recorded, in `.uniflowed/profile`. It is a
-   local choice — a scaffolded project already ignores `.uniflowed/` — and it
-   lasts until you change it.
+2. The profile `uf env use <name>` recorded, in `.uf/profile`. It is a local
+   choice — a scaffolded project already ignores `.uf/` — and it lasts until
+   you change it.
 3. `env.active` in `uf.config.js`, for a project whose default mode is not one
    of the usual ones.
 4. The command's own default, above.
@@ -204,7 +214,7 @@ If you did not mean that, do not put `NODE_ENV` in a `.env` file.
 <div className="command"><code>uf env use staging</code></div>
 
 ```
-✓ mode staging: `.env`, `.env.local`, `.env.staging` and `.env.staging.local`, in .uniflowed/profile
+✓ mode staging: `.env`, `.env.local`, `.env.staging` and `.env.staging.local`, in .uf/profile
 ```
 
 ### The environment always wins

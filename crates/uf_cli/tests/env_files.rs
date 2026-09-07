@@ -207,8 +207,9 @@ fn env_files_in_the_config_replaces_the_cascade() {
 /// `uf env use` writes something, and the next command reads it.
 ///
 /// This is the round trip the issue asks for. It used to write
-/// `.uniflowed/env`, which nothing read and which `uf env install` needs as a
-/// directory.
+/// `.uniflowed/env`, which nothing read and which `uf env install` needed as a
+/// directory; the profile is `.uf/profile` now and the links are not in the
+/// project at all.
 #[test]
 fn env_use_records_a_profile_that_later_commands_read() {
     let dir = project(&[
@@ -223,8 +224,8 @@ fn env_use_records_a_profile_that_later_commands_read() {
     assert!(said.contains("staging"), "{said}");
     assert_plain(&said);
     assert!(
-        dir.path().join(".uniflowed/profile").is_file(),
-        "the profile is written where `uf env install` does not need the name"
+        dir.path().join(".uf/profile").is_file(),
+        "the profile belongs with the project's other state, under `.uf/`"
     );
 
     assert!(

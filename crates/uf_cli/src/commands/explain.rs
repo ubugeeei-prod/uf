@@ -577,7 +577,7 @@ fn assets_stage(resolved: &ResolvedConfig) -> Stage {
 /// that cannot be resolved falls back to the command's default rather than
 /// failing: `uf explain` is what somebody runs *because* something is wrong.
 ///
-/// It says so, though. A hand-edited `.uniflowed/profile` or an `env.active`
+/// It says so, though. A hand-edited `.uf/profile` or an `env.active`
 /// that is not a mode is exactly the fault somebody runs this command about,
 /// and a stage that quietly described `development` instead would answer the
 /// question they asked with a description of a project they do not have — and

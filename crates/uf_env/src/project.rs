@@ -1,16 +1,25 @@
 //! What one repository declares, and where its tools are linked.
 //!
-//! # Why the links are in the repository and the tools are not
+//! # Why the links are not in the repository
 //!
-//! `.uniflowed/env/bin` holds a symlink per executable, pointing into the
-//! store. It is small, it is disposable, and it is per-project — which is
-//! what makes two checkouts on different Node versions able to sit beside
-//! each other without either of them being "active".
+//! A directory of symlinks per project is *per project* and it is not the
+//! project's: nobody wrote it, nobody reads it, it cannot be committed, and it
+//! is one more thing every `.gitignore` has to know about. `.uniflowed/env/`
+//! was that directory, it was never added to this repository's own
+//! `.gitignore`, and a generated file from it was committed — which is
+//! ubugeeei-prod/uf#427, where a leftover from an older `uf env use` stops
+//! `uf env install` working.
 //!
-//! Nothing is added to `PATH` by installing. `uf env exec` puts this
-//! directory in front for one command, and prints it for a reader who wants
-//! it in a shell. That is the whole of the activation model: no shim on
-//! `PATH`, no shell hook, no global "current version" to be surprised by.
+//! So the links live beside the store instead, under `<data>/uf/envs/`, one
+//! directory per project. The property that made them per-project is kept
+//! exactly — two checkouts on different Node versions still sit beside each
+//! other with neither of them "active" — because the directory is *keyed* by
+//! the project rather than *inside* it. See [`Envs::dir_for`].
+//!
+//! Nothing is added to `PATH` by installing. `uf env exec` puts the project's
+//! directory in front for one command, and prints it for a reader who wants it
+//! in a shell. That is the whole of the activation model: no shim on `PATH`,
+//! no shell hook, no global "current version" to be surprised by.
 //!
 //! # Why the links are rebuilt rather than patched
 //!
@@ -22,14 +31,90 @@
 use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use sha2::{Digest, Sha256};
 use uf_config::UniflowedConfig;
 
 use crate::EnvError;
-use crate::store::Store;
+use crate::store::{Store, data_home, env_path};
 use crate::tool::{Pin, Platform, Tool};
 
-/// The directory inside a repository that holds its links.
-pub const ENV_DIR: &str = ".uniflowed/env";
+/// The directory a project's links used to live in.
+///
+/// Kept so that `uf env install` can remove one it finds: a reader who
+/// upgrades has a `.uniflowed/` full of links into the store that nothing
+/// will ever rebuild, and #427 is what happens when it is left there.
+pub const LEGACY_ENV_DIR: &str = ".uniflowed";
+
+/// Where every project's links live, which is not in any project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Envs {
+    root: Utf8PathBuf,
+}
+
+impl Envs {
+    /// The directory under `root`.
+    #[must_use]
+    pub fn new(root: impl Into<Utf8PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    /// Where this machine keeps them.
+    ///
+    /// `$UF_ENVS` first, so a test and a curious reader can put it somewhere
+    /// else; then `<data>/uf/envs`, beside the store — the same resolution
+    /// [`Store::discover`] makes, for the same reason.
+    ///
+    /// # Errors
+    ///
+    /// When neither `$XDG_DATA_HOME` nor `$HOME` is set.
+    pub fn discover() -> Result<Self, EnvError> {
+        if let Some(explicit) = env_path("UF_ENVS") {
+            return Ok(Self::new(explicit));
+        }
+        Ok(Self::new(data_home()?.join("uf").join("envs")))
+    }
+
+    /// Where they all live.
+    #[must_use]
+    pub fn root(&self) -> &Utf8Path {
+        &self.root
+    }
+
+    /// The directory belonging to the project at `project_root`.
+    ///
+    /// `<name>-<hash>`, where the name is the project's own directory and the
+    /// hash is of its absolute path. Both halves earn their place: the hash is
+    /// what makes two checkouts of the same repository two environments, and
+    /// the name is what lets a person looking at `~/.local/share/uf/envs` see
+    /// which is which. A hash alone would be correct and unreadable.
+    ///
+    /// Sixteen hex characters of SHA-256. This is a directory name, not a
+    /// security boundary: the thing it has to do is not collide between the
+    /// handful of checkouts on one machine.
+    #[must_use]
+    pub fn dir_for(&self, project_root: &Utf8Path) -> Utf8PathBuf {
+        // Canonicalised, so `/repo` and `/repo/.` are one project. A path that
+        // cannot be canonicalised — the directory was removed under us — is
+        // hashed as written, which is still stable and still that project's.
+        let absolute = project_root
+            .canonicalize_utf8()
+            .unwrap_or_else(|_| project_root.to_path_buf());
+        let digest = Sha256::digest(absolute.as_str().as_bytes());
+        let hash: String = digest
+            .iter()
+            .take(8)
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let name = absolute.file_name().unwrap_or("project");
+        self.root.join(format!("{name}-{hash}"))
+    }
+
+    /// Where the project's links are.
+    #[must_use]
+    pub fn bin_dir(&self, project_root: &Utf8Path) -> Utf8PathBuf {
+        self.dir_for(project_root).join("bin")
+    }
+}
 
 /// What a repository's `uf.config.js` asks for.
 ///
@@ -61,13 +146,58 @@ pub fn declared(config: &UniflowedConfig, platform: Platform) -> Result<Vec<Pin>
     Ok(pins)
 }
 
-/// Where a repository's links live.
-#[must_use]
-pub fn bin_dir(root: &Utf8Path) -> Utf8PathBuf {
-    root.join(ENV_DIR).join("bin")
+/// Move what an older uf left in `.uniflowed/`, and remove the rest.
+///
+/// Two things were in there and they are not the same kind of thing:
+///
+/// * **the profile**, which is a decision somebody made — `uf env use review`
+///   — and is moved to `.uf/profile` rather than lost. Only when there is
+///   nothing at the new path already: a project that has run `uf env use`
+///   since upgrading has said something newer.
+/// * **`env/`**, which is a directory of symlinks into the store that nothing
+///   rebuilds now. Removed, because it is uf's own output in a location uf no
+///   longer uses and there is nothing a reader could decide about it. As a
+///   *file* rather than a directory it is ubugeeei-prod/uf#427, where a
+///   leftover from an older `uf env use` stops `uf env install` outright.
+///
+/// Returns whether anything was there.
+///
+/// # Errors
+///
+/// When the profile cannot be copied to its new home. Nothing is removed in
+/// that case — the point of copying rather than renaming is that a failure
+/// leaves the original where the reader can still see it, and deleting
+/// `.uniflowed/` after a copy that did not happen would lose the profile and
+/// report that it had moved.
+pub fn migrate_legacy_dir(root: &Utf8Path) -> Result<bool, EnvError> {
+    let legacy = root.join(LEGACY_ENV_DIR);
+    if !legacy.exists() {
+        return Ok(false);
+    }
+
+    let legacy_profile = root.join(uf_config::env_files::LEGACY_PROFILE_FILE);
+    let profile = root.join(uf_config::env_files::PROFILE_FILE);
+    // Only when there is nothing at the new path already: a project that has
+    // run `uf env use` since upgrading has said something newer.
+    if legacy_profile.is_file() && !profile.exists() {
+        if let Some(parent) = profile.parent() {
+            fs::create_dir_all(parent).map_err(|source| EnvError::Write {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
+        fs::copy(&legacy_profile, &profile).map_err(|source| EnvError::Write {
+            path: profile.clone(),
+            source,
+        })?;
+    }
+
+    // Either shape: the directory it became, and the file it used to be.
+    Ok(fs::remove_dir_all(&legacy).is_ok() || fs::remove_file(&legacy).is_ok())
 }
 
-/// Rebuild `root`'s links so they point at exactly `pins`.
+/// Rebuild the links for the project at `root` so they point at exactly
+/// `pins`.
 ///
 /// Returns the executables that were linked, in the order they were made —
 /// which is the order `pins` is in, and so the order a later tool shadows an
@@ -76,8 +206,13 @@ pub fn bin_dir(root: &Utf8Path) -> Utf8PathBuf {
 /// # Errors
 ///
 /// When the directory cannot be rebuilt, or a pin is not installed.
-pub fn link(root: &Utf8Path, store: &Store, pins: &[Pin]) -> Result<Vec<String>, EnvError> {
-    let bin = bin_dir(root);
+pub fn link(
+    root: &Utf8Path,
+    envs: &Envs,
+    store: &Store,
+    pins: &[Pin],
+) -> Result<Vec<String>, EnvError> {
+    let bin = envs.bin_dir(root);
     let _ = fs::remove_dir_all(&bin);
     fs::create_dir_all(&bin).map_err(|source| EnvError::Write {
         path: bin.clone(),

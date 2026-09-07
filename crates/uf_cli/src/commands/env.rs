@@ -77,11 +77,16 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         installed.push((pin.clone(), true));
     }
 
-    let linked = uf_env::project::link(&resolved.root, &store, &pins)?;
+    // Before the links are made, not after: a `.uniflowed` from an older uf
+    // holds links into the store that nothing rebuilds, and as a *file* it is
+    // what stops `uf env install` outright — ubugeeei-prod/uf#427.
+    let migrated = uf_env::project::migrate_legacy_dir(&resolved.root)?;
+    let envs = uf_env::project::Envs::discover()?;
+    let linked = uf_env::project::link(&resolved.root, &envs, &store, &pins)?;
     let entries: Vec<String> = pins.iter().map(uf_env::Pin::slug).collect();
     uf_env::Roots::discover()?.register(&resolved.root, &entries)?;
 
-    let bin = uf_env::project::bin_dir(&resolved.root).to_string();
+    let bin = envs.bin_dir(&resolved.root).to_string();
     let rows: Vec<String> = installed
         .iter()
         .map(|(pin, fetched)| {
@@ -103,6 +108,17 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         renderer.blank(out);
         renderer.bullet_list(out, 2, &rows);
         renderer.blank(out);
+        // Said out loud, because uf removed a directory from somebody's
+        // project. It was uf's own, and a command that deletes should still
+        // name what it deleted.
+        if migrated {
+            renderer.status(
+                out,
+                Status::Info,
+                "removed `.uniflowed/`, which an older uf wrote; the profile in it, if there \
+                 was one, is `.uf/profile` now",
+            );
+        }
         renderer.status(out, Status::Success, &summary);
     });
     Ok(())
@@ -155,7 +171,7 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 /// `sh` and everything else the command it is running expects to find.
 fn exec(cwd: &Utf8Path, command: &[String]) -> Result<()> {
     let (resolved, _) = declared(cwd)?;
-    let bin = uf_env::project::bin_dir(&resolved.root);
+    let bin = uf_env::project::Envs::discover()?.bin_dir(&resolved.root);
     if !bin.is_dir() {
         bail!("this project has no environment yet; run `uf env install`");
     }
@@ -347,17 +363,18 @@ mod tests {
         assert_eq!(written, "staging\n");
     }
 
-    /// The two halves of `uf env` no longer collide.
+    /// The two halves of `uf env` cannot collide, because only one of them
+    /// writes into the project now.
     ///
-    /// `uf env install` links this project's toolchain into
-    /// `.uniflowed/env/bin`, and `uf env use` used to write a *file* at
-    /// `.uniflowed/env`. Whichever ran second lost: with the directory there
-    /// first, this failed with `Is a directory`.
+    /// They used to claim the same path: `uf env install` linked the
+    /// toolchain into `.uniflowed/env/`, and `uf env use` wrote a *file* at
+    /// `.uniflowed/env`. Whichever ran second lost. The links are beside the
+    /// store now, so the profile is the only thing `uf env` puts in a project
+    /// — a guard replaced by there being nothing to guard against.
     #[test]
-    fn the_profile_does_not_collide_with_the_toolchain_directory() {
+    fn the_profile_is_the_only_thing_uf_env_writes_into_a_project() {
         let dir = tempfile::tempdir().unwrap();
         let root = project(&dir);
-        fs::create_dir_all(root.join(uf_env::project::ENV_DIR).join("bin")).unwrap();
         let mut ui = Ui::new(uf_term::ColorChoice::Never, crate::ui::OutputMode::Json);
 
         use_environment(&root, &mut ui, "staging").unwrap();
@@ -366,10 +383,37 @@ mod tests {
             fs::read_to_string(root.join(PROFILE_FILE)).unwrap(),
             "staging\n"
         );
-        assert!(
-            root.join(uf_env::project::ENV_DIR).join("bin").is_dir(),
-            "`uf env install`'s directory must survive `uf env use`"
+        // And the links are somewhere the project is not: wherever `Envs` is
+        // rooted, a project's directory is under *that* rather than under the
+        // project.
+        let envs = uf_env::project::Envs::new(dir.path().join("envs").to_str().unwrap());
+        assert!(envs.bin_dir(&root).starts_with(envs.root()));
+        assert!(!root.join(".uniflowed").exists());
+    }
+
+    /// A profile an older uf wrote is kept, and the directory it was in goes.
+    #[test]
+    fn a_profile_from_the_old_location_is_read_until_it_is_moved() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = project(&dir);
+        fs::create_dir_all(root.join(".uniflowed")).unwrap();
+        fs::write(root.join(".uniflowed/profile"), "review\n").unwrap();
+
+        // Read before anything moves it, so a project that has not run
+        // `uf env install` since upgrading is not silently on the default.
+        assert_eq!(
+            uf_config::env_files::active_profile(&root)
+                .unwrap()
+                .as_deref(),
+            Some("review")
         );
+
+        assert!(uf_env::project::migrate_legacy_dir(&root).unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join(PROFILE_FILE)).unwrap(),
+            "review\n"
+        );
+        assert!(!root.join(".uniflowed").exists());
     }
 
     /// A profile becomes a file name, so a name that could climb out of the
