@@ -1346,7 +1346,7 @@ fn explain_says_which_commands_it_knows() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("install, add, remove, update, catalog, why, upgrade"),
+        stderr.contains("install, add, remove, update, patch, catalog, why, upgrade"),
         "{stderr}"
     );
 }

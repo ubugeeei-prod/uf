@@ -84,6 +84,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("test", "here, and testing.rs for the runner"),
     ("update", "dependencies.rs: runs the package manager"),
     (
+        "patch",
+        "dependencies.rs: asks the package manager, or names patch-package",
+    ),
+    (
         "catalog",
         "here, and catalog/tests.rs for the table and the disagreements",
     ),

@@ -578,6 +578,24 @@ pub(crate) enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Open a dependency for editing, and write the patch when you are done.
+    ///
+    /// `uf patch left-pad` prints a directory holding a copy of the package;
+    /// edit it, then `uf patch --commit <that directory>` writes the patch and
+    /// installs. The patch is reapplied by every install after that.
+    ///
+    /// pnpm and Yarn 2+ only. npm, bun and Yarn 1 have nothing equivalent, and
+    /// uf names `patch-package` rather than installing it for you — this is the
+    /// one command whose whole purpose is editing somebody else's code, and it
+    /// is not the place for uf to add a dependency the project did not choose.
+    Patch {
+        /// The package to open, or with `--commit` the directory to commit.
+        #[arg(value_name = "PACKAGE")]
+        target: String,
+        /// Write the patch from a directory `uf patch` opened, and install.
+        #[arg(long)]
+        commit: bool,
+    },
     /// Show the versions a workspace shares, and change one everywhere.
     ///
     /// A package more than one manifest declares is a catalogue entry, and the

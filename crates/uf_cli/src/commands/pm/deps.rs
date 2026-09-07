@@ -115,7 +115,8 @@ pub(super) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
 /// The one command here that changes nothing, so it neither takes the
 /// `install_workspace` guard — there is no install to guard — nor rewrites
 /// `uf.lock`. Asking why a package is installed must not install anything.
-/// `uf ls`, `uf audit` and `uf search`: read the project, change nothing.
+/// `uf ls`, `uf audit` and `uf search`: read the project, change nothing. And
+/// `uf patch`, which changes a temporary directory and not this project.
 ///
 /// The same shape as [`why`] and for the same reason — the manager's own
 /// output is the answer, so uf says who it is about to ask and then gets out
@@ -166,6 +167,46 @@ pub(crate) fn query(
         )
     })?;
     Ok(())
+}
+
+/// `uf patch NAME` and `uf patch --commit DIR`.
+///
+/// Two halves of one escape hatch: the first opens a copy of a dependency
+/// somewhere you can edit it and prints where, the second turns those edits
+/// into a patch file the install reapplies from then on.
+///
+/// The open half goes through [`query`], whose shape is exactly right for it:
+/// the manager's own output *is* the answer — a directory path you are about to
+/// `cd` into — so uf says which manager it is asking and then gets out of the
+/// way rather than printing a summary after it. Nothing about this project
+/// changes, so there is no lockfile to report on.
+///
+/// The commit half installs — it records the patch in the manifest and
+/// reinstalls the package it patched, whose scripts then run against code you
+/// have just edited — so it goes through [`delegate`], which refuses scripts,
+/// rewrites `uf.lock`, and reports what moved in the tree.
+///
+/// On npm, bun and Yarn 1 both halves are refused by name rather than attempted
+/// (see [`uf_pm::ManagerRunError::Unsupported`]). uf could run `patch-package`
+/// for them and it would even work; it would also be uf installing a dependency
+/// the project did not choose, on the one command whose entire purpose is to
+/// edit somebody else's code.
+pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> Result<()> {
+    let operands = [target.to_owned()];
+    if commit {
+        return delegate(
+            cwd,
+            ui,
+            &Request {
+                heading: "uf patch --commit",
+                operation: Operation::PatchCommit,
+                operands: &operands,
+                retry: format!("uf patch --commit {target}"),
+                announced: false,
+            },
+        );
+    }
+    query(cwd, ui, "uf patch", Operation::Patch, &operands)
 }
 
 pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
