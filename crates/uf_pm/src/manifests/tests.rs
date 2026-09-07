@@ -253,3 +253,65 @@ fn every_change_lands_in_one_write() {
             .replace("~1.0.0", "~2.0.0")
     );
 }
+
+/// The failure ubugeeei-prod/uf#541's review found: a workspace half rewritten,
+/// followed by an install of it.
+#[test]
+fn a_workspace_rewrite_that_fails_part_way_leaves_every_manifest_alone() {
+    let first = "{\n  \"dependencies\": { \"react\": \"^18.2.0\" }\n}\n";
+    let dir = project(&[
+        ("package.json", first),
+        // A directory where the second manifest should be, so writing it fails
+        // after the first has already been written.
+        ("packages/ui/package.json/keep", "not a manifest\n"),
+    ]);
+    let root = root_of(&dir);
+    let mut all = BTreeMap::new();
+    all.insert(
+        root.join("package.json"),
+        change("dependencies", "react", "^19.0.0"),
+    );
+    all.insert(
+        root.join("packages/ui/package.json"),
+        change("dependencies", "react", "^19.0.0"),
+    );
+
+    let error = apply_all(&all).expect_err("the second manifest cannot be read");
+
+    assert!(
+        matches!(error, PackageManagerError::Read { .. }),
+        "{error:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("package.json")).expect("the first manifest"),
+        first,
+        "the first manifest kept a range the second could not be given"
+    );
+}
+
+#[test]
+fn a_workspace_rewrite_that_succeeds_counts_every_range() {
+    let dir = project(&[
+        ("package.json", r#"{"dependencies":{"react":"^18.2.0"}}"#),
+        (
+            "packages/ui/package.json",
+            r#"{"dependencies":{"react":"^17.0.0"}}"#,
+        ),
+    ]);
+    let root = root_of(&dir);
+    let mut all = BTreeMap::new();
+    for manifest in ["package.json", "packages/ui/package.json"] {
+        all.insert(
+            root.join(manifest),
+            change("dependencies", "react", "^19.0.0"),
+        );
+    }
+
+    assert_eq!(apply_all(&all).expect("applied"), 2);
+    for manifest in ["package.json", "packages/ui/package.json"] {
+        let after: Value =
+            serde_json::from_str(&fs::read_to_string(root.join(manifest)).expect("read"))
+                .expect("json");
+        assert_eq!(after["dependencies"]["react"], "^19.0.0", "{manifest}");
+    }
+}

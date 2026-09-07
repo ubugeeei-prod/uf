@@ -197,11 +197,11 @@ pub(crate) fn update(
         return Ok(());
     }
 
-    let mut written = 0;
-    for (manifest, changes) in &changes {
-        written += uf_pm::manifests::apply(manifest, changes)
-            .with_context(|| format!("could not rewrite {}", relative(&root, manifest)))?;
-    }
+    // All of them or none: a failure part way through a workspace would leave a
+    // dependency graph half moved to versions nobody chose, and the install
+    // below would then install it. See `uf_pm::manifests::apply_all`.
+    let written = uf_pm::manifests::apply_all(&changes)
+        .with_context(|| format!("could not rewrite {}", project_label(&root)))?;
     let summary = format!(
         "{} in {}",
         plural(written, "range"),

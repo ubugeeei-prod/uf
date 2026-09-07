@@ -191,3 +191,65 @@ fn prerelease_identifiers_compare_numerically() {
 fn build_metadata_is_dropped() {
     assert_eq!(version("1.2.3+build.5"), version("1.2.3"));
 }
+
+/// Dropped only after it has been read. A registry key uf misparsed this way
+/// would be offered as an upgrade to a version nobody published.
+#[test]
+fn malformed_build_metadata_is_not_a_version() {
+    for text in ["2.0.0+", "2.0.0+bad+suffix", "2.0.0+ ", "2.0.0-rc.1+"] {
+        assert!(Version::parse(text).is_none(), "{text} parsed");
+    }
+    assert!(Version::parse("2.0.0-rc.1+build.5").is_some());
+}
+
+/// Semver puts no bound on a numeric prerelease identifier, and a `u64`
+/// compare that overflows falls back to a string one that sorts a longer
+/// number below a shorter.
+#[test]
+fn a_numeric_identifier_larger_than_u64_still_compares_numerically() {
+    assert!(
+        version("1.0.0-alpha.99999999999999999999") < version("1.0.0-alpha.100000000000000000000")
+    );
+}
+
+/// `01` is not a numeric identifier — semver forbids the leading zero — so it
+/// compares as text. Which matters because an ordering that called `01` and
+/// `1` equal while `==` called them different would break every sort built on
+/// it.
+#[test]
+fn a_leading_zero_identifier_is_not_numeric_and_ord_agrees_with_eq() {
+    let padded = version("1.0.0-alpha.01");
+    let plain = version("1.0.0-alpha.1");
+
+    assert_ne!(padded, plain);
+    assert_ne!(padded.cmp(&plain), std::cmp::Ordering::Equal);
+    // Alphanumeric, so it is greater than the numeric identifier beside it.
+    assert!(padded > plain);
+}
+
+/// A project on `^1.2.3-rc.1` is asking about that release, not about a
+/// candidate for one that has not shipped. `Range::allows` already said so;
+/// `best` has to agree, or `--minor` proposes what the range would reject.
+#[test]
+fn a_prerelease_candidate_has_to_be_on_the_declared_tuple() {
+    let published = ["1.2.3-rc.1", "1.2.3-rc.2", "1.3.0-rc.1", "1.3.0"]
+        .map(version)
+        .to_vec();
+    let from = version("1.2.3-rc.1");
+
+    assert_eq!(
+        best(&published, &from, Level::Minor),
+        Some(&version("1.3.0")),
+        "a shipped 1.3.0 is still a candidate"
+    );
+    assert!(!range("^1.2.3-rc.1").allows(&version("1.3.0-rc.1")));
+
+    // With nothing shipped above it, the only candidate is on its own tuple.
+    let candidates = ["1.2.3-rc.1", "1.2.3-rc.2", "1.3.0-rc.1"]
+        .map(version)
+        .to_vec();
+    assert_eq!(
+        best(&candidates, &from, Level::Minor),
+        Some(&version("1.2.3-rc.2"))
+    );
+}

@@ -188,6 +188,92 @@ pub fn apply(manifest: &Utf8Path, changes: &Changes) -> Result<usize, PackageMan
     Ok(written)
 }
 
+/// Apply changes to several manifests, or to none of them.
+///
+/// Returns how many ranges changed across all of them.
+///
+/// # Why this exists rather than a loop over [`apply`]
+///
+/// `uf update --latest` in a workspace rewrites one manifest per package, and a
+/// failure part way through — a read-only file, a full disk, a `package.json`
+/// that turns out not to parse — used to leave the ones before it changed and
+/// the ones after it not. What follows is an install, so the result was a
+/// dependency graph half moved to versions nobody chose, with nothing saying
+/// which half.
+///
+/// So every manifest that is about to change is read first, and a failure puts
+/// the written ones back before returning. The install has not run at that
+/// point, so the project is exactly as it was.
+///
+/// What this deliberately does **not** do is roll back the install itself. No
+/// package manager offers that, uf cannot honestly fake it, and a `uf.lock`
+/// restored under a `node_modules` the manager has already rewritten would be a
+/// lie in a file people trust. A failed install leaves the tree the manager left
+/// it in, exactly as a failed `uf add` does.
+///
+/// # Errors
+///
+/// The failure that stopped it, once every manifest already written has been
+/// put back. If a restore *also* fails, the error names the manifests left
+/// changed instead — losing that would be the one outcome worse than the
+/// failure itself.
+pub fn apply_all(changes: &BTreeMap<Utf8PathBuf, Changes>) -> Result<usize, PackageManagerError> {
+    let mut undo: Vec<(&Utf8PathBuf, String)> = Vec::new();
+    let mut written = 0;
+
+    for (manifest, changes) in changes {
+        let before = match fs::read_to_string(manifest) {
+            Ok(before) => before,
+            Err(source) => {
+                return Err(restore(
+                    undo,
+                    PackageManagerError::Read {
+                        path: manifest.clone(),
+                        source,
+                    },
+                ));
+            }
+        };
+        match apply(manifest, changes) {
+            Ok(0) => {}
+            Ok(count) => {
+                written += count;
+                undo.push((manifest, before));
+            }
+            Err(error) => return Err(restore(undo, error)),
+        }
+    }
+    Ok(written)
+}
+
+/// Put back what was written, and say so if that cannot be done.
+fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> PackageManagerError {
+    let stranded: Vec<&Utf8PathBuf> = undo
+        .iter()
+        // Newest first: the last one written is the likeliest to still be held
+        // open by whatever stopped the one after it.
+        .rev()
+        .filter(|(manifest, before)| fs::write(manifest, before).is_err())
+        .map(|(manifest, _)| *manifest)
+        .collect();
+    let Some(first) = stranded.first() else {
+        return cause;
+    };
+    PackageManagerError::Write {
+        path: (*first).clone(),
+        source: std::io::Error::other(format!(
+            "{cause}; and {} could not be put back, so {} still {} the new range",
+            stranded
+                .iter()
+                .map(|path| path.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            if stranded.len() == 1 { "it" } else { "they" },
+            if stranded.len() == 1 { "holds" } else { "hold" },
+        )),
+    }
+}
+
 /// Replace one `"name": "from"` pair, when there is exactly one of it.
 ///
 /// `None` when there is none or more than one — which is the answer, not a

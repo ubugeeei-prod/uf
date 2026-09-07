@@ -211,10 +211,17 @@ pub fn best<'a>(candidates: &'a [Version], from: &Version, level: Level) -> Opti
     candidates
         .iter()
         .filter(|candidate| {
-            // A prerelease is a candidate only for a project already on one —
-            // the same rule `Range::allows` applies, stated once more because
-            // this path does not go through a range.
-            !candidate.is_prerelease() || from.is_prerelease()
+            // A prerelease is a candidate only for a project already on one,
+            // and only on the same `major.minor.patch` — the same rule
+            // `Range::allows` applies, stated once more because this path does
+            // not go through a range. Without the tuple, `^1.2.3-rc.1` would be
+            // offered `1.3.0-rc.1` at `--minor`, a release candidate for a
+            // version that has not shipped, which is not what a project on one
+            // release candidate is asking for.
+            !candidate.is_prerelease()
+                || (from.is_prerelease()
+                    && (candidate.major, candidate.minor, candidate.patch)
+                        == (from.major, from.minor, from.patch))
         })
         .filter(|candidate| step(from, candidate).is_some_and(|step| step <= level))
         .max()

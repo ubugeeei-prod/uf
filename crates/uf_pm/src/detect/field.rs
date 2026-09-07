@@ -37,12 +37,15 @@ pub struct Version {
 }
 
 impl Version {
-    /// Parse a bare `major.minor.patch[-prerelease]` version.
+    /// Parse a bare `major.minor.patch[-prerelease][+build]`.
     ///
     /// What a registry publishes under `versions`, and what the numeric part of
-    /// a dependency range is. Build metadata (`+sha`) is accepted and dropped:
-    /// semver says it takes no part in precedence, so keeping it would only
-    /// give two equal versions two spellings.
+    /// a dependency range is. Build metadata is *validated and then dropped*:
+    /// semver says it takes no part in precedence, so keeping it would give two
+    /// equal versions two spellings — but dropping it without checking it would
+    /// make `2.0.0+` and `2.0.0+bad+suffix` parse as `2.0.0`, and a registry key
+    /// uf misread that way could be offered as an upgrade to a version nobody
+    /// published.
     ///
     /// `None` rather than an error, because every caller is asking "is this a
     /// version" about text that is often deliberately not one — `workspace:*`,
@@ -54,7 +57,19 @@ impl Version {
         if value.is_empty() || value.len() > MAX_PACKAGE_MANAGER_FIELD_BYTES {
             return None;
         }
-        let value = value.split('+').next().unwrap_or(value);
+        let value = match value.split_once('+') {
+            None => value,
+            // One `+`, and something after it that is a legal segment. A second
+            // `+` is not build metadata with a `+` in it; it is not a version.
+            Some((version, build)) => {
+                let mut cursor = 0;
+                take_tagged_segment(build, &mut cursor).ok()?;
+                if cursor != build.len() {
+                    return None;
+                }
+                version
+            }
+        };
         let mut cursor = 0;
         let major = take_number(value, &mut cursor).ok()?;
         expect_dot(value, &mut cursor).ok()?;
@@ -127,11 +142,16 @@ fn compare_prerelease(left: &str, right: &str) -> Ordering {
             (None, Some(_)) => Ordering::Less,
             (Some(_), None) => Ordering::Greater,
             (Some(one), Some(two)) => {
-                let ordering = match (one.parse::<u64>(), two.parse::<u64>()) {
-                    (Ok(one), Ok(two)) => one.cmp(&two),
-                    (Ok(_), Err(_)) => Ordering::Less,
-                    (Err(_), Ok(_)) => Ordering::Greater,
-                    (Err(_), Err(_)) => one.cmp(two),
+                let ordering = match (numeric(one), numeric(two)) {
+                    // Not `u64`: semver puts no bound on a numeric identifier,
+                    // and two that overflow one would fall back to a string
+                    // compare that sorts `100000000000000000000` below
+                    // `99999999999999999999`. More digits is a larger number,
+                    // and for equal lengths the ASCII order is the numeric one.
+                    (true, true) => one.len().cmp(&two.len()).then_with(|| one.cmp(two)),
+                    (true, false) => Ordering::Less,
+                    (false, true) => Ordering::Greater,
+                    (false, false) => one.cmp(two),
                 };
                 if ordering == Ordering::Equal {
                     continue;
@@ -140,6 +160,19 @@ fn compare_prerelease(left: &str, right: &str) -> Ordering {
             }
         };
     }
+}
+
+/// Whether an identifier is a *numeric* one, in semver's sense.
+///
+/// Digits, and no leading zero unless it is the whole identifier. `01` is
+/// alphanumeric by that rule, which is what keeps this ordering consistent with
+/// the derived `Eq`: comparing `01` and `1` numerically would call them equal
+/// while `==` calls them different, and an `Ord` that disagrees with `Eq` breaks
+/// every sort and every `BTreeMap` built on it.
+fn numeric(identifier: &str) -> bool {
+    !identifier.is_empty()
+        && identifier.bytes().all(|byte| byte.is_ascii_digit())
+        && (identifier.len() == 1 || !identifier.starts_with('0'))
 }
 
 impl fmt::Display for Version {

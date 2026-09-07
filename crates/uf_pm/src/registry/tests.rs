@@ -43,8 +43,20 @@ fn a_name_that_would_change_the_url_is_refused() {
 }
 
 #[test]
-fn a_registry_that_is_not_http_is_refused() {
-    for registry in ["file:///etc", "ftp://example.com", "registry.npmjs.org", ""] {
+fn a_registry_that_is_not_https_is_refused() {
+    for registry in [
+        "file:///etc",
+        "ftp://example.com",
+        "registry.npmjs.org",
+        "",
+        // Plain http, which curl would send userinfo over.
+        "http://registry.npmjs.org",
+        "http://localhost:4873",
+        // And a URL carrying credentials, even over TLS: they would sit in the
+        // process table for the life of the request.
+        "https://user:token@registry.example.com",
+        "https://token@registry.example.com/path",
+    ] {
         assert!(
             matches!(
                 url_for(registry, "react"),
@@ -123,6 +135,12 @@ fn an_answer_that_is_not_a_packument_is_none() {
 fn a_missing_latest_tag_is_none_rather_than_a_guess() {
     let body = br#"{"versions":{"1.0.0":{}}}"#;
     assert_eq!(parse(body).expect("a packument").latest, None);
+}
+
+/// A `@` in a path is not an authority, and must not be read as one.
+#[test]
+fn an_at_sign_after_the_host_is_a_scoped_package_rather_than_credentials() {
+    assert!(url_for("https://registry.example.com/@scope", "react").is_ok());
 }
 
 #[test]

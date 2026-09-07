@@ -29,6 +29,17 @@
 //! Through `curl`, like every other fetch uf makes (`uf_env::archive`), and for
 //! the same reason: it is already a requirement of the installer, it is on
 //! every machine that can install uf, and it means uf links no TLS stack.
+//!
+//! # HTTPS, and nothing else
+//!
+//! A registry URL can carry userinfo, and curl sends it. Over `http://` that is
+//! a credential on the wire; through a redirect out of TLS it is the same thing
+//! one hop later. So `url_for` refuses anything but `https://`, refuses a URL
+//! with an authority at all, and curl is given `--proto =https --proto-redir
+//! =https` so neither decision can be undone by a `301`. A project on a
+//! plain-http mirror gets a named refusal beside the packages uf could not read
+//! — which is the honest outcome, and the one a report that quietly leaked a
+//! token would not be.
 
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -60,6 +71,12 @@ const CONCURRENCY: usize = 8;
 /// this is the bound past which uf stops reading rather than growing a buffer
 /// on whatever a registry chose to send.
 pub const MAX_PACKUMENT_BYTES: usize = 32 * 1024 * 1024;
+
+/// The same bound, as curl's `--max-filesize` argument.
+///
+/// Written out rather than formatted, because it is an argv entry and a
+/// `const fn` that produced one would be more machinery than a number.
+const MAX_PACKUMENT_BYTES_TEXT: &str = "33554432";
 
 /// What one package has published.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -127,6 +144,18 @@ pub fn packument(registry: &str, name: &str) -> Result<Packument, RegistryError>
             "1",
             "--max-time",
             TIMEOUT_SECONDS,
+            // curl gives up on its own rather than uf discovering the size of a
+            // buffer it has already grown: `Command::output` collects the whole
+            // child stream into memory, so a registry that streams for as long
+            // as the timeout allows would be uf's memory, not curl's.
+            "--max-filesize",
+            MAX_PACKUMENT_BYTES_TEXT,
+            // A redirect must not be able to leave TLS. `url_for` refuses
+            // `http://`, and without these a `301` to one would undo that.
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
             "-H",
             "Accept: application/vnd.npm.install-v1+json",
             "--",
@@ -219,7 +248,26 @@ fn parse(bytes: &[u8]) -> Option<Packument> {
 /// would still change which URL is requested, and a `file://` registry would
 /// make `uf update` read the disk. Both are refused here.
 fn url_for(registry: &str, name: &str) -> Result<String, RegistryError> {
-    if !(registry.starts_with("https://") || registry.starts_with("http://")) {
+    let Some(authority) = registry.strip_prefix("https://") else {
+        // HTTPS only, `http://` included. A registry URL can carry userinfo,
+        // and `curl` sends it — over plaintext, to whoever is listening, on a
+        // command uf runs on its own initiative. There is no version of that
+        // worth the convenience of a plain-http mirror, and a project with one
+        // sees a named refusal beside the packages uf could not read rather
+        // than a report that quietly leaked its credentials.
+        return Err(RegistryError::UnsafeRegistry {
+            registry: bounded(registry),
+        });
+    };
+    // `https://user:token@host/` is a URL uf will not build a request from even
+    // over TLS: the token would be in the process table for the life of the
+    // request, which is a different exposure from the wire and not a smaller
+    // one. Checked before the first `/`, so a `@` in a path is not an authority.
+    if authority
+        .split('/')
+        .next()
+        .is_some_and(|host| host.contains('@'))
+    {
         return Err(RegistryError::UnsafeRegistry {
             registry: bounded(registry),
         });
