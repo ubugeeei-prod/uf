@@ -274,6 +274,86 @@ fn restore(undo: Vec<(&Utf8PathBuf, String)>, cause: PackageManagerError) -> Pac
     }
 }
 
+/// Write `value` at a path of object keys in a manifest, creating the objects
+/// on the way down.
+///
+/// The general form of [`apply`], for the fields that are not ranges:
+/// `pnpm.onlyBuiltDependencies`, `trustedDependencies`,
+/// `dependenciesMeta.<name>.built`. There is no splice here — those are arrays
+/// and nested objects rather than one string, and there is nothing to locate
+/// unambiguously — so the manifest is re-serialised with the indentation it
+/// already had, and parsed back and compared before it is written.
+///
+/// Returns whether anything changed.
+///
+/// # Errors
+///
+/// When the manifest cannot be read, is not JSON, has a non-object where the
+/// path needs one, or cannot be written.
+pub fn set(manifest: &Utf8Path, path: &[&str], value: Value) -> Result<bool, PackageManagerError> {
+    let source = fs::read_to_string(manifest).map_err(|source| PackageManagerError::Read {
+        path: manifest.to_path_buf(),
+        source,
+    })?;
+    let mut document =
+        serde_json::from_str::<Value>(&source).map_err(|source| PackageManagerError::Parse {
+            path: manifest.to_path_buf(),
+            source,
+        })?;
+
+    let mut cursor = &mut document;
+    let Some((last, parents)) = path.split_last() else {
+        return Ok(false);
+    };
+    for key in parents {
+        let Some(object) = cursor.as_object_mut() else {
+            return Err(shape(manifest, key));
+        };
+        cursor = object
+            .entry((*key).to_owned())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    }
+    let Some(object) = cursor.as_object_mut() else {
+        return Err(shape(manifest, last));
+    };
+    if object.get(*last) == Some(&value) {
+        return Ok(false);
+    }
+    object.insert((*last).to_owned(), value);
+
+    let text = reserialize(&source, &document);
+    if !parses_to(&text, &document) {
+        return Err(PackageManagerError::Write {
+            path: manifest.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "the rewritten manifest is not the manifest the change described",
+            ),
+        });
+    }
+    fs::write(manifest, &text).map_err(|source| PackageManagerError::Write {
+        path: manifest.to_path_buf(),
+        source,
+    })?;
+    Ok(true)
+}
+
+/// A manifest whose shape the path cannot be written into.
+///
+/// `"pnpm": "yes"` is valid JSON and not something uf will silently replace: a
+/// manifest that says something uf did not expect is a manifest somebody wrote
+/// on purpose, and overwriting it to record an approval would be the wrong
+/// trade on the one command that exists for safety.
+fn shape(manifest: &Utf8Path, key: &str) -> PackageManagerError {
+    PackageManagerError::Write {
+        path: manifest.to_path_buf(),
+        source: std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("`{key}` is already something other than an object"),
+        ),
+    }
+}
+
 /// Replace one `"name": "from"` pair, when there is exactly one of it.
 ///
 /// `None` when there is none or more than one — which is the answer, not a

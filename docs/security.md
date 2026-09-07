@@ -83,10 +83,59 @@ decisions are:
 | Tarballs from `codeload.github.com` not hash-pinned in the lockfile | Every resolved artifact carries an integrity hash in `uf.lock`; a source without one is a hard error, not a warning | todo |
 | Binary planting through the `bin` field | `bin` targets are validated as single path segments inside the package, and shims are written only into the store's own bin directory | todo |
 | `npx`-style execution of a package the project never installed | `uf exec` runs an installed binary from `node_modules/.bin` without ceremony, and **refuses** to fetch a name that is not in the lockfile unless the caller passes `--yes`. Fetching and running an unpinned package is strictly more dangerous than a `postinstall`, so it asks at least as loudly | `crates/uf_cli/tests/cli.rs` |
-| Lifecycle scripts as an RCE vector | npm scripts are **forbidden by default** — `uf install` fails on a manifest that declares them. Project automation lives in `uf.config.js` tasks | `crates/uf_pm` |
+| Lifecycle scripts as an RCE vector | npm scripts are **forbidden by default** — `uf install` fails on a manifest that declares them, and `--ignore-scripts` goes to the manager so no *dependency* runs one either. `uf pm approve-builds` is the way back in, one package at a time; see below | `crates/uf_pm`, `uf_pm::builds` |
 | Shell injection through the `packageManager` field | Parsed by a hand-written single-pass parser with no regex (ReDoS), and `Invocation.program` comes only from a fixed program table, so no manifest text can name a program or inject an argument | `uf_pm::detect` |
 | Prototype-pollution keys in manifest JSON | `__proto__`, `constructor`, and `prototype` are reported and dropped wherever manifest JSON becomes a map | `uf_pm::detect` |
 | Terminal escape sequences in a package name, injected into a progress display that steers the cursor | Every name taken out of a manager's output is stripped of control characters and length-capped before it can be drawn, and the redrawn region cuts each row to a fixed width, so no registry text can move the cursor | `uf_pm::progress` |
+
+### Dependency install scripts
+
+A dependency with a `postinstall` script is arbitrary code, run on the machine
+of everyone who installs it, before anybody has read a line of it. uf passes
+`--ignore-scripts` to every manager by default, so none of them runs.
+
+That is safe and it is not free: `esbuild`, `sharp` and everything else with a
+native binary to place will not work until their build runs.
+`uf pm approve-builds` lists what is waiting, with the hooks each package declares, and records the
+ones you have read:
+
+```
+  package  version  runs         approved
+  esbuild  0.24.0   postinstall  no
+  sharp    0.33.5   postinstall  no
+
+› 2 packages would run code at install time and are not approved, so uf does not let them run
+```
+
+The approved set goes in the root `package.json`, in the field the project's own
+package manager already reads:
+
+| manager | field |
+| --- | --- |
+| pnpm | `pnpm.onlyBuiltDependencies` |
+| bun | `trustedDependencies` |
+| yarn 2+ | `dependenciesMeta.<name>.built` |
+| npm, yarn 1 | — |
+
+Not a file of uf's own, and not a mirror of anybody's config schema: uf records
+the decision and the manager enforces it, so a project that stops using uf keeps
+a working allow-list and one that already had a list is read rather than
+overridden. `--ignore-scripts` comes off only when the manager can enforce the
+list *and* the list has something in it — an empty `onlyBuiltDependencies` is
+pnpm's way of saying "none", and dropping the flag for it would turn that into
+"whatever the manager defaults to".
+
+**npm and Yarn 1 cannot do this.** `--ignore-scripts` is every script or none,
+and there is no third answer to give it. uf keeps them off and says so, rather
+than offering an approval that quietly means "and everything else too". Turning
+them all on is `pm.allowLifecycleScripts: true` in `uf.config.js` — a deliberate
+act with a deliberate spelling, which approves every dependency you have,
+including the ones you have not read. `uf pm approve-builds` will not do it
+for you.
+
+Approving does not install. A security command that reached for the install the
+moment you made the decision would be a command that runs the script you were
+still thinking about.
 
 ## Config and plugins
 
