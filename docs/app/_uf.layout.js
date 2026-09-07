@@ -27,7 +27,7 @@ const VERSION = "0.0.0-alpha";
  * `metadataBase` is the same origin as `site.url` in `uf.config.js`, and it is
  * written twice because the two are read by different things at different
  * times: `site.url` is what `uf build` puts in a `<loc>`, in Rust, with no
- * JavaScript in the process; this is what the renderer resolves `/brand/uf.png`
+ * JavaScript in the process; this is what the renderer resolves `/brand/og.png`
  * against. Keep them in step.
  *
  * There is deliberately no `canonical` here. A canonical URL is one page's own
@@ -40,8 +40,20 @@ export const metadata: Metadata = {
   description:
     "The best React experience for Flow: run, build, test, format and lint from one command, without Babel or plugin assembly.",
   metadataBase: "https://docs.uniflowed.dev",
-  openGraph: { images: ["/brand/uf.png"] },
-  twitter: { card: "summary_large_image", images: ["/brand/uf.png"] },
+  // No `title` or `description` here: they fall back to the document's, which
+  // is what a page that already said what it is called meant. `siteName` is
+  // the one a card cannot derive.
+  openGraph: {
+    siteName: "uf",
+    images: ["/brand/og.png"],
+    imageAlt: "The uf mark beside the word uf, on a dark ground.",
+  },
+  // No `title` or `description` here either: they fall back through the card's
+  // to the document's, so a page says what it is called once.
+  // `site` is the one card field left unset, and it is the one uf cannot
+  // derive: it is an X handle, and this project has not said it has one. The
+  // field exists — `twitter: { site: "@…" }` — for the day it does.
+  twitter: { card: "summary_large_image", images: ["/brand/og.png"] },
 };
 
 /**

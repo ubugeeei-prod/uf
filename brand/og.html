@@ -1,0 +1,78 @@
+<!doctype html>
+<!--
+  The Open Graph card, at 1200×630.
+
+  Rendered rather than drawn: `tools/brand/render-og.sh` opens this file in
+  headless Chrome and screenshots it, so the card is a source file somebody can
+  read and change rather than a binary nobody can. Run that script after any
+  edit here; the PNG beside it is the output and is committed because a build
+  should not need a browser.
+
+  Two elements: the mark, and the name. Nothing else.
+
+  A card never appears alone — every platform prints `og:title` and
+  `og:description` beside it — so a sentence in the image is the same sentence
+  twice, and it is the copy in the image that is too small to read. What the
+  picture is for is being recognised, which is the mark's job and not a
+  paragraph's.
+
+  Four things it deliberately does not do. The mark is not a corner watermark:
+  it is the brand, at the size a brand is looked at, and the card is the one
+  place it should carry its colour. The type takes no gradient — a gradient
+  across a word competes with a mark that is already the colour. Nothing is set
+  in capitals. And nothing sits inside a frame, a panel or a rounded rectangle,
+  which is the shape that makes a card look like a badge.
+-->
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    background: #080b14;
+    color: #ffffff;
+    font-family: "Inter", ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* One wash, thrown from behind the mark, so the ground has depth and the
+     mark has somewhere to sit. Not a glow around it — that is a badge. */
+  .wash {
+    position: absolute;
+    left: 2%;
+    top: -25%;
+    width: 66%;
+    height: 150%;
+    background: radial-gradient(closest-side, rgba(60, 110, 255, 0.22), transparent 72%);
+  }
+
+  main {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 72px;
+  }
+
+  .mark {
+    width: 360px;
+    height: 360px;
+    flex: none;
+  }
+
+  h1 {
+    font-size: 208px;
+    line-height: 0.82;
+    letter-spacing: -0.06em;
+    font-weight: 700;
+  }
+</style>
+
+<div class="wash"></div>
+
+<main>
+  <img class="mark" src="uniflowed-mark.png" alt="" />
+  <h1>uf</h1>
+</main>

@@ -87,6 +87,103 @@ describe("a canonical URL", () => {
   });
 });
 
+describe("the card a page gets without asking for one", () => {
+  it("takes og:title and og:description from the page's own title and description", async () => {
+    // The bug: the docs site declared a title, a description and an image, and
+    // shipped thirty pages whose share card was an image with no title on it.
+    // A page that has said what it is called has said what its card is called.
+    const html = await documentFor({
+      title: "Install · uf",
+      description: "One binary, three runtimes, no plugins to add.",
+      metadataBase: "https://docs.uniflowed.dev",
+      openGraph: { images: ["/brand/uf.png"] },
+    });
+
+    expect(html).toContain('<meta property="og:title" content="Install · uf"/>');
+    expect(html).toContain(
+      '<meta property="og:description" content="One binary, three runtimes, no plugins to add."/>',
+    );
+  });
+
+  it("prefers what openGraph says, when it says anything", async () => {
+    // No apostrophes: the renderer escapes them, and an assertion that fails
+    // over `&#x27;` is an assertion about escaping written by accident.
+    const html = await documentFor({
+      title: "Install · uf",
+      description: "the document",
+      openGraph: { title: "Install uf", description: "the card" },
+    });
+
+    expect(html).toContain('<meta property="og:title" content="Install uf"/>');
+    expect(html).toContain('<meta property="og:description" content="the card"/>');
+    expect(html).not.toContain('<meta property="og:description" content="the document"/>');
+  });
+
+  it("declares og:type, which Open Graph requires and nobody remembers", async () => {
+    const html = await documentFor({ title: "a page" });
+
+    expect(html).toContain('<meta property="og:type" content="website"/>');
+  });
+
+  it("takes a type a page names instead", async () => {
+    const html = await documentFor({
+      title: "a post",
+      openGraph: { type: "article" },
+    });
+
+    expect(html).toContain('<meta property="og:type" content="article"/>');
+  });
+
+  it("emits no og:type for a page with no card at all", async () => {
+    // A document whose only Open Graph property says the page is a page is
+    // not a card, and a crawler reading one learns nothing from it.
+    const html = await documentFor({});
+
+    expect(html).not.toContain("og:type");
+  });
+
+  it("describes the image, for a reader who cannot see it", async () => {
+    const html = await documentFor({
+      title: "a page",
+      openGraph: { images: ["/og.png"], imageAlt: "the uf mark" },
+      twitter: { card: "summary_large_image", images: ["/og.png"] },
+    });
+
+    expect(html).toContain('<meta property="og:image:alt" content="the uf mark"/>');
+    // And the Twitter card takes the same description rather than asking for
+    // it twice.
+    expect(html).toContain('<meta name="twitter:image:alt" content="the uf mark"/>');
+  });
+
+  it("gives the Twitter card the title the page already has", async () => {
+    // X reads the `og:` tags when these are absent, so they are not required —
+    // and every validator asks for them, which is reason enough when the value
+    // is one the page has already given.
+    const html = await documentFor({
+      title: "Install · uf",
+      description: "One binary, three runtimes.",
+      twitter: { card: "summary_large_image" },
+    });
+
+    expect(html).toContain('<meta name="twitter:title" content="Install · uf"/>');
+    expect(html).toContain(
+      '<meta name="twitter:description" content="One binary, three runtimes."/>',
+    );
+  });
+
+  it("gives a page that asked for no card no Twitter tags at all", async () => {
+    const html = await documentFor({ title: "a page", description: "a description" });
+
+    expect(html).not.toContain("twitter:");
+  });
+
+  it("names the site once, from the layout, for every page under it", async () => {
+    const html = await documentFor({ title: "Install · uf" }, { openGraph: { siteName: "uf" } });
+
+    expect(html).toContain('<meta property="og:site_name" content="uf"/>');
+  });
+});
+
 describe("metadataBase", () => {
   it("makes a relative og:image an absolute one, which is the only kind there is", async () => {
     // The bug this field exists for. A relative `og:image` is not resolved by

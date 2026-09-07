@@ -167,17 +167,51 @@ export type Metadata = {
    */
   readonly canonical?: string,
   readonly openGraph?: {
+    /**
+     * The title a share card shows.
+     *
+     * Falls back to `title`, because a page that has said what it is called
+     * has said what its card is called — and a site made to write it twice
+     * writes it twice once and then lets them drift.
+     */
     readonly title?: string,
+    /** The description a share card shows. Falls back to `description`. */
     readonly description?: string,
+    /**
+     * The Open Graph object type. `website` unless a page says otherwise.
+     *
+     * Defaulted rather than omitted because `og:type` is one of the four
+     * properties Open Graph requires, and a document without it is not an
+     * Open Graph document at all — so leaving it to every project to remember
+     * is leaving most of them without one.
+     */
+    readonly type?: string,
+    /**
+     * The name of the site the page belongs to, which a card prints above the
+     * title. Declared once on the root layout.
+     */
+    readonly siteName?: string,
     readonly images?: $ReadOnlyArray<string>,
+    /**
+     * What the card's image shows, for a reader who cannot see it.
+     *
+     * One description rather than one per image: a card shows one image, and
+     * the array exists so a site can offer a crawler a choice of sizes rather
+     * than so it can show several.
+     */
+    readonly imageAlt?: string,
   },
   readonly twitter?: {
     readonly card?: TwitterCard,
     readonly site?: string,
     readonly creator?: string,
+    /** Falls back to `openGraph.title`, and then to `title`. */
     readonly title?: string,
+    /** Falls back to `openGraph.description`, and then to `description`. */
     readonly description?: string,
     readonly images?: $ReadOnlyArray<string>,
+    /** Falls back to `openGraph.imageAlt`. */
+    readonly imageAlt?: string,
   },
 };
 
@@ -1610,6 +1644,24 @@ function absoluteUrl(value: string, base: void | string): string {
 component Head(metadata: Metadata) {
   const { title, description, metadataBase, canonical, openGraph, twitter } = metadata;
   const href = canonical != null ? absoluteUrl(canonical, metadataBase) : null;
+  // A page that said what it is called has said what its card is called. Every
+  // site that had to write both wrote the same string twice, and the second
+  // one is the one that goes stale — the docs site shipped thirty pages whose
+  // share cards carried an image and no title at all.
+  //
+  // `??`, not `||`: an empty string is a decision, and a page that deliberately
+  // has no card title should get none rather than the document's.
+  const cardTitle = openGraph?.title ?? title;
+  const cardDescription = openGraph?.description ?? description;
+  // `og:type` is one of the four properties Open Graph requires. A default is
+  // the difference between a document with a card and a document without one,
+  // and `website` is right for everything that is not an article or a video.
+  const cardType = openGraph?.type ?? "website";
+  // Only when the card was asked for. A page with no `twitter.card` gets no
+  // Twitter tags at all, which is what a site that never wanted one meant.
+  const twitterTitle = twitter != null ? (twitter.title ?? cardTitle) : null;
+  const twitterDescription = twitter != null ? (twitter.description ?? cardDescription) : null;
+  const twitterImageAlt = twitter != null ? (twitter.imageAlt ?? openGraph?.imageAlt) : null;
   return (
     <>
       {title != null ? <title>{title}</title> : null}
@@ -1619,30 +1671,48 @@ component Head(metadata: Metadata) {
           words, so one declaration answers both rather than asking a project
           to write the same URL twice and keep them in step. */}
       {href != null ? <meta property="og:url" content={href} /> : null}
-      {openGraph?.title != null ? <meta property="og:title" content={openGraph.title} /> : null}
-      {openGraph?.description != null ? (
-        <meta property="og:description" content={openGraph.description} />
+      {cardTitle != null ? <meta property="og:title" content={cardTitle} /> : null}
+      {cardDescription != null ? (
+        <meta property="og:description" content={cardDescription} />
+      ) : null}
+      {/* Only alongside something else. A document with `og:type` and nothing
+          more is not a card; it is one meta tag saying the page is a page. */}
+      {cardTitle != null || cardDescription != null || openGraph?.images != null ? (
+        <meta property="og:type" content={cardType} />
+      ) : null}
+      {openGraph?.siteName != null ? (
+        <meta property="og:site_name" content={openGraph.siteName} />
       ) : null}
       {openGraph?.images != null
         ? openGraph.images.map((image) => (
             <meta key={image} property="og:image" content={absoluteUrl(image, metadataBase)} />
           ))
         : null}
+      {openGraph?.imageAlt != null && openGraph?.images != null ? (
+        <meta property="og:image:alt" content={openGraph.imageAlt} />
+      ) : null}
       {/* `name`, not `property`: Open Graph is RDFa and Twitter's cards are
           not, and a `property="twitter:card"` is ignored by the crawler that
           reads it. */}
       {twitter?.card != null ? <meta name="twitter:card" content={twitter.card} /> : null}
       {twitter?.site != null ? <meta name="twitter:site" content={twitter.site} /> : null}
       {twitter?.creator != null ? <meta name="twitter:creator" content={twitter.creator} /> : null}
-      {twitter?.title != null ? <meta name="twitter:title" content={twitter.title} /> : null}
-      {twitter?.description != null ? (
-        <meta name="twitter:description" content={twitter.description} />
+      {/* X reads the `og:` tags when these are absent, so these are not
+          required — and every validator asks for them anyway, which is a good
+          enough reason when the value is one the page has already given. They
+          fall back through the card's title to the document's. */}
+      {twitterTitle != null ? <meta name="twitter:title" content={twitterTitle} /> : null}
+      {twitterDescription != null ? (
+        <meta name="twitter:description" content={twitterDescription} />
       ) : null}
       {twitter?.images != null
         ? twitter.images.map((image) => (
             <meta key={image} name="twitter:image" content={absoluteUrl(image, metadataBase)} />
           ))
         : null}
+      {twitterImageAlt != null && twitter?.images != null ? (
+        <meta name="twitter:image:alt" content={twitterImageAlt} />
+      ) : null}
     </>
   );
 }

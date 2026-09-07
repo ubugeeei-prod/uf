@@ -286,9 +286,21 @@ fn build_renders_the_docs_site_through_vite() {
     );
     assert!(
         index.contains(
-            "<meta property=\"og:image\" content=\"https://docs.uniflowed.dev/brand/uf.png\"/>"
+            "<meta property=\"og:image\" content=\"https://docs.uniflowed.dev/brand/og.png\"/>"
         ),
         "the og:image was not made absolute:\n{index}"
+    );
+    // And the card carries words. `og:title` and `og:description` fall back to
+    // the document's own, so a page that said what it is called said what its
+    // card is called — the site shipped thirty pages whose card was an image
+    // and nothing else.
+    assert!(
+        index.contains("<meta property=\"og:title\" content="),
+        "no og:title:\n{index}"
+    );
+    assert!(
+        index.contains("<meta property=\"og:type\" content=\"website\"/>"),
+        "no og:type:\n{index}"
     );
 
     let report: serde_json::Value =

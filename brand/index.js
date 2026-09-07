@@ -28,6 +28,7 @@ export const ufBrandAssets = {
   wordmark: "brand/uniflowed-wordmark.png",
   wordmarkSvg: "brand/uniflowed-wordmark.svg",
   favicon: "brand/favicon.svg",
+  og: "brand/og.png",
 };
 
 export const ufPalette: $ReadOnlyArray<BrandColorToken> = [

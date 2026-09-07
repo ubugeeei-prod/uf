@@ -17,6 +17,7 @@ mkdir -p "$public_dir"
 for asset in \
   favicon.svg \
   index.js \
+  og.png \
   tokens.css \
   tokens.json \
   uf.png \
