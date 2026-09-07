@@ -9,8 +9,8 @@ that was a template when it named one and a directory when it did not, so
 `uf create app react` and `uf create app my-site` did two different things and
 neither spelling said which; it is `uf new <path>` and `uf init` now, with
 `--lib` for a library, and the old spelling still works and is no longer
-listed. `uf ls`, `uf audit` and `uf search` reach the four things a person does
-to a dependency tree that uf could not do — and where a manager has no such
+listed. `uf ls`, `uf audit` and `uf search` reach three more of the things a
+person does to a dependency tree — and where a manager has no such
 command, which is Yarn and bun for `search`, uf says so rather than running a
 manager the project did not choose. `uf clean` removes what a rebuild writes
 again, with the line drawn at the network: never `node_modules` unless asked,
