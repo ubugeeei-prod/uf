@@ -1,11 +1,15 @@
 //! `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf upgrade`,
 //! and `uf use`: packages and runtimes.
 
+mod catalog;
 mod deps;
 mod install;
+mod update;
 
-pub(crate) use deps::{add, query, remove, update, why};
+pub(crate) use catalog::{list as catalog, set as catalog_set};
+pub(crate) use deps::{add, patch, query, remove, why};
 pub(crate) use install::install;
+pub(crate) use update::update;
 
 use std::fs;
 
