@@ -1,5 +1,39 @@
 # Changelog
 
+## uf@0.0.0-alpha.11
+
+_2026-09-07_
+
+`uf check` reads what a file imports. It used to check the files it was handed
+and nothing else, so `uf check <path>` resolved nothing:
+`import type { Control } from "@uniflowed/form"` was an `any`-typed value and
+every annotation written against it went unread — fifteen `value-as-type`
+errors on `packages/form/watch.js` about types that were correct. The batch is
+now the closure of what the requested files import, assembled with the
+checker's own resolution rules, and a specifier the project cannot answer is
+looked for under `node_modules`. So a project that merely *uses* uf is checked
+against uf's real types: a scaffold types its eight files against thirty-one
+modules read from the install, where before it typed them against `any`. Two
+conditions bound what is read, and both are Flow's — a package Flow's own
+library definitions describe is left to them, and a package that declares no
+`@flow` exports `any` whether it is read or not. Diagnostics are still reported
+only for the files that were asked about.
+
+And uf installs itself in CI in one step. `integrations/` holds a GitHub
+composite action, a GitLab `include:` template and a CircleCI orb, all three
+running the same installer a human runs — which is why they are thin, and why
+none of them skips the checksum. They agree on the awkward parts: pin the
+version, never cache `latest`, and never believe a restored cache without
+running the binary in it.
+
+### Added
+
+- **build, router**: a sitemap and a robots.txt, and three manifests out of dist/ (#471)
+
+### Other
+
+- uf check reads what it imports, and three CI setups that install uf (#474)
+
 ## uf@0.0.0-alpha.10
 
 _2026-09-07_
