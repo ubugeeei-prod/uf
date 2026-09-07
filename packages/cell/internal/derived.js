@@ -2,12 +2,12 @@
 //
 // Derived cells and effects: the two nodes that run a function.
 //
-// They are the same machinery pointed at different ends. A `computed` runs a
-// function and keeps its value; an `effect` runs a function and keeps its side
-// effect. Both discover what they depend on by running, both re-run when what
-// they read changes, and both stop being work the moment nothing is watching.
-// Keeping them in one module is the honest arrangement: an effect is a derived
-// cell whose value nobody reads.
+// They are the same machinery pointed at different ends. A `derived` cell runs
+// a function and keeps its value; an `effect` runs a function and keeps its
+// side effect. Both discover what they depend on by running, both re-run when
+// what they read changes, and both stop being work the moment nothing is
+// watching. Keeping them in one module is the honest arrangement: an effect is
+// a derived cell whose value nobody reads.
 //
 // # Why there is no dependency array
 //
@@ -31,7 +31,7 @@ import type { Cell, CellOptions, Unsubscribe } from "./graph.js";
 import { createNode, subscribeNode } from "./graph.js";
 
 /**
- * A cell computed from other cells, which discovers what those are by running.
+ * A cell derived from other cells, which discovers what those are by running.
  *
  * Lazy while nothing is watching: an unread, unsubscribed derive costs
  * nothing, and a write to something it depends on does not run it. It runs
@@ -47,7 +47,7 @@ import { createNode, subscribeNode } from "./graph.js";
  * given another chance. Retrying on every read would turn one failing derive
  * into a failure repeated once per reader per render.
  */
-export function computed<T>(derive: () => T, options?: CellOptions<T>): Cell<T> {
+export function derived<T>(derive: () => T, options?: CellOptions<T>): Cell<T> {
   // A node with an `evaluate` starts stale, so nothing ever reads this
   // placeholder — every path to the value evaluates first. Flow has no way to
   // spell "no value yet" for a field that must hold a `T`, so the one cast is
