@@ -229,10 +229,23 @@ is one measure per row and a screenful of everything else. `tests/library/tui.te
 renders exactly that and asserts the first frame costs the terminal's 1,920 cells
 rather than the log's, and that changing one visible row afterwards costs one.
 
-There is no mouse wheel, because there is no mouse
-([#314](https://github.com/ubugeeei-prod/uf/issues/314)), and no horizontal
-scrolling: content wider than a terminal is nearly always content that should
-have wrapped.
+The wheel arrives as `onMouseScroll` and moves nothing on its own, which is
+the same rule one paragraph up: how far a notch goes is a question about the
+content, and a component that answered it would answer it for a log, a form and
+a picture alike.
+
+```js
+<ScrollBox
+  height={10}
+  scrollTop={top}
+  onMouseScroll={(event) => {
+    setTop((row) => Math.max(0, row + (event.scroll?.direction === "up" ? -3 : 3)));
+  }}
+>
+```
+
+There is no horizontal scrolling: content wider than a terminal is nearly
+always content that should have wrapped.
 
 ## Keyboard, and what has focus
 
@@ -303,6 +316,94 @@ is where the hold begins.
 
 The mode is turned off again when the application stops: a terminal left in it
 hands the *shell* brackets around every paste.
+
+## The mouse, and what it is under
+
+Mouse reporting is off until an application asks for it:
+
+```js
+const app = render(<Board />, { mouse: true });
+```
+
+That is the one place this package deliberately differs from OpenTUI, whose
+renderer turns the mouse on by default, and the reason is the reader rather
+than the program. A terminal that is reporting the mouse stops handling
+click-and-drag itself, so selecting a line to copy out of the window needs a
+modifier key nobody mentioned. An application that handles the mouse is trading
+that away on purpose; one that ignores it should not have it traded away on its
+behalf. `testRender` turns it on, because there is no terminal there to damage.
+
+With it on, every `Box` takes OpenTUI's handlers — `onMouseDown`, `onMouseUp`,
+`onMouseMove`, `onMouseDrag`, `onMouseDragEnd`, `onMouseDrop`, `onMouseOver`,
+`onMouseOut`, `onMouseScroll`, and `onMouse` for all of them:
+
+```js
+component Cell(id: string, onPick: (string) => void) {
+  const [hot, setHot] = useState<boolean>(false);
+  return (
+    <Box
+      id={id}
+      width={9}
+      height={3}
+      border={true}
+      borderColor={hot ? "cyan" : "gray"}
+      onMouseOver={() => setHot(true)}
+      onMouseOut={() => setHot(false)}
+      onMouseDown={() => onPick(id)}
+    />
+  );
+}
+```
+
+**An event goes to the box under the pointer and then to that box's parents.**
+`event.target` is the box the pointer is over and `event.currentTarget` is the
+box whose handler is running, so a panel can handle a click anywhere inside it
+without every child forwarding one, and `event.stopPropagation()` is how a
+child keeps one to itself. There is no capture phase: OpenTUI documents one direction, and
+a phase nothing can register for would be a field in an event rather than a
+feature.
+
+**"Under the pointer" means what the reader can see.** The hit test is a grid
+the painter fills as it draws, not a walk over the tree asking whose rectangle
+contains the point — those differ wherever `overflow: "hidden"` cut a child
+off, and inside a `ScrollBox`, where a row that has been scrolled out still has
+last frame's geometry on it. A box painted later is the box on top, because
+that is what the reader is looking at. There is no `zIndex` to say otherwise.
+
+**A drag belongs to the box it started on.** A left press remembers that box,
+and every motion after it is delivered there rather than to whatever the
+pointer has since moved over — without that, dragging a slider's handle stops
+working the instant the pointer outruns it, which is every drag. It is also
+the one case where `event.target` and `event.currentTarget` are not on the same
+path: the handler runs on the source, while `target` keeps naming what the
+pointer has moved over, which is what tells a drag what it would drop onto. The
+release then produces `drag-end` and `up` at the box the drag started on, and
+`drop` at whatever it ended over, carrying `event.source`:
+
+```js
+<Box id="done" onMouseDrop={(event) => finish(event.source)} />
+```
+
+`event.source` is the `id` of the box that was dragged, which is why boxes a
+drop has to be able to name take one. Ids are what the events carry, rather
+than the nodes themselves: a node is the renderer's, it is replaced on a
+commit, and an application holding one across a frame would be reading geometry
+that is no longer true.
+
+**A press that never moved is a click**, and produces one `up` and no `drop`.
+
+Three of the terminal's own limits show through and are worth knowing before
+they surprise you. A hover needs the terminal to report motion with no button
+held, which is a report for every cell the pointer crosses — that is the cost
+of `over` and `out` working before a reader has clicked anything, and it is
+paid only by applications that asked for the mouse. Key *release* is not
+reported at all: `KeyEvent.eventType` is always `"press"`, because release
+needs the Kitty keyboard protocol
+([#314](https://github.com/ubugeeei-prod/uf/issues/314)). And a terminal too
+old for SGR-encoded reports gets no mouse rather than a wrong one — its
+encoding cannot express a column past 223, and this decoder recognises those
+reports only to discard them, so a click on such a terminal does nothing
+instead of typing three characters into whatever has focus.
 
 ## Terminals that cannot do what yours can
 
@@ -379,12 +480,18 @@ behind it, which is the thing this was fixing.
 
 ## What is not here yet
 
-Mouse input, text selection, images, the rich-content components (`Code`,
+Text selection, key release, images, the rich-content components (`Code`,
 `Markdown`, `Diff`, `TextTable`) and OpenTUI's application APIs — clipboard,
 notifications, audio, animation — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
 rather than present as functions that throw: `uf inspect` reports four
 components because there are four.
+
+Selection is the one to expect next, and it is the mouse's other half: drag
+over `selectable` text, one selection per renderer, `getSelectedText()`. It is
+also where `preventDefault()` on a mouse event starts to mean something —
+there is no such method today, because nothing this renderer does to a mouse
+event by default could be prevented.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not

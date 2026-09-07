@@ -69,15 +69,17 @@
 // Implemented, tested, and true: a component tree, flexbox layout in whole
 // cells, a cell buffer with correct wide-grapheme handling, a diff that emits
 // only changed cells, keyboard input with OpenTUI's key names and propagation
-// rules, bracketed paste, declarative focus, a scrolling window onto content
-// taller than it, terminal capability and *size* detection that agrees with
-// the CLI's, and an in-memory renderer that runs the same code the terminal
-// one does.
+// rules, bracketed paste, declarative focus, mouse input — press, release,
+// hover, drag with capture, drop and wheel, routed by a hit grid the painter
+// records — a scrolling window onto content taller than it, terminal
+// capability and *size* detection that agrees with the CLI's, and an in-memory
+// renderer that runs the same code the terminal one does.
 //
-// Not here: mouse input, text selection, images, the rich content components,
-// and everything under OpenTUI's "application APIs". They are
-// ubugeeei-prod/uf#314, and they are absent rather than present as functions
-// that throw — because a stub is what this package used to be.
+// Not here: text selection, key *release* (which needs the Kitty keyboard
+// protocol), images, the rich content components, and everything under
+// OpenTUI's "application APIs". They are ubugeeei-prod/uf#314, and they are
+// absent rather than present as functions that throw — because a stub is what
+// this package used to be.
 //
 // Also not here, and worth saying because ubugeeei-prod/uf#247 asked for it:
 // uf's own CLI does not draw through this. It cannot — `crates/uf_term` is
@@ -107,16 +109,19 @@
 // - `layout.js` — flexbox, in whole cells.
 // - `diff.js` — two frames, as the bytes that turn one into the other.
 // - `keys.js` — terminal bytes, as key events, and a paste as one of them.
+// - `mouse.js` — the other half of that stream: what the pointer did.
 // - `capability.js` — what this terminal can render and how big it is, by the
 //   CLI's own rules.
 // - `terminal.js` — a real terminal, and the in-memory one tests use.
 // - `components.js` — `Box`, `Text`, `Input`, `ScrollBox`, and the hooks.
 //
-// `internal/` holds the three that a consumer must not be able to reach past:
+// `internal/` holds the four that a consumer must not be able to reach past:
 // `tree.js` (props become a layout style once, here), `paint.js` (both passes
-// must break lines the same way) and `host.js` (one React root, one terminal,
-// one owner). Each says so in its own header. There is no `internal/util.js`:
-// a module that cannot say what it is about does not belong in this package.
+// must break lines the same way), `hits.js` (what is under the pointer is only
+// true for the frame that recorded it) and `host.js` (one React root, one
+// terminal, one owner). Each says so in its own header. There is no
+// `internal/util.js`: a module that cannot say what it is about does not
+// belong in this package.
 
 export type {
   BorderGlyphs,
@@ -156,8 +161,11 @@ export type { WrapMode } from "./internal/paint.js";
 
 export type { Update } from "./diff.js";
 
-export type { KeyDecoder, KeyEvent, KeySource } from "./keys.js";
-export { createKeyDecoder, decodeKeys } from "./keys.js";
+export type { InputDecoder, InputEvent, KeyEvent, KeySource } from "./keys.js";
+export { createInputDecoder, decodeInput, decodeKeys } from "./keys.js";
+
+export type { MouseEvent, MouseEventType, Scroll, ScrollDirection } from "./mouse.js";
+export { MouseButton } from "./mouse.js";
 
 export type { Renderer, Root } from "./internal/host.js";
 
@@ -169,6 +177,7 @@ export type {
   BoxProps,
   ColorValue,
   InputProps,
+  MouseProps,
   ScrollBoxProps,
   TextProps,
   TextStyleProps,

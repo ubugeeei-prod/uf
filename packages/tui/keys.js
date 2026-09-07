@@ -15,6 +15,16 @@
 // input test in `tui.test.js` goes through here, which is what makes them
 // tests of the real path rather than tests of a fake one.
 //
+// # One stream, two kinds of event
+//
+// A terminal with mouse reporting on writes its reports into the same stream,
+// as escape sequences that are not keys. So the decoder's output is a union:
+// {@link InputEvent} is a key or a mouse report, told apart by `kind`, and
+// `mouse.js` holds the half this module does not. Splitting them at the byte
+// level rather than after the fact is not a preference — a mouse report and
+// `Alt+[` begin with the same two bytes, and a decoder that guessed later
+// would have had to un-decode a key it had already emitted.
+//
 // # The names are OpenTUI's
 //
 // `"return"`, not `"enter"`. `"escape"`, not `"esc"`. Those are the canonical
@@ -36,6 +46,9 @@
 // handler either unreachable or unable to stop a text input from inserting a
 // character.
 
+import type { MouseEvent } from "./mouse.js";
+import { decodeMouse, legacyReportLength } from "./mouse.js";
+
 /** Which of the two parsers produced an event. */
 export type KeySource = "raw" | "escape";
 
@@ -48,6 +61,14 @@ export type KeySource = "raw" | "escape";
  * difference between typing `a` and typing `^[[A`.
  */
 export type KeyEvent = {
+  /**
+   * Which of the two things a terminal's byte stream carries.
+   *
+   * A stream holds keys and, when mouse reporting is on, mouse reports. This
+   * is what tells them apart, and it is on the event rather than inferred from
+   * the presence of a field so that a `switch` over it is exhaustive.
+   */
+  readonly kind: "key",
   /**
    * The canonical name: `"a"`, `"space"`, `"return"`, `"escape"`, `"up"`.
    *
@@ -78,6 +99,15 @@ export type KeyEvent = {
   /** Whether `stopPropagation()` was called. */
   propagationStopped: boolean,
 };
+
+/**
+ * One thing that arrived from a terminal.
+ *
+ * Everything a driver reads is one of these two, and `kind` is how a caller
+ * tells them apart without a type test on a field that might one day exist on
+ * both.
+ */
+export type InputEvent = KeyEvent | MouseEvent;
 
 const ESC = "\u001b";
 
@@ -134,6 +164,7 @@ function event(fields: {
   meta?: boolean,
 }): KeyEvent {
   const key: KeyEvent = {
+    kind: "key",
     name: fields.name,
     sequence: fields.sequence,
     raw: fields.raw,
@@ -187,20 +218,20 @@ function pasteEvent(text: string, raw: string): KeyEvent {
 /**
  * A decoder that survives a paste arriving in pieces.
  *
- * {@link decodeKeys} is a pure function of one chunk, which is right for every
- * key: a terminal delivers an escape sequence in a single read. A paste is the
- * exception — it is as long as the clipboard, and the operating system splits
- * a large one across reads wherever it likes, including in the middle of a
- * word and including between the text and its terminator. So a driver reading
- * a real stream holds one of these across chunks, and the text that arrives
- * is the text that was pasted rather than the first sixty-four kilobytes of it
- * followed by a burst of keys.
+ * {@link decodeInput} is a pure function of one chunk, which is right for
+ * every key: a terminal delivers an escape sequence in a single read. A paste
+ * is the exception — it is as long as the clipboard, and the operating system
+ * splits a large one across reads wherever it likes, including in the middle
+ * of a word and including between the text and its terminator. So a driver
+ * reading a real stream holds one of these across chunks, and the text that
+ * arrives is the text that was pasted rather than the first sixty-four
+ * kilobytes of it followed by a burst of keys.
  */
-export type KeyDecoder = {
+export type InputDecoder = {
   /** Decode one chunk, holding back a paste that has not ended yet. */
-  push(chunk: string): Array<KeyEvent>,
+  push(chunk: string): Array<InputEvent>,
   /** Give up on an unterminated paste and emit what arrived. */
-  flush(): Array<KeyEvent>,
+  flush(): Array<InputEvent>,
 };
 
 /**
@@ -218,14 +249,14 @@ function beginsPaste(input: string, start: number): boolean {
 }
 
 /** A decoder with somewhere to keep a half-arrived paste. */
-export function createKeyDecoder(): KeyDecoder {
+export function createInputDecoder(): InputDecoder {
   let pending: string | null = null;
   /** A chunk that ended part-way through `ESC[200~`. */
   let introducer = "";
 
-  const decoder: KeyDecoder = {
-    push(chunk: string): Array<KeyEvent> {
-      const events: Array<KeyEvent> = [];
+  const decoder: InputDecoder = {
+    push(chunk: string): Array<InputEvent> {
+      const events: Array<InputEvent> = [];
       let input = introducer + chunk;
       introducer = "";
       if (pending != null) {
@@ -262,13 +293,13 @@ export function createKeyDecoder(): KeyDecoder {
       }
       return events;
     },
-    flush(): Array<KeyEvent> {
+    flush(): Array<InputEvent> {
       if (introducer !== "") {
         // Not a paste after all: no more input is coming, so the bytes are
         // whatever they decode to on their own.
         const held = introducer;
         introducer = "";
-        const events: Array<KeyEvent> = [];
+        const events: Array<InputEvent> = [];
         let index = 0;
         while (index < held.length) {
           index += decodeOne(held, index, events);
@@ -287,7 +318,7 @@ export function createKeyDecoder(): KeyDecoder {
 }
 
 /**
- * Every key event in a chunk of terminal input.
+ * Everything in a chunk of terminal input: keys, and mouse reports.
  *
  * A chunk is not a key. Holding a key down, pasting, or simply typing fast
  * delivers several at once, and a decoder that returns the first and drops the
@@ -296,14 +327,33 @@ export function createKeyDecoder(): KeyDecoder {
  *
  * One chunk, decoded completely: a paste this chunk begins and does not end is
  * emitted anyway, because there is no later chunk for a pure function to wait
- * for. A driver reading a stream wants {@link createKeyDecoder} instead.
+ * for. A driver reading a stream wants {@link createInputDecoder} instead.
  */
-export function decodeKeys(input: string): Array<KeyEvent> {
-  const decoder = createKeyDecoder();
+export function decodeInput(input: string): Array<InputEvent> {
+  const decoder = createInputDecoder();
   return [...decoder.push(input), ...decoder.flush()];
 }
 
-function decodeOne(input: string, start: number, events: Array<KeyEvent>): number {
+/**
+ * The key events in a chunk, with any mouse reports left out.
+ *
+ * The narrow view, for a caller that has not turned mouse reporting on and
+ * therefore cannot receive one — which is every caller of this function until
+ * an application asks `render` for the mouse. A caller that has wants
+ * {@link decodeInput}, because dropping half of what a terminal said is a
+ * poor way to find out it was said.
+ */
+export function decodeKeys(input: string): Array<KeyEvent> {
+  const keys: Array<KeyEvent> = [];
+  for (const event of decodeInput(input)) {
+    if (event.kind === "key") {
+      keys.push(event);
+    }
+  }
+  return keys;
+}
+
+function decodeOne(input: string, start: number, events: Array<InputEvent>): number {
   const character = input[start];
 
   if (character !== ESC) {
@@ -322,6 +372,27 @@ function decodeOne(input: string, start: number, events: Array<KeyEvent>): numbe
   if (next === undefined) {
     events.push(event({ name: "escape", sequence: "", raw: ESC, source: "raw" }));
     return 1;
+  }
+
+  // A mouse report, before the key grammar gets a look at it. `ESC[<` is not
+  // reachable as a key — the CSI parameter bytes are digits and semicolons —
+  // so this branch takes nothing away from the one below it.
+  if (next === "[" && input[start + 2] === "<") {
+    const report = decodeMouse(input, start);
+    if (report != null) {
+      events.push(report.event);
+      return report.length;
+    }
+  }
+
+  // The report a terminal sends when it did not understand `?1006h`. Consumed
+  // and dropped: `mouse.js` says why decoding it would be worse, and why
+  // letting its three payload bytes through as keys would be worse still.
+  if (next === "[") {
+    const legacy = legacyReportLength(input, start);
+    if (legacy > 0) {
+      return legacy;
+    }
   }
 
   if (next === "[" || next === "O") {

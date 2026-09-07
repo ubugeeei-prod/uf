@@ -296,21 +296,27 @@ export default component Home() {
     );
 }
 
-/// A React Compiler finding names the module, the position, and itself once.
+/// A React Compiler finding names its module, its own position and its
+/// component, and is said once per build.
 ///
-/// The fixture holds one finding of the application's own and one inside a
-/// package it depends on, because the difference between them is the decision
-/// under test: the first is the reader's to act on and is printed with a
-/// position; the second is not theirs to fix and is counted rather than
-/// listed. See ubugeeei-prod/uf#307.
+/// The fixture holds findings of the application's own and the same findings
+/// inside a package it depends on, because the difference between them is one
+/// decision under test: the first are the reader's to act on and are printed
+/// with a position; the second are not theirs to fix and are counted rather
+/// than listed. See ubugeeei-prod/uf#307.
+///
+/// The other decision is how many lines three ref accesses in one component
+/// are worth. Three, one each — this used to be one, because a finding carried
+/// its function's position rather than its own and the plugin's
+/// de-duplication could not tell them apart (ubugeeei-prod/uf#371).
 #[test]
 fn a_react_compiler_finding_names_its_file_and_line() {
     if !fixture_ready() {
         return;
     }
     // A ref written during render — the compiler declines the function and
-    // says so, at a position, without naming an inner function, which is the
-    // case the old message reduced to the word "a function".
+    // says so, at a position and with the name of the `component` it is about,
+    // which is the case the old message reduced to the word "a function".
     let refs_during_render = r#"// @flow
 import { useRef } from "react";
 
@@ -354,30 +360,55 @@ export default component Home() {
         "a finding still names no one:\n{stdout}"
     );
 
-    // The application's own finding: its module, its line, its column.
+    // The application's own findings: their module, their lines, their
+    // columns.
     let mine: Vec<&str> = stdout
         .lines()
         .filter(|line| line.contains("Cannot access refs during render"))
         .collect();
+    let mut positions: Vec<&str> = mine
+        .iter()
+        .filter_map(|line| line.split("app/_uf.page.js:").nth(1))
+        .filter_map(|rest| rest.split(further_colon).next())
+        .map(|position| position.trim_end_matches(':'))
+        .collect();
     assert_eq!(
+        positions.len(),
         mine.len(),
-        1,
-        "a build runs Vite twice and must still report a finding once:\n{stdout}"
+        "a finding does not name the module it is about:\n{stdout}"
     );
-    let line = mine[0];
     assert!(
-        line.contains("app/_uf.page.js:"),
-        "the finding does not name the module it is about:\n{line}"
+        positions
+            .iter()
+            .all(|p| p.contains(':') && p.split(':').all(|part| part.parse::<u32>().is_ok())),
+        "a finding names no line and column:\n{stdout}"
     );
-    let position = line
-        .split("app/_uf.page.js:")
-        .nth(1)
-        .and_then(|rest| rest.split(further_colon).next())
-        .unwrap_or_default()
-        .trim_end_matches(':');
     assert!(
-        position.contains(':') && position.split(':').all(|part| part.parse::<u32>().is_ok()),
-        "the finding names no line and column:\n{line}"
+        mine.iter().all(|line| line.contains("(in Home)")),
+        "a finding does not name the component it is about:\n{stdout}"
+    );
+
+    // `box.current` is assigned on one line, read on the right of that same
+    // assignment, and read again in the JSX: three places to look, so three
+    // findings, each at its own column. Before ubugeeei-prod/uf#371 every
+    // finding carried the position of the `component` keyword rather than its
+    // own, so all three printed as the same line and two were discarded as
+    // duplicates of the first.
+    assert_eq!(
+        positions.len(),
+        3,
+        "the three ref accesses did not arrive as three findings:\n{stdout}"
+    );
+
+    // A build runs Vite twice, over the client bundle and the server's, and
+    // one access is still one thing to fix — so no position may repeat.
+    let listed = positions.len();
+    positions.sort_unstable();
+    positions.dedup();
+    assert_eq!(
+        positions.len(),
+        listed,
+        "a build runs Vite twice and must still report each finding once:\n{stdout}"
     );
 
     // The dependency's identical finding is not listed — it is not the

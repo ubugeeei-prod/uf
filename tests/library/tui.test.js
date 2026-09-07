@@ -31,9 +31,11 @@ import {
   Box,
   INHERIT,
   Input,
+  MouseButton,
   ScrollBox,
   Text,
-  createKeyDecoder,
+  createInputDecoder,
+  decodeInput,
   decodeKeys,
   detectCapabilities,
   detectSize,
@@ -44,7 +46,7 @@ import {
   useKeyboard,
   useTerminalSize,
 } from "@uniflowed/tui";
-import type { Frame } from "@uniflowed/tui";
+import type { Frame, MouseEvent } from "@uniflowed/tui";
 
 import { HEIGHT, START, STEPS, WIDTH, lines } from "../../tools/bench/tui/workload.js";
 
@@ -733,7 +735,7 @@ describe("input reaches what has focus", () => {
   it("waits for the rest of a paste the operating system split in two", () => {
     // A clipboard is as long as it is, and a large paste arrives in whatever
     // pieces the read gives — including one that ends in the middle of a word.
-    const decoder = createKeyDecoder();
+    const decoder = createInputDecoder();
 
     expect(decoder.push("\u001b[200~alpha ")).toEqual([]);
     expect(decoder.push("beta")).toEqual([]);
@@ -749,7 +751,7 @@ describe("input reaches what has focus", () => {
     // The marker is six bytes and a read can end anywhere. Decoding
     // `ESC [ 2 0 0` on its own produces Alt-and-a-bracket followed by three
     // digits, and then the paste's first line runs as a command.
-    const decoder = createKeyDecoder();
+    const decoder = createInputDecoder();
 
     expect(decoder.push("\u001b[2")).toEqual([]);
     expect(decoder.push("00~text\u001b[201~").map((key) => [key.name, key.sequence])).toEqual([
@@ -767,7 +769,7 @@ describe("input reaches what has focus", () => {
     // well as the first byte of every escape sequence, and nothing here has a
     // timer to end a wait with — so a driver that held it would have an
     // Escape key that does nothing until you press something else.
-    const decoder = createKeyDecoder();
+    const decoder = createInputDecoder();
     expect(decoder.push("\u001b").map((key) => key.name)).toEqual(["escape"]);
 
     // The price, written down: the marker after the split is no longer a
@@ -792,7 +794,7 @@ describe("input reaches what has focus", () => {
     expect(decoder.flush()).toEqual([]);
 
     // One byte later, and it is held: `ESC[` cannot be the Escape key.
-    const held = createKeyDecoder();
+    const held = createInputDecoder();
     expect(held.push("\u001b[")).toEqual([]);
     expect(held.push("200~a\rb\u001b[201~").map((key) => [key.name, key.sequence])).toEqual([
       ["paste", "a\rb"],
@@ -800,7 +802,7 @@ describe("input reaches what has focus", () => {
   });
 
   it("gives back the bytes when a held marker turns out not to be one", () => {
-    const decoder = createKeyDecoder();
+    const decoder = createInputDecoder();
     decoder.push("\u001b[2");
 
     expect(decoder.flush().map((key) => key.name)).toEqual(["[", "2"]);
@@ -808,7 +810,7 @@ describe("input reaches what has focus", () => {
   });
 
   it("gives back a paste that never ended rather than swallowing it", () => {
-    const decoder = createKeyDecoder();
+    const decoder = createInputDecoder();
     decoder.push("\u001b[200~half");
 
     expect(decoder.flush().map((key) => key.sequence)).toEqual(["half"]);
@@ -1013,6 +1015,300 @@ describe("input reaches what has focus", () => {
     handle.press("\u001b[A");
     handle.press("");
     expect(frameRow(handle.frame(), 0).trimEnd()).toBe("");
+    handle.stop();
+  });
+});
+
+describe("the mouse reaches what is under it", () => {
+  /**
+   * The one mouse report in a chunk.
+   *
+   * A terminal's byte stream carries keys and mouse reports together, so what
+   * the decoder returns is a union; this narrows it and fails loudly rather
+   * than letting a test that decoded a key assert things about a click.
+   */
+  const report = (bytes: string) => {
+    const first = decodeInput(bytes)[0];
+    if (first == null || first.kind !== "mouse") {
+      throw new Error(`expected a mouse report from ${JSON.stringify(bytes)}`);
+    }
+    return first;
+  };
+
+  it("decodes the SGR reports a terminal sends", () => {
+    // `ESC [ < button ; column ; row M`, and a terminal counts from one.
+    const down = report("\u001b[<0;5;3M");
+    expect([down.type, down.button, down.x, down.y]).toEqual(["down", MouseButton.LEFT, 4, 2]);
+    expect(report("\u001b[<0;5;3m").type).toBe("up");
+    expect(report("\u001b[<2;1;1M").button).toBe(MouseButton.RIGHT);
+
+    // Bit 32 is motion. With a button in the low bits it is a drag; with the
+    // "no button" value it is a bare move, and reporting a left button for one
+    // of those would make every hover look like a drag.
+    const drag = report("\u001b[<32;10;4M");
+    expect([drag.type, drag.button]).toEqual(["drag", MouseButton.LEFT]);
+    const move = report("\u001b[<35;10;4M");
+    expect([move.type, move.button]).toEqual(["move", null]);
+
+    // Bit 64 is the wheel, and then the low bits are a direction rather than a
+    // button. 81 is 64 + 16 + 1: wheel, ctrl, down.
+    expect(report("\u001b[<64;1;1M").scroll).toEqual({ direction: "up", delta: 1 });
+    const zoom = report("\u001b[<81;1;1M");
+    expect([zoom.type, zoom.scroll?.direction, zoom.ctrl, zoom.button]).toEqual([
+      "scroll",
+      "down",
+      true,
+      null,
+    ]);
+  });
+
+  it("keeps keys and reports in the one stream, in the order they arrived", () => {
+    // The reason mouse decoding is in the key decoder rather than beside it: a
+    // terminal interleaves them in one read, and `ESC[<` and `Alt+[` begin the
+    // same way.
+    expect(decodeInput("a\u001b[<0;2;2Mb").map((event) => event.kind)).toEqual([
+      "key",
+      "mouse",
+      "key",
+    ]);
+    // `decodeKeys` is the narrow view and leaves the report out rather than
+    // pretending it was a key.
+    expect(decodeKeys("a\u001b[<0;2;2Mb").map((key) => key.name)).toEqual(["a", "b"]);
+  });
+
+  it("drops the report a terminal without SGR sends rather than typing it", () => {
+    // `ESC [ M` and three bytes, from a terminal that ignored `?1006h`. Its
+    // coordinates stop working at column 223, so decoding it would report a
+    // position that is not where the pointer is — and letting the three
+    // payload bytes through would type them into whatever has focus.
+    expect(decodeInput("\u001b[M !!")).toEqual([]);
+    expect(decodeInput("x\u001b[M !!y").map((event) => event.kind)).toEqual(["key", "key"]);
+  });
+
+  it("delivers a click to the box under it and then to that box's parents", () => {
+    const trail: Array<string> = [];
+    const record = (event: MouseEvent) => {
+      trail.push(`${event.type}@${event.currentTarget ?? "-"}`);
+    };
+    const handle = testRender(
+      <Box id="outer" width={10} height={4} onMouse={record}>
+        <Box id="inner" width={4} height={2} onMouse={record} />
+      </Box>,
+      { width: 10, height: 4 },
+    );
+
+    // Column 2, row 2 of the terminal is cell (1, 1), which is inside the
+    // inner box — so the inner box is the target and the outer box hears about
+    // it afterwards, exactly as a DOM event bubbles.
+    handle.press("\u001b[<0;2;2M");
+    expect(trail).toEqual(["over@inner", "over@outer", "down@inner", "down@outer"]);
+    handle.stop();
+  });
+
+  it("stops at a child that says so", () => {
+    const outer = fn();
+    const handle = testRender(
+      <Box id="outer" width={10} height={4} onMouseDown={outer}>
+        <Box id="inner" width={4} height={2} onMouseDown={(event) => event.stopPropagation()} />
+      </Box>,
+      { width: 10, height: 4 },
+    );
+    handle.press("\u001b[<0;2;2M");
+    expect(outer).not.toHaveBeenCalled();
+    handle.stop();
+  });
+
+  it("says over and out when the topmost box changes, and only then", () => {
+    const trail: Array<string> = [];
+    const record = (event: MouseEvent) => {
+      trail.push(`${event.type}@${event.currentTarget ?? "-"}`);
+    };
+    const handle = testRender(
+      <Box id="outer" width={10} height={4} onMouse={record}>
+        <Box id="inner" width={4} height={2} onMouse={record} />
+      </Box>,
+      { width: 10, height: 4 },
+    );
+
+    handle.press("\u001b[<35;2;2M");
+    expect(trail).toEqual(["over@inner", "over@outer", "move@inner", "move@outer"]);
+
+    // Moving within the same box says nothing new: a hover is a change of
+    // topmost node, not a position.
+    trail.length = 0;
+    handle.press("\u001b[<35;3;2M");
+    expect(trail).toEqual(["move@inner", "move@outer"]);
+
+    // Row 4 is below the inner box and still inside the outer one.
+    trail.length = 0;
+    handle.press("\u001b[<35;2;4M");
+    expect(trail).toEqual(["out@inner", "out@outer", "over@outer", "move@outer"]);
+    handle.stop();
+  });
+
+  it("draws what a hover changed, and writes only those cells", () => {
+    // ubugeeei-prod/uf#314 sets the bar for a feature landing: the frame it
+    // produces asserted as cells, not just the handler observed being called.
+    // A hover is the one mouse event whose whole point is that the picture
+    // changes without the reader having clicked anything, so this is where
+    // that is checked.
+    component Cell() {
+      const [hot, setHot] = useState<boolean>(false);
+      return (
+        <Box
+          id="cell"
+          width={3}
+          height={1}
+          onMouseOver={() => setHot(true)}
+          onMouseOut={() => setHot(false)}
+        >
+          <Text wrap="none">{hot ? "BBB" : "AAA"}</Text>
+        </Box>
+      );
+    }
+
+    const handle = testRender(<Cell />, { width: 3, height: 2 });
+    expect(rows(handle.frame())).toEqual(["AAA", "   "]);
+    handle.update();
+
+    // Motion with nothing held (32 is the motion bit, 3 is "no button"), onto
+    // the box: `over` fires, the state changes, and the diff sends the three
+    // cells that differ rather than the frame.
+    handle.press("\u001b[<35;1;1M");
+    const lit = handle.update();
+    expect(rows(handle.frame())).toEqual(["BBB", "   "]);
+    expect(lit.cells).toBe(3);
+
+    // Row 2 is outside the box and no box is under the pointer there, so the
+    // move itself goes nowhere and the only event is the `out`.
+    handle.press("\u001b[<35;1;2M");
+    expect(rows(handle.frame())).toEqual(["AAA", "   "]);
+    handle.stop();
+  });
+
+  it("captures a drag on the box it started on, and names the source on the drop", () => {
+    const trail: Array<string> = [];
+    const record = (event: MouseEvent) => {
+      trail.push(`${event.type}@${event.currentTarget ?? "-"}`);
+    };
+    let dropped: string | null = null;
+    const handle = testRender(
+      <Box flexDirection="row" width={10} height={2}>
+        <Box id="left" width={5} height={2} onMouse={record} />
+        <Box
+          id="right"
+          width={5}
+          height={2}
+          onMouse={record}
+          onMouseDrop={(event) => {
+            dropped = event.source;
+          }}
+        />
+      </Box>,
+      { width: 10, height: 2 },
+    );
+
+    handle.press("\u001b[<0;1;1M");
+    expect(trail).toEqual(["over@left", "down@left"]);
+
+    // The pointer has left the box the press landed on, and the drag still
+    // goes there. Without capture, dragging anything stops working the instant
+    // the pointer outruns it — which is every drag.
+    trail.length = 0;
+    handle.press("\u001b[<32;7;1M");
+    expect(trail).toEqual(["out@left", "over@right", "drag@left"]);
+
+    trail.length = 0;
+    handle.press("\u001b[<0;7;1m");
+    expect(trail).toEqual(["drag-end@left", "up@left", "drop@right", "up@right"]);
+    expect(dropped).toBe("left");
+    handle.stop();
+  });
+
+  it("is a click and not a drag when the pointer never moved", () => {
+    const trail: Array<string> = [];
+    const record = (event: MouseEvent) => {
+      trail.push(event.type);
+    };
+    const handle = testRender(<Box id="one" width={4} height={2} onMouse={record} />, {
+      width: 4,
+      height: 2,
+    });
+    handle.press("\u001b[<0;1;1M");
+    handle.press("\u001b[<0;1;1m");
+    expect(trail).toEqual(["over", "down", "up"]);
+    handle.stop();
+  });
+
+  it("hits what the reader can see, not what layout would have placed", () => {
+    // The hit grid is written by the painter, so a row a `ScrollBox` scrolled
+    // out of its window cannot be clicked — its geometry is last frame's, and
+    // a hit test that walked the tree would find it there.
+    const hit: Array<string> = [];
+    const entries = ["row0", "row1", "row2", "row3"].map((id) => (
+      <Box
+        key={id}
+        id={id}
+        height={1}
+        onMouseDown={(event) => {
+          hit.push(event.target ?? "-");
+        }}
+      />
+    ));
+    const handle = testRender(
+      <ScrollBox height={2} scrollbar={false} scrollTop={2}>
+        {entries}
+      </ScrollBox>,
+      { width: 8, height: 2 },
+    );
+
+    handle.press("\u001b[<0;1;1M");
+    handle.press("\u001b[<0;1;2M");
+    expect(hit).toEqual(["row2", "row3"]);
+    handle.stop();
+  });
+
+  it("hands the wheel to the box under it and leaves the offset to the caller", () => {
+    component Log() {
+      const [top, setTop] = useState<number>(0);
+      return (
+        <ScrollBox
+          height={2}
+          scrollbar={false}
+          scrollTop={top}
+          onMouseScroll={(event) => {
+            setTop((row) => Math.max(0, row + (event.scroll?.direction === "up" ? -1 : 1)));
+          }}
+        >
+          <Text>one</Text>
+          <Text>two</Text>
+          <Text>three</Text>
+          <Text>four</Text>
+        </ScrollBox>
+      );
+    }
+
+    const handle = testRender(<Log />, { width: 8, height: 2 });
+    expect(rows(handle.frame())).toEqual(["one     ", "two     "]);
+
+    // 65 is the wheel, turned down.
+    handle.press("\u001b[<65;1;1M");
+    expect(rows(handle.frame())).toEqual(["two     ", "three   "]);
+    handle.stop();
+  });
+
+  it("ignores a report when the application did not ask for the mouse", () => {
+    // `render` leaves mouse reporting off unless it is asked for, because a
+    // terminal in it stops offering the reader its own click-and-drag
+    // selection. A renderer with it off has no hit grid and routes nothing.
+    const clicked = fn();
+    const handle = testRender(<Box id="one" width={4} height={2} onMouseDown={clicked} />, {
+      width: 4,
+      height: 2,
+      mouse: false,
+    });
+    handle.press("\u001b[<0;1;1M");
+    expect(clicked).not.toHaveBeenCalled();
     handle.stop();
   });
 });
@@ -1696,6 +1992,71 @@ describe("a real terminal, or something that is not one", () => {
     });
 
     expect(app.text()).toBe("abcd");
+    app.stop();
+  });
+
+  it("asks for the mouse only when the application does, and gives it back", () => {
+    const stdout = output({ isTTY: true });
+    const stdin = input();
+
+    component Clicked() {
+      const [where, setWhere] = useState<string>("-");
+      return (
+        <Box
+          width={8}
+          height={2}
+          onMouseDown={(event: MouseEvent) => setWhere(`${event.x},${event.y}`)}
+        >
+          <Text wrap="none">{where}</Text>
+        </Box>
+      );
+    }
+
+    const app = render(<Clicked />, {
+      stdin,
+      stdout,
+      mouse: true,
+      env: { COLORTERM: "truecolor" },
+    });
+    const opened = stdout.text();
+    // Reporting on, drag reporting on, motion-without-a-button on — which is
+    // what a hover needs — and the SGR encoding, which is the one that works
+    // past column 223.
+    expect(opened).toContain("\u001b[?1000h");
+    expect(opened).toContain("\u001b[?1002h");
+    expect(opened).toContain("\u001b[?1003h");
+    expect(opened).toContain("\u001b[?1006h");
+
+    // A click, through the whole path: the terminal's bytes, the decoder that
+    // splits them from the keys, the hit grid the last paint recorded, the
+    // handler, React, and the diff that wrote the change.
+    const before = stdout.text().length;
+    stdin.type("\u001b[<0;3;2M");
+    expect(stdout.text().slice(before)).toContain("2,1");
+    expect(app.text().split("\n")[0]).toBe("2,1     ");
+
+    app.stop();
+    const closed = stdout.text().slice(opened.length);
+    // A terminal left reporting the mouse sends escape sequences to the
+    // *shell* every time the reader moves the pointer over the window.
+    expect(closed).toContain("\u001b[?1000l");
+    expect(closed).toContain("\u001b[?1006l");
+  });
+
+  it("leaves the terminal's own selection alone when it was not asked", () => {
+    // The default, and the reason for it: a terminal in mouse-reporting mode
+    // stops handling click-and-drag itself, so a reader cannot select a line
+    // to copy out of it without a modifier key nobody told them about. An
+    // application that reads the mouse trades that away on purpose; one that
+    // does not should not have it traded away for it.
+    const stdout = output({ isTTY: true });
+    const app = render(<Text>hi</Text>, {
+      stdin: input(),
+      stdout,
+      env: { COLORTERM: "truecolor" },
+    });
+    expect(stdout.text()).not.toContain("\u001b[?1000h");
+    expect(stdout.text()).not.toContain("\u001b[?1006h");
     app.stop();
   });
 

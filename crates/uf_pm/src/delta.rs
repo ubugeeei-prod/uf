@@ -52,6 +52,26 @@ pub struct LockedEntry {
     pub name: CompactString,
     /// The version installed at this path.
     pub version: CompactString,
+    /// The URL the manager resolved it from, when the lockfile records one.
+    ///
+    /// This is the fact a dependency-confusion check is about: not which
+    /// registry the project configured, but which one actually answered. See
+    /// [`crate::confusion`].
+    ///
+    /// A workspace link has no URL — its `resolved` is a directory — and is
+    /// distinguished by [`LockedEntry::link`] rather than by guessing from the
+    /// string.
+    pub resolved: Option<CompactString>,
+    /// `dist.integrity` as the lockfile recorded it, `sha512-` prefix and all.
+    ///
+    /// The subject an npm provenance attestation is *about*, which is what
+    /// makes it the thing [`crate::provenance`] compares against.
+    pub integrity: Option<CompactString>,
+    /// Whether this entry is a link to a directory in this repository.
+    ///
+    /// A workspace package came from no registry, so neither the confusion
+    /// check nor the provenance check has anything to say about it.
+    pub link: bool,
 }
 
 /// A lockfile as it stood at one moment.
@@ -254,6 +274,18 @@ pub fn snapshot(root: &Utf8Path, manager: PackageManager) -> LockfileSnapshot {
             LockedEntry {
                 name,
                 version: version.to_compact_string(),
+                resolved: entry
+                    .get("resolved")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToCompactString::to_compact_string),
+                integrity: entry
+                    .get("integrity")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToCompactString::to_compact_string),
+                link: entry
+                    .get("link")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false),
             },
         );
     }
