@@ -192,14 +192,26 @@ export type Metadata = {
      */
     readonly siteName?: string,
     readonly images?: $ReadOnlyArray<string>,
+    /**
+     * What the card's image shows, for a reader who cannot see it.
+     *
+     * One description rather than one per image: a card shows one image, and
+     * the array exists so a site can offer a crawler a choice of sizes rather
+     * than so it can show several.
+     */
+    readonly imageAlt?: string,
   },
   readonly twitter?: {
     readonly card?: TwitterCard,
     readonly site?: string,
     readonly creator?: string,
+    /** Falls back to `openGraph.title`, and then to `title`. */
     readonly title?: string,
+    /** Falls back to `openGraph.description`, and then to `description`. */
     readonly description?: string,
     readonly images?: $ReadOnlyArray<string>,
+    /** Falls back to `openGraph.imageAlt`. */
+    readonly imageAlt?: string,
   },
 };
 
@@ -1645,6 +1657,11 @@ component Head(metadata: Metadata) {
   // the difference between a document with a card and a document without one,
   // and `website` is right for everything that is not an article or a video.
   const cardType = openGraph?.type ?? "website";
+  // Only when the card was asked for. A page with no `twitter.card` gets no
+  // Twitter tags at all, which is what a site that never wanted one meant.
+  const twitterTitle = twitter != null ? (twitter.title ?? cardTitle) : null;
+  const twitterDescription = twitter != null ? (twitter.description ?? cardDescription) : null;
+  const twitterImageAlt = twitter != null ? (twitter.imageAlt ?? openGraph?.imageAlt) : null;
   return (
     <>
       {title != null ? <title>{title}</title> : null}
@@ -1671,21 +1688,31 @@ component Head(metadata: Metadata) {
             <meta key={image} property="og:image" content={absoluteUrl(image, metadataBase)} />
           ))
         : null}
+      {openGraph?.imageAlt != null && openGraph?.images != null ? (
+        <meta property="og:image:alt" content={openGraph.imageAlt} />
+      ) : null}
       {/* `name`, not `property`: Open Graph is RDFa and Twitter's cards are
           not, and a `property="twitter:card"` is ignored by the crawler that
           reads it. */}
       {twitter?.card != null ? <meta name="twitter:card" content={twitter.card} /> : null}
       {twitter?.site != null ? <meta name="twitter:site" content={twitter.site} /> : null}
       {twitter?.creator != null ? <meta name="twitter:creator" content={twitter.creator} /> : null}
-      {twitter?.title != null ? <meta name="twitter:title" content={twitter.title} /> : null}
-      {twitter?.description != null ? (
-        <meta name="twitter:description" content={twitter.description} />
+      {/* X reads the `og:` tags when these are absent, so these are not
+          required — and every validator asks for them anyway, which is a good
+          enough reason when the value is one the page has already given. They
+          fall back through the card's title to the document's. */}
+      {twitterTitle != null ? <meta name="twitter:title" content={twitterTitle} /> : null}
+      {twitterDescription != null ? (
+        <meta name="twitter:description" content={twitterDescription} />
       ) : null}
       {twitter?.images != null
         ? twitter.images.map((image) => (
             <meta key={image} name="twitter:image" content={absoluteUrl(image, metadataBase)} />
           ))
         : null}
+      {twitterImageAlt != null && twitter?.images != null ? (
+        <meta name="twitter:image:alt" content={twitterImageAlt} />
+      ) : null}
     </>
   );
 }

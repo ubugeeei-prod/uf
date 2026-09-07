@@ -43,7 +43,16 @@ export const metadata: Metadata = {
   // No `title` or `description` here: they fall back to the document's, which
   // is what a page that already said what it is called meant. `siteName` is
   // the one a card cannot derive.
-  openGraph: { siteName: "uf", images: ["/brand/og.png"] },
+  openGraph: {
+    siteName: "uf",
+    images: ["/brand/og.png"],
+    imageAlt: "The uf mark beside the word uf, on a dark ground.",
+  },
+  // No `title` or `description` here either: they fall back through the card's
+  // to the document's, so a page says what it is called once.
+  // `site` is the one card field left unset, and it is the one uf cannot
+  // derive: it is an X handle, and this project has not said it has one. The
+  // field exists — `twitter: { site: "@…" }` — for the day it does.
   twitter: { card: "summary_large_image", images: ["/brand/og.png"] },
 };
 

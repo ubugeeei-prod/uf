@@ -142,6 +142,41 @@ describe("the card a page gets without asking for one", () => {
     expect(html).not.toContain("og:type");
   });
 
+  it("describes the image, for a reader who cannot see it", async () => {
+    const html = await documentFor({
+      title: "a page",
+      openGraph: { images: ["/og.png"], imageAlt: "the uf mark" },
+      twitter: { card: "summary_large_image", images: ["/og.png"] },
+    });
+
+    expect(html).toContain('<meta property="og:image:alt" content="the uf mark"/>');
+    // And the Twitter card takes the same description rather than asking for
+    // it twice.
+    expect(html).toContain('<meta name="twitter:image:alt" content="the uf mark"/>');
+  });
+
+  it("gives the Twitter card the title the page already has", async () => {
+    // X reads the `og:` tags when these are absent, so they are not required —
+    // and every validator asks for them, which is reason enough when the value
+    // is one the page has already given.
+    const html = await documentFor({
+      title: "Install · uf",
+      description: "One binary, three runtimes.",
+      twitter: { card: "summary_large_image" },
+    });
+
+    expect(html).toContain('<meta name="twitter:title" content="Install · uf"/>');
+    expect(html).toContain(
+      '<meta name="twitter:description" content="One binary, three runtimes."/>',
+    );
+  });
+
+  it("gives a page that asked for no card no Twitter tags at all", async () => {
+    const html = await documentFor({ title: "a page", description: "a description" });
+
+    expect(html).not.toContain("twitter:");
+  });
+
   it("names the site once, from the layout, for every page under it", async () => {
     const html = await documentFor({ title: "Install · uf" }, { openGraph: { siteName: "uf" } });
 
