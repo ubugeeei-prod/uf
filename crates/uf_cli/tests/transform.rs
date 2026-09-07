@@ -196,3 +196,89 @@ fn a_malformed_request_is_reported_rather_than_ignored() {
         "{reply:?}"
     );
 }
+
+/// Entries a sweep should measure at their full size without a test machine
+/// writing that much: `set_len` on an empty file is sparse, and the sweep
+/// reads `metadata.len()`.
+fn sparse_entry(path: &std::path::Path, bytes: u64, used_seconds_ago: u64) {
+    let file = std::fs::File::create(path).unwrap();
+    file.set_len(bytes).unwrap();
+    // Backdated past the sweep's grace period, which is the rule that protects
+    // a file a concurrent run may be writing. Without this every entry here
+    // would be seconds old and correctly left alone.
+    let when = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(used_seconds_ago))
+        .unwrap();
+    file.set_times(
+        std::fs::FileTimes::new()
+            .set_accessed(when)
+            .set_modified(when),
+    )
+    .unwrap();
+}
+
+/// The transform cache is bounded, and starting the service is what bounds it.
+///
+/// `packages/host/internal/node-hooks.js` writes one `.mjs` per (compiler,
+/// file, source) and has no way to take one back — a source edit orphans an
+/// entry and a rebuild of `uf` orphans a generation, so `.uf/cache/transform`
+/// grew without a ceiling until this. The sweep is here, at the door of the
+/// only native process that knows the directory exists, and it runs when a
+/// host starts one because compiling is the only thing that adds to it. See
+/// ubugeeei-prod/uf#218.
+#[test]
+fn starting_the_service_brings_the_transform_cache_under_its_bound() {
+    use uf_infra::cache::{MAX_CACHE_BYTES, SWEEP_TARGET_BYTES};
+
+    let dir = project();
+    let cache = dir.path().join(".uf").join("cache").join("transform");
+    std::fs::create_dir_all(&cache).unwrap();
+
+    // Ten entries over the cap, an hour apart: `age-0` is the coldest and
+    // `age-9` the warmest. Named for their age rather than hashed, because
+    // the sweep does not read a name and a reader of this test does.
+    let each = MAX_CACHE_BYTES / 8;
+    for index in 0..10u64 {
+        sparse_entry(
+            &cache.join(format!("age-{index}.mjs")),
+            each,
+            3_600 * (10 - index),
+        );
+    }
+    assert!(each * 10 > MAX_CACHE_BYTES);
+
+    exchange(
+        dir.path(),
+        &[serde_json::json!({ "id": "/app/main.js", "code": "// @flow\nexport const a = 1;\n" })],
+    );
+
+    let mut left = std::fs::read_dir(&cache)
+        .unwrap()
+        .flatten()
+        .map(|entry| {
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                entry.metadata().unwrap().len(),
+            )
+        })
+        .collect::<Vec<_>>();
+    left.sort();
+    let after: u64 = left.iter().map(|(_, bytes)| bytes).sum();
+
+    assert!(
+        after <= SWEEP_TARGET_BYTES,
+        "the cache still holds {after} bytes, over the {SWEEP_TARGET_BYTES} the sweep targets"
+    );
+    // And it kept the *warmest* ones. An eviction that took the entries a
+    // bisect is about to want would be a bound that made every build slower
+    // rather than one that made the directory finite.
+    let names = left.into_iter().map(|(name, _)| name).collect::<Vec<_>>();
+    assert!(
+        !names.contains(&String::from("age-0.mjs")),
+        "the coldest entry survived: {names:?}"
+    );
+    assert!(
+        names.contains(&String::from("age-9.mjs")),
+        "the warmest entry was evicted: {names:?}"
+    );
+}
