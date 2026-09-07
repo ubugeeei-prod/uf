@@ -3620,12 +3620,14 @@ dependencies = [
  "criterion",
  "phf",
  "serde",
+ "serde_json",
  "thiserror",
  "uf_config",
  "uf_flow",
  "uf_infra",
  "uf_react_compiler",
  "uf_router",
+ "uf_transform",
 ]
 
 [[package]]

@@ -14,6 +14,7 @@ mod package;
 mod react;
 mod react_compiler;
 mod react_native;
+mod react_tree;
 mod router;
 mod security;
 mod server;
@@ -40,6 +41,7 @@ pub(crate) use react::{
 };
 pub(crate) use react_compiler::run_react_compiler_rules;
 pub(crate) use react_native::run_react_native_platform_split;
+pub(crate) use react_tree::run_react_tree_rules;
 pub(crate) use router::{run_router_reserved_files, run_router_unsupported_segment};
 pub(crate) use security::{run_security_no_dangerously_set_inner_html, run_security_no_eval};
 pub(crate) use server::{
