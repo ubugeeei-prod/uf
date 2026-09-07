@@ -46,6 +46,40 @@ a dev server on `0.0.0.0` with no host allow-list is how a local project ends up
 readable from the coffee shop's network. The threat model is written down in
 [`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
 
+## When hydration fails
+
+React reports a mismatch with one sentence and a list of six things that might
+have caused it. The list is a good list, and it is not an answer: the node that
+actually differed is still somewhere in a page of two thousand of them.
+
+uf has both trees, so it says which one. `@uniflowed/router`'s client entry
+keeps a copy of the server's markup for the moment between the parser finishing
+and `hydrateRoot` starting — the only moment it exists — and when React reports
+a mismatch, an overlay shows the node, the two values and the component:
+
+```
+Hydration mismatch in <Posted>
+
+at       main:nth-child(1) > p:nth-child(2) > text()[0]
+server   3 minutes ago
+client   5 minutes ago
+
+The two renders computed the same text from a value that is different every
+time it is read — a clock, a random number, or a date formatted in a locale.
+Decide the value once, above the tree, and pass it down, so both renders read
+the same number instead of each working one out.
+```
+
+The same text goes to the console, so a headless run sees it too. Three causes
+are named where the difference gives them away — a value that moves, a reading
+only a browser can make, and markup that cannot nest — and anything else is
+reported as unknown rather than guessed at, because a wrong diagnosis costs more
+than none.
+
+It is a development tool and it is not in your bundle. The overlay is imported
+dynamically behind `import.meta.hot`, so a production build has no path to the
+module at all.
+
 ## uf build
 
 <div className="command"><code>uf build</code></div>
