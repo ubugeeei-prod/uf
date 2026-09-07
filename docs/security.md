@@ -77,6 +77,8 @@ decisions are:
 | Directive parsing bugs — `"use client"` accepted when not the first statement, or built from a template literal | The directive is only recognized as a plain string literal in leading directive position; everything else is a typed diagnostic | `uf_rsc::directive` |
 | `"use server"` export that is not an async function | Rejected at build time; React's calling convention makes this a correctness *and* a safety issue | `uf_rsc::graph` |
 | SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | uf has no proxying upgrade, and the one it does have cannot become one: `upgradeWebSocket(request)` upgrades the *inbound* connection the host is already answering, takes no address, and reaches no upstream. The host's own upgrader is a value the deployment passes where the server is built, never a name resolved from a request. A proxying upgrade would need the allowlist in its first commit rather than after one | `tests/library/transports.test.js` |
+| Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
+| XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
 ### The argument boundary
 
@@ -134,9 +136,6 @@ to choose: a client that wants to skip the guard on `/dashboard` posts the same
 id to `/`. **A server action is the unit of authorization**, the way a route
 handler is, and a `"use server"` function that relies on a path guard having
 run is a function with a hole in it.
-| SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | Upgrade targets are resolved against an allowlist; no request-derived value selects an upstream host | todo |
-| Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
-| XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
 ## Signing in
 
