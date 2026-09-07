@@ -718,6 +718,61 @@ does not fail the command.
 This is **not** `uf upgrade`, which is about the toolchain and the workspace
 plan rather than about your dependencies.
 
+### uf catalog
+
+Prints the versions this workspace shares — every package more than one
+manifest declares — and, underneath, every package whose manifests *dis*agree:
+
+```
+  shared
+
+  package  range    declared in
+  eslint   differs  2 packages
+  react    differs  3 packages
+
+  disagreements
+
+  package  manifest      range
+  eslint   .             ^9.0.0
+  eslint   packages/ui   ^8.57.0
+  react    .             ^18.2.0
+  react    packages/api  ^17.0.0
+  react    packages/ui   ^18.2.0
+
+! 2 packages declared at more than one range
+› uf catalog set eslint <range> makes every manifest agree
+```
+
+That second table is the bug a catalogue exists to prevent, and nothing else
+reports it.
+
+### uf catalog set NAME RANGE
+
+Writes one range into every manifest that declares `NAME`, then installs.
+`--dry-run` prints the table and changes nothing. Only the range moves in each
+file; indentation and key order are left as they were.
+
+**Why this and not pnpm's `catalog:`.** pnpm names a version once in
+`pnpm-workspace.yaml` and lets a package write `"react": "catalog:"`. No other
+manager has the concept — npm, yarn and bun read `catalog:` as a specifier they
+cannot resolve and refuse the install. That left uf two options, and both were
+worse than this one: a passthrough to pnpm does nothing in four projects out of
+five, and resolving `catalog:` *for* the other managers means uf rewriting
+everybody's `package.json` on the way into an install and putting it back
+afterwards — uf standing between the manifests and the installer, and a
+workspace full of manifests nobody wrote if you interrupt it.
+
+So uf does not invent a fifth catalogue. It offers what catalogs are for, in a
+form all five managers already understand: one place to change a version, and a
+check that every package agrees. What you give up is the indirection — a
+manifest here says `^19.0.0` rather than `catalog:`. What you get is a file that
+says what will be installed, on every manager, and one command instead of an
+edit and a hope.
+
+A project already using pnpm's catalogs keeps them: uf counts the `catalog:`
+declarations, reports them, and leaves pnpm to resolve them, because pnpm can
+([#496](https://github.com/ubugeeei-prod/uf/issues/496)).
+
 ### uf why NAME
 
 Explains why a package is in the tree, answered by the manager out of its own

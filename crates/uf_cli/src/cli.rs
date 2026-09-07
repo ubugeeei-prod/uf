@@ -578,6 +578,19 @@ pub(crate) enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Show the versions a workspace shares, and change one everywhere.
+    ///
+    /// A package more than one manifest declares is a catalogue entry, and the
+    /// range they agree on is its value. `uf catalog` prints them and every
+    /// package whose manifests *dis*agree; `uf catalog set` makes them agree.
+    ///
+    /// pnpm's `catalog:` is a specifier only pnpm can resolve, so uf does not
+    /// invent a fifth one: it reports how many a project has and leaves pnpm to
+    /// resolve them. See ubugeeei-prod/uf#496.
+    Catalog {
+        #[command(subcommand)]
+        command: Option<CatalogCommand>,
+    },
     /// Re-read the workspace and record the package and runtime plan.
     ///
     /// It fetches nothing and it does not replace the uf binary, in spite of
@@ -773,6 +786,22 @@ pub(crate) enum ReleaseBump {
     Patch,
     Minor,
     Major,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum CatalogCommand {
+    /// Declare one range for a package in every manifest that has it.
+    Set {
+        /// The package.
+        #[arg(value_name = "NAME")]
+        name: String,
+        /// The range, for example `^19.0.0`.
+        #[arg(value_name = "RANGE")]
+        range: String,
+        /// Say what would change, and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

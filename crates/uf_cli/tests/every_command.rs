@@ -83,6 +83,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("start", "vite.rs: serves a build over a socket"),
     ("test", "here, and testing.rs for the runner"),
     ("update", "dependencies.rs: runs the package manager"),
+    (
+        "catalog",
+        "here, and catalog/tests.rs for the table and the disagreements",
+    ),
     ("upgrade", "workflow.rs: resolves new versions"),
     ("use", "workflow.rs: rewrites the config"),
     ("ls", "dependencies.rs: asks the package manager"),
@@ -111,6 +115,7 @@ const READ_ONLY: &[&[&str]] = &[
     &["env", "doctor"],
     &["env", "list"],
     &["env", "gc", "--dry-run"],
+    &["catalog"],
     &["explain", "dev"],
     &["fmt", "--check"],
     &["info"],
