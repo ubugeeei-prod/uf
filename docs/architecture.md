@@ -608,6 +608,18 @@ JSON data, applied by `packages/router/internal/action-wire.js` on both sides
 and by Flow at build time; `docs/security.md` has the boundary and what is
 deliberately outside it.
 
+React's form APIs need nothing else, because a reference is an ordinary async
+function: `<form action={fn}>` hands it a `FormData`, `useActionState` hands it
+the previous state and then a `FormData`, and `useFormStatus` reads the submit
+in flight. One argument of a call may therefore be a form, written beside the
+values under its own key rather than as a tag inside one — the value grammar
+does not move, and the only constructor the decoder can call is fixed in the
+source. What that does not buy is a form that submits before the page has
+hydrated: React's progressive enhancement turns the submit into a native form
+post, and a native form post is the content type the endpoint refuses — so
+React writes the form it writes for any client action, whose submit throws in
+the page rather than posting anywhere.
+
 One thing does still come back. A uf build links the stylesheets it finds in
 the *client* graph, so a route removed from that graph outright loses its rules
 — from every page of the site, because the linked sheets are the whole graph's.

@@ -12,10 +12,13 @@
 //
 // 1. `internal/action-wire.js` — what an argument and a result may be. Driven
 //    directly, because it is the argument boundary and `docs/security.md` has
-//    a row that points here.
+//    a row that points here. The form is part of it and has its own section:
+//    it is the one prototype that crosses, and the tests are about the shape
+//    that keeps it from being a tag in the value tree.
 // 2. `createActionDispatcher` — every refusal, and the one path that is not
 //    one. Driven with no server, no port and no build, the way
-//    `route-handler.test.js` drives `createDispatcher`.
+//    `route-handler.test.js` drives `createDispatcher`. A form call is asked
+//    the same questions as every other, because it is the same request.
 // 3. `packages/vite/internal/rsc.js` — the client's references and the
 //    server's table, from a manifest, so that what the two halves agree on is
 //    a file rather than a habit.
@@ -45,9 +48,12 @@ import {
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
+  type ActionArgument,
   ActionValueError,
   MAX_ACTION_ARGUMENTS,
   MAX_ACTION_DEPTH,
+  MAX_FORM_ENTRIES,
+  MAX_FORM_NAME_LENGTH,
   checkActionValue,
   decodeActionArguments,
   decodeActionResult,
@@ -131,6 +137,30 @@ function tableFor(action: (...args: $FlowFixMe) => Promise<mixed>) {
 
 const status = async (response: Response | null): Promise<number> =>
   response == null ? -1 : response.status;
+
+/** A `FormData` built from pairs, the way a submitted form arrives. */
+function formOf(pairs: $ReadOnlyArray<[string, string]>): FormData {
+  const form = new FormData();
+  for (const [name, value] of pairs) {
+    form.append(name, value);
+  }
+  return form;
+}
+
+/**
+ * The decoded argument at `index`, as a `FormData`, or a failure that says so.
+ *
+ * A refinement rather than a cast: `decodeActionArguments` answers with
+ * `ActionArgument`s, and the claim every form test is making is that this one
+ * came back as a real `FormData` rather than as whatever was on the wire.
+ */
+function formAt(args: $ReadOnlyArray<ActionArgument>, index: number): FormData {
+  const value = args[index];
+  if (!(value instanceof FormData)) {
+    throw new Error(`argument ${String(index + 1)} decoded as ${String(value)}, not a FormData`);
+  }
+  return value;
+}
 
 // ---------------------------------------------------------------------------
 // The grammar
@@ -256,6 +286,154 @@ describe("what may cross to a server action", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The form
+// ---------------------------------------------------------------------------
+
+describe("a submitted form crossing to a server action", () => {
+  it("writes the form beside the values, never inside one", () => {
+    // The shape `useActionState` produces: the previous state, then the form.
+    // `args[1]` is `null` and the form is the envelope's own key, so nothing
+    // in the value tree is a tag saying which constructor to call.
+    const body = encodeActionArguments([{ saved: "old" }, formOf([["note", "hi"]])]);
+    expect(JSON.parse(body)).toEqual({
+      args: [{ saved: "old" }, null],
+      form: { at: 1, entries: [["note", "hi"]] },
+    });
+  });
+
+  it("arrives on the other side as a real FormData at the argument it was", () => {
+    const sent = formOf([
+      ["note", "hello"],
+      ["tag", "a"],
+      ["tag", "b"],
+    ]);
+    const decoded = decodeActionArguments(encodeActionArguments([null, sent]));
+    expect(decoded.length).toBe(2);
+    expect(decoded[0]).toBe(null);
+    const form = formAt(decoded, 1);
+    expect(form.get("note")).toBe("hello");
+    // A repeated name is two entries and not one, which is what a checkbox
+    // group and a multiple `<select>` produce.
+    expect(form.getAll("tag")).toEqual(["a", "b"]);
+  });
+
+  it("carries an empty form, which is what an empty submit is", () => {
+    const decoded = decodeActionArguments(encodeActionArguments([formOf([])]));
+    expect(formAt(decoded, 0).get("note")).toBe(null);
+  });
+
+  it("refuses a second form, because the envelope says which one only once", () => {
+    expect(() => encodeActionArguments([formOf([]), formOf([])])).toThrow(ActionValueError);
+  });
+
+  it("refuses a form nested inside a value, and says a form is an argument", () => {
+    let said = "";
+    try {
+      encodeActionArguments([{ fields: formOf([["note", "hi"]]) }]);
+    } catch (error) {
+      said = error instanceof Error ? error.message : "";
+    }
+    expect(said).toContain("argument 1.fields");
+    expect(said).toContain("only be an argument of a call");
+  });
+
+  it("refuses a file, naming the field that carried it", () => {
+    const form = new FormData();
+    form.append("note", "hi");
+    form.append("avatar", new Blob(["bytes"]), "avatar.png");
+    let said = "";
+    try {
+      encodeActionArguments([form]);
+    } catch (error) {
+      said = error instanceof Error ? error.message : "";
+    }
+    expect(said).toContain("avatar");
+    expect(said).toContain("file");
+  });
+
+  it("bounds how many fields and how long a field name may be", () => {
+    const many: Array<[string, string]> = [];
+    for (let index = 0; index <= MAX_FORM_ENTRIES; index += 1) {
+      many.push([`f${String(index)}`, "x"]);
+    }
+    expect(() => encodeActionArguments([formOf(many)])).toThrow(ActionValueError);
+    expect(() =>
+      encodeActionArguments([formOf([["n".repeat(MAX_FORM_NAME_LENGTH + 1), "x"]])]),
+    ).toThrow(ActionValueError);
+  });
+
+  it("never answers with a form, because a form is not something a server sends", () => {
+    expect(() => encodeActionResult(formOf([["note", "hi"]]))).toThrow(ActionValueError);
+  });
+
+  it("refuses every envelope that is not exactly this one", () => {
+    for (const wrong of [
+      // A `form` that is not an object, or is one with other keys.
+      '{"args":[null],"form":null}',
+      '{"args":[null],"form":[["note","hi"]]}',
+      '{"args":[null],"form":{"at":0}}',
+      '{"args":[null],"form":{"at":0,"entries":[],"extra":1}}',
+      // An `at` that names no argument, or is not an index.
+      '{"args":[null],"form":{"at":1,"entries":[]}}',
+      '{"args":[null],"form":{"at":-1,"entries":[]}}',
+      '{"args":[null],"form":{"at":0.5,"entries":[]}}',
+      '{"args":[null],"form":{"at":"0","entries":[]}}',
+      // An `at` naming a slot the payload also gives a value: two statements
+      // about one argument, and no reason to pick either.
+      '{"args":[{"note":"hi"}],"form":{"at":0,"entries":[]}}',
+      // Entries that are not pairs of strings.
+      '{"args":[null],"form":{"at":0,"entries":{"note":"hi"}}}',
+      '{"args":[null],"form":{"at":0,"entries":[["note"]]}}',
+      '{"args":[null],"form":{"at":0,"entries":[["note","hi","extra"]]}}',
+      '{"args":[null],"form":{"at":0,"entries":[["note",1]]}}',
+      '{"args":[null],"form":{"at":0,"entries":[[1,"hi"]]}}',
+      '{"args":[null],"form":{"at":0,"entries":[null]}}',
+      // And a third key, which is the thing keeping this closed as it grows.
+      '{"args":[null],"form":{"at":0,"entries":[]},"extra":1}',
+    ]) {
+      expect(() => decodeActionArguments(wrong)).toThrow(ActionValueError);
+    }
+  });
+
+  it("bounds the entries a payload declares, not only the ones a form built", () => {
+    const entries = [];
+    for (let index = 0; index <= MAX_FORM_ENTRIES; index += 1) {
+      entries.push([`f${String(index)}`, "x"]);
+    }
+    expect(() =>
+      decodeActionArguments(JSON.stringify({ args: [null], form: { at: 0, entries } })),
+    ).toThrow(ActionValueError);
+    expect(() =>
+      decodeActionArguments(
+        JSON.stringify({
+          args: [null],
+          form: { at: 0, entries: [["n".repeat(MAX_FORM_NAME_LENGTH + 1), "x"]] },
+        }),
+      ),
+    ).toThrow(ActionValueError);
+  });
+
+  it("still refuses a prototype key, wherever the sender put it", () => {
+    // A form's field names reach `append`, which stores them in a multimap and
+    // not on an object — but the values beside it are ordinary arguments and
+    // the grammar has not moved for them.
+    expect(() =>
+      decodeActionArguments(
+        '{"args":[{"__proto__":{"admin":true}},null],"form":{"at":1,"entries":[]}}',
+      ),
+    ).toThrow(ActionValueError);
+    // And a field literally named `__proto__` is a name in a multimap, which
+    // is the one place it is harmless — so it crosses rather than being
+    // refused, and this says so on purpose.
+    const decoded = decodeActionArguments(
+      '{"args":[null],"form":{"at":0,"entries":[["__proto__","x"]]}}',
+    );
+    const form = formAt(decoded, 0);
+    expect(form.get("__proto__")).toBe("x");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The endpoint
 // ---------------------------------------------------------------------------
 
@@ -290,6 +468,56 @@ describe("the endpoint a server action is dialled at", () => {
     expect(response == null ? "" : await response.text()).toBe(
       '{"value":{"visitor":"ada","agent":"probe"}}',
     );
+  });
+
+  it("calls a form action with the state and the form React gave it", async () => {
+    // The `useActionState` convention, end to end through the endpoint: the
+    // previous state is an ordinary value, the submitted fields are the form,
+    // and what comes back is the next state.
+    let seen: mixed = null;
+    const callAction = createActionDispatcher({
+      actions: tableFor(async (previous: mixed, form: mixed) => {
+        if (!(form instanceof FormData)) {
+          throw new Error("the endpoint did not hand the action a FormData");
+        }
+        seen = form.get("note");
+        const saved = typeof previous === "string" ? `${previous}+` : "";
+        return { saved: `${saved}${String(form.get("note"))}` };
+      }),
+    });
+
+    const body = encodeActionArguments(["old", formOf([["note", "hello"]])]);
+    const response = await hosted(callAction, call(body));
+    expect(await status(response)).toBe(200);
+    expect(seen).toBe("hello");
+    expect(response == null ? "" : await response.text()).toBe('{"value":{"saved":"old+hello"}}');
+  });
+
+  it("guards a form call with exactly the guards it applies to every other", async () => {
+    // The whole reason a form crosses as `application/json` with the id in a
+    // header: rule 4 of `action-endpoint.js` is about the *request*, and a
+    // form call is the same request as any other. A cross-origin page cannot
+    // reach this action by putting a `<form>` on itself.
+    const callAction = createActionDispatcher({ actions: tableFor(async () => null) });
+    const body = encodeActionArguments([formOf([["note", "hello"]])]);
+    expect(
+      await status(await hosted(callAction, call(body, { origin: "https://evil.example" }))),
+    ).toBe(403);
+    expect(
+      await status(
+        await hosted(callAction, call(body, { "content-type": "multipart/form-data; boundary=x" })),
+      ),
+    ).toBe(415);
+    expect(await status(await hosted(callAction, call(body, undefined, "GET")))).toBe(405);
+  });
+
+  it("answers a malformed form envelope the way it answers any malformed payload", async () => {
+    const callAction = createActionDispatcher({ actions: tableFor(async () => null) });
+    const response = await hosted(callAction, call('{"args":[null],"form":{"at":9,"entries":[]}}'));
+    expect(await status(response)).toBe(400);
+    // The reason is the sender's own payload described back to them, which is
+    // a thing for a log and not a thing to answer with.
+    expect(response == null ? "" : await response.text()).toBe('{"error":"server action refused"}');
   });
 
   it("declines a request that names no action, so everything else is somebody else's", async () => {

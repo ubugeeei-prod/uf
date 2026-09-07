@@ -128,9 +128,16 @@ in `uf`.
   `uf build`, and in all four deploy adapters, which serve it out of one
   `handler.js`. Arguments and results are plain JSON data under a closed
   grammar (`docs/security.md`), and Flow holds every action's signature against
-  it. **Not done**: an inline `"use server"` closure, which has no export name
-  to refer to; `<form action={fn}>` and the React 19 form hooks, which need
-  `FormData` across the same boundary; and `useActionState`.
+  it. **Done for a form**: `<form action={fn}>`, `useActionState` and
+  `useFormStatus` reach the same endpoint, because a reference is an ordinary
+  async function and the grammar carries one `FormData` per call beside the
+  values. **Not done**: an inline `"use server"` closure, which has no export
+  name to refer to; a file upload, which wants a multipart read this endpoint
+  deliberately does not have; and a form that submits before the page has
+  hydrated, which would need React's `$$FORM_ACTION` and therefore a native
+  form post — the content type the endpoint refuses as one of its three CSRF
+  guards. Without it React writes `action="javascript:throw …"`, so such a
+  submit throws in the page rather than posting anywhere.
 - StyleX transform as the default style engine.
 - React Compiler syntax-mode pass.
 - Vite-backed server entry generation, RSC streaming, and server action bridge
