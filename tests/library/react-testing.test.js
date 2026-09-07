@@ -417,6 +417,102 @@ describe("an accessible name that comes from a caption", () => {
   });
 });
 
+describe("the order the accessible name is computed in", () => {
+  it("names an element by aria-labelledby when it also carries an aria-label", () => {
+    // The two used to be the other way round, so a control carrying both was
+    // announced by every browser as whatever `aria-labelledby` points at and
+    // found by this query as the `aria-label`. Nothing in the repository
+    // writes both, which is why nothing caught it.
+    render(
+      <div>
+        <h2 id="dialog-title">Delete the project</h2>
+        <button aria-label="Close" aria-labelledby="dialog-title" type="button">
+          ×
+        </button>
+      </div>,
+    );
+    expect(screen.getByRole("button", { name: "Delete the project" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close" })).toBe(null);
+  });
+
+  it("falls back to aria-label when aria-labelledby points at nothing", () => {
+    render(
+      <button aria-label="Close" aria-labelledby="not-in-the-document" type="button">
+        ×
+      </button>,
+    );
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("falls back to aria-label when what aria-labelledby points at has no text", () => {
+    // The empty span is the case that makes the reordering safe rather than
+    // only correct: a name of "" from `aria-labelledby` has to fall through
+    // to `aria-label` instead of being the answer.
+    render(
+      <div>
+        <span id="blank" />
+        <button aria-label="Close" aria-labelledby="blank" type="button">
+          ×
+        </button>
+      </div>,
+    );
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+});
+
+describe("an accessible name that no rule supplies", () => {
+  it("leaves a table with no caption nameless rather than naming it by its cells", () => {
+    const { container } = render(
+      <table>
+        <tbody>
+          <tr>
+            <td>Ada Lovelace</td>
+            <td>1815</td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    // `table` is not a role named by its contents, and with no caption there
+    // is nothing else to name it. It used to be called "Ada Lovelace 1815",
+    // so a query for its contents found it and a query for `{ name: "" }` —
+    // the question "is this table the unnamed one" — found nothing.
+    const table: $FlowFixMe = container.querySelector("table");
+    expect(accessibleName(table)).toBe("");
+    expect(screen.getByRole("table", { name: "" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Ada Lovelace 1815" })).toBe(null);
+  });
+
+  it("takes the title attribute when nothing better names the element", () => {
+    // HTML-AAM's step after the caption, and before giving up.
+    const { container } = render(
+      <table title="People">
+        <tbody>
+          <tr>
+            <td>Ada Lovelace</td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    const table: $FlowFixMe = container.querySelector("table");
+    expect(accessibleName(table)).toBe("People");
+  });
+
+  it("still names a button, a link and a heading by what is written in them", () => {
+    // The other half of the same rule: these roles *are* named by their
+    // contents, and gating the fallback on the role has to leave them alone.
+    render(
+      <div>
+        <button type="button">Save changes</button>
+        <a href="/help">Help</a>
+        <h2>Delivery</h2>
+      </div>,
+    );
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Help" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Delivery" })).toBeInTheDocument();
+  });
+});
+
 describe("a role query and aria-current", () => {
   component Pages() {
     return (
@@ -745,6 +841,32 @@ describe("element matchers", () => {
     expect(screen.getByText("shown")).toBeVisible();
     expect(screen.getByText("concealed")).not.toBeVisible();
     expect(screen.getByText("ignored")).not.toBeVisible();
+  });
+
+  it("leaves a summary visible inside a closed details, and the rest of it not", () => {
+    // A closed disclosure renders exactly one thing, and `toBeVisible` used to
+    // call that one thing invisible: the rule exempted the `<details>` from
+    // itself and nothing exempted the summary, so the assertion failed for the
+    // element the reader is looking at.
+    render(
+      <details>
+        <summary>More</summary>
+        <p>the rest</p>
+      </details>,
+    );
+    expect(screen.getByText("More")).toBeVisible();
+    expect(screen.getByText("the rest")).not.toBeVisible();
+  });
+
+  it("keeps everything inside an open details visible", () => {
+    render(
+      <details open>
+        <summary>More</summary>
+        <p>the rest</p>
+      </details>,
+    );
+    expect(screen.getByText("More")).toBeVisible();
+    expect(screen.getByText("the rest")).toBeVisible();
   });
 
   it("sees a disabled control, and one inside a disabled fieldset", () => {

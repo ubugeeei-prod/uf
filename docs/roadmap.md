@@ -39,8 +39,10 @@ listing it here rather than trusting anyone to remember:
    and the batch a check runs over is the closure of what the files asked about
    import, `node_modules` included
    ([#403](https://github.com/ubugeeei-prod/uf/issues/403)). `uf check` reports
-   1,883 errors over this repository's 357 checked files, and they are errors
-   about types rather than about the resolver.
+   1,905 errors over this repository's 358 checked files, and they are errors
+   about types rather than about the resolver. Some of them are wanted: the
+   fixtures under `tests/type-tests/` exist to fail, and each is held to the
+   exact diagnostics it predicts.
 3. **A feature that works for the demo.** Every fix in this repository carries
    a test that fails before it and passes after, and the corpus tests run the
    formatter over 8,100 modules nobody here wrote. That is the standard, and
