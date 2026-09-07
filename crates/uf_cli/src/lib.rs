@@ -282,8 +282,25 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
         Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
-        Commands::Run { mode, script, args } => match script {
-            Some(script) => commands::task::run_task(&cwd, mode.as_deref(), &script, &args),
+        Commands::Run {
+            mode,
+            concurrency,
+            force,
+            why,
+            script,
+            args,
+        } => match script {
+            Some(script) => commands::task::run_task(
+                &cwd,
+                mode.as_deref(),
+                &script,
+                &args,
+                commands::task::RunArgs {
+                    concurrency,
+                    force,
+                    why,
+                },
+            ),
             None => commands::task::list_tasks(&cwd, ui),
         },
         Commands::Test {

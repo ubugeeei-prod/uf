@@ -31,6 +31,7 @@ integrated feature coverage.
 - `uf_rm`: runtime manager inference, host detection, and adapter application contracts
 - `uf_runtime`: Capability JS Host, WinterTC, and deploy-anywhere runtime contract
 - `uf_std`: native stdlib modules for WinterTC-compatible Flow wrappers
+- `uf_task`: the `uf run` task graph, its concurrency limit, and the content-hash cache under `.uf/cache/task`
 - `uf_test`: native test discovery, scheduling, watch invalidation, and runner core
 - `uf_transform`: Flow → JavaScript — official parser, Flow's lowering rules, the official React Compiler, oxc for JSX and code generation
 - `uf_tui`: what `@uniflowed/tui` is — the renderer itself is Flow
