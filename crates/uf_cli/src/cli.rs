@@ -578,6 +578,16 @@ pub(crate) enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// The package manager underneath: what it is allowed to do, and what it
+    /// has been told.
+    ///
+    /// `uf install`, `uf add` and the rest are the commands people run. This is
+    /// the plumbing beside them — the settings a manager reads that uf has an
+    /// opinion about.
+    Pm {
+        #[command(subcommand)]
+        command: PmCommand,
+    },
     /// Open a dependency for editing, and write the patch when you are done.
     ///
     /// `uf patch left-pad` prints a directory holding a copy of the package;
@@ -804,6 +814,31 @@ pub(crate) enum ReleaseBump {
     Patch,
     Minor,
     Major,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PmCommand {
+    /// List the dependencies that would run code at install time, and approve
+    /// the ones you have read.
+    ///
+    /// uf passes `--ignore-scripts` to every manager by default, so no
+    /// dependency runs anything. Naming one here records it in the field your
+    /// package manager reads — `pnpm.onlyBuiltDependencies`,
+    /// `trustedDependencies`, `dependenciesMeta` — and the next install builds
+    /// exactly those.
+    ///
+    /// npm and Yarn 1 have no per-package control: `--ignore-scripts` is all of
+    /// them or none. uf says so rather than offering an approval that quietly
+    /// means "and everything else too".
+    #[command(name = "approve-builds")]
+    ApproveBuilds {
+        /// The packages to approve; none lists what is waiting.
+        #[arg(value_name = "NAME")]
+        names: Vec<String>,
+        /// Say what would be approved, and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

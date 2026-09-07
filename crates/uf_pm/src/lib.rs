@@ -9,6 +9,7 @@
 //! instead of forcing a migration — [`run_operation`] is where the second half
 //! actually spawns one, for every command from `uf install` to `uf why`.
 
+pub mod builds;
 pub mod command;
 pub mod delta;
 pub mod detect;
@@ -29,6 +30,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use uf_config::UniflowedConfig;
 
+pub use crate::builds::{Approvals, Buildable, LIFECYCLE_SCRIPTS, approvals_for};
 pub use crate::command::{
     DependencyKind, Invocation, InvocationArgs, Operation, PROGRAMS, command_for,
 };
