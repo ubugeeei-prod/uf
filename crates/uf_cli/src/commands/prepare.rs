@@ -585,6 +585,26 @@ impl Run<'_> {
             || self.generated.iter().any(|file| file.path == relative_path)
     }
 
+    /// The paths discovery is asked about by name: the staged set and this
+    /// run's generated files.
+    ///
+    /// Empty when there is no staged set, because that is the "check
+    /// everything" case and naming nothing is what widens the walk back to the
+    /// whole project. It is a list of exact paths, never a prefix, so it can
+    /// only ever *add* the files [`Self::checks`] was going to keep anyway —
+    /// it cannot widen the set the checks run over.
+    fn named_paths(&self) -> Vec<String> {
+        let staged = match &self.staged {
+            StagedFiles::Staged(files) => files.as_slice(),
+            StagedFiles::Unavailable(_) => &[],
+        };
+        staged
+            .iter()
+            .map(compact_str::CompactString::to_string)
+            .chain(self.generated.iter().map(|file| file.path.to_string()))
+            .collect()
+    }
+
     /// Why a check step had nothing to read.
     fn nothing_to_check(&self, verb: &str) -> String {
         if self.staged.is_empty_index() {
@@ -615,17 +635,20 @@ impl Run<'_> {
         if self.staged.is_empty_index() && self.generated.is_empty() {
             return Ok(());
         }
-        // The generated files by name, because they are exactly the files a
-        // project tells git to ignore — `router.js` is in this repository's own
-        // `.gitignore` — and a discovery walk that honours `.gitignore` would
-        // not find them. Naming a path is asking about it; see
-        // `uf_project::scan_selected_source_files`. Without this, `uf prepare`
-        // generated two files and then silently checked neither.
-        let named: Vec<String> = self
-            .generated
-            .iter()
-            .map(|file| file.path.to_string())
-            .collect();
+        // The staged and generated files by name, because both are files a
+        // project can legitimately tell git to ignore while this run still has
+        // to read them, and a discovery walk that honours `.gitignore` would
+        // not offer either. Naming a path is asking about it; see
+        // `uf_project::scan_selected_source_files`.
+        //
+        // * The generated ones — `router.js` is in this repository's own
+        //   `.gitignore` — because without them `uf prepare` wrote two files
+        //   and then silently checked neither.
+        // * The staged ones because git stops applying `.gitignore` to a path
+        //   the moment that path is in the index. A force-added file is as
+        //   much a part of the commit as any other, and dropping it excluded
+        //   from the checks the one file the commit is about.
+        let named = self.named_paths();
         let mut scan =
             scan_selected_source_files(&self.resolved.root, &self.resolved.config, &named)?;
         scan.unreadable

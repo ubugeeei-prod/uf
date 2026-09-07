@@ -227,12 +227,17 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             // as a compile error instead of as silence — which is exactly how
             // `main` stopped compiling once, see #366 and #367.
             // Neither server watches: `uf preview` and `uf start` serve a
-            // build, so a module changing under them changes nothing they are
-            // showing.
+            // build, so a module or a `.env` file changing under them changes
+            // nothing they are showing — a build's values were substituted into
+            // the bundle when it was built. Neither serves the browser's
+            // diagnostic channel either: `/__uf/` is `uf dev`'s, and a
+            // deployment has no terminal to report into.
             Event::ConfigLoaded { .. }
             | Event::Phase { .. }
             | Event::Page { .. }
             | Event::SourceChanged
+            | Event::EnvChanged { .. }
+            | Event::Diagnostic(_)
             | Event::RscSplit { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}

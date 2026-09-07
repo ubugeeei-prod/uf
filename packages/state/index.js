@@ -644,9 +644,9 @@ export hook useResetAtom<T>(
   store?: Store,
 ): () => void {
   const setter = useSetAtom<T, SetAction<T> | Reset>(target, store);
-  return React.useCallback(() => {
+  return () => {
     setter(RESET);
-  }, [setter]);
+  };
 }
 
 /**
@@ -665,18 +665,16 @@ export hook useResetAtom<T>(
  * component that holds this callback is subscribed to nothing.
  *
  * The identity of what comes back changes when `callback` does, so a handler
- * written inline is a new function every render. Wrap it in `useCallback` when
- * that matters — the same rule as every other hook that takes a function.
+ * written inline is a new function every render unless something memoizes it —
+ * which, inside a `component` the React Compiler compiled, it does. The same
+ * rule as every other hook that takes a function.
  */
 export hook useAtomCallback<Args extends $ReadOnlyArray<mixed>, Result>(
   callback: (get: Getter, set: Setter, ...args: Args) => Result,
   store?: Store,
 ): (...args: Args) => Result {
   const instance = useStoreInstance(store);
-  return React.useCallback(
-    (...args: Args) => callback(instance.get, instance.set, ...args),
-    [callback, instance],
-  );
+  return (...args: Args) => callback(instance.get, instance.set, ...args);
 }
 
 /**

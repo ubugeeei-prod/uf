@@ -248,6 +248,40 @@ describe("the client route table", () => {
       `import(${JSON.stringify(path.join(root, "app/counter/_uf.page.js"))})`,
     );
   });
+
+  it("states each route's file relative to the project when asked", () => {
+    // Every `import()` in this table is a specifier the bundler rewrites to a
+    // chunk URL, so no absolute path survives a build through one. `file` is a
+    // string, and it does: uf's own manual shipped the build machine's
+    // absolute path for each of thirty-four routes to every visitor, which
+    // says where the machine keeps its files and who its user is, to a
+    // browser that has no filesystem to resolve any of it against.
+    //
+    // `relativeTo` is what the client call passes and the server call does
+    // not. The `import()` specifier is untouched — it still has to resolve —
+    // and only the string a reader sees changes.
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+
+    const source = routesModuleSource(table, { relativeTo: root });
+
+    expect(source).toContain(`file: ${JSON.stringify("app/_uf.page.js")}`);
+    expect(source).toContain(`file: ${JSON.stringify("app/counter/_uf.page.js")}`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+    expect(source.includes(`file: ${JSON.stringify(path.join(root, "app/_uf.page.js"))}`)).toBe(
+      false,
+    );
+  });
+
+  it("leaves the file absolute when nothing asked for a root", () => {
+    // The server's copy, which is read on the machine that has those files and
+    // where a diagnostic naming an absolute path is the useful one.
+    const root = splitProject();
+
+    const source = routesModuleSource(scanRoutes(path.join(root, "app")));
+
+    expect(source).toContain(`file: ${JSON.stringify(path.join(root, "app/_uf.page.js"))}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
