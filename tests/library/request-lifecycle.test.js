@@ -38,6 +38,7 @@ import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
 import { createMiddlewareRunner } from "@uniflowed/router/middleware";
 import { beginRequest, createActionDispatcher, createRenderer } from "@uniflowed/router/server";
+import { recordingLogger } from "@uniflowed/server/log";
 import { routerView } from "@uniflowed/router";
 import { after, cookies, draftMode, headers } from "@uniflowed/server";
 import { createHandler } from "@uniflowed/server/standalone";
@@ -506,29 +507,26 @@ describe("`uf start`, `uf preview` and a deployed directory", () => {
     const entry = bundle({
       middleware: [guard("/", () => after(() => order.push("logged")))],
     });
+    const { logger, records } = recordingLogger();
     const listen = nodeListener(
       async (request) => {
         await entry.runMiddleware(request);
         throw new Error("the page threw");
       },
-      { beginRequest: entry.beginRequest },
+      { beginRequest: entry.beginRequest, log: logger },
     );
 
     const response = outgoing(order);
-    const reported = [];
-    const error = console.error;
-    // eslint-disable-next-line no-console
-    (console: $FlowFixMe).error = (value) => reported.push(value);
-    try {
-      await listen(incoming("GET", "/"), response);
-    } finally {
-      // eslint-disable-next-line no-console
-      (console: $FlowFixMe).error = error;
-    }
+    await listen(incoming("GET", "/"), response);
 
     expect(response.statusCode).toBe(500);
     expect(order).toEqual(["wrote 500 Internal Server Error\n", "response ended", "logged"]);
-    expect(reported.length).toBe(1);
+    // The exception itself, and then the access line the request left behind.
+    // Two records rather than one because they answer different questions —
+    // what went wrong, and what the client was told — and the second is the
+    // half ubugeeei-prod/uf#405 was missing.
+    expect(records.map((record) => record.message)).toEqual(["request failed", "request"]);
+    expect(records[1].fields.status).toBe(500);
   });
 });
 

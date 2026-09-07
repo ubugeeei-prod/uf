@@ -280,7 +280,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         }
         Commands::Prepare { fix } => commands::prepare::prepare(&cwd, ui, fix),
         Commands::Publish => commands::release::publish(&cwd, ui),
-        Commands::Release { bump } => commands::release::release(&cwd, ui, bump),
+        Commands::Release { bump, force } => commands::release::release(&cwd, ui, bump, force),
         Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
         Commands::Run {
             mode,

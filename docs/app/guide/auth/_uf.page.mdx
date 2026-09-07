@@ -1,0 +1,190 @@
+---
+title: "Signing in · uf"
+description: "A contract rather than a provider: PKCE, a single-use state, and a session store you can replace."
+---
+
+<p className="eyebrow">The tools</p>
+
+# Signing in
+
+<div className="lede">
+uf ships the OAuth flow and no OAuth provider. What is portable about signing in
+is the redirect, the state parameter, the token exchange and the session, and
+that is the same whoever is at the other end; what is not portable is which URLs
+to talk to and how to turn the tokens into a person. That is the seam, and it is
+one type with four strings and a function.
+</div>
+
+## The provider
+
+This is all of it. Nothing about uf appears in it, and nothing about your
+provider appears in uf:
+
+```js
+// @flow
+import type { OAuthProvider } from "@uniflowed/server/oauth";
+
+export const example: OAuthProvider = {
+  authorizationEndpoint: "https://example.com/oauth/authorize",
+  tokenEndpoint: "https://example.com/oauth/token",
+  clientId: process.env.EXAMPLE_CLIENT_ID ?? "",
+  clientSecret: process.env.EXAMPLE_CLIENT_SECRET,
+  scope: "openid email",
+  async identify(tokens) {
+    const answer = await fetch("https://example.com/userinfo", {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    });
+    if (!answer.ok) {
+      throw new Error(`userinfo answered ${answer.status}`);
+    }
+    const user = await answer.json();
+    return { subject: String(user.id), claims: { email: user.email } };
+  },
+};
+```
+
+There is no `providers/` directory in uf and there will not be one. A registry
+of them is a list uf has to keep current, and a toolchain that integrates with a
+company becomes the place every change to that company's API has to be released
+through. `docs/red-lines.md` calls that the chokepoint, and it is the failure the
+whole document is about.
+
+`subject` is the provider's own stable id, and it is deliberately not the email
+address. An email is a thing people change and a thing some providers let anyone
+claim without proving it, so an application that keys accounts on one has an
+account takeover waiting for it. Put the email in `claims`.
+
+## The four handlers
+
+```js
+// @flow
+// app/auth.js
+import { createAuth, memorySessionStore } from "@uniflowed/server/oauth";
+import { example } from "./providers/example.js";
+
+export const auth = createAuth({
+  provider: example,
+  store: memorySessionStore(),
+  callbackPath: "/auth/callback",
+  origin: process.env.PUBLIC_ORIGIN,
+});
+```
+
+Each handler is a plain `Request` → `Response`, which is what a `_uf.route.js`
+exports and what runs unchanged on Node, Bun, Deno and a worker:
+
+```js
+// app/auth/authorize/_uf.route.js
+export const GET = auth.authorize;
+
+// app/auth/callback/_uf.route.js
+export const GET = auth.callback;
+
+// app/auth/refresh/_uf.route.js
+export const POST = auth.refresh;
+
+// app/auth/session/_uf.route.js
+export const GET = auth.session;
+export const DELETE = auth.session;
+```
+
+`/auth/authorize?return=/orders` comes back to `/orders` when it is done. Only a
+path on your own site is accepted; everything else lands on `/`.
+
+## Reading who is signed in
+
+In a loader, a route handler or a server component — no request is threaded
+through, because `@uniflowed/server` answers about the request it is inside:
+
+```js
+// @flow
+import { auth } from "../auth.js";
+
+export async function loader() {
+  const session = await auth.currentSession();
+  return { greeting: session == null ? "Hello" : `Hello, ${session.subject}` };
+}
+```
+
+A page that asks this is a page about one person, so uf will not put it in the
+route cache. That is the same rule that stops a cached document carrying
+somebody's `Set-Cookie`, and it is not something to work around.
+
+`session.expiresAt` is a `Temporal.Instant`, so "is this about to run out" is
+`Temporal.Instant.compare` rather than arithmetic on a number whose unit you
+have to take on trust. It serializes as the same ISO string the `session`
+handler answers with.
+
+The tokens are not on the session. They are in the store, and `auth.tokens()` is
+a separately named reader for the application that genuinely needs to call the
+provider's API. What comes back from it must never be returned from a loader: a
+loader's value is embedded in the document uf sends to the browser, so a token
+that reaches one has been published.
+
+## The store
+
+Four methods, one value type, and uf owns what goes in — so an implementation
+against Redis, a table or a worker's KV knows nothing about OAuth:
+
+```js
+// @flow
+import type { SessionStore } from "@uniflowed/server/oauth";
+
+export const store: SessionStore = {
+  read: async (key) => decode(await redis.get(key)),
+  write: async (key, value, expiresAt) =>
+    void (await redis.set(key, encode(value), "PXAT", expiresAt)),
+  take: async (key) => decode(await redis.getdel(key)),
+  destroy: async (key) => void (await redis.del(key)),
+};
+```
+
+`expiresAt` there is milliseconds since the epoch — the one number in a package
+that otherwise holds instants, and deliberately so: a store's job is to cross
+into somebody else's Redis, KV or table, and an epoch millisecond count is a
+primitive that serializes as itself and that `PXAT` above takes as it stands.
+
+`take` is the one that could not be composed from the others, and it is what
+makes a `state` parameter single-use: it reads *and* removes in one step, so a
+replayed callback finds nothing and two arriving at once cannot both succeed.
+Written as a read followed by a delete there is a window between them, and a
+window is all a replay needs. An implementation that cannot do this in one
+operation must not be used here.
+
+`memorySessionStore()` is one process's memory, and that is the whole truth
+about it: four instances behind a load balancer hold four different sets of
+sessions, a restart signs everybody out, and a half-finished sign-in that lands
+on a different instance is refused as a replay. The interface is the deliverable.
+
+## What uf refuses
+
+Signing in is the one place in uf where a mistake is somebody's account, so the
+refusals are worth reading rather than trusting. Each is tested in
+`tests/library/oauth.test.js`, and `docs/security.md` names the failure each one
+answers.
+
+- **PKCE, always, with `S256`.** There is no configuration for it and `plain` is
+  not offered — a `plain` challenge *is* the verifier, so anything that can read
+  the authorization URL can spend the code.
+- **A `state` that is 256 bits of `crypto.getRandomValues`,** held server-side,
+  compared in constant time, and single-use.
+- **A pending flow bound to the browser that started it.** The state proves the
+  callback came from the provider; only the cookie proves it came back to the
+  person who set out.
+- **`__Host-` cookies,** `HttpOnly`, `Secure`, `Path=/`, `SameSite=Lax`. `Lax`
+  is required rather than preferred: the provider's redirect back is a
+  cross-site top-level navigation and `Strict` would withhold the cookie on
+  exactly that one.
+- **`Origin` compared against `Host`,** and never against `X-Forwarded-Host`, on
+  everything that changes state. A request with no `Origin` is refused: every
+  browser sends one on a `POST`.
+- **The `redirect_uri` from the stored record,** not one re-derived from the
+  callback's headers, so the two requests cannot be made to disagree about it.
+- **A new session id on every sign-in,** and the previous session destroyed.
+- **`Cache-Control: no-store, private` on every response,** and no token in any
+  body or any log line.
+
+What uf does **not** do is verify an OpenID Connect `id_token`. Verifying one
+means a JWKS fetch, a cache, an algorithm allow-list and a refusal of
+`alg: none`; half of that is worse than none of it. The raw token is handed to
+your `identify`, and uf claims nothing about it.

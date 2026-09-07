@@ -14,12 +14,13 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Seven names are reserved. Everything else in `app/` is an ordinary module.
+Eight names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
 | `_uf.page.js` | The page at this path. Its default export is a component. |
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
+| `_uf.template.js` | The same wrapper, rebuilt on every navigation instead of persisting. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
 | `_uf.error.js` | Rendered when something under this path throws. |
 | `_uf.loading.js` | Rendered while something under this path is still resolving. |
@@ -48,6 +49,26 @@ app/posts/[slug]/_uf.page.js      →  /posts/anything
 app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
 ```
 
+### Two spellings that are refused
+
+A directory named `@team` is a **parallel-route slot** and one named
+`(.)photo`, `(..)photo`, `(...)photo` or `(..)(..)photo` is an **intercepting
+route**. uf has neither feature, and both are refused by name — by `uf build`,
+by `uf dev` and by `uf lint`.
+
+They are refused rather than ignored, and the difference is the point. Until
+[#267](https://github.com/ubugeeei-prod/uf/issues/267) neither name meant
+anything to the router, so both fell through to "an ordinary URL segment":
+`app/@team/_uf.page.js` served `/@team`, `app/feed/(.)photo/_uf.page.js` served
+`/feed/(.)photo` — a `(group)` is a segment that *ends* in `)`, which
+`(.)photo` does not — and both went into the generated `RoutePath`, so
+`route("/@team", …)` type checked. A person migrating from Next.js got a
+project that looked like it worked.
+
+There is no escape hatch for a URL segment that really begins with `@`;
+capture it with a `[param]` instead. A `(group)` is untouched: it ends in `)`
+and always did.
+
 "The rest" is the whole rest, so a spread is the last routing directory on the
 way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
 reach — `[...path]` has already taken every segment, and there is none left to
@@ -75,6 +96,42 @@ rather than copying it.
 
 A layout does not re-render when navigating between pages that share it, so
 scroll position and state in a sidebar survive navigation.
+
+## Templates remount
+
+`_uf.template.js` is the same wrapper with the opposite answer to the same
+question. A layout persists; a template is thrown away and built again on every
+navigation.
+
+```js
+// @flow
+// app/guide/_uf.template.js
+import * as React from "react";
+
+export default component Template(children: React.Node) {
+  return <div className="fade-in">{children}</div>;
+}
+```
+
+It receives the same props a layout does — `children` and the route's `params`
+— so `LayoutProps` types one.
+
+It sits **inside** its own segment's layout and outside everything below it, so
+a remount means "this segment and what is under it" and never the frame around
+it:
+
+```
+app/guide/_uf.layout.js     the sidebar — mounted once
+app/guide/_uf.template.js   rebuilt on every navigation under /guide
+app/guide/[slug]/_uf.page.js
+```
+
+That is what an enter animation needs, and what a `useEffect` that should run
+per page needs. Persistence is the right default and stays the default: a
+segment with no `_uf.template.js` gets no wrapper at all.
+
+The key is the **pathname**, so a navigation that changes only the query string
+does not remount. A filter written into the URL keeps the page it filters.
 
 ## Not found nests too
 
@@ -293,14 +350,113 @@ a search engine that the whole section is one page.
 by a different reader — `uf build`, in Rust, writing `<loc>` into
 `sitemap.xml`. A site that has both should keep them the same.
 
+### The rest of what a page says about itself
+
+`robots` is how a page asks not to be indexed. A page that declares nothing
+gets no `<meta name="robots">` at all, because "index, follow" is what a
+document without one already means — the tag exists to say something else:
+
+```js
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+```
+
+It is usually a **layout's** field rather than a page's. A preview tree, a
+staging section or an account area is `index: false` for everything under it,
+and saying so once is the only version of that which stays true when somebody
+adds a page. `maxSnippet` and `maxImagePreview` are the other two directives,
+and they change what a result looks like rather than whether there is one.
+
+`alternates.languages` maps a language tag to that translation's URL. The set
+has to be reciprocal — every page in it lists every other one *and itself*,
+which is what makes a search engine read them as translations rather than as
+duplicates — so it is normally the same map on every page of the set, declared
+on the layout they share. `"x-default"` is a tag like any other, and names
+what a reader with no matching language should be given:
+
+```js
+export const metadata: Metadata = {
+  alternates: { languages: { en: "/guide", ja: "/ja/guide", "x-default": "/guide" } },
+};
+```
+
+`pagination` is the two ends of a sequence, as `<link rel="prev">` and
+`<link rel="next">`. Keep each page's `canonical` pointing at **itself**:
+a paginated list whose every page is canonical to page one has told a search
+engine that pages two onwards are duplicates, and everything only linked from
+them stops being reachable.
+
+`jsonLd` is structured data, one `<script type="application/ld+json">` per
+entry. It is the one field that **adds** to what an outer layout declared
+instead of replacing it, because an `Organization` on the root layout and an
+`Article` on the page are two statements about one page rather than two
+answers to one question:
+
+```js
+export const metadata: Metadata = {
+  jsonLd: [
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Install uf",
+    },
+  ],
+};
+```
+
+The scripts render with the route rather than in `<head>`: React hoists a
+`<title>`, a `<meta>` and a `<link>`, and not a script whose body it has to
+carry. JSON-LD is read from anywhere in the document, so this costs nothing —
+it is worth knowing when reading the markup.
+
+### Metadata a component computes
+
+`metadata` and `generateMetadata` are declarations by a route module, and some
+of what a page has to say is decided further in. A pager knows which page of
+the list it is drawing; the route that renders it does not. `useSeo` is the
+same vocabulary from inside a render:
+
+```js
+import { useSeo } from "@uniflowed/router";
+
+export component Pager(page: number, of: number) {
+  const seo = useSeo({
+    pagination: {
+      prev: page > 1 ? `/posts?page=${page - 1}` : undefined,
+      next: page < of ? `/posts?page=${page + 1}` : undefined,
+    },
+  });
+
+  return <nav className="pager">{seo}…</nav>;
+}
+```
+
+It returns elements, and the caller renders them. That is not a stylistic
+choice: a hook that *wrote* to the head would have to do it in an effect, an
+effect does not run on a server, and the page would end up with tags that are
+right in a browser and missing from every crawler. Rendering is what puts a tag
+in a server-rendered head. `useHead` from `@uniflowed/web` is the browser-only
+escape hatch and says so about itself.
+
+The argument is a `Metadata`, the same type a route exports, so there is one
+vocabulary rather than two. What the hook adds over writing the tags by hand is
+`metadataBase` — the root layout declared it, a component three levels down
+cannot know it, and the relative URLs written here are resolved against it.
+
 | Field | Emits |
 | --- | --- |
 | `title` | `<title>` |
 | `description` | `<meta name="description">` |
 | `metadataBase` | nothing on its own; resolves the URLs below |
 | `canonical` | `<link rel="canonical">` and `og:url` |
-| `openGraph.title`, `.description`, `.images` | `og:title`, `og:description`, one `og:image` each |
-| `twitter.card`, `.site`, `.creator`, `.title`, `.description`, `.images` | `twitter:*`, under `name` rather than `property` |
+| `robots.index`, `.follow`, `.maxSnippet`, `.maxImagePreview` | one `<meta name="robots">`, only for what is declared |
+| `alternates.languages` | one `<link rel="alternate" hreflang>` each |
+| `pagination.prev`, `.next` | `<link rel="prev">`, `<link rel="next">` |
+| `jsonLd` | one `<script type="application/ld+json">` each; accumulates down the tree |
+| `openGraph.title`, `.description` | `og:title`, `og:description`, falling back to `title` and `description` |
+| `openGraph.type`, `.siteName`, `.images`, `.imageAlt` | `og:type` (`website` by default), `og:site_name`, one `og:image` each, `og:image:alt` |
+| `twitter.card`, `.site`, `.creator`, `.title`, `.description`, `.images`, `.imageAlt` | `twitter:*`, under `name` rather than `property` |
 
 ## Navigating
 
@@ -325,6 +481,47 @@ renders would have done on its own. Nothing about writing the link changes,
 and the page it lands on is the same page; the difference is a full load
 rather than a transition. `useRouter().push()` and the back button do the same
 thing for the same reason.
+
+### View transitions
+
+Every client navigation goes through `document.startViewTransition` where the
+browser has one. There is nothing to switch on: without a stylesheet the
+browser's default cross-fade is what a reader gets, and a browser that has no
+such method navigates exactly the way it did before.
+
+A route can name its transition, so one stylesheet can animate an arrival in
+the manual differently from an arrival anywhere else. The name reaches CSS as
+an attribute on the document element, set for as long as the transition runs:
+
+```js
+// app/guide/_uf.layout.js
+export const viewTransition = "manual";
+```
+
+```css
+html[data-uf-view-transition="manual"]::view-transition-old(root) {
+  animation: 120ms ease-out both fade-out;
+}
+```
+
+A page's own name wins over its layout's, which is the nearest-declaration rule
+`metadata` already follows. A layout is usually the right place: a section that
+animates one way throughout should say so once.
+
+**`prefers-reduced-motion` is honoured by the router**, not by the application.
+A reader who asked their system for less motion gets the cut they asked for,
+and there is no way for an application to override it — an application able to
+would eventually.
+
+`transition={false}` on a `Link`, or `{ transition: false }` on
+`useRouter().push()`, makes one navigation a cut. It is for a navigation that
+is a change of state rather than a change of place: a tab within a page, a
+filter written into the query string. `router.refresh()` never transitions,
+because it resolves the same URL again and a transition there would cross-fade
+a page into itself.
+
+None of this reaches the server. A transition is a client-only concern, and a
+prerendered document says nothing about one.
 
 ## Middleware
 

@@ -1,0 +1,27 @@
+{
+  "name": "@uniflowed/i18n",
+  "version": "0.0.0-alpha.13",
+  "description": "Type-safe internationalisation on MessageFormat 2: a message's arguments are checked at the call, part of the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/i18n"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./catalogue": "./catalogue.js",
+    "./format": "./format.js",
+    "./negotiate": "./negotiate.js",
+    "./syntax": "./syntax.js"
+  },
+  "files": [
+    "catalogue.js",
+    "format.js",
+    "index.js",
+    "negotiate.js",
+    "syntax.js"
+  ]
+}

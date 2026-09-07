@@ -29,6 +29,7 @@ brand
 cell
 effect
 form
+i18n
 immer
 mock
 state

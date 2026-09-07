@@ -1,5 +1,86 @@
 # Changelog
 
+## uf@0.0.0-alpha.13
+
+_2026-09-08_
+
+The pipeline stops merging things it did not check. Every job in `ci.yml`
+depends on `Toolchain`, and a job whose dependency fails is not run — it is
+*skipped*, which GitHub counts as a required check being satisfied. So a
+`main` that did not compile was merged on 2026-09-06 with five green ticks,
+and again on 2026-09-07. The gate job that fails unless every job actually
+succeeded is now a required context, and `ci:gate` checks the gate itself:
+a job added to the pipeline and left out of the gate's `needs:` is refused by
+name, because a hand-maintained list of what to check is the same shape as the
+bug it was written to fix.
+
+Bun runs. `@uniflowed/host`'s preload returned `undefined` from Bun's
+`onLoad`, which Bun rejects, so no Bun project could load it at all — and the
+naive repair breaks every CommonJS dependency, because anything leaving
+`onLoad` is an ES module and there is no value that means "not mine". The
+filter carries the policy now, which also closed a divergence nobody could
+see: the hand-written list never gained `.cjs`, so Bun and Node disagreed
+about which files were Flow. There is a test that starts a real Bun process
+against the real binary, which is the first time any Bun claim in this
+repository was checked rather than asserted. The answer caches are bounded
+too — `transform` had reached 767 entries and was growing by about 330 a
+build, with nothing that ever removed one.
+
+A server action is not the only thing a browser can reach any more: `QUERY`,
+server-sent events, an upgrade a handler can accept, and a queue; OAuth as a
+contract rather than a provider; and a logger whose request id reaches a
+render. The router streams its loaders instead of awaiting them, keeps the
+site around a 404, and understands parallel and intercepting routes. A
+message's arguments are in its type. And `uf release` can no longer lose a
+commit whose subject carries no pull request number, or rewrite a changelog
+section that has already been published — both of which had happened.
+
+### Added
+
+- **ui, temporal**: the sets adopt the positioner, and the grid it does not fit (#597)
+- **server**: OAuth as a contract, and a logger with a request id a render can read (#585)
+- **hooks, router**: the address bar, and a hydration error that names the node (#582)
+- **router**: a wrapper that remounts, and two spellings refused by name (#472)
+- **i18n**: the arguments a message takes, in the type (#567)
+- **router, docs**: a navigation that is a transition, and the rest of what a page says about itself (#546)
+- **fmt**: the formatter's own options, without uf re-declaring any of them (#577)
+- **server**: QUERY, event streams, an upgrade a handler can accept, and a queue (#563)
+- **router**: the loader streams, the head is a head, and a 404 keeps the site (#566)
+- **ui**: groups in a combobox, a drag on a splitter, and the claim nobody was holding (#558)
+- **web**: the five numbers a page is judged on, read from the browser (#555)
+- **run**: a task graph, a concurrency limit, and a cache keyed on declared inputs (#466)
+- **rsc**: a `"use server"` export the browser can call (#473)
+- **temporal, web, hooks**: Temporal on every host, and the two values a render has to fix (#554)
+- **pm**: `uf approve-builds`, and the sentence npm gets instead (#545)
+- **pm**: `uf update` reports what the ranges hold back, and rewrites them (#541)
+- **cell, state**: state and derived, and no way back to cell and computed (#544)
+- **env**: one .uf, and the toolchain links out of the project (#539)
+
+### Fixed
+
+- **release**: a commit with no pull request number, and a binary older than the tree (#589)
+- **host, infra**: a bound on the answer caches, and a Bun host that runs (#594)
+- **test, query**: a stub that does not outlive its file, and a clock the collection test owns (#579)
+- **project**: a file git is told to ignore is not the project's to format (#576)
+- **lint**: a property key is a key however its variance is written (#572)
+- **react-testing, test**: an accessible name, a summary, and two surfaces that were any (#571)
+- **server, docs**: a symlink cannot leave a served directory, and the CVE (#556)
+- **lint**: four false positives, and the line scanner behind the worst of them (#548)
+- **release**: `verify-npm` failed a release that had worked (#538)
+- **release**: `promote-latest` handed npm the plan file as stdin (#537)
+
+### Documentation
+
+- **config**: a condition rather than a count, and a key that does not promise what it does not do (#578)
+
+### Internal
+
+- **gate**: the gate that covers every job, checked rather than trusted (#590)
+
+### Other
+
+- Update GitHub Sponsors username in FUNDING.yml
+
 ## uf@0.0.0-alpha.12
 
 _2026-09-07_
@@ -198,7 +279,9 @@ bundle. On a four-route application with no client boundary anywhere that is
 ### Documentation
 
 - **site**: the heading says what uf is for (#413), sharpened to "The best React
-  experience, typed by Flow." ([#440](https://github.com/ubugeeei-prod/uf/pull/440))
+  experience, typed by Flow."
+  ([#440](https://github.com/ubugeeei-prod/uf/pull/440), commit `f3f743c`, whose
+  subject carries no pull request number)
 - six claims the site made that the source does not (#384)
 
 ## uf@0.0.0-alpha.7

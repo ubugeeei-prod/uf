@@ -74,15 +74,23 @@ pub(crate) fn publish(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<()> {
+pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump, force: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
     let current_version = env!("CARGO_PKG_VERSION");
     let next_version = bump_semver(current_version, bump)?;
     let tag = format!("{}{}", resolved.config.release.tag_prefix, next_version);
+    let published = Published::of(&resolved.root, &tag);
+    if let Some(refusal) = published.refusal(&tag, current_version, force) {
+        bail!(refusal);
+    }
     let state_dir = resolved.root.join(".uf");
     fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
     let changelog = write_changelog(&resolved.root, &tag, &resolved.config.release.tag_prefix)?;
     let manifest = state_dir.join("release.json");
+    let unnumbered: Vec<String> = changelog
+        .as_ref()
+        .map(|written| written.unnumbered.clone())
+        .unwrap_or_default();
     write_json_file(
         &manifest,
         &json!({
@@ -96,6 +104,7 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
             "trustedTrigger": resolved.config.publish.trusted_publish.trigger,
             "changelog": changelog.as_ref().map(Changelog::path),
             "changes": changelog.as_ref().map_or(0, |written| written.changes),
+            "unnumbered": unnumbered,
         }),
     )?;
 
@@ -115,6 +124,14 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
         ),
         None => format!("release {tag} planned"),
     };
+    let unnumbered_rows: Vec<&str> = unnumbered.iter().map(String::as_str).collect();
+    let unnumbered_summary = format!(
+        "{} commit{} in the range carr{} no pull request number; nothing downstream can find {} by one",
+        unnumbered.len(),
+        if unnumbered.len() == 1 { "" } else { "s" },
+        if unnumbered.len() == 1 { "ies" } else { "y" },
+        if unnumbered.len() == 1 { "it" } else { "them" },
+    );
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf release", Some(&tag));
@@ -136,10 +153,108 @@ pub(crate) fn release(cwd: &Utf8Path, ui: &mut Ui, bump: ReleaseBump) -> Result<
         if let Some(entry) = &changelog_row {
             renderer.key_values(out, 2, std::slice::from_ref(entry));
         }
+        if !unnumbered_rows.is_empty() {
+            renderer.blank(out);
+            renderer.status(out, Status::Warn, &unnumbered_summary);
+            renderer.bullet_list(out, 4, &unnumbered_rows);
+        }
         renderer.blank(out);
         renderer.status(out, Status::Success, &summary);
     });
     Ok(())
+}
+
+/// What the tree already says about the version `uf release` is planning.
+///
+/// `uf release <bump>` takes the version it is planning from the version
+/// compiled into the binary running it, which is right — the binary that cuts a
+/// release is the binary being released — and had no guard against being an
+/// *old* binary. `uf@0.0.0-alpha.7`'s binary, run in a tree already released as
+/// `uf@0.0.0-alpha.8`, planned alpha.8 again: it rewrote the published alpha.8
+/// section with the commits made *since* that tag, which are alpha.9's, deleted
+/// the thirty-eight lines of summary and hand-placed entries in it, and
+/// reported success. Nothing else noticed, because nothing else was asked:
+/// neither the tag nor the section it was about to overwrite was consulted.
+///
+/// Both are cheap, and both are consulted here. See #457.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Published {
+    /// The repository has a tag of exactly this name.
+    tagged: bool,
+    /// `CHANGELOG.md` already has a `## <tag>` heading of its own.
+    sectioned: bool,
+}
+
+impl Published {
+    /// What `root` says about `tag`.
+    ///
+    /// Neither question can fail into a refusal: a directory that is not a
+    /// repository has no tags, and a tree with no `CHANGELOG.md` has no
+    /// sections. Both are the ordinary state of a first release.
+    fn of(root: &Utf8Path, tag: &str) -> Self {
+        let tagged = git(
+            root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("refs/tags/{tag}"),
+            ],
+        )
+        .is_some_and(|line| !line.trim().is_empty());
+        let heading = format!("## {tag}");
+        let sectioned = fs::read_to_string(root.join("CHANGELOG.md")).is_ok_and(|changelog| {
+            changelog
+                .lines()
+                .any(|line| line.trim_end() == heading.as_str())
+        });
+        Self { tagged, sectioned }
+    }
+
+    /// Why this release must not be written, or [`None`] to go ahead.
+    ///
+    /// The changelog is append-mostly: a section a release has been cut from is
+    /// finished, and the three ways this file has lost content were all a tool
+    /// deciding otherwise on its own. So the rule has two tiers.
+    ///
+    /// A section with no tag is a release being *prepared* — `uf release alpha`
+    /// is run again when a commit lands late — and `--force` covers it, because
+    /// the person asking is the person who wrote it.
+    ///
+    /// A tag is a release that went out. `--force` deliberately does not cover
+    /// it: regenerating a section a tag points at should be harder than typing a
+    /// flag, and there is no flag that makes an old binary's idea of the range
+    /// correct. The way out is to stop being an old binary.
+    fn refusal(self, tag: &str, current_version: &str, force: bool) -> Option<String> {
+        if self.tagged {
+            let also = if self.sectioned {
+                ", and CHANGELOG.md already has its section"
+            } else {
+                ""
+            };
+            return Some(format!(
+                "{tag} is already released\n  \
+                 this repository has a {tag} tag{also}.\n  \
+                 `uf release` plans the version after the one compiled into the binary running\n  \
+                 it, and this binary is {current_version} — so it is older than the tree, and\n  \
+                 writing this section would replace a released version's notes with a later\n  \
+                 release's commits.\n  \
+                 Build uf from this tree and run it again. `--force` does not cover a version\n  \
+                 that has been tagged: a section a release was cut from is finished."
+            ));
+        }
+        if self.sectioned && !force {
+            return Some(format!(
+                "CHANGELOG.md already has a section for {tag}\n  \
+                 This run would replace it. If that is the release you are preparing and the\n  \
+                 section should be rewritten from the commits that exist now, pass `--force`.\n  \
+                 If it is not, the binary is older than the tree: `uf release` plans the\n  \
+                 version after the {current_version} compiled into it, so an out-of-date binary\n  \
+                 plans a version the tree has already written. Build uf from this tree."
+            ));
+        }
+        None
+    }
 }
 
 /// A changelog section written to disk.
@@ -148,6 +263,8 @@ struct Changelog {
     file: Utf8PathBuf,
     /// How many commits it describes.
     changes: usize,
+    /// The subjects among them that carry no `(#NNN)`, newest first.
+    unnumbered: Vec<String>,
 }
 
 impl Changelog {
@@ -185,7 +302,49 @@ fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Optio
     Ok(Some(Changelog {
         file,
         changes: subjects.len(),
+        unnumbered: unnumbered(&subjects),
     }))
+}
+
+/// The subjects that carry no `(#NNN)` pull request number.
+///
+/// GitHub puts that number in the subject when it squash-merges — unless the
+/// person merging edits the title, or the merge is made another way. Then the
+/// commit is real, its change is in the tarball, and every tool that identifies
+/// a change by its number is blind to it. `docs: sharpen uf React hero copy`
+/// shipped in `uf@0.0.0-alpha.8` that way, while the check that exists to catch
+/// omissions reported sixteen pull requests in the range and sixteen named. See
+/// #443.
+///
+/// The section itself is not the problem: a commit with no number gets a line
+/// like any other, because the range is what the section is written from. What
+/// this adds is *saying so* — the line for such a commit is the one a person has
+/// to place by hand, and it is the one
+/// `tools/ci/changelog-covers-the-release.sh` will ask to see cited by its
+/// summary or by its hash, having no number to look for.
+///
+/// The release's own commits are left out, and that is a rule rather than a
+/// guess: they are made locally, so they carry no number until they are merged,
+/// and `uf release` is run more than once while a release is prepared. Without
+/// it every re-run would report the two commits the release itself made.
+fn unnumbered(subjects: &[String]) -> Vec<String> {
+    subjects
+        .iter()
+        .filter(|subject| !subject.starts_with("chore(release):"))
+        .filter(|subject| !names_a_pull_request(subject))
+        .cloned()
+        .collect()
+}
+
+/// Whether `subject` ends with `(#NNN)`, which is where a squash merge puts it.
+fn names_a_pull_request(subject: &str) -> bool {
+    let Some(rest) = subject.trim_end().strip_suffix(')') else {
+        return false;
+    };
+    let Some((_, digits)) = rest.rsplit_once("(#") else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// The subjects of every commit since the last `<prefix>*` tag, newest first.
@@ -316,6 +475,129 @@ mod tests {
         assert_eq!(
             bump_semver("1.2.3-alpha.4", ReleaseBump::Patch).unwrap(),
             "1.2.4"
+        );
+    }
+
+    /// #443: a commit GitHub did not stamp is reported, not dropped.
+    #[test]
+    fn a_subject_with_no_pull_request_number_is_named() {
+        let subjects: Vec<String> = [
+            "feat(rsc): keep a route out of the client bundle (#438)",
+            "docs: sharpen uf React hero copy",
+            "fix(fmt): a spread keeps its parentheses (#160)",
+            "rename",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+
+        assert_eq!(
+            unnumbered(&subjects),
+            vec![
+                "docs: sharpen uf React hero copy".to_owned(),
+                "rename".to_owned()
+            ]
+        );
+    }
+
+    /// And the release's own commits, which have no number until they merge,
+    /// are not reported as commits somebody has to place.
+    #[test]
+    fn the_releases_own_commits_are_not_reported() {
+        let subjects: Vec<String> = [
+            "chore(release): uf@0.0.0-alpha.9",
+            "chore(release): uf@0.0.0-alpha.9 (#458)",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+
+        assert!(unnumbered(&subjects).is_empty());
+    }
+
+    /// `(#NNN)` is the trailing form a squash merge writes, and nothing else.
+    #[test]
+    fn only_a_trailing_pull_request_number_counts() {
+        assert!(names_a_pull_request("fix: a thing (#1)"));
+        assert!(names_a_pull_request("fix: a thing (#12345)"));
+        // A number somewhere else is a number in prose.
+        assert!(!names_a_pull_request(
+            "fix: (#12) is not the merge's number"
+        ));
+        assert!(!names_a_pull_request("fix: a thing (#)"));
+        assert!(!names_a_pull_request("fix: a thing (#12a)"));
+        assert!(!names_a_pull_request("fix: a thing (12)"));
+        assert!(!names_a_pull_request("fix: a thing"));
+        assert!(!names_a_pull_request(""));
+        // The last one wins, which is where the merge writes it.
+        assert!(names_a_pull_request("fix: reverts (#11) (#12)"));
+    }
+
+    /// #457: an old binary plans a version that is already out, and rewriting
+    /// its section replaces a release's notes with a later release's commits.
+    #[test]
+    fn a_released_version_is_refused_and_force_does_not_cover_it() {
+        let published = Published {
+            tagged: true,
+            sectioned: true,
+        };
+
+        for force in [false, true] {
+            let refusal = published
+                .refusal("uf@0.0.0-alpha.8", "0.0.0-alpha.7", force)
+                .unwrap_or_else(|| panic!("a tagged version was allowed with force={force}"));
+            assert!(
+                refusal.contains("uf@0.0.0-alpha.8 is already released"),
+                "{refusal}"
+            );
+            assert!(refusal.contains("0.0.0-alpha.7"), "{refusal}");
+            assert!(refusal.contains("older than the tree"), "{refusal}");
+        }
+
+        // The tag alone is enough; a tag with no section is a release whose
+        // notes this run would invent from the wrong range.
+        assert!(
+            Published {
+                tagged: true,
+                sectioned: false,
+            }
+            .refusal("uf@0.0.0-alpha.8", "0.0.0-alpha.7", true)
+            .is_some()
+        );
+    }
+
+    /// A section with no tag is a release being prepared, and `--force` is the
+    /// person who wrote it saying so.
+    #[test]
+    fn an_untagged_section_is_refused_until_force() {
+        let published = Published {
+            tagged: false,
+            sectioned: true,
+        };
+
+        let refusal = published
+            .refusal("uf@0.0.0-alpha.13", "0.0.0-alpha.12", false)
+            .expect("a section already there is refused");
+        assert!(refusal.contains("uf@0.0.0-alpha.13"), "{refusal}");
+        assert!(refusal.contains("--force"), "{refusal}");
+
+        assert!(
+            published
+                .refusal("uf@0.0.0-alpha.13", "0.0.0-alpha.12", true)
+                .is_none()
+        );
+    }
+
+    /// The ordinary case: a version nothing has heard of yet.
+    #[test]
+    fn a_version_the_tree_does_not_know_is_planned() {
+        assert!(
+            Published {
+                tagged: false,
+                sectioned: false,
+            }
+            .refusal("uf@0.0.0-alpha.13", "0.0.0-alpha.12", false)
+            .is_none()
         );
     }
 
