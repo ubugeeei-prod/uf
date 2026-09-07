@@ -72,6 +72,7 @@ pub(crate) fn add(
             operation: Operation::Add { kind },
             operands: specs,
             retry: retry_line("uf add", specs),
+            announced: false,
         },
     )
 }
@@ -86,12 +87,16 @@ pub(crate) fn remove(cwd: &Utf8Path, ui: &mut Ui, names: &[String]) -> Result<()
             operation: Operation::Remove,
             operands: names,
             retry: retry_line("uf remove", names),
+            announced: false,
         },
     )
 }
 
-/// `uf update [PACKAGE...]`.
-pub(crate) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result<()> {
+/// The manager's own update: everything moves inside the range it is declared
+/// with, and nothing else moves at all.
+///
+/// [`super::update`] is the command; this is the half of it that delegates.
+pub(super) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result<()> {
     delegate(
         cwd,
         ui,
@@ -100,6 +105,7 @@ pub(crate) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
             operation: Operation::Update,
             operands: packages,
             retry: retry_line("uf update", packages),
+            announced: false,
         },
     )
 }
@@ -203,19 +209,25 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
 }
 
 /// One delegated command that changes the project.
-struct Request<'a> {
+pub(super) struct Request<'a> {
     /// The banner and the heading, e.g. `uf add`.
-    heading: &'static str,
+    pub(super) heading: &'static str,
     /// What the manager is being asked to do.
-    operation: Operation<'a>,
+    pub(super) operation: Operation<'a>,
     /// The package specifiers or names, exactly as they were typed.
-    operands: &'a [String],
+    pub(super) operands: &'a [String],
     /// The line to tell someone to run again after they have fixed it.
-    retry: String,
+    pub(super) retry: String,
+    /// Whether the banner is already on the screen.
+    ///
+    /// `uf update --latest` draws its own, reports what it is about to rewrite,
+    /// rewrites it, and only then delegates the install. Drawing a second
+    /// banner in the middle of that would read as a second command.
+    pub(super) announced: bool,
 }
 
 /// Detect, refuse scripts, run the manager, and report both files.
-fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
+pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
     let started = Instant::now();
     // Before anything is read or written: a command that refuses its own
     // argument must not have rewritten `uf.lock` on the way to refusing it.
@@ -238,8 +250,11 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
     let tree_before = uf_pm::delta::snapshot(&resolved.root, manager);
 
     let project = project_label(&resolved.root).to_string();
+    let announced = request.announced;
     ui.render(|renderer, out| {
-        renderer.banner(out, request.heading, Some(&project));
+        if !announced {
+            renderer.banner(out, request.heading, Some(&project));
+        }
         renderer.blank(out);
     });
 
@@ -276,6 +291,7 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
 
     let report = DepsReport {
         heading: request.heading,
+        continued: request.announced,
         manager: outcome.manager.to_string(),
         chosen_by: chosen_by(&outcome.source, outcome.substituted),
         command: outcome.invocation.to_string(),
@@ -295,6 +311,8 @@ fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Result<()> {
 /// Everything one of these commands has to say once the manager has exited.
 struct DepsReport {
     heading: &'static str,
+    /// Whether this is the second half of a command that already reported.
+    continued: bool,
     manager: String,
     chosen_by: String,
     command: String,
@@ -364,6 +382,16 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
 /// not change the manifest, and both halves are worth saying.
 fn headline(report: &DepsReport) -> String {
     if report.manifest.is_empty() {
+        // `uf update --latest` rewrote the manifests itself and said so a few
+        // lines above; from the manager's side there was then nothing left to
+        // change. Saying "the manifest already said so" there would read as a
+        // denial of the line the reader just saw.
+        if report.continued {
+            return format!(
+                "{} in the tree",
+                plural(report.tree.changes.len(), "change")
+            );
+        }
         return format!(
             "the manifest already said so; {} in the tree",
             plural(report.tree.changes.len(), "change")

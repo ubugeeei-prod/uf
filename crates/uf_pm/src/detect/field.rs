@@ -6,6 +6,7 @@
 //! only a length-bounded excerpt of the offending input, so nothing unvalidated
 //! is ever echoed onward.
 
+use std::cmp::Ordering;
 use std::fmt;
 
 use compact_str::{CompactString, ToCompactString};
@@ -15,10 +16,13 @@ use thiserror::Error;
 use super::MAX_PACKAGE_MANAGER_FIELD_BYTES;
 use super::manager::{PackageManager, YarnEdition};
 
-/// Semantic version parsed out of a `"packageManager"` field.
+/// Semantic version parsed out of a `"packageManager"` field, or out of a
+/// dependency range by [`Version::parse`].
 ///
-/// Deliberately not ordered: comparing prerelease segments correctly is a semver
-/// concern uf does not need here, and a derived ordering would be wrong.
+/// Ordered by semver precedence rather than by derive: `1.10.0` is newer than
+/// `1.9.0`, and `2.0.0-rc.1` is *older* than `2.0.0`. A derived ordering gets
+/// both of those wrong, which is why this type carried none until `uf update`
+/// needed to ask which of two published versions is newer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Version {
@@ -30,6 +34,112 @@ pub struct Version {
     pub patch: u32,
     /// Prerelease segment without its leading `-`, when present.
     pub prerelease: Option<CompactString>,
+}
+
+impl Version {
+    /// Parse a bare `major.minor.patch[-prerelease]` version.
+    ///
+    /// What a registry publishes under `versions`, and what the numeric part of
+    /// a dependency range is. Build metadata (`+sha`) is accepted and dropped:
+    /// semver says it takes no part in precedence, so keeping it would only
+    /// give two equal versions two spellings.
+    ///
+    /// `None` rather than an error, because every caller is asking "is this a
+    /// version" about text that is often deliberately not one — `workspace:*`,
+    /// `latest`, a `git+ssh://` URL.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        // Length first: the same bound the field parser uses, for the same
+        // reason. The input is manifest and registry text.
+        if value.is_empty() || value.len() > MAX_PACKAGE_MANAGER_FIELD_BYTES {
+            return None;
+        }
+        let value = value.split('+').next().unwrap_or(value);
+        let mut cursor = 0;
+        let major = take_number(value, &mut cursor).ok()?;
+        expect_dot(value, &mut cursor).ok()?;
+        let minor = take_number(value, &mut cursor).ok()?;
+        expect_dot(value, &mut cursor).ok()?;
+        let patch = take_number(value, &mut cursor).ok()?;
+
+        let prerelease = if value.as_bytes().get(cursor) == Some(&b'-') {
+            cursor += 1;
+            Some(take_tagged_segment(value, &mut cursor).ok()?)
+        } else {
+            None
+        };
+        if cursor != value.len() {
+            return None;
+        }
+
+        Some(Self {
+            major,
+            minor,
+            patch,
+            prerelease,
+        })
+    }
+
+    /// Whether this version is a prerelease.
+    #[must_use]
+    pub fn is_prerelease(&self) -> bool {
+        self.prerelease.is_some()
+    }
+}
+
+impl Ord for Version {
+    /// Semver precedence, section 11.
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.major, self.minor, self.patch)
+            .cmp(&(other.major, other.minor, other.patch))
+            .then_with(|| match (&self.prerelease, &other.prerelease) {
+                // "A pre-release version has lower precedence than a normal
+                // version" — the rule that makes `2.0.0-rc.1` not the newest
+                // 2.0.0 and keeps a release candidate out of a `^1` bump.
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Greater,
+                (Some(_), None) => Ordering::Less,
+                (Some(left), Some(right)) => compare_prerelease(left, right),
+            })
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Compare two prerelease segments by identifier, semver section 11.4.
+///
+/// Dot-separated: numeric identifiers compare numerically, a numeric identifier
+/// is always lower than an alphanumeric one, alphanumerics compare by ASCII, and
+/// when everything else is equal the segment with more identifiers wins. So
+/// `alpha.2` < `alpha.10` — a plain string compare puts them the other way
+/// round, which is exactly the mistake that makes a tool offer `alpha.9` as an
+/// upgrade from `alpha.10`.
+fn compare_prerelease(left: &str, right: &str) -> Ordering {
+    let mut left = left.split('.');
+    let mut right = right.split('.');
+    loop {
+        return match (left.next(), right.next()) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Less,
+            (Some(_), None) => Ordering::Greater,
+            (Some(one), Some(two)) => {
+                let ordering = match (one.parse::<u64>(), two.parse::<u64>()) {
+                    (Ok(one), Ok(two)) => one.cmp(&two),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => one.cmp(two),
+                };
+                if ordering == Ordering::Equal {
+                    continue;
+                }
+                ordering
+            }
+        };
+    }
 }
 
 impl fmt::Display for Version {

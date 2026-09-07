@@ -551,14 +551,32 @@ pub(crate) enum Commands {
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
     },
-    /// Update dependencies to the newest version their range allows.
+    /// Update dependencies, and report the ones their ranges hold back.
     ///
-    /// The ranges in `package.json` are not touched; the lockfile is. Name
-    /// packages to hold the rest still, or name none to update everything.
+    /// With no flag it is the manager's own update — everything moves to the
+    /// newest version its declared range already allows, and `package.json` is
+    /// not touched — followed by a report of what is newer than the ranges
+    /// permit. That report is usually the answer people came for.
+    ///
+    /// `--latest`, `--minor` and `--patch` rewrite the ranges to the newest
+    /// published version at or below that level, then install. Name packages to
+    /// hold the rest still, or name none for all of them.
     Update {
         /// The packages to update; all of them when none is named.
         #[arg(value_name = "PACKAGE")]
         packages: Vec<String>,
+        /// Rewrite ranges to the newest published version, then install.
+        #[arg(long, alias = "major", group = "step")]
+        latest: bool,
+        /// Rewrite ranges as far as the next minor, then install.
+        #[arg(long, group = "step")]
+        minor: bool,
+        /// Rewrite ranges as far as the next patch, then install.
+        #[arg(long, group = "step")]
+        patch: bool,
+        /// Report what would change and change nothing — no update, no install.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Re-read the workspace and record the package and runtime plan.
     ///

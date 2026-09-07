@@ -12,7 +12,10 @@
 pub mod command;
 pub mod delta;
 pub mod detect;
+pub mod manifests;
 pub mod progress;
+pub mod ranges;
+pub mod registry;
 pub mod run;
 
 use std::collections::BTreeMap;
@@ -40,10 +43,13 @@ pub use crate::detect::{
     WorkspaceMarker, YarnEdition, detect_package_manager, detect_package_manager_with,
     parse_package_manager_field, scan_lockfiles, yarn_edition_in,
 };
+pub use crate::manifests::{Changes, DEPENDENCY_FIELDS, Declaration};
 pub use crate::progress::{
     InstallPhase, InstallWatch, LINKING_IDLE, MAX_LABEL, ManagerEvent, PhaseProgress, PhaseState,
     Reader, safe_label,
 };
+pub use crate::ranges::{Level, Prefix, Range};
+pub use crate::registry::{MAX_PACKUMENT_BYTES, Packument, RegistryError};
 pub use crate::run::{
     InstallObserver, ManagerRun, ManagerRunError, ManagerStream, check_operands, installable,
     invocation_for, run_install, run_install_watched, run_operation, run_watched,
@@ -330,7 +336,19 @@ struct PackageStoreEntry<'a> {
     package: &'a LockedPackage,
 }
 
-fn discover_package_manifests(root: &Utf8Path) -> Result<Vec<Utf8PathBuf>, PackageManagerError> {
+/// Every `package.json` in the workspace: the root's, and each package's.
+///
+/// `node_modules`, `dist`, `target`, `.git`, `.uf` and every path `.gitmodules`
+/// lists are skipped — a submodule is somebody else's repository that happens
+/// to be checked out inside this one, and its manifest is not one of this
+/// project's.
+///
+/// # Errors
+///
+/// When a directory cannot be read, or holds a path that is not UTF-8.
+pub fn discover_package_manifests(
+    root: &Utf8Path,
+) -> Result<Vec<Utf8PathBuf>, PackageManagerError> {
     let mut manifests = Vec::new();
     let submodules = submodule_paths(root);
     visit_package_dirs(root, root, &submodules, &mut manifests)?;

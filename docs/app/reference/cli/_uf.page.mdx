@@ -664,11 +664,56 @@ Takes packages out of every dependency field that lists them, out of the
 lockfile and out of `node_modules`. A name the manifest never listed is not an
 error: the project ends up the way it was asked to be either way.
 
-### uf update [PACKAGE...]
+### uf update [PACKAGE...] [--latest | --minor | --patch] [--dry-run]
 
-Moves the lockfile to the newest versions the manifest's ranges already allow.
-The ranges themselves are not touched — widening one is `uf add`'s job. Name
-packages to hold the rest still, or name none to update everything.
+Two different things go by this name, and `uf update` does both.
+
+With no flag it is the manager's own update: the lockfile moves to the newest
+versions the manifest's ranges **already allow**, and `package.json` is not
+touched. Then uf reports the other half — every dependency whose newest
+published version the declared range does *not* allow:
+
+```
+  outside the range
+
+  package     declared  newest  step   manifest
+  react       ^18.2.0   19.2.8  major  .
+  react       ^17.0.0   19.2.8  major  packages/ui
+  vitest      ~1.0.0    5.0.0   major  .
+  classnames  2.2.6     2.5.1   minor  .
+
+› 4 dependencies are newer than their range allows
+› uf update --latest rewrites the ranges; --minor and --patch cap the step
+```
+
+`--latest` rewrites those ranges to the newest published version and installs.
+`--minor` and `--patch` cap how far a range may move — `--minor` holds the
+major, `--patch` holds the minor too — which is the difference between a
+Friday-afternoon update and a Monday-morning one. `--dry-run` prints the table
+and changes nothing.
+
+A rewrite keeps the comparator the project chose: `^1.2.3` becomes `^2.0.0`,
+`~1.2.3` becomes `~2.0.0`, and a pin stays a pin. Only the range moves in the
+file — indentation, key order and the trailing newline are left exactly as they
+were.
+
+Prereleases are not offered unless the range's own base is one: a project on
+`^18.2.0` is not asking to be moved to `19.0.0-rc.1`.
+
+Four range shapes are rewritten — `^1.2.3`, `~1.2.3`, `1.2.3`, `>=1.2.3` — and
+everything else is counted and left alone. `workspace:*`, `catalog:`, `npm:`,
+`file:`, a git URL and a range with more than one comparator each say something
+a single comparator cannot restate, and a tool that rewrote one would be
+throwing away a decision somebody made on purpose.
+
+Reading which versions exist is the one thing here uf does not delegate, because
+no manager will answer it: `npm outdated`, `pnpm outdated` and `yarn npm
+outdated` each report a different thing in a different shape, `bun` has no JSON
+at all, and none of the four rewrites a range. uf asks the registry the same
+question the manager's resolver would — a packument, over the registry in your
+config — and the install that follows is still the manager's. A registry that
+cannot be reached is reported next to the packages it could not answer for; it
+does not fail the command.
 
 This is **not** `uf upgrade`, which is about the toolchain and the workspace
 plan rather than about your dependencies.
