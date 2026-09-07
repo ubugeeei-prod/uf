@@ -4,7 +4,7 @@
 use uf_config::UniflowedConfig;
 use uf_infra::memchr_iter;
 
-use crate::scan::{FileScan, find_all, find_words, starts_word};
+use crate::scan::{FileScan, find_all, find_words, heads_a_command, starts_word};
 use crate::{Diagnostic, push, push_at, push_in_code, severity};
 
 pub(crate) fn run_no_tabs(
@@ -79,6 +79,11 @@ pub(crate) fn run_no_trailing_whitespace(
 }
 
 /// Package-manager invocations that belong in `uf.config.js` tasks instead.
+///
+/// A name here is only reported where it *heads a command* — see
+/// [`heads_a_command`]. Matching the characters anywhere made a filename in an
+/// array of format targets a shell invocation, and a test's own title another
+/// one (ubugeeei-prod/uf#478).
 const PACKAGE_MANAGER_WORDS: [&str; 4] = ["yarn", "pnpm", "bunx", "npx"];
 
 pub(crate) fn run_no_npm_script_invocation(
@@ -99,7 +104,10 @@ pub(crate) fn run_no_npm_script_invocation(
 
     for (position, line) in scan.lines.iter().enumerate() {
         let code = line.code();
-        for at in find_all(code, "npm run").filter(|&at| starts_word(code, at)) {
+        for at in find_all(code, "npm run")
+            .filter(|&at| starts_word(code, at))
+            .filter(|&at| heads_a_command(code, at, "npm".len()))
+        {
             push_in_code(
                 diagnostics,
                 scan,
@@ -111,7 +119,9 @@ pub(crate) fn run_no_npm_script_invocation(
             );
         }
         for word in PACKAGE_MANAGER_WORDS {
-            for at in find_words(code, word) {
+            // The name has to head a command, not merely appear. See
+            // `scan::heads_a_command` for what that costs and what it bought.
+            for at in find_words(code, word).filter(|&at| heads_a_command(code, at, word.len())) {
                 push_in_code(
                     diagnostics,
                     scan,

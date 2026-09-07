@@ -84,6 +84,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("test", "here, and testing.rs for the runner"),
     ("update", "dependencies.rs: runs the package manager"),
     (
+        "pm",
+        "here, and approve/tests.rs for the listing and npm's sentence",
+    ),
+    (
         "patch",
         "dependencies.rs: asks the package manager, or names patch-package",
     ),
@@ -119,6 +123,7 @@ const READ_ONLY: &[&[&str]] = &[
     &["env", "doctor"],
     &["env", "list"],
     &["env", "gc", "--dry-run"],
+    &["pm", "approve-builds"],
     &["catalog"],
     &["explain", "dev"],
     &["fmt", "--check"],

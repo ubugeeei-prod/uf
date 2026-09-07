@@ -83,10 +83,59 @@ decisions are:
 | Tarballs from `codeload.github.com` not hash-pinned in the lockfile | Every resolved artifact carries an integrity hash in `uf.lock`; a source without one is a hard error, not a warning | todo |
 | Binary planting through the `bin` field | `bin` targets are validated as single path segments inside the package, and shims are written only into the store's own bin directory | todo |
 | `npx`-style execution of a package the project never installed | `uf exec` runs an installed binary from `node_modules/.bin` without ceremony, and **refuses** to fetch a name that is not in the lockfile unless the caller passes `--yes`. Fetching and running an unpinned package is strictly more dangerous than a `postinstall`, so it asks at least as loudly | `crates/uf_cli/tests/cli.rs` |
-| Lifecycle scripts as an RCE vector | npm scripts are **forbidden by default** — `uf install` fails on a manifest that declares them. Project automation lives in `uf.config.js` tasks | `crates/uf_pm` |
+| Lifecycle scripts as an RCE vector | npm scripts are **forbidden by default** — `uf install` fails on a manifest that declares them, and `--ignore-scripts` goes to the manager so no *dependency* runs one either. `uf pm approve-builds` is the way back in, one package at a time; see below | `crates/uf_pm`, `uf_pm::builds` |
 | Shell injection through the `packageManager` field | Parsed by a hand-written single-pass parser with no regex (ReDoS), and `Invocation.program` comes only from a fixed program table, so no manifest text can name a program or inject an argument | `uf_pm::detect` |
 | Prototype-pollution keys in manifest JSON | `__proto__`, `constructor`, and `prototype` are reported and dropped wherever manifest JSON becomes a map | `uf_pm::detect` |
 | Terminal escape sequences in a package name, injected into a progress display that steers the cursor | Every name taken out of a manager's output is stripped of control characters and length-capped before it can be drawn, and the redrawn region cuts each row to a fixed width, so no registry text can move the cursor | `uf_pm::progress` |
+
+### Dependency install scripts
+
+A dependency with a `postinstall` script is arbitrary code, run on the machine
+of everyone who installs it, before anybody has read a line of it. uf passes
+`--ignore-scripts` to every manager by default, so none of them runs.
+
+That is safe and it is not free: `esbuild`, `sharp` and everything else with a
+native binary to place will not work until their build runs.
+`uf pm approve-builds` lists what is waiting, with the hooks each package declares, and records the
+ones you have read:
+
+```
+  package  version  runs         approved
+  esbuild  0.24.0   postinstall  no
+  sharp    0.33.5   postinstall  no
+
+› 2 packages would run code at install time and are not approved, so uf does not let them run
+```
+
+The approved set goes in the root `package.json`, in the field the project's own
+package manager already reads:
+
+| manager | field |
+| --- | --- |
+| pnpm | `pnpm.onlyBuiltDependencies` |
+| bun | `trustedDependencies` |
+| yarn 2+ | `dependenciesMeta.<name>.built` |
+| npm, yarn 1 | — |
+
+Not a file of uf's own, and not a mirror of anybody's config schema: uf records
+the decision and the manager enforces it, so a project that stops using uf keeps
+a working allow-list and one that already had a list is read rather than
+overridden. `--ignore-scripts` comes off only when the manager can enforce the
+list *and* the list has something in it — an empty `onlyBuiltDependencies` is
+pnpm's way of saying "none", and dropping the flag for it would turn that into
+"whatever the manager defaults to".
+
+**npm and Yarn 1 cannot do this.** `--ignore-scripts` is every script or none,
+and there is no third answer to give it. uf keeps them off and says so, rather
+than offering an approval that quietly means "and everything else too". Turning
+them all on is `pm.allowLifecycleScripts: true` in `uf.config.js` — a deliberate
+act with a deliberate spelling, which approves every dependency you have,
+including the ones you have not read. `uf pm approve-builds` will not do it
+for you.
+
+Approving does not install. A security command that reached for the install the
+moment you made the decision would be a command that runs the script you were
+still thinking about.
 
 ## Config and plugins
 
@@ -181,6 +230,46 @@ the allow-list in the first commit rather than after one.
   review as any other dependency bump.
 - `cargo-fuzz` builds on every pull request that touches the workspace, and
   `tools/legal` tracks the license of every built-in dependency.
+
+## Checked against what actually happened
+
+The tables above are structural decisions. This section is the other direction:
+the published failures of the two frameworks uf is closest to, each one asked of
+uf's own code, with the answer and where to verify it. A row here is a claim
+about a specific file, not a posture.
+
+| Their failure | uf's answer | Where |
+| --- | --- | --- |
+| **[CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927)** — Next.js middleware bypassed by a request header (`x-middleware-subrequest`) the framework used to talk to itself | No request header steers control flow anywhere in the request path. The only one read at all is `Host`, and it sets the URL's authority rather than skipping a layer. There is no internal channel to forge because uf passes none | `packages/server/standalone.js`, `packages/server/fetch.js` |
+| **[CVE-2024-34351](https://nvd.nist.gov/vuln/detail/CVE-2024-34351)** — Next.js server-action SSRF through a forged `Host` | A server action needs three things a cross-site caller cannot have: `POST` with a `uf-action` header (not a simple request, so it needs a preflight nothing answers), `content-type: application/json` (which no `<form>` can produce), and `Origin` equal to `Host`. `Origin: null` is refused rather than matched. `X-Forwarded-Host` is never consulted — a proxy that rewrites `Host` turns actions into `403`s, which is the right way to find out | `packages/router/internal/action-endpoint.js` |
+| **[CVE-2023-46298](https://nvd.nist.gov/vuln/detail/CVE-2023-46298)** — Next.js cached a personalised SSR response and served it to everybody | The route cache stores nothing when the render read the request, nothing when the response carries `Set-Cookie`, and nothing for a status that is not `200`. The "read the request" test is a comparison of request-state reads across the render, so a component inside a `<Suspense>` boundary that reads a cookie counts as much as the shell | `packages/server/fetch.js`, `tests/library/cache.test.js` |
+| **[CVE-2025-32421](https://nvd.nist.gov/vuln/detail/CVE-2025-32421)** — Next.js cache confusion between a page and its data route | uf has no parallel data route to confuse a page with, and the key is the method, the path and the search string together | `packages/server/internal/cache-key.js` |
+| Absolute URLs built from a forged `Host` and then cached, so a poisoned entry advertises the attacker's origin in `canonical` and `og:url` | `metadataBase` is a site-wide setting, not a per-request value: a route module cannot see the host it is served from, so there is nothing per-request to poison | `packages/router/internal/runtime.js` |
+| **[CVE-2021-37699](https://nvd.nist.gov/vuln/detail/CVE-2021-37699)** — open redirect from a path the framework normalised | A redirect is a status and a `Location` the application wrote; uf synthesises none from user input | — |
+| **[CVE-2018-6341](https://nvd.nist.gov/vuln/detail/CVE-2018-6341)** — React DOM server-side attribute injection | The renderer is React's own, and uf adds no attribute path around it. `Metadata` values reach `<meta content>` as React children, which React escapes | `packages/router/internal/runtime.js` |
+| Path traversal in static file serving | Decoded, NUL refused, `path.resolve`, and then required to be the root or under it — the check after normalisation rather than before | `packages/server/node.js` |
+| **Symlink escape** from a served directory | The file that is opened is realpath'd and required to be inside the realpath'd root, so a link that reads as inside and points outside is a 404 — indistinguishable from a file that is not there. A link that stays inside still works | `packages/server/node.js`, `tests/library/serve.test.js` |
+
+## Supply chain
+
+Where the code comes from, asked with the same directness.
+
+| Attack | uf's answer | Where |
+| --- | --- | --- |
+| A dependency runs code at install time | `--ignore-scripts` to every manager, always, by default. Getting one package back is `uf pm approve-builds <name>`, recorded in the field the project's own manager reads; the flag comes off only when the manager can enforce a list *and* the list has something in it | `crates/uf_pm/src/builds.rs` |
+| A package's own manifest declares scripts | `uf install` refuses the workspace before anything is fetched. Project automation is `uf.config.js` tasks | `crates/uf_pm` |
+| A tarball's bytes are not the bytes that were resolved | Every artefact carries an integrity hash in `uf.lock`; a source without one is a hard error. SHA-1 is refused outright — a check that can be forged is a check in name only | `crates/uf_env/src/archive.rs` |
+| Fetching and running a package the project never installed | `uf exec` refuses a name that is not in the lockfile without `--yes`. It is strictly more dangerous than a `postinstall`, so it asks at least as loudly | `crates/uf_cli/tests/cli.rs` |
+| A registry read leaks credentials | Packument reads are HTTPS only — `http://` refused, loopback included — a URL with an authority is refused outright, and curl is given `--proto =https --proto-redir =https` so a `301` cannot undo either | `crates/uf_pm/src/registry.rs` |
+| uf's own npm publish uses a long-lived token | It does not have one. Publishing is OIDC trusted publishing, bound to `publish.yml`; there is no npm token in the repository or its secrets | `.github/workflows/publish.yml` |
+| A compromised GitHub Action | Every action is pinned to a commit SHA and `zizmor` gates the workflows in CI | `.github/workflows/` |
+| **A compromised release host** | **Not answered yet.** `install.sh` verifies a SHA-256 that it downloads from the same host as the archive, so it proves transit and not origin. [#551](https://github.com/ubugeeei-prod/uf/issues/551) | — |
+| **A package published by a taken-over account** | **Not answered yet.** npm publishes provenance attestations and uf reads none of them; an integrity hash says the bytes are what uf resolved, not that they came from the source the package claims. [#552](https://github.com/ubugeeei-prod/uf/issues/552) | — |
+| **Dependency confusion** | **Not answered yet.** A scope cannot be bound to a registry, so a private name has nothing stopping a public answer. [#553](https://github.com/ubugeeei-prod/uf/issues/553) | — |
+
+The rows that say "not answered yet" are the point of both tables. A list where
+every row says "handled" is a list nobody checked, and the three above are open
+issues rather than sentences.
 
 ## Reporting
 

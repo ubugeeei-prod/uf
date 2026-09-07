@@ -48,6 +48,7 @@ use uf_pm::{
 use uf_term::{Cell, Column, KeyValue, Renderer, Status, Table, Tone, format_duration};
 
 use super::install::{chosen_by, lockfile_label, render_change_counts, render_change_table};
+use super::scripts_allowed;
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
 
@@ -303,7 +304,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         &resolved.root,
         request.operation,
         request.operands,
-        !plan.forbids_npm_scripts(),
+        scripts_allowed(&resolved.root, manager, &plan)?,
     )
     .map_err(|error| {
         failed_hint(
