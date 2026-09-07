@@ -113,11 +113,20 @@ pub enum Operation<'a> {
     Update,
     /// Explain why a package is present in the dependency tree.
     Why,
+    /// List the installed dependency tree.
+    List,
+    /// Audit the installed tree against the registry's advisories.
+    Audit,
+    /// Search the registry; the caller appends the terms.
+    ///
+    /// The first operation the table cannot answer for every manager: yarn and
+    /// bun have no search. That is why [`command_for`] returns an [`Option`].
+    Search,
 }
 
 impl Operation<'_> {
     /// Every operation, with a representative payload, for exhaustive testing.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 15] = [
         Self::Install,
         Self::InstallFrozen,
         Self::Add {
@@ -138,6 +147,9 @@ impl Operation<'_> {
         Self::DlxExec,
         Self::Update,
         Self::Why,
+        Self::List,
+        Self::Audit,
+        Self::Search,
     ];
 
     /// Whether this operation can cause a dependency's install scripts to run.
@@ -154,7 +166,31 @@ impl Operation<'_> {
             | Self::Add { .. }
             | Self::Remove
             | Self::Update => true,
-            Self::Run { .. } | Self::Exec | Self::DlxExec | Self::Why => false,
+            Self::Run { .. }
+            | Self::Exec
+            | Self::DlxExec
+            | Self::Why
+            | Self::List
+            | Self::Audit
+            | Self::Search => false,
+        }
+    }
+
+    /// The operation's name, for a message about a manager that has no command
+    /// for it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Install | Self::InstallFrozen => "install",
+            Self::Add { .. } => "add",
+            Self::Remove => "remove",
+            Self::Run { .. } => "run",
+            Self::Exec | Self::DlxExec => "exec",
+            Self::Update => "update",
+            Self::Why => "why",
+            Self::List => "ls",
+            Self::Audit => "audit",
+            Self::Search => "search",
         }
     }
 }
@@ -182,10 +218,16 @@ impl fmt::Display for Invocation {
     }
 }
 
-/// Map a package manager operation onto the command that performs it.
+/// Map a package manager operation onto the command that performs it, or
+/// [`None`] when the manager has no command for it.
+///
+/// [`None`] is a real answer rather than a gap to fill in later: yarn and bun
+/// have no registry search, and the only honest thing uf can do is say so.
+/// Falling back to another manager would run a program the project did not
+/// choose, which is the one thing a package-manager-agnostic tool must not do.
 #[must_use]
-pub fn command_for(manager: PackageManager, operation: Operation<'_>) -> Invocation {
-    let spec = command_spec(manager, operation);
+pub fn command_for(manager: PackageManager, operation: Operation<'_>) -> Option<Invocation> {
+    let spec = command_spec(manager, operation)?;
     let mut args = InvocationArgs::with_capacity(spec.args.len() + 1);
     args.extend(spec.args.iter().copied().map(Cow::Borrowed));
 
@@ -193,10 +235,10 @@ pub fn command_for(manager: PackageManager, operation: Operation<'_>) -> Invocat
         args.push(Cow::Owned(task.to_owned()));
     }
 
-    Invocation {
+    Some(Invocation {
         program: spec.program,
         args,
-    }
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -205,11 +247,21 @@ struct CommandSpec {
     args: &'static [&'static str],
 }
 
-const fn spec(program: &'static str, args: &'static [&'static str]) -> CommandSpec {
-    CommandSpec { program, args }
+const fn spec(program: &'static str, args: &'static [&'static str]) -> Option<CommandSpec> {
+    Some(CommandSpec { program, args })
 }
 
-fn command_spec(manager: PackageManager, operation: Operation<'_>) -> CommandSpec {
+/// The manager has no command for this operation.
+///
+/// Not a fallback and never a substitution: a package manager that quietly ran
+/// a different one is how a lockfile comes to be written by something the
+/// project did not choose. The caller is told which manager and which
+/// operation, and says so.
+const fn unsupported() -> Option<CommandSpec> {
+    None
+}
+
+fn command_spec(manager: PackageManager, operation: Operation<'_>) -> Option<CommandSpec> {
     match manager {
         PackageManager::Uf => uf_spec(operation),
         PackageManager::Npm => npm_spec(operation),
@@ -223,7 +275,7 @@ fn command_spec(manager: PackageManager, operation: Operation<'_>) -> CommandSpe
 /// uf's own contract. `uf install` is lockfile-deterministic either way, and
 /// `uf exec` always resolves through the content-addressed store, so `Exec` and
 /// `DlxExec` coincide.
-const fn uf_spec(operation: Operation<'_>) -> CommandSpec {
+const fn uf_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("uf", &["install"]),
         Operation::InstallFrozen => spec("uf", &["install", "--frozen-lockfile"]),
@@ -244,10 +296,13 @@ const fn uf_spec(operation: Operation<'_>) -> CommandSpec {
         Operation::Exec | Operation::DlxExec => spec("uf", &["exec"]),
         Operation::Update => spec("uf", &["update"]),
         Operation::Why => spec("uf", &["why"]),
+        Operation::List => spec("uf", &["ls"]),
+        Operation::Audit => spec("uf", &["audit"]),
+        Operation::Search => spec("uf", &["search"]),
     }
 }
 
-const fn npm_spec(operation: Operation<'_>) -> CommandSpec {
+const fn npm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install
         | Operation::Add {
@@ -271,10 +326,13 @@ const fn npm_spec(operation: Operation<'_>) -> CommandSpec {
         Operation::DlxExec => spec("npx", &["--yes"]),
         Operation::Update => spec("npm", &["update"]),
         Operation::Why => spec("npm", &["explain"]),
+        Operation::List => spec("npm", &["ls"]),
+        Operation::Audit => spec("npm", &["audit"]),
+        Operation::Search => spec("npm", &["search"]),
     }
 }
 
-const fn pnpm_spec(operation: Operation<'_>) -> CommandSpec {
+const fn pnpm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("pnpm", &["install"]),
         Operation::InstallFrozen => spec("pnpm", &["install", "--frozen-lockfile"]),
@@ -296,12 +354,18 @@ const fn pnpm_spec(operation: Operation<'_>) -> CommandSpec {
         Operation::DlxExec => spec("pnpm", &["dlx"]),
         Operation::Update => spec("pnpm", &["update"]),
         Operation::Why => spec("pnpm", &["why"]),
+        Operation::List => spec("pnpm", &["list"]),
+        Operation::Audit => spec("pnpm", &["audit"]),
+        // Added in pnpm 11. An older pnpm answers with its own "unknown
+        // command", which names the manager and the version, and is a better
+        // message than one uf could write about a version it did not check.
+        Operation::Search => spec("pnpm", &["search"]),
     }
 }
 
 /// Yarn 1.x has neither `exec` nor `dlx`: `yarn run <bin>` runs a project binary
 /// and `npx` is the only fetch-and-run available.
-const fn yarn_classic_spec(operation: Operation<'_>) -> CommandSpec {
+const fn yarn_classic_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("yarn", &["install"]),
         Operation::InstallFrozen => spec("yarn", &["install", "--frozen-lockfile"]),
@@ -311,12 +375,16 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> CommandSpec {
         Operation::DlxExec => spec("npx", &["--yes"]),
         Operation::Update => spec("yarn", &["upgrade"]),
         Operation::Why => spec("yarn", &["why"]),
+        Operation::List => spec("yarn", &["list"]),
+        Operation::Audit => spec("yarn", &["audit"]),
+        // Yarn 1 has no registry search, and neither does Yarn 2+.
+        Operation::Search => unsupported(),
     }
 }
 
 /// Both Yarn editions spell the dependency maps the same way, which is why
 /// `Add` is the one row the editions share a function for.
-const fn yarn_add(kind: DependencyKind) -> CommandSpec {
+const fn yarn_add(kind: DependencyKind) -> Option<CommandSpec> {
     match kind {
         DependencyKind::Prod => spec("yarn", &["add"]),
         DependencyKind::Dev => spec("yarn", &["add", "--dev"]),
@@ -326,7 +394,7 @@ const fn yarn_add(kind: DependencyKind) -> CommandSpec {
 }
 
 /// Yarn 2+ renamed the frozen install to `--immutable` and the update to `yarn up`.
-const fn yarn_berry_spec(operation: Operation<'_>) -> CommandSpec {
+const fn yarn_berry_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("yarn", &["install"]),
         Operation::InstallFrozen => spec("yarn", &["install", "--immutable"]),
@@ -337,10 +405,16 @@ const fn yarn_berry_spec(operation: Operation<'_>) -> CommandSpec {
         Operation::DlxExec => spec("yarn", &["dlx"]),
         Operation::Update => spec("yarn", &["up"]),
         Operation::Why => spec("yarn", &["why"]),
+        // `yarn list` is Yarn 1's; Berry replaced it with `yarn info`, whose
+        // `--all` is the whole project rather than the current workspace.
+        Operation::List => spec("yarn", &["info", "--all"]),
+        // Berry keeps the registry commands under `yarn npm`.
+        Operation::Audit => spec("yarn", &["npm", "audit"]),
+        Operation::Search => unsupported(),
     }
 }
 
-const fn bun_spec(operation: Operation<'_>) -> CommandSpec {
+const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("bun", &["install"]),
         Operation::InstallFrozen => spec("bun", &["install", "--frozen-lockfile"]),
@@ -361,6 +435,10 @@ const fn bun_spec(operation: Operation<'_>) -> CommandSpec {
         Operation::DlxExec => spec("bunx", &[]),
         Operation::Update => spec("bun", &["update"]),
         Operation::Why => spec("bun", &["why"]),
+        Operation::List => spec("bun", &["pm", "ls"]),
+        Operation::Audit => spec("bun", &["audit"]),
+        // Bun has no registry search.
+        Operation::Search => unsupported(),
     }
 }
 

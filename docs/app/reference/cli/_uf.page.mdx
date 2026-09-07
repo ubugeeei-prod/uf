@@ -666,6 +666,43 @@ lockfile — `npm explain`, `pnpm why`, `yarn why`, `bun why` — so the chain
 printed is the chain that was actually installed. It writes nothing at all, not
 even `uf.lock`.
 
+### uf ls [NAME...]
+
+Lists the installed tree, through the same manager — `npm ls`, `pnpm list`,
+`yarn list` on Yarn 1, `yarn info --all` on Yarn 2+, `bun pm ls`. A package
+name narrows it.
+
+### uf audit [NAME...]
+
+Audits the installed tree against the registry's advisories: `npm audit`,
+`pnpm audit`, `yarn audit`, `yarn npm audit` on Yarn 2+, `bun audit`.
+
+### uf search TERM...
+
+Searches the registry. **npm and pnpm can; Yarn and bun cannot**, and uf says
+so rather than running a manager the project did not choose:
+
+<figure className="terminal">
+
+```
+error: bun has no `search`: npm and pnpm can search the registry;
+`uf exec --yes npm search` runs npm's without changing what this project
+installs with
+```
+
+</figure>
+
+That refusal is the design rather than a gap. A tool that quietly reached for
+another manager would resolve against that manager's registry configuration and
+could write its own lockfile, which is the one thing a manager-agnostic front
+end must not do.
+
+Each of the three takes package names and no flags. A manager's own flags are
+its own surface — reached with `uf exec` — because uf cannot know which of them
+only read: `pnpm audit --fix` rewrites a lockfile.
+
+`uf uninstall` is `uf remove`, which npm and pnpm both spell that way.
+
 ## Environment
 
 ### uf use TOOLCHAIN

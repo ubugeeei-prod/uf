@@ -315,6 +315,15 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Use { runtime } => commands::pm::use_runtime(&cwd, ui, &runtime),
         Commands::Upgrade => commands::pm::upgrade(&cwd, ui),
         Commands::Why { package } => commands::pm::why(&cwd, ui, &package),
+        Commands::Ls { args } => {
+            commands::pm::query(&cwd, ui, "uf ls", uf_pm::Operation::List, &args)
+        }
+        Commands::Audit { args } => {
+            commands::pm::query(&cwd, ui, "uf audit", uf_pm::Operation::Audit, &args)
+        }
+        Commands::Search { terms } => {
+            commands::pm::query(&cwd, ui, "uf search", uf_pm::Operation::Search, &terms)
+        }
     }
 }
 

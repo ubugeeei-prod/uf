@@ -66,7 +66,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
             },
             "writes the specifiers into dependencies, the lockfile and node_modules",
         ),
-        "remove" => dependency_stages(
+        "remove" | "uninstall" => dependency_stages(
             &resolved,
             Operation::Remove,
             "takes the names out of every dependency field, the lockfile and node_modules",
@@ -77,6 +77,23 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
             "moves the lockfile to the newest versions the manifest ranges already allow",
         ),
         "why" => why_stages(&resolved),
+        "ls" => query_stages(
+            &resolved,
+            Operation::List,
+            "the manager reads its own lockfile and prints the tree it installed",
+        ),
+        "audit" => query_stages(
+            &resolved,
+            Operation::Audit,
+            "the manager sends the tree to its registry's advisory endpoint and reports what \
+             came back",
+        ),
+        "search" => query_stages(
+            &resolved,
+            Operation::Search,
+            "the manager queries its own registry — which is the reason uf does not substitute \
+             another manager's search for one that has none",
+        ),
         "upgrade" => upgrade_stages(&resolved),
         "use" | "env" => runtime_stages(&resolved),
         "prepare" => prepare_stages(&resolved),
@@ -248,11 +265,10 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "everything else",
-            provider: command_for(
+            provider: provider_for(
                 fetchable(detect_package_manager(&resolved.root).package_manager),
                 Operation::DlxExec,
-            )
-            .to_string(),
+            ),
             detail: format!(
                 "a package that is not installed: refused unless --yes, because fetching a name {} does not pin runs code the project never asked for",
                 resolved.config.pm.lockfile
@@ -318,7 +334,7 @@ fn dependency_stages(
         },
         Stage {
             name: "resolution and install",
-            provider: command_for(manager, operation).to_string(),
+            provider: provider_for(manager, operation),
             detail: what.to_string(),
         },
         Stage {
@@ -332,12 +348,38 @@ fn dependency_stages(
     ]
 }
 
+/// The command a manager runs for an operation, or the fact that it has none.
+///
+/// `uf explain` answers "which provider does each part", and for a manager
+/// without the command the honest answer is that nothing does — not the
+/// command some other manager would have run.
+fn provider_for(manager: uf_pm::PackageManager, operation: Operation<'_>) -> String {
+    command_for(manager, operation).map_or_else(
+        || format!("none — {manager} has no `{}`", operation.name()),
+        |invocation| invocation.to_string(),
+    )
+}
+
+/// `uf ls`, `uf audit` and `uf search`: one stage, because they write nothing.
+///
+/// The same shape as [`why_stages`]. Separate because the answer for a manager
+/// that has no such command is the interesting one, and [`provider_for`] is
+/// where it is said.
+fn query_stages(resolved: &ResolvedConfig, operation: Operation<'_>, what: &str) -> Vec<Stage> {
+    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    vec![Stage {
+        name: "the answer",
+        provider: provider_for(manager, operation),
+        detail: what.to_owned(),
+    }]
+}
+
 /// `uf why`, which changes nothing and therefore has one stage.
 fn why_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     let manager = installable(&detect_package_manager(&resolved.root)).0;
     vec![Stage {
         name: "the answer",
-        provider: command_for(manager, Operation::Why).to_string(),
+        provider: provider_for(manager, Operation::Why),
         detail: format!(
             "the manager reads its own lockfile and prints the chain; uf writes nothing, not even {}",
             resolved.config.pm.lockfile

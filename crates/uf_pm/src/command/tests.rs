@@ -1,7 +1,18 @@
 use super::*;
 
 fn rendered(manager: PackageManager, operation: Operation<'_>) -> String {
-    command_for(manager, operation).to_string()
+    supported(manager, operation).to_string()
+}
+
+/// The invocation, or a panic naming the pair that has none.
+///
+/// Most of this file is about *which* command a manager runs, and every pair
+/// it asserts on has one. The pairs that do not are
+/// `search_is_unsupported_where_the_manager_has_none`'s, which asks the
+/// opposite question.
+fn supported(manager: PackageManager, operation: Operation<'_>) -> Invocation {
+    command_for(manager, operation)
+        .unwrap_or_else(|| panic!("{manager} has no command for {operation:?}"))
 }
 
 const fn add(kind: DependencyKind) -> Operation<'static> {
@@ -255,7 +266,9 @@ fn bun_maps_every_operation() {
 fn every_manager_and_operation_pair_maps_to_an_allowlisted_program() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
-            let invocation = command_for(manager, operation);
+            let Some(invocation) = command_for(manager, operation) else {
+                continue;
+            };
             assert!(
                 PROGRAMS.contains(&invocation.program),
                 "{manager} {operation:?} escaped the program allowlist"
@@ -267,8 +280,8 @@ fn every_manager_and_operation_pair_maps_to_an_allowlisted_program() {
 #[test]
 fn frozen_installs_differ_from_plain_installs_for_every_manager() {
     for manager in PackageManager::ALL {
-        let install = command_for(manager, Operation::Install);
-        let frozen = command_for(manager, Operation::InstallFrozen);
+        let install = supported(manager, Operation::Install);
+        let frozen = supported(manager, Operation::InstallFrozen);
         assert_ne!(install, frozen, "{manager} has no distinct frozen install");
     }
 }
@@ -283,7 +296,7 @@ fn every_dependency_kind_maps_to_its_own_command_for_every_manager() {
     for manager in PackageManager::ALL {
         let mut seen: Vec<(DependencyKind, Invocation)> = Vec::new();
         for kind in DependencyKind::ALL {
-            let invocation = command_for(manager, add(kind));
+            let invocation = supported(manager, add(kind));
             for (earlier, previous) in &seen {
                 assert_ne!(
                     *previous, invocation,
@@ -308,15 +321,21 @@ fn a_dependency_kind_names_its_manifest_field() {
     assert_eq!(DependencyKind::Peer.manifest_field(), "peerDependencies");
 }
 
-/// The read-only operation is the only one that must not be told to ignore
-/// scripts, because it installs nothing and the flag is not its vocabulary.
+/// The read-only operations are the ones that must not be told to ignore
+/// scripts, because they install nothing and the flag is not their vocabulary.
 #[test]
 fn only_the_operations_that_install_can_run_scripts() {
     for operation in Operation::ALL {
         let installs = operation.installs_packages();
         let expected = !matches!(
             operation,
-            Operation::Run { .. } | Operation::Exec | Operation::DlxExec | Operation::Why
+            Operation::Run { .. }
+                | Operation::Exec
+                | Operation::DlxExec
+                | Operation::Why
+                | Operation::List
+                | Operation::Audit
+                | Operation::Search
         );
         assert_eq!(installs, expected, "{operation:?}");
     }
@@ -325,7 +344,7 @@ fn only_the_operations_that_install_can_run_scripts() {
 #[test]
 fn run_appends_the_task_as_the_final_argument() {
     for manager in PackageManager::ALL {
-        let invocation = command_for(manager, Operation::Run { task: "test:unit" });
+        let invocation = supported(manager, Operation::Run { task: "test:unit" });
         assert_eq!(
             invocation.args.last().map(Cow::as_ref),
             Some("test:unit"),
@@ -336,7 +355,7 @@ fn run_appends_the_task_as_the_final_argument() {
 
 #[test]
 fn a_hostile_task_name_stays_a_single_argument() {
-    let invocation = command_for(
+    let invocation = supported(
         PackageManager::Pnpm,
         Operation::Run {
             task: "build; rm -rf /",
@@ -350,14 +369,14 @@ fn a_hostile_task_name_stays_a_single_argument() {
 
 #[test]
 fn an_empty_task_name_is_still_one_argument() {
-    let invocation = command_for(PackageManager::Npm, Operation::Run { task: "" });
+    let invocation = supported(PackageManager::Npm, Operation::Run { task: "" });
 
     assert_eq!(invocation.args.as_slice(), ["run", ""]);
 }
 
 #[test]
 fn a_non_ascii_task_name_survives_intact() {
-    let invocation = command_for(PackageManager::Bun, Operation::Run { task: "ビルド" });
+    let invocation = supported(PackageManager::Bun, Operation::Run { task: "ビルド" });
 
     assert_eq!(invocation.args.last().map(Cow::as_ref), Some("ビルド"));
 }
@@ -366,7 +385,9 @@ fn a_non_ascii_task_name_survives_intact() {
 fn mapped_invocations_never_allocate_beyond_the_inline_capacity() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
-            let invocation = command_for(manager, operation);
+            let Some(invocation) = command_for(manager, operation) else {
+                continue;
+            };
             assert!(
                 !invocation.args.spilled(),
                 "{manager} {operation:?} spilled"
@@ -414,6 +435,43 @@ fn yarn_editions_disagree_exactly_where_yarn_changed() {
             Operation::Exec,
             Operation::DlxExec,
             Operation::Update,
+            // Yarn 1's `yarn list` became `yarn info` in Berry, and Berry put
+            // the registry commands under `yarn npm`.
+            Operation::List,
+            Operation::Audit,
         ]
     );
+}
+
+/// The pairs the table cannot answer, named rather than counted.
+///
+/// A manager that gains the command is a change to this list, which is the
+/// point: "yarn has no search" should stop being true the day it stops being
+/// true, and nothing else in the crate would notice.
+#[test]
+fn search_is_unsupported_where_the_manager_has_none() {
+    let without = PackageManager::ALL
+        .into_iter()
+        .filter(|manager| command_for(*manager, Operation::Search).is_none())
+        .collect::<Vec<_>>();
+
+    // In `PackageManager::ALL`'s own order.
+    assert_eq!(without, [PackageManager::Bun, YARN_BERRY, YARN_CLASSIC]);
+}
+
+/// And search is the only one, so every other operation is answerable by every
+/// manager uf supports.
+#[test]
+fn search_is_the_only_operation_a_manager_can_lack() {
+    for manager in PackageManager::ALL {
+        for operation in Operation::ALL {
+            if matches!(operation, Operation::Search) {
+                continue;
+            }
+            assert!(
+                command_for(manager, operation).is_some(),
+                "{manager} has no command for {operation:?}"
+            );
+        }
+    }
 }

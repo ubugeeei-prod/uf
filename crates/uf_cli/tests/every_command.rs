@@ -80,6 +80,12 @@ const COVERAGE: &[(&str, &str)] = &[
     ("update", "dependencies.rs: runs the package manager"),
     ("upgrade", "workflow.rs: resolves new versions"),
     ("use", "workflow.rs: rewrites the config"),
+    ("ls", "dependencies.rs: asks the package manager"),
+    ("audit", "dependencies.rs: asks the package manager"),
+    (
+        "search",
+        "dependencies.rs: asks the package manager, or says it cannot",
+    ),
     ("why", "dependencies.rs: asks the package manager"),
     // Last, because `uf --help` prints clap's own `help` last.
     ("help", "here"),
