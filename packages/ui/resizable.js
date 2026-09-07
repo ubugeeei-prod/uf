@@ -10,8 +10,42 @@
 //
 // Almost every resizable panel on the web is pointer-only, which is a WCAG
 // 2.1.1 failure — no keyboard operation at all — and a 2.5.7 one on top of it.
-// If uf ships one, the keyboard is the feature, so the keyboard is what this
-// module is: there is no drag here yet, and there is a complete key map.
+// If uf ships one the keyboard is the feature, so the keyboard was written
+// first and shipped on its own: a keyboard-only splitter is a working
+// splitter, where a pointer-only one is not.
+//
+// It was not the finished control. A bar between two panes is a bar that
+// approximately everybody takes hold of first, and this one could not be
+// moved that way at all. Both halves are here now, and the key map is exactly
+// what it was — a drag that had quietly replaced it would be the first failure
+// in the other direction.
+//
+// # The drag, and the step it does not use
+//
+// It is `slider.js`'s `Slider.Track` arithmetic measured against the *group's*
+// box rather than a track's. `pointerdown` captures the pointer, so a drag
+// that wanders off a bar four pixels wide — which every drag does — keeps
+// arriving at the handle instead of being lost to whatever it wandered over;
+// `pointermove` turns the position into a percentage from
+// `getBoundingClientRect`; and the percentage goes through `internal/range.js`
+// like every other value here, so a drag cannot leave the pane anywhere an
+// arrow key could not put it, and `aria-valuenow` is true about it while it
+// moves.
+//
+// Pressing the handle does not move it. A press on a *track* means "put the
+// value here", which is what `Slider.Track` does with one and why it is half
+// of WCAG 2.5.7 there; a press on a handle means "take hold of this". A
+// splitter that also jumped by the distance between the pointer and its own
+// centre would move a little every time it was clicked, which is the one thing
+// a person who clicked it did not ask for.
+//
+// `step` stays the keyboard's, and the pointer has one of its own. `step`
+// defaults to 10 because ten presses of an arrow key ought to cross the pane,
+// and 10 is an absurd granularity for a bar being dragged under a pointer that
+// moves smoothly. The pointer's is one percent, and it is a constant rather
+// than a second prop because the value is already a percentage of the group:
+// one is the smallest move that means anything, and a splitter announcing
+// 47.382 would be reading out its arithmetic rather than its size.
 //
 // # The two separators in this package are not the same thing
 //
@@ -53,9 +87,9 @@
 //
 // Each pane carries its share as `--uf-resizable-size`, a percentage, and the
 // caller's stylesheet decides whether that is a width, a height, a `flex-basis`
-// or nothing at all. There is no drag: the pointer half is tracked work, and a
-// keyboard-only splitter is a working splitter, where a pointer-only one is
-// not.
+// or nothing at all. The group is measured rather than drawn — the drag reads
+// its box and never writes to it — so a caller whose panes are flex children,
+// grid tracks or absolutely positioned gets the same splitter.
 
 "use client";
 
@@ -71,10 +105,20 @@ import {
 } from "@uniflowed/react";
 
 import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
+import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import type { Orientation } from "./internal/roving-focus.js";
-import { clamp, isReversed } from "./internal/range.js";
+import { clamp, isReversed, snap } from "./internal/range.js";
 import { useControlled } from "./internal/controlled-state.js";
+
+/**
+ * How finely a drag may move the splitter, in percentage points.
+ *
+ * Not `step`, which is the keyboard's and defaults to ten; the module header
+ * says why the two cannot be the same number. One is a constant rather than a
+ * prop because the value is already a percentage of the group, so one is the
+ * smallest move that means anything.
+ */
+const POINTER_STEP = 1;
 
 type ResizableState = {|
   readonly base: string,
@@ -89,6 +133,14 @@ type ResizableState = {|
   readonly disabled: boolean,
   readonly hasPrimary: boolean,
   readonly registerPrimary: (present: boolean) => void,
+  /**
+   * The element a drag is measured against.
+   *
+   * The group rather than the handle, because the value is the primary pane's
+   * share *of the group* — the handle is a few pixels wide and has no idea how
+   * much space there is to divide.
+   */
+  readonly groupRef: { current: HTMLElement | null },
 |};
 
 const ResizableContext: React.Context<ResizableState | null> = createContext(null);
@@ -128,6 +180,7 @@ export component ResizablePanelGroup(
   const base = useId();
   const [share, setShare] = useControlled(value, defaultValue, onValueChange);
   const [hasPrimary, setHasPrimary] = useState(false);
+  const groupRef = useRef<HTMLElement | null>(null);
 
   const state = useMemo(
     () => ({
@@ -141,13 +194,23 @@ export component ResizablePanelGroup(
       disabled,
       hasPrimary,
       registerPrimary: setHasPrimary,
+      groupRef,
     }),
     [base, share, setShare, min, max, step, orientation, disabled, hasPrimary],
   );
 
+  const passed = withoutComposed(rest, ["ref"]);
+
   return (
     <ResizableContext.Provider value={state}>
-      <div {...rest}>{children}</div>
+      <div
+        {...passed}
+        ref={composeRefs(rest.ref, (element) => {
+          groupRef.current = element;
+        })}
+      >
+        {children}
+      </div>
     </ResizableContext.Provider>
   );
 }
@@ -199,14 +262,59 @@ export component ResizablePanel(children: React.Node, primary?: boolean = false,
  */
 export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
   const group = useResizable("Resizable.Handle");
-  const passed = withoutComposed(rest, ["onKeyDown"]);
+  const passed = withoutComposed(rest, [
+    "onKeyDown",
+    "onPointerCancel",
+    "onPointerDown",
+    "onPointerMove",
+    "onPointerUp",
+  ]);
   // Where the pane was before `Enter` collapsed it. A ref because nothing
   // renders it: it is a fact about the last keystroke, not about the layout.
   const restoreTo = useRef<number | null>(null);
+  // Whether the pointer is down on this handle. Also a ref, and for the same
+  // reason: it changes between renders and no render depends on it.
+  const dragging = useRef(false);
 
   const moveBy = (amount: number) => {
     restoreTo.current = null;
     group.setValue(clamp(group.value + amount, group.min, group.max));
+  };
+
+  /** The primary pane's share at the pointer, or null with no box to read. */
+  const shareAt = (event: $FlowFixMe): number | null => {
+    const element = group.groupRef.current;
+    if (element == null) {
+      return null;
+    }
+    const box = element.getBoundingClientRect();
+    const vertical = group.orientation === "vertical";
+    const size = vertical ? box.height : box.width;
+    if (size <= 0) {
+      // A group with no box has no percentages in it, and dividing by its
+      // width would put `Infinity` into `aria-valuenow`.
+      return null;
+    }
+    // From the top for stacked panes, where `Slider.Track` reads from the
+    // bottom: a slider's minimum is at the bottom of its track, and a group's
+    // primary pane is the one *before* the handle, which is the top one.
+    const along = vertical ? event.clientY - box.top : event.clientX - box.left;
+    const part = clamp(along / size, 0, 1);
+    // In a right-to-left page the pane before the handle is the one on the
+    // right, so the reading runs the other way. `isReversed` mirrors nothing on
+    // a stacked group, because writing direction does not flip the vertical
+    // axis.
+    const forward = isReversed(element, group.orientation) ? 1 - part : part;
+    // The value *is* the percentage, so the position becomes one directly
+    // rather than being mapped across `min`–`max` the way a slider's is: those
+    // two are bounds on how far the pane may be dragged, not the ends of a
+    // scale. Mapping them would put the handle somewhere the pointer is not.
+    return snap(forward * 100, group.min, group.max, POINTER_STEP);
+  };
+
+  const endDrag = (event: $FlowFixMe) => {
+    dragging.current = false;
+    event.currentTarget?.releasePointerCapture?.(event.pointerId);
   };
 
   return (
@@ -265,6 +373,38 @@ export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
           moveBy(amount);
         }
       })}
+      onPointerCancel={composeHandlers(rest.onPointerCancel, endDrag)}
+      onPointerDown={composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
+        if (group.disabled) {
+          return;
+        }
+        // Otherwise the press selects the text in the panes either side on the
+        // way past, so a drag paints half the page blue.
+        event.preventDefault();
+        // Which also means the browser will not focus this element, and a
+        // reader who has just dragged the splitter is the reader most likely to
+        // want an arrow key next.
+        event.currentTarget?.focus?.();
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        dragging.current = true;
+        // A drag is a move, so the pane `Enter` would put back is no longer
+        // where it was. Leaving it would make the next `Enter` restore a size
+        // from before the drag.
+        restoreTo.current = null;
+        // Deliberately no value change: taking hold of the handle is not asking
+        // it to move. The module header says what a press does on a track
+        // instead, and why the two are not the same gesture.
+      })}
+      onPointerMove={composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
+        if (!dragging.current) {
+          return;
+        }
+        const share = shareAt(event);
+        if (share != null) {
+          group.setValue(share);
+        }
+      })}
+      onPointerUp={composeHandlers(rest.onPointerUp, endDrag)}
       role="separator"
       // A separator that is not in the tab sequence is the WCAG 2.1.1 failure
       // this module exists to avoid.

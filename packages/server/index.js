@@ -120,6 +120,12 @@ export function draftMode(): DraftMode {
  * it was registered, and one task failing does not stop the others — deferred
  * work is by definition not what the response depended on.
  *
+ * It is the small version of a queue and the line between them is durability,
+ * not size. Deferred work lives in this process, is not written down anywhere,
+ * and is gone when the process is — which is right for a metric and wrong for
+ * anything a user would notice missing. `@uniflowed/server/queue` is the other
+ * side of that line, and says what a deployment has to bring to it.
+ *
  * "Sent" is the host's word to keep, and it keeps it: the request is drained
  * after `uf dev` has written the document, after `uf preview` and `uf start`
  * have returned from `send`, and after a compiled binary's `pipe` has resolved

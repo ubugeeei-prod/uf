@@ -12,6 +12,15 @@ export type TaskDefinition =
       readonly cwd?: string,
       readonly dependsOn?: $ReadOnlyArray<string>,
       readonly env?: { readonly [string]: string },
+      // Everything the task reads, as paths or globs from the project root; a
+      // pattern beginning `!` excludes. This is the whole of the cache key, so
+      // a task that lists nothing is never cached and always runs.
+      readonly inputs?: $ReadOnlyArray<string>,
+      // Everything it writes. Checked rather than restored: a replayed result
+      // has to still have its files on disk, unchanged.
+      readonly outputs?: $ReadOnlyArray<string>,
+      // `false` keeps a task with declared inputs out of the cache.
+      readonly cache?: boolean,
     };
 
 export type CapabilityJsHost = "node" | "deno" | "bun";

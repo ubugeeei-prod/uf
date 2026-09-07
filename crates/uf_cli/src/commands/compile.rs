@@ -61,10 +61,10 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_bundle::{Embedded, ReportOptions, write_embedded_assets};
-use uf_config::env_files::ProjectEnv;
+use uf_rsc::RSC_MANIFEST_ENV;
 
 use crate::commands::vite::{
-    Driver, Event, Host, LogLevel, find_program, render_error, render_log,
+    Driver, Event, LinkContext, LogLevel, find_program, render_error, render_log,
 };
 use crate::support::project_label;
 use crate::ui::Ui;
@@ -130,15 +130,15 @@ pub(crate) fn binary_name(root: &Utf8Path) -> String {
 /// Runs after the size report, on purpose: the binary is written *into* the
 /// output directory, and a 60 MB executable counted among the shipped assets
 /// would make every budget in `uf.config.js` meaningless.
-pub(crate) fn compile(
-    ui: &mut Ui,
-    runtime: &Runtime,
-    host: &Host,
-    package: &Utf8Path,
-    root: &Utf8Path,
-    out_dir: &Utf8Path,
-    env: &ProjectEnv,
-) -> Result<Compiled> {
+pub(crate) fn compile(ui: &mut Ui, runtime: &Runtime, link: LinkContext<'_>) -> Result<Compiled> {
+    let LinkContext {
+        host,
+        package,
+        root,
+        out_dir,
+        env,
+        rsc_manifest,
+    } = link;
     let work = root.join(WORK_DIR);
     let assets = work.join("assets.js");
     let name = binary_name(root);
@@ -179,7 +179,11 @@ pub(crate) fn compile(
             work.to_string(),
         ],
         env,
-        &[],
+        // The second Vite run of one build, and it needs the same analysis the
+        // first had: without it `virtual:uf/actions` is generated from no
+        // manifest, which is an empty table, which is every server action
+        // answering 404 in the binary a person actually ships.
+        &[(RSC_MANIFEST_ENV, rsc_manifest.as_str())],
     )?;
     while let Some(event) = driver.next_event()? {
         match event {

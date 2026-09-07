@@ -1126,6 +1126,43 @@ impl TaskDefinition {
             Self::Detailed(task) => task.command.as_str(),
         }
     }
+
+    /// The tasks this one runs after, in the order they were written.
+    #[must_use]
+    pub fn depends_on(&self) -> &[CompactString] {
+        match self {
+            Self::Command(_) => &[],
+            Self::Detailed(task) => &task.depends_on,
+        }
+    }
+
+    /// The detailed form, for the fields only it has.
+    #[must_use]
+    pub fn details(&self) -> Option<&TaskCommand> {
+        match self {
+            Self::Command(_) => None,
+            Self::Detailed(task) => Some(task),
+        }
+    }
+
+    /// Whether uf may answer this task from `.uf/cache/task` instead of
+    /// running it.
+    ///
+    /// **A task that declares no `inputs` always runs.** That is the whole of
+    /// the default, and it is deliberate: a cache key over an input set
+    /// somebody has not written down is a guess, and a wrong guess here is a
+    /// check that reports success without looking — the one failure mode a
+    /// task runner must not have. Declaring `inputs` is a person saying "this
+    /// is everything it reads", and only then is there anything to key on.
+    ///
+    /// `cache: false` turns it off for a task that does declare them, which is
+    /// how a task whose inputs are listed for some other reason — or one with
+    /// an effect uf cannot see — opts out.
+    #[must_use]
+    pub fn is_cacheable(&self) -> bool {
+        self.details()
+            .is_some_and(|task| !task.inputs.is_empty() && task.cache != Some(false))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1136,6 +1173,26 @@ pub struct TaskCommand {
     pub cwd: Option<CompactString>,
     pub depends_on: Vec<CompactString>,
     pub env: BTreeMap<CompactString, CompactString>,
+    /// Every file this task reads, as paths or globs relative to the project
+    /// root. A pattern beginning `!` excludes what it matches.
+    ///
+    /// This is the whole of what uf keys the task's cached result on, so it
+    /// has to be the whole of what the task reads. A task that lists none is
+    /// never cached; see [`TaskDefinition::is_cacheable`].
+    pub inputs: Vec<CompactString>,
+    /// Every file this task writes, in the same syntax.
+    ///
+    /// uf does not restore these on a hit — it *checks* them: a result is
+    /// replayed only while the files it produced are still on disk with the
+    /// contents it produced. Deleting a build directory therefore rebuilds it
+    /// rather than being reported as already done.
+    pub outputs: Vec<CompactString>,
+    /// `false` to keep a task with declared `inputs` out of the cache.
+    ///
+    /// [`None`] is the default and means "decide from `inputs`". `true` is
+    /// that default said out loud, and it is an error on a task that declares
+    /// no inputs rather than a silently ignored request.
+    pub cache: Option<bool>,
 }
 
 impl Default for TaskCommand {
@@ -1145,6 +1202,9 @@ impl Default for TaskCommand {
             cwd: None,
             depends_on: Vec::new(),
             env: BTreeMap::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            cache: None,
         }
     }
 }
