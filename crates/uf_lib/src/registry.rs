@@ -262,6 +262,8 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "cookies",
                 "draftMode",
                 "headers",
+                "logger",
+                "requestId",
             ],
         ),
         NativeModule::new(
