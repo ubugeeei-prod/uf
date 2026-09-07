@@ -50,8 +50,15 @@ function documents(): Array<string> {
   return found;
 }
 
-/** `| --- | --- |`, in any of the alignment spellings. */
-const DELIMITER = /^\|[\s:|-]+\|\s*$/;
+/**
+ * `| --- | --- |`, in any of the alignment spellings.
+ *
+ * Every cell has to contain a hyphen: a character class alone would accept
+ * `| : |` and `|   |`, which GitHub does not render as a table at all — so the
+ * check would call a run of pipes a table and pass over exactly the shape it
+ * exists to catch.
+ */
+const DELIMITER = /^\|(?:\s*:?-+:?\s*\|)+\s*$/;
 
 /**
  * Every run of table rows in one file that does not open with a header and a
@@ -72,7 +79,9 @@ function orphanedRuns(file: string): Array<{ line: number, text: string }> {
   };
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (line.trimStart().startsWith("```")) {
+    // Both fence spellings. CommonMark allows `~~~` as well as backticks, and
+    // a document that used it would have its examples read as real tables.
+    if (line.trimStart().startsWith("```") || line.trimStart().startsWith("~~~")) {
       close();
       fenced = !fenced;
       continue;
@@ -129,6 +138,14 @@ describe("the repository's Markdown tables", () => {
       const fenced = path.join(dir, "fenced.md");
       fs.writeFileSync(fenced, ["```md", "| 3 | 4 |", "```", ""].join("\n"));
       expect(orphanedRuns(fenced)).toEqual([]);
+      const tilde = path.join(dir, "tilde.md");
+      fs.writeFileSync(tilde, ["~~~md", "| 3 | 4 |", "~~~", ""].join("\n"));
+      expect(orphanedRuns(tilde)).toEqual([]);
+      // And a delimiter row with no hyphen is not a delimiter row: GitHub
+      // renders this as three lines of text, not a table.
+      const colonly = path.join(dir, "colon.md");
+      fs.writeFileSync(colonly, ["| a | b |", "| : | : |", "| 1 | 2 |", ""].join("\n"));
+      expect(orphanedRuns(colonly)).toEqual([{ line: 1, text: "| a | b |" }]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
