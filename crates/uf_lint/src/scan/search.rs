@@ -46,6 +46,60 @@ pub(crate) fn find_words<'a>(
         .filter(move |&at| starts_word(haystack, at) && ends_word(haystack, at + needle.len()))
 }
 
+/// Whether the word of `len` bytes at `at` reads as the program at the head of
+/// a command line.
+///
+/// # Why a rule about invocations needs this
+///
+/// `uniflowed/no-npm-script-invocation` is a line scanner, so it finds a
+/// manager's name wherever the characters appear. That made
+/// `["pnpm-workspace.yaml", "pnpm-lock.yaml"]` two shell invocations, and
+/// `test("Node and pnpm are pinned once in package.json", …)` a third —
+/// seventeen of this workspace's errors were of that kind
+/// (ubugeeei-prod/uf#478).
+///
+/// What the rule is after is a command string, so the test is positional rather
+/// than textual: the word has to *start* a command and *take* arguments.
+///
+/// - Before it, skipping spaces: the start of the line, a quote, or one of the
+///   characters a command can follow — `(`, `,`, `[`, `{`, `;`, `&`, `|`, `=`,
+///   `>`. A word after `and` is prose.
+/// - After it: whitespace with something behind it, or the quote that opened
+///   the string. `pnpm-workspace.yaml` fails on the `-`; `spawn("pnpm", […])`
+///   passes, because a program with its arguments beside it is still a program.
+///
+/// # What it still cannot tell
+///
+/// `it("pnpm is pinned", …)` — a title that opens with the word — reads exactly
+/// like a command from a line's worth of context. Telling those apart needs to
+/// know which call the string is an argument of, which needs a parse this
+/// scanner does not have. The residue is a title that begins with a package
+/// manager's name, which is rare and suppressible; the alternative was
+/// seventeen.
+pub(crate) fn heads_a_command(haystack: &str, at: usize, len: usize) -> bool {
+    let bytes = haystack.as_bytes();
+    let opener = match prev_non_space(haystack, at) {
+        None => None,
+        Some((_, byte)) => match byte {
+            b'\'' | b'"' | b'`' => Some(byte),
+            b'(' | b',' | b'[' | b'{' | b';' | b'&' | b'|' | b'=' | b'>' => None,
+            // Anything else before it is another word, an operator, or prose.
+            _ => return false,
+        },
+    };
+
+    match bytes.get(at + len) {
+        // The whole string is the program: `spawn("pnpm", ["install"])`.
+        Some(&byte) if Some(byte) == opener => true,
+        // A program with arguments, which is every other invocation.
+        Some(&byte) if byte == b' ' || byte == b'\t' => {
+            next_non_space(haystack, at + len).is_some()
+        }
+        // End of line after a bare name is a name, not a command.
+        _ => false,
+    }
+}
+
 /// Whether the byte at `at` stands inside a string literal.
 ///
 /// `open` says whether the slice begins inside a backtick template, which is

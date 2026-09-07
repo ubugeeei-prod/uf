@@ -7,6 +7,7 @@
 //! line opens at. Rules then borrow those slices instead of re-scanning.
 
 mod line;
+mod mask;
 mod search;
 
 #[cfg(test)]
@@ -16,10 +17,11 @@ use uf_infra::LineIndex;
 
 use crate::SourceFile;
 use line::{Carry, scan_line};
+pub(crate) use mask::mask_inline_comments;
 
 pub(crate) use search::{
-    ends_word, find_all, find_words, identifier_len, is_hook_name, is_word_byte, next_non_space,
-    prev_non_space, previous_word, starts_word,
+    ends_word, find_all, find_words, heads_a_command, identifier_len, is_hook_name, is_word_byte,
+    next_non_space, prev_non_space, previous_word, starts_word,
 };
 
 /// A single physical line, plus the derived facts rules need about it.
@@ -119,8 +121,11 @@ pub(crate) struct FileScan<'a> {
 
 impl<'a> FileScan<'a> {
     /// Walk `file` once and record everything the rules need.
-    pub fn new(file: &'a SourceFile) -> Self {
-        let source = file.source.as_str();
+    /// `source` is `file.source` with every same-line `/* … */` blanked — see
+    /// [`mask_inline_comments`], which explains why it is the caller's to hold.
+    /// Masking preserves every byte offset, so a diagnostic measured against it
+    /// lands in the same place in the real file.
+    pub fn new(file: &'a SourceFile, source: &'a str) -> Self {
         let index = LineIndex::new(source);
 
         let mut lines = Vec::with_capacity(index.line_count());

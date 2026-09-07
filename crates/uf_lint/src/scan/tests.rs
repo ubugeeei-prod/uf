@@ -14,7 +14,7 @@ fn file(source: &str) -> SourceFile {
 
 fn codes(source: &str) -> Vec<String> {
     let file = file(source);
-    FileScan::new(&file)
+    FileScan::new(&file, &super::mask_inline_comments(&file.source))
         .lines
         .iter()
         .map(|line| line.code().to_string())
@@ -61,7 +61,8 @@ fn escaped_quotes_do_not_end_a_string() {
 #[test]
 fn crlf_terminators_are_trimmed_from_line_text() {
     let file = file("a;\r\nb;\r\n");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.lines[0].text, "a;");
     assert_eq!(scan.lines[1].text, "b;");
 }
@@ -69,7 +70,8 @@ fn crlf_terminators_are_trimmed_from_line_text() {
 #[test]
 fn line_offsets_match_the_line_index() {
     let file = file("one\ntwo\nthree\n");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     for (position, line) in scan.lines.iter().enumerate() {
         assert_eq!(scan.index.line_col(line.offset).line, position + 1);
     }
@@ -78,7 +80,8 @@ fn line_offsets_match_the_line_index() {
 #[test]
 fn brace_depth_tracks_across_lines() {
     let file = file("component A() {\n  const x = { y: 1 };\n}\n");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.lines[0].depth_at_start, 0);
     assert_eq!(scan.lines[1].depth_at_start, 1);
     assert_eq!(scan.lines[2].depth_at_start, 1);
@@ -88,14 +91,16 @@ fn brace_depth_tracks_across_lines() {
 #[test]
 fn first_code_line_skips_comments_and_blanks() {
     let file = file("\n// @flow\n\n'use client';\n");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.facts.first_code_line, Some(3));
 }
 
 #[test]
 fn empty_input_has_one_empty_line() {
     let file = file("");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.lines.len(), 1);
     assert_eq!(scan.facts.first_code_line, None);
 }
@@ -103,7 +108,8 @@ fn empty_input_has_one_empty_line() {
 #[test]
 fn byte_order_mark_does_not_break_offsets() {
     let file = file("\u{feff}// @flow\nlet a = 1;\n");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.lines[1].text, "let a = 1;");
     assert_eq!(scan.index.line_col(scan.lines[1].offset).line, 2);
 }
@@ -111,7 +117,8 @@ fn byte_order_mark_does_not_break_offsets() {
 #[test]
 fn non_ascii_lines_keep_byte_offsets_consistent() {
     let file = file("const s = 'ünïcødé'; // ok\nlet a = 1;\n");
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.lines[1].text, "let a = 1;");
     assert_eq!(scan.index.line_col(scan.lines[1].offset).column, 1);
 }
@@ -153,7 +160,8 @@ fn hook_names_need_an_uppercase_fourth_character() {
 fn very_large_input_scans_without_quadratic_blowup() {
     let source = "let a = 1; // c\n".repeat(20_000);
     let file = file(&source);
-    let scan = FileScan::new(&file);
+    let masked = super::mask_inline_comments(&file.source);
+    let scan = FileScan::new(&file, &masked);
     assert_eq!(scan.lines.len(), 20_001);
     assert_eq!(scan.lines[0].code(), "let a = 1; ");
 }
