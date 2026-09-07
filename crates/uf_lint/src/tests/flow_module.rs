@@ -14,6 +14,19 @@ fn mixed_import_and_require_rejects_a_require_in_an_esm_module() {
     assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 11));
 }
 
+/// ubugeeei-prod/uf#479: `createRequire(import.meta.url)` is how an ES module
+/// loads a `.node` addon, and Node documents no other way. The binding is local,
+/// so the CommonJS free variable this rule is about is not in scope.
+#[test]
+fn mixed_import_and_require_accepts_the_bridge_node_documents() {
+    let diagnostics = lint_js(
+        "flow/mixed-import-and-require",
+        "// @flow\nimport { createRequire } from 'node:module';\n\nconst require = createRequire(import.meta.url);\n\nexport function loadNative(): mixed {\n  return require('./native.node');\n}\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
 #[test]
 fn mixed_import_and_require_accepts_a_pure_esm_module() {
     let diagnostics = lint_js(
