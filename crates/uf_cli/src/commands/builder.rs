@@ -67,8 +67,10 @@ pub(crate) struct Builder {
     pub(crate) module: String,
     /// The version from the builder's `package.json`, when it has one.
     ///
-    /// `None` for a builder resolved from a path inside the project, which is
-    /// how somebody tries one out before publishing it.
+    /// `None` when the directory carries no manifest, or one with no
+    /// `version` — which is what a builder being tried out from a path inside
+    /// the project often looks like. An installed package always has one, so
+    /// this is `Some` for every builder a project depends on.
     pub(crate) version: Option<String>,
     /// The directory the driver was found in.
     pub(crate) directory: Utf8PathBuf,

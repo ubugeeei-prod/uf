@@ -831,6 +831,15 @@ through it — and the declaration is about what the build leaves behind. So
 `--adapter` and `--compile` still work, because each links the application
 again from source rather than reading that bundle.
 
+A fourth thing needs a process and is not a route: a `"use server"` export the
+browser can reach. The client bundle carries a server reference for it — an id
+and a `fetch` — so the call site exists whether or not anything answers, and a
+build that emits no server is where nothing does. `uf` refuses it before the
+bundle, from the RSC analysis it has already run, rather than in the builder
+with the three route-shaped reasons: it is not a route, its fix is a different
+sentence, and finding it needs no module evaluated. `--adapter` and `--compile`
+lift the refusal, because each writes something that can answer.
+
 ### The builder contract
 
 A builder is a directory with a `package.json` and a driver module. uf spawns
@@ -876,8 +885,8 @@ exit, which would be a build that produced nothing and said it succeeded.
 **Readiness.** The seam is Implemented; `@uniflowed/vite` is the only builder
 uf ships, and `crates/uf_cli/tests/fixtures/paper-builder` is a second
 implementation that exists to keep the contract honest rather than to be used.
-A production builder for Rolldown, rspack or esbuild is Planned
-([#549](https://github.com/ubugeeei-prod/uf/issues/549)).
+A production builder for Rolldown, rspack or esbuild is **Planned**, and is a
+separate piece of work: nothing in the contract above waits on it.
 
 `@uniflowed/router` is the runtime the virtual modules call into: matching
 (`[param]`, `[...rest]`, `(group)`, most specific wins), nested layouts,

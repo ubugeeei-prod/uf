@@ -3815,6 +3815,64 @@ fn a_static_build_refuses_the_middleware_it_could_never_run() {
     );
 }
 
+/// The fourth thing that needs a process, and the one that is not a route.
+///
+/// A `"use server"` export the browser can reach is an endpoint: the client
+/// bundle carries a `createServerReference` that `fetch`es it, so the button
+/// is wired whether or not anything answers. A build that emits no server
+/// emits no answer, and nothing between that build and the first click said
+/// so.
+///
+/// The project is `rsc-split-app` rather than a page written for this test.
+/// That fixture is what the server-action split is already measured against
+/// and `app/counter/_actions/tally.js` is exactly the module this refusal is
+/// about; it is copied rather than built in place because the assertion is
+/// about a `uf.config.js` the fixture does not have and should not grow.
+///
+/// The other direction — a `staticBuild` project with no actions builds, and
+/// builds without a server bundle — is
+/// `a_static_build_emits_no_server_bundle` above.
+#[test]
+fn a_static_build_refuses_the_server_actions_it_could_never_answer() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[(
+        "app.js",
+        "// @flow\nimport { routerView } from \"@uniflowed/router\";\n\nexport default routerView(\"./app\");\n",
+    )]);
+    copy_tree(
+        &rsc_split_app_root().join("app"),
+        &project.path().join("app"),
+    );
+    project.write(
+        "uf.config.js",
+        &config_with("  build: { staticBuild: true },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(
+        said.contains("app/counter/_actions/tally.js"),
+        "the module is not named:\n{said}"
+    );
+    assert!(
+        said.contains("staticBuild"),
+        "the declaration that caused it is not quoted:\n{said}"
+    );
+    assert!(
+        said.contains("--adapter") && said.contains("--compile"),
+        "the two builds that do answer an action are not named:\n{said}"
+    );
+    // Refused before the bundle, so the reader does not pay for a build that
+    // was never going to be one — and there is no half-written `dist/` to
+    // mistake for a finished deployment.
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a refused build wrote a document anyway"
+    );
+}
+
 /// The third rendering decision, and the one that had no name.
 ///
 /// `generateStaticParams` says "prerender these"; nothing said "never

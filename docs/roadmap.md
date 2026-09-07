@@ -20,9 +20,8 @@ on every runtime and deploys anywhere, including as a single executable file.
   make `uf.config.js` the only user-authored config entry — and keep it the
   *default* rather than the only answer: `builder.module` names any module
   satisfying the contract in `docs/architecture.md`, and `uf explain build`
-  says which one will run. A production builder that is not Vite is
-  [#549](https://github.com/ubugeeei-prod/uf/issues/549) and does not exist
-  yet.
+  says which one will run. A production builder that is not Vite does not
+  exist yet and is Planned.
 - Reach the feature surface of the tools a user would otherwise reach for —
   Next.js for the framework, Bun and Vite for the toolchain, shadcn/ui for the
   components, Effect, Jotai and React Hook Form for the libraries. Where uf

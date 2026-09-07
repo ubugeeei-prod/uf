@@ -109,22 +109,24 @@ it (`crates/uf_cli/tests/fixtures/paper-builder`) is exercised by the suite so
 that nothing uf asks a builder for can quietly become Vite-shaped again.
 
 What is *not* done is a builder anybody would use: Rolldown, rspack or esbuild
-behind that seam is still #549, and until one exists the seam is proven rather
-than populated.
+behind that seam is separate, Planned work, and until one exists the seam is
+proven rather than populated. That is a smaller gap than it sounds — a red line
+about replaceability is met by the seam being real, not by uf shipping the
+replacement.
 
-`fmt.nonFlow.formatter` selects who
-formats the JSON, CSS and TypeScript uf's Flow printer has no business touching:
-Biome, Prettier, or nobody. uf runs the binary the project already has rather
-than linking one in — a project can upgrade its formatter without waiting for
-uf, which is the point — and translates uf's own settings into whichever
+The other is `fmt.nonFlow.formatter`, which selects who formats the JSON, CSS
+and TypeScript uf's Flow printer has no business touching: Biome, Prettier, or
+nobody. uf runs the binary the project already has rather than linking one in
+— a project can upgrade its formatter without waiting for uf, which is the
+point — and translates uf's own settings into whichever
 provider's vocabulary, so `fmt.indentWidth` means the same thing on both sides
 of the seam. `uf explain fmt` names the provider and the exact command.
 
 The rest are still aspirational. `LintEngine`, `FlowFormatParser`,
 `TaskRunnerEngine` and `PackageManagerResolver` are enumerations with one
 variant each: the shape of replaceability with none of the substance, which is
-what `NonFlowFormatter` was until something read it. Note that none of the
-three seams that *are* met is an enumeration — a provider a project can replace
+what `NonFlowFormatter` was until something read it. Note that neither of the
+two seams that *are* met is an enumeration — a provider a project can replace
 has to be a name it can write, and an enum with one variant cannot become one
 without a release of uf.
 

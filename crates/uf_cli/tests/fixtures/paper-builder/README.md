@@ -18,10 +18,10 @@ it does not transform Flow, so it cannot render a component, and it implements
 `build` alone — `dev`, `preview`, `start`, `compile` and `deploy` are answered
 with the error the contract says to answer an unimplemented command with.
 
-A real second builder — Rolldown, rspack, esbuild — is the rest of
-ubugeeei-prod/uf#549 and is a different piece of work. This one exists so that
-the seam cannot quietly stop being one: a change to uf that assumed Vite would
-fail here rather than in somebody's project six months later.
+A real second builder — Rolldown, rspack, esbuild — is a different piece of
+work, and Planned. This one exists so that the seam cannot quietly stop being
+one: a change to uf that assumed Vite would fail here rather than in somebody's
+project six months later.
 
 `crates/uf_cli/tests/vite.rs` copies this into a throwaway project and builds
 with it.

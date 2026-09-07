@@ -283,6 +283,13 @@
 - [x] Measure emitted bundle size and enforce `build.budgets` from `uf build`.
 - [x] Write native build manifest and generated router types from `uf build`.
 - [x] Wire `uf dev` to Vite's dev server.
+- [x] Make the builder a provider rather than a dependency: `builder.module` names any
+      module satisfying the contract in `docs/architecture.md`, `@uniflowed/vite` is the
+      default and declares itself one in its manifest, and `uf explain build` names the
+      builder that will run and its version
+      ([#549](https://github.com/ubugeeei-prod/uf/issues/549)). A production builder that
+      is not Vite is **Planned**; `crates/uf_cli/tests/fixtures/paper-builder` is a
+      conformance fixture, not one to use.
 - [x] Start self-hosted `@uniflowed/pm` package manager planning.
 - [ ] Implement native package resolver.
 - [x] Implement native workspace lockfile and content-addressed store entries.

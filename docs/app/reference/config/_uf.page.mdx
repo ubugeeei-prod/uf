@@ -160,12 +160,19 @@ follow:
   error, which is the refusal
   [#342](https://github.com/ubugeeei-prod/uf/issues/342) asked for: a guard
   that can never run is a guard that looks enforced and is not.
+- a `"use server"` export the browser can reach is a build error too, and it is
+  the one that is not a route. The client bundle carries a server reference for
+  it — an id and a `fetch` — so the button is wired whether or not anything
+  answers; a deployment of documents is the case where nothing does. Keep the
+  module out of the client's reach, or drop `staticBuild`.
 
 `uf build --adapter <target>` and `uf build --compile` still work, and that is
 not an oversight. Each links the application again from source and reads none
 of the removed bundle, so each still produces a correct artefact — a static
 site inside a Worker, or inside one executable, is a deployment somebody wants.
-What `staticBuild` describes is what the *ordinary* build leaves behind.
+What `staticBuild` describes is what the *ordinary* build leaves behind. Those
+two builds are also the ones the server-action refusal does not apply to: what
+each writes can answer an endpoint, so there is no unanswered one to refuse.
 
 `staticBuild: true` alongside a `rendering.modes` that does not allow `ssg` is
 refused while the config is read. Neither declaration is wrong on its own and
@@ -391,11 +398,16 @@ is written out in
 [`docs/architecture.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md).
 `uf explain build` names the builder that will run and its version.
 
+Which *build* of a builder runs is the same key. uf pins the Vite that
+`@uniflowed/vite` depends on, and a project that needs another one names a
+module of its own — a directory that re-exports uf's driver beside the
+dependency it wants — rather than forking uf. `uf explain build` prints the
+version it resolved, so the pin is checkable without running a build.
+
 **Readiness.** The seam is Implemented and `@uniflowed/vite` is the only
-builder uf ships. A second one for Rolldown, rspack or esbuild is
-[#549](https://github.com/ubugeeei-prod/uf/issues/549) and is Planned;
-`crates/uf_cli/tests/fixtures/paper-builder` is a conformance fixture rather
-than a builder to use.
+builder uf ships. A second production builder — Rolldown, rspack, esbuild — is
+**Planned** and is separate work; `crates/uf_cli/tests/fixtures/paper-builder`
+is a conformance fixture rather than a builder to use.
 
 ## vite
 

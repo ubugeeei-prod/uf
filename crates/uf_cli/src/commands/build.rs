@@ -1,8 +1,10 @@
 //! `uf build`: banner, per-phase timings, a summary, and what was produced.
 //!
-//! The build is Vite's, driven through `@uniflowed/vite` on the project's
-//! JavaScript host (see [`super::vite`]): a client bundle, a server bundle,
-//! and every static route prerendered to HTML. uf's own phases run around it:
+//! The build belongs to the project's **builder** — `@uniflowed/vite` unless
+//! `builder.module` names another — driven on the project's JavaScript host
+//! (see [`super::builder`] for which one and [`super::vite`] for the protocol):
+//! a client bundle, a server bundle, and the routes this project prerenders,
+//! as HTML. uf's own phases run around it:
 //! the config, the route table and its generated types, the server-component
 //! analysis and its diagnostics, and — once Vite has written `dist/` — the
 //! shipped-size report and the budgets it enforces.
@@ -29,8 +31,8 @@ use uf_bundle::{
 use uf_config::{DeployAdapter, Prerender, RenderingPlan, load_config};
 use uf_router::{Route, discover_routes, write_router_manifest};
 use uf_rsc::{
-    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscDiagnostic,
-    RscSeverity, analyze_project,
+    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
+    RscDiagnostic, RscSeverity, analyze_project,
 };
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, PhaseTimer, Status, Table, Tone, Tree,
@@ -218,6 +220,10 @@ pub(crate) fn build(
     // which has a bundle to load and does not have it; that is refused in
     // `commands::serve`, where it is a fact rather than an opinion.
     let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
+    // The fourth thing that needs a process, and the only one `uf` can see
+    // without evaluating a module. Checked here rather than in the builder for
+    // exactly that reason — see `refuse_unanswerable_actions`.
+    refuse_unanswerable_actions(plan, &rsc, adapter, standalone)?;
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -684,6 +690,71 @@ pub(crate) fn build(
     });
 
     enforce_budgets(ui, &size, &resolved.config.build.budgets)
+}
+
+/// Refuse a build that leaves a callable server action with nowhere to run.
+///
+/// A `"use server"` export the browser can reach is an HTTP endpoint. The
+/// client bundle carries a `createServerReference` for it — an id and a
+/// `fetch` — so the button is wired either way; what a build with no server
+/// removes is the thing at the other end. Nothing between that build and the
+/// first person to click reports it, and what they get is whatever the static
+/// host does with an unknown path. That is the same failure the rest of this
+/// change is about, one layer below the route table: a `dist/` with a hole in
+/// it, found from a 404.
+///
+/// # Why here and not in the builder
+///
+/// [`guards`] argues that the three route-shaped reasons a build
+/// needs a server — a page with parameters and no `generateStaticParams`, a
+/// route handler, a middleware — belong in **one** refusal, in the builder,
+/// because telling a project to fix one, rebuild, and hear about the next is
+/// three builds to learn three facts. A server action is not one of the three:
+/// it is not a route, uf finds it without evaluating a module (the RSC
+/// analysis has already run), and its fix is a different sentence. Refusing it
+/// here costs the reader nothing they would otherwise have been told in the
+/// same breath, and it happens before the bundle rather than after it.
+///
+/// # Why an adapter or `--compile` lifts it
+///
+/// Both link the application again from source and write something that can
+/// answer a request, so the endpoint exists in what they produce.
+/// `build.staticBuild` is a claim about the ordinary output directory, and a
+/// build that also emits a server has honoured the claim and answered the
+/// action. It is the same distinction the `deploy::resolve` call site makes
+/// about the server bundle.
+fn refuse_unanswerable_actions(
+    plan: RenderingPlan,
+    rsc: &RscAnalysis,
+    adapter: Option<DeployAdapter>,
+    standalone: bool,
+) -> Result<()> {
+    if plan.emits_a_server() || adapter.is_some() || standalone {
+        return Ok(());
+    }
+    let mut listed = rsc
+        .registry
+        .callable_actions()
+        .map(|action| format!("  {} — {}", action.module, action.export))
+        .collect::<Vec<_>>();
+    if listed.is_empty() {
+        return Ok(());
+    }
+    // Sorted, because the registry's order follows the module scan and a
+    // message that reorders itself between two builds of the same tree is a
+    // message nobody can diff.
+    listed.sort();
+    bail!(
+        "{} in this project {} callable from the browser, and {}\n{}\n\n\
+         A `\"use server\"` export the browser can reach is an endpoint, and a deployment of \
+         documents has nothing to answer it with. Keep the module out of the client's reach, \
+         or drop `build.staticBuild` and deploy a server — `uf build --adapter <target>` and \
+         `uf build --compile` each write one.",
+        plural(listed.len(), "server action"),
+        if listed.len() == 1 { "is" } else { "are" },
+        plan.because(),
+        listed.join("\n"),
+    )
 }
 
 /// What `driver.js build` is told, beyond where to put the output.
