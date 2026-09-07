@@ -126,11 +126,6 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Failures in the type, and what Flow costs against Effect-TS.",
       },
       {
-        href: "/guide/state",
-        title: "State",
-        blurb: "Atoms are declarations; a store holds the values; React reads them safely.",
-      },
-      {
         href: "/guide/tui",
         title: "Terminal UI",
         blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
