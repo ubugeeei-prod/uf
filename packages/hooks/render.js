@@ -92,6 +92,30 @@
 // — this module is about the one instant that must not move.
 
 import * as React from "@uniflowed/react";
+// The values by name and the namespace beside it for the types, which is what
+// every other module in this package already does. Not a style choice, and the
+// reason is worth the paragraph.
+//
+// `@uniflowed/react` is `export * from "react"` over a CommonJS package, so its
+// namespace is filled in by the bundle's own initializer at run time rather
+// than being known while the bundle is built. Reaching through the namespace —
+// `React.createContext(…)` — was a reference the bundler could not attribute to
+// an export, so the module's initializer was emitted *without* the call that
+// fills the namespace in, and the first line of this module ran against an
+// empty object:
+//
+//     var init_render = __esmMin(() => {
+//       init_clock();
+//       init_random();
+//       RenderContext = react_exports.createContext(null);   // TypeError
+//     });
+//
+// A named import is a reference the bundler has to resolve while it is
+// bundling, and the initializer comes back. It went unnoticed until the router
+// began rendering a `RenderProvider`, because this module reached the one build
+// where it matters — the single file `uf build --compile` links with Bun —
+// only then, and it failed at startup rather than at a call site.
+import { createContext, useContext, useMemo, useState } from "@uniflowed/react";
 import { currentClock } from "@uniflowed/core/clock";
 import type { Random } from "@uniflowed/core/random";
 import { hostSeed, seededRandom, shuffled } from "@uniflowed/core/random";
@@ -126,7 +150,7 @@ export const RENDER_META: string = "uf:render";
  * one that writes the carrier. "Is there one above me" is exactly the question
  * a context answers, and during a render there is no other way to ask it.
  */
-const RenderContext: React.Context<RenderEnvelope | null> = React.createContext(null);
+const RenderContext: React.Context<RenderEnvelope | null> = createContext(null);
 
 /**
  * The envelope the server left in the document, if there is one.
@@ -219,11 +243,11 @@ export component RenderProvider(
   seed?: string,
   children: React.Node,
 ) {
-  const enclosing = React.useContext(RenderContext);
+  const enclosing = useContext(RenderContext);
   // The initializer runs once per mount, on both sides, which is what makes
   // this a fixed value rather than a clock: a re-render for any other reason
   // must not move the instant the page has already been drawn with.
-  const [decided] = React.useState(() => envelope({ at, timeZone, seed }, enclosing));
+  const [decided] = useState(() => envelope({ at, timeZone, seed }, enclosing));
   // The outermost provider writes the carrier and a nested one does not, so a
   // document holds one envelope however many providers a tree has. Not state,
   // because whether there is a provider above this one is a fact about the
@@ -248,7 +272,7 @@ export component RenderProvider(
  * clock, which is the behaviour they have always had.
  */
 export hook useRenderEnvelope(): RenderEnvelope | null {
-  return React.useContext(RenderContext);
+  return useContext(RenderContext);
 }
 
 /**
@@ -269,7 +293,7 @@ export hook useRenderedAt(): Instant {
   // The number, not the instant, in the dependency: `Instant` is a new object
   // every render and depending on it would rebuild this on every one.
   const clockAt = at ?? currentClock().now();
-  return React.useMemo(() => Temporal.Instant.fromEpochMilliseconds(clockAt), [clockAt]);
+  return useMemo(() => Temporal.Instant.fromEpochMilliseconds(clockAt), [clockAt]);
 }
 
 /**
@@ -311,7 +335,7 @@ export hook useRenderTimeZone(): string {
 export hook useRandom(label: string): Random {
   const found = useRenderEnvelope();
   const seed = found?.seed;
-  return React.useMemo(() => seededRandom(seed ?? "uf").fork(label), [seed, label]);
+  return useMemo(() => seededRandom(seed ?? "uf").fork(label), [seed, label]);
 }
 
 /**
@@ -324,5 +348,5 @@ export hook useRandom(label: string): Random {
  */
 export hook useShuffled<T>(items: $ReadOnlyArray<T>, label: string): Array<T> {
   const random = useRandom(label);
-  return React.useMemo(() => shuffled(items, random), [items, random]);
+  return useMemo(() => shuffled(items, random), [items, random]);
 }
