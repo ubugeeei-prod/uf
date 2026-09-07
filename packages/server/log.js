@@ -52,6 +52,7 @@ export type {
 export {
   consoleSink,
   createLogger,
+  elapsedMs,
   formatJson,
   formatText,
   isRedacted,

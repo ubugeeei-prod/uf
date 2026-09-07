@@ -20,6 +20,26 @@
 // a module that reached for `node:crypto` would be a module that cannot be
 // bundled for a worker — which would make signing in the one thing a uf
 // application cannot do on half the hosts uf targets.
+//
+// # Temporal, and where the epoch milliseconds are left
+//
+// Nothing here reads `Date.now()`. The clock uf reads is
+// `@uniflowed/core/temporal`'s, whose polyfill makes it the same clock on a
+// worker as on Node, and a test that freezes it freezes expiry with it —
+// which is the difference between a suite that proves a `state` parameter goes
+// stale and a suite that waits ten minutes to find out.
+//
+// The one place a number survives is [`SessionStore`]'s `expiresAt`, and that
+// is deliberate for the reason `@uniflowed/core/clock` gives for its own seam:
+// an epoch millisecond count is an immutable primitive that serializes as
+// itself, and this seam's whole job is to cross into somebody's Redis, KV or
+// table. An `Instant` there would make every adapter unwrap one before it could
+// compute a TTL, and would arrive back through a JSON round trip as a string
+// that the next reader has to parse. Temporal on this side of the seam, a
+// number on the wire.
+
+import type { Instant } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
 
 /** The pieces of a session or a half-finished authorization, as stored. */
 export type StoredValue = { +[string]: mixed };
@@ -59,7 +79,12 @@ export type StoredValue = { +[string]: mixed };
 export type SessionStore = {|
   /** The value under `key`, or `null` when there is none or it has expired. */
   readonly read: (key: string) => Promise<StoredValue | null>,
-  /** Put `value` under `key` until `expiresAt`, replacing whatever was there. */
+  /**
+   * Put `value` under `key` until `expiresAt`, replacing whatever was there.
+   *
+   * `expiresAt` is milliseconds since the epoch — the one number in a package
+   * that otherwise holds instants; see the module header for why it stops here.
+   */
   readonly write: (key: string, value: StoredValue, expiresAt: number) => Promise<void>,
   /** The value under `key`, removed in the same step; see above. */
   readonly take: (key: string) => Promise<StoredValue | null>,
@@ -98,7 +123,15 @@ const MEMORY_STORE_CAPACITY = 10000;
  */
 export function memorySessionStore(options?: {| readonly capacity?: number |}): SessionStore {
   const capacity = options?.capacity ?? MEMORY_STORE_CAPACITY;
-  const entries: Map<string, {| value: StoredValue, expiresAt: number |}> = new Map();
+  // The instant, not the number the seam carries. Nothing leaves this process,
+  // so there is no serialization to keep primitive, and comparing two instants
+  // is a comparison the type checker has an opinion about where subtracting
+  // two numbers is not.
+  const entries: Map<string, {| value: StoredValue, expiresAt: Instant |}> = new Map();
+
+  /** Whether `entry` has expired as of `now`. */
+  const expired = (entry: {| value: StoredValue, expiresAt: Instant |}, now: Instant) =>
+    Temporal.Instant.compare(entry.expiresAt, now) <= 0;
 
   /** The entry under `key` if it is still good, having dropped it if it is not. */
   const live = (key: string) => {
@@ -106,7 +139,7 @@ export function memorySessionStore(options?: {| readonly capacity?: number |}): 
     if (found == null) {
       return null;
     }
-    if (found.expiresAt <= Date.now()) {
+    if (expired(found, Temporal.Now.instant())) {
       entries.delete(key);
       return null;
     }
@@ -124,13 +157,13 @@ export function memorySessionStore(options?: {| readonly capacity?: number |}): 
       return value;
     },
     write: async (key, value, expiresAt) => {
-      entries.set(key, { value, expiresAt });
+      entries.set(key, { value, expiresAt: Temporal.Instant.fromEpochMilliseconds(expiresAt) });
       if (entries.size <= capacity) {
         return;
       }
-      const now = Date.now();
+      const now = Temporal.Now.instant();
       for (const [name, entry] of entries) {
-        if (entry.expiresAt <= now) {
+        if (expired(entry, now)) {
           entries.delete(name);
         }
       }

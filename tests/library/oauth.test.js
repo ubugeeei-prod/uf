@@ -32,6 +32,8 @@
 // provider's.
 
 import { describe, expect, it } from "@uniflowed/test";
+import { Temporal } from "@uniflowed/core/temporal";
+import { fixedClock, setClock } from "@uniflowed/core/clock";
 import { contextFor, runWithContext } from "@uniflowed/server/host";
 import { installLogger, recordingLogger } from "@uniflowed/server/log";
 import type { OAuthProvider } from "@uniflowed/server/oauth";
@@ -689,6 +691,111 @@ describe("reading the session from a loader or a component", () => {
 
     expect(JSON.stringify(session)).not.toContain("at-1");
     expect(tokens?.accessToken).toBe("at-1");
+  });
+});
+
+describe("when things expire", () => {
+  /** Sign in with the clock stopped at `at`, and hand back the session. */
+  async function signedInAt(at: string, options?: { [string]: mixed }) {
+    const restore = setClock(fixedClock(Temporal.Instant.from(at).epochMilliseconds));
+    try {
+      const { auth, store } = signingIn(options);
+      const { state, pending } = await begun(auth);
+      const response = await withTokenEndpoint(TOKENS, async () =>
+        auth.callback(
+          get(`/auth/callback?code=c&state=${state}`, { "__Host-uf.session.pending": pending }),
+        ),
+      );
+      const id = cookieValue(response, "__Host-uf.session");
+      const context = contextFor(get("/orders", { "__Host-uf.session": id }));
+      const [session, tokens] = await runWithContext(context, async () => [
+        await auth.currentSession(),
+        await auth.tokens(),
+      ]);
+      return { auth, store, id, session, tokens };
+    } finally {
+      restore();
+    }
+  }
+
+  it("dates the session from uf's clock, a configured lifetime later", async () => {
+    // The expiry is `Instant.add({ seconds })` on the clock uf reads, not
+    // `Date.now() + seconds * 1000`. Freezing the clock is what turns "it is
+    // roughly an hour from now" into an equality a test can hold.
+    const { session } = await signedInAt("2026-01-02T03:04:05Z", { sessionSeconds: 3600 });
+
+    expect(session?.expiresAt.toString()).toBe("2026-01-02T04:04:05Z");
+  });
+
+  it("reads a token's own expiry back as the instant, not as a number", async () => {
+    // `TokenSet.expiresAt` crosses the store as epoch milliseconds and comes
+    // back an `Instant`, which is the pair `storedTokens` and `tokensOf` exist
+    // to keep honest: a field that stopped being converted would arrive here as
+    // a number and this case would say so.
+    const { tokens } = await signedInAt("2026-01-02T03:04:05Z");
+
+    expect(tokens?.expiresAt?.toString()).toBe("2026-01-02T04:04:05Z");
+  });
+
+  it("says a session it cannot date has already run out", async () => {
+    // A record written by an older version, or one somebody has been at. The
+    // safe reading of "this does not say when it expires" is "it has", and the
+    // epoch is how that is spelled.
+    const { auth, store } = signingIn();
+    await store.write(
+      "uf.session:tampered",
+      { subject: "user-1", claims: {} },
+      Temporal.Now.instant().add({ seconds: 60 }).epochMilliseconds,
+    );
+    const context = contextFor(get("/orders", { "__Host-uf.session": "tampered" }));
+
+    const session = await runWithContext(context, () => auth.currentSession());
+
+    expect(session?.expiresAt.epochMilliseconds).toBe(0);
+  });
+
+  it("refuses to believe an `expires_in` that is not a number of seconds", async () => {
+    // A token endpoint is a third party and its answer is untrusted input.
+    // `1e308` seconds is outside the range an instant can hold, so adding it
+    // would throw a `RangeError` out of the middle of a sign-in rather than
+    // producing the `502` that says the provider answered badly. `null` — "the
+    // provider did not say" — is a state the rest of the flow already handles.
+    const { auth } = signingIn();
+    const { state, pending } = await begun(auth);
+
+    const response = await withTokenEndpoint({ ...TOKENS, expires_in: 1e308 }, async () =>
+      auth.callback(
+        get(`/auth/callback?code=c&state=${state}`, { "__Host-uf.session.pending": pending }),
+      ),
+    );
+    const id = cookieValue(response, "__Host-uf.session");
+    const context = contextFor(get("/orders", { "__Host-uf.session": id }));
+    const tokens = await runWithContext(context, () => auth.tokens());
+
+    expect(response.status).toBe(303);
+    expect(tokens?.expiresAt).toBe(null);
+  });
+
+  it("drops a pending record once the clock has passed it", async () => {
+    // The store's own expiry, driven rather than waited for: a `state` that
+    // outlived its ten minutes is a `state` a replay could still spend.
+    const at = Temporal.Instant.from("2026-01-02T03:04:05Z");
+    const { auth, store } = signingIn({ authorizationSeconds: 600 });
+    const restoreStart = setClock(fixedClock(at.epochMilliseconds));
+    let pending;
+    try {
+      ({ pending } = await begun(auth));
+    } finally {
+      restoreStart();
+    }
+
+    const later = at.add({ seconds: 601 });
+    const restoreLater = setClock(fixedClock(later.epochMilliseconds));
+    try {
+      expect(await store.read(`uf.pending:${pending}`)).toBe(null);
+    } finally {
+      restoreLater();
+    }
   });
 });
 

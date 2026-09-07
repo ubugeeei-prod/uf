@@ -240,7 +240,10 @@ export function createRenderer(options: {|
    */
   async function resolve(url: string, defer: boolean): Promise<Resolution> {
     try {
-      return { kind: "route", route: await resolveMatch(table, url, { defer, onMatch: noteRoute }) };
+      return {
+        kind: "route",
+        route: await resolveMatch(table, url, { defer, onMatch: noteRoute }),
+      };
     } catch (error) {
       if (error instanceof RedirectError) {
         return { kind: "redirect", error };

@@ -58,11 +58,12 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import type { Logger } from "./internal/log.js";
-import { logRequest, processLogger } from "./log.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -431,7 +432,14 @@ export function nodeListener(
     // Declared out here because `toRequest` is inside the `try`: a request that
     // could not even be built has no lifecycle to settle.
     let lifecycle: RequestLifecycle | null = null;
-    const started = Date.now();
+    // Resolved once rather than at each of the two places that write a line.
+    // One request leaves one account of itself, and a process logger installed
+    // halfway through this one would otherwise split it across two sinks.
+    const log = options.log ?? processLogger();
+    // uf's clock, not the host's: `@uniflowed/server/log`'s `elapsedMs` reads
+    // the same one at the other end, so what is measured here is one seam's
+    // idea of the time rather than two calls to a global.
+    const started = Temporal.Now.instant();
     // The path, before anything can fail. A request that could not be built has
     // no `URL` to take one from, and a line saying nothing about which request
     // it was would be the state ubugeeei-prod/uf#405 describes.
@@ -446,7 +454,7 @@ export function nodeListener(
       // `error` is a field rather than part of the message: an exception's text
       // is the varying half of what happened, and a logger that interpolated it
       // would produce a million distinct messages for one fault.
-      (options.log ?? processLogger()).error("request failed", { error, path: pathOf(target) });
+      log.error("request failed", { error, path: pathOf(target) });
       if (outgoing.headersSent) {
         outgoing.destroy();
       } else {
@@ -455,7 +463,7 @@ export function nodeListener(
         outgoing.end("500 Internal Server Error\n");
       }
     } finally {
-      logRequest(options.log ?? processLogger(), {
+      logRequest(log, {
         // A request that never got a context still gets a line; it gets an
         // empty id rather than a fabricated one, because inventing an id for a
         // request that had none would put a value in the log that nothing else
@@ -465,7 +473,7 @@ export function nodeListener(
         path: pathOf(target),
         route: lifecycle?.context.route ?? null,
         status: outgoing.statusCode,
-        durationMs: Date.now() - started,
+        durationMs: elapsedMs(started),
       });
       if (lifecycle != null) await lifecycle.settle();
     }

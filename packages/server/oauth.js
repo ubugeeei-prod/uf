@@ -110,6 +110,8 @@
 // so at every opportunity. The interface is the deliverable; an implementation
 // against a database is an adapter's, and it is four methods.
 
+import type { Instant } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
 import { cookies, logger } from "./index.js";
 import { parseCookies } from "./internal/context.js";
 import type { CookieAttributes, SessionStore, StoredValue } from "./internal/oauth.js";
@@ -138,8 +140,16 @@ export type TokenSet = {|
   /** The OpenID Connect identity token, unverified; see the module header. */
   readonly idToken: string | null,
   readonly scope: string | null,
-  /** Milliseconds since the epoch, or `null` when the provider did not say. */
-  readonly expiresAt: number | null,
+  /**
+   * When the access token stops working, or `null` when the provider did not
+   * say.
+   *
+   * A `Temporal.Instant` rather than a number, because an expiry is a point in
+   * time and this is the value an application compares against another one.
+   * `@uniflowed/core/temporal` supplies it on every host uf runs on, so this
+   * type means the same thing in a worker as it does under `uf start`.
+   */
+  readonly expiresAt: Instant | null,
 |};
 
 /** Who the tokens turned out to be about. */
@@ -199,8 +209,16 @@ export type OAuthProvider = {|
 export type Session = {|
   readonly subject: string,
   readonly claims: { +[string]: mixed },
-  /** Milliseconds since the epoch; the session is gone after this. */
-  readonly expiresAt: number,
+  /**
+   * The session is gone after this.
+   *
+   * A `Temporal.Instant`, so "is this about to run out" is
+   * `Temporal.Instant.compare` and not arithmetic on two numbers whose units a
+   * reader has to take on trust. `JSON.stringify` spells it as the same ISO
+   * string the `session` handler answers with, so the value a server component
+   * holds and the value the browser is told are one thing written twice.
+   */
+  readonly expiresAt: Instant,
 |};
 
 /** How long a sign-in lasts, and how long an unfinished one is remembered. */
@@ -350,7 +368,7 @@ export function createAuth(options: AuthOptions): Auth {
     await store.write(
       pendingKey(pendingId),
       { state, verifier, returnTo, redirectUri },
-      Date.now() + authorizationSeconds * 1000,
+      expiryAfter(authorizationSeconds),
     );
 
     const target = new URL(provider.authorizationEndpoint);
@@ -454,7 +472,7 @@ export function createAuth(options: AuthOptions): Auth {
     }
 
     const sessionId = randomToken(32);
-    const expiresAt = Date.now() + sessionSeconds * 1000;
+    const expiresAt = expiryAfter(sessionSeconds);
     // `expiresAt` is in the record as well as being handed to the store. The
     // store's copy decides when the entry stops existing; this one is what an
     // application reads out of `currentSession()`, and a store that expires
@@ -465,7 +483,7 @@ export function createAuth(options: AuthOptions): Auth {
         subject: identity.subject,
         claims: identity.claims ?? {},
         expiresAt,
-        tokens: { ...tokens },
+        tokens: storedTokens(tokens),
       },
       expiresAt,
     );
@@ -526,14 +544,17 @@ export function createAuth(options: AuthOptions): Auth {
     // A provider that rotates its own refresh token is honoured: the new one
     // replaces the old, and a provider that returned none keeps the old one,
     // which is what RFC 6749 says an omitted `refresh_token` means.
-    const expiresAt = Date.now() + sessionSeconds * 1000;
+    const expiresAt = expiryAfter(sessionSeconds);
     await store.write(
       sessionKey(id),
       {
         subject: record.subject,
         claims: record.claims ?? {},
         expiresAt,
-        tokens: { ...renewed, refreshToken: renewed.refreshToken ?? held.refreshToken },
+        tokens: storedTokens({
+          ...renewed,
+          refreshToken: renewed.refreshToken ?? held.refreshToken,
+        }),
       },
       expiresAt,
     );
@@ -557,11 +578,14 @@ export function createAuth(options: AuthOptions): Auth {
       headers.set("content-type", "application/json; charset=utf-8");
       // The subject and the claims. Never the tokens: this body is a response,
       // and a response is a thing a browser extension, a shared computer and an
-      // over-eager cache all get to see.
+      // over-eager cache all get to see. The expiry goes out as the ISO string
+      // an `Instant` serializes to, which is what `Session` carries — so a
+      // browser and a server component asking the same question are told the
+      // same answer spelled the same way.
       const body = JSON.stringify({
         subject: record.subject,
         claims: record.claims ?? {},
-        expiresAt: record.expiresAt,
+        expiresAt: instantOf(record.expiresAt),
       });
       return new Response(method === "HEAD" ? null : body, { status: 200, headers });
     }
@@ -610,7 +634,7 @@ export function createAuth(options: AuthOptions): Auth {
     return {
       subject: text(record.subject),
       claims: record.claims == null ? {} : (record.claims as $FlowFixMe),
-      expiresAt: typeof record.expiresAt === "number" ? record.expiresAt : 0,
+      expiresAt: instantOf(record.expiresAt),
     };
   }
 
@@ -697,15 +721,45 @@ async function exchange(
   if (typeof accessToken !== "string" || accessToken === "") {
     throw new Error("the token endpoint answered without an access token");
   }
-  const expiresIn = payload.expires_in;
   return {
     accessToken,
     tokenType: typeof payload.token_type === "string" ? payload.token_type : "Bearer",
     refreshToken: typeof payload.refresh_token === "string" ? payload.refresh_token : null,
     idToken: typeof payload.id_token === "string" ? payload.id_token : null,
     scope: typeof payload.scope === "string" ? payload.scope : null,
-    expiresAt: typeof expiresIn === "number" ? Date.now() + expiresIn * 1000 : null,
+    expiresAt: expiryFrom(payload.expires_in),
   };
+}
+
+/**
+ * The longest `expires_in` uf will believe, in seconds.
+ *
+ * A century, which is longer than any access token has ever been issued for
+ * and short enough that adding it to now stays inside the range Temporal
+ * represents. `docs/security.md` rule 4 — no unbounded anything — applies to a
+ * provider's response exactly as it applies to a browser's request: a token
+ * endpoint is a third party, and a third party that answers `1e308` must not
+ * be able to throw a `RangeError` out of the middle of a sign-in.
+ */
+const MAX_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 365 * 100;
+
+/**
+ * `expires_in` from a token response, as the instant the token stops working.
+ *
+ * `null` for a provider that did not say, and for one that said something that
+ * is not a number of seconds — `NaN`, an infinity, a negative lifetime, or one
+ * past [`MAX_EXPIRES_IN_SECONDS`]. Deny by default (rule 3): "the provider did
+ * not tell us when this expires" is a state the rest of the flow already
+ * handles, and it is the honest reading of a value that cannot be one.
+ */
+function expiryFrom(seconds: mixed): Instant | null {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+    return null;
+  }
+  if (seconds < 0 || seconds > MAX_EXPIRES_IN_SECONDS) {
+    return null;
+  }
+  return Temporal.Now.instant().add({ seconds });
 }
 
 /** The tokens inside a stored session record, if it is shaped like one. */
@@ -724,8 +778,53 @@ function tokensOf(record: StoredValue): TokenSet | null {
     refreshToken: typeof held.refreshToken === "string" ? held.refreshToken : null,
     idToken: typeof held.idToken === "string" ? held.idToken : null,
     scope: typeof held.scope === "string" ? held.scope : null,
-    expiresAt: typeof held.expiresAt === "number" ? held.expiresAt : null,
+    expiresAt: typeof held.expiresAt === "number" ? instantOf(held.expiresAt) : null,
   };
+}
+
+/**
+ * A [`TokenSet`] as the store holds it: the same fields, with the expiry back
+ * on the wire as epoch milliseconds.
+ *
+ * Written out rather than spread, because the pair with [`tokensOf`] is what
+ * keeps the two sides of the store honest — a field added to `TokenSet` that
+ * nothing here converts is a field that goes into a database as an object and
+ * comes back as one nobody reads. See `./internal/oauth.js`'s header for why
+ * the wire is a number at all.
+ */
+function storedTokens(tokens: TokenSet): StoredValue {
+  return {
+    accessToken: tokens.accessToken,
+    tokenType: tokens.tokenType,
+    refreshToken: tokens.refreshToken,
+    idToken: tokens.idToken,
+    scope: tokens.scope,
+    expiresAt: tokens.expiresAt == null ? null : tokens.expiresAt.epochMilliseconds,
+  };
+}
+
+/**
+ * `seconds` from now, as the epoch milliseconds [`SessionStore.write`] takes.
+ *
+ * The addition is Temporal's — `Instant.add({ seconds })` — rather than
+ * `now + seconds * 1000`, so the unit is in the call instead of in a constant a
+ * reader has to check; `.epochMilliseconds` at the end is the seam, and
+ * `./internal/oauth.js`'s header says why it stops being an instant there.
+ */
+function expiryAfter(seconds: number): number {
+  return Temporal.Now.instant().add({ seconds }).epochMilliseconds;
+}
+
+/**
+ * An expiry read back out of a store, as an instant.
+ *
+ * The epoch for anything that is not a number, which is a record that has been
+ * tampered with or written by an older version of this package. Already expired
+ * is the safe reading of "this record does not say when it expires": the caller
+ * treats it as a session that has run out rather than as one that never does.
+ */
+function instantOf(value: mixed): Instant {
+  return Temporal.Instant.fromEpochMilliseconds(typeof value === "number" ? value : 0);
 }
 
 /**

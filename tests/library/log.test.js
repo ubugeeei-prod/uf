@@ -22,8 +22,19 @@
 // token in whatever holds the logs, and a newline in a value a client chose is
 // a fabricated record — so redaction and control-character stripping each have
 // a case here, and each fails without the guard.
+//
+// # The time on a record is uf's, and it is a `Temporal.Instant`
+//
+// Which is testable exactly because it is not `Date.now()`: the cases below
+// install a clock and then assert on the timestamp a record carries and on the
+// duration a request line reports, instead of asserting that both are numbers
+// and hoping. `@uniflowed/core/temporal` is the same clock on every host,
+// polyfilled where the runtime has no Temporal, so what these pin holds in a
+// worker as well as under `uf start`.
 
 import { describe, expect, it } from "@uniflowed/test";
+import { Temporal } from "@uniflowed/core/temporal";
+import { fixedClock, manualClock, setClock } from "@uniflowed/core/clock";
 import { logger, requestId } from "@uniflowed/server";
 import { contextFor, drainDeferred, noteRoute, runWithContext } from "@uniflowed/server/host";
 import {
@@ -190,7 +201,7 @@ describe("formats", () => {
     // difference between a structured log and a JSON-shaped string.
     const line = formatJson({
       level: "info",
-      time: Date.parse("2026-01-02T03:04:05.678Z"),
+      time: Temporal.Instant.from("2026-01-02T03:04:05.678Z"),
       message: "request",
       fields: { status: 500, route: "/a/:id" },
     });
@@ -209,7 +220,7 @@ describe("formats", () => {
     // be able to relabel the record's severity.
     const line = formatJson({
       level: "error",
-      time: 0,
+      time: Temporal.Instant.fromEpochMilliseconds(0),
       message: "real",
       fields: { level: "debug", msg: "fake" },
     });
@@ -221,12 +232,59 @@ describe("formats", () => {
   it("writes a line a person reads for the terminal", () => {
     const line = formatText({
       level: "warn",
-      time: Date.parse("2026-01-02T03:04:05.678Z"),
+      time: Temporal.Instant.from("2026-01-02T03:04:05.678Z"),
       message: "request",
       fields: { route: "/a/:id", status: 404 },
     });
 
     expect(line).toBe("03:04:05.678 warn  request route=/a/:id status=404");
+  });
+
+  it("always writes three fractional digits, so the timestamps sort", () => {
+    // `Instant.toString()` omits the fraction when it is zero, which is correct
+    // ISO 8601 and wrong here: `.` sorts below `Z`, so `…:05Z` would come after
+    // `…:05.500Z` in every collector that sorts the string it was handed. This
+    // is the case that fails if the formatter ever goes back to `toString`.
+    const line = formatJson({
+      level: "info",
+      time: Temporal.Instant.from("2026-01-02T03:04:05Z"),
+      message: "on the second",
+      fields: {},
+    });
+
+    expect(JSON.parse(line).time).toBe("2026-01-02T03:04:05.000Z");
+    expect(JSON.parse(line).time < "2026-01-02T03:04:05.500Z").toBe(true);
+  });
+});
+
+describe("the clock a record is stamped from", () => {
+  it("is uf's rather than the host's, so a frozen clock freezes the record", () => {
+    // The reason the time is Temporal at all. `Date.now()` cannot be moved
+    // without replacing a global, and a suite that replaces a global is a suite
+    // that has changed the thing it is testing for everything running beside
+    // it.
+    const at = Temporal.Instant.from("2026-01-02T03:04:05.678Z");
+    const restore = setClock(fixedClock(at.epochMilliseconds));
+    try {
+      const { logger: log, records } = recordingLogger();
+
+      log.info("stamped");
+
+      expect(records[0].time.equals(at)).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("spells a value that knows its own text rather than walking it", () => {
+    // A `Temporal.Instant` has no own enumerable properties, so an application
+    // logging the expiry it just read out of `currentSession()` would otherwise
+    // get `{}` — a field that is present, empty and silently useless.
+    const { logger: log, records } = recordingLogger();
+
+    log.info("session", { expiresAt: Temporal.Instant.from("2026-01-02T03:04:05.678Z") });
+
+    expect(records[0].fields.expiresAt).toBe("2026-01-02T03:04:05.678Z");
   });
 });
 
@@ -455,6 +513,28 @@ describe("the line a finished request leaves behind", () => {
     expect(records.map((record) => record.message)).toEqual(["request failed", "request"]);
     expect(records[1].level).toBe("error");
     expect(records[1].fields.status).toBe(500);
+  });
+
+  it("says how long it took, measured with uf's clock at both ends", async () => {
+    // `durationMs` is `Instant.until(...).total({ unit: "millisecond" })`, so a
+    // clock a test drives by hand decides the answer. Reading `Date.now()`
+    // twice would leave this the one field in an access line nothing can
+    // assert on.
+    const clock = manualClock(Temporal.Instant.from("2026-01-02T03:04:05Z").epochMilliseconds);
+    const restore = setClock(clock.clock);
+    try {
+      const { logger: log, records } = recordingLogger();
+      const listen = listening(log, async () => {
+        clock.advance(1500);
+        return new Response("ok");
+      });
+
+      await listen(incoming("GET", "/slow"), outgoing());
+
+      expect(records[0].fields.durationMs).toBe(1500);
+    } finally {
+      restore();
+    }
   });
 
   it("names a 404 a warning and a 200 an ordinary line", async () => {

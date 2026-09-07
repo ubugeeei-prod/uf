@@ -688,15 +688,6 @@ function loadOnce<T>(load: () => Promise<T>): Promise<T> {
   return pending;
 }
 
-/** What a caller may tell [`resolveMatch`] about the resolution it wants. */
-export type ResolveOptions = {|
-  /** What the loader returned already, so it does not run twice. */
-  readonly data?: mixed,
-  readonly skipLoader?: boolean,
-  /** The route pattern, the moment the URL matches one; see [`resolveMatch`]. */
-  readonly onMatch?: (pattern: string) => void,
-|};
-
 /**
  * Load a match's modules and run its loader.
  *
@@ -774,6 +765,8 @@ export type ResolveOptions = {|
    * reason this is off unless a caller asks.
    */
   readonly defer?: boolean,
+  /** The route pattern, the moment the URL matches one; see [`resolveMatch`]. */
+  readonly onMatch?: (pattern: string) => void,
 |};
 
 async function resolveRoute(

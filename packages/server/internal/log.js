@@ -69,6 +69,23 @@
 // wants its logs on stdout installs a sink that writes there, which is what
 // `sink` is for and is the same "every built-in provider must be replaceable"
 // that `docs/red-lines.md` asks for everywhere else.
+//
+// # The time on a record is a `Temporal.Instant`
+//
+// Not `Date.now()`, and not a number. `@uniflowed/core/temporal` is where uf
+// reads a clock — the polyfill underneath it is what makes that true on a
+// worker as well as on Node — and going through it is what lets a test freeze
+// time and assert on the timestamp a record carries instead of asserting that
+// it is a number. `Date` would also have been mutable, host-zoned and
+// millisecond-only, which is the argument `@uniflowed/core/temporal`'s header
+// makes at length and this module has no reason to make differently.
+//
+// The record holds the instant and each format spells it, which is the same
+// split as the message and the fields: a record is what happened, and how it
+// is written down is the sink's business.
+
+import type { Instant, ZonedDateTime } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
 
 /** How much a record has to matter before it is written. */
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -79,8 +96,8 @@ export type LogFields = { +[string]: mixed };
 /** One thing worth saying, before anybody has decided how to spell it. */
 export type LogRecord = {|
   readonly level: LogLevel,
-  /** Milliseconds since the epoch, from `Date.now()`. */
-  readonly time: number,
+  /** When it happened, from uf's clock rather than the host's; see the header. */
+  readonly time: Instant,
   /** A constant the author wrote. Never interpolated; see the module header. */
   readonly message: string,
   readonly fields: LogFields,
@@ -216,7 +233,7 @@ function loggerAt(level: LogLevel, sink: LogSink, bound: LogFields): Logger {
     }
     sink({
       level: at,
-      time: Date.now(),
+      time: Temporal.Now.instant(),
       message: safeString(message, MAX_MESSAGE),
       fields: safeFields({ ...bound, ...fields }),
     });
@@ -270,8 +287,8 @@ export function consoleSink(format: LogFormat): LogSink {
 /**
  * One record as a line of JSON.
  *
- * `time` is an ISO string rather than the number it is held as, because that is
- * what every log aggregator sorts on without being told; `msg` rather than
+ * `time` is an ISO string rather than the instant it is held as, because that
+ * is what every log aggregator sorts on without being told; `msg` rather than
  * `message` for the same reason. The fields are spread at the top level, so a
  * query is `status:500` rather than `fields.status:500` — and a field named
  * `level`, `time` or `msg` cannot displace the record's own, because the
@@ -281,7 +298,7 @@ export function formatJson(record: LogRecord): string {
   return JSON.stringify({
     ...record.fields,
     level: record.level,
-    time: new Date(record.time).toISOString(),
+    time: isoUtc(record.time),
     msg: record.message,
   });
 }
@@ -295,12 +312,65 @@ export function formatJson(record: LogRecord): string {
  * the thing a reader does with this line is scan it.
  */
 export function formatText(record: LogRecord): string {
-  const at = new Date(record.time).toISOString().slice(11, 23);
-  const parts = [at, record.level.padEnd(5), record.message];
+  const parts = [wallClock(utcOf(record.time)), record.level.padEnd(5), record.message];
   for (const name of Object.keys(record.fields)) {
     parts.push(`${name}=${textValue(record.fields[name])}`);
   }
   return parts.join(" ");
+}
+
+/**
+ * Milliseconds from `started` until now, for a request line's `durationMs`.
+ *
+ * `until` and `total` rather than subtracting two numbers, because a number is
+ * not what a host holds any more: uf reads its clock through
+ * `@uniflowed/core/temporal`, so the value a request started with is an
+ * `Instant` and the time it took is the `Duration` between two of them. The
+ * answer is milliseconds because that is what the field is named and what a
+ * dashboard buckets — a `Duration` on the record would be an object every sink
+ * had to learn to spell.
+ *
+ * Both ends read the same clock, so a test that froze it gets `0` rather than a
+ * number that moves. That is the seam working: a suite asserting on a log line
+ * should not have to match a duration it cannot predict.
+ */
+export function elapsedMs(started: Instant): number {
+  return started.until(Temporal.Now.instant()).total({ unit: "millisecond" });
+}
+
+/** `at` as UTC, which is the zone both formats below write in. */
+function utcOf(at: Instant): ZonedDateTime {
+  return at.toZonedDateTimeISO("UTC");
+}
+
+/**
+ * `at` as `YYYY-MM-DDTHH:MM:SS.mmmZ`, with the milliseconds always written.
+ *
+ * `Instant.toString()` omits the fraction when it is zero, which is correct ISO
+ * 8601 and the wrong thing for a log line: `…:05Z` and `…:05.500Z` sort the
+ * wrong way round against each other, because `.` is below `Z` — and sorting on
+ * the timestamp string is what a collector does with a JSON line nobody
+ * configured it for. Three digits always, so the order of the strings is the
+ * order of the instants.
+ *
+ * Built from the zoned fields rather than by patching the string, because
+ * "which digits are the milliseconds" is a question about somebody else's
+ * formatting and "what second is it" is a question Temporal answers.
+ */
+function isoUtc(at: Instant): string {
+  const utc = utcOf(at);
+  return `${pad(utc.year, 4)}-${pad(utc.month, 2)}-${pad(utc.day, 2)}T${wallClock(utc)}Z`;
+}
+
+/** The wall-clock half of [`isoUtc`], `HH:MM:SS.mmm`, which is what a terminal gets. */
+function wallClock(utc: ZonedDateTime): string {
+  const seconds = `${pad(utc.second, 2)}.${pad(utc.millisecond, 3)}`;
+  return `${pad(utc.hour, 2)}:${pad(utc.minute, 2)}:${seconds}`;
+}
+
+/** `value` as `width` digits, zero-filled. */
+function pad(value: number, width: number): string {
+  return String(value).padStart(width, "0");
 }
 
 /** One field value, as a person reads it. */
@@ -390,6 +460,16 @@ function safeValue(name: string, value: mixed, depth: number): mixed {
       stack: value.stack == null ? undefined : safeString(value.stack, MAX_STRING * 4),
     };
   }
+  // A value that knows how to spell itself is spelled that way rather than
+  // walked. Every Temporal type is one — a `Temporal.Instant` has no own
+  // enumerable properties, so walking it produces `{}` — and so is a `Date`,
+  // which is what an application that has not moved to Temporal yet will pass.
+  // The result is only used when it is a string: `toJSON` is allowed to return
+  // an object, and one of those still has to go through the walk below.
+  const spelling = jsonSpelling(value);
+  if (spelling != null) {
+    return safeString(spelling, MAX_STRING);
+  }
   if (depth >= MAX_DEPTH) {
     return "[deep]";
   }
@@ -404,6 +484,32 @@ function safeValue(name: string, value: mixed, depth: number): mixed {
     return safeObject(value as $FlowFixMe, depth + 1);
   }
   return DROPPED;
+}
+
+/**
+ * What `value.toJSON()` says it is, when that is a string.
+ *
+ * `null` for everything else, which is every value that has no `toJSON`, one
+ * whose `toJSON` is not callable, and one that answers with something other
+ * than a string. A `toJSON` that throws is the caller's own object misbehaving
+ * inside a log call, and a logger that let that through would turn a
+ * diagnostic into the second failure — so it is caught and the value is walked
+ * instead.
+ */
+function jsonSpelling(value: mixed): string | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const method = (value as $FlowFixMe).toJSON;
+  if (typeof method !== "function") {
+    return null;
+  }
+  try {
+    const spelled = method.call(value);
+    return typeof spelled === "string" ? spelled : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

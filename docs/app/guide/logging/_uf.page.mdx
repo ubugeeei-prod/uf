@@ -129,6 +129,16 @@ For a test, `recordingLogger()` hands back a logger and the array of records it
 collects — the records rather than the arguments, which is where redaction and
 truncation have already happened and so the half worth asserting on.
 
+A record's `time` is a `Temporal.Instant`, read through
+`@uniflowed/core/temporal` rather than from `Date.now()`. That is what makes the
+timestamp something a test can pin: install a clock with `setClock` and the
+records stamped under it say exactly what you set. `durationMs` on a request
+line is measured with the same clock at both ends, so a `manualClock` you
+advance by 1500 ms reports `durationMs=1500`. Both formats spell the instant
+with three fractional digits always — `Instant.toString()` omits the fraction on
+a whole second, and `.` sorts below `Z`, so a collector sorting the timestamp
+string would put `…:05Z` after `…:05.500Z`.
+
 ## What a log line may not carry
 
 **A credential.** Field names that name one — `accessToken`, `client_secret`,

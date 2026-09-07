@@ -110,6 +110,11 @@ A page that asks this is a page about one person, so uf will not put it in the
 route cache. That is the same rule that stops a cached document carrying
 somebody's `Set-Cookie`, and it is not something to work around.
 
+`session.expiresAt` is a `Temporal.Instant`, so "is this about to run out" is
+`Temporal.Instant.compare` rather than arithmetic on a number whose unit you
+have to take on trust. It serializes as the same ISO string the `session`
+handler answers with.
+
 The tokens are not on the session. They are in the store, and `auth.tokens()` is
 a separately named reader for the application that genuinely needs to call the
 provider's API. What comes back from it must never be returned from a loader: a
@@ -133,6 +138,11 @@ export const store: SessionStore = {
   destroy: async (key) => void (await redis.del(key)),
 };
 ```
+
+`expiresAt` there is milliseconds since the epoch — the one number in a package
+that otherwise holds instants, and deliberately so: a store's job is to cross
+into somebody else's Redis, KV or table, and an epoch millisecond count is a
+primitive that serializes as itself and that `PXAT` above takes as it stands.
 
 `take` is the one that could not be composed from the others, and it is what
 makes a `state` parameter single-use: it reads *and* removes in one step, so a

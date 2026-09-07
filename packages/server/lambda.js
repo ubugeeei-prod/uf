@@ -48,10 +48,11 @@ import { Buffer } from "node:buffer";
 
 import { createStaticHandler } from "./node.js";
 
+import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
-import { logRequest, processLogger } from "./log.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -265,7 +266,7 @@ export function createLambdaHandler(
   return async function lambdaHandler(event: LambdaHttpEvent): Promise<LambdaHttpResult> {
     const request = toRequest(event);
     const lifecycle = beginRequest(request);
-    const started = Date.now();
+    const started = Temporal.Now.instant();
     // Declared out here so the `finally` can say what this invocation answered.
     // A Lambda has no terminal, so the line it leaves in CloudWatch is the only
     // account of the request there will ever be.
@@ -302,7 +303,7 @@ export function createLambdaHandler(
         path: new URL(request.url).pathname,
         route: lifecycle.context.route,
         status,
-        durationMs: Date.now() - started,
+        durationMs: elapsedMs(started),
       });
       await lifecycle.settle();
     }

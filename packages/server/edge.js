@@ -44,10 +44,11 @@
 // into the `handler.js` beside the generated `worker.js`. See
 // ubugeeei-prod/uf#389.
 
+import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
-import { logRequest, processLogger } from "./log.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -144,7 +145,7 @@ export function createWorkerFetch(
     ctx?: ExecutionContext,
   ): Promise<Response> {
     const lifecycle = beginRequest(request);
-    const started = Date.now();
+    const started = Temporal.Now.instant();
     // Declared out here so the `finally` can say what this request answered. A
     // worker has no terminal at all, so the line it leaves behind is the only
     // account of it there will ever be.
@@ -180,7 +181,7 @@ export function createWorkerFetch(
         path: new URL(request.url).pathname,
         route: lifecycle.context.route,
         status,
-        durationMs: Date.now() - started,
+        durationMs: elapsedMs(started),
       });
       // Scheduled rather than awaited: awaiting it here would hold the
       // response back until every `after()` callback had finished, which is
