@@ -48,6 +48,7 @@ const COMMANDS: &[&str] = &[
     "inspect",
     "install",
     "i",
+    "clean",
     "lint",
     "ls",
     "lsp",

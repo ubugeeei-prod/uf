@@ -67,6 +67,8 @@ const COVERAGE: &[(&str, &str)] = &[
     ("info", "here, and output.rs for the brand surface"),
     ("inspect", "here, and inspect.rs for the resolved config"),
     ("install", "workflow.rs: runs the package manager"),
+    // Where the parser declares it, which is what `uf --help` prints.
+    ("clean", "here, and clean/tests.rs for what it removes"),
     ("lint", "here, and output.rs for the report"),
     ("lsp", "cli.rs: speaks a protocol over stdio"),
     (

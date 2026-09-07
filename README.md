@@ -286,6 +286,7 @@ reference, with every flag and exit code.
 | | |
 | --- | --- |
 | `uf new`, `uf init` | Scaffold an application into a new directory, or into this one |
+| `uf clean` | Removes what a rebuild writes again — never a lockfile, and `node_modules` only when asked |
 | `uf dev` | Vite's dev server, with React Fast Refresh through `component` declarations |
 | `uf build` | Client and server bundles, prerendered routes, a size report and the build manifest |
 | `uf preview`, `uf start` | Serve that build — through Vite, or through uf's own server with no bundler in the process |
