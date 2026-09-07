@@ -602,8 +602,11 @@ import { AddArticle } from "./AddArticle.js";
 
 describe("AddArticle", () => {
   it("reports a missing title, and wires the message to the input", async () => {
-    const { container } = render(<AddArticle />);
-    fireEvent.submit(container.querySelector("form"));
+    render(<AddArticle />);
+    // The submit event, at the control a person would press. A query is what
+    // hands `fireEvent` an element rather than an `Element | null`, which is
+    // the difference between a test the checker reads and one it cannot.
+    fireEvent.submit(screen.getByRole("button", { name: "Add" }));
 
     const message = await screen.findByText("A title is required");
     expect(message.getAttribute("role")).toBe("alert");

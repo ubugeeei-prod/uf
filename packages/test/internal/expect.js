@@ -11,7 +11,61 @@
 // `.resolves` and `.rejects` settle the promise first and then apply the same
 // matcher table to what came out, so `await expect(p).resolves.toBe(1)` reads
 // the way the synchronous form does.
+//
+// # The names are written down, and the behaviour is not
+//
+// `expect` used to be `$FlowFixMe`, and so was everything it handed back. That
+// is a hole in the published type of the package a project writes every one of
+// its assertions against: `expect(user).toBaa(1)` was not a misspelling
+// anybody's checker would find, `expect(list).toHaveLength("3")` was not a type
+// error, and `expect(p).resolves` on a value that is not a promise was fine
+// until it ran. Every test in this repository is written against `expect`,
+// which is the largest surface in the packages and was the least checked.
+//
+// So [`Matchers`] below writes the names out, one signature per matcher, the
+// way `@uniflowed/react-testing`'s `Queries` writes out its thirty-six. Flow
+// has no template literal types and no way to read a name out of a value, so
+// the listing has to exist for the type to exist at all. What is *not*
+// repeated is any behaviour: [`verdicts`] is still the one place a matcher is
+// decided, and the listing is a naming that a reader can check against it by
+// eye.
+//
+// [`Matchers`] is generic in what a matcher *returns*, which is what lets
+// `.resolves` reuse the one listing: the same forty-one names, each handing
+// back a promise.
+//
+// # The received value's type is not carried, and that was tried
+//
+// ubugeeei-prod/uf#402 asked for a second parameter as well — the type handed
+// to `expect`, carried through the matchers so that `expect(count).toBe("two")`
+// is an error at the call. It is written here rather than left for somebody to
+// discover, because it looks obviously right and is not.
+//
+// `toBe` is `Object.is`, and identity is not assignability. Typing it
+// `(expected: T)` demands that the expected value be a subtype of the received
+// one, which is a direction the runtime has no opinion about and which ordinary
+// assertions fail in both:
+// `expect(document.activeElement).toBe(screen.getByRole("button"))` compares an
+// `HTMLElement | null` with an `Element`, neither is the other's subtype, and
+// that is the most common assertion in a DOM test. Jest and Vitest both type
+// this argument as `unknown` for the same reason.
+//
+// Worse, the parameter has to be *inferred*, and `expect(x)` is where a lot of
+// otherwise unconstrained expressions sit. `await
+// expect(client.request("/users/1")).resolves.toEqual({ id: 1 })` stops
+// checking and starts reporting that `request`'s own type parameter is
+// underconstrained, because a `mixed` parameter asked nothing of the argument
+// and a generic one asks it to be solved. `expect([])` becomes "cannot
+// determine type of empty array literal". Both are correct tests, and the type
+// that rejects them is worse than the type that missed a mistyped comparison.
+//
+// So the received value arrives as `mixed`, and what makes a matcher checked is
+// its own signature: `toHaveLength` wants a number, `toMatch` a pattern,
+// `toBeTypeOf` one of the eight words `typeof` answers with, and every name is
+// a name. The comparison between two unrelated types stays unchecked, and it is
+// the only part of the issue that does.
 
+import type { AsymmetricMatcher } from "./asymmetric.js";
 import type { SpyCall } from "./spy.js";
 import * as asymmetric from "./asymmetric.js";
 import * as snapshot from "./snapshot.js";
@@ -44,6 +98,152 @@ type Verdict = {|
   readonly expected?: string,
   readonly received?: string,
 |};
+
+/** What `typeof` can answer, for the matcher that compares against it. */
+type TypeName =
+  | "bigint"
+  | "boolean"
+  | "function"
+  | "number"
+  | "object"
+  | "string"
+  | "symbol"
+  | "undefined";
+
+/**
+ * Every matcher, each returning `R`.
+ *
+ * Generic in the return type because the surface exists twice and that is the
+ * only thing that differs: `expect(x)` raises where a matcher fails and hands
+ * back nothing, while `expect(p).resolves` settles first and so hands back a
+ * promise. Writing the forty-one names once and saying what changes is the
+ * whole reason for the parameter — the alternative was the same list twice,
+ * with `=> void` on one copy and `=> Promise<void>` on the other, and a reader
+ * left to diff them.
+ *
+ * Where an argument is `mixed` it is because the runtime genuinely takes
+ * anything there and the checker would be lying to say otherwise: `toEqual`
+ * accepts an asymmetric matcher standing in for a value at any depth, and
+ * `toHaveValue` compares whatever a control is holding. Where it is not —
+ * `toHaveLength` wants a number, `toMatch` a string or a pattern, `toBeTypeOf`
+ * one of the eight words `typeof` produces — the narrower type is what the
+ * implementation already assumes, and saying it out loud is the point of the
+ * exercise.
+ *
+ * `not` is the same list again because negation is the only thing it changes.
+ * `resolves` and `rejects` are deliberately not here: they belong to
+ * [`Expectation`], because `expect(p).resolves.not` exists and
+ * `expect(x).not.resolves` does not.
+ */
+export type Matchers<R> = {
+  readonly toBe: (expected: mixed) => R,
+  readonly toEqual: (expected: mixed) => R,
+  readonly toStrictEqual: (expected: mixed) => R,
+  readonly toBeTruthy: () => R,
+  readonly toBeFalsy: () => R,
+  readonly toBeNull: () => R,
+  readonly toBeUndefined: () => R,
+  readonly toBeDefined: () => R,
+  readonly toBeNaN: () => R,
+  readonly toBeGreaterThan: (expected: number) => R,
+  readonly toBeGreaterThanOrEqual: (expected: number) => R,
+  readonly toBeLessThan: (expected: number) => R,
+  readonly toBeLessThanOrEqual: (expected: number) => R,
+  readonly toBeCloseTo: (expected: number, digits?: number) => R,
+  readonly toContain: (expected: mixed) => R,
+  readonly toContainEqual: (expected: mixed) => R,
+  readonly toHaveLength: (expected: number) => R,
+  readonly toHaveProperty: (path: string, ...rest: $ReadOnlyArray<mixed>) => R,
+  readonly toMatch: (expected: string | RegExp) => R,
+  readonly toMatchObject: (expected: mixed) => R,
+  readonly toBeInstanceOf: (expected: mixed) => R,
+  readonly toBeTypeOf: (expected: TypeName) => R,
+  readonly toSatisfy: (predicate: (value: mixed) => boolean) => R,
+  readonly toMatchSnapshot: (hint?: string) => R,
+  readonly toMatchInlineSnapshot: (expected?: string) => R,
+  readonly toThrow: (...rest: $ReadOnlyArray<mixed>) => R,
+  readonly toHaveBeenCalled: () => R,
+  readonly toHaveBeenCalledTimes: (count: number) => R,
+  readonly toHaveBeenCalledWith: (...args: $ReadOnlyArray<mixed>) => R,
+  readonly toHaveBeenLastCalledWith: (...args: $ReadOnlyArray<mixed>) => R,
+  readonly toBeInTheDocument: () => R,
+  readonly toBeVisible: () => R,
+  readonly toBeDisabled: () => R,
+  readonly toBeEnabled: () => R,
+  readonly toBeChecked: () => R,
+  readonly toBeRequired: () => R,
+  readonly toHaveFocus: () => R,
+  readonly toHaveAttribute: (name: string, value?: mixed) => R,
+  readonly toHaveClass: (...names: $ReadOnlyArray<string>) => R,
+  readonly toHaveTextContent: (expected: string | RegExp) => R,
+  readonly toHaveValue: (expected: mixed) => R,
+  readonly not: Matchers<R>,
+  ...
+};
+
+/**
+ * What `expect(received)` hands back.
+ *
+ * The matchers, plus the two that settle a promise before applying them. An
+ * intersection rather than a copy of the list with two lines added, and
+ * rather than an object spread, because a spread of an object type drops the
+ * `readonly` off every property it carries over — Flow computes a fresh object
+ * from the spread and the fresh one is writable, which would publish forty-one
+ * assignable matchers.
+ *
+ * # What is still not checked
+ *
+ * `expect(5).resolves` types, and fails when it runs. Saying otherwise needs
+ * `expect` to have two call signatures — one for a promise handing back a
+ * shape with `resolves`, one for everything else handing back a shape without
+ * — and Flow then requires the single function behind them to satisfy both,
+ * which no single function does. The overload is written down here rather than
+ * attempted because "it did not type" is the kind of thing that gets tried
+ * twice.
+ */
+export type Expectation = Matchers<void> & {
+  readonly resolves: Matchers<Promise<void>>,
+  readonly rejects: Matchers<Promise<void>>,
+  ...
+};
+
+/**
+ * `expect` itself: callable, and carrying the matchers that stand in for a
+ * value instead of being one.
+ *
+ * Inexact, and it has to be. The value is a function, every function has
+ * `name`, `length`, `call`, `apply` and `bind`, and an exact object type
+ * refuses one for exactly that reason. Inexactness costs nothing that matters
+ * here: Flow still reports a read of a property this type does not list, which
+ * is what makes `expect.anythign()` an error.
+ */
+export type Expect = {
+  (received: mixed): Expectation,
+  // `flow/unclear-type` reads source text rather than an AST, and the shape it
+  // recognises as a property key rather than a type is a name at the start of
+  // a line or straight after `{`, `,` or `;`. `readonly any:` is neither, so
+  // the rule reports Jest's, Vitest's and Sinon's name for this matcher as an
+  // `any` type. The rule's own comment already lists `@uniflowed/test`'s
+  // `expect.any` among the false positives it exists to avoid; this is the one
+  // spelling it still cannot see past.
+  // uf-lint-disable-next-line flow/unclear-type
+  readonly any: (constructor: mixed) => AsymmetricMatcher,
+  readonly anything: () => AsymmetricMatcher,
+  readonly objectContaining: (expected: interface {}) => AsymmetricMatcher,
+  readonly arrayContaining: (expected: $ReadOnlyArray<mixed>) => AsymmetricMatcher,
+  readonly stringContaining: (substring: string) => AsymmetricMatcher,
+  readonly stringMatching: (pattern: string | RegExp) => AsymmetricMatcher,
+  readonly closeTo: (value: number, digits?: number) => AsymmetricMatcher,
+  readonly not: {
+    readonly objectContaining: (expected: interface {}) => AsymmetricMatcher,
+    readonly arrayContaining: (expected: $ReadOnlyArray<mixed>) => AsymmetricMatcher,
+    readonly stringContaining: (substring: string) => AsymmetricMatcher,
+    readonly stringMatching: (pattern: string | RegExp) => AsymmetricMatcher,
+    readonly closeTo: (value: number, digits?: number) => AsymmetricMatcher,
+    ...
+  },
+  ...
+};
 
 function propertyAt(
   value: mixed,
@@ -99,14 +299,15 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  * that wants a `number`, and `(...args: $ReadOnlyArray<empty>)` accepts every
  * entry and rejects the call.
  *
- * `mixed` with a cast at the call would move the same unsoundness one line
- * without checking anything, because the caller is `bind`, whose result is
- * `$FlowFixMe` and whose result's result is `expect`, also `$FlowFixMe`. The
- * type that makes any of this checked is a written-out matcher interface —
- * one signature per matcher, plus `.not`, `.resolves` and `.rejects` — which
- * is what `expect`'s own annotation is waiting for, and is
- * ubugeeei-prod/uf#402. Until that exists, a narrower type here would be
- * precision nobody can reach.
+ * That is unchanged, and it is now the last of it. Where a caller used to meet
+ * this indexer through an unbroken chain of `$FlowFixMe`, the published
+ * surface is [`Expectation`] and the disagreement the indexer papers over is
+ * written down there, one signature per name. What survives is a table reached
+ * by a computed key inside this module, between `verdicts` and `bind` — two
+ * functions in one file, neither of which a consumer can see — and narrowing
+ * it means writing `bind`'s forty-one wrappers out by hand to avoid the
+ * lookup. That is a second copy of the listing to keep in step with this one,
+ * which is a worse trade than the suppression it removes.
  */
 function verdicts(received: mixed): {
   // uf-lint-disable-next-line flow/unclear-type
@@ -466,14 +667,42 @@ function verdicts(received: mixed): {
  * Walks the ancestors, because `display: none` on a parent hides a child whose
  * own style says nothing. `hidden`, `aria-hidden` and a `details` that is not
  * open each hide their subtree too.
+ *
+ * # The one thing a closed `<details>` still shows
+ *
+ * Its `<summary>`. A closed disclosure renders exactly one child and hides the
+ * rest, so the rule is "everything under a closed `<details>` except its
+ * summary" — and saying that needs the child the walk arrived from, not only
+ * the ancestor it is standing on. Without it the rule was written as "unless
+ * the `<details>` is the element being asked about", which exempted the
+ * disclosure from its own rule and left the summary inside it invisible:
+ * `expect(screen.getByText("More")).toBeVisible()` failed for the one thing on
+ * the screen, while the reader was looking at it.
+ *
+ * # Why this is not the walk in `react-testing`
+ *
+ * `packages/react-testing/internal/queries.js` has one that looks like this
+ * and answers a different question. `exposed` asks whether the accessibility
+ * tree announces the element, so it ignores `opacity: 0` — a screen reader
+ * reads text at zero opacity, which is exactly why hiding text that way is a
+ * bug rather than a technique — and it takes `aria-hidden` as decisive. This
+ * one asks whether a reader would *see* it, so the two answers part company
+ * there on purpose. The `<details>` half is the half they agree on, and it is
+ * written the same way in both.
  */
 function isVisible(node: Element): boolean {
+  let child: $FlowFixMe = null;
   let current: $FlowFixMe = node;
   while (current != null && current.nodeType === 1) {
     if (current.hasAttribute("hidden") || current.getAttribute("aria-hidden") === "true") {
       return false;
     }
-    if (current.tagName === "DETAILS" && !current.hasAttribute("open") && current !== node) {
+    if (
+      child != null &&
+      current.tagName === "DETAILS" &&
+      !current.hasAttribute("open") &&
+      child.tagName !== "SUMMARY"
+    ) {
       return false;
     }
     const style = current.ownerDocument?.defaultView?.getComputedStyle?.(current);
@@ -485,6 +714,7 @@ function isVisible(node: Element): boolean {
         return false;
       }
     }
+    child = current;
     current = current.parentElement;
   }
   return true;
@@ -510,6 +740,17 @@ function isDisabled(node: Element): boolean {
  *
  * `negated` decides which message a failing verdict raises, which is all of
  * what `.not` is.
+ *
+ * # Why the object is built rather than written
+ *
+ * `.not` has to be reached lazily or building an expectation would build its
+ * negation, which would build *its* negation, forever. A lazily installed
+ * property is not something an object literal carries, so the value is
+ * completed with `Object.defineProperty` after it exists — and an object
+ * completed after the fact is not one Flow can check a literal against. That
+ * is what this `$FlowFixMe` is, and it now covers a construction rather than a
+ * published type: [`expectValue`] states the real one, and the checker holds
+ * every caller to it.
  */
 function bind(received: mixed, negated: boolean): $FlowFixMe {
   const table = verdicts(received);
@@ -591,8 +832,12 @@ function settled(promise: mixed, wanted: "resolve" | "reject", negated: boolean)
  * expect(() => parse("")).toThrow(/empty/);
  * await expect(load()).resolves.toHaveLength(3);
  * ```
+ *
+ * Takes a `mixed` and hands back a written-out [`Expectation`]. What each
+ * matcher will accept is decided by its own signature rather than by what was
+ * received, for the reasons this module's header sets out.
  */
-function expectValue(received: mixed): $FlowFixMe {
+function expectValue(received: mixed): Expectation {
   const expectation: $FlowFixMe = bind(received, false);
   Object.defineProperty(expectation, "resolves", {
     get: () => settled(received, "resolve", false),
@@ -602,11 +847,45 @@ function expectValue(received: mixed): $FlowFixMe {
 }
 
 /**
- * Assert about a value.
+ * Build the callable that carries the asymmetric matchers.
  *
- * Declared with its matchers attached rather than assigned afterwards: a
- * shipped module may only declare, import and export at its top level, and
- * `expect.any = …` is a statement that runs when the module is imported.
+ * The statics are attached inside a builder rather than at the module's top
+ * level, the way `internal/registry.js` builds `describe`: a shipped module
+ * may only declare, import and export at its top level, and `expect.any = …`
+ * out here is a statement that runs when the module is imported.
+ *
+ * It was `Object.assign(expectValue, { … })`, which is what a reader expects
+ * and what does not type. Flow models `Object.assign` as returning the
+ * *target*, so the result of assigning matchers onto a function is still a
+ * function with no matchers on it — eight `prop-missing` errors saying so, and
+ * a `flow/unsafe-object-assign` suppression on top of them. Attaching to a
+ * local before it is returned is the same runtime value with none of that: the
+ * checker sees the statics arrive and holds the result to [`Expect`].
+ */
+function expecting(): Expect {
+  const api = (received: mixed): Expectation => expectValue(received);
+  api.any = asymmetric.any;
+  api.anything = asymmetric.anything;
+  api.objectContaining = asymmetric.objectContaining;
+  api.arrayContaining = asymmetric.arrayContaining;
+  api.stringContaining = asymmetric.stringContaining;
+  api.stringMatching = asymmetric.stringMatching;
+  api.closeTo = asymmetric.closeTo;
+  api.not = {
+    objectContaining: (expected: interface {}) =>
+      asymmetric.not(asymmetric.objectContaining(expected)),
+    arrayContaining: (expected: $ReadOnlyArray<mixed>) =>
+      asymmetric.not(asymmetric.arrayContaining(expected)),
+    stringContaining: (substring: string) => asymmetric.not(asymmetric.stringContaining(substring)),
+    stringMatching: (pattern: string | RegExp) =>
+      asymmetric.not(asymmetric.stringMatching(pattern)),
+    closeTo: (value: number, digits?: number) => asymmetric.not(asymmetric.closeTo(value, digits)),
+  };
+  return api;
+}
+
+/**
+ * Assert about a value.
  *
  * The `expect.*` half are the matchers that stand in for a value instead of
  * being one. `expect(user).toEqual({ id: expect.any(String), name: "uf" })`
@@ -619,31 +898,4 @@ function expectValue(received: mixed): $FlowFixMe {
  * than a negated assertion around the whole object, and is the form a suite
  * being ported will already have.
  */
-// `flow/unsafe-object-assign` asks for an object spread, and a spread cannot
-// produce this value: `expect` is a *function* with matchers hanging off it,
-// and `{ ...expectValue, ...matchers }` is a plain object that a test cannot
-// call. `Object.assign` onto a callable is the only expression that makes one,
-// and the alternative the rule is really warning about — `expect.any = …`
-// afterwards — is the top-level statement the comment above rules out. What it
-// mutates is a function this module declared six lines up and exports here; no
-// object belonging to anybody else is touched.
-// uf-lint-disable-next-line flow/unsafe-object-assign
-export const expect: $FlowFixMe = Object.assign(expectValue, {
-  any: asymmetric.any,
-  anything: asymmetric.anything,
-  objectContaining: asymmetric.objectContaining,
-  arrayContaining: asymmetric.arrayContaining,
-  stringContaining: asymmetric.stringContaining,
-  stringMatching: asymmetric.stringMatching,
-  closeTo: asymmetric.closeTo,
-  not: {
-    objectContaining: (expected: interface {}) =>
-      asymmetric.not(asymmetric.objectContaining(expected)),
-    arrayContaining: (expected: $ReadOnlyArray<mixed>) =>
-      asymmetric.not(asymmetric.arrayContaining(expected)),
-    stringContaining: (substring: string) => asymmetric.not(asymmetric.stringContaining(substring)),
-    stringMatching: (pattern: string | RegExp) =>
-      asymmetric.not(asymmetric.stringMatching(pattern)),
-    closeTo: (value: number, digits?: number) => asymmetric.not(asymmetric.closeTo(value, digits)),
-  },
-});
+export const expect: Expect = expecting();

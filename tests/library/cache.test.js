@@ -116,6 +116,12 @@ function appWith(options: {
     renders,
     beginRequest,
     runMiddleware: async (request: Request) => (options.guard ? options.guard(request) : null),
+    // Part of the `Application` contract since server actions landed, and it
+    // declines every request here: these tests are about the route cache, and
+    // an action call is the one request that never reaches a render. A double
+    // that omitted it would be a double of a contract nothing implements —
+    // which is what `standalone.js` found when it called this.
+    callAction: async (_request: Request) => null,
     dispatch: async (request: Request) => (options.handler ? options.handler(request) : null),
     render: async (url: string) => {
       renders.push(url);

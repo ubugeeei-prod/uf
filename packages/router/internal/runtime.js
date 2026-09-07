@@ -14,6 +14,7 @@ import {
   Suspense,
   createContext,
   startTransition,
+  use,
   useCallback,
   useContext,
   useEffect,
@@ -21,6 +22,11 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+
+// The id of the script the loader data is embedded in. It moved out of the
+// head and into the tree with ubugeeei-prod/uf#373 — see [`loaderDataScript`]
+// — so the module that renders it is this one rather than `../server.js`.
+import { DATA_ID } from "./document.js";
 
 /** One parameter a route path captures. */
 export type RouteParamSpec = {| readonly name: string, readonly catchAll: boolean |};
@@ -290,7 +296,19 @@ export type NotFoundBoundary = {|
   readonly path: string,
   readonly mdx: boolean,
   readonly file: string,
-  readonly page: () => Promise<PageModule>,
+  /**
+   * The page this boundary renders — `null` for the one the build synthesises
+   * at the router root when a project declares no `_uf.not-found.js` there.
+   *
+   * A project that had declared none used to get `layouts: []` along with the
+   * framework's page: not the nearest-ancestor rule failing, but the fallback
+   * having no record to take layouts from. So the root's layouts are a record
+   * like any other, with the framework's component in place of a module to
+   * import — which is a nullable field rather than a second kind of answer, and
+   * is why an unmatched URL still arrives inside the site's own masthead. See
+   * ubugeeei-prod/uf#351.
+   */
+  readonly page: ?() => Promise<PageModule>,
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
@@ -305,7 +323,8 @@ export type NotFoundBoundary = {|
 export type ErrorBoundary = {|
   readonly path: string,
   readonly file: string,
-  readonly module: () => Promise<ErrorModule>,
+  /** `null` for the synthesised root record; see [`NotFoundBoundary`]`.page`. */
+  readonly module: ?() => Promise<ErrorModule>,
   readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
 |};
 
@@ -358,8 +377,8 @@ export function routeErrorStatus(error: RouteError): 401 | 403 | 500 {
 }
 
 /**
- * A match whose modules are loaded and whose loader has run — or, when `error`
- * is set, the error page that stands in for it.
+ * A match whose modules are loaded and whose loader has run or is running — or,
+ * when `error` is set, the error page that stands in for it.
  */
 export type ResolvedRoute = {|
   readonly pathname: string,
@@ -369,7 +388,23 @@ export type ResolvedRoute = {|
   readonly searchParams: SearchParams,
   readonly page: PageModule,
   readonly layouts: $ReadOnlyArray<LayoutModule>,
+  /** What the loader returned, once it has. `undefined` while `deferred` is set. */
   readonly data: mixed,
+  /**
+   * The loader still running, when the router handed the page its promise
+   * rather than its value. `null` on every other path, which is most of them.
+   *
+   * Two fields rather than a `data` that is sometimes a promise, because a
+   * loader is free to return something with a `then` on it and no duck test
+   * could tell that apart from a deferral. This one is the router's own answer
+   * to a question the router asked, so it says so.
+   *
+   * Set only by a streaming render of a route that declares a
+   * `_uf.loading.js` and generates no metadata from its data — the two
+   * conditions under which deferring buys anything and costs nothing that was
+   * not already spent. [`resolveRoute`] is where that is decided and argued.
+   */
+  readonly deferred: ?Promise<mixed>,
   readonly metadata: Metadata,
   readonly status: 200 | 401 | 403 | 404 | 500,
   /**
@@ -676,7 +711,7 @@ function loadOnce<T>(load: () => Promise<T>): Promise<T> {
 export async function resolveMatch(
   table: RouteTable,
   url: string,
-  options?: {| readonly data?: mixed, readonly skipLoader?: boolean |},
+  options?: ResolveOptions,
 ): Promise<ResolvedRoute> {
   try {
     return await resolveRoute(table, url, options);
@@ -688,10 +723,41 @@ export async function resolveMatch(
   }
 }
 
+/** What a caller may tell [`resolveMatch`] about the resolution it wants. */
+export type ResolveOptions = {|
+  /** The loader's answer, already in hand — the value the server embedded. */
+  readonly data?: mixed,
+  /** Do not run the loader at all; `data` is the answer. */
+  readonly skipLoader?: boolean,
+  /**
+   * Whether the caller can render a route whose loader has not answered yet.
+   *
+   * Only a streaming server render can, and that is the whole of why this is
+   * a caller's choice rather than the router's. `createRenderer`'s `render`
+   * sends a `<Suspense>` fallback now and the content when it arrives, so
+   * deferring is what turns a slow loader from a delay before the first byte
+   * into a fallback the reader is already looking at.
+   *
+   * Nothing else is in that position, and each for its own reason. `prerender`
+   * writes a file, which has no first paint to improve and no reader to show a
+   * fallback to. `hydrate` has the server's answer already. A client
+   * navigation has a page on screen that stays interactive while the next one
+   * resolves, which is the browser's version of the same idea and does not
+   * need this one.
+   *
+   * It costs the loader its say in the response: a status is decided when the
+   * shell goes out, so a deferred `notFound()` reaches the error boundary
+   * rather than the 404 page, and the document is a 200. That is inherent to
+   * streaming rather than a shortcut — the bytes have gone — and it is the
+   * reason this is off unless a caller asks.
+   */
+  readonly defer?: boolean,
+|};
+
 async function resolveRoute(
   table: RouteTable,
   url: string,
-  options?: {| readonly data?: mixed, readonly skipLoader?: boolean |},
+  options?: ResolveOptions,
 ): Promise<ResolvedRoute> {
   const { pathname, search } = splitUrl(url);
   const searchParams = parseSearch(search);
@@ -725,21 +791,42 @@ async function resolveRoute(
   // depends on nothing the loader produces.
   const loading = resolveLoading(matched.route, matched.route.layouts.length);
 
+  // The loader, run here and awaited below — or not awaited at all.
+  //
+  // A page that suspends while *rendering* has always streamed; a page waiting
+  // on its loader could not, because this function awaited the loader before it
+  // returned and by the time React saw the tree the data was already in hand.
+  // The fallback beside such a page showed for zero milliseconds, which made
+  // `_uf.loading.js` useful for the one case a page usually is not slow for.
+  //
+  // Two things stand in the way of simply not awaiting, and both are about the
+  // document rather than about the route. Metadata goes in the head and the
+  // head is written before the body, so a title computed from the data
+  // genuinely cannot be deferred — that is a rule worth stating rather than a
+  // limitation to hide, and it is the `generateMetadata` half of the condition
+  // below. The other is that a route with no `<Suspense>` above it has nothing
+  // to defer *into*: React holds the whole shell for a page that suspends with
+  // no boundary, which is the same wait by another name, with an unresolved
+  // promise flowing through the tree for nothing. So the loader is deferred
+  // exactly when there is a boundary to defer it into.
+  //
+  // See ubugeeei-prod/uf#373, and `ResolveOptions.defer` for who asks.
   let data: mixed = options?.data;
+  let deferred: ?Promise<mixed> = null;
   if (options?.skipLoader !== true && typeof page.loader === "function") {
-    // Awaited here, so a route's time to first byte is still its slowest
-    // loader. A page that suspends while *rendering* streams — that is what the
-    // `<Suspense>` boundaries below are for — but a page waiting on its loader
-    // has already waited by the time React sees the tree, so its fallback shows
-    // for no time at all.
-    //
-    // Deferring it means handing the page a promise and unwrapping it inside
-    // the boundary, and the obstacle is not the awaiting: it is that
-    // `generateMetadata` reads `data` and metadata goes in the head, and that
-    // the loader data is embedded in the head too, for hydration. Both are
-    // decisions about the document rather than about the route.
-    // ubugeeei-prod/uf#373 has the design.
-    data = await page.loader({ params: matched.params, searchParams, pathname });
+    const running = page.loader({ params: matched.params, searchParams, pathname });
+    const canDefer =
+      options?.defer === true &&
+      (matched.route.loading ?? []).length > 0 &&
+      typeof page.generateMetadata !== "function";
+    if (canDefer) {
+      // `Promise.resolve`, because a loader may return a plain value and `use`
+      // wants a promise either way. A loader that answered without waiting
+      // costs one microtask and renders in the same pass.
+      deferred = Promise.resolve(running);
+    } else {
+      data = await running;
+    }
   }
 
   const metadata = await resolveMetadata(page, layouts, {
@@ -756,6 +843,7 @@ async function resolveRoute(
     page,
     layouts,
     data,
+    deferred,
     metadata,
     status: 200,
     error: null,
@@ -874,13 +962,22 @@ async function resolveErrorBoundary(
   // the boundary covering it, and an `above` past the end would compose the
   // layouts out of nothing.
   const above = Math.min(boundary.layouts.length, layoutCount);
+  const load = boundary.module;
+  // The synthesised root record, which names layouts and no module: the
+  // framework's page renders, and `above` still says where — inside the site's
+  // own layouts rather than outside everything. See [`NotFoundBoundary`]`.page`.
+  if (load == null) {
+    return { module: null, above };
+  }
   try {
-    return { module: await loadOnce(boundary.module), above };
+    return { module: await loadOnce(load), above };
   } catch {
     // A boundary whose module will not load cannot be the answer to a throw,
     // and this is why the field is nullable: containment must not itself
-    // depend on an import working.
-    return { module: null, above: 0 };
+    // depend on an import working. The depth is kept, because the layouts the
+    // boundary named are still there and the framework's page is better inside
+    // them than outside them.
+    return { module: null, above };
   }
 }
 
@@ -903,11 +1000,15 @@ async function resolveError(
   let module: ?ErrorModule = null;
   let layouts: $ReadOnlyArray<LayoutModule> = [];
   if (boundary != null) {
+    const load = boundary.module;
     try {
-      [module, layouts] = await Promise.all([
-        loadOnce(boundary.module),
-        Promise.all(boundary.layouts.map((layout) => loadOnce(layout))),
-      ]);
+      // The layouts whether or not there is a module, because the synthesised
+      // root record has layouts and no module and its whole purpose is that
+      // the framework's error page renders inside them: a site whose root
+      // layout owns the masthead and the stylesheet answered a 500 with
+      // neither. See ubugeeei-prod/uf#351.
+      layouts = await Promise.all(boundary.layouts.map((layout) => loadOnce(layout)));
+      module = load == null ? null : await loadOnce(load);
     } catch {
       // See `resolveErrorBoundary`: the framework's own page answers instead.
       module = null;
@@ -929,6 +1030,7 @@ async function resolveError(
     page: { default: ResolvedErrorPage },
     layouts,
     data: undefined,
+    deferred: null,
     metadata: declared.title != null ? declared : { ...declared, title: errorTitle(routeError) },
     status: routeErrorStatus(routeError),
     error: routeError,
@@ -953,6 +1055,21 @@ async function resolveError(
  * layouts *below* the boundary — so `app/guide/[slug]/_uf.layout.js` would
  * wrap a 404 that `app/guide/_uf.not-found.js` answered, which is the layout
  * of the page that just said it does not exist.
+ *
+ * # The record with no page
+ *
+ * A project that declares no `_uf.not-found.js` anywhere still has a record —
+ * the one the build synthesises for the router root — and it names the root's
+ * layouts and no module. Before that record existed this function answered
+ * with `layouts: []`, so a site whose root layout owns the masthead, the
+ * stylesheet and often `<html>` itself answered an unmatched URL with a white
+ * page carrying `404` and no way to leave it. That was not the nearest-ancestor
+ * rule failing; it was the fallback having no record to take layouts from, and
+ * giving it one is the whole of ubugeeei-prod/uf#351.
+ *
+ * The framework's page then merges its title over the layouts' metadata like
+ * any page would, so a `metadataBase` or an `og:site_name` declared on the root
+ * layout still applies to the 404.
  */
 async function resolveNotFound(
   table: RouteTable,
@@ -961,26 +1078,12 @@ async function resolveNotFound(
   searchParams: SearchParams,
 ): Promise<ResolvedRoute> {
   const record = nearestBoundary(table.notFound, pathname);
-  if (record == null) {
-    return {
-      pathname,
-      search,
-      path: "*",
-      params: {},
-      searchParams,
-      page: { default: DefaultNotFound },
-      layouts: [],
-      data: undefined,
-      metadata: { title: "Not found" },
-      status: 404,
-      error: null,
-      errorBoundary: await resolveErrorBoundary(table, pathname, 0),
-      loading: [],
-    };
-  }
+  const load = record?.page;
   const [page, ...layouts] = await Promise.all([
-    loadOnce(record.page),
-    ...record.layouts.map((layout) => loadOnce(layout)),
+    load == null
+      ? Promise.resolve<PageModule>({ default: DefaultNotFound, metadata: { title: "Not found" } })
+      : loadOnce(load),
+    ...(record?.layouts ?? []).map((layout) => loadOnce(layout)),
   ]);
   const metadata = await resolveMetadata(page, layouts, {
     params: {},
@@ -996,6 +1099,7 @@ async function resolveNotFound(
     page,
     layouts,
     data: undefined,
+    deferred: null,
     metadata,
     status: 404,
     error: null,
@@ -1428,9 +1532,30 @@ export hook useRoute(): RouteInfo {
     pathname: resolved.pathname,
     params: resolved.params,
     searchParams: resolved.searchParams,
-    data: resolved.data,
+    data: useResolvedData(resolved),
     pending,
   };
+}
+
+/**
+ * The loader's answer, waiting for it if the router deferred it.
+ *
+ * Both hooks that expose the data go through here, and both therefore suspend
+ * when the answer is not in yet. That is the conservative choice rather than
+ * the clever one: the alternative is handing back `undefined` for a value that
+ * is on its way, which is a page reading a field that is about to exist and
+ * finding nothing there, with nothing anywhere to say why.
+ *
+ * Suspending costs a caller *above* the innermost `<Suspense>` — a layout, a
+ * masthead — the streaming it would otherwise have got, because React holds the
+ * shell for a component that suspends with no boundary above it. That is
+ * exactly what such a route did before the loader could be deferred at all, so
+ * it is a benefit not taken rather than a regression, and it is visible: the
+ * fallback does not appear.
+ */
+hook useResolvedData(resolved: ResolvedRoute): mixed {
+  const loader = resolved.deferred;
+  return loader == null ? resolved.data : use(loader);
 }
 
 /** Navigation. */
@@ -1459,7 +1584,7 @@ export hook useRouter(): Router {
  * same file, keyed by route. Until it is there, this says what is true.
  */
 export hook useLoaderData(): mixed {
-  return useRouterState().resolved.data;
+  return useResolvedData(useRouterState().resolved);
 }
 
 /**
@@ -1505,10 +1630,12 @@ export hook useLoaderData(): mixed {
 export component RouteView() {
   const { resolved } = useRouterState();
   const { module, above } = resolved.errorBoundary;
-  const Page = pageComponent(resolved.page);
-  let element: React.Node = (
-    <Page params={resolved.params} searchParams={resolved.searchParams} data={resolved.data} />
-  );
+  const loader = resolved.deferred;
+  // The innermost element, so the `use` inside `AwaitedPage` suspends below
+  // every boundary the loop below adds — which is what makes the layouts and
+  // the fallback the shell rather than something waiting behind the loader.
+  let element: React.Node =
+    loader == null ? <RenderedPage data={resolved.data} /> : <AwaitedPage loader={loader} />;
 
   for (let depth = resolved.layouts.length; depth >= 0; depth -= 1) {
     // Backwards over a root-first list, so the deepest segment's fallback ends
@@ -1523,10 +1650,19 @@ export component RouteView() {
       const Fallback = loadingComponent(boundary.module);
       element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
     }
+    // Placed on `above` alone, and not on there being a module: a `null` one is
+    // the framework's own error page, and where it renders is exactly the
+    // question ubugeeei-prod/uf#351 asks. A project that declares no
+    // `_uf.error.js` has the record the build synthesises for the router root,
+    // whose `above` is the root's layouts — so the framework's page appears
+    // inside the masthead rather than in place of the document. A table with no
+    // record at all answers 0, which puts this boundary outside every layout,
+    // where the outer one below already stood.
+    //
     // Not around a route that already resolved to its error page: that page is
     // the boundary's own component, and wrapping it in the same boundary would
     // answer a throw inside it with itself.
-    if (depth === above && module != null && resolved.error == null) {
+    if (depth === above && resolved.error == null) {
       element = (
         <RouteErrorBoundary module={module} resetKey={resolved.pathname}>
           {element}
@@ -1546,6 +1682,84 @@ export component RouteView() {
       </RouteErrorBoundary>
     </>
   );
+}
+
+/**
+ * The page, with the loader's answer and the copy of it the browser hydrates
+ * from.
+ *
+ * The two are rendered together because they are one fact told twice, and
+ * anything that could put them out of step is a page whose first client render
+ * disagrees with the document it was sent. Being one component is what keeps
+ * the script in the same position in the tree on both sides — inside the
+ * innermost `<Suspense>` when the route deferred its loader on the server, and
+ * exactly there again on the client, where the data is already in hand and
+ * nothing suspends at all.
+ */
+component RenderedPage(data: mixed) {
+  const { resolved } = useRouterState();
+  const Page = pageComponent(resolved.page);
+  return (
+    <>
+      <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />
+      {loaderDataScript(data)}
+    </>
+  );
+}
+
+/**
+ * The same page, once the loader the router deferred has answered.
+ *
+ * A component of its own rather than a `use` guarded by an `if` inside
+ * [`RenderedPage`], so the call is unconditional where it is written: this one
+ * is rendered only when there is a promise, and `RouteView` chooses between
+ * them. `use` may legally be called conditionally, and code that reads as
+ * though it may not is worth avoiding anyway.
+ */
+component AwaitedPage(loader: Promise<mixed>) {
+  return <RenderedPage data={use(loader)} />;
+}
+
+/**
+ * The loader's answer, embedded for the browser to hydrate from.
+ *
+ * In the tree rather than in the head, which is the third of the three options
+ * ubugeeei-prod/uf#373 weighed and the only one that survives a deferred
+ * loader. `server.js` wrote this into the head from the resolved route, and a
+ * deferred answer does not exist when the head goes out — losing it would mean
+ * every deferred route's loader running a second time in the browser, on the
+ * way in, for data the document already contained.
+ *
+ * The two rejected options are worth naming. Writing it at the end of the body
+ * from outside React would have worked — uf's client entry is a module script,
+ * so it runs after parsing either way — but it would be markup inside the
+ * hydration root that React did not render, which is the definition of a
+ * mismatch. Emitting it through `bootstrapScriptContent` as a global is
+ * React's own documented pattern and costs the one property this element has
+ * that matters: `application/json` is data a browser does not execute, and a
+ * script that is executed is a script a content security policy has to allow.
+ *
+ * `<` is escaped inside the JSON so a string holding `</script>` cannot end the
+ * element early, and U+2028 and U+2029 because a JSON document is not
+ * JavaScript source but is sometimes read as if it were.
+ * `dangerouslySetInnerHTML` rather than a text child because React escapes a
+ * text child and `&quot;` is not JSON any more. `security/no-dangerously-set-
+ * inner-html` is about markup that came from somewhere and has to be sanitized
+ * before a browser parses it as HTML; this is `JSON.stringify`'s output with
+ * `<` escaped, in an element the browser never parses as HTML and never runs.
+ * `docs/app/_uf.layout.js` carries the same suppression for the same reason.
+ */
+function loaderDataScript(data: mixed): React.Node {
+  if (data === undefined) {
+    return null;
+  }
+  const json = JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+  const html = { __html: json };
+  // uf-lint-disable-next-line security/no-dangerously-set-inner-html
+  return <script id={DATA_ID} type="application/json" dangerouslySetInnerHTML={html} />;
 }
 
 /**
