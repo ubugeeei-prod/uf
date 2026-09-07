@@ -42,7 +42,7 @@ pub(crate) fn run_flow_syntax(
 /// the product, so a file ending in `.flow` is someone else's convention and
 /// parsing it would report syntax errors against declaration syntax uf never
 /// emits.
-fn is_flow_syntax_target(path: &str) -> bool {
+pub(super) fn is_flow_syntax_target(path: &str) -> bool {
     path.ends_with(".js")
         || path.ends_with(".jsx")
         || path.ends_with(".mjs")
