@@ -256,6 +256,116 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // And that every link in what it wrote resolves to something the same
+    // build wrote. The manual has hundreds of internal links, and a page that
+    // moves takes every link to its old name with it — `/guide/ci` was added
+    // and nothing anywhere would have said a word if the pages pointing at it
+    // had said `/guide/pipeline`, because each page prerenders on its own and
+    // a dead `<a href>` renders perfectly.
+    //
+    // Over the output rather than the sources, which is the whole of it: an
+    // anchor is checked against the ids the markdown pipeline actually
+    // rendered, and `sitemap.xml` is written from the documents that were
+    // prerendered, so a `<loc>` nothing answers is one build disagreeing with
+    // itself. `tests/library/docs-nav.test.js` is the other half and does not
+    // overlap: it reads `docs/app/_design/nav.js` before anything is rendered,
+    // and caught the duplicate `/guide/state` that made the reading order a
+    // cycle (#586). Neither subsumes the other — a page can exist and not be
+    // built, and a route can be served with no page behind it.
+    //
+    // Offline, so it can block a pull request: every answer is a function of
+    // the output directory. See `docs:links:external` for the other half.
+    "docs:links": {
+      command: "tools/ci/links-resolve.sh",
+      dependsOn: ["docs:build"],
+      // No `inputs`. What it reads is what `docs:build` wrote, and that task
+      // is uncached for Vite's reasons; a cache in front of this one would
+      // replay a verdict about a build that no longer exists.
+    },
+    "docs:links:test": {
+      command: "tools/ci/test-links-resolve.sh",
+      inputs: ["tools/ci/links-resolve.sh", "tools/ci/test-links-resolve.sh"],
+    },
+    // The same links, resolved over the network. Not in `ci`, and this is the
+    // argument rather than an oversight: an external host that is slow, rate
+    // limiting, or behind a captive portal would fail a pull request that
+    // changed nothing, and a check that fails for reasons the author cannot
+    // act on is a check people learn to re-run until it passes. Which is the
+    // habit that makes the *real* failure invisible.
+    //
+    // So it is a task a contributor can run by hand and a schedule runs
+    // nightly (`.github/workflows/links.yml`), and even there only a definite
+    // answer counts: `404`, `410` and `451` are dead, and a timeout, a `429`
+    // or a `5xx` is reported as unverified and passes, because none of those
+    // is a statement about the link.
+    "docs:links:external": {
+      command: "tools/ci/links-resolve.sh --external",
+      dependsOn: ["docs:build"],
+    },
+
+    // --- Security -------------------------------------------------------
+    //
+    // `security.yml` runs zizmor over the workflows and CodeQL over the
+    // JavaScript. Both are worth having and neither looks at what uf ships to
+    // a user, so between them they can be entirely green about a release that
+    // published a private key. #524 asked for the half that is uf's own.
+    //
+    // Three passes, and each is written so that failing it produces a sentence
+    // somebody can act on:
+    //
+    //   * `docs/security.md` is a threat model whose own rules say *"every
+    //     guard has a test that fails without it"* and *"a row whose test does
+    //     not exist on `main` yet is marked `todo`"*. Nothing enforced either
+    //     sentence, so the table could say anything. Now a row that names a
+    //     test names one that exists, a row that points nowhere says so, no
+    //     CVE is answered two different ways by two rows, and — the finding
+    //     that made this worth writing — every row is inside a table at all.
+    //     Three were not, and GFM renders a `|`-line after a paragraph as
+    //     prose, so they were invisible on the rendered page.
+    //   * what `uf build` wrote. A static site is served byte for byte by
+    //     whatever host it lands on, so a credential file, a well-known token
+    //     shape, the build's own route manifest or the absolute path of the
+    //     machine that built it are all published the moment they are in that
+    //     directory.
+    //   * what `uf new` writes, run rather than read: a manifest with no
+    //     lifecycle scripts (`uf install` refuses one), a config that weakens
+    //     no default, and a `.gitignore` that covers the two files in the env
+    //     cascade meant to hold credentials.
+    //
+    // Not a dependency audit (#492) and not an install-script audit (#495) —
+    // both are their own issues — and not a substitute for a row's own
+    // regression test: this checks that the row points at something, never
+    // that the something still asserts what the row claims.
+    "security:scan": {
+      command: "tools/ci/security-scan.sh",
+      dependsOn: ["docs:build"],
+      // No `inputs`: it reads what `docs:build` wrote and runs `uf new`
+      // through the built binary, so its answer is not a function of files
+      // that can be named here.
+    },
+    "security:scan:test": {
+      command: "tools/ci/test-security-scan.sh",
+      inputs: ["tools/ci/security-scan.sh", "tools/ci/test-security-scan.sh"],
+    },
+
+    // The `Docs build` job, in one command.
+    //
+    // `uf run` takes one task, and four of the five below need the site on
+    // disk — so four invocations would build it four times, because
+    // `docs:build` declares no `inputs` and is always run. One invocation is
+    // one graph and `docs:build` is one node in it. Same shape as `ci`
+    // itself, for the same reason.
+    "docs:verify": {
+      command: "echo 'the site builds, and everything in it resolves'",
+      dependsOn: [
+        "docs:build",
+        "docs:links",
+        "docs:links:test",
+        "security:scan",
+        "security:scan:test",
+      ],
+    },
+
     // --- Measurement ----------------------------------------------------
     //
     // Deliberately not in `ci`, and for two different reasons.
@@ -516,6 +626,19 @@ export default defineConfig({
         "release:bump:test",
         "release:changelog",
         "release:changelog:test",
+        // `docs:verify` rather than the four checks under it, because that is
+        // what the `Docs build` job runs and this list is the whole of
+        // `uf run` in `.github/workflows/`. It reaches `docs:links`,
+        // `docs:links:test`, `security:scan` and `security:scan:test`, and
+        // builds the site once for all of them.
+        "docs:verify",
+        // Not `docs:links:external`. It is the same check with the network
+        // turned on, and an external host that is slow or rate limiting would
+        // fail a pull request that changed nothing — which teaches people to
+        // re-run a red check until it goes green. A schedule runs it instead,
+        // in `.github/workflows/links.yml`, and `uf run docs:links:external`
+        // is it on a laptop.
+        //
         // Not `install:test`. It packages a release before installing it, and
         // packaging needs `wild-linker`, which CI installs in that job and a
         // laptop has no reason to have. A `uf run ci` that fails on a fresh
