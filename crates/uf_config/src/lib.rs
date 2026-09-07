@@ -12,6 +12,7 @@ mod app;
 pub mod env_files;
 mod lint;
 pub mod plugins;
+mod rendering;
 mod runtime;
 
 pub use app::{
@@ -27,6 +28,7 @@ pub use lint::{
     FlowBuiltinLintMode, FlowLintConfig, FlowLintParser, LintConfig, LintEngine, RuleLevel,
 };
 pub use plugins::{ApplyCondition, HookOrder, PipelineMode, PluginEntry, PluginSpec};
+pub use rendering::{PlanSource, Prerender, RenderingPlan};
 pub use runtime::{
     CapabilityJsHost, CapabilityJsHostConfig, DeployAdapter, DeployAnywhereConfig,
     NativeServerAdapter, NativeServerConfig, RuntimeConfig, RuntimeEngine, ServerConfig,
@@ -41,6 +43,8 @@ pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 pub struct UniflowedConfig {
     pub app: AppConfig,
     pub build: BuildConfig,
+    /// Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive.
+    pub builder: BuilderConfig,
     pub dev: DevConfig,
     pub docs: DocsConfig,
     pub env: EnvConfig,
@@ -72,6 +76,98 @@ pub struct UniflowedConfig {
     /// ecosystem upgrade had to pass through. See `docs/red-lines.md`.
     pub vite: Option<serde_json::Value>,
     pub vrt: VrtConfig,
+}
+
+/// Which builder uf orchestrates.
+///
+/// Vite is the **default**, and `docs/red-lines.md` line 3 is the reason this
+/// key exists: every built-in provider must be replaceable, and until
+/// ubugeeei-prod/uf#549 this was the largest one in the toolchain with no seam
+/// at all — `@uniflowed/vite` was not one implementation of a contract, it was
+/// reached by name from four commands.
+///
+/// [`module`](Self::module) is a module specifier resolved the way any other
+/// provider is: a package name found by walking up `node_modules`, or a path
+/// starting with `.` or `/` that must stay inside the project. What is found
+/// has to satisfy the contract in `docs/architecture.md` — a driver executable
+/// by the project's Capability JS Host, speaking one JSON event per line — and
+/// nothing about that contract is Vite's.
+///
+/// This is not an `eject`. Red line 4 forbids one, and this is its opposite:
+/// the seam a project reaches for when the default is wrong is a *provider*
+/// swap, and it is reversible by deleting one line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct BuilderConfig {
+    /// The module that implements the builder contract.
+    ///
+    /// `"@uniflowed/vite"` unless a project says otherwise. A relative path is
+    /// resolved from the project root and may not climb out of it, which is
+    /// the same rule `uf_plugin` applies to a plugin: a config file is
+    /// untrusted input, and "run this file as the toolchain" is the most
+    /// dangerous thing it can say.
+    pub module: CompactString,
+}
+
+impl Default for BuilderConfig {
+    fn default() -> Self {
+        Self {
+            module: CompactString::const_new("@uniflowed/vite"),
+        }
+    }
+}
+
+impl UniflowedConfig {
+    /// The registry uf reads packuments and attestations from.
+    ///
+    /// Reading and publishing are two different questions and, until
+    /// ubugeeei-prod/uf#540, uf had one answer to both: `publish.registry`. For
+    /// npmjs and for a private registry a project both publishes to and
+    /// installs from, that is right by accident; it stops being right the
+    /// moment the two differ, which is every project that publishes to a
+    /// company registry and installs through a read-through mirror.
+    ///
+    /// So `pm.registry` is the one that means "resolve against this", and it
+    /// falls back to `publish.registry` rather than to npmjs — a project that
+    /// has only ever set one keeps the behaviour it had. The fallback is
+    /// reported rather than silent: [`RegistrySource::is_deprecated`] is what
+    /// a command prints a deprecation from.
+    #[must_use]
+    pub fn read_registry(&self) -> ReadRegistry<'_> {
+        if let Some(registry) = self.pm.registry.as_deref() {
+            return ReadRegistry {
+                url: registry,
+                source: RegistrySource::Pm,
+            };
+        }
+        // Only a project that *moved* `publish.registry` is relying on the old
+        // meaning. One that left it at npmjs is not being warned about a key it
+        // never set — the value is the same either way, and a deprecation
+        // nobody can act on is noise.
+        let published = self.publish.registry.as_str();
+        if published == DEFAULT_REGISTRY {
+            return ReadRegistry {
+                url: published,
+                source: RegistrySource::Default,
+            };
+        }
+        ReadRegistry {
+            url: published,
+            source: RegistrySource::PublishFallback,
+        }
+    }
+
+    /// The scope bindings, as `("@scope", registry)` pairs in scope order.
+    ///
+    /// Returned as a borrow of the config rather than copied: the caller is
+    /// building a router out of it and there is nothing to own.
+    pub fn scope_registries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.pm
+            .scopes
+            .iter()
+            .map(|(scope, registry)| (scope.as_str(), registry.as_str()))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -542,6 +638,9 @@ pub enum PackageTarget {
     ServerlessNapi,
 }
 
+/// The registry uf reads from, and publishes to, when a project names neither.
+pub const DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -552,6 +651,23 @@ pub struct PackageManagerConfig {
     pub store_dir: CompactString,
     pub allow_lifecycle_scripts: bool,
     pub package_manager: PackageManagerPreference,
+    /// The registry uf *reads* from: packuments, provenance attestations, and
+    /// the versions `uf update` reports against.
+    ///
+    /// Unset means `publish.registry`, which is where this value lived until
+    /// ubugeeei-prod/uf#540 — so a project that has only ever set one keeps
+    /// working, and one that publishes to a company registry while installing
+    /// through a read-through mirror can finally say so.
+    pub registry: Option<CompactString>,
+    /// Which registry answers for which scope, as `"@scope" -> registry URL`.
+    ///
+    /// A scope named here is resolved from that registry **and nowhere else**.
+    /// There is deliberately no fallback to [`PackageManagerConfig::registry`]:
+    /// a fallback is the dependency-confusion vulnerability, not a mitigation
+    /// of it. See [`crate::UniflowedConfig::scope_registries`].
+    pub scopes: BTreeMap<CompactString, CompactString>,
+    /// How hard `uf install` looks at npm provenance attestations.
+    pub provenance: ProvenanceMode,
 }
 
 impl Default for PackageManagerConfig {
@@ -563,8 +679,85 @@ impl Default for PackageManagerConfig {
             store_dir: CompactString::const_new(".uf/store"),
             allow_lifecycle_scripts: false,
             package_manager: PackageManagerPreference::Auto,
+            registry: None,
+            scopes: BTreeMap::new(),
+            provenance: ProvenanceMode::default(),
         }
     }
+}
+
+/// What `uf install` does about npm provenance attestations.
+///
+/// Most of npm has no attestation, so `Report` is the default: an attestation
+/// that is *present and wrong* is always a hard failure, and one that is absent
+/// is a line in the summary. `Off` is for a machine with no route to the
+/// registry at all, where the reads would only ever time out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProvenanceMode {
+    /// Read every attestation that exists, refuse a mismatch, report the rest.
+    #[default]
+    Report,
+    /// Read nothing. The lockfile's integrity hashes are the only check left.
+    Off,
+}
+
+impl ProvenanceMode {
+    /// Whether uf reads attestations at all under this mode.
+    #[must_use]
+    pub const fn reads_attestations(self) -> bool {
+        matches!(self, Self::Report)
+    }
+}
+
+/// Where the registry uf reads from came from.
+///
+/// Worth distinguishing because one of the three is deprecated and the reader
+/// has to be told which project text to move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistrySource {
+    /// `pm.registry`, which is the setting that means "read from here".
+    Pm,
+    /// `publish.registry`, because `pm.registry` is unset and this project set
+    /// the publish one to something other than the default.
+    ///
+    /// Deprecated: it still works, and it is the wrong key. See
+    /// ubugeeei-prod/uf#540.
+    PublishFallback,
+    /// Neither was set, so it is npmjs.
+    Default,
+}
+
+impl RegistrySource {
+    /// Whether this project is relying on the deprecated spelling.
+    #[must_use]
+    pub const fn is_deprecated(self) -> bool {
+        matches!(self, Self::PublishFallback)
+    }
+
+    /// The sentence to print when it is.
+    ///
+    /// One sentence, naming both keys, because "deprecated" without the
+    /// replacement is a message that costs a search.
+    #[must_use]
+    pub const fn deprecation(self) -> Option<&'static str> {
+        match self {
+            Self::PublishFallback => Some(
+                "publish.registry is being read from as well as published to; \
+                 set pm.registry to the one uf should resolve against",
+            ),
+            Self::Pm | Self::Default => None,
+        }
+    }
+}
+
+/// The registry uf resolves against, and which key it came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadRegistry<'a> {
+    /// The URL itself.
+    pub url: &'a str,
+    /// Which setting supplied it.
+    pub source: RegistrySource,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -984,6 +1177,10 @@ impl Default for VrtConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct PublishConfig {
+    /// Where `uf publish` pushes a package.
+    ///
+    /// Not where uf reads from: that is `pm.registry`, and it defaults to this
+    /// one. See [`UniflowedConfig::read_registry`].
     pub registry: CompactString,
     pub dry_run: bool,
     pub first_publish: FirstPublishConfig,
@@ -993,7 +1190,7 @@ pub struct PublishConfig {
 impl Default for PublishConfig {
     fn default() -> Self {
         Self {
-            registry: CompactString::const_new("https://registry.npmjs.org"),
+            registry: CompactString::const_new(DEFAULT_REGISTRY),
             dry_run: true,
             first_publish: FirstPublishConfig::default(),
             trusted_publish: TrustedPublishConfig::default(),
@@ -1250,6 +1447,34 @@ pub enum ConfigError {
         path: Utf8PathBuf,
         key: &'static str,
     },
+    /// A `rendering.modes` that leaves the build with nothing it can do.
+    ///
+    /// The list is an allowlist, so naming a strategy uf has not written is
+    /// not itself an error — `["ssg", "isr"]` permits one thing that never
+    /// happens and one that does. A list that permits *only* strategies uf
+    /// has not written is different: there is no build behind it, and the two
+    /// honest readings of it — "prerender anyway" and "produce nothing" — are
+    /// both the silent semantic change the guide forbids.
+    #[error(
+        "{path}: app.rendering.modes is [{modes}], and uf implements none of them. \
+         `ssg` prerenders a route and `ssr` renders it per request; \
+         `ppr` and `isr` are planned and are never selected. \
+         Allow at least one of `ssg` and `ssr`."
+    )]
+    NoImplementedRenderingMode { path: Utf8PathBuf, modes: String },
+    /// `build.staticBuild` beside a `rendering.modes` that forbids `ssg`.
+    ///
+    /// Two declarations that cannot both be true: one says every route is
+    /// prerendered and no server is emitted, the other says a prerendered
+    /// route is not something this project deploys. Whichever were read second
+    /// would silently win, which is the failure ubugeeei-prod/uf#385 is about
+    /// one level down.
+    #[error(
+        "{path}: build.staticBuild prerenders every route, and app.rendering.modes does not \
+         allow `ssg`. Add `\"ssg\"` to the list, or drop `staticBuild` and deploy the server \
+         this project's routes need."
+    )]
+    StaticBuildWithoutSsg { path: Utf8PathBuf },
 }
 
 pub fn load_config(start: impl AsRef<Utf8Path>) -> Result<ResolvedConfig, ConfigError> {
@@ -1317,6 +1542,12 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
                     message: source.to_string(),
                 })?;
             check_cache_switches(path, &config.app.rendering.cache)?;
+            // What the project says a build may produce, checked where it was
+            // written. `rendering::check` refuses the two combinations that
+            // have no build behind them; `RenderingPlan::resolve` is
+            // infallible after it, which is why every caller downstream can
+            // ask for the plan without handling an error.
+            rendering::check(path, &config)?;
             Ok(config)
         }
         _ => Err(ConfigError::UnsupportedExpression {

@@ -10,6 +10,30 @@ requested_version="${UF_VERSION:-latest}"
 install_root="${UF_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/uf}"
 bin_dir="${UF_BIN_DIR:-$HOME/.local/bin}"
 
+# How hard the origin check is, and where its second opinion comes from.
+#
+#   auto     (default) use every piece of evidence that is available, refuse
+#            when one of them fails, and say so plainly when none was available
+#   require  refuse unless at least one origin check actually passed
+#   off      skip it — for an air-gapped mirror whose operator has already
+#            established the origin some other way
+#
+# `UF_CHECKSUM_BASE` is a `<base>/<version>/<asset>.sha256` layout on a host
+# that does not serve the archive. Unset by default because a request to a host
+# that is not there is a failure nobody asked for; an operator who mirrors the
+# release to their own storage points this at it and gets a second opinion for
+# free. See `uf_verify_origin`.
+verify_origin="${UF_VERIFY_ORIGIN:-auto}"
+checksum_base="${UF_CHECKSUM_BASE:-}"
+
+# The workflow that is allowed to have signed a release, as a certificate
+# identity. Keyless Sigstore signing binds a signature to the OIDC identity that
+# made it, and for GitHub Actions that identity *is* the workflow file — so this
+# is the whole of what "signed by uf" means, and it is checked rather than
+# assumed.
+signing_workflow="${UF_SIGNING_WORKFLOW:-.github/workflows/release.yml}"
+signing_issuer="${UF_SIGNING_ISSUER:-https://token.actions.githubusercontent.com}"
+
 # Decoded size of the embedded logo, which the iTerm2 protocol asks for.
 uf_logo_bytes=10511
 
@@ -134,6 +158,18 @@ uf_fail() {
   printf '\n' >&2
   exit 1
 }
+
+# A typo in a security switch must not silently turn it off, and it must not
+# cost a download first. `UF_VERIFY_ORIGIN` has three values; anything else is
+# somebody trying to be stricter and mistyping it, so it stops here — as early
+# as `uf_fail` exists to say so with — rather than installing under `auto`.
+case "$verify_origin" in
+  auto | require | off) ;;
+  *)
+    uf_fail "UF_VERIFY_ORIGIN=${verify_origin} is not one uf understands" \
+      "it is auto (the default), require, or off"
+    ;;
+esac
 
 # Which inline-image protocol this terminal speaks, if any.
 #
@@ -566,6 +602,7 @@ printf '\n' >&2
 archive="uf-${target}.tar.gz"
 archive_url="${channel_url}/${archive}"
 checksum_url="${archive_url}.sha256"
+signature_url="${archive_url}.sigstore"
 
 # With a template, so `TMPDIR` is honoured. BSD `mktemp -d` given no template
 # ignores it and uses the system directory, which is not where a reader who
@@ -596,31 +633,169 @@ uf_fetch "$checksum_url" "${tmp_dir}/${archive}.sha256" \
   "could not download the checksum for ${archive}"
 uf_step "downloaded" "$archive"
 
+# Compute the digest here rather than trusting a tool to exist: `shasum`
+# differs between platforms and its absence is silent, and "the checksum tool
+# was missing so we skipped the check" is exactly the failure this prevents.
+uf_sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    uf_fail "no sha256sum or shasum" "one of them is needed to verify the download"
+  fi
+}
+
 expected="$(awk '{print $1}' "${tmp_dir}/${archive}.sha256")"
-if command -v sha256sum >/dev/null 2>&1; then
-  actual="$(sha256sum "${tmp_dir}/${archive}" | awk '{print $1}')"
-elif command -v shasum >/dev/null 2>&1; then
-  actual="$(shasum -a 256 "${tmp_dir}/${archive}" | awk '{print $1}')"
-else
-  uf_fail "no sha256sum or shasum" "one of them is needed to verify the download"
-fi
+actual="$(uf_sha256_of "${tmp_dir}/${archive}")"
 
 if [ "$actual" != "$expected" ]; then
   uf_fail "checksum mismatch for ${archive}" \
     "expected ${expected}, got ${actual} — do not run this binary"
 fi
 
-# Refuse an archive that would write outside the runtime directory. The
-# checksum only proves the archive matches what the same host advertised, so it
-# does not bound where the members land.
+# WHAT THE LINE ABOVE PROVES, AND WHAT IT DOES NOT.
+#
+# It proves *transit*: the bytes on this machine are the bytes that host
+# advertised. That catches a truncated download, a corrupting proxy, a cache
+# serving half a file — real things that happen.
+#
+# It does NOT prove *origin*. The archive and the checksum come from the same
+# host, so whoever can replace one can replace the other, and every `curl … |
+# sh` on the internet then installs their binary and verifies it happily. That
+# is the shape of the xz/liblzma incident and of every compromised-mirror
+# advisory: integrity without origin.
+#
+# So origin is established separately, against something the host serving the
+# archive does not control. See `uf_verify_origin` below.
+uf_step "verified" "sha256 $(printf '%.12s' "$expected")"
+
+# Prove the archive came from uf's release workflow, not merely from the host
+# that served it.
+#
+# Two independent ways, either of which is enough, and both are checked when
+# both are available:
+#
+#   1. A Sigstore bundle beside the archive, verified with `cosign` against the
+#      certificate identity of `release.yml` in this repository and GitHub's
+#      OIDC issuer. Keyless signing means there is no key for uf to lose and no
+#      key on the release host to steal: the signature is bound to the workflow
+#      that made it, and the certificate is checked against a root that is not
+#      on the release host at all.
+#
+#      **This proves origin.** A bundle that verifies says: this exact archive
+#      was signed by a run of that workflow in that repository.
+#
+#   2. The same SHA-256, fetched from a host that did not serve the archive.
+#      Weaker — it proves two operators agree about the bytes, not who built
+#      them — and it needs no `cosign`, which is the point: an attacker now has
+#      to hold both hosts rather than one.
+#
+# A check that is available and fails always refuses. A check that is not
+# available is reported, and `UF_VERIFY_ORIGIN=require` turns "not available"
+# into a refusal too — which is what uf's own release smoke test runs with, so
+# a uf release cannot ship without an origin anybody can check.
+uf_verify_origin() {
+  origin=""
+  if [ "$verify_origin" = "off" ]; then
+    uf_note "origin checking is off (UF_VERIFY_ORIGIN=off)"
+    return 0
+  fi
+
+  # 1. The signature.
+  if curl -fsSL "$signature_url" -o "${tmp_dir}/${archive}.sigstore" 2>/dev/null; then
+    if command -v cosign >/dev/null 2>&1; then
+      # The identity is anchored at both ends: the repository, and the workflow
+      # file inside it. A regexp only because the trailing `@<ref>` varies per
+      # release; everything before it is fixed.
+      # `.` and the other regex metacharacters escaped, so a repository or a
+      # workflow path cannot widen the identity this accepts. `/` is left
+      # alone: it means nothing in a regex, and escaping it inside a `sed`
+      # bracket expression is where portability goes wrong.
+      identity="^https://github\.com/$(uf_regex_escape "$repo")/$(uf_regex_escape "$signing_workflow")@"
+      if cosign verify-blob \
+        --bundle "${tmp_dir}/${archive}.sigstore" \
+        --certificate-identity-regexp "$identity" \
+        --certificate-oidc-issuer "$signing_issuer" \
+        "${tmp_dir}/${archive}" >"${tmp_dir}/cosign.log" 2>&1; then
+        origin="signature"
+        uf_step "verified" "signed by ${repo} ${signing_workflow}"
+      else
+        # Three failures, one branch, and the message must not pick one of them
+        # for the reader. A bundle exists and cosign refused it: that is either
+        # a signature by somebody else — an attack, and the reason this check
+        # exists — or a cosign too old to read the bundle format uf published,
+        # which is a false alarm that would be cruel to state as an attack.
+        # cosign's own words are printed because they are the only thing that
+        # separates the two, and uf stops either way: a check it cannot complete
+        # is not a check that passed.
+        uf_fail "cosign would not verify the signature on ${archive}" \
+          "$(tail -3 "${tmp_dir}/cosign.log" | tr '\n' ' ')" \
+          "either it was not signed by ${repo} ${signing_workflow}, or this cosign" \
+          "cannot read the bundle — upgrade cosign and try once more" \
+          "if it still refuses, the archive matches a checksum that is not uf's:" \
+          "do not run this binary"
+      fi
+    else
+      uf_note "this release is signed and cosign is not installed, so the signature was not checked"
+    fi
+  else
+    uf_note "this release publishes no signature"
+  fi
+
+  # 2. The second opinion.
+  if [ -n "$checksum_base" ]; then
+    second_url="${checksum_base}/${version}/${archive}.sha256"
+    if [ "$(uf_host_of "$second_url")" = "$(uf_host_of "$archive_url")" ]; then
+      # A second opinion from the same host is the first opinion again, and
+      # counting it would be the exact mistake this whole section is about.
+      uf_note "UF_CHECKSUM_BASE is on the same host as the archive, so it is not a second opinion"
+    elif curl -fsSL "$second_url" -o "${tmp_dir}/second.sha256" 2>/dev/null; then
+      second="$(awk '{print $1}' "${tmp_dir}/second.sha256")"
+      if [ "$second" != "$expected" ]; then
+        uf_fail "two hosts disagree about ${archive}" \
+          "$(uf_host_of "$archive_url") says ${expected}" \
+          "$(uf_host_of "$second_url") says ${second}" \
+          "one of them has been tampered with — do not run this binary"
+      fi
+      origin="${origin:-second opinion}"
+      uf_step "verified" "$(uf_host_of "$second_url") agrees"
+    else
+      uf_note "no second-opinion checksum at ${second_url}"
+    fi
+  fi
+
+  if [ -n "$origin" ]; then
+    return 0
+  fi
+  if [ "$verify_origin" = "require" ]; then
+    uf_fail "the origin of ${archive} could not be established" \
+      "UF_VERIFY_ORIGIN=require needs a Sigstore signature (install cosign) or UF_CHECKSUM_BASE" \
+      "the checksum above proves transit only: it came from the same host as the archive"
+  fi
+  uf_note "origin not proven: the checksum came from the host that served the archive"
+}
+
+# Every regex metacharacter in a literal, escaped.
+uf_regex_escape() {
+  printf '%s' "$1" | sed 's/[].[*^$\\]/\\&/g'
+}
+
+# The `scheme://host` of a URL, which is the unit an operator controls.
+uf_host_of() {
+  printf '%s' "$1" | sed -n 's|^\([a-zA-Z][a-zA-Z0-9+.-]*://[^/]*\).*|\1|p'
+}
+
+uf_verify_origin
+
+# Refuse an archive that would write outside the runtime directory. Neither
+# check above bounds where the members land: a signature says who built the
+# archive, not that unpacking it is safe, and uf published none that write
+# outside their own directory.
 if tar -tzf "${tmp_dir}/${archive}" | grep -Eq '^/|(^|/)\.\.(/|$)'; then
   uf_fail "${archive} writes outside its own directory" \
     "the archive is not one uf published — do not unpack it"
 fi
-# The first twelve characters, the way git shows a commit. The full digest is
-# 64 characters of noise to a reader who cannot check it by eye, and it pushed
-# every other line's value out of the column.
-uf_step "verified" "sha256 $(printf '%.12s' "$expected")"
 
 runtime_dir="${install_root}/runtimes/uf@${version}"
 mkdir -p "$runtime_dir" "$bin_dir"

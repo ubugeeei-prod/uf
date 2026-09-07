@@ -18,8 +18,26 @@ fn buildable(name: &str, version: &str, scripts: &[&'static str], approved: bool
 }
 
 fn drawn(manager: &str, approvals: Approvals, configured: bool, waiting: &[Buildable]) -> String {
+    with_provenance(manager, approvals, configured, waiting, &[])
+}
+
+fn with_provenance(
+    manager: &str,
+    approvals: Approvals,
+    configured: bool,
+    waiting: &[Buildable],
+    attested: &[Attested],
+) -> String {
     let mut out = String::new();
-    render(&plain(), &mut out, manager, approvals, configured, waiting);
+    render(
+        &plain(),
+        &mut out,
+        manager,
+        approvals,
+        configured,
+        waiting,
+        attested,
+    );
     out
 }
 
@@ -128,4 +146,65 @@ fn several_waiting_packages_read_as_several() {
     );
     assert!(out.contains("trustedDependencies"), "{out}");
     assert!(out.contains("install, postinstall"), "{out}");
+}
+
+/// The provenance column, at the moment it matters: this package is about to
+/// be allowed to run code on the machine.
+#[test]
+fn the_attested_column_says_who_built_each_package_it_is_about_to_approve() {
+    let out = with_provenance(
+        "pnpm",
+        Approvals::OnlyBuilt,
+        false,
+        &[
+            buildable("sharp", "0.33.5", &["install"], false),
+            buildable("esbuild", "0.24.0", &["postinstall"], false),
+        ],
+        &[
+            Attested::Yes("https://github.com/lovell/sharp (.github/workflows/ci.yml)".to_owned()),
+            Attested::No,
+        ],
+    );
+
+    assert!(out.contains("attested"), "{out}");
+    assert!(out.contains("yes"), "{out}");
+    assert!(out.contains("no"), "{out}");
+    assert!(
+        out.contains("sharp built by https://github.com/lovell/sharp"),
+        "{out}"
+    );
+}
+
+/// An attestation that is present and about another version is not `no`, and
+/// the difference is the whole point of having the column.
+#[test]
+fn a_mismatched_attestation_is_its_own_word_and_its_own_line() {
+    let out = with_provenance(
+        "pnpm",
+        Approvals::OnlyBuilt,
+        false,
+        &[buildable("sharp", "0.33.5", &["install"], false)],
+        &[Attested::Mismatch],
+    );
+
+    assert!(out.contains("mismatch"), "{out}");
+    assert!(
+        out.contains("publishes an attestation that is not about this version"),
+        "{out}"
+    );
+}
+
+/// With the reads turned off there is no column, rather than a column of
+/// `unknown` that reads as uf having looked.
+#[test]
+fn no_provenance_reads_means_no_provenance_column() {
+    let out = drawn(
+        "pnpm",
+        Approvals::OnlyBuilt,
+        false,
+        &[buildable("sharp", "0.33.5", &["install"], false)],
+    );
+
+    assert!(!out.contains("attested"), "{out}");
+    assert!(!out.contains("unknown"), "{out}");
 }

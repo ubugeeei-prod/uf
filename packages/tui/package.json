@@ -18,6 +18,7 @@
     "./diff": "./diff.js",
     "./keys": "./keys.js",
     "./layout": "./layout.js",
+    "./mouse": "./mouse.js",
     "./terminal": "./terminal.js",
     "./widths": "./widths.js",
     "./package.json": "./package.json"

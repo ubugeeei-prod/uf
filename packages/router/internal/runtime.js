@@ -15,10 +15,8 @@ import {
   createContext,
   startTransition,
   use,
-  useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -1530,9 +1528,9 @@ component RouteErrorView(module: ?ErrorModule, error: RouteError, reset: () => v
  */
 component ResolvedErrorPage() {
   const { resolved, router } = useRouterState();
-  const reset = useCallback(() => {
+  const reset = () => {
     router.refresh().catch(() => {});
-  }, [router]);
+  };
 
   if (resolved.error == null) {
     // Unreachable: this module is only ever the page of a resolved error route.
@@ -1850,7 +1848,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
   const [pending, setPending] = useState<boolean>(false);
 
-  const navigate = useCallback(async (to: string, options?: NavigateOptions): Promise<void> => {
+  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (!isBrowser()) {
       return;
     }
@@ -1899,7 +1897,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
       setPending(false);
       throw error;
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (!isBrowser()) {
@@ -1930,59 +1928,53 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     };
   }, []);
 
-  const router = useMemo<Router>(
-    () => ({
-      push: (to, options) => navigate(to, options),
-      replace: (to) => navigate(to, { replace: true }),
-      prefetch: async (to) => {
-        if (!isBrowser()) {
-          return;
-        }
-        const target = new URL(to, window.location.href);
-        const matched = matchRoute(routeTable().routes, target.pathname);
-        const load = matched?.route.page;
-        if (matched == null || load == null) {
-          return;
-        }
-        await Promise.all([
-          loadOnce(load),
-          ...matched.route.layouts.map((layout) => loadOnce(layout)),
-        ]);
-      },
-      refresh: async () => {
-        if (!isBrowser()) {
-          return;
-        }
-        const nextResolved = await resolveMatch(
-          routeTable(),
-          window.location.pathname + window.location.search,
-        );
-        // No view transition, and it is the one place that is right: a refresh
-        // is the same URL resolved again, so a transition would animate a page
-        // into itself — a cross-fade between two frames of the same thing,
-        // which is a flicker with a name.
-        startTransition(() => {
-          setResolved(nextResolved);
-        });
-      },
-      back: () => {
-        if (isBrowser()) {
-          window.history.back();
-        }
-      },
-      forward: () => {
-        if (isBrowser()) {
-          window.history.forward();
-        }
-      },
-    }),
-    [navigate],
-  );
+  const router: Router = {
+    push: (to, options) => navigate(to, options),
+    replace: (to) => navigate(to, { replace: true }),
+    prefetch: async (to) => {
+      if (!isBrowser()) {
+        return;
+      }
+      const target = new URL(to, window.location.href);
+      const matched = matchRoute(routeTable().routes, target.pathname);
+      const load = matched?.route.page;
+      if (matched == null || load == null) {
+        return;
+      }
+      await Promise.all([
+        loadOnce(load),
+        ...matched.route.layouts.map((layout) => loadOnce(layout)),
+      ]);
+    },
+    refresh: async () => {
+      if (!isBrowser()) {
+        return;
+      }
+      const nextResolved = await resolveMatch(
+        routeTable(),
+        window.location.pathname + window.location.search,
+      );
+      // No view transition, and it is the one place that is right: a refresh
+      // is the same URL resolved again, so a transition would animate a page
+      // into itself — a cross-fade between two frames of the same thing,
+      // which is a flicker with a name.
+      startTransition(() => {
+        setResolved(nextResolved);
+      });
+    },
+    back: () => {
+      if (isBrowser()) {
+        window.history.back();
+      }
+    },
+    forward: () => {
+      if (isBrowser()) {
+        window.history.forward();
+      }
+    },
+  };
 
-  const value = useMemo<RouterState>(
-    () => ({ resolved, router, pending }),
-    [resolved, router, pending],
-  );
+  const value: RouterState = { resolved, router, pending };
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 

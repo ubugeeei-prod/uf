@@ -54,11 +54,11 @@ export function stripAnsi(text) {
 /**
  * Report a page that rendered its error boundary instead of itself.
  *
- * `uf dev` has two renderers — the plugin's middleware and the driver's — and
- * this is the one place either of them says so, because a message written
- * twice is a message that ends up saying two things. The document the browser
- * gets is the application's error page, which is what a visitor would see;
- * the exception belongs in the terminal, which is uf's.
+ * The document the browser gets is the application's error page, which is what
+ * a visitor would see; the exception belongs in the terminal, which is uf's.
+ * There is one renderer under `uf dev` and therefore one caller of this — see
+ * `../index.js` — where there used to be two middlewares and a message that
+ * could be written twice.
  *
  * The stack is mapped back onto the Flow source first, so the frames name the
  * file that was written rather than the one that was compiled.

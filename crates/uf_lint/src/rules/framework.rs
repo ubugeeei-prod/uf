@@ -67,6 +67,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         requirement: SourceText,
         description: "call hooks only at the top level of a component, hook, or `useX` function",
     },
+    RuleDescriptor {
+        id: "react/no-derived-state-effect",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "compute state derived from props or state during render, not in an effect",
+    },
     // `warn`, not `error`, for the same reason as `react/component-syntax`: this
     // is a convention the ecosystem (and uf's own `uf create app` scaffold) is
     // still migrating to, and a linter must not fail a freshly created project.
@@ -77,6 +84,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "modules that declare components must use named exports",
+    },
+    RuleDescriptor {
+        id: "react/no-redundant-memo",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "drop a `useMemo`/`useCallback` the React Compiler already did",
     },
     RuleDescriptor {
         id: "react/no-render-side-effects",

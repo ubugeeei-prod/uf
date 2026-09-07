@@ -245,26 +245,50 @@ export function assetsFromManifest(manifest) {
  * @param {() => Promise<mixed>} body
  */
 export async function withRequest(entry, request, body) {
-  const lifecycle = entry.beginRequest(request);
-  const { run, settle } = lifecycle;
-  // What this host can do, put on the request the way `createFetchHandler`
-  // puts it on the one it owns. `uf dev` and `uf build --compile` reach a
-  // route handler without going through that function, and a handler that
-  // streams events or queues work has to get the same answer from all four
-  // front doors — a capability that is present under `uf start` and absent
-  // under `uf dev` is the difference this whole seam exists to remove.
-  //
-  // `nodeCapabilities`, because both of those *are* a Node process with a
-  // socket: a body reaches the client as it is written, and the process is
-  // still there afterwards. Neither passes an upgrader or a queue, because uf
-  // defines both and implements neither.
-  const { nodeCapabilities } = await deployment();
-  lifecycle.context.capabilities ??= nodeCapabilities();
+  const { run, settle } = await beginRequest(entry, request);
   try {
     return await run(body);
   } finally {
     await settle();
   }
+}
+
+/**
+ * Begin a request on this host, with what this host can do already on it.
+ *
+ * The half of [`withRequest`] that a caller which may *not* answer needs.
+ * `uf dev` runs the application's middleware, its action endpoint and its
+ * dispatcher for every request, and hands the ones none of them claimed back
+ * to Vite's chain — at which point the response is written somewhere this
+ * module cannot see, so settling has to wait for the socket rather than for a
+ * `finally` here. A caller that always answers should use [`withRequest`] and
+ * not think about it.
+ *
+ * `entry.beginRequest` and not an import: the request lives in an
+ * `AsyncLocalStorage` belonging to one copy of `@uniflowed/server`, and the
+ * copy that matters is the one inside the application bundle. See
+ * `serverModuleSource` in `./routes.js`.
+ *
+ * What this host can do is put on the request the way `createFetchHandler`
+ * puts it on the one it owns. `uf dev` and `uf build --compile` reach a route
+ * handler without going through that function, and a handler that streams
+ * events or queues work has to get the same answer from all four front doors —
+ * a capability that is present under `uf start` and absent under `uf dev` is
+ * the difference this whole seam exists to remove.
+ *
+ * `nodeCapabilities`, because both of those *are* a Node process with a
+ * socket: a body reaches the client as it is written, and the process is still
+ * there afterwards. Neither passes an upgrader or a queue, because uf defines
+ * both and implements neither.
+ *
+ * @param {{beginRequest: (request: Request) => {context: object, run: <T>(body: () => Promise<T>) => Promise<T>, settle: () => Promise<void>}}} entry
+ * @param {Request} request
+ */
+export async function beginRequest(entry, request) {
+  const lifecycle = entry.beginRequest(request);
+  const { nodeCapabilities } = await deployment();
+  lifecycle.context.capabilities ??= nodeCapabilities();
+  return lifecycle;
 }
 
 /**

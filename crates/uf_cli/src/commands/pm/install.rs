@@ -190,6 +190,13 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     // first: a "before" state read afterwards is the "after" state.
     let (manager, _) = installable(&detect_package_manager(&resolved.root));
     let before = uf_pm::delta::snapshot(&resolved.root, manager);
+
+    // Dependency confusion, checked before the manager is allowed to install
+    // what this lockfile pins. A lockfile that resolves a bound scope from
+    // somewhere else is the attack having already succeeded once; installing
+    // from it is letting it succeed again, on this machine, now.
+    let routing = uf_pm::RegistryRouting::from_config(&resolved.config);
+    refuse_confusion(&routing, &before)?;
     timer.lap("workspace");
     let prelude = timer.phases().to_vec();
 
@@ -229,6 +236,13 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     let after = uf_pm::delta::snapshot(&resolved.root, manager);
     let delta = uf_pm::delta::diff(&before, &after);
     let lockfile = read_back.elapsed();
+
+    // And again on what the manager actually wrote. The first check covers a
+    // lockfile that arrived with the repository; this one covers the resolution
+    // the manager has just done — a project with no lockfile at all had nothing
+    // for the first check to read.
+    refuse_confusion(&routing, &after)?;
+    let provenance = check_provenance(&resolved.config, &routing, &delta, &after)?;
     let total = timer.total();
 
     let report = InstallReport {
@@ -240,6 +254,7 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         phases: phases(&prelude, outcome.watch.as_ref(), lockfile),
         total,
         delta,
+        provenance,
     };
 
     // The manager's own lines end wherever they end. A summary that starts on
@@ -319,6 +334,180 @@ fn frozen_hint(error: uf_pm::ManagerRunError, frozen: bool) -> anyhow::Error {
     )
 }
 
+/// How many attestations one install will read.
+///
+/// A first install of a large project changes everything in the tree, and one
+/// request per package would be thousands. This is the ceiling past which uf
+/// stops asking and says how many it looked at — a bounded check that reports
+/// its own bound is worth more than an unbounded one people turn off.
+const MAX_PROVENANCE_READS: usize = 250;
+
+/// Refuse a lockfile that resolves a bound scope from somewhere else.
+///
+/// A hard error rather than a warning, and before the install rather than
+/// after: a warning on this one is a line in a CI log above a successful
+/// install of the attacker's package. See [`uf_pm::confusion`].
+fn refuse_confusion(
+    routing: &uf_pm::RegistryRouting,
+    snapshot: &uf_pm::LockfileSnapshot,
+) -> Result<()> {
+    let found = uf_pm::confusion::check(routing, snapshot);
+    if found.is_empty() {
+        return Ok(());
+    }
+    // Every one of them, not the first: a reader who fixes one and runs again
+    // to find the next has been told the same thing three times.
+    let listed = found
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n  ");
+    // The verb has to agree with the count. `plural` gives the noun phrase and
+    // nothing after it, and "2 packages resolves" is the kind of sentence a
+    // reader stops trusting the rest of.
+    let headline = if found.len() == 1 {
+        format!(
+            "{} resolves from a registry its scope is not bound to",
+            plural(1, "package")
+        )
+    } else {
+        format!(
+            "{} resolve from registries their scopes are not bound to",
+            plural(found.len(), "package")
+        )
+    };
+    Err(anyhow!(
+        "{headline}\n\n  {listed}\n\n  {}",
+        uf_pm::confusion::REMEDY
+    ))
+}
+
+/// What the provenance reads found.
+///
+/// Counts, plus the names of the packages that arrived without an attestation:
+/// the count is the fact, and the names are what makes a change from "attested"
+/// to "not attested" visible in a diff of two install logs.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct ProvenanceSummary {
+    /// Packages whose attestation was read and is about the tarball installed.
+    attested: usize,
+    /// Packages the registry publishes no provenance for, by name.
+    unattested: Vec<String>,
+    /// Packages uf could not ask about, because the registry did not answer.
+    unavailable: usize,
+    /// Packages that were eligible and were never asked about, because
+    /// [`MAX_PROVENANCE_READS`] was reached.
+    ///
+    /// Counted and printed rather than dropped: a bound nobody is told about is
+    /// a report that overstates how much of the tree was looked at, which is the
+    /// one thing a security summary must not do.
+    past_the_cap: usize,
+    /// One repository an attestation named, so the reader can see the shape of
+    /// the answer without `--json`.
+    origin: Option<String>,
+}
+
+impl ProvenanceSummary {
+    /// How many packages were looked at at all.
+    fn checked(&self) -> usize {
+        self.attested + self.unattested.len() + self.unavailable
+    }
+}
+
+/// Read the provenance of every package this install brought in or moved.
+///
+/// Not of every package in the tree: an install that changed nothing has
+/// nothing new to check, and the moment a new artefact arrives is the moment
+/// the question is worth a request. `pm.provenance: "off"` skips it entirely,
+/// for a machine with no route to a registry.
+///
+/// # Errors
+///
+/// When a package publishes an attestation that is not about the tarball that
+/// was installed. That is the whole point and it is not a warning.
+fn check_provenance(
+    config: &uf_config::UniflowedConfig,
+    routing: &uf_pm::RegistryRouting,
+    delta: &LockfileDelta,
+    after: &uf_pm::LockfileSnapshot,
+) -> Result<ProvenanceSummary> {
+    let mut summary = ProvenanceSummary::default();
+    if !config.pm.provenance.reads_attestations() || !delta.detailed {
+        return Ok(summary);
+    }
+    let arrived: std::collections::BTreeSet<&str> = delta
+        .changes
+        .iter()
+        .filter(|change| matches!(change.kind, ChangeKind::Added | ChangeKind::Updated))
+        .map(|change| change.name.as_str())
+        .collect();
+    if arrived.is_empty() {
+        return Ok(summary);
+    }
+    // The subjects first, then the requests: a tree that nests the same version
+    // twice is one artefact and one request, and the whole set has to be known
+    // before it can be asked about a few at a time.
+    let mut seen: std::collections::BTreeSet<(&str, &str)> = std::collections::BTreeSet::new();
+    let mut asked: Vec<uf_pm::Subject> = Vec::new();
+    for entry in after.entries.values() {
+        // A workspace link came from this repository; a package with no
+        // integrity hash, or one the manager did not fetch over TLS, has no
+        // artefact an attestation could be about.
+        if entry.link || !arrived.contains(entry.name.as_str()) {
+            continue;
+        }
+        let Some(integrity) = entry.integrity.clone() else {
+            continue;
+        };
+        if !entry
+            .resolved
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://"))
+        {
+            continue;
+        }
+        if !seen.insert((entry.name.as_str(), entry.version.as_str())) {
+            continue;
+        }
+        // Past the ceiling the scan keeps going rather than breaking, because
+        // the number it stopped at is the number the summary has to print, and
+        // a loop that broke would have nothing to print but the ceiling.
+        if asked.len() >= MAX_PROVENANCE_READS {
+            summary.past_the_cap += 1;
+            continue;
+        }
+        asked.push(uf_pm::Subject {
+            name: entry.name.clone(),
+            version: entry.version.clone(),
+            // The lockfile's own hash: this binds the attestation to the bytes
+            // being installed, which is the strong form of the question.
+            integrity: Some(integrity),
+        });
+    }
+    if asked.is_empty() {
+        return Ok(summary);
+    }
+    // Each name goes to the registry the *project* trusts, and is asked about
+    // the tarball that was actually installed. A mirror that served different
+    // bytes fails the digest comparison, which is the answer that matters.
+    for (subject, answer) in asked
+        .iter()
+        .zip(uf_pm::provenance::read_many(routing, &asked))
+    {
+        match answer? {
+            uf_pm::Outcome::Attested(provenance) => {
+                summary.attested += 1;
+                if summary.origin.is_none() {
+                    summary.origin = provenance.origin().map(|origin| origin.to_string());
+                }
+            }
+            uf_pm::Outcome::Unattested => summary.unattested.push(subject.name.to_string()),
+            uf_pm::Outcome::Unavailable(_) => summary.unavailable += 1,
+        }
+    }
+    Ok(summary)
+}
+
 /// Everything `uf install` has to say once the manager has exited.
 struct InstallReport {
     manager: String,
@@ -329,6 +518,7 @@ struct InstallReport {
     phases: Vec<Phase>,
     total: Duration,
     delta: LockfileDelta,
+    provenance: ProvenanceSummary,
 }
 
 /// Draw the summary.
@@ -380,6 +570,8 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
         render_change_table(renderer, out, &report.delta);
     }
 
+    render_provenance(renderer, out, &report.provenance);
+
     renderer.blank(out);
     renderer.heading(out, 2, "next steps");
     renderer.ordered_list(out, 4, &["uf dev", "uf check"]);
@@ -389,6 +581,83 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
         out,
         Status::Success,
         &format!("dependencies installed in {elapsed}"),
+    );
+}
+
+/// What the provenance reads found, when any were made.
+///
+/// Nothing at all when nothing was checked: an install that changed no
+/// registry package has no attestations to have read, and a `0 attested` row
+/// on it would read as a finding rather than as an absence of work.
+///
+/// The unattested names are listed rather than only counted, because the
+/// signal a taken-over publishing account produces is a package that *had*
+/// provenance and stops having it — and a reader can only see that if the
+/// package is named.
+fn render_provenance(renderer: &Renderer, out: &mut String, summary: &ProvenanceSummary) {
+    if summary.checked() == 0 {
+        return;
+    }
+    renderer.blank(out);
+    renderer.heading(out, 2, "provenance");
+    let attested = summary.attested.to_string();
+    let unattested = summary.unattested.len().to_string();
+    let unavailable = summary.unavailable.to_string();
+    let mut rows = vec![KeyValue::toned("attested", &attested, Tone::Number)];
+    if !summary.unattested.is_empty() {
+        rows.push(KeyValue::toned("unattested", &unattested, Tone::Number));
+    }
+    if summary.unavailable > 0 {
+        rows.push(KeyValue::toned("unknown", &unavailable, Tone::Number));
+    }
+    if let Some(origin) = &summary.origin {
+        rows.push(KeyValue::toned("built by", origin, Tone::Path));
+    }
+    renderer.key_values(out, 4, &rows);
+
+    // The bound this check has, said out loud. `250 attested` printed under a
+    // first install of nine hundred packages is a report of how far uf looked
+    // that reads as a report of the tree, and a security summary that overstates
+    // its own coverage is worse than one that admits a ceiling.
+    if summary.past_the_cap > 0 {
+        renderer.status(
+            out,
+            Status::Info,
+            &format!(
+                "{} were not read: uf reads at most {MAX_PROVENANCE_READS} attestations in one install",
+                plural(summary.past_the_cap, "package")
+            ),
+        );
+    }
+
+    if summary.unattested.is_empty() {
+        return;
+    }
+    let listed: Vec<&str> = summary
+        .unattested
+        .iter()
+        .take(CHANGES_SHOWN)
+        .map(String::as_str)
+        .collect();
+    renderer.blank(out);
+    renderer.bullet_list(out, 4, &listed);
+    if summary.unattested.len() > listed.len() {
+        renderer.status(
+            out,
+            Status::Info,
+            &format!(
+                "and {} more with no attestation",
+                summary.unattested.len() - listed.len()
+            ),
+        );
+    }
+    // Not a failure. Most of npm publishes no provenance, and a tool that
+    // refused every package without one is a tool nobody runs.
+    renderer.status(
+        out,
+        Status::Info,
+        "no provenance is published for these; an attestation names the repository and \
+         workflow that built a tarball, and most of npm has none",
     );
 }
 
