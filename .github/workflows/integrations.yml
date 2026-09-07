@@ -31,7 +31,15 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Read the repository, and nothing else. The token this passes to the action
+  # is only ever used to ask which release is newest.
   contents: read
+
+env:
+  # The release the `pinned` legs install. A published one, deliberately: those
+  # legs exist to prove that the deployed installer and a real release still
+  # agree, so they must not be pointed at something this branch has not shipped.
+  PINNED: 0.0.0-alpha.10
 
 concurrency:
   group: integrations-${{ github.ref }}
@@ -39,22 +47,36 @@ concurrency:
 
 jobs:
   action:
-    name: setup-uf (${{ matrix.os }}, ${{ matrix.version }})
+    name: setup-uf (${{ matrix.os }}, ${{ matrix.resolves }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Two runner families, because between them they cover every target the
+      # installer can select on a hosted runner: the macOS runner is aarch64
+      # and the Ubuntu one x86_64.
+      #
+      # And two questions, which need different installers to answer.
+      #
+      # `pinned` runs the installer that is *deployed* at
+      # `setup.uniflowed.dev`, exactly as a user's pipeline would, against a
+      # release that is published. It is the leg that fails the day the host
+      # stops answering or a release archive goes missing — and it needs no
+      # GitHub API call, so nothing else can make it flaky.
+      #
+      # `latest` runs the installer *in this checkout*, over `file://`. It has
+      # to: `latest` is the path that asks the API which release is newest, and
+      # a change to that path — the `GITHUB_TOKEN` this action passes, say — is
+      # not at `setup.uniflowed.dev` until it is released. A pull request that
+      # tested the deployed script would be testing the version it is
+      # proposing to replace.
+      #
+      # Both dimensions in the base matrix rather than in `include:`, because an
+      # `include:` entry whose keys are absent from the base is applied to every
+      # combination — two of them would overwrite each other and quietly leave
+      # one question unasked.
       matrix:
-        # Both families uf publishes for. The macOS runner is aarch64 and the
-        # Ubuntu one x86_64, so between them the matrix covers every target the
-        # installer can select on a hosted runner.
         os: [ubuntu-latest, macos-latest]
-        # Both ways a version is resolved, because they are different code
-        # paths in the installer and only one of them talks to the API: a
-        # pinned version builds the download URL directly, and `latest` asks
-        # which release is newest. The pinned leg is what stays green when the
-        # API is unreachable; the `latest` leg is what notices that the default
-        # every one of these integrations ships still works.
-        version: [latest, 0.0.0-alpha.10]
+        resolves: [pinned, latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -67,7 +89,8 @@ jobs:
         id: setup
         uses: $/integrations/github-actions
         with:
-          version: ${{ matrix.version }}
+          version: ${{ matrix.resolves == 'latest' && 'latest' || env.PINNED }}
+          setup-url: ${{ matrix.resolves == 'latest' && format('file://{0}/infra/cloudflare/setup-assets/install.sh', github.workspace) || 'https://setup.uniflowed.dev' }}
 
       # `uf` on PATH, not by full path: the action's last step is what puts it
       # there, and running the binary directly would pass while that step was
