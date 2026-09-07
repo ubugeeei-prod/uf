@@ -390,57 +390,6 @@ fn a_terminal_catch_all_is_discovered() {
     );
 }
 
-/// The two routers have to accept the same files, and this is the only thing
-/// that says so.
-///
-/// One of them decides what runs and the other decides what `uf build` says
-/// about it. They drifted, and the result was uf's own documentation site
-/// reporting `routes 1` beside `prerendered pages 30` — every `.mdx` page in
-/// the guide invisible to the count (ubugeeei-prod/uf#437, #386).
-///
-/// Read out of the JavaScript rather than restated, because a second copy of a
-/// list is how the first one went wrong. If `routes.js` moves, this fails and
-/// names which list.
-#[test]
-fn the_two_routers_accept_the_same_extensions() {
-    let source = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packages/vite/internal/routes.js"),
-    )
-    .expect("the router the build runs");
-
-    for (name, ours) in [
-        ("PAGE_EXTENSIONS", &PAGE_EXTENSIONS[..]),
-        ("MODULE_EXTENSIONS", &MODULE_EXTENSIONS[..]),
-    ] {
-        let theirs = extensions_named(&source, name);
-        assert_eq!(
-            theirs, ours,
-            "`{name}` in packages/vite/internal/routes.js and in uf_router disagree"
-        );
-    }
-}
-
-/// The `[".js", ".jsx"]` on the right of `const NAME =`, as a list.
-fn extensions_named(source: &str, name: &str) -> Vec<&'static str> {
-    let line = source
-        .lines()
-        .find(|line| line.trim_start().starts_with(&format!("const {name} =")))
-        .unwrap_or_else(|| panic!("routes.js no longer declares {name}"));
-    let list = line
-        .split_once('[')
-        .and_then(|(_, rest)| rest.split_once(']'))
-        .map(|(inside, _)| inside)
-        .unwrap_or_else(|| panic!("{name} is no longer an array literal: {line}"));
-    list.split(',')
-        .map(|entry| entry.trim().trim_matches('"'))
-        .filter(|entry| !entry.is_empty())
-        // Leaked so the comparison is against `&'static str` on both sides,
-        // in a test that runs once.
-        .map(|entry| &*Box::leak(entry.to_owned().into_boxed_str()))
-        .collect()
-}
-
 /// A page written in any of the three is a route, which is the whole of #437.
 #[test]
 fn a_page_is_a_route_in_every_spelling_the_build_accepts() {

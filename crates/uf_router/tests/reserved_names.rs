@@ -172,3 +172,77 @@ fn every_spelling_the_build_router_refuses_is_unsupported_here() {
         );
     }
 }
+
+/// The two routers have to accept the same *extensions* too, not only the same
+/// roles.
+///
+/// The role check above is what caught `_uf.not-found`. This is the same
+/// disagreement in the other direction: the grammar accepted `.js` and nothing
+/// else while the build router had accepted `.jsx` and `.mdx` since it was
+/// written. So uf's own documentation site reported `routes 1` beside
+/// `prerendered pages 30` — every `.mdx` page in the guide invisible to the
+/// count — and `router/reserved-files` told the author to rename files the
+/// build resolves. ubugeeei-prod/uf#291, #386, #437.
+///
+/// An equality rather than one direction plus exceptions, because unlike the
+/// roles these two sets *are* meant to be the same: an extension one router
+/// runs and the other does not know about is a file that either works and is
+/// reported, or is reported and does not work.
+#[test]
+fn both_routers_accept_the_same_extensions() {
+    let source = build_router_source();
+
+    for (name, ours) in [
+        ("PAGE_EXTENSIONS", &uf_router::PAGE_EXTENSIONS[..]),
+        ("MODULE_EXTENSIONS", &uf_router::MODULE_EXTENSIONS[..]),
+    ] {
+        assert_eq!(
+            extensions_named(&source, name),
+            ours,
+            "`{name}` in packages/vite/internal/routes.js and in uf_router disagree"
+        );
+    }
+}
+
+/// And every role says which of the two lists is its own, so a role that may
+/// not be Markdown cannot quietly become one.
+#[test]
+fn only_a_page_may_be_written_in_markdown() {
+    for role in [ReservedRole::Page, ReservedRole::NotFound] {
+        assert!(
+            role.extensions().contains(&".mdx"),
+            "{role:?} is a page and may be Markdown"
+        );
+    }
+    for role in [
+        ReservedRole::Layout,
+        ReservedRole::Middleware,
+        ReservedRole::Route,
+        ReservedRole::Error,
+        ReservedRole::Loading,
+        ReservedRole::Story,
+        ReservedRole::Template,
+    ] {
+        assert!(
+            !role.extensions().contains(&".mdx"),
+            "{role:?} is code, and Markdown is not something it can be"
+        );
+    }
+}
+
+/// The `[".js", ".jsx"]` on the right of `const NAME =`, as a list.
+fn extensions_named(source: &str, name: &str) -> Vec<String> {
+    let line = source
+        .lines()
+        .find(|line| line.trim_start().starts_with(&format!("const {name} =")))
+        .unwrap_or_else(|| panic!("routes.js no longer declares {name}"));
+    let list = line
+        .split_once('[')
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .map(|(inside, _)| inside)
+        .unwrap_or_else(|| panic!("{name} is no longer an array literal: {line}"));
+    list.split(',')
+        .map(|entry| entry.trim().trim_matches('"').to_owned())
+        .filter(|entry| !entry.is_empty())
+        .collect()
+}
