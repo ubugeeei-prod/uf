@@ -747,13 +747,24 @@ const ALL_DIAGNOSTICS = "UF_REACT_COMPILER_DIAGNOSTICS";
  * Report what the React Compiler said about one module.
  *
  * Every finding used to be printed as `a function: <message>` — no file, no
- * line, no column, and the fallback string doing all the work because the
- * compiler names an inner function about as often as not. The transform hook
+ * line, no column, and the fallback string doing all the work, because
+ * `diagnostic.function` was read out of a field only a *success* event carries
+ * and so was null for every finding there has ever been (#371), not because
+ * the compiler was reporting on anonymous inner functions. The transform hook
  * knows the module and the compiler gives a position for most findings, so
  * both go into the message: Vite prints a plugin warning's `message` and
  * nothing else, so a location that is not in the string is a location the
  * reader never sees. `id` and `loc` go along for anything reading the log
  * object rather than the line. See ubugeeei-prod/uf#307.
+ *
+ * `(in Form)` is real now: `uf transform` recovers the name from the tree it
+ * compiled, and leaves it off the diagnostic when the function genuinely has
+ * no name to give.
+ *
+ * The position is real too, and is the expression the compiler objected to
+ * rather than the function containing it, so the two halves of the line say
+ * different things — `packages/hooks/dom.js:195:7: This value cannot be
+ * modified (in useLongPress)` locates the write and names the hook to look in.
  *
  * A dependency's findings are held back. A React Compiler bailout inside
  * `@uniflowed/form` is not something the person running the build can fix, and
@@ -777,9 +788,20 @@ function reportDiagnostics(context, { id, root, diagnostics, environment, report
   const mine = isProjectModule(root, id) || process.env[ALL_DIAGNOSTICS] === "all";
   for (const diagnostic of diagnostics) {
     // Everything a reader would be shown, so two findings that would print as
-    // the same line collapse into one. The compiler reports "Cannot access refs
-    // during render" once per pass that noticed it — three times for one `ref`
-    // — and three identical lines are not three things to fix.
+    // the same line collapse into one.
+    //
+    // This used to collapse far more than that, and the note here used to say
+    // the compiler reports "Cannot access refs during render" once per pass
+    // that noticed it — three times for one `ref`. That was the wrong reading
+    // of the evidence. The position in a finding was the position of the
+    // *function* it was found in, so every finding in one function shared a
+    // line and a column and any two with the same message were, to this
+    // signature, the same finding. They were not: over this repository's own
+    // packages it collapsed 173 findings into 119 lines, and the five that
+    // became one line in `DatePickerInput` are five different reads of a ref
+    // on five different lines. `uf transform` now reports where the compiler
+    // actually objected, so the signature separates them, and what it still
+    // collapses is a genuine repeat of one site.
     const signature = `${diagnostic.kind}\0${diagnostic.line}\0${diagnostic.column}\0${diagnostic.message}`;
     if (ledger.signatures.has(signature)) continue;
     ledger.signatures.add(signature);
