@@ -61,11 +61,77 @@ decisions are:
 | Past failure | Structural decision in `uf` | Test |
 | --- | --- | --- |
 | [CVE-2025-29927](https://nvd.nist.gov/vuln/detail/CVE-2025-29927) — spoofing `x-middleware-subrequest` skips middleware, bypassing auth | No inbound request header participates in middleware dispatch: which middleware runs is decided by the request path against the directory each one guards, and by nothing else. Recursion control is internal state, never a header a client can send | `tests/library/middleware.test.js` |
-| Server Action endpoint IDs globally disclosed | Action ids are keyed hashes of (module path, export name, build id), so they are neither guessable nor stable across builds; an action not reachable from a client boundary is never registered as an endpoint | `uf_rsc::action` |
+| Server Action endpoint IDs globally disclosed | Action ids are keyed hashes of (module path, export name, build id), so they are neither guessable nor stable across builds; an action not reachable from a client boundary is never registered as an endpoint, and the table the endpoint dials into is built from the manifest's callable set rather than from anything a request carries | `uf_rsc::action`, `tests/library/server-actions.test.js` |
+| A deserializer that reconstructs attacker-chosen objects — the class every "RCE through a serialization format" advisory is | A server action's arguments are plain JSON data and nothing else, under the closed grammar below. No tag in a payload names a constructor, a module, a function or a reference, so there is nothing for a payload to *become* | `tests/library/server-actions.test.js` |
+| Prototype pollution through a request body — `__proto__` as an own property, which `JSON.parse` produces and the next spread applies | `__proto__`, `constructor` and `prototype` are refused as keys anywhere in a payload, in the one place a payload is decoded, rather than left for each action to remember | `tests/library/server-actions.test.js` |
+| CSRF against a state-changing endpoint: a cross-site page posting an action with the visitor's cookies | Three independent guards, any one of which would do. The call carries `uf-action`, which is not a header a simple request may set, so a cross-origin caller needs a preflight and uf answers none; the content type must be `application/json`, which no `<form>` can produce; and `Origin` must be present and equal `Host`. `Host` alone, never `X-Forwarded-*` — a forwarded header is a string the caller wrote, so a proxy in front of a uf application has to preserve `Host` and one that rewrites it turns every action call into a `403` | `tests/library/server-actions.test.js`, `crates/uf_cli/tests/vite.rs` |
+| An action endpoint used as an enumeration oracle | Every failed lookup is the same `404` with the same body, and the table is scanned whole with a constant-time comparison, so neither the answer nor the time says whether the id existed. The payload is decoded *before* the id is resolved, so a malformed body cannot be used to tell a real id from a guess | `tests/library/server-actions.test.js` |
+| An application's internals in an error response — a message, a name, a stack | An action that throws is a `500` with a fixed body; the exception goes to the host's error reporting. The same in development as in production, because `uf dev` and `uf build` have to agree about what this endpoint answers | `tests/library/server-actions.test.js` |
+| Unbounded work from a request body: an enormous payload, deep nesting, non-UTF-8 bytes | A byte ceiling counted as the body arrives rather than trusted from `Content-Length`, a depth ceiling, a value-count ceiling, an argument-count ceiling, and `TextDecoder(…, { fatal: true })` so invalid UTF-8 is refused rather than replaced. The walk that applies them is iterative, so the sender's hand is not on the stack depth | `tests/library/server-actions.test.js` |
+| Server code reaching the browser through an action module — a database handle, a secret, `node:async_hooks` | A `"use server"` module is replaced, in the client graph only, by one reference per callable export. The RSC graph colours it server for the same reason, so the analysis and the bundle agree about it rather than about each other | `crates/uf_cli/tests/vite.rs`, `uf_rsc::graph` |
+| An action's arguments or result that cannot cross a wire at all, arriving as `{}` | `uf prepare` writes the wire grammar into the generated `server-actions.js` as a bound over every action in the project, so an action taking a callback or returning a `Map` is a `uf check` error | `tests/type-tests/server-actions.js` |
+| The build's whole module graph published at `/uf-rsc-manifest.json` — module paths, export names, diagnostics | The manifest is written into the output directory and served with it. The action ids in it are the ones already in the client bundle, so it discloses no endpoint that was not disclosed anyway; the module graph beside them is disclosure with no reader | todo |
 | RSC cache poisoning when a shared cache does not partition response variants ([CVE-2026-44576](https://nvd.nist.gov/vuln/detail/CVE-2026-44576)) | Route, fetch, action, and data caches are **off by default**. When enabled, the RSC variant is part of the cache key, and the response carries the matching `Vary` | todo |
 | Server-code leak: a `"use client"` module importing server-only code | The RSC graph rejects the edge at build time as an error, not a warning | `uf_rsc::graph` |
 | Directive parsing bugs — `"use client"` accepted when not the first statement, or built from a template literal | The directive is only recognized as a plain string literal in leading directive position; everything else is a typed diagnostic | `uf_rsc::directive` |
 | `"use server"` export that is not an async function | Rejected at build time; React's calling convention makes this a correctness *and* a safety issue | `uf_rsc::graph` |
+
+### The argument boundary
+
+A `"use server"` export is a public HTTP endpoint the moment it exists, and the
+one decision that makes it a feature rather than a remote-code-execution
+surface is what the bytes on the wire are allowed to become. It is this, and
+`packages/router/internal/action-wire.js` is the only place that applies it:
+
+> **A server action's arguments are plain JSON data and nothing else.** One
+> JSON object, `{"args": [...]}`, of at most 1 MiB of valid UTF-8, holding at
+> most 16 values, nested at most 24 deep, with at most 10,000 values in total.
+> Each of those is `null`, a boolean, a finite number, a string, an array of
+> them, or a plain object whose keys are ordinary strings and are none of
+> `__proto__`, `constructor` or `prototype`. The result travels back under
+> exactly the same grammar, plus `undefined` for an action that returns
+> nothing.
+
+Nothing in a payload can name a function, a module, a class, a prototype, a
+React element, an id or a reference, and nothing in it is revived into an
+object the sender chose. What the decoder adds to `JSON.parse` is the refusal
+of everything `JSON.parse` would have let through.
+
+Four things are outside it deliberately, each because admitting it would mean
+admitting a tag in the payload that says which constructor to call:
+
+- **A reference format.** React's Flight payload carries references to client
+  modules, promises and elements. uf has no such payload
+  ([#252](https://github.com/ubugeeei-prod/uf/issues/252)), and this grammar is
+  not the place to grow one quietly.
+- **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays.** An action
+  that wants a date takes an ISO string and parses it, where the parse is the
+  application's and is checked.
+- **Cycles and shared references**, which are a reference format by another
+  name.
+- **`FormData` and `<form action={fn}>`.** Multipart parsing is its own attack
+  surface with its own bounds, and a form post is a *simple* cross-origin
+  request — it reaches a server with the visitor's cookies and no preflight.
+  Both are worth having; neither is worth having by accident.
+
+The grammar is enforced twice, and the second time is what makes it a
+*contract* rather than a runtime check: Flow holds every action's parameters
+and return value against it at build time, through the two bounds `uf prepare`
+writes into `server-actions.js`, and the endpoint applies it again to whatever
+actually arrives.
+
+### A server action authorizes itself
+
+An action call is a `POST` to the page's own URL carrying the id in a header,
+so the middleware guarding that path runs above it exactly as it does above the
+page — no reserved path to collide with a project's routes, and no second
+spelling of "which guard applies here".
+
+That is a convenience and it is not a boundary, because the URL is the caller's
+to choose: a client that wants to skip the guard on `/dashboard` posts the same
+id to `/`. **A server action is the unit of authorization**, the way a route
+handler is, and a `"use server"` function that relies on a path guard having
+run is a function with a hole in it.
 | SSRF via WebSocket upgrade ([CVE-2026-44578](https://nvd.nist.gov/vuln/detail/CVE-2026-44578)) | Upgrade targets are resolved against an allowlist; no request-derived value selects an upstream host | todo |
 | Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
 | XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
