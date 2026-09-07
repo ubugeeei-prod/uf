@@ -124,7 +124,23 @@ if [ -z "$name" ] || [ "$name" = "$spec" ] || [ -z "$version" ]; then
   exit 1
 fi
 [ "${4:-}" = latest ] || { echo "npm error the tag to add is missing: ${4:-}" >&2; exit 1; }
+# What real npm does when it needs a one-time password: it reads the terminal.
+# With the plan file on stdin — which is what `done <"$plan"` did — it reads a
+# line of the plan instead, and the write it thinks it confirmed is a line
+# nobody typed. The stub writes down what it found so a test can say so.
+if [ -n "${NPM_READS_STDIN:-}" ]; then
+  if read -r stolen; then
+    echo "stdin: ${stolen}" >> "$NPM_LOG"
+  else
+    echo "stdin: none" >> "$NPM_LOG"
+  fi
+fi
 [ -n "${NPM_REFUSES:-}" ] && { echo "npm error code E403" >&2; exit 1; }
+# One name refuses, the rest do not, so a run can be checked for carrying on.
+case "${NPM_REFUSES_ONLY:-}" in
+  "") ;;
+  "$name") echo "npm error code EOTP" >&2; exit 1 ;;
+esac
 echo "+latest: ${spec}"
 EOF
   chmod +x "${work}/${world}/npm"
@@ -300,6 +316,56 @@ grep -q '^  behind ' "${work}/refused.log" \
   || fail "refused: the plan was not printed before the move was attempted:
 $(cat "${work}/refused.log")"
 pass "npm refusing a move fails the run"
+
+# 12. The plan is read on a descriptor of its own, so npm keeps the terminal.
+#
+#     `done <"$plan"` redirected stdin for the whole loop, and `npm dist-tag
+#     add` on a 2FA account needs stdin: it asks for a one-time password, or
+#     prints a URL and waits. With the plan file there it can do neither, and
+#     `uf@0.0.0-alpha.12` failed on the first of seventeen names having moved
+#     nothing.
+make_registry behind
+: > "${work}/stdin.npm"
+NPM_LOG="${work}/stdin.npm" NPM_READS_STDIN=1 PATH="${work}/behind:$PATH" \
+  sh "$script" --yes < /dev/null > "${work}/stdin.log" 2>&1 \
+  || fail "stdin: the run failed:
+$(cat "${work}/stdin.log")"
+grep -q '^stdin: none$' "${work}/stdin.npm" \
+  || fail "stdin: npm was handed something to read:
+$(cat "${work}/stdin.npm")"
+pass "the plan is read on its own descriptor, so npm keeps stdin"
+
+# 13. One name refusing does not throw away the others, and the summary says
+#     which one it was. Seventeen writes with one authentication between them:
+#     a code that expires on the ninth must not lose the eight that worked.
+: > "${work}/partial.npm"
+if NPM_LOG="${work}/partial.npm" NPM_REFUSES_ONLY=@uniflowed/config PATH="${work}/behind:$PATH" \
+  sh "$script" --yes > "${work}/partial.log" 2>&1; then
+  fail "partial: a refusal should still fail the run:
+$(cat "${work}/partial.log")"
+fi
+grep -q 'did not move' "${work}/partial.log" \
+  || fail "partial: the summary did not name what failed:
+$(cat "${work}/partial.log")"
+grep -q '@uniflowed/config@' "${work}/partial.log" \
+  || fail "partial: the failing name was not printed:
+$(cat "${work}/partial.log")"
+# And the sixteen after it still moved, which is the point.
+[ "$(grep -c '^+latest: ' "${work}/partial.log")" -ge 16 ] \
+  || fail "partial: the refusal stopped the rest:
+$(cat "${work}/partial.log")"
+pass "a name that refuses is named, and does not stop the run"
+
+# 14. `--otp` reaches npm, for a run with no terminal to ask.
+: > "${work}/otp.npm"
+NPM_LOG="${work}/otp.npm" PATH="${work}/behind:$PATH" \
+  sh "$script" --yes --otp=123456 > "${work}/otp.log" 2>&1 \
+  || fail "otp: the run failed:
+$(cat "${work}/otp.log")"
+grep -q -- '--otp=123456' "${work}/otp.npm" \
+  || fail "otp: the code did not reach npm:
+$(cat "${work}/otp.npm")"
+pass "--otp reaches every write in the run"
 
 # 12. An unknown option is a usage error rather than a run that quietly does
 #     something else. `--check` and `--yes` differ by whether anything is
