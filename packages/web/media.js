@@ -92,13 +92,35 @@ export type ImageAsset = {
   readonly note: string | null,
 };
 
+/** One file a font import put in the build. */
+export type FontFace = {
+  /** Its URL. */
+  readonly url: string,
+  /** Its media type. */
+  readonly mime: string,
+  /** Its size in bytes. */
+  readonly bytes: number,
+  /** Which script bucket it is, when the family was split. */
+  readonly bucket: string | null,
+  /** The exact `unicode-range` of what is in it. */
+  readonly unicodeRange: string | null,
+  /**
+   * Whether a page should preload this one.
+   *
+   * At most one face is ever marked. A preload per bucket downloads the whole
+   * family up front, which is the one thing a `unicode-range` split exists to
+   * stop.
+   */
+  readonly preload: boolean,
+};
+
 /**
  * What importing a font evaluates to.
  *
  * Produced by `uf:asset` from the font's own `head`, `hhea` and `OS/2` tables.
  */
 export type FontAsset = {
-  /** The self-hosted file's URL. */
+  /** The primary self-hosted file's URL. */
   readonly src: string,
   /** The family the `@font-face` declares. */
   readonly family: string,
@@ -108,8 +130,52 @@ export type FontAsset = {
   readonly fontFamily: string,
   /** The file's media type, for the preload. */
   readonly type: string,
-  /** The `@font-face` rules: the real face, then the matched fallback. */
+  /** The `@font-face` rules: every real face, then the matched fallback. */
   readonly css: string,
+  /** Every emitted file, one per bucket when the family was split. */
+  readonly faces?: $ReadOnlyArray<FontFace>,
+  /** Why the whole font was hosted, when a subset was asked for and refused. */
+  readonly subsetDeclined?: string | null,
+};
+
+/**
+ * What importing an Open Graph template evaluates to.
+ *
+ * Produced by `uf:asset` from a `*.og.json`, which is a declared template and
+ * not a document — see `crates/uf_assets/src/og.rs` for what uf will and will
+ * not draw.
+ */
+export type OgAsset = {
+  /** The card's URL, relative to the site. */
+  readonly url: string,
+  /** Its width in pixels. */
+  readonly width: number,
+  /** Its height in pixels. */
+  readonly height: number,
+  /** Its media type. */
+  readonly type: string,
+  /** The `og:image:alt` text. */
+  readonly alt: string,
+};
+
+/** What importing `uf:icon/<name>` evaluates to. */
+export type IconAsset = {
+  /** The symbol's id in the sprite. */
+  readonly id: string,
+  /** The fragment a `<use>` points at. */
+  readonly href: string,
+  /** The symbol's `viewBox`. */
+  readonly viewBox: string,
+  /** Its intrinsic width. */
+  readonly width: number,
+  /** Its intrinsic height. */
+  readonly height: number,
+};
+
+/** What importing `uf:icon-sprite` evaluates to. */
+export type SpriteAsset = {
+  /** The `<svg>` holding one `<symbol>` per icon the build reached. */
+  readonly markup: string,
 };
 
 /**
@@ -332,6 +398,14 @@ export component Picture(
  * and the text reflows when the real face lands. A preload moves the fetch to
  * the start of the page.
  *
+ * It is also the thing most easily overdone, so exactly one file is ever
+ * preloaded: the build marks the face a page paints first, and a family split
+ * into eight `unicode-range` buckets still contributes one link. Preloading
+ * every bucket downloads the whole family up front, which is what the split
+ * existed to stop, and four preloaded faces have pushed the page's own
+ * stylesheet down the same connection. Pass `preload={false}` for a face that
+ * does not paint the first screen.
+ *
  * `crossOrigin` is set unconditionally and deliberately: a font is fetched in
  * CORS mode whatever its origin, so a preload without it is a *second*,
  * separate request rather than the same one — the preload is wasted and the
@@ -372,19 +446,39 @@ export component Font(
   src: string | FontAsset,
   type?: string,
   crossOrigin?: "anonymous" | "use-credentials" = "anonymous",
+  preload?: boolean,
 ) renders React.Node {
   const asset: FontAsset | null = typeof src === "string" ? null : src;
   const url: string = typeof src === "string" ? src : src.src;
   const finalType = type ?? asset?.type ?? "font/woff2";
 
-  const preload = (
-    <link rel="preload" as="font" href={url} type={finalType} crossOrigin={crossOrigin} />
-  );
-  if (asset == null) return preload;
+  // Which files to preload, and it is never all of them. A font hosted whole
+  // has one face and the build decided whether to preload it; a family split
+  // by `unicode-range` has one marked and the rest deliberately unmarked. A
+  // string `src` has no manifest to have decided anything, so it keeps the
+  // behaviour it always had.
+  const faces = asset?.faces ?? [];
+  const marked =
+    faces.length > 0
+      ? faces.filter((face) => face.preload)
+      : [{ url, mime: finalType, bytes: 0, bucket: null, unicodeRange: null, preload: true }];
+  const wanted = preload === false ? [] : preload === true ? marked.slice(0, 1) : marked;
+
+  const links = wanted.map((face) => (
+    <link
+      key={face.url}
+      rel="preload"
+      as="font"
+      href={face.url}
+      type={face.mime}
+      crossOrigin={crossOrigin}
+    />
+  ));
+  if (asset == null) return <>{links}</>;
 
   return (
     <>
-      {preload}
+      {links}
       {/*
         Hoisted and deduped by React, keyed on `href`. The href is the font's
         own content-hashed URL, so two components asking for the same face
@@ -396,6 +490,120 @@ export component Font(
       <style href={url} precedence="high">
         {asset.css}
       </style>
+    </>
+  );
+}
+
+/**
+ * The sprite holding every icon this build reached.
+ *
+ * Render it once, near the top of the document. It is a definitions block and
+ * not content: it paints nothing, it is `aria-hidden`, and every `<Icon>` on
+ * the page is a forty-byte `<use>` pointing into it.
+ *
+ * The alternative — a component per icon, each carrying its own path data —
+ * repeats the same geometry once per use, and a runtime icon library ships
+ * every icon it has because at runtime nothing knows which ones the
+ * application imported. A build does, which is the whole reason this exists.
+ *
+ * The markup comes from `uf assets`, which parses each file, refuses the
+ * constructs that must not be inlined into a document — `<script>`,
+ * `<foreignObject>`, `on…` handlers, `javascript:`, anything fetching from
+ * another origin — and namespaces every internal `id` so two icons defining
+ * the same gradient do not collide. `dangerouslySetInnerHTML` is the only way
+ * to put an already-serialised subtree into the DOM, and what makes it safe
+ * here is that the string was produced by uf from files in the repository, not
+ * by anything at runtime.
+ */
+export component IconSprite(sprite: SpriteAsset) renders React.Node {
+  return (
+    <div
+      // Out of the flow entirely rather than `display: none`: a `<use>` may
+      // not resolve into a subtree the browser never laid out, and Safari has
+      // historically been the one to enforce it.
+      style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
+      aria-hidden={true}
+      dangerouslySetInnerHTML={{ __html: sprite.markup }}
+    />
+  );
+}
+
+/**
+ * One icon out of the sprite.
+ *
+ * `<Icon icon={star} label="Favourite" />` — with a label when the icon *is*
+ * the control, and without one when there is text beside it. That is the whole
+ * accessibility decision an icon needs and the one people most often get
+ * backwards: an unlabelled icon button is a button a screen reader announces
+ * as "button", and a labelled icon next to its own visible text is the same
+ * word read twice.
+ *
+ * `size` sets both dimensions, because an icon whose aspect ratio is not its
+ * `viewBox`'s is a squashed icon. Pass `width` and `height` separately only
+ * when that is what you mean.
+ */
+export component Icon(
+  icon: IconAsset,
+  label?: string,
+  size?: number = 24,
+  width?: number,
+  height?: number,
+  className?: string,
+  ...rest: { readonly [string]: mixed }
+) renders React.Node {
+  return (
+    <svg
+      viewBox={icon.viewBox}
+      width={width ?? size}
+      height={height ?? size}
+      className={className}
+      // `role="img"` with a label, nothing without one. An `aria-hidden` icon
+      // beside its own text is the correct markup, and `focusable="false"`
+      // keeps it out of the tab order in the browsers that put SVGs in it.
+      role={label != null ? "img" : undefined}
+      aria-label={label}
+      aria-hidden={label == null ? true : undefined}
+      focusable="false"
+      {...rest}
+    >
+      <use href={icon.href} />
+    </svg>
+  );
+}
+
+/**
+ * The `<meta>` tags for one Open Graph card.
+ *
+ * `<OgImage card={card} />` beside the page that owns it. Three things go
+ * wrong with an Open Graph image and this gets all three right: the URL has to
+ * be **absolute** — a relative `og:image` is not an Open Graph image at all,
+ * and every crawler drops it — the dimensions have to be declared or the card
+ * flickers at whatever size the crawler guesses, and `twitter:card` has to say
+ * `summary_large_image` or X renders a thumbnail of a 1200x630 picture.
+ *
+ * `origin` is the site's own, and it is required for exactly the reason above.
+ * A project using `@uniflowed/router`'s `Metadata` already has it as
+ * `metadataBase` and should pass `card` through `openGraph.images` instead of
+ * rendering this — one page's metadata belongs in one place. This component is
+ * for a page assembling its own head.
+ *
+ * The card itself is drawn at build time by `uf assets` from a `*.og.json`
+ * template. It is a template and not a renderer: uf will not turn JSX into an
+ * image, and it refuses text it cannot lay out rather than drawing it wrong.
+ */
+export component OgImage(card: OgAsset, origin: string, alt?: string) renders React.Node {
+  const absolute = card.url.startsWith("http")
+    ? card.url
+    : `${origin.replace(/\/+$/, "")}/${card.url.replace(/^\/+/, "")}`;
+  return (
+    <>
+      <meta property="og:image" content={absolute} />
+      <meta property="og:image:width" content={String(card.width)} />
+      <meta property="og:image:height" content={String(card.height)} />
+      <meta property="og:image:type" content={card.type} />
+      <meta property="og:image:alt" content={alt ?? card.alt} />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:image" content={absolute} />
     </>
   );
 }

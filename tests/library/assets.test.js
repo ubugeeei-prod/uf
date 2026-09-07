@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from "@uniflowed/testing";
 import { render, screen } from "@uniflowed/react-testing";
-import { Font, Image } from "@uniflowed/web";
+import { Font, Icon, IconSprite, Image, OgImage } from "@uniflowed/web";
 
 import { assetModuleSource, withUrls } from "../../packages/vite/internal/assets.js";
 
@@ -393,5 +393,175 @@ describe("Font, given an imported font", () => {
     // A page that sets `font-family: Inter` gets the download and none of the
     // metric matching, which is the failure this field exists to prevent.
     expect(inter().fontFamily).toBe('"Inter", "Inter Fallback", "Arial"');
+  });
+});
+
+describe("Font, given a family split by unicode-range", () => {
+  /** What `uf assets` replies for a family split into three buckets. */
+  const split = () => ({
+    src: "/assets/Noto.11aa-latin.woff",
+    family: "Noto",
+    fallbackFamily: "Noto Fallback",
+    fontFamily: '"Noto", "Noto Fallback", "Arial"',
+    type: "font/woff",
+    css: "@font-face{font-family:\"Noto\";src:url(\"/assets/Noto.11aa-latin.woff\") format(\"woff\");unicode-range:U+20-7E;}",
+    subset: "ranges",
+    subsetDeclined: null,
+    faces: [
+      {
+        file: "Noto.11aa-latin.woff",
+        url: "/assets/Noto.11aa-latin.woff",
+        mime: "font/woff",
+        bytes: 9_000,
+        bucket: "latin",
+        unicodeRange: "U+20-7E",
+        preload: true,
+      },
+      {
+        file: "Noto.22bb-cyrillic.woff",
+        url: "/assets/Noto.22bb-cyrillic.woff",
+        mime: "font/woff",
+        bytes: 7_000,
+        bucket: "cyrillic",
+        unicodeRange: "U+400-45F",
+        preload: false,
+      },
+      {
+        file: "Noto.33cc-greek.woff",
+        url: "/assets/Noto.33cc-greek.woff",
+        mime: "font/woff",
+        bytes: 6_000,
+        bucket: "greek",
+        unicodeRange: "U+370-3FF",
+        preload: false,
+      },
+    ],
+  });
+
+  function preloads(): Array<string> {
+    return [...globalThis.document.head.querySelectorAll('link[rel="preload"][as="font"]')].map(
+      (link) => link.getAttribute("href") ?? "",
+    );
+  }
+
+  it("preloads one bucket, not the family", () => {
+    // Preloading every bucket downloads the whole family up front, which is
+    // the one thing the split existed to stop.
+    render(<Font src={split()} />);
+
+    expect(preloads()).toEqual(["/assets/Noto.11aa-latin.woff"]);
+  });
+
+  it("preloads nothing when the page says the face is below the fold", () => {
+    render(<Font src={split()} preload={false} />);
+
+    expect(preloads()).toEqual([]);
+  });
+
+  it("still declares every bucket, because the browser chooses between them", () => {
+    const { container } = render(<Font src={split()} />);
+    const style = globalThis.document.head.querySelector(
+      'style[data-href="/assets/Noto.11aa-latin.woff"]',
+    );
+
+    expect(style?.textContent).toContain("unicode-range:");
+    expect(container.querySelector("style")).toBe(null);
+  });
+});
+
+describe("Icon and IconSprite", () => {
+  const star = () => ({
+    id: "uf-icon-star-1a2b3c4d",
+    href: "#uf-icon-star-1a2b3c4d",
+    viewBox: "0 0 24 24",
+    width: 24,
+    height: 24,
+  });
+
+  it("renders a use pointing into the sprite rather than another copy of the path", () => {
+    // The whole reason a sprite exists: one definition, forty bytes per use.
+    const { container } = render(<Icon icon={star()} label="Favourite" />);
+    const svg = container.querySelector("svg");
+
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(svg?.querySelector("use")?.getAttribute("href")).toBe("#uf-icon-star-1a2b3c4d");
+    expect(svg?.querySelector("path")).toBe(null);
+  });
+
+  it("is announced when it is the control and hidden when it is not", () => {
+    // The decision people make backwards. An unlabelled icon button is
+    // announced as "button"; a labelled icon beside its own text is read twice.
+    const labelled = render(<Icon icon={star()} label="Favourite" />).container.querySelector("svg");
+    expect(labelled?.getAttribute("role")).toBe("img");
+    expect(labelled?.getAttribute("aria-label")).toBe("Favourite");
+    expect(labelled?.getAttribute("aria-hidden")).toBe(null);
+
+    const bare = render(<Icon icon={star()} />).container.querySelector("svg");
+    expect(bare?.getAttribute("aria-hidden")).toBe("true");
+    expect(bare?.getAttribute("role")).toBe(null);
+  });
+
+  it("keeps the viewBox ratio when it is sized", () => {
+    const svg = render(<Icon icon={star()} size={16} />).container.querySelector("svg");
+
+    expect(svg?.getAttribute("width")).toBe("16");
+    expect(svg?.getAttribute("height")).toBe("16");
+  });
+
+  it("puts the sprite out of the flow and out of the accessibility tree", () => {
+    // A `<use>` will not resolve into a subtree the browser never laid out, so
+    // the sprite is positioned away rather than `display: none`.
+    const markup = '<svg><symbol id="uf-icon-star-1a2b3c4d"><path d="M0 0h1v1z"/></symbol></svg>';
+    const { container } = render(<IconSprite sprite={{ markup }} />);
+    const host = container.firstElementChild;
+
+    expect(host?.getAttribute("aria-hidden")).toBe("true");
+    expect(host?.querySelector("symbol")?.getAttribute("id")).toBe("uf-icon-star-1a2b3c4d");
+  });
+});
+
+describe("OgImage", () => {
+  const card = () => ({
+    url: "/assets/guide.og.1a2b3c4d.png",
+    width: 1200,
+    height: 630,
+    type: "image/png",
+    alt: "Images and fonts",
+  });
+
+  function meta(property: string): string | null {
+    const node =
+      globalThis.document.head.querySelector(`meta[property="${property}"]`) ??
+      globalThis.document.head.querySelector(`meta[name="${property}"]`);
+    return node?.getAttribute("content") ?? null;
+  }
+
+  it("makes the URL absolute, which is the only kind of og:image there is", () => {
+    // A relative `og:image` is dropped by every crawler that reads it.
+    render(<OgImage card={card()} origin="https://example.com/" />);
+
+    expect(meta("og:image")).toBe("https://example.com/assets/guide.og.1a2b3c4d.png");
+  });
+
+  it("leaves a URL that is already absolute alone", () => {
+    render(<OgImage card={{ ...card(), url: "https://cdn.example.com/og.png" }} origin="https://example.com" />);
+
+    expect(meta("og:image")).toBe("https://cdn.example.com/og.png");
+  });
+
+  it("declares the size, so the card does not flicker at a guessed one", () => {
+    render(<OgImage card={card()} origin="https://example.com" />);
+
+    expect(meta("og:image:width")).toBe("1200");
+    expect(meta("og:image:height")).toBe("630");
+    expect(meta("og:image:type")).toBe("image/png");
+    expect(meta("og:image:alt")).toBe("Images and fonts");
+  });
+
+  it("asks X for the large card rather than a thumbnail of a 1200px picture", () => {
+    render(<OgImage card={card()} origin="https://example.com" />);
+
+    expect(meta("twitter:card")).toBe("summary_large_image");
+    expect(meta("twitter:image")).toBe("https://example.com/assets/guide.og.1a2b3c4d.png");
   });
 });

@@ -547,3 +547,184 @@ fn a_second_build_of_the_same_source_writes_the_same_names() {
         "a rebuild renamed the variants"
     );
 }
+
+/// A project whose one page imports an icon, the sprite, and a card.
+///
+/// Separate from [`asset_app`] rather than folded into it: these three go
+/// through hooks the image and font path never touches — a virtual module
+/// resolved by uf's own scheme, a `generateBundle` rewrite, and a compound
+/// extension — and a failure in one of them should name the feature that
+/// broke.
+fn icon_and_card_app() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    router: { entry: "app.js", root: "app" },
+    builtins: { icons: { dir: "icons" }, og: { font: "Fixture.ttf" } },
+  },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.layout.js",
+            r#"// @flow
+import * as React from "@uniflowed/react";
+
+export component Layout(children: React.Node) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+import * as React from "@uniflowed/react";
+import { Icon, IconSprite, OgImage } from "@uniflowed/web";
+
+import card from "../card.og.json";
+import sprite from "uf:icon-sprite";
+import star from "uf:icon/star";
+
+export component Page() {
+  return (
+    <main>
+      <OgImage card={card} origin="https://example.com" />
+      <IconSprite sprite={sprite} />
+      <button type="button"><Icon icon={star} label="Favourite" /></button>
+    </main>
+  );
+}
+"#,
+        ),
+        (
+            "icons/star.svg",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 2 3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z"/></svg>"#,
+        ),
+        (
+            "icons/dot.svg",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>"#,
+        ),
+        (
+            "card.og.json",
+            r#"{
+  "eyebrow": "Testing",
+  "title": "A card the build drew",
+  "subtitle": "from a template and a font",
+  "accent": "#7c8cff"
+}
+"#,
+        ),
+    ]
+}
+
+/// A real TrueType font with outlines, which a card needs and metrics do not.
+fn write_outline_font(path: &Path) {
+    let mut characters: Vec<char> = ('A'..='Z').chain('a'..='z').collect();
+    characters.extend([' ', '.', ',', '-']);
+    fs::write(path, uf_assets::test_font(&characters)).unwrap();
+}
+
+#[test]
+fn a_build_emits_a_sprite_of_the_icons_it_reached_and_no_others() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&icon_and_card_app());
+    write_outline_font(&project.path().join("Fixture.ttf"));
+
+    build(project.path());
+    let html = fs::read_to_string(project.path().join("dist/index.html"))
+        .expect("the page is prerendered");
+
+    // The icon is a `<use>` into the sprite, not another copy of the path.
+    let at = html.find("<use").unwrap_or_else(|| panic!("no <use> in:\n{html}"));
+    let href = &html[at..at + 80];
+    assert!(href.contains("#uf-icon-star-"), "{href}");
+    // The sprite is inline and holds the symbol that `<use>` points at.
+    assert!(html.contains("<symbol id=\"uf-icon-star-"), "no symbol in:\n{html}");
+    // `dot.svg` exists in the project and nothing imported it. A sprite that
+    // held it would be the whole directory, which is what a runtime icon
+    // library does and what this exists not to do.
+    assert!(!html.contains("uf-icon-dot-"), "the sprite holds an icon nothing imported");
+}
+
+#[test]
+fn a_build_draws_the_card_and_points_the_meta_tags_at_it() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&icon_and_card_app());
+    write_outline_font(&project.path().join("Fixture.ttf"));
+
+    build(project.path());
+    let dist = project.path().join("dist");
+    let html = fs::read_to_string(dist.join("index.html")).expect("the page is prerendered");
+
+    let at = html
+        .find("og:image\"")
+        .unwrap_or_else(|| panic!("no og:image in:\n{html}"));
+    let tag = &html[at..at + 200];
+    assert!(tag.contains("https://example.com/assets/"), "{tag}");
+    assert!(html.contains("og:image:width\" content=\"1200\""), "{html}");
+    assert!(html.contains("summary_large_image"), "{html}");
+
+    // And the file the tag names is on disk, at the size the tag claims.
+    let name = tag
+        .split("content=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .and_then(|url| url.rsplit('/').next())
+        .expect("the og:image has no file name");
+    let written = dist.join("assets").join(name);
+    assert!(written.exists(), "{name} was named but not written");
+    assert!(fs::metadata(&written).unwrap().len() > 0);
+}
+
+#[test]
+fn a_card_uf_cannot_lay_out_fails_the_build_rather_than_drawing_it() {
+    // The whole point of the template: a wrong Open Graph card is worse than
+    // no card, because nobody looks at one until it is on another website.
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = icon_and_card_app();
+    for entry in &mut files {
+        if entry.0 == "card.og.json" {
+            entry.1 = r#"{ "title": "مرحبا بالعالم" }"#;
+        }
+    }
+    let project = Project::new(&files);
+    write_outline_font(&project.path().join("Fixture.ttf"));
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "the build should have failed");
+    let message = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(message.contains("right-to-left"), "{message}");
+}

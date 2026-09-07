@@ -48,15 +48,35 @@ export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".avi
 export const FONT_EXTENSIONS = [".woff2", ".woff", ".ttf", ".otf"];
 
 /**
+ * The extension an Open Graph template is written under.
+ *
+ * A compound extension, so the claim is as narrow as a claim can be. Ordinary
+ * `.json` stays Vite's — only a file a project *named* `.og.json` becomes a
+ * card, and `?raw` and `?url` still reach the file itself, because a query is
+ * Vite's. It is checked before the image list for the same reason it is
+ * compound: the longer suffix has to win.
+ */
+export const OG_EXTENSION = ".og.json";
+
+/** The virtual module an icon import resolves through. */
+export const ICON_PREFIX = "uf:icon/";
+
+/** The virtual module holding every icon a build reached. */
+export const ICON_SPRITE = "uf:icon-sprite";
+
+/**
  * Whether this import is one uf's asset pipeline handles, and as what.
  *
- * Returns `"image"`, `"font"`, or `null`. The query string is stripped first:
- * `./hero.png?width=400` is an image, and the query is how an import says what
- * it wants.
+ * Returns `"image"`, `"font"`, `"og"`, `"icon"`, `"sprite"`, or `null`. The
+ * query string is stripped first: `./hero.png?width=400` is an image, and the
+ * query is how an import says what it wants.
  */
 export function assetKind(id) {
   const clean = stripQuery(id);
   const lower = clean.toLowerCase();
+  if (clean === ICON_SPRITE) return "sprite";
+  if (clean.startsWith(ICON_PREFIX)) return "icon";
+  if (lower.endsWith(OG_EXTENSION)) return "og";
   if (IMAGE_EXTENSIONS.some((extension) => lower.endsWith(extension))) return "image";
   if (FONT_EXTENSIONS.some((extension) => lower.endsWith(extension))) return "font";
   return null;
@@ -198,6 +218,9 @@ export class AssetService {
    * @param {string} [options.display]
    * @param {string} [options.baseUrl] prefixed to the file name in `src: url()`
    * @param {string | null} [options.fallback] `null` for no fallback face
+   * @param {string} [options.subset] `"none"` or `"ranges"`
+   * @param {string} [options.text] characters to cut the face down to
+   * @param {boolean} [options.preload] whether the primary face is preloaded
    */
   async font(id, options) {
     const request = {
@@ -209,6 +232,9 @@ export class AssetService {
       style: options.style,
       display: options.display,
       baseUrl: options.baseUrl,
+      subset: options.subset,
+      text: options.text,
+      preload: options.preload,
     };
     // Only sent when the caller had an opinion. The service distinguishes "not
     // mentioned, use the project's" from "explicitly none", and a key that is
@@ -227,7 +253,87 @@ export class AssetService {
       metrics: font.metrics,
       fallback: font.fallback ?? null,
       fallbackDeclined: font.fallbackDeclined ?? null,
+      faces: font.faces ?? [],
+      sourceBytes: font.sourceBytes,
+      subset: font.subset ?? null,
+      subsetDeclined: font.subsetDeclined ?? null,
       css: font.css,
+    };
+  }
+
+  /**
+   * Turn one SVG into a symbol, and record that this build reached it.
+   *
+   * Resolves to `{ name, id, viewBox, width, height, symbol }`. The `id` is
+   * what a `<use>` points at; the sprite is assembled from every icon this
+   * service was asked about.
+   *
+   * @param {string} id absolute path to the SVG
+   * @param {object} options
+   * @param {string} options.outDir where the sprite will be written
+   * @param {string} options.name the name it was imported under
+   */
+  async icon(id, options) {
+    const reply = await this.#send({
+      kind: "icon",
+      id,
+      outDir: options.outDir,
+      name: options.name,
+    });
+    const icon = reply.icon;
+    if (icon == null) throw new AssetError(id, "uf assets returned no icon");
+    return {
+      name: icon.name,
+      id: icon.id,
+      viewBox: icon.viewBox,
+      width: icon.width,
+      height: icon.height,
+      symbol: icon.symbol,
+    };
+  }
+
+  /**
+   * Assemble the sprite from every icon this service has been asked about.
+   *
+   * Ask for it once, after the graph is built. Asking earlier gets a correct
+   * sprite of the icons reached *so far*, which is not the same sprite.
+   *
+   * @param {object} options
+   * @param {string} options.outDir where the sprite is written
+   */
+  async sprite(options) {
+    const reply = await this.#send({
+      kind: "sprite",
+      id: "uf:icon-sprite",
+      outDir: options.outDir,
+    });
+    const sprite = reply.sprite;
+    if (sprite == null) throw new AssetError("uf:icon-sprite", "uf assets returned no sprite");
+    return { file: sprite.file, markup: sprite.markup, bytes: sprite.bytes, symbols: sprite.symbols };
+  }
+
+  /**
+   * Draw one Open Graph card from a declared template.
+   *
+   * Resolves to `{ file, mime, width, height, bytes, alt }`. A template uf
+   * cannot lay out rejects with a message naming the character; see
+   * `crates/uf_assets/src/og.rs` for what is and is not drawable.
+   *
+   * @param {string} id absolute path to the `.og.json`
+   * @param {object} options
+   * @param {string} options.outDir where the PNG is written
+   */
+  async og(id, options) {
+    const reply = await this.#send({ kind: "og", id, outDir: options.outDir });
+    const og = reply.og;
+    if (og == null) throw new AssetError(id, "uf assets returned no image");
+    return {
+      file: og.file,
+      mime: og.mime,
+      width: og.width,
+      height: og.height,
+      bytes: og.bytes,
+      alt: og.alt,
     };
   }
 

@@ -117,6 +117,12 @@ pub struct BuiltinConfig {
     pub fonts: crate::FontsConfig,
     pub framework_lints: bool,
     pub graphql: GraphQlConfig,
+    /// What the project declares about the icons it imports.
+    ///
+    /// The directory `uf:icon/…` resolves against. Read by `uf assets`, which
+    /// turns each one into a `<symbol>` and assembles one sprite from the set
+    /// a build reached; see `crates/uf_assets/src/icon.rs`.
+    pub icons: crate::IconsConfig,
     /// What the project declares about the images it imports.
     ///
     /// The widths a layout asks for and the quality they are encoded at. Read
@@ -126,6 +132,12 @@ pub struct BuiltinConfig {
     pub markdown: MarkdownConfig,
     pub motion: MotionConfig,
     pub native_test_runner: bool,
+    /// What the project declares about its Open Graph cards.
+    ///
+    /// A `*.og.json` template is drawn by `uf assets` from a font this names.
+    /// uf embeds no typeface, so a project that draws cards has to point at
+    /// one; see `crates/uf_assets/src/og.rs`.
+    pub og: crate::OgConfig,
     pub pwa: PwaConfig,
     pub react_compiler: ReactCompilerConfig,
     pub react_testing_library: bool,
@@ -146,11 +158,13 @@ impl Default for BuiltinConfig {
             fonts: crate::FontsConfig::default(),
             framework_lints: true,
             graphql: GraphQlConfig::default(),
+            icons: crate::IconsConfig::default(),
             images: crate::ImagesConfig::default(),
             loader: LoaderConfig::default(),
             markdown: MarkdownConfig::default(),
             motion: MotionConfig::default(),
             native_test_runner: true,
+            og: crate::OgConfig::default(),
             pwa: PwaConfig::default(),
             react_compiler: ReactCompilerConfig::default(),
             react_testing_library: true,

@@ -1,17 +1,19 @@
 ---
-title: "Images and fonts · uf"
-description: "Resized, re-encoded and self-hosted at build time — and what that stops short of."
+title: "Images, fonts, icons and cards · uf"
+description: "Resized, self-hosted, subsetted and drawn at build time — and what that stops short of."
 ---
 
 <p className="eyebrow">Writing code</p>
 
-# Images and fonts
+# Images, fonts, icons and cards
 
 <div className="lede">
 Import an image and it is resized to the widths your layout asks for. Import a
 font and it is self-hosted, declared, and paired with a fallback that occupies
-exactly the same space. Both happen in `uf` itself, at build time, and this page
-is as clear about what the pipeline cannot do as about what it can.
+exactly the same space. Import an icon and it joins one sprite built from the
+set your build actually reached. Import a card template and it is drawn. All of
+it happens in `uf` itself, at build time, and this page is as clear about what
+the pipeline cannot do as about what it can.
 </div>
 
 ## An image
@@ -113,6 +115,200 @@ Use `inter.fontFamily` rather than writing the family name yourself: it is the
 real face, then the matched fallback, then the local face that was scaled. Name
 only the real family and you get the download and none of the metric matching.
 
+### The `unicode-range` split
+
+A family that covers Latin, Greek and Cyrillic is three scripts in one file, and
+a reader of one of them downloads all three. Turn the split on and they do not:
+
+```js
+export default defineConfig({
+  app: { builtins: { fonts: { subset: "ranges" } } },
+});
+```
+
+uf reads the font's own character map, partitions it into script buckets, and
+emits one file per bucket with the **exact** `unicode-range` of what is in it —
+computed from the subset, not copied from a published table, so the browser
+never fetches a bucket for a character it does not have and never misses one.
+The buckets are disjoint, so nothing is in two files.
+
+Nothing is lost. That is the reason this is the mode to turn on and
+`subset: "none"` is the default: a page that renders Cyrillic still gets
+Cyrillic, it just does not pay for it before it needs it. The subsetting itself
+is [`skera`](https://github.com/googlefonts/fontations), Google Fonts' Rust port
+of HarfBuzz's `hb-subset`, so the glyph closure, the `GSUB`/`GPOS` pruning and
+the `cmap` rebuild are the same ones the rest of the web's fonts go through.
+
+An import that knows exactly what it renders can say so instead:
+
+```js
+import display from "./Display.ttf?…";  // not this — see below
+```
+
+There is no import syntax for it yet. `uf assets` takes a `text` field per
+request and the Vite plugin does not expose one, because the characters a face
+is cut to are a property of one use of it and there is no way for an import to
+say them without a query — and a query is Vite's. Until there is, `text`
+subsetting is reachable from the protocol and not from a `.js` file.
+
+**Why the default is `none`.** Subsetting is lossy by construction: a glyph that
+was removed is a character the page can no longer draw. A build cannot see the
+text a server will render, a user will type, or a translation will introduce, so
+a toolchain that quietly cut fonts down to the strings in your source would
+produce pages that look right to you and render in tofu for somebody with a
+diacritic in their name. `"ranges"` is safe because it removes nothing.
+
+### The preload
+
+`Font` emits exactly one `<link rel="preload">`, whatever the family was split
+into. That is deliberate: a preload for every bucket downloads the whole family
+up front, which is what the split existed to stop, and four preloaded faces have
+pushed your own stylesheet down the same connection.
+
+```js
+<Font src={inter} preload={false} />
+```
+
+for a face that does not paint the first screen. `app.builtins.fonts.preload`
+sets the default for every import.
+
+## An icon
+
+```js
+import { Icon, IconSprite } from "@uniflowed/web";
+
+import sprite from "uf:icon-sprite";
+import star from "uf:icon/star";
+
+export component Layout(children: React.Node) {
+  return (
+    <>
+      <IconSprite sprite={sprite} />
+      <button type="button"><Icon icon={star} label="Favourite" /></button>
+      {children}
+    </>
+  );
+}
+```
+
+`uf:icon/star` resolves to `icons/star.svg` — the directory is
+`app.builtins.icons.dir` — and evaluates to the symbol's id and `viewBox`, not
+to markup. `uf:icon-sprite` is one `<svg>` holding a `<symbol>` for **every icon
+the build reached, and no others**.
+
+That last part is what a runtime icon library cannot do. At runtime nothing
+knows which of a set's nine hundred icons an application imported, so the
+library ships all of them or asks you to import each one as its own component
+and repeat the same `<svg>` wrapper nine hundred times. A build resolved every
+import; the set it reached *is* the set.
+
+`label` is the whole accessibility decision an icon needs, and it is the one
+most often made backwards: pass it when the icon **is** the control, leave it
+off when there is text beside it. An unlabelled icon button is announced as
+"button"; a labelled icon next to its own visible text is the same word read
+twice.
+
+### `uf:icon/…` rather than `./star.svg`
+
+`.svg` stays Vite's. Claiming the extension would take it from
+`vite-plugin-svgr` and everything like it, which is red line 8: if Vite can do
+it, a uf project can do it. So icons live in uf's own `uf:` namespace and take
+nothing away — `import url from "./star.svg"` still means exactly what it
+always did.
+
+### What an icon may contain
+
+An icon is inlined into your document and can come from a dependency, so uf
+**refuses** rather than strips: a `<script>`, a `<foreignObject>`, an `on…`
+attribute, a `javascript:` value, or a reference to another origin makes the
+import fail with a message naming the file. Stripping would render something
+different from the file in your repository and nobody would find out until it
+looked wrong.
+
+Everything else passes through unchanged, with one rewrite: every `id` inside an
+icon, and every `url(#…)` and `href="#…"` that points at one, is prefixed with
+the symbol's own id. Two icons that both define a gradient called `a` is the
+normal case, and in one document the second would win for both.
+
+## An Open Graph card
+
+```js
+import { OgImage } from "@uniflowed/web";
+
+import card from "./guide.og.json";
+
+export component Head() {
+  return <OgImage card={card} origin="https://example.com" />;
+}
+```
+
+`guide.og.json` is a **template**, not a document. The compound extension is
+the whole of what uf claims: ordinary `.json` stays Vite's, and
+`./guide.og.json?raw` still reaches the file.
+
+```json
+{
+  "eyebrow": "Writing code",
+  "title": "Images, fonts, icons and cards",
+  "subtitle": "Everything the build knows and the runtime cannot",
+  "background": { "from": "#0b1020", "to": "#161d3d" },
+  "foreground": "#f8fafc",
+  "accent": "#7c8cff",
+  "font": "../../brand/Inter-SemiBold.ttf"
+}
+```
+
+uf draws it at 1200x630 — the ratio every consumer crops to — content-hashes the
+PNG, and the import evaluates to its URL, size and alt text. `OgImage` writes the
+tags, including the two things everybody gets wrong: an **absolute** URL, because
+a relative `og:image` is not an Open Graph image at all, and
+`twitter:card: summary_large_image`, without which X renders a thumbnail of a
+1200-pixel picture. A project using `@uniflowed/router`'s `Metadata` should pass
+the import through `openGraph.images` instead and let its `metadataBase` do the
+absolute URL.
+
+### This is a template, and deliberately not a renderer
+
+The obvious version of this feature is "an image from JSX", and uf does not do
+it. Rendering a document to an image is a CSS layout engine — flow, flex, grid,
+`line-height`, `text-overflow` — and the two ways to have one are to ship a
+browser or to approximate it. A browser is a dependency uf refuses to make
+building an application need. An approximation produces cards that are subtly
+wrong, and nobody looks at an Open Graph card until it is on somebody else's
+website.
+
+So: a fixed arrangement — background, rule, eyebrow, title, subtitle — drawn
+natively with [`ab_glyph`](https://github.com/alexheretic/ab-glyph), which turns
+a glyph into an outline and an outline into coverage. That covers most Open
+Graph images and it is honest about not being JSX. A card that needs more is a
+PNG you draw yourself, and `Image` has rendered one since the pipeline existed.
+
+### What it refuses, and why refusing is the feature
+
+`ab_glyph` does no **shaping**, so uf places glyphs left to right at their
+advance widths with the font's legacy `kern`. For Latin, Greek, Cyrillic, CJK
+and the punctuation around them that is correct. For anything else it is not,
+and uf **fails the build with a message naming the character** rather than
+drawing it:
+
+- **right-to-left scripts** — Hebrew, Arabic, Syriac, Thaana, N'Ko — which are
+  reordered, and in Arabic joined, by a shaping engine;
+- **Brahmic scripts** — Devanagari through Sinhala — whose vowel signs move
+  around their consonant;
+- **Thai, Lao, Khmer, Myanmar**, which do not separate words with spaces, so
+  there is nothing to break lines on;
+- **combining marks**, which are placed over their base by `GPOS`;
+- **emoji**, which are colour glyphs in `COLR`, `sbix` or `CBDT`;
+- **a character the font has no glyph for**, because drawing `.notdef` gives a
+  row of empty boxes that reads as a bug in whatever is showing the card.
+
+A card that is wrong is worse than a card that does not exist, because the build
+said it succeeded.
+
+uf also ships **no font**. A template with text and no `font` is refused: a
+toolchain that carried a default typeface would carry a licence with it. Point
+`app.builtins.og.font` at one and your templates stay text and colour.
+
 ## Configuration
 
 ```js
@@ -124,7 +320,9 @@ export default defineConfig({
         quality: 75,
         placeholder: true,
       },
-      fonts: { display: "swap", fallback: "Arial" },
+      fonts: { display: "swap", fallback: "Arial", subset: "none", preload: true },
+      icons: { dir: "icons" },
+      og: { font: null },
     },
   },
 });
@@ -143,6 +341,30 @@ There is one pipeline. `uf dev` and `uf build` both drive `uf assets` with the
 same parameters, both write to the same cache under `.uf/cache/assets`, and both
 get the same files under the same names. A dev session warms a cache the build
 reuses. The only thing that differs is the URL prefix they are served under.
+
+### The cache
+
+Every emitted file is named by a digest of its source and its parameters, so a
+rebuild writes the same bytes to the same path and nothing downstream
+re-downloads. That makes the output incremental and left the *work* untouched:
+the second build still decoded, resized and re-encoded everything before writing
+what was already there.
+
+It does not any more. The manifest is cached beside the files under the same
+digest, so a second build of an unchanged project reads one small JSON document
+per asset and decodes, resizes, subsets and rasterises nothing.
+
+There is no invalidation step because there is nothing to invalidate: the key
+**is** the digest of every input. Change the image, a width, the quality, the
+family, the subset mode or the base URL and the key changes; a stale entry
+cannot be read because nothing asks for it. The one thing a key cannot cover is
+the files, so a hit is only a hit when every file the manifest names is still on
+disk — `rm -rf dist` with `.uf/cache` left behind redoes the work rather than
+producing a build that names files nobody can serve.
+
+The sprite is the exception: it is assembled once per build, after every module
+has been loaded, because that is the first moment the set of icons the build
+reached is the whole set.
 
 ## What this does not do
 
@@ -172,9 +394,18 @@ decided it are on the import as `declined`.
 A photograph therefore gets several JPEG widths and no `<source>`. That is the
 correct answer, and you can see the numbers behind it.
 
-- **Fonts are not subsetted.** Reading three fixed-size tables and rebuilding a
-  font from a glyph closure are different jobs by orders of magnitude. Your font
-  is self-hosted at the size you supplied it.
+- **A subsetted face is emitted as WOFF 1.0, not WOFF2.** uf has a WOFF2
+  *reader* and no encoder, and writing one whose only proof of correctness is a
+  browser CI cannot run is not a trade worth making. Brotli beats zlib by about
+  a fifth on a font; subsetting a family to one script removes rather more than
+  that, and WOFF 1.0 is readable by every browser that has `@font-face` at all.
+- **Subsetting needs a `.ttf`, `.otf` or `.woff` with TrueType outlines.** A
+  `.woff2` stores its `glyf` table in a transformed form uf does not reverse —
+  point the import at the file the `.woff2` was built from. A font with CFF
+  outlines is refused because `skera` does not rebuild `CFF `, and a CFF font
+  that went through it would come back with no glyphs at all. Both refusals
+  leave the whole font self-hosted and working, with the reason on the import
+  as `subsetDeclined`.
 - **One weight per import.** Every imported font is declared at
   `font-weight: 400; font-style: normal`, and the family is the file's stem. So
   `Inter-Bold.woff2` becomes the family `Inter-Bold` rather than `Inter` at 700,

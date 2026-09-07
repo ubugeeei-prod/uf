@@ -52,6 +52,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::name::hashed_name;
+use crate::subset::SubsetMode;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -342,18 +343,35 @@ pub struct FontRequest<'a> {
     /// its own prefix and a build passes the bundler's; the rule of the
     /// stylesheet is the same either way.
     pub base_url: &'a str,
+    /// How the face should be cut down before it is hosted.
+    ///
+    /// [`SubsetMode::Off`] is the default everywhere and the only value that
+    /// cannot change what a page is able to render. See [`crate::subset`].
+    pub subset: SubsetMode,
+    /// Whether the emitted stylesheet's primary face should be preloaded.
+    ///
+    /// Exactly one face is ever marked, even when the family was split into
+    /// eight: a preload for every bucket downloads the whole family up front,
+    /// which is what the split existed to stop.
+    pub preload: bool,
 }
 
 /// A self-hosted font, with the CSS that declares it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FontAsset {
-    /// The emitted file's name, content-hashed.
+    /// The primary emitted file's name, content-hashed.
+    ///
+    /// The one a page preloads and the one a single-file import has. When the
+    /// family was split, the rest are in [`faces`](Self::faces) — this is the
+    /// bucket covering Latin, because that is the text a page paints first.
     pub file: String,
     /// Its media type.
     pub mime: String,
     /// Its size on disk.
     pub bytes: u64,
+    /// What the author supplied, for comparison with the sum of the faces.
+    pub source_bytes: u64,
     /// The family the `@font-face` declares.
     pub family: String,
     /// The family name of the metric-matched fallback, when there is one.
@@ -373,11 +391,53 @@ pub struct FontAsset {
     /// than silence: a project that asked for a fallback and got none has to
     /// be able to find out why without reading this crate.
     pub fallback_declined: Option<String>,
-    /// The stylesheet: the real face, and the matched fallback after it.
+    /// Every file emitted for this import, widest coverage first.
+    ///
+    /// One entry for a font hosted as supplied; one per bucket for a family
+    /// split by [`SubsetMode::Ranges`]. A caller that only wants a URL reads
+    /// [`file`](Self::file); a caller emitting the files reads this.
+    pub faces: Vec<EmittedFace>,
+    /// The subsetting that was applied, when any was.
+    pub subset: Option<String>,
+    /// Why the font was hosted whole, when a subset was asked for and refused.
+    ///
+    /// Present exactly when a subset was requested and not produced. The font
+    /// still works — this is the sentence that says it is the entire font, and
+    /// what would have to change for it not to be.
+    pub subset_declined: Option<String>,
+    /// The stylesheet: every real face, and the matched fallback after them.
     pub css: String,
 }
 
-/// Read one font, copy it under a content-hashed name, and describe it.
+/// One file this import put in the output directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmittedFace {
+    /// The file's name, content-hashed.
+    pub file: String,
+    /// Its media type.
+    pub mime: String,
+    /// Its size on disk.
+    pub bytes: u64,
+    /// The container it is in.
+    pub container: FontContainer,
+    /// Which script bucket it is, when the family was split.
+    pub bucket: Option<String>,
+    /// The exact `unicode-range` of what is in it, when it is a bucket.
+    ///
+    /// Computed from the subset's own `cmap`, so it describes the file rather
+    /// than the script the file was cut for.
+    pub unicode_range: Option<String>,
+    /// Whether a page should preload this one.
+    pub preload: bool,
+}
+
+/// Read one font, emit its files under content-hashed names, and describe it.
+///
+/// One file when the font is hosted as supplied, one per script bucket when
+/// [`SubsetMode::Ranges`] split it. A subset that could not be produced is not
+/// an error: the whole font is hosted and
+/// [`FontAsset::subset_declined`] says why.
 ///
 /// # Errors
 ///
@@ -388,31 +448,63 @@ pub fn self_host(request: &FontRequest<'_>) -> Result<FontAsset, FontError> {
     let bytes = read_bounded(request.source)?;
     let (container, metrics) = read_metrics(request.source, &bytes)?;
 
-    let extension = request
-        .source
-        .extension()
-        .unwrap_or(match container {
-            FontContainer::Sfnt => "ttf",
-            FontContainer::Woff => "woff",
-            FontContainer::Woff2 => "woff2",
-        })
-        .to_ascii_lowercase();
     let stem = request.source.file_stem().unwrap_or("font");
-    let file = hashed_name(stem, &bytes, &[request.family.as_bytes()], &extension);
-
     std::fs::create_dir_all(request.out_dir).map_err(|source| FontError::Write {
         path: request.out_dir.to_owned(),
         source,
     })?;
-    let target = request.out_dir.join(&file);
-    // Written every time rather than only when absent: the name is a hash of
-    // the bytes, so a rewrite is the same bytes, and a half-written file left
-    // by a killed build would otherwise be served forever under a name that
-    // says it is complete.
-    std::fs::write(&target, &bytes).map_err(|source| FontError::Write {
-        path: target.clone(),
-        source,
-    })?;
+
+    // The subset is attempted first because whether it succeeded decides what
+    // is written. A refusal is a sentence and not an error: the font still has
+    // to be hosted, and a build that failed because a face could not be cut
+    // down would be a build that failed for an optimisation.
+    let (mut faces, subset_declined) = match &request.subset {
+        SubsetMode::Off => (Vec::new(), None),
+        mode => match subset_faces(request, &bytes, stem, mode) {
+            Ok(emitted) => (emitted, None),
+            Err(reason) => (Vec::new(), Some(reason)),
+        },
+    };
+    let subset = if faces.is_empty() {
+        None
+    } else {
+        Some(match &request.subset {
+            SubsetMode::Ranges => String::from("ranges"),
+            SubsetMode::Text(_) => String::from("text"),
+            SubsetMode::Off => unreachable!("Off produces no faces"),
+        })
+    };
+
+    if faces.is_empty() {
+        let extension = request
+            .source
+            .extension()
+            .unwrap_or(match container {
+                FontContainer::Sfnt => "ttf",
+                FontContainer::Woff => "woff",
+                FontContainer::Woff2 => "woff2",
+            })
+            .to_ascii_lowercase();
+        let file = hashed_name(stem, &bytes, &[request.family.as_bytes()], &extension);
+        let target = request.out_dir.join(&file);
+        // Written every time rather than only when absent: the name is a hash
+        // of the bytes, so a rewrite is the same bytes, and a half-written file
+        // left by a killed build would otherwise be served forever under a
+        // name that says it is complete.
+        std::fs::write(&target, &bytes).map_err(|source| FontError::Write {
+            path: target.clone(),
+            source,
+        })?;
+        faces.push(EmittedFace {
+            mime: uf_bundle::content_type(Utf8Path::new(&file)).to_owned(),
+            file,
+            bytes: bytes.len() as u64,
+            container,
+            bucket: None,
+            unicode_range: None,
+            preload: request.preload,
+        });
+    }
 
     let (fallback, fallback_declined) = match request.fallback {
         None => (None, None),
@@ -445,44 +537,116 @@ pub fn self_host(request: &FontRequest<'_>) -> Result<FontAsset, FontError> {
     let fallback_family = fallback
         .as_ref()
         .map(|_| format!("{} Fallback", request.family));
-    let css = stylesheet(request, container, &file, fallback.as_ref());
-    let mime = uf_bundle::content_type(Utf8Path::new(&file)).to_owned();
+    let css = stylesheet(request, &faces, fallback.as_ref());
+    let primary = faces
+        .iter()
+        .position(|face| face.preload)
+        .unwrap_or_default();
 
     Ok(FontAsset {
-        file,
-        mime,
-        bytes: bytes.len() as u64,
+        file: faces[primary].file.clone(),
+        mime: faces[primary].mime.clone(),
+        bytes: faces[primary].bytes,
+        source_bytes: bytes.len() as u64,
         family: request.family.to_owned(),
         fallback_family,
-        container,
+        container: faces[primary].container,
         metrics,
         fallback,
         fallback_declined,
+        faces,
+        subset,
+        subset_declined,
         css,
     })
 }
 
+/// Cut the font down and write one file per piece.
+///
+/// `Err` is a sentence for [`FontAsset::subset_declined`], not a failure: every
+/// reason a subset cannot be produced leaves a perfectly serviceable font.
+fn subset_faces(
+    request: &FontRequest<'_>,
+    bytes: &[u8],
+    stem: &str,
+    mode: &SubsetMode,
+) -> Result<Vec<EmittedFace>, String> {
+    let sfnt = to_sfnt(request.source, bytes)?;
+    let plan = crate::subset::plan(&sfnt, mode)?;
+
+    let mode_key: &[u8] = match mode {
+        SubsetMode::Ranges => b"ranges",
+        SubsetMode::Text(text) => text.as_bytes(),
+        SubsetMode::Off => b"",
+    };
+    let mut faces = Vec::with_capacity(plan.faces.len());
+    for (index, cut) in plan.faces.iter().enumerate() {
+        // The digest covers the source bytes, the family, the mode and the
+        // bucket. Not the subset's own output: `skera`'s byte layout is
+        // allowed to move between versions, and a name that tracked it would
+        // invalidate every cached face in every project on an upgrade that
+        // changed nothing a reader can see.
+        let file = crate::name::hashed_name_with_suffix(
+            stem,
+            bytes,
+            &[request.family.as_bytes(), mode_key, cut.bucket.as_bytes()],
+            &format!("-{}", cut.bucket),
+            "woff",
+        );
+        let target = request.out_dir.join(&file);
+        std::fs::write(&target, &cut.bytes)
+            .map_err(|error| format!("failed to write {target}: {error}"))?;
+        faces.push(EmittedFace {
+            mime: uf_bundle::content_type(Utf8Path::new(&file)).to_owned(),
+            file,
+            bytes: cut.bytes.len() as u64,
+            container: FontContainer::Woff,
+            bucket: Some(cut.bucket.clone()),
+            unicode_range: Some(cut.unicode_range.clone()),
+            preload: request.preload && index == plan.primary,
+        });
+    }
+    Ok(faces)
+}
+
 /// The `@font-face` rules for one self-hosted font.
+///
+/// One rule per emitted face, each carrying its own `unicode-range` when the
+/// family was split, and then the metric-matched fallback. The split rules all
+/// declare the same `font-family`: that is what makes them one face to CSS,
+/// with the browser choosing between the files by which characters the page
+/// actually renders.
 fn stylesheet(
     request: &FontRequest<'_>,
-    container: FontContainer,
-    file: &str,
+    faces: &[EmittedFace],
     fallback: Option<&FallbackFace>,
 ) -> String {
     let family = css_string(request.family);
-    let mut css = format!(
-        "@font-face{{font-family:{family};font-style:{style};font-weight:{weight};\
-         font-display:{display};src:url({url}) format({format});}}",
-        url = css_string(&format!("{}{file}", request.base_url)),
-        style = request.style,
-        weight = request.weight,
-        display = request.display,
-        format = css_string(container.css_format()),
-    );
+    let mut css = String::new();
+    for face in faces {
+        css.push_str(&format!(
+            "@font-face{{font-family:{family};font-style:{style};font-weight:{weight};\
+             font-display:{display};src:url({url}) format({format});",
+            url = css_string(&format!("{}{}", request.base_url, face.file)),
+            style = request.style,
+            weight = request.weight,
+            display = request.display,
+            format = css_string(face.container.css_format()),
+        ));
+        if let Some(range) = face.unicode_range.as_deref() {
+            css.push_str(&format!("unicode-range:{range};"));
+        }
+        css.push('}');
+    }
     if let Some(matched) = fallback {
         // A second face, named so a page can list it after the real one. It
         // has no `src: url()` at all: the bytes are already on the reader's
         // machine, and a fallback that had to be downloaded would be pointless.
+        //
+        // No `unicode-range` either, even when the real family was split: the
+        // fallback is what the reader sees for *any* character until the right
+        // bucket lands, so restricting it to one bucket's range would leave
+        // every other character with no metric matching at all.
         css.push_str(&format!(
             "@font-face{{font-family:{fallback_family};font-style:{style};font-weight:{weight};\
              src:local({local});size-adjust:{size_adjust};ascent-override:{ascent};\
@@ -582,6 +746,211 @@ pub fn read_metrics(
 
 /// One table's bytes, by its four-character tag.
 type Tables = Vec<([u8; 4], Vec<u8>)>;
+
+/// The font's bytes as a bare SFNT, whatever container they arrived in.
+///
+/// Two things in this crate need a font as an SFNT rather than as tables:
+/// [`crate::og`] hands the bytes to `ab_glyph`, and [`crate::subset`] hands
+/// them to `skera`. Both are upstream readers that take a whole font, so a
+/// `.woff` has to be reassembled into one rather than picked apart.
+///
+/// # Errors
+///
+/// A message, when the container is one this cannot flatten:
+///
+/// * **WOFF2** — its `glyf` and `loca` are stored in a *transformed* shape and
+///   this crate deliberately does not reverse the transform. [`read_metrics`]
+///   does not need to, because the three tables it reads are never
+///   transformed; a subsetter and a rasteriser both do. Reversing it means a
+///   second brotli major version and a bit-level point decoder in the
+///   dependency tree to reconstruct outlines that are then immediately thrown
+///   away — so the answer is to ask for the `.ttf` the `.woff2` was built
+///   from, which is the file a build wanted anyway.
+/// * **a TrueType collection** — several fonts in one file, with nothing
+///   saying which one was meant.
+pub(crate) fn to_sfnt(path: &Utf8Path, bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let tag = bytes.get(0..4).ok_or_else(|| String::from("empty file"))?;
+    match tag {
+        b"wOF2" => Err(format!(
+            "{path} is WOFF2, whose glyf table is stored in a transformed form uf does not \
+             reverse. Point this at the .ttf or .otf the .woff2 was built from"
+        )),
+        b"ttcf" => Err(format!(
+            "{path} is a TrueType collection and does not say which of its faces was meant; \
+             extract the one you want first"
+        )),
+        b"wOFF" => {
+            let flavor = be_u32(bytes, 4).ok_or_else(|| String::from("truncated WOFF header"))?;
+            let tables = woff_tables(bytes)?;
+            Ok(pack_sfnt(flavor, &tables))
+        }
+        _ => {
+            // Validated rather than trusted: `sfnt_tables` is what decides
+            // whether these bytes are an SFNT at all, and its error is the one
+            // worth reporting.
+            sfnt_tables(bytes)?;
+            Ok(bytes.to_vec())
+        }
+    }
+}
+
+/// Lay a set of tables out as a bare SFNT.
+///
+/// The directory is sorted by tag, every table is padded to a four-byte
+/// boundary, and both checksums are computed — a reader is entitled to check
+/// them, and a font that fails its own checksum is a font some tool will
+/// refuse for reasons that take a day to find.
+pub(crate) fn pack_sfnt(flavor: u32, tables: &Tables) -> Vec<u8> {
+    let mut sorted: Vec<&([u8; 4], Vec<u8>)> = tables.iter().collect();
+    sorted.sort_by_key(|(tag, _)| *tag);
+
+    let count = sorted.len();
+    let directory = 12 + count * 16;
+    let mut body = Vec::new();
+    let mut records: Vec<([u8; 4], u32, u32, u32)> = Vec::with_capacity(count);
+    for (tag, data) in &sorted {
+        let offset = directory + body.len();
+        body.extend_from_slice(data);
+        while body.len() % 4 != 0 {
+            body.push(0);
+        }
+        records.push((
+            *tag,
+            checksum(data),
+            u32::try_from(offset).unwrap_or(u32::MAX),
+            u32::try_from(data.len()).unwrap_or(u32::MAX),
+        ));
+    }
+
+    let mut out = Vec::with_capacity(directory + body.len());
+    out.extend_from_slice(&flavor.to_be_bytes());
+    out.extend_from_slice(&(count as u16).to_be_bytes());
+    // The three fields a binary search over the directory would use. Every
+    // reader ignores them and computes its own; they are written correctly
+    // anyway because a validator does not ignore them.
+    let entry_selector = usize::BITS - 1 - count.max(1).leading_zeros();
+    let search_range = (1u32 << entry_selector) * 16;
+    out.extend_from_slice(&(search_range as u16).to_be_bytes());
+    out.extend_from_slice(&(entry_selector as u16).to_be_bytes());
+    out.extend_from_slice(&((count as u32 * 16).saturating_sub(search_range) as u16).to_be_bytes());
+    for (tag, sum, offset, length) in &records {
+        out.extend_from_slice(tag);
+        out.extend_from_slice(&sum.to_be_bytes());
+        out.extend_from_slice(&offset.to_be_bytes());
+        out.extend_from_slice(&length.to_be_bytes());
+    }
+    out.extend_from_slice(&body);
+
+    // `head.checkSumAdjustment` is 0xB1B0AFBA minus the checksum of the whole
+    // file computed with that field itself zeroed, which is why it is written
+    // last and why the field was left at whatever it was.
+    if let Some(head_at) = records
+        .iter()
+        .position(|(tag, _, _, _)| tag == b"head")
+        .map(|index| records[index].2 as usize)
+        && out.len() >= head_at + 12
+    {
+        out[head_at + 8..head_at + 12].copy_from_slice(&0u32.to_be_bytes());
+        let adjustment = 0xB1B0_AFBAu32.wrapping_sub(checksum(&out));
+        out[head_at + 8..head_at + 12].copy_from_slice(&adjustment.to_be_bytes());
+    }
+    out
+}
+
+/// The tables of an SFNT, for a test that has to take one apart.
+#[cfg(test)]
+pub(crate) fn sfnt_tables_for_test(bytes: &[u8]) -> Tables {
+    sfnt_tables(bytes).expect("the fixture is an sfnt")
+}
+
+/// An SFNT table checksum: big-endian `u32` words, wrapping, zero-padded.
+fn checksum(data: &[u8]) -> u32 {
+    let mut sum = 0u32;
+    let (words, rest) = data.as_chunks::<4>();
+    for word in words {
+        sum = sum.wrapping_add(u32::from_be_bytes(*word));
+    }
+    if !rest.is_empty() {
+        let mut word = [0u8; 4];
+        word[..rest.len()].copy_from_slice(rest);
+        sum = sum.wrapping_add(u32::from_be_bytes(word));
+    }
+    sum
+}
+
+/// Pack an SFNT as WOFF 1.0.
+///
+/// # Why WOFF 1.0 and not WOFF2
+///
+/// This is what a subsetted face is emitted as, and the choice is between the
+/// container uf can write correctly and the one the web prefers. WOFF 1.0 is
+/// a table directory and one zlib stream per table — [`flate2`] is already in
+/// this crate for reading them, and the result round-trips through
+/// [`woff_tables`] in this crate's own tests. WOFF2 needs its `glyf`
+/// transform, or a null-transform encoding whose only proof of correctness
+/// would be a browser uf cannot run in CI.
+///
+/// The container is the smaller half of the decision anyway: brotli beats
+/// zlib by roughly a fifth on a font, and subsetting a family to the range a
+/// page uses removes rather more than that. Support is universal — WOFF 1.0
+/// is the format every browser that has `@font-face` at all can read.
+pub(crate) fn pack_woff(sfnt: &[u8]) -> Result<Vec<u8>, String> {
+    use std::io::Write as _;
+
+    let flavor = be_u32(sfnt, 0).ok_or_else(|| String::from("truncated font"))?;
+    let tables = sfnt_tables(sfnt)?;
+    let count = tables.len();
+    let directory = 44 + count * 20;
+
+    let mut body = Vec::new();
+    let mut records: Vec<[u8; 20]> = Vec::with_capacity(count);
+    for (tag, data) in &tables {
+        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        encoder
+            .write_all(data)
+            .and_then(|()| encoder.finish())
+            .map_err(|error| format!("a WOFF table would not deflate: {error}"))
+            .map(|compressed| {
+                // WOFF says a table that did not get smaller is stored raw,
+                // and says so by making the two lengths equal. Storing a
+                // larger deflate stream would be legal and pointless.
+                let stored: &[u8] = if compressed.len() < data.len() {
+                    &compressed
+                } else {
+                    data
+                };
+                let offset = directory + body.len();
+                body.extend_from_slice(stored);
+                while body.len() % 4 != 0 {
+                    body.push(0);
+                }
+                let mut record = [0u8; 20];
+                record[0..4].copy_from_slice(tag);
+                record[4..8].copy_from_slice(&(offset as u32).to_be_bytes());
+                record[8..12].copy_from_slice(&(stored.len() as u32).to_be_bytes());
+                record[12..16].copy_from_slice(&(data.len() as u32).to_be_bytes());
+                record[16..20].copy_from_slice(&checksum(data).to_be_bytes());
+                records.push(record);
+            })?;
+    }
+
+    let mut out = Vec::with_capacity(directory + body.len());
+    out.extend_from_slice(b"wOFF");
+    out.extend_from_slice(&flavor.to_be_bytes());
+    out.extend_from_slice(&((directory + body.len()) as u32).to_be_bytes());
+    out.extend_from_slice(&(count as u16).to_be_bytes());
+    out.extend_from_slice(&0u16.to_be_bytes());
+    out.extend_from_slice(&(sfnt.len() as u32).to_be_bytes());
+    // Font revision, then the four offset/length pairs for the optional
+    // metadata and private blocks, none of which uf writes.
+    out.extend_from_slice(&[0u8; 4]);
+    out.extend_from_slice(&[0u8; 20]);
+    for record in &records {
+        out.extend_from_slice(record);
+    }
+    out.extend_from_slice(&body);
+    Ok(out)
+}
 
 fn table<'a>(tables: &'a Tables, tag: &[u8; 4]) -> Option<&'a [u8]> {
     tables
