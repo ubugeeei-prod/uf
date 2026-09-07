@@ -335,7 +335,9 @@ impl Record {
         self.answers.truncate(MAX_RECORD_ANSWERS);
     }
 
-    /// Move the answer for `dependencies` to the front, if there is one.
+    /// Move the answer for `dependencies` to the front, and say whether the
+    /// record changed — `false` when it was already there or is not held, which
+    /// is the caller's signal that there is nothing to write back.
     ///
     /// A run answered entirely from disk writes nothing, so without this the
     /// order in a record would record which batch *filled* it rather than which
