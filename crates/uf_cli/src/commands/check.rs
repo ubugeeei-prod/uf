@@ -300,6 +300,13 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
     // sources checked from two roots are two projects, and `.uf/` is where uf
     // already keeps per-project state that `.gitignore` covers.
     let cache = CheckCache::open(root.as_std_path());
+    // Before the run adds to it, once, and silently. A check is about to write
+    // one record per file it could not answer from disk, and this is what
+    // stops the directory from being every record every build of `uf` has ever
+    // produced — which it was, without a ceiling, until #218.
+    if let Some(cache) = cache.as_ref() {
+        cache.sweep();
+    }
     match check_sources_cached(&batch, &limits, cache.as_ref()) {
         Ok(mut report) => {
             let asked_about: FxHashSet<&str> =

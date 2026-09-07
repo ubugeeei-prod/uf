@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 uf_config = { path = "../uf_config" }
+uf_infra = { path = "../uf_infra" }
 base64.workspace = true
 camino.workspace = true
 compact_str.workspace = true
