@@ -27,7 +27,7 @@ const VERSION = "0.0.0-alpha";
  * `metadataBase` is the same origin as `site.url` in `uf.config.js`, and it is
  * written twice because the two are read by different things at different
  * times: `site.url` is what `uf build` puts in a `<loc>`, in Rust, with no
- * JavaScript in the process; this is what the renderer resolves `/brand/uf.png`
+ * JavaScript in the process; this is what the renderer resolves `/brand/og.png`
  * against. Keep them in step.
  *
  * There is deliberately no `canonical` here. A canonical URL is one page's own
@@ -43,8 +43,8 @@ export const metadata: Metadata = {
   // No `title` or `description` here: they fall back to the document's, which
   // is what a page that already said what it is called meant. `siteName` is
   // the one a card cannot derive.
-  openGraph: { siteName: "uf", images: ["/brand/uf.png"] },
-  twitter: { card: "summary_large_image", images: ["/brand/uf.png"] },
+  openGraph: { siteName: "uf", images: ["/brand/og.png"] },
+  twitter: { card: "summary_large_image", images: ["/brand/og.png"] },
 };
 
 /**

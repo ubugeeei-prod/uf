@@ -14,6 +14,15 @@ design tokens, and Flow constants used by docs and examples.
 - `uniflowed-wordmark.png`: extracted text-only wordmark
 - `uniflowed-wordmark.svg`: SVG wrapper for the wordmark
 - `favicon.svg`: browser icon
+- `og.png`: the 1200×630 share card, and `og.html` the CSS it is rendered from
+
+  Type first, not the mark on a field: a square logo centred on white is a
+  badge, and every platform that renders a 1.91:1 card crops or letterboxes it
+  into something that says nothing. The mark is texture bleeding off the right
+  edge, and the gradient is a rule down the left margin.
+
+  `og.html` is the source and `tools/brand/render-og.sh` turns it into the PNG,
+  which is committed because a build should not need a browser.
 - `tokens.json`: complete design token data
 - `tokens.css`: CSS custom properties
 - `index.js`: Flow constants for dogfooding in uf projects
