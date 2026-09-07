@@ -767,3 +767,81 @@ fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
         "a setting the project wrote has to survive the round trip"
     );
 }
+
+/// ubugeeei-prod/uf#475: naming one rule switched the other fifty-three off.
+///
+/// Silently, and the ones that vanished included `flow/syntax` — so a project
+/// that lowered `unclear-type` to a warning also stopped being told its sources
+/// do not parse.
+#[test]
+fn naming_one_rule_leaves_the_others_where_they_were() {
+    let config: UniflowedConfig = serde_json::from_value(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-type": "warn" } }
+    }))
+    .expect("a config naming one rule");
+
+    let defaults = UniflowedConfig::default();
+    assert_eq!(
+        config.lint.rules.len(),
+        defaults.lint.rules.len(),
+        "the table shrank"
+    );
+    assert_eq!(
+        config.lint.rules.get("flow/unclear-type"),
+        Some(&RuleLevel::Warn),
+        "the one rule that was named did not change"
+    );
+    for (rule, level) in &defaults.lint.rules {
+        if rule == "flow/unclear-type" {
+            continue;
+        }
+        assert_eq!(config.lint.rules.get(rule), Some(level), "{rule} moved");
+    }
+}
+
+/// Switching a rule off is what `"off"` is for, and it still works.
+#[test]
+fn a_rule_is_switched_off_by_saying_so() {
+    let config: UniflowedConfig = serde_json::from_value(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-type": "off" } }
+    }))
+    .expect("a config switching one rule off");
+
+    assert_eq!(
+        config.lint.rules.get("flow/unclear-type"),
+        Some(&RuleLevel::Off)
+    );
+    assert!(config.lint.rules.len() > 50, "the table shrank");
+}
+
+/// A misspelled rule used to do nothing at all, which is the same quiet
+/// failure one level down: the project sees no change and has no way to learn
+/// why.
+#[test]
+fn a_rule_uf_does_not_have_is_refused_with_the_one_it_probably_meant() {
+    let error = serde_json::from_value::<UniflowedConfig>(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-types": "warn" } }
+    }))
+    .expect_err("a misspelled rule");
+
+    let message = error.to_string();
+    assert!(message.contains("is not a lint rule"), "{message}");
+    assert!(
+        message.contains("did you mean `flow/unclear-type`"),
+        "{message}"
+    );
+}
+
+/// And nothing is suggested when nothing is near, because a wrong suggestion
+/// sends the reader to a rule they did not want.
+#[test]
+fn a_name_that_resembles_no_rule_gets_no_suggestion() {
+    let error = serde_json::from_value::<UniflowedConfig>(serde_json::json!({
+        "lint": { "rules": { "totally/made-up": "warn" } }
+    }))
+    .expect_err("a name that is not a rule");
+
+    let message = error.to_string();
+    assert!(message.contains("is not a lint rule"), "{message}");
+    assert!(!message.contains("did you mean"), "{message}");
+}

@@ -12,7 +12,102 @@ pub struct LintConfig {
     pub files: Vec<CompactString>,
     pub flow: FlowLintConfig,
     pub ignore: Vec<CompactString>,
+    /// Rule levels, merged over uf's table rather than replacing it.
+    ///
+    /// # Why merging
+    ///
+    /// `#[serde(default)]` fills this in when the key is absent and replaces it
+    /// wholesale when it is present, so naming one rule switched the other
+    /// fifty-three off — silently. On this workspace that turned 236 errors
+    /// into 203 warnings the moment a config appeared, and the thirty-three
+    /// that vanished were `react/hooks-rules`, `flow/nested-component` and
+    /// `flow/mixed-import-and-require` findings: not fixed, just no longer
+    /// looked for. `flow/syntax` went with them, so a project that lowered
+    /// `unclear-type` to a warning also stopped being told its sources do not
+    /// parse (ubugeeei-prod/uf#475).
+    ///
+    /// Nothing said so. The reference documents this as "rule levels" over a
+    /// default table, which reads as an override map, and no command printed
+    /// how many rules ran. A project could not tell it had switched the linter
+    /// off.
+    ///
+    /// Merging is what the documentation already described, and switching a
+    /// rule off is what `"off"` is for.
+    #[serde(deserialize_with = "rules_over_the_default_table")]
     pub rules: BTreeMap<CompactString, RuleLevel>,
+}
+
+/// uf's table, with the project's levels written over it.
+///
+/// # Errors
+///
+/// When a name is not a rule uf has. A misspelled rule silently does nothing,
+/// which is the same class of quiet failure as the one above: a project writes
+/// `flow/unclear-types`, sees no change, and has no way to find out why. The
+/// message names the closest rule uf does have, because the mistake is almost
+/// always one character.
+fn rules_over_the_default_table<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<CompactString, RuleLevel>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let named = BTreeMap::<CompactString, RuleLevel>::deserialize(deserializer)?;
+    let mut rules = default_lint_rules();
+    for (name, level) in named {
+        if !rules.contains_key(&name) {
+            let closest = nearest_rule(&name);
+            return Err(serde::de::Error::custom(match closest {
+                Some(rule) => format!("`{name}` is not a lint rule; did you mean `{rule}`?"),
+                None => format!("`{name}` is not a lint rule"),
+            }));
+        }
+        rules.insert(name, level);
+    }
+    Ok(rules)
+}
+
+/// uf's own table, as a map.
+fn default_lint_rules() -> BTreeMap<CompactString, RuleLevel> {
+    DEFAULT_LINT_RULES
+        .into_iter()
+        .map(|(rule, level)| (CompactString::const_new(rule), level))
+        .collect()
+}
+
+/// The rule `name` was most likely meant to be.
+///
+/// Levenshtein against every rule uf has, accepting the nearest within a third
+/// of the name's length — close enough that a typo lands and far enough that
+/// two genuinely different rules do not suggest each other. `None` when nothing
+/// is near, because a wrong suggestion is worse than none: it sends the reader
+/// to a rule they did not want.
+fn nearest_rule(name: &str) -> Option<&'static str> {
+    let budget = (name.len() / 3).max(1);
+    DEFAULT_LINT_RULES
+        .into_iter()
+        .map(|(rule, _)| (rule, distance(name, rule)))
+        .filter(|(_, distance)| *distance <= budget)
+        .min_by_key(|(_, distance)| *distance)
+        .map(|(rule, _)| rule)
+}
+
+/// Levenshtein distance, two rows rather than a matrix.
+fn distance(left: &str, right: &str) -> usize {
+    let right: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right.len()).collect();
+    let mut current = vec![0usize; right.len() + 1];
+    for (row, from) in left.chars().enumerate() {
+        current[0] = row + 1;
+        for (column, to) in right.iter().enumerate() {
+            let substitute = previous[column] + usize::from(from != *to);
+            current[column + 1] = substitute
+                .min(previous[column + 1] + 1)
+                .min(current[column] + 1);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right.len()]
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,10 +269,7 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
 
 impl Default for LintConfig {
     fn default() -> Self {
-        let mut rules = BTreeMap::new();
-        for (rule, level) in DEFAULT_LINT_RULES {
-            rules.insert(CompactString::const_new(rule), level);
-        }
+        let rules = default_lint_rules();
 
         Self {
             engine: LintEngine::Rust,
