@@ -212,9 +212,20 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "The headless primitives, their parts, and the keys each one owns.",
       },
       {
+        href: "/reference/hooks",
+        title: "Browser hooks",
+        blurb:
+          "What each one renders before hydration, and how the ones with no server answer say so.",
+      },
+      {
         href: "/reference/effect",
         title: "Effects",
         blurb: "Typed failures, fibers that own what they start, and what Flow cannot say.",
+      },
+      {
+        href: "/reference/i18n",
+        title: "Internationalisation",
+        blurb: "MessageFormat 2 with typed arguments, and the subset uf implements.",
       },
     ],
   },
