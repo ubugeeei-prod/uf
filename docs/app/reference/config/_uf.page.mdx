@@ -40,6 +40,7 @@ which is the fastest way to answer "what is it actually using".
 | `fmt` | `uf fmt` |
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test` |
+| `permissions` | What the project's own code may reach. Absent means no limit |
 | `plugins` | Vite plugins, appended to uf's own |
 | `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
@@ -165,6 +166,49 @@ already set in the environment beats every file. Only a name starting with
 `VITE_` — or Vite's own `envPrefix`, if the project sets one — reaches browser
 code; everything else is the server's. [Environments](/guide/env) is the whole
 of it.
+
+## permissions
+
+Absent, and there is no limit — the toolchain uf has always been. Present, and
+it is **deny by default**: the project's code gets what this block lists and
+nothing else. `permissions: {}` is a legitimate thing to write and means
+"nothing beyond what uf itself needs".
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `read` | `[]` | Paths the project's code may read |
+| `write` | `[]` | Paths it may write |
+| `net` | `[]` | Hosts it may reach, optionally with a port |
+| `env` | `[]` | Environment variables it may read |
+| `run` | `[]` | Programs it may start |
+
+```js
+// @flow
+export default defineConfig({
+  permissions: {
+    read: ["./fixtures"],
+    write: ["./.uf"],
+  },
+});
+```
+
+The set is uf's, not a runtime's, and each host is handed as much of it as it
+can enforce — **or refuses the run**. Node.js enforces `read` and `write`; Deno
+enforces all five; Bun has no permission model, so a project that declares one
+and runs on Bun is stopped with a message naming the hosts that can.
+`uf explain test` prints which host is enforcing what.
+[`docs/hosts.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/hosts.md)
+is the whole table, including the two grants uf makes for itself on Node and why
+they cannot be scoped.
+
+Two things worth knowing before you write one:
+
+- **It does not narrow access to the project's own files.** A host has to read
+  the project to run it, so those reads are uf's and are added to yours. What
+  the set denies is the rest of the machine.
+- **A misspelled key is an error.** Every other block here ignores a key it does
+  not recognize; this one refuses, because a dropped `net` would leave a project
+  believing it had declared a permission nobody granted.
 
 ## fmt
 

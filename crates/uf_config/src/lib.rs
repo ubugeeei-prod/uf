@@ -7,6 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 pub use uf_assets::{FontsConfig, ImagesConfig};
 pub use uf_bundle::{BudgetMetric, BundleBudgets, ByteSize, SizeBudget};
+pub use uf_runtime::{Permission, PermissionError, Permissions, ToolchainAccess};
 
 mod app;
 pub mod env_files;
@@ -47,6 +48,20 @@ pub struct UniflowedConfig {
     pub fmt: FmtConfig,
     pub lint: LintConfig,
     pub package: PackageConfig,
+    /// What the project's own code may reach, or `None` for no limit.
+    ///
+    /// `None` — the key absent — is the toolchain uf has always been: a test,
+    /// a plugin and a config file run with whatever the host would have given
+    /// them. Present is the opposite default, **deny except what is listed**,
+    /// and `permissions: {}` is a legitimate and meaningful thing to write: it
+    /// denies everything uf does not itself need. The two cases are an
+    /// `Option` rather than an `is_empty()` check for exactly that reason —
+    /// "no block" and "an empty block" are opposite instructions, and a
+    /// section struct with a `Default` cannot tell them apart.
+    ///
+    /// The set is uf's, not a particular host's; `uf_runtime::permissions`
+    /// translates it per host and refuses where a host cannot enforce it.
+    pub permissions: Option<Permissions>,
     /// Plugins the project adds, in declaration order.
     ///
     /// Entries are raw, untrusted declarations; `uf_plugin` resolves them into

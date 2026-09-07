@@ -20,8 +20,9 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
-use uf_config::load_config;
+use uf_config::{Permissions, ToolchainAccess, load_config};
 use uf_project::{ProjectFile, scan_selected_source_files};
+use uf_runtime::RuntimeHost;
 use uf_term::PhaseTimer;
 use uf_test::{
     Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
@@ -343,19 +344,132 @@ pub(crate) fn test_host(
         .with_env(env.exported());
     // The worker transforms through the binary that started it, never a
     // different `uf` that happens to be on PATH.
-    if let Ok(binary) = std::env::current_exe()
-        && let Ok(binary) = Utf8PathBuf::from_path_buf(binary)
-    {
+    let uf_binary = std::env::current_exe()
+        .ok()
+        .and_then(|binary| Utf8PathBuf::from_path_buf(binary).ok());
+    if let Some(binary) = uf_binary.clone() {
         command = command.with_uf_binary(binary);
     }
+    // After the binary is known, because the permission set has to grant the
+    // transform service the right to exist: a worker that may not start `uf
+    // transform` cannot load a line of Flow.
+    if let Some(permissions) = config.permissions.as_ref() {
+        command = command.with_permissions(worker_permissions(
+            kind,
+            root,
+            &loader,
+            uf_binary.as_deref(),
+            permissions,
+        )?);
+    }
     if !command.loads_flow() {
+        // The reason comes from `uf_runtime::HOSTS` rather than from a sentence
+        // written here, so that the message a person meets and the table
+        // `docs/hosts.md` is generated from cannot drift apart. The two used to
+        // be separate sentences and the enum's said nothing at all.
+        let support = uf_runtime::HostSupport::for_host(runtime_host(kind));
+        let tracking = support.tracking_issue.map_or_else(String::new, |issue| {
+            format!(" Tracked by https://github.com/ubugeeei-prod/uf/issues/{issue}.")
+        });
         bail!(
-            "`uf test` cannot run on {} yet: it has no Flow loader, so a test file written in \
-             Flow could not be imported. Install Node.js or Bun.",
-            host_name
+            "`uf test` cannot run on {host_name} yet: it has no Flow loader, so a test file \
+             written in Flow could not be imported. What it needs is {}.{tracking} Node.js and \
+             Bun both run the suite today; install one, or name it in \
+             `app.runtime.capabilityJsHost.default`.",
+            support.missing.unwrap_or("a Flow loader"),
         );
     }
     Ok(command)
+}
+
+/// What uf itself must reach on the host, whatever the project declared.
+///
+/// Three of the toolchain's own grants, and each of them is the difference
+/// between a permission set and a run that cannot start:
+///
+/// * **the project root, readable.** A worker imports the test file and
+///   everything it imports. A declared `read` list is *added to* this rather
+///   than replacing it, which is the part worth saying out loud: a permission
+///   set does not narrow a run's reach into the project, it denies the rest of
+///   the machine — `~/.ssh`, `~/.aws`, `/etc`.
+/// * **the directory the packages resolve from, readable.** `@uniflowed/test`
+///   and `@uniflowed/host` are reached through `node_modules`, which in a
+///   workspace sits above the project and would otherwise be outside every
+///   grant.
+/// * **the `uf` binary, readable and runnable.** Every Flow module is
+///   transformed by a `uf transform` child, and `packages/host/transform.js`
+///   stats the binary before spawning it to key its cache. Both are denied by
+///   default under a permission model, and the failure would surface inside
+///   uf's own loader rather than in anything the project wrote.
+///
+/// `.uf` is the only writable path uf adds: the transform and check caches, the
+/// snapshots a `--update-snapshots` run rewrites, and the coverage documents
+/// all live under it.
+///
+/// `loader` is `None` for `uf explain`, which describes a run rather than
+/// starting one and has not resolved the project's packages. The difference is
+/// one entry in the read list, and saying "the packages directory as well"
+/// costs a reader less than a second implementation of this would.
+pub(crate) fn toolchain_access(
+    root: &Utf8Path,
+    loader: Option<&Utf8Path>,
+    uf_binary: Option<&Utf8Path>,
+) -> ToolchainAccess {
+    let mut toolchain = ToolchainAccess {
+        read: vec![root.to_string()],
+        write: vec![root.join(".uf").to_string()],
+        run: Vec::new(),
+        // Node's `register()` puts the module hooks on a loader thread, which
+        // its permission model calls a worker; every host command uf starts
+        // loads Flow that way.
+        loader_thread: true,
+    };
+    if let Some(loader) = loader {
+        // `loader` is `<node_modules>/@uniflowed/host`; two levels up is the
+        // directory every bare specifier in the worker resolves through.
+        if let Some(modules) = loader.parent().and_then(Utf8Path::parent) {
+            toolchain.read.push(modules.to_string());
+        }
+        // And where the packages *really* are. A workspace links
+        // `node_modules/@uniflowed/host` at its own `packages/host`, and Node
+        // resolves a symlink before it checks the path against the grant — so
+        // a run in a workspace was denied the loader it had just been given
+        // permission to read. Granting the resolved scope directory covers
+        // every `@uniflowed/*` the worker imports and nothing else.
+        if let Ok(real) = loader.canonicalize_utf8()
+            && let Some(scope) = real.parent()
+        {
+            toolchain.read.push(scope.to_string());
+        }
+    }
+    if let Some(binary) = uf_binary {
+        toolchain.read.push(binary.to_string());
+        toolchain.run.push(binary.to_string());
+    }
+    toolchain
+}
+
+/// The host, as `uf_runtime` names it.
+pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
+    match kind {
+        HostKind::Node => RuntimeHost::Node,
+        HostKind::Bun => RuntimeHost::Bun,
+        HostKind::Deno => RuntimeHost::Deno,
+    }
+}
+
+fn worker_permissions(
+    kind: HostKind,
+    root: &Utf8Path,
+    loader: &Utf8Path,
+    uf_binary: Option<&Utf8Path>,
+    permissions: &Permissions,
+) -> Result<Vec<String>> {
+    let toolchain = toolchain_access(root, Some(loader), uf_binary);
+    // The error is the feature: a set this host cannot enforce stops the run
+    // and names the host that can, rather than being partly applied.
+    uf_runtime::permissions::host_arguments(runtime_host(kind), permissions, &toolchain)
+        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 /// Run the suite once, drawing a progress line while it goes.

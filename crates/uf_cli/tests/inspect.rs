@@ -104,6 +104,30 @@ fn inspect_reports_zero_config_defaults() {
         serde_json::json!("auto")
     );
     assert!(value["engines"]["packageManagerDetection"]["packageManager"].is_string());
+
+    // The contract's `hosts` is a list of targets and was being read as a list
+    // of hosts that work, which is how "uf runs on Deno" got written down. The
+    // report beside it is what answers that question, and `uf inspect --json`
+    // is what a person pastes into an issue — so the row that says whether the
+    // host they are on is one uf runs on has to be in it.
+    let hosts = value["engines"]["hostSupport"].as_array().expect("hostSupport");
+    let deno = hosts
+        .iter()
+        .find(|host| host["host"] == "deno")
+        .expect("every host has a row");
+    assert_eq!(deno["level"], "planned");
+    assert_eq!(deno["flowLoader"], serde_json::Value::Null);
+    assert_eq!(deno["trackingIssue"], 246);
+    assert!(
+        deno["missing"].as_str().unwrap_or_default().contains("Flow loader"),
+        "{deno}"
+    );
+    let node = hosts
+        .iter()
+        .find(|host| host["host"] == "node")
+        .expect("every host has a row");
+    assert_eq!(node["level"], "implemented");
+    assert_eq!(node["enforcesPermissions"], serde_json::json!(["read", "write"]));
 }
 
 /// Write a project uf's config loader will treat as its own root.

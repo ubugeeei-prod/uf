@@ -60,7 +60,7 @@ rather than a note:
 
 | Claim | Today | |
 | --- | --- | --- |
-| Runs on every runtime | Node and Bun. `HostKind::Deno` loads no Flow; the edge runtimes have no host at all | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
+| Runs on every runtime | Node and Bun, each with a test that starts the binary. Deno loads no Flow and the edge runtimes have no host at all; the per-host matrix is [docs/hosts.md](hosts.md) | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
 | Builds a standalone binary | `uf build --compile` writes one, and needs Bun on PATH to do it; cross-compiling to another platform does not exist | [#310](https://github.com/ubugeeei-prod/uf/issues/310) |
 | Deploys anywhere | `uf build --adapter` writes for `node`, `container`, `edge` and `serverless`, and no output has ever been deployed to a real platform; `bun`, `deno` and `static` are names in a config struct | [#391](https://github.com/ubugeeei-prod/uf/issues/391) |
 | Inference reaches the end of a program | It does: a type imported by its published name resolves, from the workspace or from `node_modules`. What is left is a dependency that opts into no Flow, which is `any` by Flow's own rule | [#248](https://github.com/ubugeeei-prod/uf/issues/248), [#403](https://github.com/ubugeeei-prod/uf/issues/403) |

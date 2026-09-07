@@ -767,3 +767,66 @@ fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
         "a setting the project wrote has to survive the round trip"
     );
 }
+
+/// The permission set a project declares, read as written.
+#[test]
+fn parses_a_permission_set() {
+    let source = r#"
+        export default defineConfig({
+          permissions: {
+            read: ["./fixtures"],
+            write: ["./.uf"],
+            net: ["registry.npmjs.org:443"],
+            env: ["CI"],
+            run: ["uf"],
+          },
+        });
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let permissions = parsed.permissions.expect("declared");
+    assert_eq!(permissions.read, vec!["./fixtures"]);
+    assert_eq!(permissions.write, vec!["./.uf"]);
+    assert_eq!(permissions.net, vec!["registry.npmjs.org:443"]);
+    assert_eq!(permissions.env, vec!["CI"]);
+    assert_eq!(permissions.run, vec!["uf"]);
+}
+
+/// No block and an empty block are opposite instructions.
+///
+/// A project with no `permissions` key runs the way uf has always run. A
+/// project that writes `permissions: {}` has said "nothing beyond what uf
+/// itself needs", which is a sandbox and has to survive as one — an
+/// `is_empty()` test on a defaulted struct would have read the second as the
+/// first and quietly run it unsandboxed.
+#[test]
+fn an_absent_permission_block_and_an_empty_one_are_different_answers() {
+    let absent: UniflowedConfig =
+        json5::from_str(&extract_config_object("export default defineConfig({});").unwrap())
+            .expect("config");
+    assert_eq!(absent.permissions, None);
+
+    let empty: UniflowedConfig = json5::from_str(
+        &extract_config_object("export default defineConfig({ permissions: {} });").unwrap(),
+    )
+    .expect("config");
+    assert_eq!(empty.permissions, Some(Permissions::default()));
+}
+
+/// A typo in this block is a security bug, so it is an error.
+///
+/// Every other section of `uf.config.js` ignores a key it does not know, which
+/// is the right trade where an unknown key means an option from a newer uf.
+/// Here it means a permission nobody granted and nobody was told about:
+/// `permissions: { nett: [...] }` would parse to a set with no network at all,
+/// and the project would run believing it had declared one.
+#[test]
+fn refuses_a_misspelled_permission_rather_than_granting_nothing_quietly() {
+    let object =
+        extract_config_object("export default defineConfig({ permissions: { nett: [\"a\"] } });")
+            .expect("object");
+    let error = json5::from_str::<UniflowedConfig>(&object).expect_err("refused");
+    assert!(error.to_string().contains("nett"), "{error}");
+}

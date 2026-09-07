@@ -269,6 +269,38 @@ what code the toolchain executes.
 | Unbounded config text as a denial-of-service or allocation vector | Plugin names have an explicit byte ceiling and control bytes are refused, so no config text reaches a resolver as a NUL- or newline-bearing string | `uf_plugin::resolve` |
 | A config plugin shadowing a built-in stage, silently replacing part of the toolchain | The `uf:` prefix is reserved, and two plugins with one name is a typed error that names both positions rather than a silent override | `uf_plugin::resolve` |
 
+## Permissions the toolchain enforces
+
+`uf test`, `uf transform`, `uf fmt`'s non-Flow delegation and the Vite driver
+all execute JavaScript uf did not write — a test body, a plugin, a config file —
+on a host that hands it the whole machine. A test that reads `~/.ssh` should
+have to say so.
+
+Deno's contribution to this class of tool was never the runtime; it was that a
+program declares what it may reach and gets nothing it did not ask for. Node has
+`--permission`, Bun has nothing, and uf runs on all three — so **uf owns the
+model** and translates it, one `permissions` block in `uf.config.js` per
+project. `docs/hosts.md` is the per-host table; this row is the decision behind
+it.
+
+| Concern | Decision in `uf` | Test |
+| --- | --- | --- |
+| A test body, plugin or config file reading anything the developer can — `~/.ssh`, `~/.aws`, `/etc` — because the toolchain starts its host with no restrictions at all | `permissions` in `uf.config.js` is a deny-by-default set that `uf test` puts in force on every worker. Declared entries are *added to* what uf itself needs to load and transform the project, so what the set denies is the rest of the machine rather than the project's own files — which is written down where it is implemented, because a reader who expected the other meaning would be surprised in the direction that matters | `crates/uf_cli/tests/permissions.rs` runs a real Flow test under Node's permission model and asserts the *body* saw `ERR_ACCESS_DENIED`, with a control run that asserts the same read succeeds without the block |
+| A permission a host cannot enforce, accepted and quietly meaning something weaker — the failure mode this document's standard exists to prevent | Refused, naming the categories and a host that can. Node has no network or environment dimension at all and `--allow-child-process` is every program or none, so `net`, `env` and `run` stop the run there rather than being dropped; Bun has no model, so any declared set stops the run. Deno enforces all five | `uf_runtime::tests::permissions`, `crates/uf_cli/tests/permissions.rs` |
+| A silent all-access grant surviving a declaration — Deno's `-A`, which uf passed unconditionally and which no later flag takes back | `HostCommand::with_permissions` removes `-A` rather than appending to it. Without that the run would read as sandboxed in `uf explain` and be wide open in fact, which is worse than the unsandboxed run it replaced | `uf_test::host::tests` |
+| A typo in the block — `permissions: { nett: [...] }` — parsing to a set with no network at all, in a project that believes it declared one | `deny_unknown_fields` on this block alone. Every other section of `uf.config.js` ignores an unknown key, which is right where that means an option from a newer uf; here it means a permission nobody granted and nobody was told about | `uf_config::tests`, `crates/uf_cli/tests/permissions.rs` |
+| An entry that a host's own argument syntax would split into a grant nobody wrote — `/tmp/a,/etc` under Deno's comma-separated `--allow-read` | Refused with the entry quoted. There is no quoting to reach for and dropping it would narrow the set without saying so, so the only answer that cannot widen it is to stop | `uf_runtime::tests::permissions` |
+| The grants uf makes for itself being invisible, so nobody can check them | `uf explain test` prints, per permission, how many entries the project declared, how many uf added, and which flag enforces it. On Node the two additions are `--allow-worker` (the module hooks run on a loader thread) and `--allow-child-process` (every module is transformed by a `uf transform` child), neither of which Node can scope — so a test can still start a program, and `docs/hosts.md` says so in as many words rather than leaving it to be discovered | `crates/uf_cli/tests/permissions.rs` |
+
+The install-script half of the same question is `pm.allowLifecycleScripts` and
+`--ignore-scripts`, under [Dependency install scripts](#dependency-install-scripts).
+
+**Only `uf test` is wired so far**, and that is the sharpest of the four — a
+test body is code uf did not write, running on a host uf started, in a
+repository somebody has just cloned. `uf transform`, `uf fmt`'s non-Flow
+delegation and the Vite driver are not, and neither is the application at run
+time (ubugeeei-prod/uf#535).
+
 ## Environment variables
 
 A `.env` file holds the credentials a project's own developers put there, and it

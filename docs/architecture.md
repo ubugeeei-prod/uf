@@ -612,11 +612,18 @@ configuration, linting, Flow parsing/type checking, Flow formatting, test
 scheduling, package metadata, and builtin binding contracts — while ordinary
 JavaScript execution is delegated to a Capability JS Host.
 
-The zero-config host set is Node.js, Deno, and Bun. `uf.config.js` names the
-default host and the accepted host set once, and `@uniflowed/rm` detects and
-applies that host instead of installing a bespoke runtime. The self-hosted
-Hermes-backed `uf` runtime is still documented as a later line, but it is no
-longer the default direction for app execution.
+The zero-config host set is Node.js, Deno, and Bun — as *targets*. What each of
+them does today is a different question and is answered in one place,
+[`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
+test that starts the binary, Deno has neither and is waiting on an ahead-of-time
+transform and an import map, and the edge runtimes have no host at all. Reading
+the host set as a support matrix is how "uf runs on Deno" came to be written
+down; the matrix is the matrix.
+
+`uf.config.js` names the default host and the accepted host set once, and
+`@uniflowed/rm` detects and applies that host instead of installing a bespoke
+runtime. The self-hosted Hermes-backed `uf` runtime is still documented as a
+later line, but it is no longer the default direction for app execution.
 
 User-authored Flow source uses `.js` files with `// @flow`, and so do the
 published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
