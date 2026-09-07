@@ -13,7 +13,7 @@
 //! documenting the opposite.
 
 use anyhow::{Result, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::env_files;
 use uf_config::{DeployAdapter, Prerender, RenderingPlan, ResolvedConfig, load_config};
@@ -959,7 +959,7 @@ fn doc_stages() -> Vec<Stage> {
 }
 
 fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
+    let mut stages = vec![
         env_stage(resolved, TEST),
         Stage {
             name: "discovery",
@@ -972,13 +972,71 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "one file per worker, longest expected first".to_string(),
         },
         host_stage(resolved),
-        transform_stage(),
-        Stage {
-            name: "execution",
-            provider: resolved.config.test.module.to_string(),
-            detail: "runs the bodies and streams one line per case".to_string(),
-        },
-    ]
+    ];
+    stages.extend(permissions_stage(resolved));
+    stages.push(transform_stage());
+    stages.push(Stage {
+        name: "execution",
+        provider: resolved.config.test.module.to_string(),
+        detail: "runs the bodies and streams one line per case".to_string(),
+    });
+    stages
+}
+
+/// Which host enforces the project's permission set, and how much of it.
+///
+/// Absent unless there is a set to describe. `uf explain` is a plan of what
+/// will happen, and a stage reading "none declared" on every project that has
+/// not opted in would be a line nobody learns anything from — while a project
+/// that *has* opted in is asking precisely this question, and the answer is
+/// different on each host.
+///
+/// It names the host from `capabilityJsHost.default` rather than resolving one
+/// on PATH: `uf explain` describes a plan and must not fail because the machine
+/// it is run on has no host installed. A project whose configured default is
+/// not the host `uf test` would auto-detect is told about the configured one,
+/// which is the one its configuration is about.
+///
+/// The counts include the grants uf makes for itself — the project root, the
+/// packages directory, `.uf`, the `uf` binary — because a permission model
+/// whose additions are invisible is one nobody can check. See
+/// `commands::test::toolchain_access`.
+fn permissions_stage(resolved: &ResolvedConfig) -> Option<Stage> {
+    let permissions = resolved.config.permissions.as_ref()?;
+    let kind = resolved.config.app.runtime.capability_js_host.default;
+    let host = match kind {
+        uf_config::CapabilityJsHost::Node => uf_runtime::RuntimeHost::Node,
+        uf_config::CapabilityJsHost::Bun => uf_runtime::RuntimeHost::Bun,
+        uf_config::CapabilityJsHost::Deno => uf_runtime::RuntimeHost::Deno,
+    };
+    let binary = std::env::current_exe()
+        .ok()
+        .and_then(|path| Utf8PathBuf::from_path_buf(path).ok());
+    let toolchain =
+        crate::commands::test::toolchain_access(&resolved.root, None, binary.as_deref());
+    let support = uf_runtime::HostSupport::for_host(host);
+    let provider = if support.enforces.is_empty() {
+        format!(
+            "{}, which enforces none of it — the run is refused rather than started unsandboxed",
+            host.display_name()
+        )
+    } else {
+        format!(
+            "{}, which enforces {}",
+            host.display_name(),
+            support
+                .enforces
+                .iter()
+                .map(|permission| permission.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    Some(Stage {
+        name: "permissions",
+        provider,
+        detail: uf_runtime::permissions::explain(host, permissions, &toolchain).join("; "),
+    })
 }
 
 fn fmt_stages(resolved: &ResolvedConfig) -> Vec<Stage> {

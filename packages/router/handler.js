@@ -69,7 +69,7 @@
 // `after()` promises. A handler that streams its body has not sent a byte at
 // that point. See ubugeeei-prod/uf#389.
 
-import { noteRoute } from "@uniflowed/server/host";
+import { asResponder, noteRoute } from "@uniflowed/server/host";
 
 import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
@@ -157,10 +157,15 @@ export function createDispatcher(options: {|
       // In the host's request, so a handler that calls `headers()`,
       // `cookies()` or `after()` answers about the same one its guard did, and
       // what it defers is drained once, by the host, after the bytes are out.
-      const response = await handler(request, {
-        params,
-        searchParams: url.searchParams,
-      });
+      //
+      // And inside `asResponder`, which is the other half: a route handler is
+      // one of the two things that owns a response, so it is one of the two
+      // places `draftMode().enable()` is allowed — and the `Set-Cookie` it
+      // decided on is written onto the response below rather than left on an
+      // object the host is about to discard. See ubugeeei-prod/uf#282.
+      const response = await asResponder("a route handler", async () =>
+        handler(request, { params, searchParams: url.searchParams }),
+      );
 
       // A `HEAD` answered by `GET` must not carry the body. The test is
       // against the module's own `HEAD`, not `pick`'s — `pick` falls back to

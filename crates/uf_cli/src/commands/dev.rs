@@ -1144,6 +1144,16 @@ fn changed_document(message: &Value) -> Option<(String, String)> {
 /// `dev.strictPort` still decides the case where the port came from the
 /// config, and the driver reads it there.
 ///
+/// `--port 0` goes through unchanged and means what it means to the operating
+/// system: bind a free one. `--strict-port` rides along with it and does
+/// nothing — Vite takes a branch of its own for port zero and never consults
+/// the flag, and that branch already fails rather than moving. The port it
+/// settled on leaves through the `listening` event like any other, so `uf dev`
+/// prints it as the `local` URL, which is the point of asking for zero: a
+/// caller that has to know the port learns it from the process that is holding
+/// the socket, instead of binding one itself and hoping nothing takes it in
+/// between. See ubugeeei-prod/uf#234.
+///
 /// `--uf-env-file` names every file the cascade would consult in this mode,
 /// existing or not, so that the driver's watcher can say when one moved. They
 /// are named rather than read by the driver: uf is still the only thing that
@@ -1188,6 +1198,19 @@ mod tests {
         assert_eq!(
             driver_args(None, Some(5173), &[]),
             ["--port", "5173", "--strict-port"]
+        );
+    }
+
+    #[test]
+    fn port_zero_is_passed_through_rather_than_treated_as_absent() {
+        // The one number that must not be read as "no port given": it is a
+        // request for a free one, and the answer comes back in the `local`
+        // URL. A caller that needs the port and cannot ask for it has to bind
+        // one, release it and race whatever takes it next, which is the defect
+        // in ubugeeei-prod/uf#234.
+        assert_eq!(
+            driver_args(None, Some(0), &[]),
+            ["--port", "0", "--strict-port"]
         );
     }
 
