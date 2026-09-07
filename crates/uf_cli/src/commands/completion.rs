@@ -35,6 +35,9 @@ const COMMANDS: &[&str] = &[
     "add",
     "audit",
     "build",
+    "pm",
+    "patch",
+    "catalog",
     "check",
     "init",
     "new",
@@ -101,6 +104,9 @@ const EXPLAINABLE: &[&str] = &[
     "add",
     "remove",
     "update",
+    "patch",
+    "pm",
+    "catalog",
     "why",
     "ls",
     "audit",
@@ -197,6 +203,8 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         ["create"] => matching(current, CREATE_KINDS.iter().copied()),
         ["explain"] => matching(current, EXPLAINABLE.iter().copied()),
         ["env"] => matching(current, ["doctor", "use"]),
+        ["catalog"] => matching(current, ["set"]),
+        ["pm"] => matching(current, ["approve-builds"]),
         _ => Vec::new(),
     }
 }

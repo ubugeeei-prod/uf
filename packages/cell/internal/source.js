@@ -18,12 +18,13 @@ import type { Cell, CellOptions } from "./graph.js";
 import { createNode } from "./graph.js";
 
 /**
- * A cell holding a value directly.
+ * A cell holding a value directly: state, as opposed to something derived
+ * from it.
  *
  * Nothing about it is React-aware or environment-aware: the same cell is read
  * in a server action, a worker and a component, which is why the scope it
  * reports is `"client"` only in the sense of "wherever the application is".
  */
-export function cell<T>(value: T, options?: CellOptions<T>): Cell<T> {
+export function state<T>(value: T, options?: CellOptions<T>): Cell<T> {
   return createNode({ kind: "source", scope: "client", value, options });
 }

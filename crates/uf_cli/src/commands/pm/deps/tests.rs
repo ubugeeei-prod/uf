@@ -49,6 +49,7 @@ fn changed_tree() -> LockfileDelta {
 fn report(heading: &'static str, manifest: Vec<ManifestChange>, tree: LockfileDelta) -> DepsReport {
     DepsReport {
         heading,
+        continued: false,
         manager: "npm".to_owned(),
         chosen_by: "package-lock.json".to_owned(),
         command: "npm install --ignore-scripts date-fns".to_owned(),
@@ -338,4 +339,19 @@ fn the_retry_line_is_the_command_that_was_typed() {
         "uf add react react-dom@^19"
     );
     assert_eq!(retry_line("uf update", &[]), "uf update");
+}
+
+/// `uf update --latest` rewrites the manifests itself and says so; the install
+/// that follows must not answer that with "the manifest already said so".
+#[test]
+fn a_continued_command_does_not_deny_the_line_above_it() {
+    let mut report = report("uf update", Vec::new(), changed_tree());
+    assert!(
+        headline(&report).contains("the manifest already said so"),
+        "{}",
+        headline(&report)
+    );
+
+    report.continued = true;
+    assert_eq!(headline(&report), "1 change in the tree");
 }
