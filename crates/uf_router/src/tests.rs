@@ -389,3 +389,128 @@ fn a_terminal_catch_all_is_discovered() {
         ["/docs/:slug*", "/files/:path*"]
     );
 }
+
+/// A slot directory is refused rather than served as the URL segment `/@team`.
+///
+/// The whole of ubugeeei-prod/uf#267's first piece. `@team` was not a spelling
+/// this grammar had an opinion about, so it fell through to a literal: the
+/// route was discovered, `/@team` went into the generated `RoutePath`, and
+/// `route("/@team", …)` type checked. A project migrating from Next.js got
+/// output that looked like it worked.
+#[test]
+fn a_parallel_route_slot_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/dashboard/@team")).unwrap();
+    fs::write(root.join("app/dashboard/@team/_uf.page.js"), "// @flow\n").unwrap();
+
+    let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("app/dashboard/@team"), "{message}");
+    assert!(message.contains("parallel route"), "{message}");
+    // It has to say it is refused. "Not supported" reads as "ignored", and
+    // being quietly ignored is what this replaced.
+    assert!(message.contains("refused"), "{message}");
+}
+
+/// A slot with no page at all is still refused.
+///
+/// The reason the check is a directory pass rather than a line in the page
+/// walk: `app/@team/` may hold a layout, a loading file and a `default.js` and
+/// no page, and it is still a directory somebody wrote expecting a parallel
+/// route. The page walk only ever sees `_uf.page.js`.
+#[test]
+fn a_slot_holding_no_page_is_refused_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/@team")).unwrap();
+    fs::write(root.join("app/@team/_uf.layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+
+    let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+    assert!(error.to_string().contains("@team"), "{error}");
+}
+
+/// Every interception spelling Next.js defines, refused by the same rule.
+#[test]
+fn an_intercepting_route_is_refused() {
+    for segment in ["(.)photo", "(..)photo", "(...)photo", "(..)(..)photo"] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::create_dir_all(root.join("app/feed").join(segment)).unwrap();
+        fs::write(
+            root.join("app/feed").join(segment).join("_uf.page.js"),
+            "// @flow\n",
+        )
+        .unwrap();
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(segment), "{segment}: {message}");
+        assert!(
+            message.contains("intercepting route"),
+            "{segment}: {message}"
+        );
+        assert!(message.contains("refused"), "{segment}: {message}");
+    }
+}
+
+/// A route group is not an interception, which is the near-miss that made
+/// `(.)photo` a literal in the first place: the test for a group is that the
+/// segment *ends* in `)`.
+#[test]
+fn a_route_group_is_still_discovered() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/(marketing)/about")).unwrap();
+    fs::write(root.join("app/(marketing)/about/_uf.page.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].path, "/about");
+}
+
+/// A private directory is not a route, so a slot inside one is not refused.
+///
+/// Both routers skip a directory whose name starts with `.` or `_`, so
+/// `app/_drafts/@team/` was never going to be served — refusing it would be
+/// the linter inventing a rule about a place the router does not look.
+#[test]
+fn a_slot_inside_a_private_directory_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/_drafts/@team")).unwrap();
+    fs::write(root.join("app/_drafts/@team/notes.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].path, "/");
+}
+
+/// The generated types are the reason the refusal matters at all.
+///
+/// `RoutePath` is a closed union built from what discovery found, so a slot
+/// that discovery accepted became a path a caller could pass to `route()` and
+/// Flow would agree with them. Refusing the directory is what keeps the union
+/// honest — there is no route, so there is no type for one.
+#[test]
+fn a_refused_directory_never_reaches_the_generated_types() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/@team")).unwrap();
+    fs::write(root.join("app/@team/_uf.page.js"), "// @flow\n").unwrap();
+
+    let error = write_router_manifest(&root, &UniflowedConfig::default()).unwrap_err();
+
+    assert!(error.to_string().contains("@team"), "{error}");
+    assert!(
+        !root.join("router.js").exists(),
+        "a manifest was written for a project the router refuses"
+    );
+}

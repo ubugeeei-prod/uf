@@ -37,7 +37,7 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Drawer` | The sheet you can drag away, with the keyboard WCAG 2.5.7 requires | `drawer.js` |
 | `Sidebar` | Navigation beside the page that becomes a modal sheet on a narrow one | `sidebar.js` |
 | `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking | `menu.js` |
-| `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter | `combobox.js` |
+| `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter, in groups or not | `combobox.js` |
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
 | `Popover` | A dialog that is not modal: focus in, `Escape` out, `Tab` leaves | `popover.js` |
 | `Tooltip` | A phrase on hover and focus that WCAG 2.1 SC 1.4.13 would accept | `tooltip.js` |
@@ -60,6 +60,14 @@ Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
 `Menu.Body` and `Select.List` state the same constraint about what may appear
 inside a menu and a listbox, which ARIA also requires and which nothing else
 checks.
+
+Twelve containers here state a constraint like that, and each of them is held
+to it. `tests/type-tests/composition.js` writes out the wrong child for every
+one — a `<button>` in a tab list, a `<div>` in a listbox, a `Select.Option` in
+a menu, a render function that returns something that is not a `Toast.Root` —
+beside the composition that must keep compiling, and `uf check` is run over the
+pair. The guarantee that cannot be removed without a test going red is the only
+kind worth stating on this page.
 
 ## Select
 
@@ -239,6 +247,98 @@ behaviour they are actually for — the cursor staying visible as the arrow keys
 move it — is already in the component, as the `scrollIntoView({ block:
 "nearest" })` every move performs, and it works inside your own scroll
 container without either button.
+
+## Combobox: groups, and the palette they make possible
+
+The rest of `Combobox` is in [the guide](/guide/ui) and in `combobox.js`'s own
+header; this is the part `Select` had and it did not.
+
+```js
+<Combobox.Root inputValue={query} onInputValueChange={setQuery}>
+  <Combobox.Label>Country</Combobox.Label>
+  <Combobox.Input />
+  <Combobox.List>
+    <Combobox.Group>
+      <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
+      <Combobox.Option value="GB">United Kingdom</Combobox.Option>
+      <Combobox.Option value="FR">France</Combobox.Option>
+    </Combobox.Group>
+    <Combobox.Group>
+      <Combobox.GroupLabel>Asia</Combobox.GroupLabel>
+      <Combobox.Option value="JP">Japan</Combobox.Option>
+    </Combobox.Group>
+  </Combobox.List>
+  <Combobox.Empty>No matches.</Combobox.Empty>
+  <Combobox.Status />
+</Combobox.Root>
+```
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Combobox.List` | `div role="listbox"` | `renders* (Combobox.Option \| Combobox.Group)` |
+| `Combobox.Group` | `div role="group"` | Named by its `Combobox.GroupLabel`, and only when one is rendered |
+| `Combobox.GroupLabel` | `div role="presentation"` | Names a group of options. `Combobox.Label` names the *field* |
+
+Three things follow from a listbox being allowed to own `option` and `group`
+and nothing else.
+
+- **`Combobox.List` and `Combobox.Option` are `div`s.** They were a `<ul>` of
+  `<li>`s, and an `<li>` cannot contain an `<li>`, so a group could not hold
+  its options without a second list role between them. If your stylesheet
+  names `ul` or `li` inside a combobox, this is the change to make.
+- **The arrow keys still move by option.** A group is not a listbox, so the
+  keys cross a boundary without stopping, and the heading is never somewhere
+  the cursor can land — it is not an option.
+- **There is no `Combobox.Separator`.** A rule between two groups cannot be a
+  `role="separator"` inside a listbox, so it is `aria-hidden` decoration, which
+  is a `div` you write. `Select.Separator` exists because a select's options
+  are a fixed list; a combobox's are whatever survived your filter, and a fixed
+  rule between them is decoration in the wrong place.
+
+`Combobox.Status` counts options, not headings.
+
+### A command palette
+
+There is no `Command` component and there will not be one. A palette is a
+`Combobox` inside a `Dialog`, and now that groups exist every part of it is
+already here:
+
+```js
+useKeyCombo("mod+k", () => setOpen(true));
+
+<Dialog.Root onOpenChange={setOpen} open={open}>
+  <Dialog.Body aria-label="Command palette">
+    <Combobox.Root inputValue={query} onInputValueChange={setQuery}>
+      <Combobox.Input placeholder="Type a command…" />
+      <Combobox.List>
+        <Combobox.Group>
+          <Combobox.GroupLabel>Files</Combobox.GroupLabel>
+          {files.map((each) => (
+            <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
+          ))}
+        </Combobox.Group>
+      </Combobox.List>
+      <Combobox.Empty>No commands matched.</Combobox.Empty>
+      <Combobox.Status />
+    </Combobox.Root>
+  </Dialog.Body>
+</Dialog.Root>
+```
+
+`useKeyCombo` is [`@uniflowed/hooks/keyboard`](/reference/packages). The active
+option scrolls itself into view, the count is announced, and `Escape` closes
+the list before it closes the dialog, because the innermost thing wins.
+
+Shipping that composition as a seventh module would be a module whose entire
+content is what you just read — the argument `ubugeeei-redundancy.md` makes
+against small lookalikes, applied to this package. So it is a page.
+
+One thing a `Command` module would genuinely add is not here, because it is not
+implemented anywhere: a palette whose filter matched nothing still traps focus,
+so `Tab` cycles around an empty dialog while the reader is told there are no
+results. That is a question about `Dialog` — a modal with nothing to reach is
+the general case — and it is open rather than answered by a component that
+would only look as though it had.
 
 ## Toast
 
@@ -445,14 +545,33 @@ what to do with them. A caller who writes no CSS sees nothing.
 The APG calls this a **window splitter** and defines it as a separator that
 behaves like a slider, which is why it is documented beside one. Almost every
 resizable panel on the web is pointer-only — a WCAG 2.1.1 failure, no keyboard
-operation at all — so here the keyboard is the feature: the arrows move the
+operation at all — so here the keyboard came first: the arrows move the
 splitter by a step, `Home` and `End` go to the ends of its range, and `Enter`
 collapses the primary pane and restores it.
+
+It drags too. A press takes hold of the handle without moving it, the pointer
+is captured so a drag that wanders off a four-pixel bar keeps arriving, and the
+position is read out of the *group's* box — so panes laid out with flex, with
+grid or by hand all behave the same. `aria-valuenow` follows the drag, which is
+the half a pointer-only splitter has nothing to say about.
 
 `aria-controls` names the primary pane, and only while one is rendered.
 `aria-valuenow` is that pane's percentage of the group.
 
-Two things are worth knowing:
+**`step` is the keyboard's.** It defaults to 10 because ten presses of an arrow
+key ought to cross the pane, and snapping a drag to it would move the bar in
+tenths under a pointer that moves smoothly. A drag moves by one percent, which
+is not a second prop to set: the value is already a percentage of the group, so
+one is the smallest move that means anything, and both paths go through the
+same snapping and clamping — a drag cannot leave the pane anywhere an arrow key
+could not put it.
+
+`min` and `max` bound the drag rather than scaling it. Dragging to five percent
+of a group whose `min` is 20 leaves the pane at 20; the handle stops where the
+pane stops, instead of the pointer being mapped across the range the way a
+slider's is.
+
+Two more things are worth knowing:
 
 - **`aria-orientation` describes the separator, not the layout.** Two panes
   side by side are divided by a *vertical* line, so a `PanelGroup` whose
@@ -465,8 +584,7 @@ Two things are worth knowing:
 
 Two panes is the pattern rather than a limitation — the window splitter is
 defined between a primary pane and the rest. A group of five panels is a
-layout-constraint problem and a different component. There is no drag yet; a
-keyboard-only splitter is a working splitter, where a pointer-only one is not.
+layout-constraint problem and a different component.
 
 ### Progress
 
@@ -1058,9 +1176,10 @@ are stated as tests in `tests/library/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.
 
-Sections for `Dialog`, `Menu`, `Combobox`, `Tabs`, `Field`, `Switch` and
-`Checkbox` are still to be written; until they are, each module's header is the
-documentation, and it is written to be read.
+Sections for `Dialog`, `Menu`, `Tabs`, `Field`, `Switch` and `Checkbox` are
+still to be written, and `Combobox` has only its groups and the palette they
+make possible; until they are, each module's header is the documentation, and
+it is written to be read.
 
 For a live region that is *only* a live region — a route change announced, a
 count that updates where nothing visible moves — `Announcer` in

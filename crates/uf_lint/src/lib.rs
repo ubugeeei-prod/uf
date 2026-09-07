@@ -45,9 +45,9 @@ use crate::runner::{
     run_no_trailing_whitespace, run_package_no_npm_scripts, run_react_compiler_rules,
     run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
     run_react_no_default_export_component, run_router_reserved_files,
-    run_security_no_dangerously_set_inner_html, run_security_no_eval, run_server_no_client_secret,
-    run_server_no_server_only_import_in_client, run_server_use_client_directive_position,
-    run_server_use_server_actions, run_structure_rules,
+    run_router_unsupported_segment, run_security_no_dangerously_set_inner_html,
+    run_security_no_eval, run_server_no_client_secret, run_server_no_server_only_import_in_client,
+    run_server_use_client_directive_position, run_server_use_server_actions, run_structure_rules,
 };
 use crate::scan::FileScan;
 use crate::suppression::UNKNOWN_SUPPRESSION_RULE;
@@ -249,6 +249,7 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_server_use_server_actions(&scan, config, &mut diagnostics);
 
     run_router_reserved_files(&scan, config, &mut diagnostics);
+    run_router_unsupported_segment(&scan, config, &mut diagnostics);
     run_package_no_npm_scripts(&scan, config, &mut diagnostics);
     run_fetch_no_global_override(&scan, config, &mut diagnostics);
 

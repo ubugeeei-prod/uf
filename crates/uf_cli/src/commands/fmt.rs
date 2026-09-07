@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use uf_config::load_config;
 use uf_fmt::format_source;
-use uf_project::scan_source_files;
+use uf_project::scan_selected_source_files;
 use uf_term::Status;
 
 use crate::support::{plural, quoted_list, selects, unreadable_lines};
@@ -18,7 +18,7 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
     // Discovery returns `package.json` too, because the linter reads it. The
     // formatter must not touch it: it is a Flow formatter, and running it
     // over JSON inserts a statement terminator and leaves the file unparseable.
-    let mut scan = scan_source_files(&resolved.root, &resolved.config)?;
+    let mut scan = scan_selected_source_files(&resolved.root, &resolved.config, paths)?;
     // Narrowed before anything is reported: a file outside what was asked
     // about must not fail the run for being unreadable either.
     scan.unreadable

@@ -59,10 +59,15 @@ function environment(): { [string]: string } | null {
 }
 
 /**
- * Replace an environment variable for the rest of the test.
+ * Replace an environment variable for the rest of the file.
  *
- * Undone by `unstubAllEnvs`, which the runner calls between files — a stub that
- * outlived its test would be a test that passes alone and fails in a suite.
+ * The file, and not the test: `process.env` belongs to the process, so a stub
+ * stands until something puts it back. `./worker.js` does that between files,
+ * beside the spy registry it clears for the same reason — a worker serves many
+ * files, and a stub that outlived its file would be a test that passes because
+ * of another one, in a suite where which files share a worker is decided by a
+ * timings file. A case that wants a narrower scope calls `unstubAllEnvs` in an
+ * `afterEach`, which is also what makes the scope visible to a reader.
  */
 export function stubEnv(name: string, value: string | void): void {
   const env = environment();
@@ -97,7 +102,11 @@ export function unstubAllEnvs(): void {
 }
 
 /**
- * Replace a global for the rest of the test.
+ * Replace a global for the rest of the file.
+ *
+ * Undone by `unstubAllGlobals`, which `./worker.js` calls between files, for
+ * the reason [`stubEnv`] above gives: `globalThis` outlives every file that
+ * writes to it.
  *
  * Whether the global was the object's own property is recorded, because putting
  * back an inherited one by assignment would leave a copy that shadows whatever
