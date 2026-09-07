@@ -41,6 +41,7 @@ fn report(delta: LockfileDelta) -> InstallReport {
         command: "npm install --ignore-scripts".to_owned(),
         runtime: Some("node · /usr/bin/node".to_owned()),
         lockfile: "package-lock.json · 17 packages · 12.40 kB".to_owned(),
+        plan: "/tmp/app/.uf/install.json".to_owned(),
         phases: vec![
             Phase {
                 label: "config",
@@ -97,7 +98,7 @@ fn changed() -> LockfileDelta {
 }
 
 #[test]
-fn an_install_that_changed_nothing_is_six_lines() {
+fn an_install_that_changed_nothing_is_a_block_and_a_line() {
     let mut out = String::new();
     render_summary(&plain(), &mut out, &report(unchanged()));
 
@@ -109,6 +110,7 @@ fn an_install_that_changed_nothing_is_six_lines() {
             "  command    npm install --ignore-scripts",
             "  runtime    node · /usr/bin/node",
             "  lockfile   package-lock.json · 17 packages · 12.40 kB",
+            "  plan       /tmp/app/.uf/install.json",
             "",
             "+ already up to date in 6.9s",
         ]
@@ -129,6 +131,7 @@ fn an_install_that_changed_something_says_what() {
             "  command    npm install --ignore-scripts",
             "  runtime    node · /usr/bin/node",
             "  lockfile   package-lock.json · 17 packages · 12.40 kB",
+            "  plan       /tmp/app/.uf/install.json",
             "",
             "  config  ........................ 1.2ms",
             "  resolve ........................  1.4s",

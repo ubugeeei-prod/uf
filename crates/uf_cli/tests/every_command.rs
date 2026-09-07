@@ -95,8 +95,11 @@ const COVERAGE: &[(&str, &str)] = &[
         "catalog",
         "here, and catalog/tests.rs for the table and the disagreements",
     ),
-    ("upgrade", "workflow.rs: resolves new versions"),
-    ("use", "workflow.rs: rewrites the config"),
+    (
+        "self-update",
+        "toolchain.rs: runs the installer against a release on disk",
+    ),
+    ("use", "toolchain.rs: acquires, activates, and refuses"),
     ("ls", "dependencies.rs: asks the package manager"),
     ("audit", "dependencies.rs: asks the package manager"),
     (

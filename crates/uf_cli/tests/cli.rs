@@ -1346,9 +1346,13 @@ fn explain_says_which_commands_it_knows() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("install, add, remove, update, patch, pm, catalog"),
+        stderr.contains("install, add, remove, uninstall, update, patch, pm, catalog"),
         "{stderr}"
     );
+    // The four that `uf explain` answered and this list did not name, before
+    // the list and the dispatch became one thing: ubugeeei-prod/uf#425.
+    assert!(stderr.contains("ls, audit, search"), "{stderr}");
+    assert!(stderr.contains("self-update"), "{stderr}");
 }
 
 /// Commands that do their whole job in this binary, so there is no provider

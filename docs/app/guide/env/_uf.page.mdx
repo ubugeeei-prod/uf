@@ -120,7 +120,7 @@ says what would go and removes nothing, which is the version to run first.
 
 ## What the toolchain half does not do
 
-It does not manage the uf binary itself — that is `uf use` and `uf upgrade`. It
+It does not manage the uf binary itself — that is `uf use` and `uf self-update`. It
 does not read `.nvmrc`, `.tool-versions` or `package.json`'s `engines` field:
 `uf.config.js` is the one place a uf project writes down what it needs, and a
 second source of truth for the same question is the problem, not the feature.

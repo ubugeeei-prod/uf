@@ -66,7 +66,7 @@ const COMMANDS: &[&str] = &[
     "start",
     "test",
     "update",
-    "upgrade",
+    "self-update",
     "use",
     "why",
     "completion",
@@ -87,32 +87,13 @@ const CREATE_KINDS: &[&str] = &["app", "lib"];
 
 /// What `uf explain` knows how to describe.
 ///
-/// A subset of `explain::KNOWN`, which is the list `uf explain` itself refuses
-/// an unknown name with. Completing a name is a convenience and the commands
-/// people reach for are here; the four package-manager ones are here because
-/// naming the manager that will run is the whole reason to ask.
-const EXPLAINABLE: &[&str] = &[
-    "dev",
-    "build",
-    "preview",
-    "start",
-    "doc",
-    "test",
-    "fmt",
-    "lint",
-    "check",
-    "add",
-    "remove",
-    "update",
-    "patch",
-    "pm",
-    "catalog",
-    "why",
-    "ls",
-    "audit",
-    "search",
-    "uninstall",
-];
+/// The list `uf explain` itself answers, not a copy of it. It used to be a
+/// hand-maintained subset and had already drifted both ways: `install`,
+/// `upgrade`, `run`, `exec` and `env` were answerable and not offered, and
+/// `ls`, `audit`, `search` and `uninstall` were offered by a list that did not
+/// have them (ubugeeei-prod/uf#425). Completing a name is supposed to tell a
+/// reader what is explainable; a second list can only ever tell them less.
+const EXPLAINABLE: &[&str] = crate::commands::explain::KNOWN;
 
 /// Print the completion script for `shell`.
 pub(crate) fn completion(ui: &mut Ui, shell: Shell) {

@@ -25,5 +25,6 @@ pub(crate) mod release;
 pub(crate) mod serve;
 pub(crate) mod task;
 pub(crate) mod test;
+pub(crate) mod toolchain;
 pub(crate) mod transform;
 pub(crate) mod vite;

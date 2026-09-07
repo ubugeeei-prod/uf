@@ -576,7 +576,7 @@ checksum_url="${archive_url}.sha256"
 # names neither the cause nor the fix.
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/uf-install.XXXXXX")"
 cleanup() {
-  rm -rf "$tmp_dir"
+  rm -rf "$tmp_dir" "${staging_dir:-}"
 }
 trap cleanup EXIT INT TERM
 
@@ -622,9 +622,27 @@ fi
 # every other line's value out of the column.
 uf_step "verified" "sha256 $(printf '%.12s' "$expected")"
 
+# Unpack beside the runtime and swap it in, rather than over it.
+#
+# Two reasons, and the second is why this is not a nicety. A download that
+# unpacks badly must leave the working runtime alone rather than replace it
+# with half of another one. And `uf self-update` runs *from* the binary this
+# is about to write: on Linux, writing to a file that is currently being
+# executed is `ETXTBSY`, GNU tar does not recover from it, and it is not one
+# of the errors it unlinks and retries. So reinstalling the version that is
+# already active — which is exactly what `uf self-update` does on a machine
+# that is already up to date, the most ordinary way anyone runs it — would
+# fail with `Cannot open: Text file busy`. Unlinking the old directory after a
+# successful unpack is fine: a running process keeps the inode it is executing,
+# and the name going away does not disturb it.
 runtime_dir="${install_root}/runtimes/uf@${version}"
-mkdir -p "$runtime_dir" "$bin_dir"
-tar -xzf "${tmp_dir}/${archive}" -C "$runtime_dir"
+staging_dir="${runtime_dir}.incoming.$$"
+rm -rf "$staging_dir"
+mkdir -p "$staging_dir" "$bin_dir"
+tar -xzf "${tmp_dir}/${archive}" -C "$staging_dir"
+rm -rf "$runtime_dir"
+mv "$staging_dir" "$runtime_dir"
+staging_dir=""
 uf_step "unpacked" "$(uf_tilde "$runtime_dir")"
 
 for name in uf ufr ufx; do
