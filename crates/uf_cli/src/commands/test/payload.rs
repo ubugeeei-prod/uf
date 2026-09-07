@@ -24,6 +24,7 @@ pub(super) fn test_payload(report: &TestRunReport, coverage: Option<&Coverage>) 
         "skipped": summary.skipped,
         "todo": summary.todo,
         "unsupportedDeclarations": summary.unsupported_declarations,
+        "foreignDeclarations": summary.foreign_declarations,
         "failedFiles": summary.failed_files,
         "scheduledWarm": summary.scheduled_warm,
         "scheduledCold": summary.scheduled_cold,
@@ -35,6 +36,7 @@ pub(super) fn test_payload(report: &TestRunReport, coverage: Option<&Coverage>) 
         "declarations": report.plan.unsupported.iter().map(|entry| json!({
             "file": entry.file,
             "call": entry.call,
+            "importedFrom": entry.imported_from,
             "line": entry.line,
             "column": entry.column,
         })).collect::<Vec<_>>(),
@@ -87,6 +89,7 @@ fn status_name(status: &FileStatus) -> &'static str {
         FileStatus::TimedOut { .. } => "timed-out",
         FileStatus::LoadFailed { .. } => "load-failed",
         FileStatus::HostFailed { .. } => "host-failed",
+        FileStatus::RegisteredNothing { .. } => "registered-nothing",
         FileStatus::NotRun => "not-run",
     }
 }

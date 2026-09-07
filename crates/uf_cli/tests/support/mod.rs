@@ -108,6 +108,35 @@ impl Drop for Project {
     }
 }
 
+/// The command `uf test` would build to run workers for a project at `root`.
+///
+/// The installed `@uniflowed/test/worker.js`, the Node loader that transforms
+/// Flow on import, and *this* build of `uf` as the transform behind it — the
+/// same three the command assembles, so a test that drives a worker directly
+/// drives the one a real run uses rather than a stand-in for it.
+///
+/// For the tests whose subject is the worker protocol, or what one worker
+/// carries from one file to the next: neither is observable through `uf test`,
+/// which fans files across workers by size and reuses them in an order the
+/// schedule decides.
+pub fn worker_command(root: &std::path::Path) -> uf_test::HostCommand {
+    let root = camino::Utf8PathBuf::from_path_buf(root.to_path_buf()).expect("a UTF-8 path");
+    let modules =
+        camino::Utf8PathBuf::from_path_buf(repo_root().join("node_modules")).expect("a UTF-8 path");
+    let host = modules.join("@uniflowed/host");
+    uf_test::HostCommand::new(
+        uf_test::HostKind::Node,
+        camino::Utf8PathBuf::from("node"),
+        modules.join("@uniflowed/test/worker.js"),
+        root,
+    )
+    .with_flow_loader(
+        camino::Utf8Path::new("@uniflowed/host/register"),
+        &host.join("bun-preload.js"),
+    )
+    .with_uf_binary(camino::Utf8PathBuf::from(uf_path()))
+}
+
 /// This repository's root, from the crate manifest.
 pub fn repo_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

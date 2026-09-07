@@ -92,6 +92,10 @@ import { moveDate, movementForDateKey, weeksOf } from "../../packages/ui/interna
 // definition of what `Tab` reaches, and "a slide nobody can see is not one of
 // them" is a claim about that definition rather than about a rendered tree.
 import { focusable } from "../../packages/ui/internal/focus.js";
+// `document.body` is `HTMLBodyElement | null` — a parsed document need not have
+// one — so every `fireEvent` aimed at the page itself narrows through here
+// rather than thirteen times over. See ubugeeei-prod/uf#573.
+import { bodyOf } from "./dom.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -724,7 +728,7 @@ describe("Dialog", () => {
   it("closes on a press outside it", async () => {
     render(<Example />);
     await userEvent.click(screen.getByRole("button", { name: "Open" }));
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("dialog")).toBe(null);
   });
 
@@ -843,7 +847,7 @@ describe("Alert dialog", () => {
 
   it("does not close an alert dialog on a press outside it", async () => {
     await open();
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     // The inverse of `Dialog`'s "closes on a press outside it", and the two
     // together are what say the behaviour is a choice. A confirmation that
     // disappears when the reader clicks slightly beside it has given no
@@ -1166,7 +1170,7 @@ describe("Menu", () => {
     render(<Example />);
     const trigger = screen.getByRole("button", { name: "File" });
     await userEvent.click(trigger);
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("menu")).toBe(null);
     // The reader pressed somewhere else on purpose; taking focus back to the
     // trigger would undo the thing they just did.
@@ -1740,7 +1744,7 @@ describe("Combobox", () => {
   it("closes on a press outside it", async () => {
     render(<Example />);
     await userEvent.type(screen.getByRole("combobox"), "a");
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("listbox")).toBe(null);
   });
 
@@ -2155,7 +2159,7 @@ describe("Select", () => {
   it("closes on a press outside it", async () => {
     render(<Example />);
     await openFromTheKeyboard();
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("listbox")).toBe(null);
   });
 
@@ -3429,7 +3433,7 @@ describe("Tooltip", () => {
 
     // Nothing has focus, so the key is answered on the document — which is why
     // the hand-written version cannot answer it at all.
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(bodyOf(), { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBe(null);
   });
 
@@ -3439,7 +3443,7 @@ describe("Tooltip", () => {
     const trigger = screen.getByRole("button", { name: "Bold" });
     fireEvent.pointerEnter(trigger);
     advance(700);
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(bodyOf(), { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBe(null);
 
     // Nothing has moved, so nothing may bring it back: a dismissal the pointer
