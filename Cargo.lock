@@ -3766,7 +3766,7 @@ dependencies = [
 
 [[package]]
 name = "uf_task"
-version = "0.0.0-alpha.9"
+version = "0.0.0-alpha.12"
 dependencies = [
  "base64",
  "camino",
