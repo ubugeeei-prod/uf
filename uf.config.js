@@ -393,6 +393,10 @@ export default defineConfig({
     // `uf@0.0.0-alpha.5` went out with twenty-two commits in it and twelve in
     // its notes: the section is written before the branch stops waiting for
     // CI, and what merges meanwhile is in the tarball and in nobody's notes.
+    // The unit is the commit and not the `(#NNN)` in its subject, which is the
+    // second way this went wrong: a commit GitHub did not stamp was not
+    // unmatched, it was uncounted, and `uf@0.0.0-alpha.8` shipped one while
+    // this check reported sixteen of sixteen.
     "release:changelog": "tools/ci/changelog-covers-the-release.sh",
     "release:changelog:test": "tools/ci/test-changelog-covers.sh",
     // `npm trust` binds a name the registry already has and cannot create
