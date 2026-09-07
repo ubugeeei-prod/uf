@@ -18,6 +18,23 @@
 // Development only, and dynamically imported so a production bundle has no path
 // to it. See ubugeeei-prod/uf#508.
 //
+// # Strict Mode, in development, by default
+//
+// `uf dev` generates `strictMode: true` into `virtual:uf/client` and `uf build`
+// does not, so a development render is doubled and a visitor's is not. That is
+// React's own check for the thing it cannot check any other way: a component
+// whose render is not pure, and an effect whose cleanup does not undo its
+// setup, both behave correctly until the one production render that interleaves
+// with something — and Strict Mode makes them behave incorrectly at once, on
+// the machine of the person writing them.
+//
+// The wrapper is here rather than around `<App>` inside the router because it
+// has to be outside the root React renders: a `<StrictMode>` under the root
+// would leave whatever the root itself does unchecked. It renders no element,
+// so the hydrated tree is unchanged and the markup comparison above is
+// unaffected. `app.react.strictMode: false` in `uf.config.js` turns it off.
+// See ubugeeei-prod/uf#516.
+//
 // # A route can decline to be hydrated
 //
 // uf's server-component analysis decides which routes have a `"use client"`
@@ -29,7 +46,7 @@
 // See ubugeeei-prod/uf#350.
 
 import * as React from "react";
-import { startTransition } from "react";
+import { StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 
 import {
@@ -54,6 +71,7 @@ export async function hydrate(options: {|
   readonly routes: RouteTable["routes"],
   readonly notFound: RouteTable["notFound"],
   readonly errors: RouteTable["errors"],
+  readonly strictMode?: boolean,
 |}): Promise<void> {
   const table: RouteTable = {
     routes: options.routes,
@@ -95,10 +113,15 @@ export async function hydrate(options: {|
     recovery = hydrationErrorHandler(container, captureServerMarkup(container), document);
   }
 
+  // `<StrictMode>` renders no element of its own, so the tree React hydrates
+  // against the server's markup is the same tree either way and the flag can
+  // be a development-only difference without being a hydration difference.
+  const tree = <App url={url} initial={resolved} />;
+
   startTransition(() => {
     hydrateRoot(
       container,
-      <App url={url} initial={resolved} />,
+      options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
       recovery == null ? undefined : { onRecoverableError: recovery },
     );
   });

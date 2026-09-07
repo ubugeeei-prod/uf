@@ -3397,6 +3397,82 @@ fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
     }
 }
 
+/// Nothing `uf build` writes mentions the React DevTools hook.
+///
+/// DevTools attaches through `__REACT_DEVTOOLS_GLOBAL_HOOK__`, which a bundler
+/// can eliminate and a production build should. `uf dev` installs it
+/// deliberately — `packages/vite/internal/devtools.js`, injected by
+/// `transformIndexHtml` — and the same hook does exactly two things in a
+/// deployment: it is dead weight in every document, and it is a page saying out
+/// loud which framework and which build it is. See ubugeeei-prod/uf#503.
+///
+/// Asserted over every file in `dist/` rather than over the plugin, because the
+/// plugin's answer is already covered without a build by
+/// `tests/library/devtools.test.js`. What only a real build can say is that
+/// nothing *else* in the pipeline put it back: the prerendered documents go
+/// through `transformIndexHtml` too, and the refresh preamble that used to be
+/// the only mention of the hook is injected from the same hook.
+///
+/// The project has a `"use client"` component in it so that the browser bundle
+/// is a bundle rather than an entry with nothing behind it — a build whose
+/// client graph is empty would pass this by shipping nothing.
+#[test]
+fn a_build_ships_no_devtools_hook() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/Counter.js",
+        "\"use client\";\n// @flow\nimport * as React from \"@uniflowed/react\";\nimport { useState } from \"@uniflowed/react\";\n\nexport component Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button type=\"button\" onClick={() => setCount(count + 1)}>\n      {count}\n    </button>\n  );\n}\n",
+    ));
+    files[2] = (
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
+    );
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dist = project.path().join("dist");
+    // Not empty, so the negative assertions below are about a build that
+    // happened rather than about a directory that is not there.
+    assert!(!client_assets(&dist).is_empty());
+    let index = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    assert!(
+        index.contains("home"),
+        "the page did not prerender:\n{index}"
+    );
+
+    for file in walk_files(&dist) {
+        let text = String::from_utf8_lossy(&fs::read(&file).unwrap()).into_owned();
+        assert!(
+            !text.contains("__REACT_DEVTOOLS_GLOBAL_HOOK__"),
+            "the DevTools hook reached {}",
+            file.display()
+        );
+        // The Fast Refresh preamble comes from the same hook and is the other
+        // half of what a document gets in development only. A build that
+        // shipped it would be serving a module the deployment does not have.
+        assert!(
+            !text.contains("/@react-refresh"),
+            "the Fast Refresh preamble reached {}",
+            file.display()
+        );
+    }
+}
+
 /// Every file under `directory`, however deep.
 fn walk_files(directory: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();

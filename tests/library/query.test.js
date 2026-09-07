@@ -17,7 +17,7 @@
 // what matters there is what React does with the snapshot it is handed.
 
 import * as React from "@uniflowed/react";
-import { useState } from "@uniflowed/react";
+import { StrictMode, useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import {
@@ -462,6 +462,51 @@ describe("useQuery", () => {
     await waitFor(() => {
       expect(screen.getByText("loaded")).toBeInTheDocument();
     });
+  });
+
+  it("asks once under Strict Mode, however many times React subscribes", async () => {
+    // `uf dev` hydrates under `<StrictMode>` since ubugeeei-prod/uf#516, so
+    // every `useQuery` now subscribes, unsubscribes and subscribes again before
+    // the first request has come back — on every development machine, for every
+    // query. This is the assertion that says the cache survives that, and it is
+    // here because the failure would be invisible: a cancelled request beside a
+    // fresh one looks exactly like one request on screen, and shows up only as
+    // twice the load on whatever the development API is.
+    //
+    // Two things have to hold at once for the count to be one, and the second
+    // is the one that is easy to lose. `useQuery` reaches the cache through
+    // `useSyncExternalStore`, so the strict remount is a real unsubscribe: the
+    // last observer leaves, and `Query.removeObserver` cancels a request in
+    // flight whose fetcher consumed the `signal`. What keeps that from mattering
+    // is that `QueryObserver.fetch` is asynchronous — the request is started a
+    // microtask after subscribing, by which time React has already subscribed
+    // the second time — so the two subscriptions produce one `Query.fetch` and
+    // the second call joins the first through the `pending` promise.
+    //
+    // The fetcher reads `signal` because that is the path with something to
+    // lose: a fetcher that ignores it is never cancelled on unsubscribe, so it
+    // could not have been double-fetched however the timing went, and a test
+    // written that way would pass without asserting anything.
+    const client = new QueryClient();
+    const queryFn = fn(async (context: $FlowFixMe) => {
+      const { signal } = context;
+      expect(signal).not.toBe(undefined);
+      return "loaded";
+    });
+
+    render(
+      withClient(
+        client,
+        <StrictMode>
+          <Thing queryFn={queryFn} />
+        </StrictMode>,
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("loaded")).toBeInTheDocument();
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
   it("shows a cached value at once and refreshes it behind", async () => {

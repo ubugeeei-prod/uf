@@ -51,6 +51,42 @@ Editing a `.env` file restarts the server with the new values, and says which
 file changed. [Environment](/guide/env) says why that is a restart rather than
 an update.
 
+### Strict Mode, and React DevTools
+
+`uf dev` hydrates your application inside React's `<StrictMode>`. `uf build`
+does not, so nothing a visitor runs is doubled — this is a check that runs on
+your machine and nowhere else.
+
+What it buys is the two mistakes nothing else can see. A component whose render
+is not pure is rendered twice, so it disagrees with itself while you are looking
+at it rather than in the one production render that interleaved with something.
+And every effect that mounts after the first paint — a navigation, a branch that
+opened, a row that appeared — is set up, torn down and set up again, so an
+effect whose cleanup does not undo its setup leaks immediately instead of after
+an hour of use.
+
+One thing to know, because the sentence everybody has heard is not quite true
+here: React skips the mount/unmount/mount pass for the root that *hydrated*,
+since the DOM it would tear down is the markup your server just sent. The
+render is still doubled on that first load; the effect check starts with the
+next thing that mounts.
+
+If you would rather not:
+
+```js
+export default defineConfig({
+  app: { react: { strictMode: false } },
+});
+```
+
+React DevTools works here, and works on purpose rather than by accident: uf
+installs the `__REACT_DEVTOOLS_GLOBAL_HOOK__` React registers itself with before
+any module in the document runs, keeps one copy of `react-dom` so there is one
+renderer to show, and transforms every module in React's development
+configuration so the panel has props, hooks and source positions to show you.
+The extension's own hook is never replaced when it is there. None of it is in a
+build.
+
 ### What the browser can say back
 
 Two paths under `/__uf/` exist only while `uf dev` is running, and both of them
