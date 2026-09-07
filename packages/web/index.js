@@ -62,8 +62,8 @@
 export type { FontAsset, ImageAsset, Loading, Source } from "./media.js";
 export { Font, Image, Picture } from "./media.js";
 
-export type { TimeFormat } from "./time.js";
-export { Time, relative } from "./time.js";
+export type { TimeFormat, TimeValue } from "./time.js";
+export { Time, asInstant, relative } from "./time.js";
 
 export { Announcer, Layout, Page, SkipLink } from "./regions.js";
 

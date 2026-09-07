@@ -187,3 +187,30 @@ fn render_side_effects_are_errors_by_default() {
 
     assert!(fired(&diagnostics, "react/no-render-side-effects"));
 }
+
+/// ubugeeei-prod/uf#451: source a module *generates* is not source it *is*.
+///
+/// `packages/vite/driver.js` builds a Cloudflare Worker entry as text, and the
+/// generated `export default { fetch: … }` was reported against the line of the
+/// file holding the template. Every adapter does this, and so does
+/// `internal/routes.js`.
+#[test]
+fn a_default_export_inside_a_template_literal_belongs_to_the_generated_file() {
+    let diagnostics = lint_js(
+        "react/no-default-export-component",
+        "// @flow\ncomponent A() { return null; }\n\nexport const entry: string = `\nexport default { fetch: handle };\n`;\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+/// And this module's own default export is still reported.
+#[test]
+fn a_default_export_outside_a_template_is_still_this_modules() {
+    let diagnostics = lint_js(
+        "react/no-default-export-component",
+        "// @flow\ncomponent A() { return null; }\nexport default A;\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}

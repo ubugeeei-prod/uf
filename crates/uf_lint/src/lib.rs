@@ -199,7 +199,10 @@ fn sort_diagnostics(diagnostics: &mut [Diagnostic]) {
 }
 
 fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnostic>, LintError> {
-    let scan = FileScan::new(file);
+    // Blanked before anything reads a line, so no rule has to know that a
+    // comment can sit in the middle of one. See `scan::mask_inline_comments`.
+    let masked = crate::scan::mask_inline_comments(&file.source);
+    let scan = FileScan::new(file, &masked);
     let mut diagnostics = Vec::new();
 
     let (suppressions, bad_suppressions) = suppression::collect(&scan);

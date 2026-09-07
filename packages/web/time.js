@@ -14,6 +14,24 @@
 // renders the deterministic form first and upgrades after hydration — which is
 // the honest version of what the naive code was trying to do.
 //
+// # Temporal, not `Date`
+//
+// This component is built on `@uniflowed/core/temporal` and the choice is not
+// cosmetic. `Date` has one time zone — whichever the machine is set to — and
+// the two machines here are set to different ones, which is the entire problem
+// restated. There is no way to write "six in the morning UTC, shown as three in
+// the afternoon in Tokyo" with a `Date` without going through the host's zone
+// on the way, and going through the host's zone is what makes the two renders
+// disagree. A `Temporal.Instant` carries no zone and a `Temporal.ZonedDateTime`
+// carries the zone it was asked for, so the server's text is a function of the
+// instant and a zone name rather than of the machine.
+//
+// The zone the deterministic text is rendered in comes from the render itself —
+// `RenderProvider` fixes it and the markup carries it — so the browser
+// reproduces the server's string exactly, and *then* moves to the reader's own
+// zone. Without a provider the deterministic zone is UTC, which is unambiguous
+// and the same everywhere, rather than the host's, which is neither.
+//
 // # What belongs in this module
 //
 // Anything whose difficulty is that the two renders are in different places or
@@ -28,14 +46,22 @@
 // subject inside this one, because nothing about a price is about an instant.
 
 import * as React from "@uniflowed/react";
+import type { Instant } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
+import { useRenderEnvelope } from "@uniflowed/hooks/render";
 
-/** What to show. `iso` and `date` are the same on a server and in a browser. */
+/** Whatever a caller has an instant written as. */
+export type TimeValue = Instant | Date | string | number;
+
+/** What to show. Everything but `local` and `relative` is the same everywhere. */
 export type TimeFormat =
-  /** `2026-09-04T06:00:00.000Z`. Unambiguous, and the same everywhere. */
+  /** `2026-09-04T06:00:00Z`. Unambiguous, and the same on every machine. */
   | "iso"
-  /** `2026-09-04`. The UTC calendar date. */
+  /** `2026-09-04`. The calendar date in the render's zone. */
   | "date"
-  /** The reader's locale, applied after hydration. */
+  /** `2026-09-04 15:00 +09:00`. The wall clock in the render's zone. */
+  | "zoned"
+  /** The reader's own locale and zone, applied after hydration. */
   | "local"
   /** "3 minutes ago", relative to now, after hydration. */
   | "relative";
@@ -50,19 +76,54 @@ const UNITS: $ReadOnlyArray<[Intl$RelativeTimeFormatUnit, number]> = [
   ["second", 1_000],
 ];
 
-/** Parse whatever the caller passed into a `Date`. */
-function asDate(value: Date | string | number): Date {
-  return value instanceof Date ? value : new Date(value);
+/**
+ * Whatever the caller passed, as a `Temporal.Instant`.
+ *
+ * A string must carry an offset, because Temporal refuses one that does not and
+ * this component must not be more permissive than the standard it is built on:
+ * `"2026-09-04"` is a date and not an instant, and every implementation that
+ * has guessed which midnight it meant has guessed differently.
+ */
+export function asInstant(value: TimeValue): Instant {
+  if (value instanceof Date) {
+    return Temporal.Instant.fromEpochMilliseconds(value.getTime());
+  }
+  if (typeof value === "number") {
+    return Temporal.Instant.fromEpochMilliseconds(value);
+  }
+  if (typeof value === "string") {
+    return Temporal.Instant.from(value);
+  }
+  return value;
 }
 
 /** The text that is the same on a server and in a browser. */
-function stable(at: Date, format: TimeFormat): string {
-  return format === "date" ? at.toISOString().slice(0, 10) : at.toISOString();
+function stable(at: Instant, format: TimeFormat, zone: string): string {
+  if (format === "iso") {
+    return at.toString();
+  }
+  const zoned = at.toZonedDateTimeISO(zone);
+  if (format === "date") {
+    return zoned.toPlainDate().toString();
+  }
+  // `local` and `relative` start here too: it is the most readable form that
+  // still says exactly which instant it is, which is what a reader with no
+  // JavaScript and a crawler both end up with.
+  const time = `${String(zoned.hour).padStart(2, "0")}:${String(zoned.minute).padStart(2, "0")}`;
+  return `${zoned.toPlainDate().toString()} ${time} ${zoned.offset}`;
 }
 
-/** "3 minutes ago", or "in 3 minutes". */
-export function relative(at: Date, from: Date = new Date()): string {
-  const difference = at.getTime() - from.getTime();
+/**
+ * "3 minutes ago", or "in 3 minutes".
+ *
+ * `from` defaults to the injected clock rather than to `new Date()`, so a test
+ * can decide what "now" is and a server render is reproducible. Both arguments
+ * take anything `Time` takes.
+ */
+export function relative(at: TimeValue, from?: TimeValue): string {
+  const target = asInstant(at);
+  const origin = from === undefined ? Temporal.Now.instant() : asInstant(from);
+  const difference = target.epochMilliseconds - origin.epochMilliseconds;
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   for (const [unit, span] of UNITS) {
     if (Math.abs(difference) >= span) {
@@ -80,20 +141,29 @@ export function relative(at: Date, from: Date = new Date()): string {
  * so a crawler and a screen reader get the exact instant even when a reader
  * sees "3 minutes ago".
  *
- * `iso` and `date` render the same string on both sides and never change.
- * `local` and `relative` render the stable form first and replace it after
- * hydration — the text is there for the first paint and for anything that does
- * not run JavaScript, and it becomes the reader's own format once it can.
+ * `iso`, `date` and `zoned` render the same string on both sides and never
+ * change. `local` and `relative` render the deterministic form first and
+ * replace it after hydration — the text is there for the first paint and for
+ * anything that does not run JavaScript, and it becomes the reader's own format
+ * once it can.
+ *
+ * `zone` is the zone the deterministic forms are written in. It defaults to the
+ * one the render fixed, so a page under a `RenderProvider` shows its server's
+ * zone until it can show the reader's; with no provider it is UTC, because a
+ * default that reads the host would be a different string on each side and
+ * would defeat the entire component.
  */
 export component Time(
-  value: Date | string | number,
+  value: TimeValue,
   format?: TimeFormat = "iso",
+  zone?: string,
   locale?: string,
   className?: string,
 ) renders React.Node {
-  const at = asDate(value);
-  const machine = at.toISOString();
-  const server = stable(at, format);
+  const at = asInstant(value);
+  const machine = at.toString();
+  const rendered = useRenderEnvelope();
+  const server = stable(at, format, zone ?? rendered?.timeZone ?? "UTC");
 
   // Starts at the deterministic text on both sides, so hydration matches; the
   // effect below is what makes it the reader's.
@@ -101,11 +171,11 @@ export component Time(
 
   React.useEffect(() => {
     if (format === "local") {
-      setText(at.toLocaleString(locale));
+      setText(at.toZonedDateTimeISO(Temporal.Now.timeZoneId()).toLocaleString(locale));
     } else if (format === "relative") {
       setText(relative(at));
     }
-    // `machine` rather than `at`: a caller passing a string builds a new `Date`
+    // `machine` rather than `at`: a caller passing a string builds a new instant
     // every render, and depending on the object would re-run this forever.
   }, [machine, format, locale]);
 
