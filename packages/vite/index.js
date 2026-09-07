@@ -14,8 +14,12 @@
 //                 development and the virtual modules that make a directory
 //                 of pages an application: the route table, the client entry
 //                 that hydrates it, and the server entry that renders it. In
-//                 development it also renders every HTML request on the
-//                 server, so `uf dev` serves the same markup `uf build` writes.
+//                 development it also answers every request the way a
+//                 deployment does — the guard, a server action, a route
+//                 handler, then the renderer — so `uf dev` serves what
+//                 `uf start` serves rather than an approximation of it, and it
+//                 serves the two `/__uf/` paths a browser reports to (see
+//                 `internal/diagnostics.js`).
 //                 The client's copy of the route table is not the server's:
 //                 `internal/rsc.js` reads the RSC analysis and leaves out the
 //                 page of every route no client boundary reaches, so that
@@ -56,7 +60,6 @@ import {
   refreshRuntimeSource,
 } from "./internal/refresh.js";
 import {
-  ACTION_HEADER,
   RSC_MANIFEST_ENV,
   actionReferenceSource,
   actionsModuleSource,
@@ -75,8 +78,9 @@ import {
   serverModuleSource,
 } from "./internal/routes.js";
 import { TransformService, isFlowModule } from "@uniflowed/host/transform";
+import { createChannelMiddleware } from "./internal/diagnostics.js";
 import { send, toRequest } from "./internal/http.js";
-import { withRequest } from "./internal/serve.js";
+import { beginRequest } from "./internal/serve.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
@@ -470,107 +474,181 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       }
 
       // After Vite's own middlewares, so `/@vite/client`, `/@id/...` and
-      // static files are served first and only a document request reaches
-      // the renderer.
+      // static files are served first and only what Vite declined reaches uf.
+      //
+      // # One renderer
+      //
+      // This is the only middleware that renders a document under `uf dev`,
+      // and that is worth stating because there were two. `driver.js` added a
+      // second one after `createServer` had returned, which put it *later* in
+      // the connect stack than this one — so for every request this one
+      // claimed, this one decided, and the other was reached only for what
+      // this one declined. Route-handler dispatch was in the other. A
+      // `GET /feed` from a browser is `Accept: text/html` with no extension,
+      // so it looked like a document, so `app/feed/_uf.route.js` was never
+      // asked and the reader got the route table's page — or the not-found
+      // page — for a path that had a handler. See ubugeeei-prod/uf#349.
+      //
+      // Two renderers is also how the two came to disagree about the render
+      // result's `headers`: this one wrote them and the driver's did not, so a
+      // loader calling `redirect()` answered a browser with a `307` carrying
+      // no `Location` and a meta-refresh body — a redirect that works when you
+      // deploy it and not while you are writing it. See
+      // ubugeeei-prod/uf#338.
+      //
+      // So the driver's middleware is gone and everything it did is here: it
+      // claims every request, runs the guard, the action endpoint and the
+      // dispatcher for every method, and hands back to Vite's chain what none
+      // of them answered.
+      //
+      // # What is still not `createFetchHandler`
+      //
+      // One middleware rather than two, and still not the function every
+      // deployment runs. It cannot be: `transformIndexHtml` takes a whole
+      // document, so the render has to be collected here rather than streamed
+      // (ubugeeei-prod/uf#374), and a request nothing claimed has to go back
+      // to Vite's chain rather than become a 404 — neither of which a handler
+      // that always answers with a `Response` can do.
+      //
+      // What that still costs, written down so the next reader does not have
+      // to find it: `createFetchHandler` renders inside a cache scope even
+      // with no cache configured, so a component calling `cacheLife` states a
+      // lifetime nobody honours; here there is no scope, so the same component
+      // throws under `uf dev` and renders under `uf start`. Closing that means
+      // the generated server entry handing the host a scope the way it already
+      // hands it `beginRequest` — see `serverModuleSource` in
+      // `./internal/routes.js` — and it is the next thing to remove from this
+      // list rather than something this middleware can decide on its own.
       return () => {
+        // The browser's own reporting channel, mounted above the application
+        // so that a report never reaches a project's `_uf.middleware.js` or
+        // its route table. See `internal/diagnostics.js`.
+        devServer.middlewares.use(
+          createChannelMiddleware((diagnostic) => emit("diagnostic", diagnostic)),
+        );
+
         devServer.middlewares.use(async (request, response, next) => {
-          // Two kinds of request reach uf here, and the second one is why this
-          // is not `wantsDocument` alone: a server action is a `POST` carrying
-          // `uf-action`, which every gate below the renderer would refuse.
-          // `driver.js` claims every request and can afford to decide later;
-          // this middleware is mounted behind Vite's own and has to say up
-          // front which ones are uf's.
-          const document = wantsDocument(request);
-          if (!document && !isActionCall(request)) return next();
+          // `request.url` and not `originalUrl`, which is the URL Vite's base
+          // middleware has already stripped the base from — and the route
+          // table's paths have no base in them either.
+          const url = request.url ?? "/";
+          // Declared out here so the catch below can still settle: a request
+          // that failed is a request that happened, and a middleware that
+          // logged its arrival is owed its callback either way.
+          let lifecycle = null;
           try {
-            const url = request.url ?? "/";
             const entry = await importServerEntry(devServer);
             const asRequest = await toRequest(request, devServer.config);
 
-            // One request, owned here and settled once the document has been
-            // written — the same lifecycle `driver.js` gives `uf dev` and
-            // `internal/serve.js` gives `uf preview` and `uf start`. A project
-            // driving Vite itself must not get a different answer about when
-            // `after()` runs than the same project run through `uf dev`; see
-            // `internal/serve.js` and ubugeeei-prod/uf#389.
-            //
-            // Only requests that look like a document reach here, so unlike
-            // `driver.js` there is no path where uf hands the response back to
-            // Vite's chain: what is below either writes it or throws.
-            await withRequest(entry, asRequest, async () => {
-              // Before anything answers: a middleware guards a subtree, and a
-              // page rendered while the guard on it had not run is the whole of
-              // ubugeeei-prod/uf#260. `driver.js` makes the same call, for
-              // every method.
+            // The request begins here and ends when the response has been
+            // written, which is what `after()` promises and what `uf preview`,
+            // `uf start` and a compiled binary all do too — a middleware that
+            // logs a response's status has to mean the same thing in
+            // development as in production. See `internal/serve.js` and
+            // ubugeeei-prod/uf#389.
+            lifecycle = await beginRequest(entry, asRequest);
+            const answered = await lifecycle.run(async () => {
+              // Before anything answers: a middleware guards a subtree, so it
+              // has to run for a page, for a route handler, and for a path
+              // under it that matches neither. Running it inside the
+              // dispatcher and again inside the renderer would have left
+              // `/dashboard/typo` unguarded and run it twice for a path that
+              // is both. See ubugeeei-prod/uf#260.
               const guarded = await entry.runMiddleware(asRequest);
               if (guarded != null) {
                 await send(response, guarded);
-                return;
+                return true;
               }
 
               // Then a server action, below the guard and above the handlers.
-              // It declines anything that carries no action id, so the two
-              // lines cost a document request one `headers.get`; and it never
-              // declines one that does, so an action call cannot reach a route
-              // handler that happens to share the URL it was posted to. The
-              // same two lines are in `driver.js`, in `fetch.js` for every
-              // deploy adapter, and in `standalone.js`.
+              // It declines every request that carries no action id, so this
+              // costs an ordinary request one `headers.get`; and it answers
+              // every request that carries one, refusals included, so an
+              // action can never fall through to a route handler that happens
+              // to sit at the URL it was posted to. The same two lines are in
+              // `@uniflowed/server`'s `fetch.js`, which is what every
+              // deployment runs.
               const acted = await entry.callAction(asRequest);
               if (acted != null) {
                 await send(response, acted);
-                return;
+                return true;
               }
 
-              // Then the route handlers, above the renderer and for the same
-              // reason `driver.js` puts them there: a path that answers a
-              // request is not a document, whatever the client said it would
-              // accept. `curl /api/thing` and a `<form action>` navigation both
-              // send `Accept: text/html`, and both want the handler's answer.
-              //
-              // This step is not a duplicate of the dispatcher in `driver.js`,
-              // it is the only one that can run: this middleware is mounted by
-              // `configureServer`, which Vite calls while it is building the
-              // server, and `uf dev` adds its own after `createServer` has
-              // returned — so for every request this one claims, it is the one
-              // that decides. Without it a route handler under `uf dev` was
-              // reachable only by a client that asked for something other than
-              // HTML, and answered the 404 page to everyone else.
+              // Then the route handlers, above the renderer and for every
+              // method: a path that answers a request is not a document,
+              // whatever the client said it would accept. `curl /api/thing`
+              // and a `<form action>` navigation both send `Accept:
+              // text/html`, and both want the handler's answer — which is the
+              // whole of ubugeeei-prod/uf#349.
               const handled = await entry.dispatch(asRequest);
               if (handled != null) {
                 await send(response, handled);
-                return;
+                return true;
               }
 
-              // A `POST` this middleware claimed because it named an action,
-              // that the endpoint then declined and no handler answered. It
-              // cannot happen — the endpoint answers every request carrying an
-              // id, including every refusal — and a page cannot answer a
-              // `POST` anyway, so the honest end is a 404 rather than a
-              // rendered document with a 200.
-              if (!document) {
-                response.statusCode = 404;
-                response.end();
-                return;
-              }
+              // Only a navigation reaches the renderer. A page cannot answer a
+              // `POST`, and letting one try would turn a missing handler into
+              // a rendered page with a 200 rather than a 404.
+              //
+              // `wantsDocument` is stricter than the production handler, which
+              // renders anything a static file did not answer, and the
+              // difference is Vite's chain: `/@id/…`, `/node_modules/…` and
+              // any path with an extension belong to the module server, and a
+              // request one of those declined has to go back to it rather than
+              // become a rendered 404 page. What it costs is that
+              // `/favicon.svg` on a project that has none is a bare 404 here
+              // and the project's own not-found *page* under `uf preview` and
+              // `uf start` — a difference in the body of a 404 for a path that
+              // is an asset request in the first place.
+              if (!wantsDocument(request)) return false;
 
               const result = await entry.render(
                 url,
                 { scripts: [devUrlFor(VIRTUAL.client)], styles: [], preloads: [] },
-                { onError: (error) => reportRenderError(devServer, url, error) },
+                {
+                  // A boundary that threw after the shell went out.
+                  // `result.error` cannot carry it — the caller already has the
+                  // result by then — so the terminal hears about it here or not
+                  // at all.
+                  onError: (error) => reportRenderError(devServer, url, error),
+                },
               );
               if (result.error != null) reportRenderError(devServer, url, result.error);
-              // Collected rather than piped, for the reason `driver.js` gives at
-              // step 4: `transformIndexHtml` is a whole-document hook.
+              // Collected rather than piped: `transformIndexHtml` is a
+              // whole-document hook, so there is no first byte to send until it
+              // has run. `uf start` and `uf preview` stream — see
+              // `internal/serve.js` — and that is a property of the development
+              // server rather than of the renderer. ubugeeei-prod/uf#374.
               const html = await devServer.transformIndexHtml(url, await result.text());
-              response.statusCode = result.status;
-              response.setHeader("Content-Type", "text/html; charset=utf-8");
+              response.statusCode = result.status ?? 200;
+              // The render's own headers, then the content type over the top:
+              // exactly the order `@uniflowed/server`'s `fetch.js` writes them
+              // in, so a `Location` from `redirect()` survives here and a
+              // render cannot claim to be something other than a document.
               for (const [name, value] of Object.entries(result.headers ?? {})) {
                 response.setHeader(name, value);
               }
+              response.setHeader("content-type", "text/html; charset=utf-8");
               response.end(html);
+              return true;
             });
+
+            if (!answered) {
+              // The one path where uf is not the one writing the response: a
+              // request nothing claimed goes back to Vite's chain. The guard
+              // has still run and may have deferred work, so `close` — the
+              // socket saying the response is over, however it ended — is the
+              // only honest signal left that the bytes are out.
+              response.once("close", lifecycle.settle);
+              next();
+              return;
+            }
+            await lifecycle.settle();
           } catch (error) {
-            devServer.ssrFixStacktrace(error);
+            if (lifecycle != null) await lifecycle.settle();
+            // Map the stack back onto the Flow source before it reaches the
+            // overlay.
+            if (error instanceof Error) devServer.ssrFixStacktrace(error);
             next(error);
           }
         });
@@ -620,20 +698,6 @@ async function importServerEntry(devServer) {
     return ssr.runner.import(VIRTUAL.server);
   }
   return devServer.ssrLoadModule(VIRTUAL.server);
-}
-
-/**
- * Whether this request is a server action call.
- *
- * The header alone, and never the path: an action is posted to the page's own
- * URL, so there is nothing about the URL to recognise. Deliberately *not* the
- * whole set of checks the endpoint makes — the origin, the content type, the
- * body — because those decide whether the call is *allowed*, and a call that
- * is not allowed must be refused by the endpoint rather than handed on to
- * Vite's chain as though nobody had claimed it.
- */
-function isActionCall(request) {
-  return request.method === "POST" && request.headers[ACTION_HEADER] != null;
 }
 
 function wantsDocument(request) {

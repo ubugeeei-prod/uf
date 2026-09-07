@@ -41,13 +41,16 @@ pub mod compiler;
 pub mod emit;
 pub mod estree;
 pub mod lower;
+pub mod memo;
 pub mod print;
 pub mod scope;
 
+use serde_json::Value;
 use thiserror::Error;
 
 pub use crate::compiler::{CompilerDiagnostic, ReactCompilerMode};
 pub use crate::estree::MAX_SOURCE_BYTES;
+pub use crate::memo::{RedundantMemo, redundant_memoization};
 
 /// How one module is transformed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,15 +174,42 @@ pub fn is_flow_module(id: &str) -> bool {
 /// File extensions uf treats as Flow source.
 pub const FLOW_EXTENSIONS: [&str; 4] = [".js", ".jsx", ".mjs", ".cjs"];
 
+/// The module as the React Compiler sees it: parsed with the official Flow
+/// parser, lowered, and rendered in Babel's AST shape.
+///
+/// Stages one to three of [`transform`], with the JavaScript left unprinted.
+/// It is a public entry point because a caller can want the tree and nothing
+/// else: `uf lint` asks the compiler what it did with a module's hand-written
+/// memoization (see [`memo`]) and never emits a byte of code.
+///
+/// The [`lower::Lowered`] beside it carries the one fact the later stages need
+/// and the tree does not say: whether the module declares anything the
+/// compiler would compile in `syntax` mode.
+///
+/// # Errors
+///
+/// [`TransformError::SourceTooLarge`], [`TransformError::Syntax`] and
+/// [`TransformError::Lowering`], exactly as [`transform`] raises them.
+///
+/// # Call this from a thread with `uf_flow::PARSE_STACK_BYTES` of stack
+///
+/// The Flow parser is recursive descent and freeing its tree recurses too;
+/// [`uf_flow::parse`] says how much that costs and why the ceiling is where it
+/// is.
+pub fn babel_ast(source: &str) -> Result<(Value, lower::Lowered), TransformError> {
+    let mut program = estree::parse(source)?;
+    let lowered = lower::lower(&mut program, source)?;
+    let file = babel::to_babel(program, source)?;
+    Ok((file, lowered))
+}
+
 /// Transform one Flow module to JavaScript.
 ///
 /// # Errors
 ///
 /// See [`TransformError`].
 pub fn transform(source: &str, options: &TransformOptions) -> Result<Transformed, TransformError> {
-    let mut program = estree::parse(source)?;
-    let lowered = lower::lower(&mut program, source)?;
-    let file = babel::to_babel(program, source)?;
+    let (file, lowered) = babel_ast(source)?;
 
     let (file, compiler_diagnostics, compiled_functions) =
         if options.react_compiler == ReactCompilerMode::Off || !lowered.may_compile {
