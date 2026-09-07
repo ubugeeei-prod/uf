@@ -19,5 +19,8 @@
     "index.js",
     "schedule.js",
     "stream.js"
-  ]
+  ],
+  "dependencies": {
+    "@uniflowed/core": "0.0.0-alpha.12"
+  }
 }
