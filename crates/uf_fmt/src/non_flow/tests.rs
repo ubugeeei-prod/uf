@@ -395,4 +395,35 @@ fn stub_formatter(root: &Utf8Path) {
         .permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&stub, permissions).expect("the stub is executable");
+
+    // And then run it, until the kernel agrees that it can be run.
+    //
+    // `execve` answers `ETXTBSY` while *any* process holds the file open for
+    // writing, and the descriptor that matters is not this thread's — that one
+    // is closed by `fs::write` before it returns. `cargo test` runs these tests
+    // across several threads in one binary, so between this thread's `open` and
+    // its `close`, another thread can `fork` to spawn something of its own. The
+    // child inherits every descriptor and holds them until its own `exec`, and
+    // a stub executed inside that window is refused:
+    //
+    //     Err(Failed { formatter: "biome", detail: "Text file busy (os error 26)" })
+    //
+    // Rust opens files `O_CLOEXEC`, which closes the descriptor at the child's
+    // `exec` — but `fork` to `exec` is the window. See ubugeeei-prod/uf#467.
+    //
+    // The retry belongs here rather than around an assertion: a test that
+    // retries its subject cannot tell "the machine was busy" from "the
+    // formatter is broken", and that distinction is what these tests are for.
+    // By the time this returns, the file has been executed once, so no
+    // descriptor is open on it and every later spawn in the test is safe.
+    for attempt in 0..50 {
+        match std::process::Command::new(&stub).arg("--version").output() {
+            Ok(_) => return,
+            Err(error) if error.raw_os_error() == Some(26) => {
+                std::thread::sleep(std::time::Duration::from_millis(10 * (attempt + 1)));
+            }
+            Err(error) => panic!("the stub could not be run: {error}"),
+        }
+    }
+    panic!("the stub was still `Text file busy` after fifty attempts");
 }
