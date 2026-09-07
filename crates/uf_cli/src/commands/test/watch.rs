@@ -23,7 +23,7 @@ use anyhow::Result;
 use camino::Utf8Path;
 use uf_config::UniflowedConfig;
 use uf_config::env_files::ProjectEnv;
-use uf_project::{ProjectFile, scan_source_files};
+use uf_project::{ProjectFile, scan_selected_source_files};
 use uf_term::{PhaseTimer, Status};
 use uf_test::{ImportGraph, TestFilter, Watcher};
 
@@ -53,7 +53,9 @@ pub(super) fn watch(
     // not read, so a watch session either began without any or is about to be
     // told about one it did not have before. Either way it keeps watching:
     // exiting a watch loop because somebody saved a binary is hostile.
-    let mut files = scan_source_files(root, &config)?.files;
+    // The paths this session was started with, so a watch narrowed to a
+    // directory `.gitignore` names sees the same files the one-shot run does.
+    let mut files = scan_selected_source_files(root, &config, &args.paths)?.files;
     // Resolved once: a watch session that lost its host between runs would be
     // reporting a different failure than the one the user is editing towards.
     // Resolved once, with the environment the session started with: a watch
@@ -80,7 +82,7 @@ pub(super) fn watch(
             continue;
         }
 
-        let refreshed = scan_source_files(root, &config)?.files;
+        let refreshed = scan_selected_source_files(root, &config, &args.paths)?.files;
         let moved = changed_paths(&files, &refreshed);
         files = refreshed;
         prime(&mut watcher, &files);

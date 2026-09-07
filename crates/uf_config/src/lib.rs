@@ -74,6 +74,58 @@ pub struct UniflowedConfig {
     pub vrt: VrtConfig,
 }
 
+impl UniflowedConfig {
+    /// The registry uf reads packuments and attestations from.
+    ///
+    /// Reading and publishing are two different questions and, until
+    /// ubugeeei-prod/uf#540, uf had one answer to both: `publish.registry`. For
+    /// npmjs and for a private registry a project both publishes to and
+    /// installs from, that is right by accident; it stops being right the
+    /// moment the two differ, which is every project that publishes to a
+    /// company registry and installs through a read-through mirror.
+    ///
+    /// So `pm.registry` is the one that means "resolve against this", and it
+    /// falls back to `publish.registry` rather than to npmjs — a project that
+    /// has only ever set one keeps the behaviour it had. The fallback is
+    /// reported rather than silent: [`RegistrySource::is_deprecated`] is what
+    /// a command prints a deprecation from.
+    #[must_use]
+    pub fn read_registry(&self) -> ReadRegistry<'_> {
+        if let Some(registry) = self.pm.registry.as_deref() {
+            return ReadRegistry {
+                url: registry,
+                source: RegistrySource::Pm,
+            };
+        }
+        // Only a project that *moved* `publish.registry` is relying on the old
+        // meaning. One that left it at npmjs is not being warned about a key it
+        // never set — the value is the same either way, and a deprecation
+        // nobody can act on is noise.
+        let published = self.publish.registry.as_str();
+        if published == DEFAULT_REGISTRY {
+            return ReadRegistry {
+                url: published,
+                source: RegistrySource::Default,
+            };
+        }
+        ReadRegistry {
+            url: published,
+            source: RegistrySource::PublishFallback,
+        }
+    }
+
+    /// The scope bindings, as `("@scope", registry)` pairs in scope order.
+    ///
+    /// Returned as a borrow of the config rather than copied: the caller is
+    /// building a router out of it and there is nothing to own.
+    pub fn scope_registries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.pm
+            .scopes
+            .iter()
+            .map(|(scope, registry)| (scope.as_str(), registry.as_str()))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -542,6 +594,9 @@ pub enum PackageTarget {
     ServerlessNapi,
 }
 
+/// The registry uf reads from, and publishes to, when a project names neither.
+pub const DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -552,6 +607,23 @@ pub struct PackageManagerConfig {
     pub store_dir: CompactString,
     pub allow_lifecycle_scripts: bool,
     pub package_manager: PackageManagerPreference,
+    /// The registry uf *reads* from: packuments, provenance attestations, and
+    /// the versions `uf update` reports against.
+    ///
+    /// Unset means `publish.registry`, which is where this value lived until
+    /// ubugeeei-prod/uf#540 — so a project that has only ever set one keeps
+    /// working, and one that publishes to a company registry while installing
+    /// through a read-through mirror can finally say so.
+    pub registry: Option<CompactString>,
+    /// Which registry answers for which scope, as `"@scope" -> registry URL`.
+    ///
+    /// A scope named here is resolved from that registry **and nowhere else**.
+    /// There is deliberately no fallback to [`PackageManagerConfig::registry`]:
+    /// a fallback is the dependency-confusion vulnerability, not a mitigation
+    /// of it. See [`crate::UniflowedConfig::scope_registries`].
+    pub scopes: BTreeMap<CompactString, CompactString>,
+    /// How hard `uf install` looks at npm provenance attestations.
+    pub provenance: ProvenanceMode,
 }
 
 impl Default for PackageManagerConfig {
@@ -563,8 +635,85 @@ impl Default for PackageManagerConfig {
             store_dir: CompactString::const_new(".uf/store"),
             allow_lifecycle_scripts: false,
             package_manager: PackageManagerPreference::Auto,
+            registry: None,
+            scopes: BTreeMap::new(),
+            provenance: ProvenanceMode::default(),
         }
     }
+}
+
+/// What `uf install` does about npm provenance attestations.
+///
+/// Most of npm has no attestation, so `Report` is the default: an attestation
+/// that is *present and wrong* is always a hard failure, and one that is absent
+/// is a line in the summary. `Off` is for a machine with no route to the
+/// registry at all, where the reads would only ever time out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProvenanceMode {
+    /// Read every attestation that exists, refuse a mismatch, report the rest.
+    #[default]
+    Report,
+    /// Read nothing. The lockfile's integrity hashes are the only check left.
+    Off,
+}
+
+impl ProvenanceMode {
+    /// Whether uf reads attestations at all under this mode.
+    #[must_use]
+    pub const fn reads_attestations(self) -> bool {
+        matches!(self, Self::Report)
+    }
+}
+
+/// Where the registry uf reads from came from.
+///
+/// Worth distinguishing because one of the three is deprecated and the reader
+/// has to be told which project text to move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistrySource {
+    /// `pm.registry`, which is the setting that means "read from here".
+    Pm,
+    /// `publish.registry`, because `pm.registry` is unset and this project set
+    /// the publish one to something other than the default.
+    ///
+    /// Deprecated: it still works, and it is the wrong key. See
+    /// ubugeeei-prod/uf#540.
+    PublishFallback,
+    /// Neither was set, so it is npmjs.
+    Default,
+}
+
+impl RegistrySource {
+    /// Whether this project is relying on the deprecated spelling.
+    #[must_use]
+    pub const fn is_deprecated(self) -> bool {
+        matches!(self, Self::PublishFallback)
+    }
+
+    /// The sentence to print when it is.
+    ///
+    /// One sentence, naming both keys, because "deprecated" without the
+    /// replacement is a message that costs a search.
+    #[must_use]
+    pub const fn deprecation(self) -> Option<&'static str> {
+        match self {
+            Self::PublishFallback => Some(
+                "publish.registry is being read from as well as published to; \
+                 set pm.registry to the one uf should resolve against",
+            ),
+            Self::Pm | Self::Default => None,
+        }
+    }
+}
+
+/// The registry uf resolves against, and which key it came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadRegistry<'a> {
+    /// The URL itself.
+    pub url: &'a str,
+    /// Which setting supplied it.
+    pub source: RegistrySource,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -984,6 +1133,10 @@ impl Default for VrtConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct PublishConfig {
+    /// Where `uf publish` pushes a package.
+    ///
+    /// Not where uf reads from: that is `pm.registry`, and it defaults to this
+    /// one. See [`UniflowedConfig::read_registry`].
     pub registry: CompactString,
     pub dry_run: bool,
     pub first_publish: FirstPublishConfig,
@@ -993,7 +1146,7 @@ pub struct PublishConfig {
 impl Default for PublishConfig {
     fn default() -> Self {
         Self {
-            registry: CompactString::const_new("https://registry.npmjs.org"),
+            registry: CompactString::const_new(DEFAULT_REGISTRY),
             dry_run: true,
             first_publish: FirstPublishConfig::default(),
             trusted_publish: TrustedPublishConfig::default(),

@@ -25,6 +25,25 @@
 //! are the commands; this is a setting the manager reads that uf has an opinion
 //! about, and the top level is for the verbs.
 //!
+//! # Why it names the provenance
+//!
+//! Approving a package is the moment its `postinstall` becomes code that runs
+//! on this machine, so it is the moment "who built this?" is worth a request.
+//! npm publishes a provenance attestation for a package built by a CI workflow
+//! with an OIDC identity, and the `attested` column says whether this one has
+//! one — and, underneath the table, which repository and workflow it names.
+//!
+//! `no` is not a reason to refuse. Most of npm publishes none, and a command
+//! that refused every unattested package would refuse almost every package with
+//! a native binary to build, which is the entire population of this table. It
+//! is a fact to read before approving, not a gate. What it *does* catch is the
+//! change: a package that was attested last month and is not today.
+//!
+//! What the column proves and does not prove is [`uf_pm::provenance`]'s to
+//! state, and it states it: the attestation is bound to the tarball the
+//! registry publishes for that version, and uf does not verify the Sigstore
+//! signature itself.
+//!
 //! # Why it refuses a name it cannot see
 //!
 //! On a security command a typo that silently does nothing is worse than an
@@ -74,6 +93,7 @@ pub(crate) fn approve_builds(
         let project = project_label(&root).to_string();
         let manager_label = manager.to_string();
         let configured = resolved.config.pm.allow_lifecycle_scripts;
+        let attested = attestations(&resolved.config, &waiting);
         ui.render(|renderer, out| {
             renderer.banner(out, "uf pm approve-builds", Some(&project));
             renderer.blank(out);
@@ -84,6 +104,7 @@ pub(crate) fn approve_builds(
                 approvals,
                 configured,
                 &waiting,
+                &attested,
             );
         });
         return Ok(());
@@ -203,6 +224,77 @@ pub(crate) fn approve_builds(
     Ok(())
 }
 
+/// What the registry says about who built each of these, in table order.
+///
+/// One request per package, capped at the number of rows the table draws:
+/// asking about a package the reader is not going to see is a request nobody
+/// asked for. A registry that does not answer leaves `unknown`, which is the
+/// honest word — it is not `no`.
+///
+/// A failure to *verify* an attestation is not swallowed here either, but it is
+/// not fatal to a listing: this command reports, and `uf install` is where a
+/// mismatch stops something from happening. The row says `mismatch` and the
+/// reader has the name of the package it is about.
+fn attestations(config: &uf_config::UniflowedConfig, waiting: &[Buildable]) -> Vec<Attested> {
+    if !config.pm.provenance.reads_attestations() {
+        return Vec::new();
+    }
+    let routing = uf_pm::RegistryRouting::from_config(config);
+    // No integrity: `node_modules` has no tarball, so the subject is bound to
+    // the digest the registry publishes for that version rather than to bytes
+    // in this tree. `uf_pm::provenance::Subject` says which of the two a caller
+    // is asking, and `uf install` is where the local bytes are bound.
+    let asked: Vec<uf_pm::Subject> = waiting
+        .iter()
+        .take(ROWS_SHOWN)
+        .map(|package| uf_pm::Subject {
+            name: package.name.clone(),
+            version: package.version.clone(),
+            integrity: None,
+        })
+        .collect();
+    uf_pm::provenance::read_many(&routing, &asked)
+        .into_iter()
+        .map(|answer| match answer {
+            Ok(uf_pm::Outcome::Attested(provenance)) => Attested::Yes(
+                provenance
+                    .origin()
+                    .map(|origin| origin.to_string())
+                    .unwrap_or_default(),
+            ),
+            Ok(uf_pm::Outcome::Unattested) => Attested::No,
+            Ok(uf_pm::Outcome::Unavailable(_)) => Attested::Unknown,
+            Err(_) => Attested::Mismatch,
+        })
+        .collect()
+}
+
+/// What one row's `attested` column says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Attested {
+    /// An attestation exists and is about this version. The string is the
+    /// repository and workflow it names, when it names one.
+    Yes(String),
+    /// The registry publishes no provenance for this version.
+    No,
+    /// uf could not ask.
+    Unknown,
+    /// An attestation exists and is not about this version.
+    Mismatch,
+}
+
+impl Attested {
+    /// The word the column prints.
+    const fn label(&self) -> &'static str {
+        match self {
+            Self::Yes(_) => "yes",
+            Self::No => "no",
+            Self::Unknown => "unknown",
+            Self::Mismatch => "mismatch",
+        }
+    }
+}
+
 fn array(names: &[CompactString]) -> Value {
     Value::Array(
         names
@@ -224,6 +316,7 @@ fn render(
     approvals: Approvals,
     configured: bool,
     waiting: &[Buildable],
+    attested: &[Attested],
 ) {
     let field = approvals.field().unwrap_or("nothing: it is all or none");
     renderer.key_values(
@@ -263,14 +356,22 @@ fn render(
         .iter()
         .map(|package| package.scripts.join(", "))
         .collect();
-    let mut table = Table::new(vec![
+    // The provenance column is drawn only when the reads happened. A column of
+    // `unknown` on a project that turned them off is a column that says uf did
+    // not look, in a place that reads as uf having looked.
+    let provenance = !attested.is_empty();
+    let mut columns = vec![
         Column::left("package"),
         Column::left("version"),
         Column::left("runs"),
         Column::left("approved"),
-    ]);
-    for (package, scripts) in waiting.iter().take(ROWS_SHOWN).zip(&bodies) {
-        table.push(vec![
+    ];
+    if provenance {
+        columns.push(Column::left("attested"));
+    }
+    let mut table = Table::new(columns);
+    for (index, (package, scripts)) in waiting.iter().take(ROWS_SHOWN).zip(&bodies).enumerate() {
+        let mut cells = vec![
             Cell::new(package.name.as_str()),
             Cell::toned(package.version.as_str(), Tone::Number),
             Cell::toned(scripts, Tone::Muted),
@@ -279,9 +380,24 @@ fn render(
             } else {
                 Cell::toned("no", Tone::Warn)
             },
-        ]);
+        ];
+        if provenance {
+            let state = attested.get(index).unwrap_or(&Attested::Unknown);
+            cells.push(Cell::toned(
+                state.label(),
+                match state {
+                    Attested::Yes(_) => Tone::Good,
+                    // `no` is the common case and not a finding; `mismatch` is
+                    // the one that has to look different from both.
+                    Attested::No | Attested::Unknown => Tone::Muted,
+                    Attested::Mismatch => Tone::Warn,
+                },
+            ));
+        }
+        table.push(cells);
     }
     renderer.table(out, 2, &table);
+    render_origins(renderer, out, waiting, attested);
     if waiting.len() > ROWS_SHOWN {
         renderer.blank(out);
         renderer.status(
@@ -334,6 +450,42 @@ fn render(
         out,
         Status::Info,
         "uf pm approve-builds <name>... records the ones you have read",
+    );
+}
+
+/// Which repository each attested package says built it.
+///
+/// Under the table rather than in it: a repository URL is sixty columns and
+/// would push every other value off the screen, and it is the answer to a
+/// second question — the column says whether to ask it.
+fn render_origins(
+    renderer: &uf_term::Renderer,
+    out: &mut String,
+    waiting: &[Buildable],
+    attested: &[Attested],
+) {
+    let lines: Vec<String> = waiting
+        .iter()
+        .zip(attested)
+        .filter_map(|(package, state)| match state {
+            Attested::Yes(origin) if !origin.is_empty() => {
+                Some(format!("{} built by {origin}", package.name))
+            }
+            Attested::Mismatch => Some(format!(
+                "{} publishes an attestation that is not about this version",
+                package.name
+            )),
+            _ => None,
+        })
+        .collect();
+    if lines.is_empty() {
+        return;
+    }
+    renderer.blank(out);
+    renderer.bullet_list(
+        out,
+        2,
+        &lines.iter().map(String::as_str).collect::<Vec<_>>(),
     );
 }
 
