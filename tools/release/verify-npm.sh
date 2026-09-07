@@ -206,14 +206,49 @@ for name in $packages; do
   specifiers="$specifiers @uniflowed/$name@$version"
 done
 
-# shellcheck disable=SC2086 # deliberate word splitting: one argument per package
-if npm install --no-audit --no-fund $specifiers >"$work/install.log" 2>&1; then
-  echo "  installed $(echo "$packages" | wc -l | tr -d ' ') packages"
-else
-  echo "verify-npm: install failed" >&2
-  tail -20 "$work/install.log" >&2
-  exit 1
-fi
+# Retried, for the same reason step 2 is — and it is a *different* read.
+#
+# Step 2 asks for the version document, `registry.npmjs.org/<name>/<version>`,
+# and every package answered 200. `npm install` resolves through the
+# **packument**, `registry.npmjs.org/<name>`, which is a different object
+# behind a different cache and is updated a moment later. So there is a window
+# where a version exists, is fetchable by URL, and is `ETARGET` to `npm
+# install` — and `uf@0.0.0-alpha.12` landed in it: seventeen packages published,
+# seventeen reported on the registry, and `No matching version found for
+# @uniflowed/core@0.0.0-alpha.12` from the install a second later.
+#
+# A false failure here is worse than no check. This job exists because
+# `uf@0.0.0-alpha.2` had a tag, a GitHub release and nothing on npm and nobody
+# noticed (#142); a job that goes red on a release that worked teaches people
+# to stop reading it, which puts #142 back.
+#
+# `--prefer-online` on the retries, because npm caches the packument it just
+# resolved and would otherwise re-read its own stale copy for the whole
+# retry budget.
+install_delay=2
+freshness=""
+while :; do
+  # shellcheck disable=SC2086 # deliberate word splitting: one argument per package
+  if npm install --no-audit --no-fund $freshness $specifiers >"$work/install.log" 2>&1; then
+    echo "  installed $(echo "$packages" | wc -l | tr -d ' ') packages"
+    break
+  fi
+  left="$(remaining)"
+  if [ "$left" -le 0 ]; then
+    printf 'verify-npm: install kept failing for %ss\n' "$WAIT_SECONDS" >&2
+    tail -20 "$work/install.log" >&2
+    exit 1
+  fi
+  [ "$install_delay" -gt "$left" ] && install_delay="$left"
+  printf '  waiting     %ss; the packument is behind the version document\n' \
+    "$install_delay"
+  sleep "$install_delay"
+  install_delay=$((install_delay * 2))
+  # From the second attempt on. npm caches the packument it just failed to
+  # resolve from, so a plain retry re-reads its own stale copy for the whole
+  # budget and the wait buys nothing.
+  freshness="--prefer-online"
+done
 
 for name in $packages; do
   entry="$work/node_modules/@uniflowed/$name/package.json"
