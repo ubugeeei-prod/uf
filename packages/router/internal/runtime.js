@@ -22,6 +22,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+// The one thing in this module that only a browser can do, and the reason it
+// is imported here rather than from `../client.js`: a view transition needs
+// the DOM updated inside the callback it was handed, and `startTransition`
+// schedules. "View transitions", below, is the argument. Importing `react-dom`
+// costs the server bundle nothing it did not already have — `internal/stream.js`
+// imports `react-dom/server` — and this entry touches no document while it is
+// being evaluated.
+import { flushSync } from "react-dom";
 
 // The id of the script the loader data is embedded in. It moved out of the
 // head and into the tree with ubugeeei-prod/uf#373 — see [`loaderDataScript`]
@@ -95,6 +103,22 @@ export type PageModule = {
     | $ReadOnlyArray<RouteParams>
     | Promise<$ReadOnlyArray<RouteParams>>,
   readonly frontmatter?: { readonly title?: string, readonly description?: string, ... },
+  /**
+   * What a stylesheet calls the transition this route arrives under.
+   *
+   * Not a switch. Every client navigation opts into a view transition where
+   * the browser has one, and this is how one arrival is told from another —
+   * the name reaches CSS as an attribute on the document element for as long
+   * as the transition runs:
+   *
+   *     html[data-uf-view-transition="manual"]::view-transition-old(root) { … }
+   *
+   * A layout may declare one too, and then it covers every route under it; the
+   * page's own wins. That is the rule `metadata` already follows, and there is
+   * no reason for a second one — "the nearest declaration" is how everything
+   * else in a route module is resolved.
+   */
+  readonly viewTransition?: string,
   ...
 };
 
@@ -103,6 +127,8 @@ export type LayoutModule = {
   readonly default?: RouteComponent,
   readonly Layout?: RouteComponent,
   readonly metadata?: Metadata,
+  /** A transition name for every route under this layout; see [`PageModule`]. */
+  readonly viewTransition?: string,
   ...
 };
 
@@ -146,6 +172,41 @@ export type LoadingModule = {
  */
 export type TwitterCard = "summary" | "summary_large_image" | "app" | "player";
 
+/**
+ * What a crawler may do with a page.
+ *
+ * Four fields rather than the whole `robots` vocabulary, and the omissions are
+ * the argument. `index` and `follow` are the two directives a page has an
+ * opinion about; `maxSnippet` and `maxImagePreview` are the two that change
+ * what a result *looks* like and have no other spelling. `nosnippet` is not
+ * here because `maxSnippet: 0` is the same instruction, and a type with two
+ * ways to say one thing is a type somebody will eventually ask which of them
+ * wins.
+ *
+ * Every field is optional and every one is only emitted when it is declared,
+ * because "index, follow" is what a document with no `robots` meta already
+ * says — the tag exists to say something else.
+ */
+export type Robots = {
+  readonly index?: boolean,
+  readonly follow?: boolean,
+  /** The longest snippet a result may quote; `0` is none, `-1` is no limit. */
+  readonly maxSnippet?: number,
+  readonly maxImagePreview?: "none" | "standard" | "large",
+};
+
+/**
+ * One JSON-LD object, as a page hands it over.
+ *
+ * `mixed` values rather than a schema.org type, because there is no useful
+ * middle: the vocabulary is hundreds of types deep, it grows without asking
+ * anyone, and a partial transcription of it would reject correct documents far
+ * more often than it caught wrong ones. What this type does claim is the part
+ * uf is answerable for — that the thing is an object, and therefore that it
+ * serialises into one `<script>`.
+ */
+export type JsonLd = { readonly [string]: mixed };
+
 /** Document metadata a page or layout declares. */
 export type Metadata = {
   readonly title?: string,
@@ -172,6 +233,69 @@ export type Metadata = {
    * under a second section — is one page, and this is how it says so.
    */
   readonly canonical?: string,
+  /**
+   * What a crawler may do with this page. See [`Robots`].
+   *
+   * The one field here that is usually declared on a *layout*: a staging
+   * section, a preview tree or an account area is `index: false` for
+   * everything under it, and saying so once is the only version of that which
+   * stays true when a page is added.
+   */
+  readonly robots?: Robots,
+  /**
+   * The other addresses this same page is published at.
+   *
+   * `languages` maps a BCP 47 tag to that translation's URL and becomes one
+   * `<link rel="alternate" hreflang>` each. The set has to be reciprocal —
+   * every page in it lists every other one *and itself*, which is what makes a
+   * search engine read them as translations rather than as duplicates — so it
+   * is usually the same map on every page of the set, declared on the layout
+   * they share. `"x-default"` is a tag like any other here, and names what a
+   * reader whose language is not in the set should be given.
+   *
+   * Nested under `alternates` rather than sitting at the top level as
+   * `languages`, because `alternate` is the link relation and a language is
+   * only one kind of alternate; the outer name is a fact about the wire rather
+   * than a shape invented here.
+   */
+  readonly alternates?: {
+    readonly languages?: { readonly [string]: string },
+  },
+  /**
+   * The pages either side of this one in a sequence.
+   *
+   * `<link rel="prev">` and `<link rel="next">`, resolved against
+   * `metadataBase` like every other URL here. A page four of a list, and a
+   * chapter in the middle of a manual, are the same statement: this document
+   * is one of a series and here is where the series continues.
+   *
+   * `canonical` still belongs to the page itself. Pointing every page of a
+   * paginated list at page one is the mistake this pair exists to make
+   * unnecessary — it tells a search engine that pages two onwards are
+   * duplicates of page one, and everything only reachable from them stops
+   * being reachable at all.
+   */
+  readonly pagination?: {
+    readonly prev?: string,
+    readonly next?: string,
+  },
+  /**
+   * Structured data, as JSON-LD.
+   *
+   * One `<script type="application/ld+json">` per entry. Unlike everything
+   * else here it *accumulates* down the tree rather than being replaced by the
+   * nearest declaration: an `Organization` on the root layout and an `Article`
+   * on the page are two statements about one page, not two answers to one
+   * question, and replacing would mean a page that describes itself silently
+   * deletes the site's description of itself.
+   *
+   * The scripts are rendered with the rest of the route rather than hoisted
+   * into `<head>`, because React hoists `<title>`, `<meta>` and `<link>` and
+   * not a script it has to keep the body of. JSON-LD is read from anywhere in
+   * the document, so this costs nothing; it is worth knowing when reading the
+   * markup.
+   */
+  readonly jsonLd?: $ReadOnlyArray<JsonLd>,
   readonly openGraph?: {
     /**
      * The title a share card shows.
@@ -406,6 +530,16 @@ export type ResolvedRoute = {|
    */
   readonly deferred: ?Promise<mixed>,
   readonly metadata: Metadata,
+  /**
+   * What a stylesheet calls the transition this route arrives under, or `null`
+   * when neither the page nor a layout above it named one.
+   *
+   * Resolved with the route rather than looked up at the moment of the
+   * navigation, because by then the answer is a property of the destination's
+   * modules and those are exactly what has just been loaded. A server render
+   * carries it and never reads it; see "View transitions".
+   */
+  readonly viewTransition: ?string,
   readonly status: 200 | 401 | 403 | 404 | 500,
   /**
    * Set when this resolution *is* the error page: the loader threw, or the
@@ -845,6 +979,7 @@ async function resolveRoute(
     data,
     deferred,
     metadata,
+    viewTransition: resolveViewTransition(page, layouts),
     status: 200,
     error: null,
     errorBoundary: await boundary,
@@ -1032,6 +1167,10 @@ async function resolveError(
     data: undefined,
     deferred: null,
     metadata: declared.title != null ? declared : { ...declared, title: errorTitle(routeError) },
+    // The boundary's own layouts may name one; the page cannot, because the
+    // page here is this module's. An error arriving under the section's
+    // transition is the same answer as a page arriving under it.
+    viewTransition: resolveViewTransition({}, layouts),
     status: routeErrorStatus(routeError),
     error: routeError,
     // All of the boundary's layouts are above it, and no inner boundary is
@@ -1101,6 +1240,7 @@ async function resolveNotFound(
     data: undefined,
     deferred: null,
     metadata,
+    viewTransition: resolveViewTransition(page, layouts),
     status: 404,
     error: null,
     // A not-found page is a page: one that throws is contained like any other.
@@ -1112,15 +1252,31 @@ async function resolveNotFound(
   };
 }
 
+/**
+ * The route's metadata: each declaration merged over the ones outside it.
+ *
+ * Per key, so a page that declares only `canonical` keeps the title its layout
+ * set — with one exception, and it is deliberate. `jsonLd` is gathered along
+ * the way instead of merged, because a nearer declaration of it is an addition
+ * rather than a correction; [`Metadata`] has the argument.
+ */
 async function resolveMetadata(
   page: PageModule,
   layouts: $ReadOnlyArray<LayoutModule>,
   args: MetadataArgs,
 ): Promise<Metadata> {
   let merged: Metadata = {};
+  let structured: $ReadOnlyArray<JsonLd> = [];
+  const take = (declared: Metadata) => {
+    if (declared.jsonLd != null) {
+      structured = [...structured, ...declared.jsonLd];
+    }
+    merged = { ...merged, ...declared };
+  };
+
   for (const layout of layouts) {
     if (layout.metadata != null) {
-      merged = { ...merged, ...layout.metadata };
+      take(layout.metadata);
     }
   }
   if (page.frontmatter != null) {
@@ -1132,12 +1288,42 @@ async function resolveMetadata(
     };
   }
   if (page.metadata != null) {
-    merged = { ...merged, ...page.metadata };
+    take(page.metadata);
   }
   if (typeof page.generateMetadata === "function") {
-    merged = { ...merged, ...(await page.generateMetadata(args)) };
+    take(await page.generateMetadata(args));
   }
-  return merged;
+  return structured.length === 0 ? merged : { ...merged, jsonLd: structured };
+}
+
+/** A module that may name the transition its route arrives under. */
+type Transitioning = { readonly viewTransition?: string, ... };
+
+/**
+ * What a stylesheet calls this route's arrival: the nearest declaration wins.
+ *
+ * The same walk `resolveMetadata` does one function above, and stated as its
+ * own function rather than folded into that one because the two answer
+ * different questions and only one of them is a document. Layouts are root
+ * first, so overwriting as it descends leaves the innermost, and the page has
+ * the last word.
+ *
+ * The parameters say what is read rather than naming `PageModule` and
+ * `LayoutModule`, which is the shape `nearestBoundary` already takes for the
+ * same reason: this reads one optional field, so requiring the whole of either
+ * type would be a claim it does not need and cannot use.
+ */
+function resolveViewTransition(
+  page: Transitioning,
+  layouts: $ReadOnlyArray<Transitioning>,
+): ?string {
+  let name: ?string = null;
+  for (const layout of layouts) {
+    if (layout.viewTransition != null) {
+      name = layout.viewTransition;
+    }
+  }
+  return page.viewTransition ?? name;
 }
 
 component DefaultNotFound() {
@@ -1302,11 +1488,177 @@ class RouteErrorBoundary extends React.Component<RouteErrorBoundaryProps, RouteE
 }
 
 // ---------------------------------------------------------------------------
+// View transitions
+// ---------------------------------------------------------------------------
+//
+// A client navigation replaces the tree and the browser paints the new one,
+// which is a cut. `document.startViewTransition` is the platform's answer, and
+// it is opt-in per navigation rather than per site — so somebody has to call
+// it, and the somebody is whatever replaced the tree. That is this module.
+// Leaving it to the application would mean every application reimplementing
+// the same four decisions below, and getting the last one wrong.
+//
+// # Why `flushSync` rather than `startTransition`
+//
+// The browser captures the old frame, calls the callback, and waits on the
+// promise the callback returns before capturing the new one. So the callback
+// has to leave the DOM updated, and `startTransition` deliberately does not:
+// it schedules, and returns having changed nothing.
+//
+// The alternative was to hand the browser a promise resolved from a layout
+// effect after the commit, which keeps the render concurrent and can hang: a
+// running view transition blocks input until its callback settles, so a commit
+// React decides not to make — an interrupted transition, an unmounted provider
+// — is a frozen page with no way back. `flushSync` cannot hang.
+//
+// The cost is real and worth stating rather than discovering. Inside a
+// transition the commit is synchronous, so a route that suspends *while
+// rendering* shows its `_uf.loading.js` fallback instead of leaving the
+// previous page up until it resolves. Its modules and its loader are already
+// finished by this point — `resolveMatch` awaited both — so what is left is a
+// component suspending on something else, and it degrades to the fallback the
+// project wrote for exactly that.
+//
+// # Why not React's `<ViewTransition>`
+//
+// It is not in a stable React. This package's peer range is `react >= 19`, and
+// reaching for a component that exists only in an experimental build would
+// turn an animation into a reason a project cannot use the router at all.
+// `startViewTransition` is the same feature one layer down, and it is in the
+// browser rather than in a dependency.
+//
+// # What must not change
+//
+// A browser without `startViewTransition` navigates exactly as it did before
+// any of this. A reader who asked for less motion gets the cut they asked for,
+// without the application having to remember to ask on their behalf. And the
+// server renders nothing about it: a transition is a client-only concern, and
+// the moment one reaches the markup it is a hydration difference instead.
+
+/**
+ * The attribute a running transition's name reaches CSS through.
+ *
+ * On the document element, because that is where the `::view-transition`
+ * pseudo-elements hang and therefore the only element a selector can reach
+ * them from.
+ */
+const VIEW_TRANSITION_ATTRIBUTE = "data-uf-view-transition";
+
+/**
+ * The part of a running transition this module reads.
+ *
+ * One property, because one is what a navigation needs: `finished` settles
+ * when the animation is over, which is when the document may stop saying which
+ * transition is running. `ready` and `updateCallbackDone` are for an
+ * application animating something itself, and a router holding them would be
+ * claiming to know what they were for.
+ */
+type ViewTransition = { readonly finished: Promise<mixed>, ... };
+
+/**
+ * The document, under the one description this module has of it.
+ *
+ * Flow's library definitions have no `startViewTransition` — the API is newer
+ * than they are — and reading it off `any` would leave the one call that
+ * performs a navigation unchecked, where a wrong type is a broken navigation
+ * rather than a broken animation. Optional, because "this browser may not have
+ * it" is the entire point.
+ *
+ * An `interface` rather than an object type, because a `Document` is a class
+ * instance and class instances are not subtypes of object types. `documentElement`
+ * is nullable for the same reason it is in Flow's own libdef: a document parsed
+ * from nothing has no root element.
+ */
+interface ViewTransitionDocument {
+  readonly startViewTransition?: (update: () => mixed) => ViewTransition;
+  readonly documentElement: HTMLElement | null;
+}
+
+/**
+ * Whether the reader has asked for less motion.
+ *
+ * Asked at the moment of the navigation rather than subscribed to, because it
+ * is not a rendered value: nothing re-renders when the preference changes, and
+ * the only question is what to do with the click that just happened.
+ * `usePrefersReducedMotion` in `@uniflowed/hooks` is the rendered form of the
+ * same query and answers a different question.
+ *
+ * `matchMedia` is optional here because a document installed by a test runner
+ * may not have one, and a media query that cannot be asked is not a reason to
+ * fail a navigation.
+ */
+function prefersReducedMotion(): boolean {
+  const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  return query != null && query.matches === true;
+}
+
+/**
+ * Apply `update`, inside a view transition where there is one to be had.
+ *
+ * Two ways out and they are one decision: with no `startViewTransition`, or
+ * with a reader who asked for less motion, this is the `startTransition` the
+ * router did before any of this existed — same commit, same concurrency, no
+ * animation.
+ *
+ * `name` is the route's, and it reaches CSS as an attribute for as long as the
+ * transition runs. The other spelling is the `types` option, which is the
+ * platform's own vocabulary for the same idea and is *newer than
+ * `startViewTransition` itself* — so passing the options object to a browser
+ * that has only the callback form is a `TypeError` thrown out of the call that
+ * performs the navigation. Naming a transition would then need a second and
+ * finer feature detection than the one for having transitions at all, and the
+ * cost of getting that one wrong is the navigation rather than the animation.
+ * One attribute needs no detection and is removed again when the transition
+ * ends.
+ */
+function withViewTransition(name: ?string, update: () => void): void {
+  const owner: ViewTransitionDocument = document;
+  const start = owner.startViewTransition?.bind(owner);
+  if (start == null || prefersReducedMotion()) {
+    startTransition(update);
+    return;
+  }
+
+  const root = owner.documentElement;
+  if (name != null && root != null) {
+    root.setAttribute(VIEW_TRANSITION_ATTRIBUTE, name);
+  }
+  const ended = () => {
+    if (name != null && root != null) {
+      root.removeAttribute(VIEW_TRANSITION_ATTRIBUTE);
+    }
+  };
+  // Both settlements do the same thing, and the rejection is not a failure:
+  // `finished` rejects when the transition is skipped — a second navigation
+  // before this one finished, a tab that went to the background — and a
+  // skipped transition has still ended. Handling it is also what keeps a
+  // routine interruption from being reported as an unhandled rejection.
+  start(() => {
+    flushSync(update);
+  }).finished.then(ended, ended);
+}
+
+// ---------------------------------------------------------------------------
 // The React binding
 // ---------------------------------------------------------------------------
 
 /** How a navigation is performed. */
-export type NavigateOptions = {| readonly replace?: boolean, readonly scroll?: boolean |};
+export type NavigateOptions = {|
+  readonly replace?: boolean,
+  readonly scroll?: boolean,
+  /**
+   * Whether this navigation may animate. Defaults to `true`, which is what
+   * every navigation does.
+   *
+   * `false` is how a caller says this one is a change of state rather than a
+   * change of place — a tab within a page, a filter written into the query
+   * string — and should be a cut. `true` does not *force* one: a browser
+   * without `startViewTransition` and a reader who asked for less motion still
+   * get the cut, because an application able to override the second would
+   * eventually override it.
+   */
+  readonly transition?: boolean,
+|};
 
 /** What `useRouter()` returns. */
 export type Router = {|
@@ -1416,10 +1768,15 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
       } else {
         window.history.pushState(null, "", next + target.hash);
       }
-      startTransition(() => {
+      const commit = () => {
         setResolved(nextResolved);
         setPending(false);
-      });
+      };
+      if (options?.transition === false) {
+        startTransition(commit);
+      } else {
+        withViewTransition(nextResolved.viewTransition, commit);
+      }
       if (options?.scroll !== false) {
         if (target.hash !== "") {
           const element = document.getElementById(target.hash.slice(1));
@@ -1451,7 +1808,10 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
         return;
       }
       resolveMatch(routeTable(), next).then((nextResolved) => {
-        startTransition(() => {
+        // The back button is a navigation, and a navigation that animates in
+        // one direction and cuts in the other would read as a bug in the
+        // animation rather than as a decision.
+        withViewTransition(nextResolved.viewTransition, () => {
           setResolved(nextResolved);
         });
       });
@@ -1489,6 +1849,10 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
           routeTable(),
           window.location.pathname + window.location.search,
         );
+        // No view transition, and it is the one place that is right: a refresh
+        // is the same URL resolved again, so a transition would animate a page
+        // into itself — a cross-fade between two frames of the same thing,
+        // which is a flicker with a name.
         startTransition(() => {
           setResolved(nextResolved);
         });
@@ -1855,9 +2219,83 @@ function absoluteUrl(value: string, base: void | string): string {
   }
 }
 
+/**
+ * The `robots` directives, as one `content` string, or `null` for none.
+ *
+ * `null` rather than an empty string, so a page that declared nothing gets no
+ * tag at all: "index, follow" is what a document with no `robots` meta already
+ * means, and writing it out tells a crawler what it had already assumed.
+ *
+ * Each declared field contributes its directive and no field implies another.
+ * `index: true` therefore emits `index` rather than nothing — the value is
+ * there to overrule a section that said otherwise, and a directive that
+ * disappeared because it agreed with the default would be a page saying
+ * something and no evidence of it in the markup.
+ */
+function robotsContent(robots: void | Robots): ?string {
+  if (robots == null) {
+    return null;
+  }
+  const directives: Array<string> = [];
+  if (robots.index != null) {
+    directives.push(robots.index ? "index" : "noindex");
+  }
+  if (robots.follow != null) {
+    directives.push(robots.follow ? "follow" : "nofollow");
+  }
+  if (robots.maxSnippet != null) {
+    directives.push(`max-snippet:${robots.maxSnippet}`);
+  }
+  if (robots.maxImagePreview != null) {
+    directives.push(`max-image-preview:${robots.maxImagePreview}`);
+  }
+  return directives.length === 0 ? null : directives.join(", ");
+}
+
+/**
+ * One JSON-LD object as the text of a `<script>`.
+ *
+ * `<` is escaped so a string inside the data holding `</script>` cannot end
+ * the element early — the same escape `server.js` applies to the embedded
+ * loader data, and for the same reason: the text is the application's and the
+ * element it lands in is terminated by a character sequence rather than by a
+ * length. `dataScript` also escapes U+2028 and U+2029; those are about a
+ * string being parsed as JavaScript source, and this one never is.
+ */
+function jsonLdText(entry: JsonLd): string {
+  return JSON.stringify(entry).replace(/</g, "\\u003c");
+}
+
+/**
+ * One JSON-LD object, as the element that carries it.
+ *
+ * A function rather than an element written inline, because the suppression
+ * needs a line of its own; `docs/app/_uf.layout.js` has the same shape for the
+ * same reason. `security/no-dangerously-set-inner-html` is about markup that
+ * came from somewhere and has to be sanitized before a browser parses it as
+ * HTML, and its escape hatch is a `@uniflowed/markdown` sanitizer — the right
+ * answer for markup and no answer at all for JSON. This string is
+ * `JSON.stringify`'s output with `<` escaped, so nothing in it can close the
+ * element, and it is never parsed as HTML. There is also no other spelling:
+ * React escapes a text child, so `{"@type":"Article"}` would reach the page as
+ * `&quot;@type&quot;`, which is not JSON-LD any more.
+ */
+function jsonLdScript(entry: JsonLd): React.Node {
+  const text = jsonLdText(entry);
+  const html = { __html: text };
+  // uf-lint-disable-next-line security/no-dangerously-set-inner-html
+  return <script key={text} type="application/ld+json" dangerouslySetInnerHTML={html} />;
+}
+
 component Head(metadata: Metadata) {
-  const { title, description, metadataBase, canonical, openGraph, twitter } = metadata;
+  const { title, description, metadataBase, canonical, robots } = metadata;
+  const { alternates, pagination, jsonLd, openGraph, twitter } = metadata;
   const href = canonical != null ? absoluteUrl(canonical, metadataBase) : null;
+  const crawler = robotsContent(robots);
+  // Read out of `alternates` once rather than through it at every use: the map
+  // is read inside a callback, and a refinement of `alternates.languages` does
+  // not survive being carried into one.
+  const languages = alternates?.languages;
   // A page that said what it is called has said what its card is called. Every
   // site that had to write both wrote the same string twice, and the second
   // one is the one that goes stale — the docs site shipped thirty pages whose
@@ -1880,7 +2318,33 @@ component Head(metadata: Metadata) {
     <>
       {title != null ? <title>{title}</title> : null}
       {description != null ? <meta name="description" content={description} /> : null}
+      {crawler != null ? <meta name="robots" content={crawler} /> : null}
       {href != null ? <link rel="canonical" href={href} /> : null}
+      {/* The set is reciprocal and includes this page, so a `hreflang` list is
+          usually the same list on every page of it — which is why it belongs
+          on the layout they share rather than on each of them.
+
+          `hrefLang` is React's spelling and it reaches the markup unchanged,
+          which is worth knowing before grepping a document for `hreflang` and
+          concluding it is missing. HTML attribute names are case-insensitive,
+          so the parser every crawler runs reads it as the same attribute; the
+          lowercase spelling is the one React warns about. */}
+      {languages != null
+        ? Object.keys(languages).map((language) => (
+            <link
+              key={language}
+              rel="alternate"
+              hrefLang={language}
+              href={absoluteUrl(languages[language], metadataBase)}
+            />
+          ))
+        : null}
+      {pagination?.prev != null ? (
+        <link rel="prev" href={absoluteUrl(pagination.prev, metadataBase)} />
+      ) : null}
+      {pagination?.next != null ? (
+        <link rel="next" href={absoluteUrl(pagination.next, metadataBase)} />
+      ) : null}
       {/* `og:url` *is* the canonical URL of the page, in Open Graph's own
           words, so one declaration answers both rather than asking a project
           to write the same URL twice and keep them in step. */}
@@ -1927,8 +2391,53 @@ component Head(metadata: Metadata) {
       {twitterImageAlt != null && twitter?.images != null ? (
         <meta name="twitter:image:alt" content={twitterImageAlt} />
       ) : null}
+      {/* Last, and not hoisted into `<head>` with the rest: React hoists a
+          `<title>`, a `<meta>` and a `<link>`, and not a script whose body it
+          would have to carry. JSON-LD is read from anywhere in the document,
+          so these render where the route does. */}
+      {jsonLd != null ? jsonLd.map(jsonLdScript) : null}
     </>
   );
+}
+
+/**
+ * Head elements a component contributes while it is rendering.
+ *
+ * `metadata` and `generateMetadata` are how a *route* says what it is, and
+ * both are resolved before anything renders — which is what makes them work
+ * for a crawler that runs no JavaScript. They are also declarations by the
+ * route module, and part of what a page has to say is decided further in: a
+ * paginated list knows its `prev` and `next` in the component that draws the
+ * pager, and a breadcrumb knows the trail it has just walked.
+ *
+ * So this returns elements rather than writing to the head. Writing would have
+ * to happen in an effect, an effect does not run on a server, and the result
+ * would be a page whose tags are right in a browser and missing from the
+ * crawler — `packages/web/head.js` is that escape hatch and says so at the top
+ * of the file. Rendering is what puts a tag in a server-rendered head, so the
+ * caller renders what comes back:
+ *
+ *     export component Pager(page: number, of: number) {
+ *       const seo = useSeo({
+ *         pagination: {
+ *           prev: page > 1 ? `/posts?page=${page - 1}` : undefined,
+ *           next: page < of ? `/posts?page=${page + 1}` : undefined,
+ *         },
+ *       });
+ *       return <nav className="pager">{seo}…</nav>;
+ *     }
+ *
+ * The argument is a `Metadata` — the same type a route exports — because there
+ * is one vocabulary for what a page says about itself, and a second one would
+ * be a second place for it to be wrong. What this adds over rendering the tags
+ * by hand is the thing a component three levels down cannot know:
+ * `metadataBase`, which the root layout declared, and against which the
+ * relative URLs written here are resolved.
+ */
+export hook useSeo(seo: Metadata): React.Node {
+  const { resolved } = useRouterState();
+  const base = seo.metadataBase ?? resolved.metadata.metadataBase;
+  return <Head metadata={base == null ? seo : { ...seo, metadataBase: base }} />;
 }
 
 /** When a `Link` loads the route it points at. */
@@ -1939,12 +2448,15 @@ export type LinkPrefetch = "off" | "intent" | "render";
  *
  * Renders a real anchor, so the link works before hydration and for a right
  * click, and takes over only a plain left click. `prefetch="intent"` (the
- * default) loads the destination's chunks on hover or focus.
+ * default) loads the destination's chunks on hover or focus, and
+ * `transition={false}` makes this one navigation a cut — most navigations are
+ * a link, so the opt-out in [`NavigateOptions`] has to be reachable from one.
  */
 export component Link(
   to: string,
   prefetch?: LinkPrefetch = "intent",
   replace?: boolean = false,
+  transition?: boolean = true,
   children?: React.Node,
   className?: string,
   onClick?: (event: SyntheticMouseEvent<HTMLAnchorElement>) => mixed,
@@ -1983,7 +2495,7 @@ export component Link(
       return;
     }
     event.preventDefault();
-    router.push(to, { replace }).catch((error) => {
+    router.push(to, { replace, transition }).catch((error) => {
       // A failed navigation falls back to the browser doing it.
       console.error(error);
       window.location.assign(to);

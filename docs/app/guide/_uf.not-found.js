@@ -16,11 +16,16 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+import type { Metadata } from "@uniflowed/router";
 
 import { Eyebrow, Lede } from "../_design/parts.js";
 import { sections } from "../_design/nav.js";
 
-export const metadata: {| readonly title: string |} = { title: "No such page · uf" };
+/** `noindex` for the reason the site's root 404 gives. */
+export const metadata: Metadata = {
+  title: "No such page · uf",
+  robots: { index: false, follow: false },
+};
 
 export default component GuideNotFound() {
   return (
