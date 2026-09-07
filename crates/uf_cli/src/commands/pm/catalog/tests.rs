@@ -41,7 +41,10 @@ fn an_entry_is_a_package_more_than_one_manifest_declares() {
 
     assert_eq!(catalogue.entries.len(), 1);
     assert_eq!(catalogue.entries[0].name, "react");
-    assert_eq!(catalogue.entries[0].agreed().map(CompactString::as_str), Some("^18.2.0"));
+    assert_eq!(
+        catalogue.entries[0].agreed().map(CompactString::as_str),
+        Some("^18.2.0")
+    );
 }
 
 /// The bug a catalogue exists to prevent, and the one nothing else reports.
@@ -57,9 +60,15 @@ fn manifests_that_disagree_are_the_finding() {
 
     let out = drawn(&catalogue);
     assert!(out.contains("disagreements"), "{out}");
-    assert!(out.contains("differs"), "the shared table hid the finding: {out}");
+    assert!(
+        out.contains("differs"),
+        "the shared table hid the finding: {out}"
+    );
     assert!(out.contains("^9.0.0") && out.contains("^8.57.0"), "{out}");
-    assert!(out.contains("1 package declared at more than one range"), "{out}");
+    assert!(
+        out.contains("1 package declared at more than one range"),
+        "{out}"
+    );
     assert!(out.contains("uf catalog set eslint <range>"), "{out}");
 }
 
@@ -89,7 +98,10 @@ fn a_workspace_that_agrees_says_so_rather_than_printing_an_empty_section() {
 
     let out = drawn(&catalogue(&declared));
 
-    assert!(out.contains("1 package shared, and every manifest agrees"), "{out}");
+    assert!(
+        out.contains("1 package shared, and every manifest agrees"),
+        "{out}"
+    );
     assert!(!out.contains("disagreements"), "{out}");
 }
 
@@ -104,7 +116,10 @@ fn one_manifest_is_not_a_workspace_with_nothing_shared() {
 
     let out = drawn(&catalogue(&declared));
 
-    assert!(out.contains("nothing for a catalogue to keep in step"), "{out}");
+    assert!(
+        out.contains("nothing for a catalogue to keep in step"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -135,7 +150,10 @@ fn pnpms_own_catalog_is_reported_rather_than_reinterpreted() {
     assert_eq!(catalogue.pnpm_catalog, 3);
 
     let out = drawn(&catalogue);
-    assert!(out.contains("3 declarations written as pnpm's `catalog:`"), "{out}");
+    assert!(
+        out.contains("3 declarations written as pnpm's `catalog:`"),
+        "{out}"
+    );
     assert!(out.contains("pnpm resolves itself"), "{out}");
 }
 

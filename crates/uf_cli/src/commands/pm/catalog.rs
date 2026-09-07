@@ -43,6 +43,8 @@
 //! as a range it does not rewrite, reports how many there are, and leaves
 //! pnpm to resolve them, because pnpm can.
 
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{CompactString, ToCompactString};
@@ -66,7 +68,10 @@ const ROWS_SHOWN: usize = 40;
 pub(crate) fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let resolved = load_config(cwd)?;
     let project = project_label(&resolved.root).to_string();
-    let entries = entries(&resolved.root, &uf_pm::manifests::declarations(&resolved.root)?);
+    let entries = entries(
+        &resolved.root,
+        &uf_pm::manifests::declarations(&resolved.root)?,
+    );
 
     ui.render(|renderer, out| {
         renderer.banner(out, "uf catalog", Some(&project));
@@ -109,7 +114,7 @@ pub(crate) fn set(
     }
 
     let mut moving: Vec<(String, CompactString)> = Vec::new();
-    let mut changes: FxHashMap<Utf8PathBuf, Changes> = FxHashMap::default();
+    let mut changes: BTreeMap<Utf8PathBuf, Changes> = BTreeMap::new();
     for declaration in &affected {
         if declaration.range == range {
             continue;
@@ -179,10 +184,11 @@ pub(crate) fn set(
         return Ok(());
     }
 
-    for (manifest, changes) in &changes {
-        uf_pm::manifests::apply(manifest, changes)
-            .with_context(|| format!("could not rewrite {}", relative(&resolved.root, manifest)))?;
-    }
+    // All of them or none. A failure part way through would leave the very thing
+    // this command exists to prevent — some manifests on the new range and some
+    // on the old — and then install it. See `uf_pm::manifests::apply_all`.
+    uf_pm::manifests::apply_all(&changes)
+        .with_context(|| format!("could not rewrite {}", project_label(&resolved.root)))?;
     ui.render(|renderer, out| {
         renderer.status(out, Status::Success, &format!("wrote {summary}"));
         renderer.blank(out);
@@ -245,10 +251,10 @@ fn entries(root: &Utf8Path, declared: &[Declaration]) -> Catalogue {
         if declaration.range.starts_with("catalog:") {
             pnpm_catalog += 1;
         }
-        by_name
-            .entry(declaration.name.clone())
-            .or_default()
-            .push((relative(root, &declaration.manifest), declaration.range.clone()));
+        by_name.entry(declaration.name.clone()).or_default().push((
+            relative(root, &declaration.manifest),
+            declaration.range.clone(),
+        ));
     }
 
     let mut entries: Vec<Entry> = by_name
