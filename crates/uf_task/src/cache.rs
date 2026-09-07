@@ -52,8 +52,17 @@
 //! defensively: bounded in bytes, required to declare the version this crate
 //! understands, and required to restate the task and key they are filed under.
 //!
-//! Nothing evicts entries. That is the same gap `.uf/cache/check` and
-//! `.uf/cache/transform` have, and #218 holds the question for all three.
+//! Entries are evicted by [`TaskCache::sweep`], which is the same byte bound
+//! and the same least-recently-used order the other two caches use — see
+//! [`uf_infra::cache`] for the policy and the argument behind it. #218 asked
+//! the question for all three at once, and one answer is the point: three
+//! caches with the same shape must not grow three eviction policies a reader
+//! has to learn separately.
+//!
+//! The `last/` notes are outside it. A sweep only looks at files directly in
+//! the directory, so they are neither counted nor removed: there is one per
+//! task, each rewritten in place, so they are not what grows — and evicting
+//! one would take away `--why`'s answer to save a kilobyte.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -236,6 +245,20 @@ impl TaskCache {
                 .join("task")
                 .into_std_path_buf(),
         }
+    }
+
+    /// Bring the directory back under its byte bound, coldest entries first.
+    ///
+    /// Separate from [`TaskCache::open`] because opening is documented as
+    /// touching no disk and must stay that way: removing files is not
+    /// something that should happen because somebody constructed a value. A
+    /// caller about to run tasks asks for this in as many words, once per run,
+    /// where one `read_dir` is invisible beside spawning a command.
+    ///
+    /// Shared with `.uf/cache/check` and `.uf/cache/transform`; the policy is
+    /// [`uf_infra::cache`]'s.
+    pub fn sweep(&self) {
+        uf_infra::cache::sweep(&self.directory, uf_infra::cache::CacheBound::default());
     }
 
     /// The record filed under `key` for `task`, if there is a readable one.
