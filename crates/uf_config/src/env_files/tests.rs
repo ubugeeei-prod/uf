@@ -427,7 +427,7 @@ fn the_mode_comes_from_the_flag_then_the_profile_then_the_config() {
         "staging"
     );
 
-    std::fs::create_dir_all(path.join(".uniflowed")).unwrap();
+    std::fs::create_dir_all(path.join(".uf")).unwrap();
     std::fs::write(path.join(PROFILE_FILE), "review\n").unwrap();
     assert_eq!(
         resolve_mode(&path, &config, None, "production").unwrap(),
@@ -659,4 +659,26 @@ fn apply_over_takes_an_inherited_marker_off_the_command() {
         written.get("API"),
         Some(&Some(String::from("from the task")))
     );
+}
+
+/// A profile an older uf wrote is still read.
+///
+/// `uf env use` wrote `.uniflowed/profile` and writes `.uf/profile` now. A
+/// project that has not run `uf env install` since has only the old one, and
+/// falling back to the default there would put it on a different set of
+/// `.env` files without saying so.
+#[test]
+fn a_profile_at_the_old_path_is_read_until_the_new_one_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8Path::from_path(dir.path()).unwrap();
+
+    std::fs::create_dir_all(path.join(".uniflowed")).unwrap();
+    std::fs::write(path.join(LEGACY_PROFILE_FILE), "review\n").unwrap();
+    assert_eq!(active_profile(path).unwrap().as_deref(), Some("review"));
+
+    // The new one wins once it is there, so a `uf env use` after the move is
+    // not overruled by what it replaced.
+    std::fs::create_dir_all(path.join(".uf")).unwrap();
+    std::fs::write(path.join(PROFILE_FILE), "staging\n").unwrap();
+    assert_eq!(active_profile(path).unwrap().as_deref(), Some("staging"));
 }

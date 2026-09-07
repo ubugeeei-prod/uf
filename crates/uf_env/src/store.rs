@@ -177,7 +177,7 @@ impl Store {
 }
 
 /// `$XDG_DATA_HOME`, or `$HOME/.local/share`.
-fn data_home() -> Result<Utf8PathBuf, EnvError> {
+pub(crate) fn data_home() -> Result<Utf8PathBuf, EnvError> {
     if let Some(xdg) = env_path("XDG_DATA_HOME") {
         return Ok(xdg);
     }
@@ -195,7 +195,7 @@ pub(crate) fn state_home() -> Result<Utf8PathBuf, EnvError> {
 }
 
 /// A non-empty environment variable, as a path.
-fn env_path(name: &str) -> Option<Utf8PathBuf> {
+pub(crate) fn env_path(name: &str) -> Option<Utf8PathBuf> {
     let value = std::env::var(name).ok()?;
     (!value.trim().is_empty()).then(|| Utf8PathBuf::from(value))
 }

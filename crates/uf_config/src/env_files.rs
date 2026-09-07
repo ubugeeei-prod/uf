@@ -90,10 +90,19 @@ pub const DEFAULT_CLIENT_PREFIX: &str = "VITE_";
 
 /// Where `uf env use` writes the profile, relative to the project root.
 ///
-/// `.uniflowed/profile` rather than `.uniflowed/env`, which is the directory
-/// `uf env install` links this project's toolchain into — the two halves of
-/// `uf env` used to claim the same path, so whichever ran second failed.
-pub const PROFILE_FILE: &str = ".uniflowed/profile";
+/// Under `.uf/`, which is the one directory uf keeps per-project state in and
+/// the one every `.gitignore` in a uf project already has. It was
+/// `.uniflowed/profile`, beside a `.uniflowed/env/` full of symlinks that is
+/// not project state at all and now lives beside the store — so a project had
+/// two uf directories, one of them ignored and one of them not.
+pub const PROFILE_FILE: &str = ".uf/profile";
+
+/// Where an older uf wrote it.
+///
+/// Read when [`PROFILE_FILE`] is absent, and moved by `uf env install`, so a
+/// project that upgrades keeps the profile it chose rather than silently
+/// falling back to the default.
+pub const LEGACY_PROFILE_FILE: &str = ".uniflowed/profile";
 
 /// The variable naming what a uf process put in its child's environment.
 ///
@@ -488,14 +497,28 @@ pub fn resolve_mode(
 ///
 /// When the file exists and cannot be read.
 pub fn active_profile(root: &Utf8Path) -> Result<Option<String>, EnvFileError> {
-    let path = root.join(PROFILE_FILE);
-    match fs::read_to_string(&path) {
+    // The old location is read when the new one is absent, so a project that
+    // has not run `uf env install` since the move keeps the profile it chose.
+    // `uf env install` moves it; until then this is what makes the two
+    // locations one answer.
+    match read_profile(&root.join(PROFILE_FILE))? {
+        Some(name) => Ok(Some(name)),
+        None => read_profile(&root.join(LEGACY_PROFILE_FILE)),
+    }
+}
+
+/// One profile file, or [`None`] when it is absent or says nothing.
+fn read_profile(path: &Utf8Path) -> Result<Option<String>, EnvFileError> {
+    match fs::read_to_string(path) {
         Ok(text) => {
             let name = text.trim().to_owned();
             Ok((!name.is_empty()).then_some(name))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(source) => Err(EnvFileError::Io { path, source }),
+        Err(source) => Err(EnvFileError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
     }
 }
 

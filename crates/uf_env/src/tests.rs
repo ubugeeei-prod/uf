@@ -219,11 +219,12 @@ fn linking_replaces_what_the_repository_had() {
     install(&old, &["node", "npx"]);
     install(&new, &["node", "npx"]);
 
-    project::link(&project, &store, std::slice::from_ref(&old)).unwrap();
-    let bin = project::bin_dir(&project);
+    let envs = project::Envs::new(root.join("envs"));
+    project::link(&project, &envs, &store, std::slice::from_ref(&old)).unwrap();
+    let bin = envs.bin_dir(&project);
     assert!(bin.join("node").exists());
 
-    project::link(&project, &store, std::slice::from_ref(&new)).unwrap();
+    project::link(&project, &envs, &store, std::slice::from_ref(&new)).unwrap();
     assert_eq!(
         std::fs::read_link(bin.join("node").as_std_path())
             .unwrap()
@@ -242,7 +243,8 @@ fn linking_something_that_is_not_installed_refuses() {
     let project = root.join("project");
     std::fs::create_dir_all(&project).unwrap();
 
-    let error = project::link(&project, &store, &[node("24.14.0")]).unwrap_err();
+    let envs = project::Envs::new(root.join("envs"));
+    let error = project::link(&project, &envs, &store, &[node("24.14.0")]).unwrap_err();
     assert!(matches!(error, EnvError::NotInstalled { .. }), "{error:?}");
 }
 
@@ -349,4 +351,88 @@ fn a_source_is_where_its_publisher_puts_it() {
         source.archive, "https://registry.npmjs.org/pnpm/-/pnpm-9.15.0.tgz",
         "a package manager is an npm package"
     );
+}
+
+/// The links are not in the project, and are still the project's.
+///
+/// The property `.uniflowed/env` had — two checkouts on different versions
+/// sitting beside each other with neither of them "active" — has to survive
+/// the move, and it is the only reason the directory was in the project.
+#[test]
+fn two_checkouts_get_two_directories_and_neither_is_in_a_project() {
+    let (_guard, root) = temp();
+    let envs = project::Envs::new(root.join("envs"));
+    let one = root.join("checkout-one");
+    let two = root.join("checkout-two");
+    std::fs::create_dir_all(&one).unwrap();
+    std::fs::create_dir_all(&two).unwrap();
+
+    assert_ne!(envs.dir_for(&one), envs.dir_for(&two));
+    assert!(envs.dir_for(&one).starts_with(envs.root()));
+    assert!(
+        !envs.dir_for(&one).starts_with(&one),
+        "it is in the project"
+    );
+}
+
+/// And the same project twice is the same directory, however it is spelled.
+#[test]
+fn one_project_is_one_directory_however_the_path_is_written() {
+    let (_guard, root) = temp();
+    let envs = project::Envs::new(root.join("envs"));
+    let project = root.join("checkout");
+    std::fs::create_dir_all(&project).unwrap();
+
+    assert_eq!(envs.dir_for(&project), envs.dir_for(&project.join(".")));
+}
+
+/// The name is in it, because a person looking at the directory has to be
+/// able to tell which checkout is which.
+#[test]
+fn the_directory_carries_the_projects_own_name() {
+    let (_guard, root) = temp();
+    let envs = project::Envs::new(root.join("envs"));
+    let project = root.join("my-site");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let name = envs.dir_for(&project);
+    let name = name.file_name().unwrap();
+    assert!(name.starts_with("my-site-"), "{name}");
+}
+
+/// A `.uniflowed` an older uf left is removed, in both shapes it had.
+///
+/// The file is ubugeeei-prod/uf#427: `uf env use` used to write one there, and
+/// a leftover stops `uf env install` outright.
+#[test]
+fn a_directory_from_an_older_uf_is_removed_whichever_shape_it_is() {
+    let (_guard, root) = temp();
+
+    let as_directory = root.join("a");
+    std::fs::create_dir_all(as_directory.join(".uniflowed/env/bin")).unwrap();
+    assert!(project::migrate_legacy_dir(&as_directory));
+    assert!(!as_directory.join(".uniflowed").exists());
+
+    // The profile in it is a decision somebody made, and is moved rather
+    // than removed with the links.
+    let with_profile = root.join("p");
+    std::fs::create_dir_all(with_profile.join(".uniflowed")).unwrap();
+    std::fs::write(with_profile.join(".uniflowed/profile"), "review\n").unwrap();
+    assert!(project::migrate_legacy_dir(&with_profile));
+    assert_eq!(
+        std::fs::read_to_string(with_profile.join(".uf/profile")).unwrap(),
+        "review\n"
+    );
+    assert!(!with_profile.join(".uniflowed").exists());
+
+    let as_file = root.join("b");
+    std::fs::create_dir_all(&as_file).unwrap();
+    std::fs::write(as_file.join(".uniflowed"), "default\n").unwrap();
+    assert!(project::migrate_legacy_dir(&as_file));
+    assert!(!as_file.join(".uniflowed").exists());
+
+    // And a project that never had one is not a failure.
+    let clean = root.join("c");
+    std::fs::create_dir_all(&clean).unwrap();
+    assert!(!project::migrate_legacy_dir(&clean));
 }
