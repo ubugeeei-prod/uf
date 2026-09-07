@@ -58,9 +58,12 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import type { Logger } from "./internal/log.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -386,25 +389,61 @@ async function statFile(file: string) {
  * `app.runMiddleware`: an optional lifecycle is a lifecycle somebody forgets,
  * and what is lost when they do is every `after()` in the application.
  *
- * A handler that throws is answered with a bare 500 and reported on stderr:
+ * A handler that throws is answered with a bare 500 and reported to the logger:
  * the body must not carry the stack, because the body goes to whoever asked,
- * and stderr is where the operator is already looking. The drain is in a
+ * and the log is where the operator is already looking. The drain is in a
  * `finally` below the `catch`, so a middleware that logged the request sees its
  * callback run once that 500 is on the wire rather than once the handler gave
  * up — and a request that failed is still a request that happened, which is why
  * it is drained at all.
+ *
+ * # The access line
+ *
+ * One line per request, written after the response and never before it, because
+ * the two things worth knowing — what it answered and how long it took — are
+ * only true then. It carries the route that matched rather than only the path,
+ * which is the point of ubugeeei-prod/uf#506 and the reason this reads
+ * `lifecycle.context` at the end: the route is not known when the request
+ * begins, and by here whichever of the dispatcher and the renderer claimed it
+ * has said so. `@uniflowed/server/log`'s `logRequest` decides the level and the
+ * field names, so every host says it the same way.
+ *
+ * A request whose bytes were not a request Node could parse never reaches this
+ * function at all; that one is `clientError` in [`serve`], which is the half of
+ * ubugeeei-prod/uf#405 that had nowhere to be reported.
  */
 export function nodeListener(
   handle: (request: Request) => Promise<Response>,
   options: {|
     readonly beginRequest: (request: Request) => RequestLifecycle,
     readonly secure?: boolean,
+    /**
+     * Where this listener's lines go. The process logger by default.
+     *
+     * Passed rather than only installed globally because a host that runs two
+     * servers in one process — `uf preview` beside a test harness — has a
+     * reason to tell them apart, and because a test that wants silence should
+     * not have to reach for a global to get it.
+     */
+    readonly log?: Logger,
   |},
 ): (incoming: NodeRequest, outgoing: NodeResponse) => Promise<void> {
   return async function listener(incoming: NodeRequest, outgoing: NodeResponse): Promise<void> {
     // Declared out here because `toRequest` is inside the `try`: a request that
     // could not even be built has no lifecycle to settle.
     let lifecycle: RequestLifecycle | null = null;
+    // Resolved once rather than at each of the two places that write a line.
+    // One request leaves one account of itself, and a process logger installed
+    // halfway through this one would otherwise split it across two sinks.
+    const log = options.log ?? processLogger();
+    // uf's clock, not the host's: `@uniflowed/server/log`'s `elapsedMs` reads
+    // the same one at the other end, so what is measured here is one seam's
+    // idea of the time rather than two calls to a global.
+    const started = Temporal.Now.instant();
+    // The path, before anything can fail. A request that could not be built has
+    // no `URL` to take one from, and a line saying nothing about which request
+    // it was would be the state ubugeeei-prod/uf#405 describes.
+    const target = incoming.originalUrl ?? incoming.url ?? "/";
     try {
       const request = toRequest(incoming, options);
       lifecycle = options.beginRequest(request);
@@ -412,7 +451,10 @@ export function nodeListener(
         await send(outgoing, await handle(request));
       });
     } catch (error) {
-      console.error(error);
+      // `error` is a field rather than part of the message: an exception's text
+      // is the varying half of what happened, and a logger that interpolated it
+      // would produce a million distinct messages for one fault.
+      log.error("request failed", { error, path: pathOf(target) });
       if (outgoing.headersSent) {
         outgoing.destroy();
       } else {
@@ -421,9 +463,42 @@ export function nodeListener(
         outgoing.end("500 Internal Server Error\n");
       }
     } finally {
+      logRequest(log, {
+        // A request that never got a context still gets a line; it gets an
+        // empty id rather than a fabricated one, because inventing an id for a
+        // request that had none would put a value in the log that nothing else
+        // in the system has ever seen.
+        requestId: lifecycle?.context.id ?? "",
+        method: (incoming.method ?? "GET").toUpperCase(),
+        path: pathOf(target),
+        route: lifecycle?.context.route ?? null,
+        status: outgoing.statusCode,
+        durationMs: elapsedMs(started),
+      });
       if (lifecycle != null) await lifecycle.settle();
     }
   };
+}
+
+/**
+ * The path half of a request target, with the query string dropped.
+ *
+ * Not `new URL(...).pathname`: this runs on whatever bytes arrived, including
+ * the ones that are not a URL at all, and a constructor that throws in the
+ * `finally` of a failed request would replace one fault with another. A cut at
+ * the first `?` or `#` is all that is needed, and `@uniflowed/server/log` says
+ * why the rest must not be logged.
+ *
+ * Two `indexOf` calls rather than one small regular expression, because
+ * `docs/security.md` rule 5 is about the whole class and not about whether this
+ * particular pattern could backtrack. A scan that is obviously linear needs no
+ * argument.
+ */
+function pathOf(target: string): string {
+  const query = target.indexOf("?");
+  const fragment = target.indexOf("#");
+  if (query === -1) return fragment === -1 ? target : target.slice(0, fragment);
+  return target.slice(0, fragment === -1 ? query : Math.min(query, fragment));
 }
 
 /**
@@ -457,6 +532,21 @@ export function createServeHandler(options: {|
  * wrapper script everywhere it ran. The command line wins over both, and the
  * default address is every interface: a container that bound loopback would be
  * a container nothing outside it can reach.
+ *
+ * # The request that never became one
+ *
+ * `clientError` is the other half of ubugeeei-prod/uf#405. Bytes that Node's
+ * own parser refuses never reach a listener, so nothing above this function can
+ * know about them: the runtime answers `400 Bad Request`, closes the socket,
+ * and — with no handler attached — says so to nobody. An operator whose client
+ * is sending a header Node will not accept sees a failing request and an empty
+ * terminal, which is the worst combination a server can offer.
+ *
+ * The handler below writes the same 400 the default one does, because replacing
+ * the default means taking over its job as well as adding to it, and then
+ * records what happened at `warn`. `warn` rather than `error` for the reason
+ * `logRequest` uses the status for the level: a malformed request is somebody
+ * else's mistake far more often than it is this server's.
  */
 export async function serve(options: {|
   readonly staticDir: string,
@@ -471,17 +561,33 @@ export async function serve(options: {|
   readonly beginRequest: (request: Request) => RequestLifecycle,
   readonly host?: string,
   readonly port?: number,
+  /** Where this server's lines go. The process logger by default. */
+  readonly log?: Logger,
 |}): Promise<{|
   readonly host: string,
   readonly port: number,
   readonly close: () => Promise<void>,
 |}> {
+  const log = options.log ?? processLogger();
   const listener = nodeListener(
     createServeHandler({ staticDir: options.staticDir, handle: options.handle }),
-    { beginRequest: options.beginRequest },
+    { beginRequest: options.beginRequest, log },
   );
   const server = createServer((request, response) => {
     void listener(request, response);
+  });
+  server.on("clientError", (error, socket) => {
+    // `error.code` and nothing else. Node puts the offending bytes on
+    // `error.rawPacket`, and those are whatever the client sent — the one thing
+    // `@uniflowed/server/log` exists to keep out of a log line.
+    log.warn("malformed request", { code: errorCode(error) });
+    // A socket that is already gone, or one whose error was a timeout Node has
+    // handled itself, must not be written to; the check is the one Node's own
+    // documentation gives for replacing this handler.
+    if (errorCode(error) === "ECONNRESET" || socket.writableEnded) {
+      return;
+    }
+    socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
   });
 
   const host = options.host ?? argument("--host") ?? process.env.HOST ?? "0.0.0.0";
@@ -515,4 +621,19 @@ export async function serve(options: {|
 function argument(name: string): string | null {
   const at = process.argv.indexOf(name);
   return at === -1 ? null : (process.argv[at + 1] ?? null);
+}
+
+/**
+ * The `code` of a Node error, as a string, or `unknown`.
+ *
+ * A named helper because the alternative at the two call sites above is a cast:
+ * `clientError` hands over an `Error`, and the `code` every Node error in fact
+ * carries is not on that type.
+ */
+function errorCode(error: mixed): string {
+  if (error != null && typeof error === "object") {
+    const code = error.code;
+    if (typeof code === "string") return code;
+  }
+  return "unknown";
 }

@@ -264,6 +264,8 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "cookies",
                 "draftMode",
                 "headers",
+                "logger",
+                "requestId",
             ],
         ),
         NativeModule::new(
@@ -836,10 +838,12 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &[
                 "Accordion",
                 "AlertDialog",
+                "Calendar",
                 "Carousel",
                 "Checkbox",
                 "Collapsible",
                 "Combobox",
+                "DatePicker",
                 "Dialog",
                 "Drawer",
                 "Field",

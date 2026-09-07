@@ -107,11 +107,16 @@ export interface PlainDate {
   readonly year: number;
   readonly month: number;
   readonly day: number;
+  /** ISO 8601: 1 is Monday and 7 is Sunday, on every host and in every locale. */
+  readonly dayOfWeek: number;
+  /** 28, 29, 30 or 31, for the month this date is in. */
+  readonly daysInMonth: number;
   add(duration: Duration | DurationLike | string): PlainDate;
   subtract(duration: Duration | DurationLike | string): PlainDate;
   equals(other: PlainDate): boolean;
   toString(): string;
   toJSON(): string;
+  toLocaleString(locales?: string, options?: DateTimeFormatOptions): string;
 }
 
 /** A wall-clock time with no date attached. */
@@ -838,11 +843,28 @@ class LitePlainDate {
   readonly year: number;
   readonly month: number;
   readonly day: number;
+  readonly dayOfWeek: number;
+  readonly daysInMonth: number;
 
+  /**
+   * The two derived fields are computed here rather than read on access.
+   *
+   * A `PlainDate` is immutable, so both answers are fixed the moment the value
+   * exists, and a calendar grid asks for them once per cell — forty-two cells to
+   * a month, re-asked on every arrow key. Getters would recompute a UTC
+   * timestamp each time for a number that cannot have changed.
+   */
   constructor(year: number, month: number, day: number) {
     this.year = year;
     this.month = month;
     this.day = day;
+    // `getUTCDay` counts Sunday as 0; ISO 8601 - and Temporal - count Monday as
+    // 1 and Sunday as 7. `LiteZonedDateTime` makes the same correction, and a
+    // grid that skipped it would put Sunday at the start of every week in every
+    // locale, including the ones that do not start there.
+    const weekday = new Date(utcOf(year, month, day, 0, 0, 0, 0)).getUTCDay();
+    this.dayOfWeek = weekday === 0 ? 7 : weekday;
+    this.daysInMonth = daysInMonth(year, month);
   }
 
   static from(
@@ -910,6 +932,32 @@ class LitePlainDate {
 
   toJSON(): string {
     return this.toString();
+  }
+
+  /**
+   * The reader's own words for this date: `1 October 2026`, `October 2026`.
+   *
+   * Formatted in UTC, and that is not a default a caller may override. A
+   * `PlainDate` has no zone - it is the date somebody wrote down - so the only
+   * honest way to hand it to `Intl.DateTimeFormat`, which formats an instant, is
+   * to place it at midnight where the offset is zero. Any other zone moves it
+   * across a midnight, and a caption reading `September` above a grid of October
+   * is what that looks like. A `timeZone` in `options` is dropped for that
+   * reason rather than ignored by oversight.
+   *
+   * Everything else is `Intl`'s. Passing no options gives the locale's numeric
+   * date, and `{ month: "long", year: "numeric" }` gives the caption a calendar
+   * puts over its grid; the defaulting is the formatter's own, so this adds none
+   * of its own to disagree with it.
+   */
+  toLocaleString(locales?: string, options?: DateTimeFormatOptions): string {
+    const Formatter = Intl.DateTimeFormat;
+    if (Formatter == null) {
+      return this.toString();
+    }
+    return new Formatter(locales, { ...options, timeZone: "UTC" }).format(
+      utcOf(this.year, this.month, this.day, 0, 0, 0, 0),
+    );
   }
 }
 

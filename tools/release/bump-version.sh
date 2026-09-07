@@ -42,6 +42,32 @@ if [ -f CHANGELOG.md ] && ! grep -Fqx "## uf@$version" CHANGELOG.md; then
   exit 2
 fi
 
+# And that the version is one that has not gone out yet.
+#
+# `uf release` refuses to rewrite the changelog section of a version that is
+# already tagged, because the version it plans comes from the binary running it
+# and an old binary plans a version the tree has already published (#457). This
+# is the same refusal one step later, where the mistake is cheaper to see: a
+# `uf@<version>` tag is a release that was built from a tree carrying that
+# version, so *moving* the workspace onto it is either that same old binary's
+# idea of "next" or a typo, and the command after this one in the runbook is
+# `git tag`, which would fail once every file in the repository had already been
+# rewritten.
+#
+# The workspace being on that version already is a different thing and stays a
+# no-op that succeeds: that is how a release which failed halfway is finished,
+# and by then it may well have tagged. So only a move is refused.
+current="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml 2>/dev/null | head -1)"
+if [ "$current" != "$version" ] &&
+  git rev-parse --verify --quiet "refs/tags/uf@$version" >/dev/null 2>&1; then
+  echo "uf@$version is already tagged: that release went out." >&2
+  echo "The workspace is on $current, so this would move it onto a version that" >&2
+  echo "has been published. If \`uf release\` planned $version, the binary that" >&2
+  echo "planned it is older than this tree — build uf from this tree and run it" >&2
+  echo "again. If the tag is wrong, delete it before bumping onto it." >&2
+  exit 2
+fi
+
 node - "$version" <<'EOF'
 const fs = require("node:fs");
 const path = require("node:path");

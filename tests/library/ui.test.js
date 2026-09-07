@@ -23,6 +23,7 @@ import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 import { afterEach, beforeEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import {
+  accessibleName,
   act,
   cleanup,
   fireEvent,
@@ -31,13 +32,22 @@ import {
   userEvent,
   within,
 } from "@uniflowed/react-testing";
+// The clock behind `Temporal.Now`, so that "today" in a calendar is a fact this
+// file states rather than one the machine happens to hold. `temporal.test.js`
+// installs one for every case that involves now; a calendar needs it in exactly
+// one case, and names `today` in the rest.
+import { fixedClock, setClock } from "@uniflowed/core/clock";
+import type { PlainDate } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
 import {
   Accordion,
   AlertDialog,
+  Calendar,
   Carousel,
   Checkbox,
   Collapsible,
   Combobox,
+  DatePicker,
   Dialog,
   Drawer,
   Field,
@@ -74,6 +84,10 @@ import {
 // test can hold to an exact number, so it is reached where it lives.
 import type { Align, Placement, Rect, Side } from "../../packages/ui/internal/anchor.js";
 import { placeOverlay, useAnchor } from "../../packages/ui/internal/anchor.js";
+// And the same, for the other half of a calendar: `internal/date-grid.js` says
+// which date a key means, over dates rather than over elements, and the month
+// boundaries are the cases worth being exhaustive about.
+import { moveDate, movementForDateKey, weeksOf } from "../../packages/ui/internal/date-grid.js";
 // The same reasoning, for the same reason: `focusable()` is this package's
 // definition of what `Tab` reaches, and "a slide nobody can see is not one of
 // them" is a claim about that definition rather than about a rendered tree.
@@ -3000,6 +3014,238 @@ describe("an anchored overlay follows its trigger", () => {
   });
 });
 
+describe("the three sets are anchored to their triggers", () => {
+  // ubugeeei-prod/uf#256's other half. `Popover`, `Tooltip` and `HoverCard` were
+  // written against `internal/anchor.js`; `Menu.Body`, `Combobox.List` and
+  // `Select.List` came before it and each rendered exactly where it was
+  // written — clipped by the first ancestor with `overflow: hidden`, which in a
+  // table row or a card is most of the time, and off the bottom of the page
+  // when the trigger was near it.
+  //
+  // What this DOM can be asked is the same as for the popover cases above: that
+  // a position was computed and applied, and which side it chose.
+  // `getBoundingClientRect` answers zero for everything here, so each case stubs
+  // the two boxes it is about. Whether 240 pixels looks right is
+  // `@uniflowed/vrt`'s question.
+
+  /** Ask for a fresh measurement, the way a scroll anywhere in the page does. */
+  const reflow = () => {
+    fireEvent.scroll(document);
+  };
+
+  /**
+   * A `ResizeObserver` this file can fire by hand.
+   *
+   * There is none in this DOM, and the case it is for fires nothing else: a
+   * trigger that *grows* — a button whose label changed, a field that gained a
+   * second line — moves the overlay without a scroll or a window resize
+   * happening at all. Written as a plain function rather than a class because
+   * `new` on one still produces the returned object, and a capitalised
+   * identifier holding a constructor is a React component as far as `uf lint`
+   * is concerned.
+   */
+  const resizeCallbacks: Array<() => void> = [];
+  function installResizeObserver(): () => void {
+    const host: $FlowFixMe = window;
+    const previous = host.ResizeObserver;
+    host.ResizeObserver = function (callback: () => void) {
+      resizeCallbacks.push(callback);
+      return { disconnect: () => {}, observe: () => {} };
+    };
+    return () => {
+      host.ResizeObserver = previous;
+      resizeCallbacks.length = 0;
+    };
+  }
+
+  component Clipped() {
+    return (
+      <div style={{ overflow: "hidden" }}>
+        <Menu.Root>
+          <Menu.Trigger>File</Menu.Trigger>
+          <Menu.Body>
+            <Menu.Item>Open</Menu.Item>
+            <Menu.Item>Save</Menu.Item>
+          </Menu.Body>
+        </Menu.Root>
+      </div>
+    );
+  }
+
+  it("takes a menu out of an ancestor that would clip it, without moving it", async () => {
+    render(<Clipped />);
+    const trigger = screen.getByRole("button", { name: "File" });
+    measure(trigger, { height: 40, left: 100, top: 200, width: 80 });
+    await userEvent.click(trigger);
+
+    const menu = screen.getByRole("menu");
+    measure(menu, { height: 60, left: 0, top: 0, width: 120 });
+    reflow();
+
+    // Fixed, so the `overflow: hidden` above it is not its business: 200 + 40.
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.style.top).toBe("240px");
+    // And still inside that element in the document, which is the half a portal
+    // gives up — the reason `dialog.js` refuses to portal, kept here.
+    expect(trigger.closest("div")?.contains(menu)).toBe(true);
+    // The accessibility properties do not regress when an overlay is
+    // positioned: the trigger still names an element that is in the document.
+    expect(trigger.getAttribute("aria-controls")).toBe(menu.getAttribute("id"));
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("opens a menu upwards when there is no room below, and says so", async () => {
+    render(<Clipped />);
+    const trigger = screen.getByRole("button", { name: "File" });
+    // The window here is 768 tall, so a trigger at 700 has 28 pixels under it.
+    measure(trigger, { height: 40, left: 100, top: 700, width: 80 });
+    await userEvent.click(trigger);
+
+    const menu = screen.getByRole("menu");
+    measure(menu, { height: 200, left: 0, top: 0, width: 120 });
+    reflow();
+
+    expect(menu).toHaveAttribute("data-side", "top");
+    expect(menu.style.top).toBe("500px");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("measures a menu again when the page scrolls under it", async () => {
+    render(<Clipped />);
+    const trigger = screen.getByRole("button", { name: "File" });
+    measure(trigger, { height: 40, left: 100, top: 200, width: 80 });
+    await userEvent.click(trigger);
+    const menu = screen.getByRole("menu");
+    measure(menu, { height: 60, left: 0, top: 0, width: 120 });
+    reflow();
+    expect(menu.style.top).toBe("240px");
+
+    // Capture, because a scroll event does not bubble: a trigger inside a
+    // scrolling panel moves under an overlay that never hears a scroll of its
+    // own, which is the case this listener exists for.
+    measure(trigger, { height: 40, left: 100, top: 120, width: 80 });
+    fireEvent.scroll(trigger.closest("div") ?? document);
+    expect(menu.style.top).toBe("160px");
+  });
+
+  it("measures a menu again when its trigger changes size", async () => {
+    const restore = installResizeObserver();
+    try {
+      render(<Clipped />);
+      const trigger = screen.getByRole("button", { name: "File" });
+      measure(trigger, { height: 40, left: 100, top: 200, width: 80 });
+      await userEvent.click(trigger);
+      const menu = screen.getByRole("menu");
+      measure(menu, { height: 60, left: 0, top: 0, width: 120 });
+      reflow();
+      expect(menu.style.top).toBe("240px");
+
+      // The trigger gained a second line. No scroll, no window resize, and
+      // without the observer the menu would sit over the label it belongs to.
+      measure(trigger, { height: 80, left: 100, top: 200, width: 80 });
+      expect(resizeCallbacks.length).toBeGreaterThan(0);
+      act(() => {
+        for (const fire of resizeCallbacks) {
+          fire();
+        }
+      });
+      expect(menu.style.top).toBe("280px");
+    } finally {
+      restore();
+    }
+  });
+
+  it("anchors a combobox list to the field it belongs to", async () => {
+    render(
+      <div style={{ overflow: "hidden" }}>
+        <Combobox.Root>
+          <Combobox.Label>Fruit</Combobox.Label>
+          <Combobox.Input />
+          <Combobox.List>
+            <Combobox.Option value="apple">Apple</Combobox.Option>
+          </Combobox.List>
+        </Combobox.Root>
+      </div>,
+    );
+    const field = screen.getByRole("combobox");
+    measure(field, { height: 32, left: 40, top: 300, width: 220 });
+    await userEvent.type(field, "a");
+
+    const list = screen.getByRole("listbox");
+    measure(list, { height: 120, left: 0, top: 0, width: 220 });
+    reflow();
+
+    expect(list.style.position).toBe("fixed");
+    // Under the field and aligned to the edge its text starts at, which is what
+    // `align="start"` means and the only alignment a list of options can have.
+    expect(list.style.top).toBe("332px");
+    expect(list.style.left).toBe("40px");
+    expect(list).toHaveAttribute("data-align", "start");
+    // The measurement a stylesheet cannot make: how wide the field was.
+    expect(list.style.getPropertyValue("--uf-anchor-trigger-width")).toBe("220px");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("anchors a select popup to its trigger and reports its width", async () => {
+    render(
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="gb">United Kingdom</Select.Option>
+          <Select.Option value="jp">Japan</Select.Option>
+        </Select.List>
+      </Select.Root>,
+    );
+    const trigger = screen.getByRole("combobox", { name: "Country" });
+    measure(trigger, { height: 36, left: 500, top: 400, width: 180 });
+    await userEvent.click(trigger);
+
+    const list = screen.getByRole("listbox");
+    measure(list, { height: 90, left: 0, top: 0, width: 180 });
+    reflow();
+
+    expect(list.style.position).toBe("fixed");
+    expect(list.style.top).toBe("436px");
+    expect(list).toHaveAttribute("data-side", "bottom");
+    // A popup narrower than the button it came out of reads as a different
+    // control, and this is the number that stops it being one.
+    expect(list.style.getPropertyValue("--uf-anchor-trigger-width")).toBe("180px");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("opens a submenu onto the inline end, which is the left in an Arabic page", async () => {
+    render(
+      <div dir="rtl">
+        <Menu.Root defaultOpen>
+          <Menu.Trigger>File</Menu.Trigger>
+          <Menu.Body>
+            <Menu.Sub defaultOpen>
+              <Menu.SubTrigger>Export</Menu.SubTrigger>
+              <Menu.Body>
+                <Menu.Item>PNG</Menu.Item>
+              </Menu.Body>
+            </Menu.Sub>
+          </Menu.Body>
+        </Menu.Root>
+      </div>,
+    );
+    const submenu = screen.getAllByRole("menu")[1];
+    const opener = screen.getByRole("menuitem", { name: "Export" });
+    measure(opener, { height: 32, left: 400, top: 200, width: 160 });
+    measure(submenu, { height: 90, left: 0, top: 0, width: 200 });
+    reflow();
+
+    // `submenuKeys` already mirrors the key that opens a submenu; this is the
+    // other half of the same sentence, and a hard-coded `side="right"` would
+    // have opened it under the reader's own menu.
+    expect(submenu).toHaveAttribute("data-side", "left");
+    expect(submenu.style.left).toBe("200px");
+  });
+});
+
 describe("Popover", () => {
   component Example() {
     return (
@@ -3580,6 +3826,405 @@ describe("HoverCard", () => {
     // A hover card is an enrichment: the link under it goes somewhere useful on
     // its own, which is all a reader on a phone will ever get.
     expect(screen.queryByText("Ada Lovelace")).toBe(null);
+  });
+});
+
+describe("the month a calendar shows", () => {
+  // The arithmetic, called with dates. `internal/date-grid.js` is pure for the
+  // same reason `internal/anchor.js`'s `placeOverlay` is: the cases worth being
+  // exhaustive about are the month boundaries, and testing them through a
+  // rendered grid tests the renderer instead.
+
+  /** October 2026: it starts on a Thursday and ends on a Saturday. */
+  const october = { month: 10, year: 2026 };
+
+  it("lays a month out in weeks, with blanks where no day falls", () => {
+    const weeks = weeksOf(october.year, october.month, 1);
+    // Five rows, because a month that starts on a Thursday and has 31 days
+    // needs five and not six.
+    expect(weeks.length).toBe(5);
+    expect(weeks.every((week) => week.length === 7)).toBe(true);
+    // Monday first, so the 1st — a Thursday — is the fourth cell.
+    expect(weeks[0].map((day) => day?.day ?? null)).toEqual([null, null, null, 1, 2, 3, 4]);
+    expect(weeks[4].map((day) => day?.day ?? null)).toEqual([26, 27, 28, 29, 30, 31, null]);
+  });
+
+  it("lays the same month out differently for a week that starts on Sunday", () => {
+    const weeks = weeksOf(october.year, october.month, 7);
+    expect(weeks[0].map((day) => day?.day ?? null)).toEqual([null, null, null, null, 1, 2, 3]);
+    expect(weeks[4].map((day) => day?.day ?? null)).toEqual([25, 26, 27, 28, 29, 30, 31]);
+  });
+
+  it("moves by a day, by a week, and off the end of the month", () => {
+    const fourteenth = Temporal.PlainDate.from("2026-10-14");
+    expect(moveDate(fourteenth, { by: 1, kind: "days" }, 1).toString()).toBe("2026-10-15");
+    expect(moveDate(fourteenth, { by: 7, kind: "days" }, 1).toString()).toBe("2026-10-21");
+    const last = Temporal.PlainDate.from("2026-10-31");
+    expect(moveDate(last, { by: 1, kind: "days" }, 1).toString()).toBe("2026-11-01");
+  });
+
+  it("goes to the ends of the week the reader's week has", () => {
+    const wednesday = Temporal.PlainDate.from("2026-10-14");
+    expect(moveDate(wednesday, { kind: "week-edge", to: "start" }, 1).toString()).toBe(
+      "2026-10-12",
+    );
+    expect(moveDate(wednesday, { kind: "week-edge", to: "end" }, 1).toString()).toBe("2026-10-18");
+    // The same day, in a locale whose week starts on Sunday.
+    expect(moveDate(wednesday, { kind: "week-edge", to: "start" }, 7).toString()).toBe(
+      "2026-10-11",
+    );
+  });
+
+  it("clamps the day when a month has fewer of them", () => {
+    const january = Temporal.PlainDate.from("2026-01-31");
+    // The 28th of February, not the 3rd of March: Temporal's `constrain`
+    // overflow, and what a person means by "next month".
+    expect(moveDate(january, { by: 1, kind: "months" }, 1).toString()).toBe("2026-02-28");
+    const leapDay = Temporal.PlainDate.from("2028-02-29");
+    expect(moveDate(leapDay, { by: 12, kind: "months" }, 1).toString()).toBe("2029-02-28");
+  });
+
+  it("mirrors the horizontal arrows for a reader who reads right to left", () => {
+    expect(movementForDateKey({ key: "ArrowRight" }, "ltr")).toEqual({ by: 1, kind: "days" });
+    expect(movementForDateKey({ key: "ArrowRight" }, "rtl")).toEqual({ by: -1, kind: "days" });
+    // And nothing else: a page that reads right to left still reads top to
+    // bottom, so a week later is a week later either way.
+    expect(movementForDateKey({ key: "ArrowDown" }, "rtl")).toEqual({ by: 7, kind: "days" });
+    expect(movementForDateKey({ key: "Home" }, "rtl")).toEqual({ kind: "week-edge", to: "start" });
+  });
+
+  it("leaves the keys that are not its own to the page", () => {
+    // `Tab` is how a reader leaves the grid and `Escape` closes whatever the
+    // calendar is inside; a grid that claimed either would be a trap.
+    expect(movementForDateKey({ key: "Tab" }, "ltr")).toBe(null);
+    expect(movementForDateKey({ key: "Escape" }, "ltr")).toBe(null);
+    expect(movementForDateKey({ key: "a" }, "ltr")).toBe(null);
+  });
+
+  it("turns the page keys into a year when Shift is held", () => {
+    expect(movementForDateKey({ key: "PageDown" }, "ltr")).toEqual({ by: 1, kind: "months" });
+    expect(movementForDateKey({ key: "PageDown", shiftKey: true }, "ltr")).toEqual({
+      by: 12,
+      kind: "months",
+    });
+    expect(movementForDateKey({ key: "PageUp", shiftKey: true }, "ltr")).toEqual({
+      by: -12,
+      kind: "months",
+    });
+  });
+});
+
+describe("Calendar", () => {
+  // A month of buttons in a grid looks finished from a screenshot, and every
+  // assertion here is about something a screenshot cannot show: which cell the
+  // keyboard is on, what a reader is told when the month changes, and which of
+  // the two marks — today, and the chosen day — is on which cell.
+  //
+  // Every case names its own `today` and `weekStartsOn`, so that none of them
+  // depends on the machine's clock or on which day the host's locale data
+  // thinks a week starts on. The one case about the clock says so.
+
+  component Booking(disabled?: (date: PlainDate) => boolean) {
+    return (
+      <Calendar.Root
+        defaultValue="2026-10-14"
+        isDateDisabled={disabled}
+        locale="en-GB"
+        today="2026-10-01"
+        weekStartsOn={1}
+      >
+        <Calendar.Previous>Previous month</Calendar.Previous>
+        <Calendar.Next>Next month</Calendar.Next>
+        <Calendar.Month />
+      </Calendar.Root>
+    );
+  }
+
+  /** The cell the keyboard is on, which is the one thing a grid has one of. */
+  const tabStop = (): HTMLElement | null =>
+    screen.getAllByRole("gridcell").find((cell) => cell.getAttribute("tabindex") === "0") ?? null;
+
+  it("is a grid of days with named columns", () => {
+    render(<Booking />);
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+
+    const columns = screen.getAllByRole("columnheader");
+    expect(columns.length).toBe(7);
+    // The full day name is what a reader is told; `Mo` is what is drawn. A
+    // screen reader announcing "We" for a column is not announcing a day.
+    expect(columns.map((column) => accessibleName(column))).toEqual([
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]);
+
+    // Exactly one, always: a set with two tab stops takes two `Tab` presses to
+    // leave, and a set with none cannot be reached at all.
+    const stops = screen
+      .getAllByRole("gridcell")
+      .filter((cell) => cell.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("14");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("says which month it is showing, as the grid's own name", () => {
+    render(<Booking />);
+    expect(accessibleName(screen.getByRole("grid"))).toBe("October 2026");
+  });
+
+  it("moves by a day and by a week", async () => {
+    render(<Booking />);
+    act(() => {
+      screen.getByRole("gridcell", { name: "14" }).focus();
+    });
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("gridcell", { name: "15" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("gridcell", { name: "22" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("gridcell", { name: "14" })).toHaveFocus();
+  });
+
+  it("goes to the ends of the week, not of the month", async () => {
+    render(<Booking />);
+    act(() => {
+      screen.getByRole("gridcell", { name: "14" }).focus();
+    });
+    await userEvent.keyboard("{Home}");
+    // The Monday of that week, which is the 12th — `End` on a menu goes to the
+    // last item and here it goes to the last day of the week.
+    expect(screen.getByRole("gridcell", { name: "12" })).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("gridcell", { name: "18" })).toHaveFocus();
+  });
+
+  it("changes the month when the arrow runs off the end, and keeps focus on the day", async () => {
+    render(<Booking />);
+    act(() => {
+      act(() => {
+        screen.getByRole("gridcell", { name: "31" }).focus();
+      });
+    });
+    await userEvent.keyboard("{ArrowRight}");
+
+    expect(accessibleName(screen.getByRole("grid"))).toBe("November 2026");
+    // The cell did not exist when the key was pressed: the grid was re-rendered
+    // by the same update that asked for it, which is what `pendingFocus` is for.
+    expect(screen.getByRole("gridcell", { name: "1" })).toHaveFocus();
+    expect(tabStop()?.textContent).toBe("1");
+  });
+
+  it("jumps a month and a year", async () => {
+    render(<Booking />);
+    const start = screen.getByRole("gridcell", { name: "14" });
+    start.focus();
+    await userEvent.keyboard("{PageDown}");
+    expect(accessibleName(screen.getByRole("grid"))).toBe("November 2026");
+    expect(screen.getByRole("gridcell", { name: "14" })).toHaveFocus();
+
+    // `Shift` is the one convention here a reader cannot discover by trying,
+    // and a year is otherwise twelve presses.
+    fireEvent.keyDown(screen.getByRole("gridcell", { name: "14" }), {
+      key: "PageDown",
+      shiftKey: true,
+    });
+    expect(accessibleName(screen.getByRole("grid"))).toBe("November 2027");
+  });
+
+  it("steps a month from the buttons without taking focus off them", async () => {
+    render(<Booking />);
+    const next = screen.getByRole("button", { name: "Next month" });
+    next.focus();
+    await userEvent.click(next);
+    expect(accessibleName(screen.getByRole("grid"))).toBe("November 2026");
+    // Focus stays on the button, which is what lets a reader step through
+    // several months in a row.
+    expect(next).toHaveFocus();
+    expect(tabStop()?.textContent).toBe("14");
+
+    await userEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    expect(accessibleName(screen.getByRole("grid"))).toBe("October 2026");
+  });
+
+  it("says which month it is showing when it changes", async () => {
+    render(<Booking />);
+    // Already in the document and empty: a live region added to the page in the
+    // same commit as its text is not announced, because the technology watching
+    // it had nothing to watch until it was too late. The shipped Combobox case
+    // — "says how many options matched, in a region that was already there" —
+    // is the same constraint.
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+
+    act(() => {
+      screen.getByRole("gridcell", { name: "14" }).focus();
+    });
+    await userEvent.keyboard("{PageDown}");
+    expect(screen.getByRole("status").textContent).toBe("November 2026");
+  });
+
+  it("keeps an unavailable date reachable", async () => {
+    render(<Booking disabled={(date) => date.day === 15} />);
+    const unavailable = screen.getByRole("gridcell", { name: "15" });
+    expect(unavailable).toHaveAttribute("aria-disabled", "true");
+
+    act(() => {
+      screen.getByRole("gridcell", { name: "14" }).focus();
+    });
+    await userEvent.keyboard("{ArrowRight}");
+    // *On* it rather than over it, which is the deliberate difference from the
+    // menu and tab assertions elsewhere in this file: a reader arrowing through
+    // October has to be able to pass over the days that cannot be booked, and a
+    // grid that skipped them presents a month with holes in it.
+    expect(unavailable).toHaveFocus();
+
+    await userEvent.keyboard("{Enter}");
+    expect(unavailable).not.toHaveAttribute("aria-selected");
+    expect(screen.getByRole("gridcell", { name: "14" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("marks today and the selection separately", () => {
+    render(<Booking />);
+    const today = screen.getByRole("gridcell", { name: "1" });
+    const chosen = screen.getByRole("gridcell", { name: "14" });
+    expect(today).toHaveAttribute("aria-current", "date");
+    expect(today).not.toHaveAttribute("aria-selected");
+    expect(chosen).toHaveAttribute("aria-selected", "true");
+    expect(chosen).not.toHaveAttribute("aria-current");
+  });
+
+  it("chooses a day when it is pressed, and moves the tab stop to it", async () => {
+    render(<Booking />);
+    await userEvent.click(screen.getByRole("gridcell", { name: "20" }));
+    expect(screen.getByRole("gridcell", { name: "20" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("gridcell", { name: "14" })).not.toHaveAttribute("aria-selected");
+    expect(tabStop()?.textContent).toBe("20");
+  });
+
+  it("reads today from the clock seam rather than from the machine", () => {
+    // Which is the whole reason `Temporal.Now` in this package goes through
+    // `@uniflowed/core/clock`: a server and a browser disagree about the date,
+    // and a test that had to wait until tomorrow to see this fail would not be
+    // one. The clock is installed for this case only.
+    const restore = setClock(fixedClock(Date.UTC(2026, 2, 9, 12, 0, 0)));
+    try {
+      render(
+        <Calendar.Root locale="en-GB" weekStartsOn={1}>
+          <Calendar.Month />
+        </Calendar.Root>,
+      );
+      expect(accessibleName(screen.getByRole("grid"))).toBe("March 2026");
+      expect(screen.getByRole("gridcell", { name: "9" })).toHaveAttribute("aria-current", "date");
+    } finally {
+      restore();
+    }
+  });
+
+  it("walks the days the way an Arabic reader reads them", async () => {
+    render(
+      <div dir="rtl">
+        <Booking />
+      </div>,
+    );
+    act(() => {
+      screen.getByRole("gridcell", { name: "14" }).focus();
+    });
+    // In a right-to-left page the next day is to the *left*, so `ArrowLeft` is
+    // "next" — the same mirroring every other set in this package does, and the
+    // one that renders identically when it is wrong.
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("gridcell", { name: "15" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("gridcell", { name: "14" })).toHaveFocus();
+  });
+});
+
+describe("Date Picker", () => {
+  // The composition, and the three joins that are this module's own: the
+  // field's text and the chosen date, where focus goes when the calendar
+  // closes, and what the calendar opens onto.
+
+  component Trip() {
+    return (
+      <DatePicker.Root defaultValue="2026-10-14" locale="en-GB" today="2026-10-01" weekStartsOn={1}>
+        <DatePicker.Input aria-label="Arrive on" />
+        <DatePicker.Trigger>Choose a date</DatePicker.Trigger>
+        <DatePicker.Calendar>
+          <Calendar.Previous>Previous month</Calendar.Previous>
+          <Calendar.Month />
+        </DatePicker.Calendar>
+      </DatePicker.Root>
+    );
+  }
+
+  it("puts the date in a text field the reader can type into", () => {
+    render(<Trip />);
+    const field = screen.getByRole("textbox", { name: "Arrive on" });
+    expect(field).toHaveValue("2026-10-14");
+    // Not `aria-haspopup`, and not `aria-expanded`: the field does not open the
+    // calendar, the button beside it does, and telling a reader otherwise is a
+    // promise the field does not keep.
+    expect(field).not.toHaveAttribute("aria-expanded");
+    expect(screen.queryByRole("grid")).toBe(null);
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("opens the calendar onto the chosen date rather than onto a button", async () => {
+    render(<Trip />);
+    await userEvent.click(screen.getByRole("button", { name: "Choose a date" }));
+    // The APG's date picker dialog puts focus on the date for the same reason:
+    // the reader opened a calendar to find a day, not to step back a month.
+    expect(screen.getByRole("gridcell", { name: "14" })).toHaveFocus();
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("closes on Escape and puts focus back in the field", async () => {
+    render(<Trip />);
+    await userEvent.click(screen.getByRole("button", { name: "Choose a date" }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("grid")).toBe(null);
+    // The field, not the button: it is the primary control, and a reader who
+    // dismissed the calendar is back to typing.
+    expect(screen.getByRole("textbox", { name: "Arrive on" })).toHaveFocus();
+  });
+
+  it("fills the field when a day is chosen, and closes", async () => {
+    render(<Trip />);
+    await userEvent.click(screen.getByRole("button", { name: "Choose a date" }));
+    await userEvent.click(screen.getByRole("gridcell", { name: "20" }));
+    expect(screen.getByRole("textbox", { name: "Arrive on" })).toHaveValue("2026-10-20");
+    expect(screen.queryByRole("grid")).toBe(null);
+    expect(screen.getByRole("textbox", { name: "Arrive on" })).toHaveFocus();
+  });
+
+  it("takes a date typed into the field", async () => {
+    render(<Trip />);
+    const field = screen.getByRole("textbox", { name: "Arrive on" });
+    field.focus();
+    replaceValue(field, "2026-11-05");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.click(screen.getByRole("button", { name: "Choose a date" }));
+    expect(accessibleName(screen.getByRole("grid"))).toBe("November 2026");
+    expect(screen.getByRole("gridcell", { name: "5" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps text it could not read, and says it could not read it", async () => {
+    render(<Trip />);
+    const field = screen.getByRole("textbox", { name: "Arrive on" });
+    field.focus();
+    replaceValue(field, "next Tuesday");
+    await userEvent.keyboard("{Enter}");
+    // The text stays. Clearing it would throw away what the reader typed and
+    // leave them nothing to correct — and `aria-invalid` is how they are told,
+    // rather than a silent revert to the old date.
+    expect(field).toHaveValue("next Tuesday");
+    expect(field).toHaveAttribute("aria-invalid", "true");
   });
 });
 
