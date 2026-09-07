@@ -20,10 +20,48 @@ ARM64:
 
 <div className="command"><code>curl -fsSL https://setup.uniflowed.dev | sh</code></div>
 
-The script picks the binary for your platform, checks it against the checksum in
-the release manifest, and puts it on your `PATH`. It works under `sh`, `bash`
-and `zsh`. Read it before you run it — it is short, and it is served from
-`https://setup.uniflowed.dev/install.sh` if you would rather fetch it first.
+The script picks the binary for your platform, checks it, and puts it on your
+`PATH`. It works under `sh`, `bash` and `zsh`. Read it before you run it — it is
+short, and it is served from `https://setup.uniflowed.dev/install.sh` if you
+would rather fetch it first.
+
+### What it checks, and what that proves
+
+Two separate things, because they answer two questions.
+
+The **SHA-256** beside the archive proves *transit*: the bytes that arrived are
+the bytes that host advertised, which catches a truncated download or a
+corrupting proxy. It proves nothing about origin — the archive and the checksum
+come from the same host, so whoever can replace one can replace the other.
+
+The **signature** proves *origin*. Every release archive is signed with keyless
+Sigstore from the release workflow's own GitHub OIDC identity, and the installer
+verifies the bundle against that identity — a root that is not on the host
+serving the archive. Install [`cosign`](https://github.com/sigstore/cosign) and
+the check runs; without it the installer says the signature was not checked
+rather than implying it was.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `UF_VERIFY_ORIGIN` | `auto` | `require` refuses an install whose origin nothing established; `off` skips the check |
+| `UF_CHECKSUM_BASE` | unset | A `<base>/<version>/<asset>.sha256` layout on a host that does **not** serve the archive. The two digests must agree |
+| `UF_VERSION` | `latest` | A specific release |
+| `UF_RELEASE_BASE` | unset | A mirror serving the flat `<base>/<version>/<asset>` layout |
+| `UF_INSTALL_ROOT`, `UF_BIN_DIR` | XDG paths | Where the runtime and the shims go |
+
+A signature that is present and does not verify **always** refuses, whatever
+`UF_VERIFY_ORIGIN` says — and so does a second opinion that disagrees. The
+failure prints cosign's own words, because a signature made by somebody else and
+a `cosign` too old to read the bundle exit the same way and are not the same
+problem. uf's own release pipeline installs with `UF_VERIFY_ORIGIN=require`, so
+a release whose signature does not verify never reaches you.
+
+The default is `auto` and not `require` for one reason, which will stop being
+true: releases published before signing existed carry no bundle, and a default
+that refused them would make every pinned `UF_VERSION` of an older release
+uninstallable by the current script. Pass `UF_VERIFY_ORIGIN=require` today to
+get the stricter behaviour; it is what the default becomes once every release a
+person can still install is signed.
 
 ### On Windows
 
