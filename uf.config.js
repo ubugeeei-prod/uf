@@ -136,15 +136,23 @@ export default defineConfig({
     // check in the pipeline — which is why it is now in `ci` rather than
     // described there.
     //
-    // Zero errors and 14 warnings over 322 files. `uf lint` fails on errors
-    // only, so the warnings are not a countdown to a broken build: they are
+    // Zero errors, and every warning from one of four rules:
     // `react/component-syntax`, `react/no-default-export-component`,
-    // `flow/unsafe-getters-setters` and `react-native/platform-split` — four
-    // rules whose own rows in the default table call them style preferences,
-    // migration aids, or patterns that are legitimate in some code, which is
-    // exactly what `warn` is for. A rule that should block belongs at `error`
-    // in `crates/uf_config/src/lint.rs`; a warning that nobody intends to act
-    // on belongs at `off` with the argument written on its row.
+    // `flow/unsafe-getters-setters` and `react-native/platform-split`. `uf
+    // lint` fails on errors only, so those are not a countdown to a broken
+    // build — each of the four has a row in the default table calling it a
+    // style preference, a migration aid, or a pattern that is legitimate in
+    // some code, which is exactly what `warn` is for. A rule that should block
+    // belongs at `error` in `crates/uf_config/src/lint.rs`; a warning nobody
+    // intends to act on belongs at `off` with the argument written on its row.
+    //
+    // The condition rather than a count, deliberately. This paragraph used to
+    // say "14 warnings over 322 files"; the file count was wrong within a
+    // fortnight and would be wrong again the next time anybody added a file,
+    // and a number nobody can act on is not the fact a reader needs. What they
+    // need is whether the exclusion still holds, and that is a question about
+    // *which rules*, which only changes when somebody changes one.
+    // ubugeeei-prod/uf#433.
     //
     // Seven suppressions stand in the packages, each on the line, under the
     // paragraph that argues it: `Node<any>` and `Cell<any>` where Flow has no
