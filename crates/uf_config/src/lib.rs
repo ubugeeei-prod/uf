@@ -57,6 +57,7 @@ pub struct UniflowedConfig {
     pub release: ReleaseConfig,
     pub rm: RuntimeManagerConfig,
     pub server: ServerConfig,
+    pub site: SiteConfig,
     pub std: StdConfig,
     pub story: StoryConfig,
     pub task_runner: TaskRunnerConfig,
@@ -129,6 +130,72 @@ impl Default for DocsConfig {
 #[serde(rename_all = "kebab-case")]
 pub enum DeployTarget {
     Void,
+}
+
+/// Where the built application is served from, and what it tells crawlers.
+///
+/// This is the one fact a build cannot work out for itself. A route table says
+/// `/guide/install`; a `sitemap.xml` has to say
+/// `https://docs.uniflowed.dev/guide/install`, and no part of a bundle knows
+/// the host it will be deployed to. So [`url`](Self::url) is the switch: unset,
+/// `uf build` writes no metadata files at all, because a `<loc>` that is wrong
+/// is worse for a site than a sitemap that does not exist.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct SiteConfig {
+    /// The origin the site is served from, with no trailing slash —
+    /// `"https://docs.uniflowed.dev"`.
+    ///
+    /// Validated when it is used rather than when it is parsed: `uf_config`
+    /// reads a `uf.config.js` for every command, and a command that never
+    /// writes a sitemap has no business refusing to run over one.
+    pub url: Option<CompactString>,
+    /// Whether to write `sitemap.xml`. On by default, and still conditional on
+    /// [`url`](Self::url).
+    pub sitemap: bool,
+    pub robots: RobotsConfig,
+}
+
+/// What `robots.txt` says, for the crawlers that read it.
+///
+/// Deliberately small. `robots.txt` is a request, not a control — a path named
+/// here is a path published to everyone who fetches the file, so the rules a
+/// project wants are almost never the rules it has. What it is genuinely good
+/// for is the `Sitemap:` line, which is how a crawler that was not told about
+/// the sitemap finds it, and that is why the file is written at all.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct RobotsConfig {
+    /// Whether to write `robots.txt`. On by default, and still conditional on
+    /// there being something true to put in it.
+    pub enabled: bool,
+    /// Paths to allow, as `Allow:` lines. Only ever useful as an exception
+    /// carved out of a [`disallow`](Self::disallow) below it.
+    pub allow: Vec<CompactString>,
+    /// Paths to ask crawlers not to request, as `Disallow:` lines.
+    pub disallow: Vec<CompactString>,
+}
+
+impl Default for SiteConfig {
+    fn default() -> Self {
+        Self {
+            url: None,
+            sitemap: true,
+            robots: RobotsConfig::default(),
+        }
+    }
+}
+
+impl Default for RobotsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            allow: Vec::new(),
+            disallow: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -17,6 +17,11 @@ It also has the route that shows the renderer streaming:
   per request and the test can watch the layout and the fallback arrive before
   the page does.
 
+`site.url` is set, so the build writes `sitemap.xml` and `robots.txt` here too
+— and the two parameterised routes above are exactly the ones a sitemap cannot
+name, because nothing enumerates them. `dist/404.html` is the other case: a
+document that is served and is not a page.
+
 The documentation site is the fixture for everything else, and it deliberately
 has neither: it is a static site, and adding a `/posts/[slug]` to it to make a
 test pass would be the artificial usage `ubugeeei-redundancy.md` forbids. This

@@ -83,8 +83,16 @@ in `uf`.
 ## P1: Native App Framework
 
 - File-system router compiler for web and React Native targets.
-- Nuxt-like web primitives: Font, Image, OgImage, Link with prefetch, Page,
-  Layout, Time, Announcer, Picture, useCookie, and useHead.
+- Nuxt-like web primitives: Font, Image, Link with prefetch, Page, Layout,
+  Time, Announcer, Picture, useCookie, and useHead. `OgImage` is not among
+  them: generating an image from JSX needs a text-shaping and rasterising path
+  uf does not ship.
+- The metadata files. **Done**: `sitemap.xml` and `robots.txt`, written by
+  `uf build` from the documents the prerender wrote and the origin `site.url`
+  names, and a `Metadata` wide enough for a canonical URL, a Twitter card and
+  an absolute `metadataBase`. **Not done**: a web app manifest, which overlaps
+  `@uniflowed/pwa`; `opensearch.xml`; and a feed, which the route table cannot
+  describe.
 - The pipeline behind `Image` and `Font`. **Done at build time**: `uf assets`
   decodes an imported image once, writes a variant at every declared width in
   the source's own format and in WebP where the WebP is smaller, and emits the

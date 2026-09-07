@@ -736,6 +736,7 @@ uf build · reading-list
   vite         ························   3.49s
   manifest     ························ 726.5µs
   rsc manifest ························ 272.9µs
+  metadata     ························   167ns
   bundle size  ························   2.95s
   total        ························   6.45s
 
@@ -776,6 +777,12 @@ uf build · reading-list
 
   output
     reading-list
+    ├─ .uf
+    │  └─ build
+    │     └─ meta
+    │        ├─ uf-build-manifest.json
+    │        ├─ uf-bundle-report.json
+    │        └─ uf-rsc-manifest.json
     ├─ dist
     │  ├─ articles
     │  │  ├─ component-syntax
@@ -784,10 +791,7 @@ uf build · reading-list
     │  │  │  └─ index.html
     │  │  └─ the-compiler-is-not-magic
     │  │     └─ index.html
-    │  ├─ index.html
-    │  ├─ uf-build-manifest.json
-    │  ├─ uf-bundle-report.json
-    │  └─ uf-rsc-manifest.json
+    │  └─ index.html
     └─ router.js
 ```
 
@@ -805,9 +809,18 @@ an application author can do about them, and they are
 [issue #307](https://github.com/ubugeeei-prod/uf/issues/307). They are the only
 lines removed from any output on this page.
 
-`dist/` is static files, and any static host serves them. None of the three JSON
-files uf writes beside the HTML is needed at run time: `uf-build-manifest.json`,
-`uf-bundle-report.json` and `uf-rsc-manifest.json` are for you and for tooling.
+`dist/` is static files, and any static host serves them — which is why the
+three JSON files are not in it. `uf-build-manifest.json`,
+`uf-rsc-manifest.json` and `uf-bundle-report.json` are for you and for tooling,
+nothing reads them to answer a request, and between them they name every route
+including the ones nothing links to, the source file behind each one and the
+size of every chunk. They go in `.uf/build/meta/`, one directory away from
+anything a visitor can fetch.
+
+This project sets no `site.url`, so the build wrote no `sitemap.xml` and no
+`robots.txt` — that is the `metadata 167ns` line above, which is the phase
+deciding it has nothing to do. [`uf.config.js`](/reference/config#site) has the
+one field that changes it.
 There is no deployment guide on this site yet. What exists is described in the
 [CLI reference](/reference/cli#serving-a-build): `uf build --adapter node`
 writes a directory you can copy to a host with a JavaScript runtime, and

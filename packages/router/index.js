@@ -37,6 +37,7 @@ export type {
   RouteTable,
   Router,
   SearchParams,
+  TwitterCard,
 } from "./internal/runtime.js";
 
 export {

@@ -203,15 +203,96 @@ fn build_renders_the_docs_site_through_vite() {
         "Flow syntax leaked into the document"
     );
 
+    // Not in `dist/`. Everything in the output directory is served — by a
+    // static host, by `uf preview` and by `uf start` — and between them these
+    // three name every route including the ones nothing links to, the source
+    // file behind each one, and the size of every chunk. See
+    // ubugeeei-prod/uf#339.
+    let meta = root.join(".uf/build/meta");
+    for name in [
+        "uf-build-manifest.json",
+        "uf-rsc-manifest.json",
+        "uf-bundle-report.json",
+    ] {
+        assert!(
+            meta.join(name).is_file(),
+            "{name} must be written beside the build"
+        );
+        assert!(
+            !dist.join(name).exists(),
+            "{name} must not be somewhere a static host would serve it"
+        );
+    }
+
     let manifest: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dist.join("uf-build-manifest.json")).unwrap())
+        serde_json::from_str(&fs::read_to_string(meta.join("uf-build-manifest.json")).unwrap())
             .unwrap();
     assert_eq!(manifest["engine"], serde_json::json!("vite"));
     assert_eq!(manifest["transform"], serde_json::json!("uf transform"));
     assert_eq!(manifest["pages"][0]["url"], serde_json::json!("/"));
 
+    // The two files uf's own site shipped without. `docs/uf.config.js` names
+    // the origin, which is the whole of what a build cannot work out for
+    // itself; see ubugeeei-prod/uf#269.
+    let sitemap = fs::read_to_string(dist.join("sitemap.xml")).expect("a sitemap");
+    assert!(
+        sitemap.starts_with(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
+        ),
+        "{sitemap}"
+    );
+    for expected in [
+        "<loc>https://docs.uniflowed.dev/</loc>",
+        "<loc>https://docs.uniflowed.dev/guide</loc>",
+        "<loc>https://docs.uniflowed.dev/guide/install</loc>",
+        "<loc>https://docs.uniflowed.dev/reference/cli</loc>",
+    ] {
+        assert!(sitemap.contains(expected), "missing {expected}:\n{sitemap}");
+    }
+    // The error document is served and is not a page.
+    assert!(
+        !sitemap.contains("https://docs.uniflowed.dev/404"),
+        "{sitemap}"
+    );
+    // One `<loc>` per page the prerender reported, and no more.
+    assert_eq!(
+        sitemap.matches("<loc>").count(),
+        manifest["pages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|page| page["url"] != serde_json::json!("/404"))
+            .count(),
+        "the sitemap and the prerender disagree about what was built:\n{sitemap}"
+    );
+
+    assert_eq!(
+        fs::read_to_string(dist.join("robots.txt")).expect("a robots.txt"),
+        "User-agent: *\nDisallow:\n\nSitemap: https://docs.uniflowed.dev/sitemap.xml\n"
+    );
+
+    // And a page's own metadata reaches the document a crawler reads: the
+    // canonical URL the home page declares, resolved against the root
+    // layout's `metadataBase`, and the card the layout declares for every
+    // page under it.
+    assert!(
+        index.contains("<link rel=\"canonical\" href=\"https://docs.uniflowed.dev/\"/>"),
+        "no canonical URL:\n{index}"
+    );
+    assert!(
+        index.contains("<meta name=\"twitter:card\" content=\"summary_large_image\"/>"),
+        "no twitter card:\n{index}"
+    );
+    assert!(
+        index.contains(
+            "<meta property=\"og:image\" content=\"https://docs.uniflowed.dev/brand/uf.png\"/>"
+        ),
+        "the og:image was not made absolute:\n{index}"
+    );
+
     let report: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dist.join("uf-bundle-report.json")).unwrap())
+        serde_json::from_str(&fs::read_to_string(meta.join("uf-bundle-report.json")).unwrap())
             .unwrap();
     assert_eq!(report["version"], 1);
     let paths: Vec<&str> = report["assets"]
@@ -804,6 +885,7 @@ import { defineConfig } from "@uniflowed/config";
 export default defineConfig({
   app: { router: { entry: "app.js", root: "app" } },
   build: { entries: ["app.js"], outDir: "dist" },
+  site: { url: "https://guarded.example" },
 });
 "#,
         ),
@@ -895,7 +977,7 @@ fn a_guarded_route_that_is_prerendered_is_reported() {
     }
 
     let manifest: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(root.join("dist/uf-build-manifest.json")).unwrap(),
+        &fs::read_to_string(root.join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
     )
     .unwrap();
     let reported = manifest["prerenderedUnderMiddleware"].as_array().unwrap();
@@ -924,6 +1006,33 @@ fn a_guarded_route_that_is_prerendered_is_reported() {
     assert!(
         !urls.contains(&"/"),
         "an unguarded route was reported as guarded: {reported:#?}"
+    );
+
+    // The second reader of that same answer. A guard is a statement that a
+    // route is not for everyone and a sitemap is a submission to search
+    // engines, so the two documents the guard covers are the two the sitemap
+    // leaves out — even though both are in `dist/` and a static host serves
+    // them. See `commands/build/site.rs`.
+    let sitemap = fs::read_to_string(root.join("dist/sitemap.xml")).unwrap();
+    assert!(
+        sitemap.contains("<loc>https://guarded.example/</loc>"),
+        "{sitemap}"
+    );
+    for guarded in ["/dashboard", "/dashboard/settings"] {
+        assert!(
+            !sitemap.contains(&format!("https://guarded.example{guarded}")),
+            "a guarded route was advertised: {sitemap}"
+        );
+    }
+
+    // And it is not named in `robots.txt` either. `Disallow: /dashboard`
+    // publishes `/dashboard` to everyone who fetches the file, which is the
+    // opposite of what leaving it out of the sitemap achieved.
+    let robots = fs::read_to_string(root.join("dist/robots.txt")).unwrap();
+    assert!(!robots.contains("dashboard"), "{robots}");
+    assert_eq!(
+        robots,
+        "User-agent: *\nDisallow:\n\nSitemap: https://guarded.example/sitemap.xml\n"
     );
 }
 
@@ -1863,6 +1972,64 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         missing.contains("served-app has no such page"),
         "{}",
         context("did not serve the project's own not-found page", &missing)
+    );
+
+    // 5a. The two files a crawler asks for, and the three it must not get.
+    //
+    //     `uf build` writes its own manifests beside the output directory
+    //     rather than inside it, so this is what a deployed application
+    //     answers for them: nothing. Asked of the server rather than of
+    //     `dist/` because that is the shape of ubugeeei-prod/uf#339 — the
+    //     build has written them there since the manifest existed, and it only
+    //     became a disclosure once there was a server in front of the
+    //     directory. Both servers are asked, because they are two front doors
+    //     to one build.
+    for leaked in [
+        "/uf-build-manifest.json",
+        "/uf-rsc-manifest.json",
+        "/uf-bundle-report.json",
+    ] {
+        let response = get(server, port, leaked, said);
+        assert!(
+            response.starts_with("HTTP/1.1 404"),
+            "{}",
+            context(&format!("served {leaked}"), &response)
+        );
+    }
+
+    let sitemap = get(server, port, "/sitemap.xml", said);
+    assert!(
+        sitemap.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not serve the sitemap", &sitemap)
+    );
+    assert!(
+        sitemap.contains("<loc>https://served.example/</loc>")
+            && sitemap.contains("<loc>https://served.example/guide</loc>"),
+        "{}",
+        context("the sitemap is missing a prerendered page", &sitemap)
+    );
+    //     The three subtractions, on a live server. `/posts/:slug` and
+    //     `/slow/:id` have no `generateStaticParams`, so nothing — this build
+    //     included — knows what their URLs are; `/404` is a document that is
+    //     served and is not a page.
+    for absent in ["/posts", "/slow", "/404"] {
+        assert!(
+            !sitemap.contains(&format!("https://served.example{absent}")),
+            "{}",
+            context(
+                &format!("the sitemap names {absent}, which is not a URL it can stand behind"),
+                &sitemap
+            )
+        );
+    }
+
+    let robots = get(server, port, "/robots.txt", said);
+    assert!(
+        robots.starts_with("HTTP/1.1 200")
+            && robots.contains("Sitemap: https://served.example/sitemap.xml"),
+        "{}",
+        context("did not serve a robots.txt naming the sitemap", &robots)
     );
 
     // 5. A route that suspends: the layout and the fallback have to be on the
@@ -3031,10 +3198,12 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
     );
 
     // 5. And the manifest carries the field the bundler read, so a future
-    //    reader of `dist/uf-rsc-manifest.json` sees the same decision.
-    let manifest: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dist.join("uf-rsc-manifest.json")).unwrap())
-            .unwrap();
+    //    reader of `.uf/build/meta/uf-rsc-manifest.json` sees the same
+    //    decision.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/uf-rsc-manifest.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(manifest["version"], serde_json::json!(2));
     let proximity = |path: &str| {
         manifest["modules"]

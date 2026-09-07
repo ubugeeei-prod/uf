@@ -3,7 +3,7 @@
 use camino::Utf8PathBuf;
 use uf_router::{Route, RouteParam, RouteParamKind};
 
-use super::{UnguardedPage, unguarded_pages};
+use super::{Prerendered, UnguardedPage, unguarded_pages};
 
 const ROOT: &str = "/project";
 
@@ -32,11 +32,15 @@ fn route(path: &str, directory: &str, middleware: &[&str]) -> Route {
     }
 }
 
-fn page(url: &str, file: &str) -> (String, String) {
-    (url.to_owned(), file.to_owned())
+fn page(url: &str, file: &str) -> Prerendered {
+    Prerendered {
+        url: url.to_owned(),
+        file: file.to_owned(),
+        status: 200,
+    }
 }
 
-fn found(routes: &[Route], pages: &[(String, String)]) -> Vec<UnguardedPage> {
+fn found(routes: &[Route], pages: &[Prerendered]) -> Vec<UnguardedPage> {
     unguarded_pages(ROOT.into(), routes, pages)
 }
 

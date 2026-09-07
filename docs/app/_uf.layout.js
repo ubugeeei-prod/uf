@@ -10,6 +10,7 @@
 import * as React from "@uniflowed/react";
 import { Suspense } from "@uniflowed/react";
 import { Link, useRoute } from "@uniflowed/router";
+import type { Metadata } from "@uniflowed/router";
 
 import "./_design/seam.css";
 import { nextTheme, themeBootstrap, themeLabel, useTheme } from "./_design/theme.js";
@@ -17,16 +18,30 @@ import { nextTheme, themeBootstrap, themeLabel, useTheme } from "./_design/theme
 const VERSION = "0.0.0-alpha";
 
 /**
- * The document's title and description when a page does not give its own.
+ * What every page shares, and what a page overrides by declaring its own.
  *
  * The router merges this under each page's front matter, and renders the
  * result as a hoistable `<title>` — which is why there is no `<title>` in the
  * head below. Two of them is what you get if you write one here as well.
+ *
+ * `metadataBase` is the same origin as `site.url` in `uf.config.js`, and it is
+ * written twice because the two are read by different things at different
+ * times: `site.url` is what `uf build` puts in a `<loc>`, in Rust, with no
+ * JavaScript in the process; this is what the renderer resolves `/brand/uf.png`
+ * against. Keep them in step.
+ *
+ * There is deliberately no `canonical` here. A canonical URL is one page's own
+ * URL, and a layout's metadata reaches every page under it — so declaring one
+ * here would tell a search engine that all thirty pages of the manual are the
+ * home page.
  */
-export const metadata: {| readonly title: string, readonly description: string |} = {
+export const metadata: Metadata = {
   title: "uf — Unified Toolchain for Flow",
   description:
     "The best React experience for Flow: run, build, test, format and lint from one command, without Babel or plugin assembly.",
+  metadataBase: "https://docs.uniflowed.dev",
+  openGraph: { images: ["/brand/uf.png"] },
+  twitter: { card: "summary_large_image", images: ["/brand/uf.png"] },
 };
 
 /**

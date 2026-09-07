@@ -47,15 +47,57 @@ use crate::support::{
 use crate::ui::Ui;
 
 mod guards;
+mod site;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
 
+/// Where the build writes its notes about itself.
+///
+/// The output directory is what gets deployed, and everything in it is served
+/// — by a static host, by `uf preview`, and by `uf start`. So the line this
+/// directory draws is **who the file is for**:
+///
+/// * the output directory is for the *visitor*: documents, chunks, styles,
+///   the metadata files a crawler fetches, and `.vite/manifest.json`, which
+///   the server reads off disk at startup and which is Vite's own file in
+///   Vite's own place;
+/// * this directory is for *whoever ran the build*: `uf-build-manifest.json`,
+///   `uf-rsc-manifest.json` and `uf-bundle-report.json`. Nothing reads them to
+///   answer a request. Between them they name every route including the ones
+///   that were never prerendered, the source file behind each one, and the
+///   size of every chunk — a map of an application, handed to anyone who
+///   guesses the filename. See ubugeeei-prod/uf#339.
+///
+/// Beside `.uf/build/server`, `.uf/build/compile` and `.uf/build/deploy`,
+/// which the other halves of the build already use, and outside the output
+/// directory so `emptyOutDir` cannot sweep it away.
+///
+/// A deploy step that wants these files still has them; it copies `dist/`, and
+/// this is one directory up from there rather than gone.
+const BUILD_META_DIR: &str = ".uf/build/meta";
+
+/// One document the prerender wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Prerendered {
+    /// The URL it was rendered for.
+    pub(crate) url: String,
+    /// The file it was written to, relative to the project root.
+    pub(crate) file: String,
+    /// The status the render answered with.
+    ///
+    /// Almost always `200`. The exception is `404.html`, rendered from the
+    /// router-root not-found boundary and reported as `/404` — a document that
+    /// is served and is not a page, which is a distinction [`site`] needs and
+    /// nothing else did until it existed.
+    pub(crate) status: u16,
+}
+
 /// What Vite reported building.
 #[derive(Debug, Default)]
 struct ViteBuild {
-    /// Prerendered pages, as `(url, file)`.
-    pages: Vec<(String, String)>,
+    /// Prerendered pages, in the order the prerender reported them.
+    pages: Vec<Prerendered>,
     /// Warnings Vite logged, shown after the summary.
     warnings: Vec<String>,
     /// How the client route table came out of the server-component split.
@@ -126,11 +168,12 @@ pub(crate) fn build(
     }
 
     // The bundler's copy of the analysis, and the reason it is written here
-    // rather than beside the one in `dist/` below. `@uniflowed/vite` decides
+    // rather than beside the record written below. `@uniflowed/vite` decides
     // which routes keep their page module *while it is emitting the bundle*,
-    // and `dist/` does not exist yet — Vite empties it on the way in. So the
-    // same bytes go somewhere the build cannot sweep away, and the path is
-    // handed to the driver as `UF_RSC_MANIFEST`.
+    // so it needs the manifest before this build has produced anything; the
+    // copy in [`BUILD_META_DIR`] is written when the build is over and is the
+    // one a reader should trust, because `uf dev` rewrites this one on every
+    // edit. The path is handed to the driver as `UF_RSC_MANIFEST`.
     let rsc_input = uf_rsc::write_manifest(&root.join(RSC_MANIFEST_BUILD_DIR), &rsc.manifest())?;
 
     progress.tick("resolving the JavaScript host");
@@ -172,7 +215,9 @@ pub(crate) fn build(
         while let Some(event) = driver.next_event()? {
             match event {
                 Event::Phase { name } => progress.tick(&format!("vite: {name}")),
-                Event::Page { url, file, .. } => report.pages.push((url, file)),
+                Event::Page {
+                    url, file, status, ..
+                } => report.pages.push(Prerendered { url, file, status }),
                 // Reported as it happens and not fatal here: the driver keeps
                 // going and ends the build itself, so the reader sees every
                 // route that failed rather than the first one.
@@ -215,10 +260,12 @@ pub(crate) fn build(
     // report and not a refusal is argued in [`guards`].
     let unguarded = guards::unguarded_pages(&resolved.root, &routes, &vite.pages);
 
-    // Written after Vite so `emptyOutDir` cannot sweep them away, and so the
-    // manifest describes the build that actually happened.
+    // Written after Vite so a stale copy cannot be read as this build's, and
+    // so the manifest describes the build that actually happened.
     progress.tick("writing manifests");
-    let build_manifest = out_dir.join("uf-build-manifest.json");
+    let meta_dir = resolved.root.join(BUILD_META_DIR);
+    fs::create_dir_all(&meta_dir).with_context(|| format!("failed to create {meta_dir}"))?;
+    let build_manifest = meta_dir.join("uf-build-manifest.json");
     let payload = json!({
         "version": 2,
         "engine": "vite",
@@ -230,7 +277,7 @@ pub(crate) fn build(
             "page": relative_to(&resolved.root, &route.page),
             "params": route.params.iter().map(|param| param.name.as_str()).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
-        "pages": vite.pages.iter().map(|(url, file)| json!({ "url": url, "file": file })).collect::<Vec<_>>(),
+        "pages": vite.pages.iter().map(|page| json!({ "url": page.url, "file": page.file })).collect::<Vec<_>>(),
         // The same list the summary warns about, as data: which deployment of
         // `dist/` is happening is a fact the build does not have, and a deploy
         // step that does have it needs somewhere to read this from that is not
@@ -253,14 +300,24 @@ pub(crate) fn build(
     });
     timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
     let rsc_manifest = timer.measure("rsc manifest", || {
-        uf_rsc::write_manifest(&out_dir, &rsc.manifest())
+        uf_rsc::write_manifest(&meta_dir, &rsc.manifest())
+    })?;
+
+    // `sitemap.xml` and `robots.txt`, from the documents the prerender just
+    // reported. Into the output directory rather than beside it — unlike the
+    // three manifests above, these two exist to be fetched — and before the
+    // size report, so what the report measures is everything a visitor can
+    // ask for. See [`site`] for which URLs go in and which do not.
+    progress.tick("writing metadata files");
+    let metadata_files = timer.measure("metadata", || {
+        site::write(&out_dir, &resolved.config.site, &vite.pages, &unguarded)
     })?;
 
     progress.tick("measuring shipped assets");
     let (size, size_report_path) = timer.measure("bundle size", || -> Result<_> {
         let assets = collect_assets(&out_dir, &ReportOptions::default())?;
         let report = build_report(assets, &route_assets(&out_dir, &routes));
-        let path = write_report(&out_dir, &report)?;
+        let path = write_report(&meta_dir, &report)?;
         Ok((report, path))
     })?;
     // After the size report and not before it: the binary is written into the
@@ -331,8 +388,11 @@ pub(crate) fn build(
     if let Some(manifest) = &router_manifest {
         outputs.push(relative_to(&resolved.root, manifest));
     }
-    for (_, file) in &vite.pages {
-        outputs.push(file.clone());
+    for page in &vite.pages {
+        outputs.push(page.file.clone());
+    }
+    for file in &metadata_files.files {
+        outputs.push(relative_to(&resolved.root, file));
     }
     if let Some(compiled) = &compiled {
         outputs.push(relative_to(&resolved.root, &compiled.binary));
@@ -367,7 +427,16 @@ pub(crate) fn build(
     } else {
         Vec::new()
     };
-    let warnings = vite.warnings.clone();
+    let mut warnings = vite.warnings.clone();
+    // Said rather than assumed. A project with a `public/robots.txt` gets the
+    // one it wrote, and the silent version of that is a person reading
+    // `site.robots` in `uf.config.js` and wondering why none of it applies.
+    for kept in &metadata_files.kept {
+        warnings.push(format!(
+            "{} was already in the output directory, so `site` did not write it",
+            relative_to(&resolved.root, kept)
+        ));
+    }
     let guarded_rows: Vec<(String, String, String)> = unguarded
         .iter()
         .map(|page| {

@@ -552,7 +552,7 @@ Implemented native slices already cover:
 
 - zero-config `.js` + `// @flow` project generation without npm scripts
 - router discovery and generated `router.js` route types
-- `uf build` metadata emission through `dist/uf-build-manifest.json`
+- `uf build` metadata emission through `.uf/build/meta/uf-build-manifest.json`
 - Rust-native `uf dev` HTTP state and health endpoint
 - `uf install` workspace discovery, `uf.lock`, store manifest, and
   content-addressed package entries

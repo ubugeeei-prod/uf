@@ -82,7 +82,7 @@ pub const SERVER_ACTION_TYPES_HEADER: &str = "\
 // a promise, because a server action is always async.
 //
 // An action is here when some module that can hand it across a client
-// boundary reaches it, which is the same rule `dist/uf-rsc-manifest.json`
+// boundary reaches it, which is the same rule `uf-rsc-manifest.json`
 // applies to what it publishes. An inline `\"use server\"` closure is not here:
 // it has no export name to refer to.
 //

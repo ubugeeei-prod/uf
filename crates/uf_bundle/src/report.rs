@@ -196,6 +196,14 @@ pub enum ReportError {
 pub struct ReportOptions {
     /// File names, relative to the output directory, that are build metadata
     /// rather than shipped assets.
+    ///
+    /// `uf build` no longer writes any of these into the output directory —
+    /// they live beside it, under `.uf/build/meta/`, because everything in the
+    /// output directory is served (ubugeeei-prod/uf#339). The list stays
+    /// because the walk is over a directory this crate does not own: an
+    /// upgrade whose `dist/` still holds a previous release's copies, or a
+    /// project that empties nothing between builds, would otherwise have those
+    /// bytes counted against its budgets and packed into its binary.
     pub excluded: Vec<CompactString>,
 }
 
@@ -369,9 +377,15 @@ fn sum_javascript(by_path: &BTreeMap<&str, &AssetEntry>, names: &[CompactString]
         })
 }
 
-/// Write the report to `<out_dir>/uf-bundle-report.json`.
-pub fn write_report(out_dir: &Utf8Path, report: &BundleReport) -> Result<Utf8PathBuf, ReportError> {
-    let path = out_dir.join("uf-bundle-report.json");
+/// Write the report to `<dir>/uf-bundle-report.json`.
+///
+/// `dir` is not the output directory. The report names every asset a build
+/// emitted and what each one weighs, which is a description of the application
+/// rather than a part of it, and the output directory is the thing that gets
+/// served — so `uf build` passes its own metadata directory here and the
+/// report is measured but never deployed. See `uf_cli`'s `BUILD_META_DIR`.
+pub fn write_report(dir: &Utf8Path, report: &BundleReport) -> Result<Utf8PathBuf, ReportError> {
+    let path = dir.join("uf-bundle-report.json");
     let mut contents = serde_json::to_string_pretty(&BundleReportFile {
         version: 1,
         gzip_level: crate::size::GZIP_LEVEL,

@@ -34,6 +34,7 @@ which is the fastest way to answer "what is it actually using".
 | `build` | The production build: entries, output, budgets, source maps |
 | `dev` | The dev server: host, port, file access, allowed hosts |
 | `docs` | The documentation build, if the project has one |
+| `site` | Where the built site is served from, and what `uf build` writes for a crawler |
 | `env` | The `.env` files, the default mode, and the pinned toolchain |
 | `fmt` | `uf fmt` |
 | `lint` | `uf lint` and Flow's built-in lints |
@@ -96,6 +97,59 @@ your source tree; the reasoning is in
 
 Budgets are unset on purpose: failing a build nobody asked uf to police is worse
 than reporting the size and moving on.
+
+`uf build` also writes three files *beside* the output directory, in
+`.uf/build/meta/`: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
+`uf-bundle-report.json`. They are notes about the build rather than part of it
+— between them they name every route including the ones nothing links to, the
+source file behind each one, and the size of every chunk — and everything in
+the output directory is served to whoever asks for it.
+
+## site
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `url` | unset | The origin the site is served from, absolute and with no trailing slash |
+| `sitemap` | `true` | Write `sitemap.xml` |
+| `robots.enabled` | `true` | Write `robots.txt` |
+| `robots.allow` | `[]` | `Allow:` lines |
+| `robots.disallow` | `[]` | `Disallow:` lines |
+
+```js
+site: {
+  url: "https://docs.uniflowed.dev",
+},
+```
+
+`url` is the switch. Without it neither file is written, because a `<loc>` has
+to be an absolute URL and nothing in a bundle knows the host it will be
+deployed to — and a sitemap naming the wrong host is worse for a site than no
+sitemap at all. With it, `uf build` writes:
+
+- **`sitemap.xml`** — one `<loc>` per document the prerender wrote, minus the
+  error document and minus anything under a `_uf.middleware.js`. A route with
+  parameters and no `generateStaticParams` prerenders nothing, so it is absent
+  by construction: nothing, this build included, knows what its URLs are. There
+  is no `lastmod`, `changefreq` or `priority` on any entry — none of the three
+  is a fact the build has, and a `lastmod` that is the deploy time for every
+  URL is one search engines learn to ignore.
+- **`robots.txt`** — but only when it would say something. A `robots.txt` that
+  disallows nothing is exactly equivalent to not having one, so what makes it
+  worth writing is the `Sitemap:` line or a rule you asked for. With neither,
+  no file.
+
+A guarded route is left out of the sitemap and is *not* added to `robots.txt`:
+`Disallow: /admin` publishes `/admin` to everyone who fetches the file, and a
+path you did not want advertised is not made safer by being written into the
+one file every crawler reads first.
+
+A `public/sitemap.xml` or `public/robots.txt` you wrote yourself is never
+overwritten. The build says which file it left alone.
+
+The origin is not `metadataBase`, which is a route's own
+[metadata](/guide/routing#metadata) and is what the renderer resolves a
+relative `og:image` against. The two are read by different things at different
+times and a site that has both should keep them the same.
 
 ## env
 

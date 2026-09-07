@@ -11,8 +11,19 @@
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
+import type { Metadata } from "@uniflowed/router";
 
 import { Claims, Command, Eyebrow, Lede, Terminal } from "./_design/parts.js";
+
+/**
+ * The one page whose canonical URL is the site's own.
+ *
+ * Only `canonical`: the merge is shallow per key, so declaring this leaves the
+ * title, the description and the card the root layout set exactly as they
+ * were. Resolved against the layout's `metadataBase`, which is why it is a
+ * path here and an absolute URL in the document.
+ */
+export const metadata: Metadata = { canonical: "/" };
 
 /**
  * Output of `uf build` on this site, pasted from a real run.

@@ -215,6 +215,63 @@ export default component Post(data: {| +post: Post |}) {
 rather than returned, so the type of the data does not have to admit "or a
 redirect".
 
+## Metadata
+
+A page or layout may export a `metadata` object, or a `generateMetadata`
+function when it needs the loaded data:
+
+```js
+import type { Metadata } from "@uniflowed/router";
+
+export const metadata: Metadata = {
+  title: "Install · uf",
+  description: "One command, no plugin assembly.",
+  canonical: "/guide/install",
+  openGraph: { images: ["/brand/uf.png"] },
+  twitter: { card: "summary_large_image" },
+};
+```
+
+Layouts merge outermost first, then MDX front matter, then the page's own
+`metadata`, then `generateMetadata`. The merge is per key, so a page that
+declares only `canonical` keeps the title its layout set. The router renders
+the result as hoistable head elements before it renders anything else, which is
+why it works for a crawler that runs no JavaScript — unlike `useHead` from
+`@uniflowed/web`, which is a browser-only escape hatch for a component that is
+already on screen.
+
+`metadataBase` is the site's origin, and it is what makes the rest correct.
+Open Graph and Twitter both require **absolute** image URLs, and a route module
+cannot know the host it will be served from — so `openGraph.images:
+["/og.png"]` on its own ships exactly as written and is not an Open Graph image
+at all. Declare `metadataBase` once on the root layout and every descendant
+inherits it:
+
+```js
+export const metadata: Metadata = {
+  metadataBase: "https://docs.uniflowed.dev",
+};
+```
+
+`canonical` is emitted as both `<link rel="canonical">` and `og:url`, because
+`og:url` is defined as the page's canonical URL and writing it twice is two
+copies of one fact. Put it on a **page**, never on a layout: a layout's
+metadata reaches every page under it, and a canonical URL declared there tells
+a search engine that the whole section is one page.
+
+`site.url` in [`uf.config.js`](/reference/config#site) is the same origin read
+by a different reader — `uf build`, in Rust, writing `<loc>` into
+`sitemap.xml`. A site that has both should keep them the same.
+
+| Field | Emits |
+| --- | --- |
+| `title` | `<title>` |
+| `description` | `<meta name="description">` |
+| `metadataBase` | nothing on its own; resolves the URLs below |
+| `canonical` | `<link rel="canonical">` and `og:url` |
+| `openGraph.title`, `.description`, `.images` | `og:title`, `og:description`, one `og:image` each |
+| `twitter.card`, `.site`, `.creator`, `.title`, `.description`, `.images` | `twitter:*`, under `name` rather than `property` |
+
 ## Navigating
 
 `Link` navigates on the client and prefetches on hover by default:
