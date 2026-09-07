@@ -111,6 +111,28 @@ It is a development tool and it is not in your bundle. The overlay is imported
 dynamically behind `import.meta.hot`, so a production build has no path to the
 module at all.
 
+### Writing your own `import.meta.hot`
+
+`import.meta.hot` is Vite's handle on hot module replacement while the dev
+server is running, and `undefined` in a build — Vite replaces the expression
+outright, so the branch behind it is statically dead. Reach through it with
+optional chaining, or bind it to a name first:
+
+```js
+import.meta.hot?.accept((next) => { /* … */ });   // or
+const hot = import.meta.hot;
+if (hot) hot.accept((next) => { /* … */ });
+```
+
+Not `if (import.meta.hot) { import.meta.hot.accept(…) }`, which every Vite
+guide writes and `uf check` rejects. Flow keys a refinement by a *lookup* — an
+identifier, `this` or `super`, plus a path of properties — and `import.meta` is
+a meta-property, not an identifier, so testing it refines nothing and the body
+of the `if` still sees `ImportMetaHot | void`. That is upstream Flow's
+behaviour rather than a uf choice, and uf does not patch the Flow it vendors.
+`vite/hot-needs-optional-chaining` reports the guard and says this, and
+`uf lint --fix-unsafe` will insert the `?.` for you.
+
 ## uf build
 
 <div className="command"><code>uf build</code></div>
