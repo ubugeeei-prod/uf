@@ -551,14 +551,73 @@ pub(crate) enum Commands {
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
     },
-    /// Update dependencies to the newest version their range allows.
+    /// Update dependencies, and report the ones their ranges hold back.
     ///
-    /// The ranges in `package.json` are not touched; the lockfile is. Name
-    /// packages to hold the rest still, or name none to update everything.
+    /// With no flag it is the manager's own update — everything moves to the
+    /// newest version its declared range already allows, and `package.json` is
+    /// not touched — followed by a report of what is newer than the ranges
+    /// permit. That report is usually the answer people came for.
+    ///
+    /// `--latest`, `--minor` and `--patch` rewrite the ranges to the newest
+    /// published version at or below that level, then install. Name packages to
+    /// hold the rest still, or name none for all of them.
     Update {
         /// The packages to update; all of them when none is named.
         #[arg(value_name = "PACKAGE")]
         packages: Vec<String>,
+        /// Rewrite ranges to the newest published version, then install.
+        #[arg(long, alias = "major", group = "step")]
+        latest: bool,
+        /// Rewrite ranges as far as the next minor, then install.
+        #[arg(long, group = "step")]
+        minor: bool,
+        /// Rewrite ranges as far as the next patch, then install.
+        #[arg(long, group = "step")]
+        patch: bool,
+        /// Report what would change and change nothing — no update, no install.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// The package manager underneath: what it is allowed to do, and what it
+    /// has been told.
+    ///
+    /// `uf install`, `uf add` and the rest are the commands people run. This is
+    /// the plumbing beside them — the settings a manager reads that uf has an
+    /// opinion about.
+    Pm {
+        #[command(subcommand)]
+        command: PmCommand,
+    },
+    /// Open a dependency for editing, and write the patch when you are done.
+    ///
+    /// `uf patch left-pad` prints a directory holding a copy of the package;
+    /// edit it, then `uf patch --commit <that directory>` writes the patch and
+    /// installs. The patch is reapplied by every install after that.
+    ///
+    /// pnpm and Yarn 2+ only. npm, bun and Yarn 1 have nothing equivalent, and
+    /// uf names `patch-package` rather than installing it for you — this is the
+    /// one command whose whole purpose is editing somebody else's code, and it
+    /// is not the place for uf to add a dependency the project did not choose.
+    Patch {
+        /// The package to open, or with `--commit` the directory to commit.
+        #[arg(value_name = "PACKAGE")]
+        target: String,
+        /// Write the patch from a directory `uf patch` opened, and install.
+        #[arg(long)]
+        commit: bool,
+    },
+    /// Show the versions a workspace shares, and change one everywhere.
+    ///
+    /// A package more than one manifest declares is a catalogue entry, and the
+    /// range they agree on is its value. `uf catalog` prints them and every
+    /// package whose manifests *dis*agree; `uf catalog set` makes them agree.
+    ///
+    /// pnpm's `catalog:` is a specifier only pnpm can resolve, so uf does not
+    /// invent a fifth one: it reports how many a project has and leaves pnpm to
+    /// resolve them. See ubugeeei-prod/uf#496.
+    Catalog {
+        #[command(subcommand)]
+        command: Option<CatalogCommand>,
     },
     /// Re-read the workspace and record the package and runtime plan.
     ///
@@ -755,6 +814,47 @@ pub(crate) enum ReleaseBump {
     Patch,
     Minor,
     Major,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PmCommand {
+    /// List the dependencies that would run code at install time, and approve
+    /// the ones you have read.
+    ///
+    /// uf passes `--ignore-scripts` to every manager by default, so no
+    /// dependency runs anything. Naming one here records it in the field your
+    /// package manager reads — `pnpm.onlyBuiltDependencies`,
+    /// `trustedDependencies`, `dependenciesMeta` — and the next install builds
+    /// exactly those.
+    ///
+    /// npm and Yarn 1 have no per-package control: `--ignore-scripts` is all of
+    /// them or none. uf says so rather than offering an approval that quietly
+    /// means "and everything else too".
+    #[command(name = "approve-builds")]
+    ApproveBuilds {
+        /// The packages to approve; none lists what is waiting.
+        #[arg(value_name = "NAME")]
+        names: Vec<String>,
+        /// Say what would be approved, and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum CatalogCommand {
+    /// Declare one range for a package in every manifest that has it.
+    Set {
+        /// The package.
+        #[arg(value_name = "NAME")]
+        name: String,
+        /// The range, for example `^19.0.0`.
+        #[arg(value_name = "RANGE")]
+        range: String,
+        /// Say what would change, and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
