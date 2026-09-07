@@ -183,6 +183,24 @@ export type Anchored = {|
 /** What `useAnchor` is told, on top of the geometry `placeOverlay` needs. */
 export type AnchorRequest = {|
   readonly anchorRef: { current: HTMLElement | null },
+  /**
+   * A box to place against instead of the anchor element's own.
+   *
+   * A context menu opens *at a point* rather than against an element: the
+   * pointer coordinates the reader right-clicked at, which is a zero-sized
+   * rectangle no element in the document has. The element is still needed —
+   * it is what the writing direction is read from, what a `ResizeObserver`
+   * watches, and what focus returns to — so this replaces the *measurement*
+   * and nothing else.
+   *
+   * `null` (and absent) means "measure the element", which is every other
+   * overlay in this package.
+   *
+   * It has to be stable between renders for the same position, because it is
+   * one of the things the placement effect re-runs for; a fresh object each
+   * render would re-measure on every render of the page around it.
+   */
+  readonly anchorRect?: Rect | null,
   readonly overlayRef: { current: HTMLElement | null },
   /** Nothing is measured while it is closed: there is nothing to measure. */
   readonly open: boolean,
@@ -424,6 +442,7 @@ export hook useAnchor(request: AnchorRequest): Anchored {
   const {
     align,
     alignOffset,
+    anchorRect,
     anchorRef,
     avoidCollisions,
     collisionPadding,
@@ -432,6 +451,9 @@ export hook useAnchor(request: AnchorRequest): Anchored {
     side,
     sideOffset,
   } = request;
+  // Absent and `null` are one answer here — "measure the element" — so the two
+  // spellings become one value before anything depends on it.
+  const virtual = anchorRect ?? null;
   // The left-to-right reading of a logical side, which is what `Anchored`
   // reports until something has been measured. In a right-to-left page a
   // submenu's `inline-end` is the *left*, and the first `reflow` says so - one
@@ -446,7 +468,7 @@ export hook useAnchor(request: AnchorRequest): Anchored {
     if (anchor == null || overlay == null || view == null) {
       return;
     }
-    const box = rectOf(anchor);
+    const box = virtual ?? rectOf(anchor);
     const placement = placeOverlay({
       align,
       alignOffset,
@@ -524,6 +546,7 @@ export hook useAnchor(request: AnchorRequest): Anchored {
   }, [
     align,
     alignOffset,
+    anchorRect,
     anchorRef,
     avoidCollisions,
     collisionPadding,

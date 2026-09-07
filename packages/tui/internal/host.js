@@ -66,6 +66,10 @@ import type { Update } from "../diff.js";
 import { diffFrames } from "../diff.js";
 import type { KeyEvent } from "../keys.js";
 import { layout } from "../layout.js";
+import type { MouseEvent } from "../mouse.js";
+import { MouseButton, derive } from "../mouse.js";
+import type { HitGrid } from "./hits.js";
+import { createHitGrid, hitAt } from "./hits.js";
 import { measureText, paint, wrapModeOf } from "./paint.js";
 import type { TuiNode, TuiProps } from "./tree.js";
 import { applyProps, createNode } from "./tree.js";
@@ -106,6 +110,24 @@ export type Renderer = {
   size: { readonly width: number, readonly height: number },
   /** Who to tell when the terminal is resized. */
   sizeListeners: Set<() => void>,
+  /**
+   * Whether this renderer routes mouse reports.
+   *
+   * False by default, and the hit grid is not built when it is: a keyboard
+   * application should not pay a per-frame cost for a device it never reads.
+   * `terminal.js` sets it from `render`'s `mouse` option, which is also what
+   * decides whether the terminal is asked to report the mouse at all — the two
+   * must agree, or an application receives reports it has no grid to route.
+   */
+  mouseEnabled: boolean,
+  /** Which node owned each cell of the last frame, or `null`. */
+  hits: HitGrid | null,
+  /** The node the pointer was last over, so `over`/`out` can be derived. */
+  hovered: TuiNode | null,
+  /** The node a left-button drag started on, while one is in progress. */
+  dragSource: TuiNode | null,
+  /** Whether that press has actually moved yet: a click is not a drag. */
+  dragging: boolean,
 };
 
 /** A renderer that draws into a `width` by `height` rectangle. */
@@ -113,6 +135,7 @@ export function createRenderer(
   width: number,
   height: number,
   capabilities: Capabilities,
+  mouseEnabled: boolean = false,
 ): Renderer {
   return {
     root: createNode("root", {}),
@@ -124,6 +147,11 @@ export function createRenderer(
     onCommit: null,
     size: { width, height },
     sizeListeners: new Set(),
+    mouseEnabled,
+    hits: null,
+    hovered: null,
+    dragSource: null,
+    dragging: false,
   };
 }
 
@@ -146,7 +174,15 @@ export function renderFrame(renderer: Renderer): Frame {
   layout(root, 0, 0, width, height);
   const frame = createFrame(width, height);
   const full: Rect = { x: 0, y: 0, width, height };
-  paint(root, frame, renderer.capabilities, full);
+  // The hit grid belongs to the frame that produced it, so it is replaced
+  // whole rather than updated. A grid kept from an earlier frame would route a
+  // click to a node that has moved, which is the bug that makes a terminal
+  // menu act on the row above the one that was clicked.
+  const hits = renderer.mouseEnabled ? createHitGrid(width, height) : null;
+  paint(root, frame, renderer.capabilities, full, hits);
+  if (hits != null) {
+    renderer.hits = hits;
+  }
   return frame;
 }
 
@@ -228,6 +264,204 @@ export function dispatchKey(renderer: Renderer, key: KeyEvent): void {
 }
 
 /**
+ * The prop each mouse event type is delivered through.
+ *
+ * OpenTUI's handler names, exactly: a component copied from its interaction
+ * page finds its handler called here. `onMouse` is not in this table because
+ * it is called for every type, after the specific one.
+ */
+const MOUSE_HANDLERS: { readonly [string]: string } = {
+  down: "onMouseDown",
+  up: "onMouseUp",
+  move: "onMouseMove",
+  drag: "onMouseDrag",
+  "drag-end": "onMouseDragEnd",
+  drop: "onMouseDrop",
+  over: "onMouseOver",
+  out: "onMouseOut",
+  scroll: "onMouseScroll",
+};
+
+/** The `id` a box was given, which is the only name an event can carry. */
+function nodeId(node: TuiNode | null): string | null {
+  if (node == null) {
+    return null;
+  }
+  const id = node.props.id;
+  return typeof id === "string" ? id : null;
+}
+
+/**
+ * Whether a node is still part of the tree this renderer draws.
+ *
+ * A hovered node and a drag source are held across events, and React can
+ * unmount either of them in between — a menu that closes while the pointer is
+ * over it, a list row that a state update removed. Delivering `out` or
+ * `drag-end` to a node that has left the tree is the same leak `useKeyboard`
+ * avoids by unsubscribing: a component that is gone acts on an event about a
+ * screen the reader has left.
+ */
+function attached(renderer: Renderer, node: TuiNode): boolean {
+  let current: TuiNode | null = node;
+  while (current != null) {
+    if (current === renderer.root) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+/**
+ * Deliver one mouse event to a node, then to its ancestors.
+ *
+ * OpenTUI's propagation: the event starts at a node and bubbles up the parent
+ * chain until something calls `stopPropagation()` or the root is reached.
+ * There is no capture phase — OpenTUI documents one direction, and a phase
+ * nothing can register for would be a field in an event rather than a feature.
+ *
+ * `currentTarget` is rewritten at each step and `target` is not, which is the
+ * DOM's rule and the reason both exist: a panel's handler needs to know that
+ * the click was on the button inside it.
+ */
+function bubble(
+  from: TuiNode,
+  event: MouseEvent,
+  target: TuiNode | null,
+  source: TuiNode | null,
+): void {
+  event.target = nodeId(target);
+  event.source = nodeId(source);
+  let current: TuiNode | null = from;
+  while (current != null) {
+    if (current.type === "box") {
+      event.currentTarget = nodeId(current);
+      const specific = current.props[MOUSE_HANDLERS[event.type]];
+      if (typeof specific === "function") {
+        specific(event);
+      }
+      const catchAll = current.props.onMouse;
+      if (typeof catchAll === "function") {
+        catchAll(event);
+      }
+      if (event.propagationStopped) {
+        return;
+      }
+    }
+    current = current.parent;
+  }
+}
+
+/**
+ * Deliver one mouse report.
+ *
+ * The node under the pointer comes from the hit grid the last paint recorded,
+ * so it is the node a reader can *see* there rather than the node whose
+ * geometry contains the point — those differ under `overflow: "hidden"` and
+ * inside a `ScrollBox`, which is most of the reason the grid exists.
+ *
+ * Three things happen here that a terminal does not report and OpenTUI
+ * specifies:
+ *
+ * * **`over` and `out`.** A terminal reports positions; a hover is a change of
+ *   topmost node, so it is computed by comparing this report's node with the
+ *   last one's. They are delivered before the report that caused them, so that
+ *   a handler which highlights on `over` has already run when the `down` that
+ *   follows arrives.
+ * * **Drag capture.** A left press remembers the node it landed on, and every
+ *   later motion goes to *that* node rather than to whatever is under the
+ *   pointer now. Without it, dragging a slider's handle stops working the
+ *   moment the pointer leaves the handle — which is every drag.
+ * * **The release.** A press that never moved is a click and produces one
+ *   `up`. A press that did produces `drag-end` and `up` at the source, then
+ *   `drop` at whatever is under the pointer carrying `event.source`, and an
+ *   `up` there too unless that is the source again — one release is one `up`
+ *   per node.
+ *
+ * A renderer with `mouseEnabled` false has no grid and drops the report. That
+ * is not a silent failure to guard against: nothing turns mouse reporting on
+ * in the terminal either, so a report can only arrive from a caller who
+ * assembled one by hand.
+ */
+export function dispatchMouse(renderer: Renderer, event: MouseEvent): void {
+  if (renderer.hits == null) {
+    // A report before the first draw. `render` draws immediately after
+    // mounting, so this is the in-memory renderer's path: a test that presses
+    // the mouse before it asks for a frame.
+    renderFrame(renderer);
+  }
+  const grid = renderer.hits;
+  if (grid == null) {
+    return;
+  }
+
+  const hit = hitAt(grid, event.x, event.y);
+  if (hit !== renderer.hovered) {
+    const left = renderer.hovered;
+    renderer.hovered = hit;
+    if (left != null && attached(renderer, left)) {
+      bubble(left, derive(event, "out"), left, renderer.dragSource);
+    }
+    if (hit != null) {
+      bubble(hit, derive(event, "over"), hit, renderer.dragSource);
+    }
+  }
+
+  if (event.type === "down") {
+    if (event.button === MouseButton.LEFT) {
+      renderer.dragSource = hit;
+      renderer.dragging = false;
+    }
+    if (hit != null) {
+      bubble(hit, event, hit, null);
+    }
+    return;
+  }
+
+  if (event.type === "drag") {
+    const source = renderer.dragSource;
+    if (source != null && attached(renderer, source)) {
+      renderer.dragging = true;
+      bubble(source, event, hit, source);
+      return;
+    }
+    if (hit != null) {
+      bubble(hit, event, hit, null);
+    }
+    return;
+  }
+
+  if (event.type === "up") {
+    const source = renderer.dragSource;
+    const dragged = renderer.dragging;
+    renderer.dragSource = null;
+    renderer.dragging = false;
+    if (source != null && dragged && attached(renderer, source)) {
+      // Each of these is its own event object: they are four separate
+      // deliveries, and one handler calling `stopPropagation()` must not
+      // silence the next node's.
+      bubble(source, derive(event, "drag-end"), hit, source);
+      bubble(source, derive(event, "up"), hit, source);
+      if (hit != null) {
+        bubble(hit, derive(event, "drop"), hit, source);
+        if (hit !== source) {
+          bubble(hit, derive(event, "up"), hit, source);
+        }
+      }
+      return;
+    }
+    if (hit != null) {
+      bubble(hit, event, hit, null);
+    }
+    return;
+  }
+
+  if (hit != null) {
+    bubble(hit, event, hit, renderer.dragSource);
+  }
+}
+
+/**
  * The current update priority.
  *
  * React asks for this to decide which lane an update belongs to. It is module
@@ -257,6 +491,12 @@ const hostConfig = {
   getPublicInstance: (instance: TuiNode): TuiNode => instance,
   prepareForCommit: (): null => null,
   resetAfterCommit: (renderer: Renderer): void => {
+    // The picture has changed, so what is under the pointer may have. The grid
+    // is dropped rather than rebuilt: the next draw builds one anyway, and a
+    // mouse report that arrives before that draw builds its own. Keeping it
+    // would route the click after a state update by the frame before it — a
+    // menu that moved under the pointer acting on the row it used to show.
+    renderer.hits = null;
     if (renderer.onCommit != null) {
       renderer.onCommit();
     }
@@ -481,6 +721,19 @@ export function pressKey(renderer: Renderer, key: KeyEvent): void {
 }
 
 /**
+ * Deliver a mouse report and settle everything it caused.
+ *
+ * The counterpart of {@link pressKey}, at the same priority and for the same
+ * reason: a reader who clicked is looking at a frame that has not changed yet.
+ */
+export function pressMouse(renderer: Renderer, event: MouseEvent): void {
+  withPriority(DiscreteEventPriority, () => {
+    dispatchMouse(renderer, event);
+    settle();
+  });
+}
+
+/**
  * Tell the renderer the terminal is a different size, and settle the redraw.
  *
  * `previous` is discarded rather than kept. A resized terminal has already
@@ -498,6 +751,11 @@ export function resize(renderer: Renderer, width: number, height: number): void 
   renderer.height = height;
   renderer.size = { width, height };
   renderer.previous = null;
+  // The same reasoning as `previous`, one axis further: a grid is a rectangle
+  // of the old size, and indexing it with a coordinate from the new one reads
+  // the wrong row.
+  renderer.hits = null;
+  renderer.hovered = null;
   withPriority(DiscreteEventPriority, () => {
     for (const listener of Array.from(renderer.sizeListeners)) {
       listener();

@@ -36,7 +36,9 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Sheet` | A modal dialog attached to an edge, and one `data-side` contract | `sheet.js` |
 | `Drawer` | The sheet you can drag away, with the keyboard WCAG 2.5.7 requires | `drawer.js` |
 | `Sidebar` | Navigation beside the page that becomes a modal sheet on a narrow one | `sidebar.js` |
-| `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking | `menu.js` |
+| `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking, checkable items. shadcn's Dropdown Menu is this. | `menu.js` |
+| `ContextMenu` | The same menu opened by the right button, by `Shift+F10` and by a long press, at the pointer | `context-menu.js` |
+| `Menubar` | A row of menus as one control: one tab stop, and arrows that walk between the open ones | `menubar.js` |
 | `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter, in groups or not | `combobox.js` |
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
 | `Popover` | A dialog that is not modal: focus in, `Escape` out, `Tab` leaves | `popover.js` |
@@ -51,8 +53,8 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Progress` | How far along something is, or that it is under way at all | `progress.js` |
 | `Table` | The sort that is announced, the selection that can be mixed, the rows a page is not showing | `table.js` |
 | `Pagination` | Navigation with a name, one current page, and a sentence saying it moved | `pagination.js` |
-| `Field` | The label, description, error and `aria-invalid` wiring | `field.js` |
-| `Switch`, `Checkbox` | The two two-state controls, including `mixed` | `switch.js`, `checkbox.js` |
+| `Field` | The label, description, error, `aria-invalid` and `aria-required` wiring — for one control or for a group | `field.js` |
+| `Switch`, `Checkbox` | The two two-state controls, including `mixed`, and the `Enter` that submits rather than toggles | `switch.js`, `checkbox.js` |
 | `Carousel` | Slides that can be stopped, and that `Tab` cannot fall into | `carousel.js` |
 | `ScrollArea` | An overflow container a keyboard can actually scroll | `scroll-area.js` |
 | `InputOtp` | Six boxes drawn over one real `<input>`, so autofill still works | `input-otp.js` |
@@ -1289,6 +1291,120 @@ stylesheet, which is why `InputOtp.Root` puts your DOM props on the *input* and
 renders no wrapper of its own: the input is the field, so `Field.Control`'s
 `id`, `aria-describedby` and `aria-invalid` land where they mean something.
 
+## The four menus, which are three modules
+
+shadcn ships Dropdown Menu, Context Menu, Menubar and the checkable items all
+three share. uf ships three modules, because **`DropdownMenu` is `Menu`** — a
+dropdown menu is a menu whose trigger is a button, and a second name for one
+component is a second surface to keep in step. `crates/uf_lib/src/ui.rs` says so
+in one line rather than carrying a fourth entry.
+
+`Menu.CheckboxItem`, `Menu.RadioGroup` and `Menu.RadioItem` are the checkable
+kinds, available from all three. They do **not** close the menu when they are
+chosen, and a plain `Menu.Item` does:
+
+```js
+<Menu.Body>
+  <Menu.Item onSelect={rename}>Rename…</Menu.Item>
+  <Menu.CheckboxItem defaultChecked>Show hidden files</Menu.CheckboxItem>
+  <Menu.RadioGroup defaultValue="name" onValueChange={sortBy}>
+    <Menu.Label>Sort by</Menu.Label>
+    <Menu.RadioItem value="name">Name</Menu.RadioItem>
+    <Menu.RadioItem value="date">Date modified</Menu.RadioItem>
+  </Menu.RadioGroup>
+</Menu.Body>
+```
+
+Ticking three boxes is one visit to the menu on every platform, which is why the
+defaults differ; `closeOnSelect` says otherwise for a part, and
+`onSelect={(event) => event.preventDefault()}` says it for one press — the same
+"I handled this" `composeHandlers` already reads between a caller's handler and
+the component's.
+
+A **context menu** is reachable from the keyboard, which is the half that is
+usually left out: `Shift+F10` and the `ContextMenu` key open it, because a
+command reachable only by right-click is reachable only by a pointer. Its
+trigger is therefore in the tab order — pass `tabIndex={-1}` when the trigger
+already contains something focusable — and its body needs an `aria-label`,
+because arbitrary content is not a name. Opened by the pointer it appears *at*
+the pointer; opened by the keyboard it appears against the trigger.
+
+A **menubar** has one tab stop for the whole bar. `ArrowLeft` / `ArrowRight`
+move between the menus, mirrored in a right-to-left page, and — with a menu open
+— close it and open the adjacent one, so File → Edit → View needs no `Escape`
+between them. `Escape` closes the open menu and leaves focus on its trigger.
+
+## Animating a disclosure
+
+`Collapsible` and `Accordion` can carry the height their content *would* have,
+which is the one number a stylesheet cannot compute: `height: 0 →
+var(--uf-collapsible-height)` has to know its destination while the panel is
+still closed, and a closed panel has no box for `ResizeObserver`,
+`getBoundingClientRect` or `scrollHeight` to report on.
+
+```js
+<Collapsible.Root measure>
+  <Collapsible.Trigger>Details</Collapsible.Trigger>
+  <Collapsible.Content className="panel">…</Collapsible.Content>
+</Collapsible.Root>
+```
+
+```css
+.panel { overflow: hidden; transition: height 150ms; height: 0 }
+.panel:not([hidden]) { height: var(--uf-collapsible-height) }
+```
+
+`measure` is opt-in, and on `Accordion.Root` it covers every panel. It is a prop
+rather than a default because whether a stylesheet reads the property is not
+something the component can ask, and the alternative is a forced layout per
+panel per render on every page that has a collapsible — animated or not.
+
+## `Field` and `@uniflowed/form`
+
+Both packages know how to make a control accessible, and both used to produce
+`aria-invalid` and `aria-describedby`. Spread onto one input the later one won,
+so the control was described by the form's message *or* by `Field.Description`
+and never by both. One hook ends it:
+
+```js
+component EmailField(form: UseFormReturn<Signup>) {
+  const email = useFieldSource(form, "email", { required: "We need one" });
+  return (
+    <Field.Root field={email}>
+      <Field.Label>Email address</Field.Label>
+      <Field.Control render={(props) => <input type="email" {...props} />} />
+      <Field.Description>We will not share it.</Field.Description>
+      <Field.Error />
+    </Field.Root>
+  );
+}
+```
+
+`useFieldSource` returns facts and a binding — invalid, required, the message,
+and the `name`/`ref`/`onChange`/`onBlur` the store needs — and no `aria-*` at
+all. `Field` composes every attribute from them in one place, so
+`aria-describedby` is a token list naming the description *and* the message, and
+`Field.Error` shows what the store said without being handed it. `name` is a key
+of the form's values, so a renamed schema key is a type error at the call.
+
+It lives in `@uniflowed/form` rather than in `@uniflowed/ui` because the
+dependency can only run one way: `@uniflowed/ui` is on npm and
+`@uniflowed/form` is not, and `tools/ci/publishable.sh` refuses a published
+package that depends on an unpublished one.
+
+`Field.Root group` is for a set with no single control to point a `<label for>`
+at — a radio group, a checkbox group, three selects making a date. The root
+becomes `role="group"` named by the label, the label stops being a `<label>`,
+and the description and the error describe the set.
+
+Two things are deliberately not here. A **server error** needs no new part:
+`setError(name, …, { shouldFocus: true })` reaches the same `Field.Error` and
+moves focus the same way a client-side one does. An **error summary** at the top
+of a long form is a documented pattern rather than a component: it is a list of
+links to the fields that failed, and what makes it work is the ids `Field`
+already owns — a component would have to be told what every field on the page is
+called, which is the form's knowledge and not a container's.
+
 ## What this page is
 
 A reference for what `@uniflowed/ui` guarantees, not a gallery. The guarantees
@@ -1296,10 +1412,10 @@ are stated as tests in `tests/library/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.
 
-Sections for `Dialog`, `Menu`, `Tabs`, `Field`, `Switch` and `Checkbox` are
-still to be written, and `Combobox` has only its groups and the palette they
-make possible; until they are, each module's header is the documentation, and
-it is written to be read.
+Sections for `Dialog`, `Tabs`, `Switch` and `Checkbox` are still to be written,
+and `Combobox` has only its groups and the palette they make possible; until
+they are, each module's header is the documentation, and it is written to be
+read.
 
 For a live region that is *only* a live region — a route change announced, a
 count that updates where nothing visible moves — `Announcer` in

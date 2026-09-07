@@ -79,6 +79,23 @@ export const matchTakesAPattern: void = expect(list).toMatch(3);
 // expect: string
 export const classNamesAreStrings: void = expect(list).toHaveClass(1);
 
+// The four whose entry in the *table* takes a `mixed`, which is what let the
+// `any` out of its indexer — see the note on `verdicts` in
+// `packages/test/internal/expect.js`. These say the widening stopped there:
+// `Matchers` is the published type and it still names the argument, so a table
+// that grew wider did not make `expect` wider.
+// expect: string
+export const propertyPathIsAString: void = expect(list).toHaveProperty(1);
+
+// expect: string
+export const snapshotHintIsAString: void = expect(list).toMatchSnapshot(1);
+
+// expect: string
+export const inlineSnapshotIsAString: void = expect(list).toMatchInlineSnapshot(1);
+
+// expect: => boolean
+export const satisfyTakesAPredicate: void = expect(list).toSatisfy(1);
+
 // The asymmetric matchers hanging off `expect` are named too.
 // expect: anythign
 export const misspeltAsymmetric: mixed = expect.anythign();
