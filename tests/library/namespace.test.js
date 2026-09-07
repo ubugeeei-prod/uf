@@ -391,6 +391,42 @@ function stubLoaderArguments(): Array<string> {
 }
 
 /**
+ * What a finished worker's stdout means, given how the worker ended.
+ *
+ * How it ended is half the answer and stdout cannot carry it. A worker that
+ * wrote every event a case expects and then died — a crash in a teardown, a
+ * `process.exit(1)` on the way out, a kill from the outside — leaves output
+ * indistinguishable from a healthy run's, so a reader of the events alone
+ * would call the case passed. Both are therefore checked here, and a
+ * non-clean exit throws with the code and the signal in it, because
+ * `code=null, signal=SIGSEGV` and `code=1, signal=null` send whoever reads
+ * the failure to two different places.
+ *
+ * Separate from [`runStubsInWorker`] so that the case below can state the rule
+ * without arranging a crash: a test that had to kill a real worker to prove
+ * this would be testing Node's process handling rather than this file's.
+ */
+function eventsFromWorker(
+  code: number | null,
+  signal: string | null,
+  written: string,
+): Array<StubEvent> {
+  if (code !== 0 || signal != null) {
+    throw new Error(
+      `the worker did not exit cleanly: code=${String(code)}, signal=${String(signal)}`,
+    );
+  }
+  try {
+    return written
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    throw new Error(`the worker wrote something that is not an event: ${String(error)}`);
+  }
+}
+
+/**
  * Run `requests` in one worker and collect every event it wrote.
  *
  * The environment is this process's, plus [`PRESENT`] and minus [`ABSENT`], so
@@ -417,16 +453,11 @@ function runStubsInWorker(requests: Array<StubRequest>): Promise<Array<StubEvent
       written += String(chunk);
     });
     child.on("error", reject);
-    child.on("close", () => {
+    child.on("close", (code: number | null, signal: string | null) => {
       try {
-        resolve(
-          written
-            .split("\n")
-            .filter((line) => line !== "")
-            .map((line) => JSON.parse(line)),
-        );
+        resolve(eventsFromWorker(code, signal, written));
       } catch (error) {
-        reject(new Error(`the worker wrote something that is not an event: ${String(error)}`));
+        reject(error);
       }
     });
     child.stdin.end(requests.map((request) => `${JSON.stringify(request)}\n`).join(""));
@@ -441,6 +472,31 @@ function runStubsInWorker(requests: Array<StubRequest>): Promise<Array<StubEvent
  * per-case budget is not the right measure of them.
  */
 const WORKER_BUDGET = { timeout: 120_000 };
+
+describe("how the worker ended is part of what it said", () => {
+  /**
+   * The case the events cannot show.
+   *
+   * Every assertion below this reads a list of events, and that list is the
+   * same whether the worker finished or crashed on its way out — so a stub
+   * lifetime that "held" in a worker which then segfaulted would be reported
+   * as held. The exit is checked before the output is parsed at all.
+   */
+  it("takes a clean exit as the condition for reading the output", () => {
+    const written = '{"event":"output","text":"held"}\n';
+
+    expect(eventsFromWorker(0, null, written)).toEqual([{ event: "output", text: "held" }]);
+    expect(() => eventsFromWorker(1, null, written)).toThrow("code=1");
+    expect(() => eventsFromWorker(null, "SIGKILL", written)).toThrow("signal=SIGKILL");
+    // A worker that exited cleanly and wrote nothing is a worker that ran no
+    // file, not a failure: the cases below assert what is in the list.
+    expect(eventsFromWorker(0, null, "")).toEqual([]);
+  });
+
+  it("says a line that is not an event is not an event", () => {
+    expect(() => eventsFromWorker(0, null, "not json\n")).toThrow("not an event");
+  });
+});
 
 describe("a stub does not outlive the file that set it", () => {
   it(
