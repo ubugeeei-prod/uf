@@ -48,9 +48,37 @@ import { Buffer } from "node:buffer";
 
 import { createStaticHandler } from "./node.js";
 
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+
+/**
+ * What a Lambda can do, which is neither of the two things this is asked.
+ *
+ * Both flags are `false`, and both are facts about the platform rather than
+ * about this module. The response is a JSON value, so [`toResult`] reads the
+ * whole body before the invocation returns — an event stream would be held in
+ * memory until it closed, which for a stream that stays open is a timeout. And
+ * the invocation is frozen the moment it answers, so work pushed into its own
+ * memory is dropped rather than run.
+ *
+ * So an upgrader handed here is refused where the host is wired, before a
+ * single connection is accepted and dropped, and so is a queue that does not
+ * survive the process. That is the whole point of the pair being values: the
+ * alternative is a deployment that accepts WebSocket handshakes all day and a
+ * customer wondering why nothing arrives.
+ *
+ * A durable queue is not refused. Pushing to SQS from a Lambda is ordinary and
+ * correct; what cannot be here is the *consumer*, which is a second function
+ * or a container. `./queue.js` says which half is whose.
+ */
+export function lambdaCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(
+    capabilitiesFor("serverless", { stream: false, persistent: false }, options),
+  );
+}
 
 /**
  * An HTTP API payload format 2.0 event, as much of it as this module reads.

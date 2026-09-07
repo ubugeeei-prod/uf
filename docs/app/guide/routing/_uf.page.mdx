@@ -384,10 +384,11 @@ is the one thing to know before designing an application around handlers, and
 it is why `uf preview` exists: it is where you find out that what answered in
 development also answers from the build.
 
-One export per method: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
-`OPTIONS`. Anything else a module exports is a helper, not a method — a
-dispatcher that treated every export as one would answer requests with your
-utility functions.
+One export per method: `GET`, `HEAD`, `QUERY`, `POST`, `PUT`, `PATCH`,
+`DELETE`, `OPTIONS`. Anything else a module exports is a helper, not a method —
+a dispatcher that treated every export as one would answer requests with your
+utility functions, and one that treated every upper-case export as one would
+answer a `PURGE` with your constant.
 
 Three things the dispatcher does so every handler does not have to:
 
@@ -404,6 +405,152 @@ a bug, and turning it into a 500 here would hide it from the host's own error
 reporting — and leave you unable to tell a 500 you meant from one you caused.
 
 A handler is not prerendered and its module never reaches the browser.
+
+## QUERY: the GET whose parameters did not fit in a URL
+
+`QUERY` is a safe, idempotent method that carries a body. It is what a search
+with a page of filters has been faking with a `POST` for twenty years, and the
+difference is not cosmetic: a `POST` is not safe, so nothing may retry it,
+prefetch it or cache it, and every layer between the browser and the handler
+has to treat a search as a mutation.
+
+```js
+// app/api/search/_uf.route.js
+// @flow
+export async function QUERY(request: Request): Promise<Response> {
+  const filters = await request.json();
+  return Response.json(await search(filters));
+}
+```
+
+The client helper sends one:
+
+```js
+import { createFetch } from "@uniflowed/fetch";
+
+const api = createFetch({ baseURL: "/api" });
+const hits = await api.request("/search", { method: "QUERY", body: { filters } });
+```
+
+**What refuses it is the part worth knowing.** Nothing in uf does: the
+dispatcher matches `QUERY` like any other verb, and `@uniflowed/fetch` retries
+it like the other safe methods. What refuses it is the path in between.
+
+- **A proxy, CDN or firewall with a list of verbs** answers `405` or `501`
+  itself, so the request never arrives and the failure looks exactly like a
+  route that does not exist. `@uniflowed/fetch` says so in the error rather
+  than passing the status through, because that is the difference between an
+  afternoon and a status code.
+- **A cache in front of the application** must not store a `QUERY`: the method
+  is cacheable in principle, and the key includes the body, which almost
+  nothing implements. uf's own route cache is `GET`-only and stays that way.
+- **`<form>`, `XMLHttpRequest` and `EventSource`** cannot send it. `fetch` can,
+  in every browser and every runtime uf targets.
+
+There is no method-override header, and there will not be.
+`X-HTTP-Method-Override: QUERY` on a `POST` is the usual workaround and it is
+the shape of CVE-2025-29927 — an inbound header steering dispatch — which
+`docs/security.md` forbids. A route that has to work through infrastructure you
+do not control exports `POST` as well, in its own file, where a reader can see
+it.
+
+## Streams, sockets, and work that outlives the request
+
+A handler returns a `Response`, and a `Response` body may be a stream — so
+server-sent events need nothing new from the router:
+
+```js
+// app/api/progress/_uf.route.js
+// @flow
+import { eventStream } from "@uniflowed/server/events";
+
+export function GET(): Response {
+  return eventStream((sink) => {
+    const timer = setInterval(() => sink.send({ event: "tick", data: stateOfPlay() }), 1000);
+    return () => clearInterval(timer);
+  });
+}
+```
+
+`eventStream` writes the format, sets the four headers that stop a proxy
+buffering the whole stream until it ends, sends a heartbeat so an idle
+connection is not closed by something in the middle, and disconnects a reader
+that falls far enough behind rather than holding it in memory.
+`useEventSource` from `@uniflowed/hooks/events` is the other end: it reports
+the connection as state, and reopens the one case the browser's own
+reconnection gives up on — a response that was not an event stream, which is
+what a deployment restarting looks like.
+
+A WebSocket is a `GET` with `Upgrade: websocket` on it, so it is a handler too:
+
+```js
+// app/api/room/[id]/_uf.route.js
+// @flow
+import { upgradeWebSocket } from "@uniflowed/server/socket";
+
+export function GET(request: Request, context: HandlerContext): Response {
+  const { response, socket } = upgradeWebSocket(request);
+  socket.addEventListener("message", (event) => socket.send(String(event.data)));
+  return response;
+}
+```
+
+**uf defines the upgrade and your deployment supplies it.** Deno, Bun and
+Cloudflare each spell taking a socket differently and Node has no server-side
+`WebSocket` at all, so what uf owns is the shape they reduce to — a function
+from a `Request` to `{ response, socket }` — passed as `websocket` where the
+host is built. A built-in that wrapped one library would make uf the thing that
+decides which WebSocket library your project has, which is the failure
+`docs/red-lines.md` exists to prevent.
+
+And work that should outlive the response is a job:
+
+```js
+// @flow
+import { defineJob, enqueue } from "@uniflowed/server/queue";
+
+export const sendWelcome = defineJob({
+  name: "send-welcome",
+  retry: { attempts: 5 },
+  run: async (payload) => mail(payload.to),
+});
+
+export async function POST(request: Request): Promise<Response> {
+  const user = await create(await request.json());
+  await enqueue(sendWelcome, { to: user.email });
+  return Response.json(user, { status: 201 });
+}
+```
+
+**uf provides the job, the payload boundary, the retry policy and its backoff,
+and one backend that runs in this process.** Your deployment provides the two
+things no configuration flag can: storage that survives a restart, and a
+consumer — a process that is still there when no request is being answered.
+`memoryQueue` is an array, says so as `durable: false`, and is right for one
+long-lived process whose work can be lost. Delivery is at least once, so a job
+that charges a card needs its own idempotency key.
+
+A queue is not `after()`. `after()` runs a callback in this process once the
+response has gone, with no retry and no record it ever existed, which is right
+for a metric and wrong for anything a user would notice missing.
+
+### What each target can do
+
+The two questions that decide all three: does a response body reach the client
+as it is produced, and is the process still there once it has.
+
+| Target | Streams | Outlives the response | Event streams | WebSockets | In-process queue |
+| --- | --- | --- | --- | --- | --- |
+| `uf dev`, `uf preview`, `uf start` | yes | yes | yes | with an upgrader | yes |
+| `node`, `container`, `--compile` | yes | yes | yes | with an upgrader | yes |
+| `edge` | yes | no | yes | with an upgrader | **refused** |
+| `serverless` | no | no | **refused** | **refused** | **refused** |
+
+Refused means refused where the host is wired, before a single connection is
+accepted and dropped — a serverless deployment handed a WebSocket upgrader
+fails to start rather than accepting handshakes all day and delivering nothing.
+A durable queue is accepted everywhere, because pushing to one is not draining
+it.
 
 ## Types for routes
 

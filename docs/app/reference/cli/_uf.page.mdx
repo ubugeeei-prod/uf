@@ -242,6 +242,22 @@ filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
 lives — not a second application.
 
+The one thing `handler.js` does say per target is what that target can do,
+because two of the answers differ:
+
+| Target | A body reaches the client as it is produced | The process outlives the response |
+| --- | --- | --- |
+| `node`, `container` | yes | yes |
+| `edge` | yes | no — the isolate may be torn down once the response is out |
+| `serverless` | no — a Lambda response is a JSON value, so the body is read to the end first | no |
+
+A route handler that returns an event stream, takes a WebSocket, or queues work
+asks through those, and is refused by name rather than by a connection nobody
+serves: an event stream on `serverless` fails where the handler builds it
+instead of timing out, and a WebSocket upgrader or an in-process queue handed
+to a target that cannot keep it fails where the host is wired instead of on the
+first connection. [Routing](/guide/routing) has the whole table and the API.
+
 The difference from `uf start` is what the host must already have. `uf start`
 reads `dist/` and `.uf/build/server` and needs the project's `node_modules`
 around them, because the server bundle leaves `react` and `react-dom` as bare

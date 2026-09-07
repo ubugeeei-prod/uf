@@ -26,6 +26,41 @@
 // with the `Allow` header the specification requires — that is not the
 // handler's business, and every handler would otherwise write it.
 //
+// # `QUERY`, and what refuses it
+//
+// `QUERY` is a `GET` with a body: safe, idempotent, cacheable, and the method
+// that a search with more parameters than a URL can hold has been faking with a
+// `POST` for twenty years. A handler exports it like any other verb, and this
+// dispatcher matches it like any other verb, because there is nothing special
+// about it *here*. What is special about it is the path between a client and
+// this function, and that is the part worth writing down rather than leaving to
+// be discovered in production.
+//
+// Three things refuse it, and they refuse it differently:
+//
+//   * **A client that cannot send it.** The Fetch standard forbids `CONNECT`,
+//     `TRACE` and `TRACK` and allows any other token, so every browser and
+//     every runtime uf targets can send a `QUERY` today. `XMLHttpRequest` and
+//     `EventSource` cannot, and neither can a `<form>`.
+//   * **An intermediary that will not forward it.** This is the real one. A
+//     proxy, a CDN or a WAF that has a list of methods answers `405` or `501`
+//     itself, and the request never arrives — so the failure looks exactly like
+//     a route that does not exist, from a server that never saw it.
+//     `@uniflowed/fetch` names that case in the error rather than passing the
+//     status through, which is the whole of what "stated rather than
+//     discovered" can mean from the other end of a wire.
+//   * **A cache that does not know it is safe.** `QUERY` is cacheable in
+//     principle and the key includes the body, which almost nothing implements.
+//     uf's own route cache is `GET`-only and stays that way; anything in front
+//     of the application should be told not to store a `QUERY` at all.
+//
+// What uf deliberately does not do about any of it is accept a method-override
+// header. `X-HTTP-Method-Override: QUERY` on a `POST` is the usual workaround
+// and it is the shape of CVE-2025-29927: an inbound header steering dispatch,
+// which `docs/security.md` forbids in the row about that CVE and in rule 3. A
+// route that must work through hostile infrastructure exports `POST` as well
+// and says so in its own file, where a reader can see it.
+//
 // It also does not establish the request a handler is inside. The host does,
 // around the whole of it, so a handler and the guard above it share one
 // context; see the same section in `./middleware.js`. This module used to
@@ -66,8 +101,18 @@ export type HandlerRecord = {|
  * — and a module that exports a helper would then answer requests with it.
  * `HEAD` falls back to `GET` with the body dropped, which is what a client
  * asking for headers expects and what nobody remembers to write.
+ *
+ * It was closed in name only until `QUERY` was added. `pick` looked the method
+ * up on the module and this list decided nothing but the order of the `Allow`
+ * header, so a module exporting `PURGE` answered `PURGE` — the exact behaviour
+ * the paragraph above says is refused. Adding a verb was the moment to make the
+ * sentence true, because the alternative was adding one to a list nothing read.
+ *
+ * `QUERY` is here and `CONNECT` and `TRACE` are not, and the difference is not
+ * taste: the `fetch` specification forbids the last two outright, so a handler
+ * exporting either could never be reached by a browser.
  */
-const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+const METHODS = ["GET", "HEAD", "QUERY", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 
 /**
  * Match a request against the handler table and run it.
@@ -126,8 +171,18 @@ export function createDispatcher(options: {|
   };
 }
 
-/** The function for a method, falling back to `GET` for `HEAD`. */
+/**
+ * The function for a method, falling back to `GET` for `HEAD`.
+ *
+ * The method is checked against `METHODS` first, which is what makes that list
+ * closed rather than decorative: without it a request could name any export,
+ * and a module's `PURGE` — or its `DEFAULT`, or a name a bundler added — would
+ * answer one.
+ */
 function pick(module: HandlerModule, method: string): Handler | null {
+  if (!METHODS.includes(method)) {
+    return null;
+  }
   const own = module[method];
   if (typeof own === "function") {
     return own as $FlowFixMe;

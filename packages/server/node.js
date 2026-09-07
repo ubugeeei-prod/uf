@@ -58,9 +58,29 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+
+/**
+ * What a Node host can do, plus whatever the deployment supplied.
+ *
+ * Both flags are `true` and neither is a formality. A Node response is a
+ * socket, so a body reaches the client as it is written — which is what an
+ * event stream needs. And the process is still there once the response has
+ * gone, which is what makes an in-process queue a legitimate small deployment
+ * here and nowhere else in this package.
+ *
+ * `websocket` is still the deployment's to pass. Node has no server-side
+ * `WebSocket`: taking one means framing it over the raw socket from
+ * `server.on("upgrade")`, and which library does that is a choice uf must not
+ * make on a project's behalf — see `./socket.js` and `docs/red-lines.md` rule 3.
+ */
+export function nodeCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(capabilitiesFor("node", { stream: true, persistent: true }, options));
+}
 
 /**
  * Content types for what a uf build emits.
