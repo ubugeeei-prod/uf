@@ -187,8 +187,9 @@
 - [ ] Implement `@uniflowed/ui` as an RSC-compatible headless UI library that can replace shadcn for Flow React apps.
 - [x] Implement terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
       Flow React on React's own reconciler rather than a native binding;
-      `packages/tui/index.js` argues that out. Mouse, selection, scrolling and
-      rich content are ubugeeei-prod/uf#314.
+      `packages/tui/index.js` argues that out. Scrolling and the mouse — hit
+      testing, hover, drag capture, drop and the wheel — are in. Selection, key
+      release and rich content are ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.

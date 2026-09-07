@@ -38,6 +38,8 @@ import type { BorderStyle, Capabilities } from "../capability.js";
 import { borderGlyphs } from "../capability.js";
 import type { Frame, Rect, Style } from "../cells.js";
 import { INHERIT, PLAIN, fillRect, intersect, parseColor, writeGrapheme } from "../cells.js";
+import type { HitGrid } from "./hits.js";
+import { recordHit } from "./hits.js";
 import type { TuiNode } from "./tree.js";
 import { ROOT_TEXT_STYLE, borderOf, textRuns, textStyleFromProps } from "./tree.js";
 import type { Grapheme } from "../widths.js";
@@ -149,8 +151,19 @@ export function wrapModeOf(node: TuiNode): WrapMode {
  * boxes that hide their overflow. Nothing is ever written outside it, which is
  * both how `overflow: "hidden"` is implemented and how a child that layout
  * placed off the bottom of an 80×24 terminal fails to corrupt the frame.
+ *
+ * `hits` is the grid the mouse is routed with, or `null` for a renderer that
+ * has no mouse. It is filled here rather than by a second walk because the
+ * question it answers — which node was allowed to draw this cell — is the
+ * question `clip` is already the answer to; see `hits.js`.
  */
-export function paint(node: TuiNode, frame: Frame, capabilities: Capabilities, clip: Rect): void {
+export function paint(
+  node: TuiNode,
+  frame: Frame,
+  capabilities: Capabilities,
+  clip: Rect,
+  hits: HitGrid | null = null,
+): void {
   // A scrolling ancestor decided this subtree is not on screen. Its geometry
   // is deliberately not up to date, so walking into it would draw the last
   // frame's positions on top of this one's.
@@ -160,11 +173,11 @@ export function paint(node: TuiNode, frame: Frame, capabilities: Capabilities, c
   switch (node.type) {
     case "root":
       for (const child of node.children) {
-        paint(child, frame, capabilities, clip);
+        paint(child, frame, capabilities, clip, hits);
       }
       return;
     case "box":
-      paintBox(node, frame, capabilities, clip);
+      paintBox(node, frame, capabilities, clip, hits);
       return;
     case "text":
       paintText(node, frame, clip);
@@ -178,8 +191,21 @@ export function paint(node: TuiNode, frame: Frame, capabilities: Capabilities, c
   }
 }
 
-function paintBox(node: TuiNode, frame: Frame, capabilities: Capabilities, clip: Rect): void {
+function paintBox(
+  node: TuiNode,
+  frame: Frame,
+  capabilities: Capabilities,
+  clip: Rect,
+  hits: HitGrid | null,
+): void {
   const area = { x: node.x, y: node.y, width: node.width, height: node.height };
+  // Before the children, so that a child overwrites its parent — a click on a
+  // button inside a panel is a click on the button. A box claims its whole
+  // rectangle whether or not it painted anything into it: a box is a region,
+  // and one without a background is still the thing a reader is pointing at.
+  if (hits != null) {
+    recordHit(hits, node, area, clip);
+  }
   const background = parseColor(readColor(node.props, ["backgroundColor", "bg"]));
   const style = textStyleFromProps(node.props, PLAIN);
   if (background !== INHERIT) {
@@ -206,7 +232,7 @@ function paintBox(node: TuiNode, frame: Frame, capabilities: Capabilities, clip:
     : clip;
 
   for (const child of node.children) {
-    paint(child, frame, capabilities, childClip);
+    paint(child, frame, capabilities, childClip, hits);
   }
 
   if (node.style.overflow === "scroll" && node.props.scrollbar === true) {
