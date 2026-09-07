@@ -1290,6 +1290,365 @@ fn assert_page(server: &mut Server, port: u16, said: &Mutex<String>, body: &str)
     );
 }
 
+/// The dev server answers what the built application answers.
+///
+/// The docs site is a static site: [`dev_serves_the_docs_site_through_vite`]
+/// proves `uf dev` renders pages, and it cannot prove anything about the half
+/// of an application that is not a page, because the docs site has none of it.
+/// `served-app` is the other project, and asking `uf dev` its questions is what
+/// makes "development answers what production answers" a test rather than a
+/// claim. Every assertion below is one that [`assert_served`] also makes of
+/// `uf preview` and `uf start`.
+///
+/// It found two things that had been true for as long as `uf dev` had existed:
+///
+///   * a route handler was unreachable from a browser, because two middlewares
+///     rendered every document and the earlier one could not dispatch —
+///     ubugeeei-prod/uf#349;
+///   * a `redirect()` from a loader answered with a 307 and no `Location`,
+///     because the same middleware dropped the render's headers — #338.
+///
+/// Both are about a request whose *headers* decide the answer, which is why
+/// the assertions read the status line and the headers rather than the body.
+#[test]
+fn dev_answers_the_fixture_the_way_a_build_does() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    // The same lock the build test takes: both write `.uf/` under the fixture,
+    // and a router manifest written by two processes at once is a file neither
+    // of them wrote.
+    let _served = served_lock();
+    let root = served_app_root();
+    let mut refused = Vec::new();
+
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut server =
+                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_dev_served(&mut server, port, &said, &body);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the dev server never answered `served-app`, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Everything `uf dev` has to answer for `served-app`, once it is listening.
+fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &str) {
+    let context =
+        |what: &str, response: &str| format!("`uf dev` {what}\n{response}\n{}", server_said(said));
+
+    // The page, and the two scripts that say this really is the dev server
+    // rather than a file being served from somewhere.
+    assert!(
+        body.starts_with("HTTP/1.1 200") && body.contains("served-app home"),
+        "{}",
+        context("did not render the home page", body)
+    );
+    assert!(
+        body.contains("/@vite/client"),
+        "{}",
+        context("served a document Vite had not transformed", body)
+    );
+
+    // A route handler, asked exactly the way a browser asks: `Accept:
+    // text/html`, no extension, `GET`. That is a *document* request by every
+    // test the renderer can apply to it, which is why the handler was invisible
+    // — the earlier of `uf dev`'s two middlewares rendered it, and only the
+    // later one could dispatch. The failure was silent: the reader got the
+    // route table's page for `/api/health`, or the not-found page, with a 200
+    // or a 404 and no diagnostic anywhere.
+    let health = get(server, port, "/api/health", said);
+    assert!(
+        health.starts_with("HTTP/1.1 200") && health.contains("\"status\":\"ok\""),
+        "{}",
+        context(
+            "did not reach `app/api/health/_uf.route.js` for a request that looks like a \
+             navigation; a route handler has to answer a browser too",
+            &health
+        )
+    );
+    assert!(
+        !health.contains("served-app has no such page"),
+        "{}",
+        context(
+            "answered a route handler's path with the not-found page",
+            &health
+        )
+    );
+
+    // And the method only a handler can answer, which is the other half of
+    // dispatch: it must run for every method rather than only for what did not
+    // look like a document.
+    let posted = http_request(
+        "127.0.0.1",
+        port,
+        "POST",
+        "/api/health",
+        Some("{\"name\":\"uf\"}"),
+    );
+    assert!(
+        posted.starts_with("HTTP/1.1 200") && posted.contains("\"echoed\":\"uf\""),
+        "{}",
+        context("did not answer the route handler's POST", &posted)
+    );
+
+    // A `redirect()` from a loader. Asserted on the status line and the header
+    // and deliberately not on the body: the meta-refresh document the renderer
+    // also produces is the *fallback* for a static host that can only serve a
+    // file, and a server that sent only that would still pass a test that read
+    // the body. A browser papers over the difference by obeying the refresh one
+    // paint late; `curl -I`, a fetch that follows redirects and every other
+    // client see a 307 pointing nowhere.
+    let moved = get(server, port, "/old/hello-world", said);
+    assert!(
+        moved.starts_with("HTTP/1.1 307"),
+        "{}",
+        context("did not answer a loader's `redirect()` with a 307", &moved)
+    );
+    assert!(
+        redirects_to(&moved, "/posts/hello-world"),
+        "{}",
+        context(
+            "answered a redirect with no `Location`, so only a browser could follow it",
+            &moved
+        )
+    );
+
+    // A path with no route is the project's own 404 and not somebody else's
+    // page, which is what says the renderer ran the router rather than a
+    // fallback.
+    let missing = get(server, port, "/definitely-not-a-page/", said);
+    assert!(
+        missing.starts_with("HTTP/1.1 404") && missing.contains("served-app has no such page"),
+        "{}",
+        context("did not serve the project's own not-found page", &missing)
+    );
+
+    // The browser's own channel back. Both endpoints under `/__uf/` answer,
+    // and what arrives is rendered in this terminal — which is the whole of
+    // ubugeeei-prod/uf#557 and #583: a number and a diagnostic the browser
+    // produces had nowhere to go, so they existed only in a window that may
+    // not be in front.
+    let reported = http_request(
+        "127.0.0.1",
+        port,
+        "POST",
+        "/__uf/vitals",
+        Some(
+            "{\"url\":\"http://127.0.0.1/\",\"vitals\":\
+             [{\"name\":\"LCP\",\"value\":4200,\"rating\":\"poor\",\
+             \"navigationType\":\"navigate\"}]}",
+        ),
+    );
+    assert!(
+        reported.starts_with("HTTP/1.1 204"),
+        "{}",
+        context("did not accept a web-vitals report", &reported)
+    );
+    assert!(
+        wait_for_said(said, "web vitals: LCP is poor", Duration::from_secs(30)),
+        "{}",
+        context("accepted the vitals report and never showed it", &reported)
+    );
+
+    let diagnosed = http_request(
+        "127.0.0.1",
+        port,
+        "POST",
+        "/__uf/diagnostic",
+        Some("{\"severity\":\"error\",\"message\":\"Hydration mismatch in <Posted>\"}"),
+    );
+    assert!(
+        diagnosed.starts_with("HTTP/1.1 204"),
+        "{}",
+        context("did not accept a browser diagnostic", &diagnosed)
+    );
+    assert!(
+        wait_for_said(
+            said,
+            "Hydration mismatch in <Posted>",
+            Duration::from_secs(30)
+        ),
+        "{}",
+        context("accepted the diagnostic and never printed it", &diagnosed)
+    );
+
+    // And nothing under `/__uf/` is reachable as an application path, which is
+    // what makes the prefix safe as a default destination: a directory in
+    // `app/` whose name begins with `_` is not a route, so the fixture cannot
+    // have one and a `GET` here is the wrong method rather than a page.
+    let wrong_method = get(server, port, "/__uf/vitals", said);
+    assert!(
+        wrong_method.starts_with("HTTP/1.1 405"),
+        "{}",
+        context(
+            "answered a GET on the vitals endpoint with something",
+            &wrong_method
+        )
+    );
+}
+
+/// Whether a response carries `Location: target`, however it spelled the name.
+///
+/// Header names are case-insensitive and the two servers do differ: `uf dev`
+/// writes the render result's own `Location` through `setHeader`, and the
+/// production handler puts the same value through a `Headers`, which lowercases
+/// it. Asserting one spelling would be asserting the wrong thing about a
+/// difference that is not one.
+fn redirects_to(response: &str, target: &str) -> bool {
+    response.to_ascii_lowercase().contains(&format!(
+        "\r\nlocation: {}\r\n",
+        target.to_ascii_lowercase()
+    ))
+}
+
+/// A `.env` file edited while `uf dev` runs is read again.
+///
+/// uf reads the `.env` cascade itself, in Rust, and turns Vite's own env-file
+/// loading off so that `uf dev`, `uf build`, `uf test` and `uf run` cannot get
+/// two answers — which left nobody watching the files. Editing one changed
+/// nothing until the command was restarted by hand, and the guide documented
+/// it as a limitation. See ubugeeei-prod/uf#428.
+///
+/// The value is read by a route handler through `process.env`, which is the
+/// thing that can only change when the process does: `import.meta.env` would
+/// have been a weaker assertion, because a value substituted into a module can
+/// look fresh after a module reload without the process having been given a new
+/// environment at all.
+#[test]
+fn dev_rereads_an_env_file_that_changed_under_it() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/api/env/_uf.route.js",
+        "// @flow\n\n\
+         export function GET(): Response {\n  \
+         return Response.json({ greeting: String(process.env.UF_WATCHED_GREETING) });\n\
+         }\n",
+    ));
+    files.push((".env", "UF_WATCHED_GREETING=before the edit\n"));
+    let project = Project::new(&files);
+    let root = project.path().to_path_buf();
+    let mut refused = Vec::new();
+
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        fs::write(root.join(".env"), "UF_WATCHED_GREETING=before the edit\n").unwrap();
+
+        let served = std::thread::scope(|scope| {
+            let mut server =
+                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
+            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: {}",
+                    server.evidence(&said)
+                ));
+                drop(server);
+                return false;
+            }
+
+            let before = get(&mut server, port, "/api/env", &said);
+            assert!(
+                before.contains("before the edit"),
+                "the handler must read the value uf loaded before anything changed:\n{}",
+                server.evidence(&said)
+            );
+
+            fs::write(root.join(".env"), "UF_WATCHED_GREETING=after the edit\n").unwrap();
+
+            // Tolerant of a refused connection, because a restart is exactly
+            // what is being waited for and the port is closed in the middle of
+            // one. The same port throughout: `--port` carries `--strict-port`,
+            // so a server that came back somewhere else is a failure rather
+            // than something this quietly follows. And twice the first start's
+            // budget, because a restart is a whole Vite start again — the
+            // honest cost of re-substituting a value that reaches the browser.
+            let after =
+                wait_for_answer(port, "/api/env", "after the edit", Duration::from_secs(180));
+            assert!(
+                after.is_some(),
+                "`uf dev` never picked up the edited `.env`:\n{}",
+                server.evidence(&said)
+            );
+            assert!(
+                said_contains(&said, "restarting with the new environment"),
+                "the restart has to be said out loud, or a value that changed under a \
+                 developer is a mystery:\n{}",
+                server.evidence(&said)
+            );
+            true
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Ask until the answer contains `needle`, forgiving a server that is restarting.
+///
+/// [`get`] is right for a server that has answered once and must keep
+/// answering: it turns a refused connection into a failure that says so. This
+/// is for the one case where a refused connection is the expected middle of
+/// what is being tested.
+fn wait_for_answer(port: u16, path: &str, needle: &str, budget: Duration) -> Option<String> {
+    let deadline = Instant::now() + budget;
+    while Instant::now() < deadline {
+        if let Some(answer) = try_http_get(port, path)
+            && answer.contains(needle)
+        {
+            return Some(answer);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    None
+}
+
+/// One request, or `None` if anything about it did not work.
+fn try_http_get(port: u16, path: &str) -> Option<String> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .ok()?;
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\n\
+         Connection: close\r\n\r\n"
+    )
+    .ok()?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).ok()?;
+    Some(response)
+}
+
 /// Both servers, against an application whose interesting half is not static.
 ///
 /// One test rather than two, and one build rather than two, because the thing
@@ -1325,6 +1684,11 @@ fn preview_and_start_serve_the_whole_of_a_build() {
         !root.join("dist/slow").exists(),
         "the suspending route must not be prerendered either; a file would be served without \
          rendering and the streaming assertion below would pass without streaming"
+    );
+    assert!(
+        !root.join("dist/old").exists(),
+        "the redirecting route must not be prerendered; a file would be served with a 200 and \
+         the `Location` assertion below would be about a document rather than a redirect"
     );
 
     for command in ["preview", "start"] {
@@ -2059,6 +2423,25 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         context("did not answer the route handler's POST", &posted)
     );
 
+    // 4b. A `redirect()` from a loader, which is the one answer whose whole
+    //     content is a header: `app/old/[slug]` has parameters and no
+    //     `generateStaticParams`, so no file was written for it and this is a
+    //     render. Asked of both servers because `uf dev` used to answer it
+    //     with a 307 carrying no `Location` — see
+    //     [`dev_answers_the_fixture_the_way_a_build_does`] — and the only way
+    //     that stays fixed is if all three are asked the same question.
+    let moved = get(server, port, "/old/hello-world", said);
+    assert!(
+        moved.starts_with("HTTP/1.1 307"),
+        "{}",
+        context("did not answer a loader's `redirect()` with a 307", &moved)
+    );
+    assert!(
+        redirects_to(&moved, "/posts/hello-world"),
+        "{}",
+        context("answered a redirect with no `Location`", &moved)
+    );
+
     // And a path with no route is a 404 rather than somebody else's page —
     // the failure Vite's own preview server has by default, where an SPA
     // fallback answers every unmatched path with the home page and a 200.
@@ -2116,7 +2499,7 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
     //     `/slow/:id` have no `generateStaticParams`, so nothing — this build
     //     included — knows what their URLs are; `/404` is a document that is
     //     served and is not a page.
-    for absent in ["/posts", "/slow", "/404"] {
+    for absent in ["/posts", "/slow", "/old", "/404"] {
         assert!(
             !sitemap.contains(&format!("https://served.example{absent}")),
             "{}",

@@ -25,9 +25,9 @@ mod rsc;
 use std::io::{BufRead, IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Value, json};
-use uf_config::{FmtConfig, UniflowedConfig, load_config};
+use uf_config::{FmtConfig, UniflowedConfig, env_files, load_config};
 use uf_infra::FxHashMap;
 use uf_lib::NativeModule;
 use uf_router::write_router_manifest;
@@ -35,8 +35,10 @@ use uf_rsc::RSC_MANIFEST_ENV;
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::lint::identifier_span;
-use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
-use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label};
+use crate::commands::vite::{
+    Driver, Event, package_dir, render_diagnostic, render_error, render_log, resolve_host,
+};
+use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label, relative_to};
 use crate::ui::Ui;
 
 use crate::fix::{self, FORMATTED_AWAY, Fix, Safety};
@@ -78,8 +80,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let package = package_dir(&root)?;
     let _ = write_router_manifest(&root, &resolved.config)?;
 
-    let env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
-    let driver_args = driver_args(args.host.as_deref(), args.port);
+    let mut env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
     // Before the driver, not after: `@uniflowed/vite` reads the analysis to
     // decide which routes keep a page in the client route table, and it reads
     // it as it generates that table — which happens on the first request. A
@@ -88,15 +89,6 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     // itself is worse than one that never splits.
     let mut server_components = RscReport::new(&root);
     server_components.prime();
-    let mut driver = Driver::spawn(
-        &host,
-        &package,
-        &root,
-        "dev",
-        &driver_args,
-        &env,
-        &[(RSC_MANIFEST_ENV, server_components.manifest_path().as_str())],
-    )?;
 
     let host_name = host.name();
     let project = project_label(&root).to_string();
@@ -124,6 +116,62 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
         renderer.key_values(out, 2, &rows);
     });
 
+    // One driver per environment. The loop exists for exactly one reason: a
+    // `.env` file that changed while the server was running used to change
+    // nothing until somebody restarted the command by hand, because uf reads
+    // the cascade itself — see `crates/uf_config/src/env_files.rs` — and the
+    // driver's watcher only looked at `.js` and `.jsx`. See
+    // ubugeeei-prod/uf#428.
+    //
+    // A restart, and not a hot update, is the honest granularity: a prefixed
+    // value reaches the browser by substitution into the bundle, so a new value
+    // has to be substituted again and every module that read one has to be
+    // re-evaluated. The banner is not printed again — the project, the host and
+    // the transform have not changed — but the `listening` event that follows
+    // prints the URLs, which is the thing a reader wants to see is still true.
+    loop {
+        let watched = env_files::candidate_files(&root, &resolved.config, env.mode())?;
+        let mut driver = Driver::spawn(
+            &host,
+            &package,
+            &root,
+            "dev",
+            &driver_args(args.host.as_deref(), args.port, &watched),
+            &env,
+            &[(RSC_MANIFEST_ENV, server_components.manifest_path().as_str())],
+        )?;
+
+        let Some(changed) = serve(ui, &root, &mut driver, &mut server_components)? else {
+            return driver.finish("the dev server");
+        };
+
+        // Stopped before the environment is read again and before the next one
+        // is started, because the next one takes the same port.
+        driver.stop();
+        let named = relative_to(&root, Utf8Path::new(&changed));
+        ui.render(|renderer, out| {
+            renderer.blank(out);
+            renderer.status(
+                out,
+                Status::Info,
+                &format!("{named} changed; restarting with the new environment"),
+            );
+        });
+        env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
+    }
+}
+
+/// Render one driver's events until it stops, or until the environment moves.
+///
+/// `Ok(Some(file))` is "that `.env` file changed and these values are stale",
+/// which is the caller's cue to restart. `Ok(None)` is the driver closing its
+/// stdout, which is the server ending.
+fn serve(
+    ui: &mut Ui,
+    root: &Utf8Path,
+    driver: &mut Driver,
+    server_components: &mut RscReport,
+) -> Result<Option<String>> {
     while let Some(event) = driver.next_event()? {
         match event {
             Event::Listening {
@@ -158,10 +206,16 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             // property, so there is nothing to patch and nothing to defer:
             // rescan, and say something only if the answer moved.
             Event::SourceChanged => server_components.report(ui),
+            Event::EnvChanged { file } => return Ok(Some(file)),
+            // Something a page saw and this process could not. It is rendered
+            // here rather than logged because that is the whole point of the
+            // channel: a browser diagnostic that only exists in a browser has
+            // to be noticed by somebody who does not know to look.
+            Event::Diagnostic(diagnostic) => render_diagnostic(ui, root, &diagnostic),
             Event::Log { level, message } => render_log(ui, level, &message),
             Event::Error(error) => {
-                let failure = render_error(ui, &root, &error);
-                let _ = driver.finish("uf dev");
+                let failure = render_error(ui, root, &error);
+                driver.stop();
                 return Err(failure);
             }
             Event::ConfigLoaded { .. }
@@ -173,7 +227,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
             | Event::Config { .. } => {}
         }
     }
-    driver.finish("the dev server")
+    Ok(None)
 }
 
 /// Serve the Language Server Protocol on stdio until the client says `exit`.
@@ -1082,7 +1136,13 @@ fn changed_document(message: &Value) -> Option<(String, String)> {
 ///
 /// `dev.strictPort` still decides the case where the port came from the
 /// config, and the driver reads it there.
-fn driver_args(host: Option<&str>, port: Option<u16>) -> Vec<String> {
+///
+/// `--env-file` names every file the cascade would consult in this mode,
+/// existing or not, so that the driver's watcher can say when one moved. They
+/// are named rather than read by the driver: uf is still the only thing that
+/// parses a `.env` file, and what the driver reports is "this changed" rather
+/// than what it now says. See ubugeeei-prod/uf#428.
+fn driver_args(host: Option<&str>, port: Option<u16>, env_files: &[Utf8PathBuf]) -> Vec<String> {
     let mut driver_args = Vec::new();
     if let Some(bind) = host {
         driver_args.push(String::from("--host"));
@@ -1092,6 +1152,10 @@ fn driver_args(host: Option<&str>, port: Option<u16>) -> Vec<String> {
         driver_args.push(String::from("--port"));
         driver_args.push(port.to_string());
         driver_args.push(String::from("--strict-port"));
+    }
+    for file in env_files {
+        driver_args.push(String::from("--env-file"));
+        driver_args.push(file.to_string());
     }
     driver_args
 }
@@ -1108,7 +1172,7 @@ mod tests {
         // that found this had a dev server up on a port it was not asking
         // about; see ubugeeei-prod/uf#234.
         assert_eq!(
-            driver_args(None, Some(5173)),
+            driver_args(None, Some(5173), &[]),
             ["--port", "5173", "--strict-port"]
         );
     }
@@ -1118,8 +1182,11 @@ mod tests {
         // `dev.port` and `dev.strictPort` are the project's preference, and the
         // driver reads both. Sending `--strict-port` here would override a
         // `false` nobody asked to change.
-        assert!(driver_args(None, None).is_empty());
-        assert_eq!(driver_args(Some("0.0.0.0"), None), ["--host", "0.0.0.0"]);
+        assert!(driver_args(None, None, &[]).is_empty());
+        assert_eq!(
+            driver_args(Some("0.0.0.0"), None, &[]),
+            ["--host", "0.0.0.0"]
+        );
     }
 
     /// The parsed body of a frame, for the tests that only care about that.

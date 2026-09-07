@@ -194,14 +194,31 @@ server render and then measures nothing.
 document, and none of them throws. uf prerenders every static route, so each of
 them runs with no browser on every build.
 
-## What is not here yet
+## In development
 
-`uf dev` does not answer `/__uf/vitals`, so pointing the beacon at it in
-development currently reaches nothing. The browser half of the contract is
-what this page describes and it is finished; printing the numbers in the
-terminal beside the reload that caused them is the other half, and it belongs
-to the dev server rather than to the package. Until it exists, the way to see
-these numbers locally is to log them:
+`uf dev` answers `/__uf/vitals`, so the beacon with no argument reports into the
+terminal you started it in:
+
+```console
+✗ web vitals: LCP is poor (3200 ms)
+  at  http://127.0.0.1:5173/pricing
+  LCP 3200 ms — poor
+  CLS 0.02 — good
+  TTFB 120 ms — good
+```
+
+The worst rating in the report decides how it reads: `poor` is an error, one
+that needs improvement is a warning, and a report where every number is good is
+information. A number nobody could act on printed as loudly as one they can is
+a number people stop reading.
+
+Nothing is sent anywhere. The report goes from the page to the dev server on
+this machine and from there to this terminal, and the dev server is the only
+thing that ever answers this path — a built application has no `/__uf/`
+anything, which is why production needs an endpoint of your own.
+
+Reporting a metric as it becomes final is still an option, and is what to
+reach for when you want the object rather than the summary:
 
 ```js
 collectVitals({ report: (vital) => console.log(vital) });

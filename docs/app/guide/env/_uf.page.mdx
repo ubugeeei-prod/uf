@@ -321,8 +321,13 @@ anything else — into the environment of every command you then run. See
 
 ### What the variables half does not do
 
-* **It does not watch.** A `.env` file you edit while `uf dev` is running is
-  read the next time you start it. Restart the command.
+* **It reloads by restarting, not in place.** `uf dev` watches the files the
+  cascade selects and starts the server again when one of them changes, saying
+  which file it was. A restart rather than a hot update is the honest
+  granularity: a prefixed value reaches the browser by being substituted into
+  the bundle, so a new one has to be substituted again and every module that
+  read it has to be evaluated again. `uf build`, `uf preview` and `uf start`
+  read the files once, which is all a command that ends has to do.
 * **It does not travel to a deployment.** `uf build --adapter node` writes a
   directory that a host runs with plain `node server.js`, and that process is
   not uf: it reads its environment from the host, which is where a deployment's
