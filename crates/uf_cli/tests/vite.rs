@@ -1138,6 +1138,28 @@ impl Server {
         Self { child }
     }
 
+    /// The port the server announced, once it has announced one.
+    ///
+    /// `uf dev --port 0` binds a free port and prints it as the `local` URL,
+    /// and reading it back here is what [`dev_serves_the_docs_site_through_
+    /// vite`] does instead of choosing a port itself. Waiting for the line is
+    /// also waiting for the server: a process that never gets as far as
+    /// listening never prints one, so the budget covers both and the failure
+    /// carries [`evidence`].
+    fn bound_port(&mut self, said: &Mutex<String>, budget: Duration) -> Option<u16> {
+        let deadline = Instant::now() + budget;
+        loop {
+            let announced = said.lock().ok().and_then(|said| announced_port(&said));
+            if announced.is_some() {
+                return announced;
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
     /// Everything the server has said, and whether it is still running.
     ///
     /// This is the whole point of the change: the failure that sent me here was
@@ -1172,13 +1194,77 @@ impl Drop for Server {
 /// That is the shape of both CI failures so far: one where nothing ever
 /// answered, and one where something answered and then went away.
 ///
-/// Retrying is honest here because the subject is "the dev server serves the
-/// docs site", not "binding a port works first time". It is capped, it only
+/// Retrying is honest here because the subject is "this server serves this
+/// application", not "binding a port works first time". It is capped, it only
 /// covers the window *before* the first answer, and every attempt's output is
-/// reported if the last one fails — so a genuinely broken dev server fails
-/// three times and prints three servers' reasons, which is more than the one
-/// line this used to give.
+/// reported if the last one fails — so a genuinely broken server fails three
+/// times and prints three servers' reasons, which is more than the one line
+/// this used to give.
+///
+/// [`dev_serves_the_docs_site_through_vite`] no longer needs it: `uf dev
+/// --port 0` asks the operating system for a port through the process that
+/// then holds it, and prints the answer, so there is no window to lose. The
+/// commands that have no such flag are still here, and this is still the best
+/// available answer for them.
 const PORT_ATTEMPTS: usize = 3;
+
+/// The port in the first `http://host:port` URL a server has printed, if any.
+///
+/// Deliberately not a parse of the banner's *shape*: it looks for a URL and
+/// reads the number off the end of its authority, so colour, the word in front
+/// of it and the order of the lines are all free to change. A banner parse that
+/// quietly found nothing is how a dev server answering every request with
+/// "Cannot GET /" once passed this file, so the one caller treats `None` as a
+/// failure with the server's own account attached rather than as "carry on".
+fn announced_port(said: &str) -> Option<u16> {
+    let start = said.find("http://")? + "http://".len();
+    let authority = said[start..]
+        .split(|ch: char| ch == '/' || ch == '\u{1b}' || ch.is_whitespace())
+        .next()?;
+    let (_, port) = authority.rsplit_once(':')?;
+    port.parse().ok()
+}
+
+/// Reading the port a server announced, without a server that announced one.
+///
+/// A test of a test helper, which is unusual and is the honest way to write
+/// this one: what [`announced_port`] has to get right is the *shapes* a banner
+/// comes in — coloured, uncoloured, with a second URL under the first — and
+/// arranging those through a real dev server would be arranging them through
+/// the thing under test.
+mod announced {
+    use super::announced_port;
+
+    #[test]
+    fn the_port_is_read_off_the_first_url_whatever_is_around_it() {
+        assert_eq!(
+            announced_port("\n  local  http://127.0.0.1:51873/\n  routes 12\n"),
+            Some(51873)
+        );
+        // `uf dev` renders the URL through a tone, so the line arrives wrapped
+        // in escape sequences on a terminal and bare when `NO_COLOR` is set.
+        // Both are the same answer.
+        assert_eq!(
+            announced_port("  local  \u{1b}[36mhttp://127.0.0.1:4321/\u{1b}[0m"),
+            Some(4321)
+        );
+        // The first, not the last: `--host` adds a `network` URL underneath,
+        // and it is the same server on the same port.
+        assert_eq!(
+            announced_port("local http://127.0.0.1:8080/\nnetwork http://10.0.0.2:8080/"),
+            Some(8080)
+        );
+    }
+
+    #[test]
+    fn nothing_is_nothing_rather_than_a_number_out_of_the_host() {
+        assert_eq!(announced_port(""), None);
+        assert_eq!(announced_port("uf dev\n  engine vite\n"), None);
+        // No port in the authority. Splitting on the last `:` would otherwise
+        // read `1` out of `127.0.0.1` and send every request somewhere absurd.
+        assert_eq!(announced_port("local http://127.0.0.1/"), None);
+    }
+}
 
 #[test]
 fn dev_serves_the_docs_site_through_vite() {
@@ -1186,44 +1272,38 @@ fn dev_serves_the_docs_site_through_vite() {
         return;
     }
     let root = docs_root();
-    let mut refused = Vec::new();
+    let said = Mutex::new(String::new());
 
-    for attempt in 1..=PORT_ATTEMPTS {
-        let port = free_port();
-        let said = Mutex::new(String::new());
-
-        let served = std::thread::scope(|scope| {
-            // Wait for the port to answer rather than for a line of the banner
-            // to look a particular way. Parsing the rendered banner made this
-            // test depend on colour and on the exact wording, and a parse that
-            // quietly found nothing ended the test before it asserted anything
-            // — which is how a dev server that answered every request with
-            // "Cannot GET /" passed it.
-            let mut server =
-                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
-            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
-                assert_page(&mut server, port, &said, &body);
-                return true;
-            }
-            refused.push(format!(
-                "attempt {attempt} on port {port}: {}",
+    std::thread::scope(|scope| {
+        // `--port 0`, and the server says which port it got. The alternative —
+        // bind zero, read the number, close the listener, and hand it to `uf
+        // dev` — is a race nothing manages: anything on the machine can take
+        // the port in between, and Vite moving to the next free one produces a
+        // server that is up somewhere this test is not asking about. That is
+        // the second half of ubugeeei-prod/uf#234, and asking the operating
+        // system once, through the process that will hold the socket, is the
+        // fix the issue prefers to a retry.
+        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
                 server.evidence(&said)
-            ));
-            // Inside the scope on purpose: the drain threads end when the
-            // pipes close, and the pipes close when the child does.
-            drop(server);
-            false
-        });
-
-        if served {
-            return;
-        }
-    }
-
-    panic!(
-        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
-        refused.join("\n\n")
-    );
+            );
+        };
+        // Then wait for the port to answer rather than trusting the line that
+        // named it: `listening` is emitted from the driver, and what this test
+        // is about is whether a request reaches a rendered page.
+        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
+            panic!(
+                "the dev server announced port {port} and did not answer on it\n{}",
+                server.evidence(&said)
+            );
+        };
+        assert_page(&mut server, port, &said, &body);
+        // Inside the scope on purpose: the drain threads end when the pipes
+        // close, and the pipes close when the child does.
+        drop(server);
+    });
 }
 
 /// Everything the served page and the routes have to be, once one is served.

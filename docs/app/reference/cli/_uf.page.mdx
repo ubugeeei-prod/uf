@@ -105,6 +105,12 @@ behaviour unless `dev.strictPort` says otherwise; it is a preference the project
 wrote down once, not an instruction you just gave. `--host HOST` binds a
 routable address, which requires a non-empty `dev.allowedHosts`.
 
+`--port 0` asks the operating system for a free one and prints the answer as the
+`local` URL, which is the whole of what it is for: a caller that has to know the
+port — a test, a script, a container that reads it back — otherwise has to pick
+one, release it, and hope nothing took it in between. That race is real, and it
+is why this exists; see [ubugeeei-prod/uf#234](https://github.com/ubugeeei-prod/uf/issues/234).
+
 `--mode MODE` runs in that mode instead of `development`, which is what chooses
 `.env.<mode>` and what the browser reads as `import.meta.env.MODE`; see
 [Environments](/guide/env).

@@ -145,7 +145,18 @@ a loader running on a thread of its own cannot see it. Bun's `node:module` has
 no such hook and Deno has no uf loader at all
 ([#246](https://github.com/ubugeeei-prod/uf/issues/246)), so on either host all
 seven bindings raise `UnsupportedError` naming the host, the hook and what to do
-instead. None of them silently does nothing.
+instead. None of them silently does nothing, and on Bun that is checked by
+starting a real Bun and asking.
+
+Bun's plugin API is not a second route to this, which is worth saying because it
+looks like one:
+[#419](https://github.com/ubugeeei-prod/uf/issues/419) has what a Bun 1.1
+`onResolve` does with each of the three places a stand-in could be given an
+identity of its own, and none of them survives an `import` declaration — which
+is the case the feature exists for. Bun's own `mock.module` survives one, and it
+maintains live bindings: it changes a module somebody has already imported,
+which is a different promise from the one above rather than the same one on a
+second host.
 
 ## Running them
 
