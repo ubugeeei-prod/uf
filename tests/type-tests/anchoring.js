@@ -32,7 +32,7 @@
 // deliberate type errors, with a React element built at import time, inside a
 // package that promises neither.
 
-import type { Align, Side } from "../../packages/ui/internal/anchor.js";
+import type { Align, LogicalSide, Side } from "../../packages/ui/internal/anchor.js";
 import { PopoverBody } from "../../packages/ui/popover.js";
 import { TooltipBody } from "../../packages/ui/tooltip.js";
 
@@ -51,6 +51,13 @@ export const alignmentIsNotASide: Side = "start";
 // expect: incompatible with Align
 export const sideIsNotAnAlignment: Align = "bottom";
 
+// `Side` stays physical, which is the whole reason `LogicalSide` is a second
+// name: a design that puts a popover to the right of a toolbar means the right
+// of it in Arabic too, and only a submenu wants the side that follows the
+// reading direction.
+// expect: incompatible with Side
+export const logicalIsNotPhysical: Side = "inline-end";
+
 // The parts refuse the same strings, which is where a consumer meets them.
 // expect: Cannot create PopoverBody element
 export const popover: mixed = <PopoverBody side="bottmo">Filters</PopoverBody>;
@@ -61,9 +68,17 @@ export const tooltip: mixed = <TooltipBody align="middle">Bold</TooltipBody>;
 // expect: Cannot create TooltipBody element
 export const offset: mixed = <TooltipBody sideOffset="8">Bold</TooltipBody>;
 
+// A logical side is one of two names, and a typo is not a third.
+// expect: Cannot create PopoverBody element
+export const logicalTypo: mixed = <PopoverBody side="inline-ende">Filters</PopoverBody>;
+
 // What is *not* an error: the four sides and the three alignments themselves.
 export const side: Side = "left";
 export const align: Align = "end";
+// The two logical ones, and a part that takes them: this is what a submenu asks
+// for, and what an overlay in a right-to-left page resolves to the left.
+export const logical: LogicalSide = "inline-start";
+export const inlineEnd: mixed = <PopoverBody side="inline-end">Filters</PopoverBody>;
 export const fine: mixed = (
   <PopoverBody align="start" side="right" sideOffset={8}>
     Filters

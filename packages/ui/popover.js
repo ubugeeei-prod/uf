@@ -58,7 +58,7 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
-import type { Align, Side } from "./internal/anchor.js";
+import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { focusable } from "./internal/focus.js";
@@ -66,7 +66,7 @@ import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { usePresence } from "./internal/disclosure.js";
 
-export type { Align, Side } from "./internal/anchor.js";
+export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 type PopoverState = {|
   readonly base: string,
@@ -188,7 +188,15 @@ export component PopoverBody(
   alignOffset?: number = 0,
   avoidCollisions?: boolean = true,
   collisionPadding?: number = 0,
-  side?: Side = "bottom",
+  /**
+   * Where focus lands when it opens, when the first focus stop is the wrong
+   * answer. The same prop `Dialog.Body` takes, deliberately spelled the same
+   * way: `DatePicker.Calendar` fills it with the day that holds the grid's tab
+   * stop, because a reader who opened a date picker is looking for the date and
+   * not for the button that steps back a month.
+   */
+  initialFocus?: { current: HTMLElement | null },
+  side?: LogicalSide = "bottom",
   sideOffset?: number = 0,
   ...rest: Rest
 ) {
@@ -257,10 +265,15 @@ export component PopoverBody(
     };
     document.addEventListener("focusin", onFocusMoved, true);
 
-    // The first thing worth acting on, and the popover itself when it holds
-    // nothing focusable, so focus is inside it either way and Escape reaches
-    // the handler below.
-    (focusable(body)[0] ?? body).focus();
+    // Where the caller said, then the first thing worth acting on, then the
+    // popover itself when it holds nothing focusable - so focus is inside it
+    // whichever of the three answers, and Escape reaches the handler below.
+    //
+    // The named element has to still be *in* this popover, for the reason
+    // `dialog.js` gives at the same line: a ref left from a previous opening
+    // would move focus somewhere the reader did not open.
+    const named = initialFocus?.current ?? null;
+    ((named != null && body.contains(named) ? named : focusable(body)[0]) ?? body).focus();
 
     return () => {
       document.removeEventListener("pointerdown", onOutsidePress, true);
@@ -278,7 +291,7 @@ export component PopoverBody(
         opener?.focus?.();
       }
     };
-  }, [popover.open, triggerRef, close]);
+  }, [popover.open, triggerRef, close, initialFocus]);
 
   if (!popover.open) {
     return null;

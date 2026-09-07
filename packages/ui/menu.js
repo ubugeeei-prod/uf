@@ -39,6 +39,23 @@
 // were aiming at. Keyboard and click open a submenu; a deliberate hover
 // implementation is tracked work, not a line to be added carelessly.
 //
+// # Where the menu goes
+//
+// `internal/anchor.js`, the same module `Popover.Body` uses, and adopting it
+// here rather than writing a second one is most of ubugeeei-prod/uf#256. Two
+// things about a menu were wrong before it and are worth naming, because
+// neither looks like a positioning bug:
+//
+//   * A menu in a table row, a card, or anything else with `overflow: hidden`
+//     was cut off at that box's edge. It is `position: fixed` now, so the
+//     clipping ancestor is not its business.
+//   * A menu whose trigger sat near the bottom of the page opened downwards,
+//     off the screen, and the reader saw nothing at all.
+//
+// A submenu asks for `side="inline-end"` rather than `right`, which is the same
+// answer `submenuKeys` gives about the *keys*: the submenu opens the way the
+// page reads, and the arrow that opens it points at where it went.
+//
 // # Items are found in the document, not in a registry
 //
 // `internal/roving-focus.js` explains why. The short version is that mount
@@ -59,6 +76,8 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Align, LogicalSide } from "./internal/anchor.js";
+import { useAnchor } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import {
@@ -72,6 +91,8 @@ import {
 } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Direction } from "./internal/roving-focus.js";
+
+export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 /**
  * Anything that plays the part of a menu item, including the two checkable
@@ -328,6 +349,12 @@ export component MenuTrigger(children: React.Node, ...rest: Rest) {
  */
 export component MenuBody(
   children: renders* (MenuItem | MenuSeparator | MenuGroup | MenuSub),
+  align?: Align = "start",
+  alignOffset?: number = 0,
+  avoidCollisions?: boolean = true,
+  collisionPadding?: number = 0,
+  side?: LogicalSide,
+  sideOffset?: number = 0,
   ...rest: Rest
 ) {
   const menu = useMenu("Menu.Body");
@@ -343,6 +370,22 @@ export component MenuBody(
   const pendingFocus = menu.pendingFocus;
   const isRoot = menu.parent == null;
   const closeAll = useStableCallback(() => closeTree(menu));
+  // A root menu drops from its button; a submenu comes out of the side of the
+  // item that opened it, on the side the page reads towards. The default cannot
+  // be a parameter default because it is not a constant: it is the answer to
+  // "is this the outermost menu", which only this component knows.
+  const placement = side ?? (isRoot ? "bottom" : "inline-end");
+  const anchored = useAnchor({
+    align,
+    alignOffset,
+    anchorRef: triggerRef,
+    avoidCollisions,
+    collisionPadding,
+    open: menu.open,
+    overlayRef: bodyRef,
+    side: placement,
+    sideOffset,
+  });
   // Set when the menu was dismissed by a press somewhere else, so the cleanup
   // knows not to drag focus back to the trigger the reader just left.
   const dismissed = useRef(false);
@@ -418,6 +461,8 @@ export component MenuBody(
         {...passed}
         aria-labelledby={menu.triggered ? `${menu.base}-trigger` : undefined}
         aria-orientation="vertical"
+        data-align={anchored.align}
+        data-side={anchored.side}
         id={`${menu.base}-body`}
         onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
           const body: $FlowFixMe = event.currentTarget;
