@@ -32,11 +32,27 @@
 // `@uniflowed/web` to get there, because a hook library that pulled in a
 // component library would be the wrong direction for the one arrow between
 // them.
+//
+// # Where the time comes from
+//
+// Not from `Date.now()`. Every read in this module goes through
+// `@uniflowed/core/clock`, which is a seam a test, a server or a runtime can
+// put its own clock behind — so "3 minutes ago" is a value a test can assert
+// rather than a value it has to wait three minutes for, and a server render is
+// reproducible rather than being stamped with whenever it happened to run.
+//
+// A throttle measured against an installed clock is a throttle that does not
+// elapse while that clock is stopped. That is not a defect to work around: a
+// fixed clock means time is not passing, and a rate limit that fired anyway
+// would be measuring something other than the time the caller said it was.
+// `manualClock` is the one to install when a test wants the window to close.
 
 import { useEffect, useMemo, useRef, useState } from "@uniflowed/react";
+import { currentClock } from "@uniflowed/core/clock";
 
 import { browserWindow } from "./browser.js";
 import { useMounted, useStableCallback } from "./lifecycle.js";
+import { useRenderEnvelope } from "./render.js";
 
 /**
  * Call `body` every `millis`, or not at all when `millis` is null.
@@ -103,7 +119,7 @@ export hook useThrottledCallback<TArgs extends $ReadOnlyArray<mixed>>(
   const last = useRef(0);
 
   return useStableCallback<TArgs, void>((...args: TArgs) => {
-    const now = Date.now();
+    const now = currentClock().now();
     if (now - last.current >= millis) {
       last.current = now;
       stable(...args);
@@ -262,26 +278,39 @@ export hook useIdle(
  * bounded: it happens once, the value is never re-read during a render, and a
  * render React throws away is replaced by another whose clock is just as valid.
  *
- * A prerendered page that puts this on screen needs `serverValue`, because the
- * server's clock and the reader's are not the same number and React compares
- * the text. Given one, the first render on both sides is that value and the
- * real time arrives with the first effect. `useTimeAgo` has already made this
- * choice; prefer it for a label.
+ * On a prerendered page the two renders are at two different instants, so the
+ * first one on each side has to be the *same* instant or React reports a
+ * mismatch. Under a `RenderProvider` that happens by itself — the anchor the
+ * server fixed travels in the markup, both sides start from it, and the real
+ * time arrives with the first effect. `serverValue` is the same choice made by
+ * hand, for a caller who has the instant from somewhere else and for a tree
+ * with no provider above it; it wins over the anchor when both are there,
+ * because an argument at the call site is a decision and a context is a
+ * default.
+ *
+ * A `Date` rather than a `Temporal.Instant`, and deliberately: this value's
+ * consumers subtract it from another one to decide when to run again, which is
+ * millisecond arithmetic on a number. The Temporal-shaped reading of the same
+ * anchor is `useRenderedAt` in `render.js`, and rendering an instant is
+ * `@uniflowed/web`'s `Time`.
  */
 export hook useNow(millis: number | null = 1000, serverValue: Date | null = null): Date {
   // The instant rather than the object: a caller writing `new Date(...)` in
   // the call passes a different object every render, and a dependency on it
   // would re-run the effect forever.
-  const since = serverValue == null ? null : serverValue.getTime();
-  const [now, setNow] = useState<Date>(() => (since == null ? new Date() : new Date(since)));
+  const anchored = useRenderEnvelope()?.at ?? null;
+  const since = serverValue == null ? anchored : serverValue.getTime();
+  const [now, setNow] = useState<Date>(
+    () => new Date(since == null ? currentClock().now() : since),
+  );
 
   useEffect(() => {
     if (since != null) {
-      setNow(new Date());
+      setNow(new Date(currentClock().now()));
     }
   }, [since]);
 
-  useInterval(() => setNow(new Date()), millis);
+  useInterval(() => setNow(new Date(currentClock().now())), millis);
   return now;
 }
 

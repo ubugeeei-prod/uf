@@ -60,7 +60,9 @@
 // aligned to a boundary, an `elapsed` output — all of them can be asked for
 // their whole behaviour by naming the milliseconds, with no clock to stub, no
 // sleep to flake and no seed to hope about. `retry` and `repeat` read
-// `Date.now()` once per decision and pass it in.
+// `@uniflowed/core/clock` and `@uniflowed/core/random` once per decision and
+// pass both in — so the two impure reads are not only outside this module, they
+// are outside the host as well, and a test can decide them.
 //
 // # What a schedule decides, and what it still does not
 //
