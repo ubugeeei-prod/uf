@@ -53,7 +53,7 @@ number, not the file count, is what decides whether this is worth doing.
 | `scripts` in `package.json` | `tasks` in `uf.config.js` — `uf install` **refuses** a manifest that declares scripts |
 | `index.html` | the root layout: a `component` that renders `<html>` |
 
-`uf create app react my-app` in a scratch directory is the fastest way to see
+`uf new my-app` in a scratch directory is the fastest way to see
 the shape you are aiming at — nine files, and
 [Your first project](/guide/project) walks through them.
 
@@ -98,7 +98,7 @@ uf decides the goal symbol from the file's own syntax
 The best-supported path, because CRA applications are usually a client-rendered
 bundle and that is what uf builds.
 
-1. `uf create app react ../my-app-uf`, then copy `src/` into it.
+1. `uf new ../my-app-uf`, then copy `src/` into it.
 2. Delete `react-scripts`. Its `scripts` block goes with it — `uf install`
    refuses a manifest that declares one.
 3. Move the contents of `public/index.html` into `app/_uf.layout.js`. The

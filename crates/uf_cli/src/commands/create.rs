@@ -1,4 +1,5 @@
-//! `uf create`: a tree of what was generated, and what to run next.
+//! `uf init` and `uf new`: a tree of what was generated, and what to run
+//! next.
 
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -43,6 +44,56 @@ fn app_arguments(
     }
 }
 
+/// `uf init` and `uf new`: one function, because they differ in one argument.
+///
+/// `path` is `None` for `init` and the new directory for `new`. Everything
+/// after that — the template, the name, the tree that is printed — is the same
+/// scaffold, which is the point of the split: the two commands say *where*,
+/// and nothing else about them differs.
+pub(crate) fn scaffold(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    path: Option<Utf8PathBuf>,
+    template: Option<String>,
+    lib: bool,
+    name: Option<String>,
+    force: bool,
+) -> Result<()> {
+    // The banner names the command the reader typed. A run of `uf new` headed
+    // `uf create` sends them to the help for a command they did not use.
+    let spelling = if path.is_some() { "uf new" } else { "uf init" };
+    let templates = AppTemplate::ALL.join(", ");
+    // Named rather than inferred. `uf create` guessed — a lone argument was a
+    // template when it named one and a directory when it did not — and the
+    // guess is what #322 is. Here the directory is a positional of its own, so
+    // a word in the template's place that is not a template is a mistake and
+    // is reported as one.
+    let kind = match (lib, template.as_deref()) {
+        (true, None) => CreateKind::Lib,
+        (true, Some(named)) => bail!(
+            "`--lib` takes no template: a library is one shape.\n  for an \
+             application from the `{named}` template, drop `--lib`"
+        ),
+        (false, None) => CreateKind::AppReact,
+        (false, Some(named)) => match AppTemplate::parse(named) {
+            Some(AppTemplate::React) => CreateKind::AppReact,
+            None => bail!(
+                "`{named}` is not a template.\n  templates: {templates}\n  to \
+                 scaffold into a directory called `{named}`, write \
+                 `uf new {named}`"
+            ),
+        },
+    };
+
+    let target = resolve_target(cwd, path)?;
+    let fallback = match kind {
+        CreateKind::AppReact => "uniflowed-app",
+        CreateKind::Lib => "uniflowed-lib",
+    };
+    let name = name.unwrap_or_else(|| project_name(&target, fallback));
+    render_created(cwd, ui, spelling, kind, target, name, force)
+}
+
 pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Result<()> {
     let (kind, target, name, force) = match command {
         CreateCommand::App {
@@ -64,6 +115,19 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
         }
     };
 
+    render_created(cwd, ui, "uf create", kind, target, name, force)
+}
+
+/// The scaffold, and the tree and next steps printed from what it wrote.
+fn render_created(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    spelling: &str,
+    kind: CreateKind,
+    target: Utf8PathBuf,
+    name: String,
+    force: bool,
+) -> Result<()> {
     let label = name.clone();
     let report = create_project(&target, &CreateOptions { name, kind, force })?;
     let files = report
@@ -90,9 +154,9 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
     ui.render(|renderer, out| {
         // First contact with the toolchain, which is the one moment a mark
         // earns its five rows.
-        brand::render_mark(renderer, out, "uf create");
+        brand::render_mark(renderer, out, spelling);
         renderer.blank(out);
-        renderer.banner(out, "uf create", Some(&label));
+        renderer.banner(out, spelling, Some(&label));
         renderer.blank(out);
         renderer.tree(out, 2, &Tree::from_paths(&root, paths.iter().copied()));
         renderer.blank(out);

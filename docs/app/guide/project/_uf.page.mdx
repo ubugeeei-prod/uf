@@ -13,15 +13,21 @@ nine of them, and three are a demonstration you delete.
 
 ## Scaffold
 
-<div className="command"><code>uf create app my-site</code></div>
+<div className="command"><code>uf new my-site</code></div>
 
-`my-site` is the directory. The full form is `uf create app TEMPLATE PATH`, and
-`react` is the only template today, so naming it is optional — a single argument
-is the template when it names one and the directory when it does not. That means
-`uf create app react` scaffolds into the current directory, and a project that
-really wants to be called `react` is written out as `uf create app react react`.
+`my-site` is the directory it creates. `uf init` is the other half — it
+scaffolds into the directory you are already in, which is what you want inside
+a repository that exists.
 
-`uf create` writes a project and nothing else — no `node_modules`, no lockfile,
+Both take an optional template after that, and `react` is the only one today,
+so it is left out here. `--lib` on either scaffolds a library instead.
+
+They used to be one command, `uf create app`, whose single optional argument
+was a template when it named one and a directory when it did not — so
+`uf create app react` and `uf create app my-site` did two different things and
+neither spelling said which. `uf create` still works and is no longer listed.
+
+`uf new` writes a project and nothing else — no `node_modules`, no lockfile,
 no git history. What it writes is:
 
 ```
@@ -117,7 +123,7 @@ types `children` against what the package declares. It did not always;
 [#248](https://github.com/ubugeeei-prod/uf/issues/248) and
 [#403](https://github.com/ubugeeei-prod/uf/issues/403) are that history.
 
-The scaffold writes `mixed` because `uf create` runs *before* `uf install`, and
+The scaffold writes `mixed` because it runs *before* `uf install`, and
 until then `@uniflowed/react` resolves to nothing — an annotation written
 against it would be an error in the first file uf ever wrote for you. `mixed`
 is what a document shell can say with nothing installed, and an intrinsic

@@ -166,7 +166,7 @@ They are read **in that order, and the last one to set a name wins**. So
 that is not there is skipped, which is why `.env.local` can be in
 `.gitignore` and nothing breaks on a machine that has never had one.
 
-`uf create` writes `.env.local` and `.env.*.local` into `.gitignore`, because
+`uf new` writes `.env.local` and `.env.*.local` into `.gitignore`, because
 those two are where a credential goes; the tracked `.env` and `.env.<mode>` are
 the project's defaults and belong in the repository. Vite's dev server refuses
 to serve any of them over HTTP whatever else is configured — see

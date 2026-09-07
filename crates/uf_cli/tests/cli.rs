@@ -1361,7 +1361,16 @@ fn explain_says_which_commands_it_knows() {
 ///
 /// `exec` left this list when it started running things: three of its four
 /// paths hand control to something else, so there is a provider to name.
-const SELF_CONTAINED: &[&str] = &["completion", "create", "explain", "help", "info", "inspect"];
+const SELF_CONTAINED: &[&str] = &[
+    "completion",
+    "create",
+    "explain",
+    "help",
+    "info",
+    "init",
+    "inspect",
+    "new",
+];
 
 /// Every command `uf` has is either explained or classified.
 ///

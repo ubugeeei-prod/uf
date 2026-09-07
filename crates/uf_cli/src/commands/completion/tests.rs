@@ -25,7 +25,12 @@ fn a_fresh_command_line_offers_every_subcommand() {
 #[test]
 fn a_partial_subcommand_narrows_to_what_starts_with_it() {
     assert_eq!(complete_line(&["ru"]), vec!["run"]);
-    assert_eq!(complete_line(&["in"]), vec!["info", "inspect", "install"]);
+    // In the list's own order, which is `uf --help`'s: `init` is where
+    // `create` was, ahead of the alphabet.
+    assert_eq!(
+        complete_line(&["in"]),
+        vec!["init", "info", "inspect", "install"]
+    );
 }
 
 /// The whole point: task names come from the project, not from the parser.

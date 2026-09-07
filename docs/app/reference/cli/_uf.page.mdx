@@ -22,21 +22,34 @@ before the subcommand; a subcommand's own flags come after it.
 
 ## Project
 
-### uf create app [TEMPLATE] PATH
+### uf new PATH [TEMPLATE]
 
-Scaffolds an application: `uf.config.js`, `app.js`, a layout, a page and a
-`package.json`. Writes files and nothing else — no install, no git.
+Scaffolds an application into a new directory: `uf.config.js`, `app.js`, a
+layout, a page and a `package.json`. Writes files and nothing else — no
+install, no git.
 
-`react` is the only template today, so `uf create app my-site` is the usual
-form: a single argument is the template when it names one and the directory
-when it does not. With two arguments the first must be a template, and a name
-that is not one is refused rather than read as a directory — `uf create app
-raect my-site` scaffolding into `raect/` is a worse answer than an error.
+`react` is the only template today, so `uf new my-site` is the usual form. A
+word in the template's place that is not a template is refused rather than read
+as a directory: `uf new my-site raect` says so, and scaffolding into `raect/`
+would be the worse answer.
 
-### uf create lib NAME
+`--name` sets the package's name when it should not be the directory's, and
+`--force` writes into a directory that already holds files.
+
+### uf init [TEMPLATE]
+
+The same scaffold, into the current directory. That is the whole difference
+between the two commands, and it is the reason there are two: `uf create app`
+took one optional argument that was a template when it named one and a
+directory when it did not, so the two things it could do had no separate
+spellings.
+
+`uf create` is still accepted and is no longer listed.
+
+### uf new NAME --lib
 
 Scaffolds a library rather than an application: no router, no document, and a
-`package.json` shaped for publishing.
+`package.json` shaped for publishing. `uf init --lib` does it in place.
 
 ### uf info
 

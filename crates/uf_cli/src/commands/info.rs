@@ -16,6 +16,11 @@ pub(crate) fn info(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         brand::render_mark(renderer, out, "uf info");
         renderer.blank(out);
 
+        // One line, and it is the one the install guide leads with. `nix run`
+        // and `nix profile install` used to be here too: they are ways to run
+        // uf and not ways most readers install it, and three lines under a
+        // heading called "distribution" reads as three equal recommendations.
+        // The flake is still there and `/guide/install` still documents it.
         renderer.heading(out, 2, "distribution");
         renderer.key_values(
             out,
@@ -23,8 +28,6 @@ pub(crate) fn info(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
             &[
                 KeyValue::toned("docs", brand::DOCS_URL, Tone::Path),
                 KeyValue::new("curl", brand::CURL_INSTALL),
-                KeyValue::new("nix run", brand::NIX_RUN),
-                KeyValue::new("nix profile", brand::NIX_PROFILE),
             ],
         );
         renderer.blank(out);

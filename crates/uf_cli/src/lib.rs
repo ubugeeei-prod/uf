@@ -228,6 +228,19 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             Ok(())
         }
         Commands::Complete { words } => commands::completion::complete(&cwd, ui, &words),
+        Commands::Init {
+            template,
+            lib,
+            name,
+            force,
+        } => commands::create::scaffold(&cwd, ui, None, template, lib, name, force),
+        Commands::New {
+            path,
+            template,
+            lib,
+            name,
+            force,
+        } => commands::create::scaffold(&cwd, ui, Some(path), template, lib, name, force),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
         Commands::Dev { host, port, mode } => {
             commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port, mode })
