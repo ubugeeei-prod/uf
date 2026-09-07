@@ -16,7 +16,6 @@
 // promises too, and it is not a promise any amount of rendering can check.
 
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 
 import * as React from "@uniflowed/react";
@@ -98,6 +97,16 @@ import { moveDate, movementForDateKey, weeksOf } from "../../packages/ui/interna
 // definition of what `Tab` reaches, and "a slide nobody can see is not one of
 // them" is a claim about that definition rather than about a rendered tree.
 import { focusable } from "../../packages/ui/internal/focus.js";
+// The negative type tests below run `uf check` and read what it said; this is
+// the harness that does it, shared with the five other suites that make the
+// same kind of claim. See its module header for why the package goes to the
+// checker in the same command as the fixture.
+import type { CheckReport } from "./type-tests.js";
+import {
+  everyMisuseIsReported,
+  repositoryRoot as repository,
+  ufBinary as UF,
+} from "./type-tests.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -7722,62 +7731,9 @@ describe("caller props never disable the component", () => {
 // What `uf check` says about this package, and the two promises only it can
 // hold: that no part makes React's `key` a `mixed`, and that a misused `side`
 // or `align` is an error at the call rather than an overlay in the wrong place.
-// Both blocks below run the checker, so what it takes to run it is here.
-
-// This checkout, found by the file under test rather than by counting `..`.
-//
-// Two levels above the worker's project is this repository only while that
-// project is `tests/library`, and which project it is depends on how the
-// command was typed. `uf test#library` selects `tests/library` by name;
-// `uf test tests/library/ui.test.js` from the checkout selects the
-// *repository*, because a path is a filter over the project the command was
-// typed in and `UF_PROJECT_ROOT` is that project's root. Two levels above
-// the checkout holds no uf project at all, so `uf check` printed nothing,
-// and what a reader got was `SyntaxError: Unexpected end of JSON input` at
-// the parse below — a message about JSON for a mistake about a directory,
-// in the invocation someone reaches for when they want one file. That is
-// #313.
-//
-// Searching upwards for a file this repository has is true under both, and
-// is what `write-atomically.test.js` already does for the same reason.
-// `fileURLToPath(import.meta.url)` would say it more directly still, and is
-// itself one of the type errors `uf check` reports against this suite today
-// — see `story.test.js` — which is a poor thing for a test about type errors
-// to add another of.
-const repository: string = (() => {
-  // The package this block checks, so a checkout that moved it says so here
-  // rather than three lines later in a parse.
-  const wanted = path.join("packages", "ui", "internal", "merge-props.js");
-  const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
-  let directory = from;
-  for (let up = 0; up < 8; up += 1) {
-    if (fs.existsSync(path.join(directory, wanted))) return directory;
-    directory = path.dirname(directory);
-  }
-  throw new Error(`could not find ${wanted} above ${from}`);
-})();
-
-// The binary running this suite, the way `lsp.test.js` names it: `uf test`
-// puts its own path in `UF_BINARY`, so this checks *this* build rather than
-// whatever `uf` is on PATH.
-const UF: string = (() => {
-  const binary = process.env.UF_BINARY;
-  if (binary == null || binary === "") {
-    throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
-  }
-  return binary;
-})();
-
-// The part of `uf check --json` this reads. A message arrives as spans
-// rather than a string so that a renderer can mark the code inside it, which
-// is why the filter below joins it back together first.
-type Diagnostic = {
-  primary: { path: string, start: { line: number, column: number } },
-  message: Array<{ kind: string, text: string }>,
-};
-type Report = {
-  typeCheck: { status: string, filesChecked: number, diagnostics: Array<Diagnostic> },
-};
+// Both blocks below run the checker; `./type-tests.js` holds what it takes to
+// run it — the checkout, the binary `uf test` named, and the marker harness
+// the three fixture blocks share with five other suites.
 
 describe("the props a part spreads onto its element", () => {
   // A type is a promise the same way a role is, and this is the only test here
@@ -7815,7 +7771,7 @@ describe("the props a part spreads onto its element", () => {
           `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
       );
     }
-    const report: Report = JSON.parse(run.stdout);
+    const report: CheckReport = JSON.parse(run.stdout);
     // Without this the test would pass just as happily on a run that checked
     // nothing at all.
     expect(report.typeCheck.status).toBe("checked");
@@ -7831,77 +7787,6 @@ describe("the props a part spreads onto its element", () => {
   });
 });
 
-/**
- * Hold one `tests/type-tests` fixture to its own `// expect:` markers.
- *
- * Shared by the two blocks below, because the mechanism is the same and the
- * only difference is which file is being read: a marker says the line after it
- * must be reported and what the report must contain, a line without one must
- * not be reported at all, and both halves matter — a change that makes one of
- * these stop being an error fails here, and so does one that makes something
- * else in the file start being one.
- *
- * Both paths go to the checker in one command, and that is load-bearing:
- * `uf check` builds its module map from the files it is asked about, so a
- * relative import that leaves that set resolves to an any-typed value — after
- * which every union in it is `any` and every line of the fixture passes. The
- * fixtures' own headers say why they are not inside the package.
- */
-function everyMisuseIsReported(fixture: string): void {
-  const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
-  const wanted = new Map<number, string>();
-  source.forEach((line, index) => {
-    const marker = line.match(/^\s*\/\/ expect: (.+)$/);
-    if (marker != null) {
-      // Lines are one-based, and the line that must fail is the next one.
-      wanted.set(index + 2, marker[1]);
-    }
-  });
-  // Without this the test would pass on a fixture somebody had emptied.
-  expect(wanted.size).toBeGreaterThan(4);
-
-  const run = spawnSync(UF, ["check", "tests/type-tests", "packages/ui", "--json"], {
-    cwd: repository,
-    encoding: "utf8",
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  if (run.stdout === "") {
-    throw new Error(
-      `\`uf check tests/type-tests packages/ui --json\` in ${repository} printed ` +
-        `nothing: status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
-    );
-  }
-  const report: Report = JSON.parse(run.stdout);
-  expect(report.typeCheck.status).toBe("checked");
-
-  const reported = new Map<number, string>();
-  for (const diagnostic of report.typeCheck.diagnostics) {
-    if (diagnostic.primary.path.endsWith(fixture)) {
-      reported.set(
-        diagnostic.primary.start.line,
-        diagnostic.message.map((span) => span.text).join(""),
-      );
-    }
-  }
-
-  const missing = [];
-  for (const [line, expected] of wanted) {
-    const said = reported.get(line);
-    if (said == null || !said.includes(expected)) {
-      missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
-    }
-  }
-  // Every marked line is an error, with the message the fixture predicted.
-  expect(missing).toEqual([]);
-
-  // And nothing else in the file is: the members of each union are usable, and
-  // this is what says the fixture is not just broken.
-  const unexpected = [...reported.keys()]
-    .filter((line) => !wanted.has(line))
-    .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
-  expect(unexpected).toEqual([]);
-}
-
 describe("a side and an alignment are unions, not strings", () => {
   // The other promise a type makes, and the other one no amount of rendering
   // can check. `internal/anchor.js` says a side is one of four names and an
@@ -7912,7 +7797,11 @@ describe("a side and an alignment are unions, not strings", () => {
   // `tests/type-tests/anchoring.js` is the misuse, written down.
 
   it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported(path.join("tests", "type-tests", "anchoring.js"));
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "anchoring.js"),
+      alongside: ["packages/ui"],
+      atLeast: 4,
+    });
   });
 });
 
@@ -7940,7 +7829,11 @@ describe("a wrong child is a type error and not a review comment", () => {
   // `tests/type-tests/composition.js` is the misuse, written down.
 
   it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported(path.join("tests", "type-tests", "composition.js"));
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "composition.js"),
+      alongside: ["packages/ui"],
+      atLeast: 4,
+    });
   });
 });
 
@@ -7954,6 +7847,10 @@ describe("an edge, a role and an alphabet are unions too", () => {
   // `tests/type-tests/overlays.js` is the misuse, written down.
 
   it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported(path.join("tests", "type-tests", "overlays.js"));
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "overlays.js"),
+      alongside: ["packages/ui"],
+      atLeast: 4,
+    });
   });
 });

@@ -47,6 +47,7 @@ const COMMANDS: &[&str] = &[
     "exec",
     "explain",
     "fmt",
+    "i18n",
     "info",
     "inspect",
     "install",
@@ -205,6 +206,7 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         ["env"] => matching(current, ["doctor", "use"]),
         ["catalog"] => matching(current, ["set"]),
         ["pm"] => matching(current, ["approve-builds"]),
+        ["i18n"] => matching(current, ["extract", "merge"]),
         _ => Vec::new(),
     }
 }

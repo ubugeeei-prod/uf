@@ -251,6 +251,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             commands::task::exec_package(&cwd, ui, &package, &args, yes)
         }
         Commands::Fmt { check, paths } => commands::fmt::fmt(&cwd, ui, check, &paths),
+        Commands::I18n { command } => commands::i18n::i18n(&cwd, ui, command),
         Commands::Info => commands::info::info(&cwd, ui),
         Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),

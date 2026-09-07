@@ -17,6 +17,7 @@ pub(crate) mod doc;
 pub(crate) mod env;
 pub(crate) mod explain;
 pub(crate) mod fmt;
+pub(crate) mod i18n;
 pub(crate) mod info;
 pub(crate) mod inspect;
 pub(crate) mod lint;

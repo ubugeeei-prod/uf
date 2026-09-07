@@ -64,6 +64,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("exec", "cli.rs: runs a package, or refuses to fetch one"),
     ("explain", "here, and cli.rs for what it says"),
     ("fmt", "here, and cli.rs for what it rewrites"),
+    (
+        "i18n",
+        "i18n.rs: extracts a project's catalogue and merges a translation",
+    ),
     ("info", "here, and output.rs for the brand surface"),
     ("inspect", "here, and inspect.rs for the resolved config"),
     ("install", "workflow.rs: runs the package manager"),

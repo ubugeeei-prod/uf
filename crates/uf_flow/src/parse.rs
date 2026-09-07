@@ -34,6 +34,16 @@ use flow_parser::ParseOptions;
 use thiserror::Error;
 
 pub use flow_parser::ast;
+/// The port's own walk over its tree.
+///
+/// Re-exported here rather than reached for directly, for the reason the crate
+/// header gives: this is the parser boundary, and a crate that took
+/// `flow_parser` as a dependency of its own would be a second place the port's
+/// version is pinned. A caller implements [`ast_visitor::AstVisitor`] and gets
+/// every node kind the port knows — including the ones added upstream after
+/// the caller was written, which is the whole reason not to hand-roll a walk
+/// over an AST with a hundred variants.
+pub use flow_parser::ast_visitor;
 pub use flow_parser::loc::{Loc, Position};
 
 use crate::ParseDiagnostic;
