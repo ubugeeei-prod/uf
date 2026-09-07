@@ -5,14 +5,14 @@
 import { describe, expect, fn, it } from "@uniflowed/test";
 import {
   batch,
-  cell,
-  computed,
+  derived,
   effect,
   peek,
   read,
   refresh,
   resource,
   snapshot,
+  state,
   status,
   subscribe,
   untracked,
@@ -48,23 +48,23 @@ function controlled(): {
   };
 }
 
-describe("cell", () => {
+describe("state", () => {
   it("holds and replaces a value", () => {
-    const count = cell(1);
+    const count = state(1);
     expect(read(count)).toBe(1);
     write(count, 2);
     expect(read(count)).toBe(2);
   });
 
   it("reduces the current value in one step", () => {
-    const count = cell(0);
+    const count = state(0);
     update(count, (n) => n + 1);
     update(count, (n) => n + 1);
     expect(read(count)).toBe(2);
   });
 
   it("wakes subscribers on a change", () => {
-    const count = cell(0);
+    const count = state(0);
     const listener = fn();
     subscribe(count, listener);
     write(count, 1);
@@ -72,7 +72,7 @@ describe("cell", () => {
   });
 
   it("drops a write of the value it already holds", () => {
-    const count = cell(7);
+    const count = state(7);
     const listener = fn();
     subscribe(count, listener);
     write(count, 7);
@@ -80,7 +80,7 @@ describe("cell", () => {
   });
 
   it("compares with Object.is, so NaN over NaN is not a change", () => {
-    const value = cell(Number.NaN);
+    const value = state(Number.NaN);
     const listener = fn();
     subscribe(value, listener);
     write(value, Number.NaN);
@@ -88,7 +88,7 @@ describe("cell", () => {
   });
 
   it("stops calling a listener that unsubscribed", () => {
-    const count = cell(0);
+    const count = state(0);
     const listener = fn();
     const unsubscribe = subscribe(count, listener);
     write(count, 1);
@@ -98,34 +98,34 @@ describe("cell", () => {
   });
 
   it("reports its scope and value as a snapshot", () => {
-    const count = cell(3);
+    const count = state(3);
     expect(snapshot(count)).toEqual({ scope: "client", value: 3 });
   });
 });
 
-describe("computed", () => {
+describe("derived", () => {
   it("derives from the cells it reads, with no dependency list", () => {
-    const first = cell(1);
-    const second = cell(2);
-    const total = computed(() => read(first) + read(second));
+    const first = state(1);
+    const second = state(2);
+    const total = derived(() => read(first) + read(second));
     expect(read(total)).toBe(3);
     write(second, 10);
     expect(read(total)).toBe(11);
   });
 
   it("memoises: a derive runs once for repeated reads", () => {
-    const source = cell(1);
+    const source = state(1);
     const derive = fn(() => read(source) * 2);
-    const doubled = computed(() => Number(derive()));
+    const doubled = derived(() => Number(derive()));
     expect(read(doubled)).toBe(2);
     expect(read(doubled)).toBe(2);
     expect(derive).toHaveBeenCalledTimes(1);
   });
 
   it("stays lazy while nothing is watching", () => {
-    const source = cell(1);
+    const source = state(1);
     const derive = fn(() => read(source));
-    const mirror = computed(() => Number(derive()));
+    const mirror = derived(() => Number(derive()));
     read(mirror);
     write(source, 2);
     write(source, 3);
@@ -135,8 +135,8 @@ describe("computed", () => {
   });
 
   it("wakes its own subscribers when a dependency changes", () => {
-    const source = cell(1);
-    const doubled = computed(() => read(source) * 2);
+    const source = state(1);
+    const doubled = derived(() => read(source) * 2);
     const listener = fn();
     subscribe(doubled, listener);
     write(source, 2);
@@ -145,8 +145,8 @@ describe("computed", () => {
   });
 
   it("does not wake anyone when the derived value is unchanged", () => {
-    const source = cell(1);
-    const isPositive = computed(() => read(source) > 0);
+    const source = state(1);
+    const isPositive = derived(() => read(source) > 0);
     const listener = fn();
     subscribe(isPositive, listener);
     write(source, 2);
@@ -157,10 +157,10 @@ describe("computed", () => {
   });
 
   it("tracks only the branch it actually took", () => {
-    const useLeft = cell(true);
-    const left = cell("L");
-    const right = cell("R");
-    const chosen = computed(() => (read(useLeft) ? read(left) : read(right)));
+    const useLeft = state(true);
+    const left = state("L");
+    const right = state("R");
+    const chosen = derived(() => (read(useLeft) ? read(left) : read(right)));
     const listener = fn();
     subscribe(chosen, listener);
 
@@ -178,9 +178,9 @@ describe("computed", () => {
   });
 
   it("chains through several layers", () => {
-    const source = cell(1);
-    const doubled = computed(() => read(source) * 2);
-    const labelled = computed(() => `n=${read(doubled)}`);
+    const source = state(1);
+    const doubled = derived(() => read(source) * 2);
+    const labelled = derived(() => `n=${read(doubled)}`);
     const listener = fn();
     subscribe(labelled, listener);
     write(source, 5);
@@ -189,30 +189,30 @@ describe("computed", () => {
   });
 
   it("reads a diamond consistently", () => {
-    const source = cell(1);
-    const left = computed(() => read(source) + 1);
-    const right = computed(() => read(source) * 10);
-    const joined = computed(() => `${read(left)}/${read(right)}`);
+    const source = state(1);
+    const left = derived(() => read(source) + 1);
+    const right = derived(() => read(source) * 10);
+    const joined = derived(() => `${read(left)}/${read(right)}`);
     expect(read(joined)).toBe("2/10");
     write(source, 2);
     expect(read(joined)).toBe("3/20");
   });
 
   it("refuses a write", () => {
-    const doubled = computed(() => 1);
+    const doubled = derived(() => 1);
     expect(() => write(doubled, 2)).toThrow("read-only");
   });
 
   it("names a self-referential derive instead of overflowing the stack", () => {
     let loop = null;
-    loop = computed(() => (loop == null ? 0 : read(loop)));
+    loop = derived(() => (loop == null ? 0 : read(loop)));
     expect(() => read(loop)).toThrow("depends on itself");
   });
 
   it("does not record what untracked read", () => {
-    const tracked = cell(1);
-    const ignored = cell(100);
-    const total = computed(() => read(tracked) + untracked(() => read(ignored)));
+    const tracked = state(1);
+    const ignored = state(100);
+    const total = derived(() => read(tracked) + untracked(() => read(ignored)));
     const listener = fn();
     subscribe(total, listener);
     write(ignored, 200);
@@ -224,9 +224,9 @@ describe("computed", () => {
 
 describe("batch", () => {
   it("wakes a subscriber once for a burst of writes", () => {
-    const first = cell(0);
-    const second = cell(0);
-    const total = computed(() => read(first) + read(second));
+    const first = state(0);
+    const second = state(0);
+    const total = derived(() => read(first) + read(second));
     const listener = fn();
     subscribe(total, listener);
     batch(() => {
@@ -238,8 +238,8 @@ describe("batch", () => {
   });
 
   it("still reads the new value inside the batch", () => {
-    const count = cell(0);
-    const doubled = computed(() => read(count) * 2);
+    const count = state(0);
+    const doubled = derived(() => read(count) * 2);
     let seen = -1;
     batch(() => {
       write(count, 21);
@@ -249,7 +249,7 @@ describe("batch", () => {
   });
 
   it("returns what the body returned", () => {
-    const count = cell(1);
+    const count = state(1);
     expect(
       batch(() => {
         write(count, 2);
@@ -259,7 +259,7 @@ describe("batch", () => {
   });
 
   it("flushes with the outermost batch", () => {
-    const count = cell(0);
+    const count = state(0);
     const listener = fn();
     subscribe(count, listener);
     batch(() => {
@@ -273,7 +273,7 @@ describe("batch", () => {
   });
 
   it("flushes even when the body throws", () => {
-    const count = cell(0);
+    const count = state(0);
     const listener = fn();
     subscribe(count, listener);
     expect(() =>
@@ -329,13 +329,13 @@ describe("resource", () => {
   });
 
   it("reports a plain cell as already settled", () => {
-    expect(status(cell(1))).toBe("success");
+    expect(status(state(1))).toBe("success");
   });
 });
 
 describe("unsubscribing inside a batch", () => {
   it("does not call a listener that was torn down before the flush", () => {
-    const value = cell(0);
+    const value = state(0);
     const calls = [];
     const stop = subscribe(value, () => calls.push("listener"));
 
@@ -350,7 +350,7 @@ describe("unsubscribing inside a batch", () => {
   });
 
   it("still calls the listeners that remain", () => {
-    const value = cell(0);
+    const value = state(0);
     const calls = [];
     const stopFirst = subscribe(value, () => calls.push("first"));
     subscribe(value, () => calls.push("second"));
@@ -372,11 +372,11 @@ describe("unsubscribing inside a batch", () => {
 
 describe("glitch freedom", () => {
   it("recomputes a diamond join once per write, and wakes its subscriber once", () => {
-    const source = cell(1);
-    const left = computed(() => read(source) + 1);
-    const right = computed(() => read(source) * 10);
+    const source = state(1);
+    const left = derived(() => read(source) + 1);
+    const right = derived(() => read(source) * 10);
     const join = fn(() => `${read(left)}/${read(right)}`);
-    const joined = computed(() => String(join()));
+    const joined = derived(() => String(join()));
     const listener = fn();
     subscribe(joined, listener);
     expect(read(joined)).toBe("2/10");
@@ -394,12 +394,12 @@ describe("glitch freedom", () => {
   });
 
   it("recomputes each side of the diamond once per write", () => {
-    const source = cell(1);
+    const source = state(1);
     const deriveLeft = fn(() => read(source) + 1);
     const deriveRight = fn(() => read(source) * 10);
-    const left = computed(() => Number(deriveLeft()));
-    const right = computed(() => Number(deriveRight()));
-    const joined = computed(() => `${read(left)}/${read(right)}`);
+    const left = derived(() => Number(deriveLeft()));
+    const right = derived(() => Number(deriveRight()));
+    const joined = derived(() => `${read(left)}/${read(right)}`);
     subscribe(joined, () => {});
 
     deriveLeft.mockClear();
@@ -411,11 +411,11 @@ describe("glitch freedom", () => {
   });
 
   it("never shows the join a half-updated pair", () => {
-    const source = cell(1);
-    const left = computed(() => read(source) + 1);
-    const right = computed(() => read(source) * 10);
+    const source = state(1);
+    const left = derived(() => read(source) + 1);
+    const right = derived(() => read(source) * 10);
     const seen = [];
-    const joined = computed(() => {
+    const joined = derived(() => {
       const pair = [read(left), read(right)];
       seen.push(pair);
       return pair.join("/");
@@ -431,10 +431,10 @@ describe("glitch freedom", () => {
   });
 
   it("stops at a layer whose value did not change", () => {
-    const count = cell(2);
-    const isEven = computed(() => read(count) % 2 === 0);
+    const count = state(2);
+    const isEven = derived(() => read(count) % 2 === 0);
     const label = fn(() => (read(isEven) ? "even" : "odd"));
-    const shown = computed(() => String(label()));
+    const shown = derived(() => String(label()));
     const listener = fn();
     subscribe(shown, listener);
 
@@ -454,12 +454,12 @@ describe("glitch freedom", () => {
   });
 
   it("wakes a subscriber once for a write that reaches it by two paths", () => {
-    const source = cell(0);
-    const left = computed(() => read(source) + 1);
-    const right = computed(() => read(source) + 2);
+    const source = state(0);
+    const left = derived(() => read(source) + 1);
+    const right = derived(() => read(source) + 2);
     const listener = fn();
     subscribe(
-      computed(() => read(left) + read(right)),
+      derived(() => read(left) + read(right)),
       listener,
     );
     write(source, 1);
@@ -469,11 +469,11 @@ describe("glitch freedom", () => {
 
 describe("dynamic dependencies", () => {
   it("stops recomputing for the branch it stopped reading", () => {
-    const useLeft = cell(true);
-    const left = cell("L");
-    const right = cell("R");
+    const useLeft = state(true);
+    const left = state("L");
+    const right = state("R");
     const derive = fn(() => (read(useLeft) ? read(left) : read(right)));
-    const chosen = computed(() => String(derive()));
+    const chosen = derived(() => String(derive()));
     subscribe(chosen, () => {});
 
     derive.mockClear();
@@ -496,20 +496,20 @@ describe("dynamic dependencies", () => {
 
   it("unmounts the dependency it dropped", () => {
     const events = [];
-    const useLeft = cell(true);
-    const left = cell("L", {
+    const useLeft = state(true);
+    const left = state("L", {
       onMount: () => {
         events.push("left on");
         return () => events.push("left off");
       },
     });
-    const right = cell("R", {
+    const right = state("R", {
       onMount: () => {
         events.push("right on");
         return () => events.push("right off");
       },
     });
-    const chosen = computed(() => (read(useLeft) ? read(left) : read(right)));
+    const chosen = derived(() => (read(useLeft) ? read(left) : read(right)));
     subscribe(chosen, () => {});
     expect(events).toEqual(["left on"]);
 
@@ -523,9 +523,9 @@ describe("dynamic dependencies", () => {
 
 describe("liveness", () => {
   it("stops recomputing once the last subscriber leaves", () => {
-    const source = cell(0);
+    const source = state(0);
     const derive = fn(() => read(source));
-    const mirror = computed(() => Number(derive()));
+    const mirror = derived(() => Number(derive()));
     const stop = subscribe(mirror, () => {});
 
     write(source, 1);
@@ -547,7 +547,7 @@ describe("liveness", () => {
 
   it("runs onMount for the first subscriber and its teardown for the last", () => {
     const events = [];
-    const source = cell(0, {
+    const source = state(0, {
       onMount: () => {
         events.push("start");
         return () => {
@@ -571,7 +571,7 @@ describe("liveness", () => {
 
   it("does not mount a cell that is only read", () => {
     const events = [];
-    const source = cell(0, {
+    const source = state(0, {
       onMount: () => {
         events.push("start");
       },
@@ -583,13 +583,13 @@ describe("liveness", () => {
 
   it("mounts what a subscribed derive reads, and unmounts it again", () => {
     const events = [];
-    const source = cell(0, {
+    const source = state(0, {
       onMount: () => {
         events.push("start");
         return () => events.push("stop");
       },
     });
-    const doubled = computed(() => read(source) * 2);
+    const doubled = derived(() => read(source) * 2);
     const stop = subscribe(doubled, () => {});
     expect(events).toEqual(["start"]);
     stop();
@@ -601,12 +601,12 @@ describe("liveness", () => {
     // means it writes after that derive read the old value. The write has to
     // survive as a mark rather than be stamped over by the evaluation that is
     // finishing.
-    const feed = cell(0, {
+    const feed = state(0, {
       onMount: (self) => {
         write(self, 21);
       },
     });
-    const doubled = computed(() => read(feed) * 2);
+    const doubled = derived(() => read(feed) * 2);
     const seen = [];
     subscribe(doubled, () => seen.push(read(doubled)));
     expect(read(doubled)).toBe(42);
@@ -616,7 +616,7 @@ describe("liveness", () => {
 
 describe("effect", () => {
   it("runs now, and again when what it read changes", () => {
-    const source = cell(1);
+    const source = state(1);
     const seen = [];
     const stop = effect(() => {
       seen.push(read(source));
@@ -630,7 +630,7 @@ describe("effect", () => {
   });
 
   it("runs its teardown before each re-run and once on stop", () => {
-    const source = cell(1);
+    const source = state(1);
     const events = [];
     const stop = effect(() => {
       const value = read(source);
@@ -643,8 +643,8 @@ describe("effect", () => {
   });
 
   it("runs once for a batch of writes", () => {
-    const first = cell(0);
-    const second = cell(0);
+    const first = state(0);
+    const second = state(0);
     const body = fn(() => {
       read(first);
       read(second);
@@ -660,7 +660,7 @@ describe("effect", () => {
   });
 
   it("does not run for a write that changes nothing", () => {
-    const source = cell(1);
+    const source = state(1);
     const body = fn(() => read(source));
     effect(() => {
       body();
@@ -673,10 +673,10 @@ describe("effect", () => {
 
 describe("peek", () => {
   it("reads without creating a dependency", () => {
-    const tracked = cell(1);
-    const ignored = cell(100);
+    const tracked = state(1);
+    const ignored = state(100);
     const derive = fn(() => read(tracked) + peek(ignored));
-    const total = computed(() => Number(derive()));
+    const total = derived(() => Number(derive()));
     subscribe(total, () => {});
 
     derive.mockClear();
@@ -691,7 +691,7 @@ describe("peek", () => {
 describe("equals", () => {
   it("uses the cell's own comparison to decide what changed", () => {
     const sameLength = (previous, next) => previous.length === next.length;
-    const rows = cell(["a", "b"], { equals: sameLength });
+    const rows = state(["a", "b"], { equals: sameLength });
     const listener = fn();
     subscribe(rows, listener);
     write(rows, ["c", "d"]);
@@ -702,8 +702,8 @@ describe("equals", () => {
   });
 
   it("stops a derive that rebuilds an array from waking anyone", () => {
-    const numbers = cell([1, 2, 3, 4]);
-    const evens = computed(() => read(numbers).filter((value) => value % 2 === 0), {
+    const numbers = state([1, 2, 3, 4]);
+    const evens = derived(() => read(numbers).filter((value) => value % 2 === 0), {
       equals: (previous, next) =>
         previous.length === next.length && previous.every((value, index) => value === next[index]),
     });
@@ -718,7 +718,7 @@ describe("equals", () => {
 
 describe("an asynchronous cell that reloads", () => {
   it("reloads when what the load read changes", async () => {
-    const id = cell("a");
+    const id = state("a");
     const { settle, load } = controlled();
     const loaded = resource(() => load(read(id)));
     subscribe(loaded, () => {});
@@ -737,7 +737,7 @@ describe("an asynchronous cell that reloads", () => {
   });
 
   it("does not let a slow load overtaken by a fast one deliver its value", async () => {
-    const id = cell("slow");
+    const id = state("slow");
     const { settle, load } = controlled();
     const loaded = resource(() => load(read(id)));
     const listener = fn();
@@ -760,8 +760,8 @@ describe("an asynchronous cell that reloads", () => {
   });
 
   it("does not reload for a write to something the load never read", async () => {
-    const id = cell("a");
-    const unrelated = cell(0);
+    const id = state("a");
+    const unrelated = state(0);
     const load = fn((key) => Promise.resolve(`value ${key}`));
     const loaded = resource(() => load(read(id)));
     subscribe(loaded, () => {});
@@ -795,7 +795,7 @@ describe("an asynchronous cell that reloads", () => {
   it("hands every load a signal, and aborts the one it supersedes", async () => {
     // The generation already stopped the abandoned load's *result* from
     // landing. This is the other half: the work itself stops.
-    const id = cell("slow");
+    const id = state("slow");
     const signals = [];
     const { settle, load } = controlled();
     const loaded = resource((context) => {
@@ -946,10 +946,10 @@ describe("a dependency a nested derive also read", () => {
     // The inner evaluation stamps the shared cell as *its* dependency. If the
     // outer relink decides what to unlink from that stamp, it drops an edge it
     // is still using — and the second write after that reaches nobody.
-    const source = cell(1);
-    const other = computed(() => read(source) * 10);
+    const source = state(1);
+    const other = derived(() => read(source) * 10);
     const derive = fn(() => read(source) + untracked(() => read(other)));
-    const total = computed(() => Number(derive()));
+    const total = derived(() => Number(derive()));
     const listener = fn();
     subscribe(total, listener);
 
