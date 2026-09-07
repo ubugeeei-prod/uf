@@ -128,6 +128,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`_uf.*` file names are reserved for layout, page, and middleware",
     },
     RuleDescriptor {
+        id: "router/unsupported-segment",
+        category: RuleCategory::Router,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`@slot` and `(.)segment` directories are not routes uf can serve",
+    },
+    RuleDescriptor {
         id: "package/no-npm-scripts",
         category: RuleCategory::Package,
         default_level: RuleLevel::Error,

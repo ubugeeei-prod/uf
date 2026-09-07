@@ -133,6 +133,21 @@ export type LayoutModule = {
 };
 
 /**
+ * What a template module may export. The component is `default` or `Template`.
+ *
+ * A layout's shape without its `metadata`, and the omission is the type saying
+ * what a template is for. A layout persists across navigation, so a title it
+ * declares is a claim about a section of the site; a template is thrown away
+ * and built again on every navigation, so a title on one would be a claim
+ * about nothing. Titles come from the page and the layouts above it.
+ */
+export type TemplateModule = {
+  readonly default?: RouteComponent,
+  readonly Template?: RouteComponent,
+  ...
+};
+
+/**
  * What an error module may export. The component is `default` or `Error`.
  *
  * `Error` shadows the global inside the file that writes it, which is the
@@ -392,6 +407,26 @@ export type RouteRecord = {|
    * exactly what it had before.
    */
   readonly loading?: $ReadOnlyArray<LoadingRecord>,
+  /**
+   * The `_uf.template.js` wrappers this route renders inside, root first.
+   *
+   * Optional for the reason `loading` is: a table written before templates
+   * existed is still a table this router can render, and a route with no
+   * template renders exactly the tree it did before.
+   */
+  readonly templates?: $ReadOnlyArray<TemplateRecord>,
+|};
+
+/**
+ * One `_uf.template.js`, as the route table carries it.
+ *
+ * The same shape as [`LoadingRecord`] and the same `above`, because it answers
+ * the same question — where in the stack of layouts this thing sits — and
+ * there is no second vocabulary for it.
+ */
+export type TemplateRecord = {|
+  readonly above: number,
+  readonly module: () => Promise<TemplateModule>,
 |};
 
 /**
@@ -570,6 +605,20 @@ export type ResolvedRoute = {|
    * ordinary case and renders exactly the tree it did before.
    */
   readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
+  /**
+   * The templates around this route, root first, already imported.
+   *
+   * Empty for a route with no `_uf.template.js` above it, which is the
+   * ordinary case and renders exactly the tree it did before templates
+   * existed. Empty too on a resolution that *is* a boundary — a not-found or
+   * an error page — for the reason its `loading` is: those are matched rather
+   * than walked to, and templates are accumulated on the walk down to a route
+   * the URL never reached.
+   */
+  readonly templates: $ReadOnlyArray<{|
+    readonly above: number,
+    readonly module: TemplateModule,
+  |}>,
 |};
 
 /** Thrown by `notFound()`; the renderer answers with the not-found page. */
@@ -924,6 +973,7 @@ async function resolveRoute(
   // Started alongside for the same reason, and awaited at the end: a fallback
   // depends on nothing the loader produces.
   const loading = resolveLoading(matched.route, matched.route.layouts.length);
+  const templates = resolveTemplates(matched.route, matched.route.layouts.length);
 
   // The loader, run here and awaited below — or not awaited at all.
   //
@@ -984,7 +1034,43 @@ async function resolveRoute(
     error: null,
     errorBoundary: await boundary,
     loading: await loading,
+    templates: await templates,
   };
+}
+
+/**
+ * The route's templates, imported.
+ *
+ * A template that will not load is dropped, the way a fallback is: it is a
+ * wrapper around the page, not the page, so a broken wrapper must not become a
+ * broken route. The tree renders without it — the page keeps the layout it was
+ * inside, and loses only the remount — and the import error surfaces where it
+ * belongs, when the module is next asked for.
+ */
+async function resolveTemplates(
+  route: RouteRecord,
+  layoutCount: number,
+): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: TemplateModule |}>> {
+  const records = route.templates ?? [];
+  if (records.length === 0) {
+    return [];
+  }
+  const loaded = await Promise.all(
+    records.map(async (record) => {
+      try {
+        return {
+          // Clamped exactly as the error and loading boundaries' are: a
+          // `(group)` directory can leave a route with fewer layouts than the
+          // template declared above it.
+          above: Math.min(record.above, layoutCount),
+          module: await loadOnce(record.module),
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return loaded.filter(Boolean);
 }
 
 /**
@@ -1180,6 +1266,7 @@ async function resolveError(
     // resolved with. A fallback around it would be a boundary that can never
     // show, which is worse than none.
     loading: [],
+    templates: [],
   };
 }
 
@@ -1249,6 +1336,8 @@ async function resolveNotFound(
     // record and the loading files are a property of the route that was walked
     // to, which this URL never reached. Nothing to wait for, so no boundary.
     loading: [],
+    // Templates are accumulated on that same walk, and for the same reason.
+    templates: [],
   };
 }
 
@@ -1990,6 +2079,16 @@ export hook useLoaderData(): mixed {
  * The error boundary goes *outside* the fallback at the same depth. A throw
  * while the page is resolving has to reach a boundary that is still mounted,
  * and the `<Suspense>` is part of what the throw came out of.
+ *
+ * # Where the templates go
+ *
+ * Inside their own segment's layout and outside everything else at that depth
+ * — the error boundary, the fallback and the page — which is what makes a
+ * template's remount mean "this segment and what is under it" and a layout's
+ * persistence mean "this segment's frame". The two files are the same wrapper
+ * with opposite answers to one question, so they are one line apart here, and
+ * the whole of the difference is the `key` — see [`insideTemplates`], which is
+ * that line's other half.
  */
 export component RouteView() {
   const { resolved } = useRouterState();
@@ -2033,6 +2132,7 @@ export component RouteView() {
         </RouteErrorBoundary>
       );
     }
+    element = insideTemplates(element, resolved, depth);
     if (depth > 0) {
       const Layout = layoutComponent(resolved.layouts[depth - 1]);
       element = <Layout params={resolved.params}>{element}</Layout>;
@@ -2153,6 +2253,58 @@ function loadingComponent(module: LoadingModule): React.ComponentType<{||}> {
   if (component == null) {
     throw new Error(
       "@uniflowed/router: a loading module must export a component as `default` or `Loading`",
+    );
+  }
+  return renderable(component);
+}
+
+/**
+ * `element`, wrapped in every template declared at `depth`.
+ *
+ * Outside the boundaries at that depth and inside the layout below it, and
+ * backwards over a root-first list for the reason the fallbacks are: two
+ * segments share a depth whenever the inner one declares no layout, and this
+ * order is what keeps them nested the way the directories are.
+ *
+ * A function beside `RouteView` rather than a third loop inside it, and that
+ * is not only for reading: a third nested loop assigning to `element` is what
+ * the React Compiler's aliasing inference gave up on, and a component it
+ * cannot compile is a component it does not memoise.
+ */
+function insideTemplates(element: React.Node, resolved: ResolvedRoute, depth: number): React.Node {
+  let out = element;
+  for (let index = resolved.templates.length - 1; index >= 0; index -= 1) {
+    const entry = resolved.templates[index];
+    if (entry.above !== depth) {
+      continue;
+    }
+    const Template = templateComponent(entry.module);
+    // Keyed on the pathname, which is the whole difference between this file
+    // and `_uf.layout.js`: React throws the subtree away and builds it again
+    // whenever the key changes, and a navigation that changes only the query
+    // string leaves it alone.
+    out = (
+      <Template key={resolved.pathname} params={resolved.params}>
+        {out}
+      </Template>
+    );
+  }
+  return out;
+}
+
+/**
+ * The component a template module renders: `default`, or the named `Template`.
+ *
+ * The same props a layout receives, because it is a layout in every way but
+ * one: it wraps `children`, it may read the route's parameters, and the only
+ * difference is that `RouteView` gives the element a `key` so React builds it
+ * again on every navigation.
+ */
+function templateComponent(module: TemplateModule): React.ComponentType<LayoutRenderProps> {
+  const component = module.default ?? module.Template;
+  if (component == null) {
+    throw new Error(
+      "@uniflowed/router: a template module must export a component as `default` or `Template`",
     );
   }
   return renderable(component);

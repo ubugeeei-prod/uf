@@ -9,7 +9,12 @@
 //
 // `_uf.not-found.js` and `_uf.error.js` are the two boundaries: the page for a
 // path that matched nothing, and what renders in place of a subtree that threw.
-// Both are segment files, resolved by the nearest one above the path.
+// Both are segment files, resolved by the nearest one above the path — and the
+// router root always has one of each, so a project that declares neither still
+// answers a 404 inside its own layouts rather than beside them.
+//
+// `_uf.template.js` is a layout that remounts on every navigation, for the
+// cases where a layout's persistence is the wrong default.
 
 import * as React from "react";
 
@@ -39,6 +44,7 @@ export type {
   RouteTable,
   Router,
   SearchParams,
+  TemplateModule,
   TwitterCard,
 } from "./internal/runtime.js";
 

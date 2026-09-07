@@ -14,12 +14,13 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Seven names are reserved. Everything else in `app/` is an ordinary module.
+Eight names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
 | `_uf.page.js` | The page at this path. Its default export is a component. |
 | `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
+| `_uf.template.js` | The same wrapper, rebuilt on every navigation instead of persisting. |
 | `_uf.not-found.js` | Rendered when nothing under this path matches. |
 | `_uf.error.js` | Rendered when something under this path throws. |
 | `_uf.loading.js` | Rendered while something under this path is still resolving. |
@@ -48,6 +49,26 @@ app/posts/[slug]/_uf.page.js      →  /posts/anything
 app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
 ```
 
+### Two spellings that are refused
+
+A directory named `@team` is a **parallel-route slot** and one named
+`(.)photo`, `(..)photo`, `(...)photo` or `(..)(..)photo` is an **intercepting
+route**. uf has neither feature, and both are refused by name — by `uf build`,
+by `uf dev` and by `uf lint`.
+
+They are refused rather than ignored, and the difference is the point. Until
+[#267](https://github.com/ubugeeei-prod/uf/issues/267) neither name meant
+anything to the router, so both fell through to "an ordinary URL segment":
+`app/@team/_uf.page.js` served `/@team`, `app/feed/(.)photo/_uf.page.js` served
+`/feed/(.)photo` — a `(group)` is a segment that *ends* in `)`, which
+`(.)photo` does not — and both went into the generated `RoutePath`, so
+`route("/@team", …)` type checked. A person migrating from Next.js got a
+project that looked like it worked.
+
+There is no escape hatch for a URL segment that really begins with `@`;
+capture it with a `[param]` instead. A `(group)` is untouched: it ends in `)`
+and always did.
+
 "The rest" is the whole rest, so a spread is the last routing directory on the
 way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
 reach — `[...path]` has already taken every segment, and there is none left to
@@ -75,6 +96,42 @@ rather than copying it.
 
 A layout does not re-render when navigating between pages that share it, so
 scroll position and state in a sidebar survive navigation.
+
+## Templates remount
+
+`_uf.template.js` is the same wrapper with the opposite answer to the same
+question. A layout persists; a template is thrown away and built again on every
+navigation.
+
+```js
+// @flow
+// app/guide/_uf.template.js
+import * as React from "react";
+
+export default component Template(children: React.Node) {
+  return <div className="fade-in">{children}</div>;
+}
+```
+
+It receives the same props a layout does — `children` and the route's `params`
+— so `LayoutProps` types one.
+
+It sits **inside** its own segment's layout and outside everything below it, so
+a remount means "this segment and what is under it" and never the frame around
+it:
+
+```
+app/guide/_uf.layout.js     the sidebar — mounted once
+app/guide/_uf.template.js   rebuilt on every navigation under /guide
+app/guide/[slug]/_uf.page.js
+```
+
+That is what an enter animation needs, and what a `useEffect` that should run
+per page needs. Persistence is the right default and stays the default: a
+segment with no `_uf.template.js` gets no wrapper at all.
+
+The key is the **pathname**, so a navigation that changes only the query string
+does not remount. A filter written into the URL keeps the page it filters.
 
 ## Not found nests too
 
