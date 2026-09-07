@@ -52,6 +52,58 @@ function stripQuery(id) {
 }
 
 /**
+ * `isFlowModule`'s answer for a plain file path, as a pattern.
+ *
+ * # Why a second expression of one policy exists at all
+ *
+ * Node's loader hooks are asked about every module and may hand one back
+ * untouched, so `./internal/node-hooks.js` calls `isFlowModule` and defers
+ * what it does not claim. Bun's plugin API has no such move: a module reaches
+ * `onLoad` because a *pattern* selected it, and once it is there the hook has
+ * to answer with contents. There is no shape that means "not mine" —
+ * `undefined`, `null`, `{}` and `{ loader }` are all rejected with
+ * `TypeError: onLoad() expects an object returned`, which is why no Bun
+ * project could load `./bun-preload.js` at all (ubugeeei-prod/uf#418).
+ *
+ * Handing the file's own bytes back is not the fix it looks like. A module
+ * that leaves `onLoad` is an ES module in Bun's eyes whatever its contents
+ * say, so a CommonJS dependency returned unchanged stops having a default
+ * export: `import dep from "dep"` becomes
+ * `SyntaxError: Missing 'default' export`. Declining correctly is impossible
+ * from inside the hook, so the decision has to be made before it — which
+ * means the policy has to exist as something a pattern can express.
+ *
+ * # The contract, which is the only reason this is safe
+ *
+ * **For every path with no query string and no leading NUL,
+ * `FLOW_MODULE_PATTERN.test(path) === isFlowModule(path)`.** Not "is a
+ * conservative approximation of": exactly equal, including the case a
+ * conservative approximation would get wrong — `@uniflowed/*` nested inside
+ * another package's `node_modules`, which the lookahead's inner
+ * `(?!.*\/node_modules\/)` is there to keep, and which a simpler pattern that
+ * rejected any path containing `node_modules` would silently stop
+ * transforming.
+ *
+ * `tests/library/flow-modules.test.js` is that sentence as a test, over a
+ * table that includes every case either expression could get wrong on its own.
+ * Two spellings of one rule are a drift risk and the test is the thing that
+ * makes them not one; the extension list is shared rather than repeated for
+ * the same reason.
+ *
+ * The two exclusions are outside the contract because they cannot arrive
+ * here: a NUL-prefixed id is a bundler's synthetic module and a query string
+ * is a bundler's parameter, and neither is a path a host asks its filesystem
+ * about. `isFlowModule` remains the authority for those callers.
+ */
+export const FLOW_MODULE_PATTERN = new RegExp(
+  // Reject when the *last* `/node_modules/` on the path is not followed by
+  // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
+  // lookahead: the inner negative lookahead is what pins "last".
+  String.raw`^(?!.*/node_modules/(?!.*/node_modules/)(?!@uniflowed/))` +
+    String.raw`.*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})$`,
+);
+
+/**
  * The `uf` binary to talk to.
  *
  * `uf dev`, `uf build` and `uf test` set `UF_BINARY` to themselves when they
@@ -169,6 +221,25 @@ export class TransformError extends Error {
  * leak. Any exit is final: a request made after the process has gone is
  * rejected at once rather than queued against something that will never
  * answer.
+ *
+ * # Why the child is unreferenced between requests
+ *
+ * A live child process and its pipes are handles, and a host with a handle
+ * open does not exit. Nothing closes the process-wide service — the loader
+ * hooks and the Bun preload both take it and neither has an "afterwards" to
+ * close it in — so on Bun `bun --preload @uniflowed/host/bun-preload app.js`
+ * ran the program, printed its output, and then sat there forever. Node hides
+ * this: its module hooks run on a loader thread of their own, and the process
+ * exits with the main thread whatever that thread is still holding. That
+ * accident is the only reason it was ever invisible, and it is not something
+ * the second host can be asked to reproduce.
+ *
+ * So the service holds its host open for exactly as long as it owes an
+ * answer: referenced when a request joins an empty queue, unreferenced when
+ * the queue drains, and unreferenced from the start. Unreferencing
+ * unconditionally would be the other bug — the host would be free to exit
+ * during a transform, and `uf build` would end in the middle of a module with
+ * no error anywhere.
  */
 export class TransformService {
   #child;
@@ -199,18 +270,26 @@ export class TransformService {
     createInterface({ input: this.#child.stdout }).on("line", (line) => {
       const waiting = this.#pending.shift();
       if (!waiting) return;
-      let reply;
+      // `finally`, so the hold is released down every path out of this
+      // handler and not only the successful one. A rejected request is still a
+      // request that has been answered, and staying referenced after one would
+      // turn a module that failed to compile into a process that never exits.
       try {
-        reply = JSON.parse(line);
-      } catch {
-        waiting.reject(new Error(`uf transform sent a malformed reply: ${line}`));
-        return;
+        let reply;
+        try {
+          reply = JSON.parse(line);
+        } catch {
+          waiting.reject(new Error(`uf transform sent a malformed reply: ${line}`));
+          return;
+        }
+        if (reply.error != null) {
+          waiting.reject(new TransformError(waiting.id, reply.error, reply.line, reply.column));
+          return;
+        }
+        waiting.resolve(reply);
+      } finally {
+        this.#holdHost(this.#pending.length > 0);
       }
-      if (reply.error != null) {
-        waiting.reject(new TransformError(waiting.id, reply.error, reply.line, reply.column));
-        return;
-      }
-      waiting.resolve(reply);
     });
 
     this.#child.on("error", (error) => {
@@ -219,11 +298,31 @@ export class TransformService {
     this.#child.on("close", (code) => {
       this.#settleAll(new Error(`uf transform exited (${code})`));
     });
+
+    this.#holdHost(false);
+  }
+
+  /**
+   * Keep the host process alive, or stop keeping it alive.
+   *
+   * The pipes as well as the child: each is a handle of its own, and a host
+   * that unreferenced only the child would still be held open by the stdout it
+   * is reading replies from. Every call is optional-chained because this runs
+   * on whatever host started it, and a runtime that has no notion of
+   * referenced handles has nothing to do here — it is not an error, it is a
+   * runtime whose loop already ends when the work does.
+   */
+  #holdHost(hold) {
+    const method = hold ? "ref" : "unref";
+    this.#child[method]?.();
+    this.#child.stdin?.[method]?.();
+    this.#child.stdout?.[method]?.();
   }
 
   #settleAll(error) {
     this.#failure = error;
     while (this.#pending.length > 0) this.#pending.shift().reject(error);
+    this.#holdHost(false);
   }
 
   /**
@@ -245,6 +344,9 @@ export class TransformService {
    */
   transform(id, code, options = {}) {
     if (this.#failure) return Promise.reject(this.#failure);
+    // Before the push, so the host is held from the moment it is owed an
+    // answer rather than from the moment the write lands.
+    this.#holdHost(true);
     return new Promise((resolve, reject) => {
       this.#pending.push({
         id,

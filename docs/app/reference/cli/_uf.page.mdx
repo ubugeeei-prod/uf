@@ -996,8 +996,27 @@ toolchain use [`uf use`](#uf-use-toolchain)
 
 ### uf release BUMP
 
-Bumps the version — `patch`, `minor`, `major`, `alpha`, `beta`, `rc` — and
-tags it.
+Plans the next version — `patch`, `minor`, `major` or `alpha` — writes its
+`CHANGELOG.md` section from the commits since the last release tag, and writes
+the plan to `.uf/release.json`. It does not move the version in the workspace
+and it does not tag: `tools/release/bump-version.sh` is the first, and the tag
+is a step of its own.
+
+The version it plans is the one compiled into the binary running it, which is
+the right source — the binary that cuts a release is the binary being released
+— and it means an out-of-date binary plans a version the tree has already
+published. Rewriting that version's section replaces a release's notes with a
+later release's commits, so `uf release` refuses instead: a version that is
+already tagged is refused outright, and a section that exists but has no tag is
+a release being prepared and is refused until `--force` says the rewrite is
+meant ([#457](https://github.com/ubugeeei-prod/uf/issues/457)).
+
+It also names the commits in the range whose subject carries no `(#NNN)`.
+GitHub writes that number when it squash-merges, and a commit that did not get
+one is invisible to everything downstream that identifies a change by its
+number — so those are the lines to place by hand, and the ones
+`tools/ci/changelog-covers-the-release.sh` asks to see cited by their summary or
+their hash ([#443](https://github.com/ubugeeei-prod/uf/issues/443)).
 
 ### uf publish
 

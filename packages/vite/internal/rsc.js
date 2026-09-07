@@ -140,6 +140,7 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
     if (needed(route.page)) return true;
     if (route.layouts.some(needed)) return true;
     if ((route.loading ?? []).some((entry) => needed(entry.module))) return true;
+    if ((route.templates ?? []).some((entry) => needed(entry.module))) return true;
     // A boundary with no module of its own is the record the scan synthesises
     // at the router root, and what renders there is the framework's own page —
     // already in `@uniflowed/router`, reaching nothing this project wrote. It

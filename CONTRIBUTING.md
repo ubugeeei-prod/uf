@@ -128,3 +128,28 @@ RUSTUP_TOOLCHAIN=nightly cargo test -p uf_flow
 ```
 
 When GitHub Actions is configured, use Actions as the final merge gate.
+
+### Adding a job to the pipeline
+
+`ci.yml` ends with a job named `CI` that runs whatever happened above it
+(`if: always()`) and is red unless every job it names came back `success`.
+Every other job in that file declares `needs: toolchain`, because `Toolchain`
+builds the `uf` binary the rest of the pipeline runs its checks through — and a
+job whose dependency fails is not run, it reports `skipped`, and GitHub counts
+a skipped required check as satisfied. Without that gate a `Toolchain` that
+does not compile turns the entire required set green and an armed auto-merge
+fires, which is what left `main` not compiling on 2026-09-06. See
+ubugeeei-prod/uf#367.
+
+So a job added to `ci.yml` belongs in that gate's `needs:`. A job that must
+*not* block a merge — the way `Upstream Flow` must not, because it builds on
+the moving nightly on purpose to say early when the pin has to advance — says
+so in a comment instead:
+
+```yaml
+  # ci-gate excludes <job> — <why it must not block a merge>
+```
+
+`uf run ci:gate` reads the workflow and fails on a job that is in neither, and
+on a required context that could report `skipped` for any other reason, so this
+is not something a review has to remember to catch.

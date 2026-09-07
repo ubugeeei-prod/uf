@@ -388,6 +388,15 @@ jobs:
       # the section is written before the branch stops waiting for CI.
       - run: ./target/release/uf run release:changelog
       - run: ./target/release/uf run release:changelog:test
+      # And that the gate at the bottom of this file still covers this file.
+      # It is red unless every job it names came back `success`, which is what
+      # stands between a `Toolchain` that does not compile and an armed
+      # auto-merge — but only while its `needs:` names every job, and that is
+      # a list somebody has to add to. This reads the workflow and says so
+      # when it does not, and checks that every required context is a job
+      # that cannot report `skipped`. See #367.
+      - run: ./target/release/uf run ci:gate
+      - run: ./target/release/uf run ci:gate:test
 
   upstream-integrations:
     name: Upstream Integrations
@@ -508,11 +517,19 @@ jobs:
   # every job it names is green. `skipped` is a failure here, deliberately:
   # a check that did not run has not passed, and that is the whole bug.
   #
-  # `Upstream Flow` is not in the list, and that is not an oversight — it
-  # builds the parser on the *moving* nightly on purpose, to say early when the
-  # pin will have to move, so it is expected to go red and must not block a
-  # merge. Everything else is here, including the jobs that were never in the
-  # required set: a job worth running is a job worth failing on.
+  # `Upstream Flow` is not in the list, and that is not an oversight:
+  # `ci-gate excludes upstream-flow` — it builds the parser on the *moving*
+  # nightly on purpose, to say early when the pin will have to move, so it is
+  # expected to go red and must not block a merge. Everything else is here,
+  # including the jobs that were never in the required set: a job worth running
+  # is a job worth failing on.
+  #
+  # That sentence is the marker as well as the argument:
+  # `tools/ci/gate-covers-every-job.sh` reads this file and fails on a job that
+  # is in neither the list below nor a `ci-gate excludes <job>` line, because a
+  # list somebody has to add to is a list somebody forgets — which is how
+  # `Flow lint` spent a day being a check no merge had to pass. The `Metadata`
+  # job runs it, and `uf run ci:gate` is it on a laptop.
   ci:
     name: CI
     if: always()

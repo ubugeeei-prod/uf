@@ -127,11 +127,15 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Align, LogicalSide } from "./internal/anchor.js";
+import { useAnchor } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import { itemsOf, moveTo } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { FormValue } from "./internal/form-value.js";
+
+export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 const OPTION_SELECTOR = '[role="option"]';
 const LISTBOX_SELECTOR = '[role="listbox"]';
@@ -426,12 +430,37 @@ export component ComboboxInput(...rest: Rest) {
  * the count the live region announces, and the invariant that
  * `aria-activedescendant` never names an option that has left the list.
  */
-export component ComboboxList(children: renders* (ComboboxOption | ComboboxGroup), ...rest: Rest) {
+export component ComboboxList(
+  children: renders* (ComboboxOption | ComboboxGroup),
+  align?: Align = "start",
+  alignOffset?: number = 0,
+  avoidCollisions?: boolean = true,
+  collisionPadding?: number = 0,
+  side?: LogicalSide = "bottom",
+  sideOffset?: number = 0,
+  ...rest: Rest
+) {
   const combobox = useCombobox("Combobox.List");
   const { activeId, count, listRef, inputRef, pendingActive, setActiveId, setCount } = combobox;
   const close = useStableCallback(() => {
     combobox.setOpen(false);
     combobox.setActiveId(null);
+  });
+
+  // Anchored to the *field*, not to a wrapper the caller may not have written.
+  // `align="start"` because a list of options belongs under the edge the text
+  // starts at, and `--uf-anchor-trigger-width` is what a stylesheet reads to
+  // make it exactly as wide as the field.
+  const anchored = useAnchor({
+    align,
+    alignOffset,
+    anchorRef: inputRef,
+    avoidCollisions,
+    collisionPadding,
+    open: combobox.open,
+    overlayRef: listRef,
+    side,
+    sideOffset,
   });
 
   // No dependency list on purpose: what this reads is the *rendered* options,
@@ -505,6 +534,8 @@ export component ComboboxList(children: renders* (ComboboxOption | ComboboxGroup
     <div
       {...passed}
       aria-labelledby={combobox.labelled ? `${combobox.base}-label` : undefined}
+      data-align={anchored.align}
+      data-side={anchored.side}
       id={`${combobox.base}-list`}
       ref={composeRefs(rest.ref, (element) => {
         listRef.current = element;

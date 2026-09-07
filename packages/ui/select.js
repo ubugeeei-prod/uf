@@ -146,12 +146,16 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import type { Align, LogicalSide } from "./internal/anchor.js";
+import { useAnchor } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
 import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
 import type { Movement } from "./internal/roving-focus.js";
 import { isTypeaheadKey, itemsOf, moveTo, useTypeahead } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { FormValue } from "./internal/form-value.js";
+
+export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
 const OPTION_SELECTOR = '[role="option"]';
 const LISTBOX_SELECTOR = '[role="listbox"]';
@@ -613,6 +617,12 @@ export component SelectValue(children?: React.Node, placeholder?: React.Node, ..
  */
 export component SelectList(
   children: renders* (SelectOption | SelectGroup | SelectSeparator),
+  align?: Align = "start",
+  alignOffset?: number = 0,
+  avoidCollisions?: boolean = true,
+  collisionPadding?: number = 0,
+  side?: LogicalSide = "bottom",
+  sideOffset?: number = 0,
   ...rest: Rest
 ) {
   const select = useSelect("Select.List");
@@ -620,6 +630,23 @@ export component SelectList(
   const close = useStableCallback(() => {
     select.setOpen(false);
     select.setActiveId(null);
+  });
+
+  // The popup a select opens is the one case where the trigger's *width* is
+  // part of the design rather than a detail: a list narrower than the button it
+  // came out of reads as a different control. `--uf-anchor-trigger-width` is
+  // written on this element for a stylesheet to use, which is why the
+  // measurement is here and not in the caller.
+  const anchored = useAnchor({
+    align,
+    alignOffset,
+    anchorRef: triggerRef,
+    avoidCollisions,
+    collisionPadding,
+    open: select.open,
+    overlayRef: listRef,
+    side,
+    sideOffset,
   });
 
   // No dependency list, for the reason `combobox.js` gives: what this reads is
@@ -701,6 +728,8 @@ export component SelectList(
     <div
       {...passed}
       aria-labelledby={select.labelled ? `${select.base}-label` : undefined}
+      data-align={anchored.align}
+      data-side={anchored.side}
       id={`${select.base}-list`}
       ref={composeRefs(rest.ref, (element) => {
         listRef.current = element;
