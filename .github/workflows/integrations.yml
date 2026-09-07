@@ -49,13 +49,16 @@ jobs:
         # installer can select on a hosted runner.
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The action under test, from this checkout rather than from a tag, so a
-      # pull request tests the version it is proposing.
+      # The action under test, from this repository at this commit rather than
+      # from a tag, so a pull request tests the version it is proposing.
+      # `$/` rather than `./`: the same-repository form does not depend on what
+      # is on the runner's filesystem when the step runs, which is what lets
+      # GitHub treat it as fully pinned.
       - name: Install uf
         id: setup
-        uses: ./integrations/github-actions
+        uses: $/integrations/github-actions
         with:
           version: latest
 
