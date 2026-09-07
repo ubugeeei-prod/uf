@@ -66,6 +66,29 @@ export default defineConfig({
     },
   },
 
+  // Every task below either declares `inputs` — the files it reads, which is
+  // what `uf run` keys its cache on — or does not, in which case it runs every
+  // time. Which side a task is on is a judgement, and the ones that are *not*
+  // cached are the interesting half, so each of them says why on its own row.
+  // Three reasons cover all of them:
+  //
+  //   * **cargo has a better cache than this one.** Every `cargo` task is
+  //     always run. Cargo's fingerprints know about the rustc version, the
+  //     feature resolution, the build scripts and the environment variables a
+  //     build script read; a content hash over `crates/**` knows none of that,
+  //     and a second, weaker cache in front of a stronger one can only ever be
+  //     wrong. A no-op `cargo` invocation costs a fraction of a second anyway.
+  //   * **the answer is not a function of files uf can name.** `test:lib` and
+  //     `docs:build` run JavaScript on whichever Node is on `PATH`, against
+  //     whatever `node_modules` holds. This repository has already been bitten
+  //     by exactly that: the library suite is green on node 24 and not on node
+  //     25, and no glob can say so.
+  //   * **it reads something that is not a file.** `release:changelog` reads
+  //     the git history; `release:verify` and `release:preflight` read the
+  //     registry.
+  //
+  // `uf run ci --why` prints the reason for every task, from the runner rather
+  // than from this comment, which is the version to trust.
   tasks: {
     // --- Getting a checkout working ------------------------------------
     //
@@ -112,6 +135,11 @@ export default defineConfig({
     "test:lib": {
       command: "./target/release/uf test#library",
       dependsOn: ["build"],
+      // No `inputs`, so it runs every time. It executes Flow on the Node that
+      // happens to be on `PATH`, through the transform cache in `.uf`, against
+      // the `node_modules` tree `npm ci` installed — and its result genuinely
+      // differs between node 24 and node 25. None of that is a path uf can
+      // hash, so there is nothing honest to key on.
     },
 
     // The same suite, with V8's counters on, run from the repository root so
@@ -173,6 +201,8 @@ export default defineConfig({
     "check:lib": {
       command: "./target/release/uf lint",
       dependsOn: ["build"],
+      // The same superset, for the same reason, over the same binary.
+      inputs: ["**", "!upstream/**", "target/release/uf"],
     },
 
     // The formatter, over the same. `--check` rather than a write, because CI
@@ -180,6 +210,15 @@ export default defineConfig({
     "fmt:check": {
       command: "./target/release/uf fmt --check",
       dependsOn: ["build"],
+      // A deliberate superset. What `uf fmt` opens is decided by uf's own
+      // project discovery rather than by a list in this file, so a glob that
+      // tried to reproduce that rule would be a guess — and a guess that came
+      // out too *narrow* is the one failure this cache must not have: a file
+      // that was never formatted, reported as formatted. So the input is
+      // everything in the checkout except the vendored submodules, plus the
+      // binary doing the work. It over-invalidates, which costs a run; it
+      // cannot under-invalidate, which would cost the check.
+      inputs: ["**", "!upstream/**", "target/release/uf"],
     },
 
     // The formatter, over Flow nobody here wrote.
@@ -207,6 +246,9 @@ export default defineConfig({
     "docs:build": {
       command: "UF_BIN=./target/release/uf tools/docs/build.sh",
       dependsOn: ["build"],
+      // No `inputs`, and the reason is Vite rather than uf: the build runs
+      // Node, resolves from `node_modules`, and writes through Vite's own
+      // caches. Same argument as `test:lib`.
     },
     // The documentation site, in a browser, while you edit it.
     "docs:dev": {
@@ -292,15 +334,39 @@ export default defineConfig({
     "release:verify": "tools/release/verify-npm.sh",
     // The offline half of it: a published package whose dependency is not
     // published resolves to nothing. No network, so `ci` runs it.
-    "release:closure": "tools/release/verify-npm.sh --closure-only",
+    "release:closure": {
+      command: "tools/release/verify-npm.sh --closure-only",
+      // The offline phase reads the published list and each named package's
+      // manifest, and returns before the phase that talks to the registry.
+      inputs: [
+        "packages/*/package.json",
+        "tools/release/verify-npm.sh",
+        "tools/release/published-packages.txt",
+      ],
+    },
     // And that a package somebody implemented is on its way to npm at all.
     // Ten were not, `@uniflowed/state` and `@uniflowed/effect` among them:
     // about 22,000 lines of Flow that `npm install` answered `ETARGET` for.
     // A list somebody adds to is a list somebody forgets, so the rule is
     // stated from the other side — a package that never calls
     // `nativeRuntimeRequired` has to be named in one of the two manifests.
-    publishable: "tools/ci/publishable.sh",
-    "publishable:test": "tools/ci/test-publishable.sh",
+    publishable: {
+      command: "tools/ci/publishable.sh",
+      // It reads two manifests and every `.js` under `packages/`, looking for
+      // a `nativeRuntimeRequired(` call. That is the whole of it.
+      inputs: [
+        "packages/**/*.js",
+        "tools/ci/publishable.sh",
+        "tools/release/published-packages.txt",
+        "tools/release/pending-packages.txt",
+      ],
+    },
+    "publishable:test": {
+      command: "tools/ci/test-publishable.sh",
+      // A self-test: it builds its fixtures in a temp directory and runs the
+      // script under test against them, so the two scripts are its inputs.
+      inputs: ["tools/ci/publishable.sh", "tools/ci/test-publishable.sh"],
+    },
     // Not in `ci.dependsOn` here, and that is a sequencing detail rather than
     // an exception: the release branch rewrites that list wholesale to close
     // an eight-task gap between it and the pipeline, and adding two names to
@@ -349,26 +415,65 @@ export default defineConfig({
     // ninety-six columns with its indent — wrapping mid-sentence onto a second
     // line with no indent. The installer cannot ask how wide the terminal is,
     // so the width is a property of the text and is checked here.
-    "install:banner": "tools/ci/install-banner-fits.sh",
-    "scripts:parse": "tools/ci/scripts-parse.sh",
-    "scripts:parse:test": "tools/ci/test-scripts-parse.sh",
+    "install:banner": {
+      command: "tools/ci/install-banner-fits.sh",
+      // It extracts `uf_brand()` from the installer and measures what it
+      // prints. Two files, and nothing else.
+      inputs: ["infra/cloudflare/setup-assets/install.sh", "tools/ci/install-banner-fits.sh"],
+    },
+    "scripts:parse": {
+      command: "tools/ci/scripts-parse.sh",
+      // `git ls-files '*.sh'` minus `upstream/`, which is every tracked shell
+      // script in the repository and they all live in these two directories.
+      // A `.sh` that is not tracked is hashed here and not checked there —
+      // over-invalidation, which is the safe side.
+      inputs: ["tools/**/*.sh", "infra/**/*.sh"],
+    },
+    "scripts:parse:test": {
+      command: "tools/ci/test-scripts-parse.sh",
+      inputs: ["tools/ci/scripts-parse.sh", "tools/ci/test-scripts-parse.sh"],
+    },
     // And that `integrations/` and the installer still agree. The three CI
     // integrations configure `install.sh` entirely through the environment,
     // and nothing else in this repository reads both sides — a renamed
     // variable would leave them passing something nothing reads, the
     // installer would fall back to its defaults, and the failure would be
     // `uf: command not found` in somebody else's pipeline.
-    integrations: "tools/ci/integrations-agree.sh",
-    lockfile: "tools/ci/lockfile-in-sync.sh",
+    integrations: {
+      command: "tools/ci/integrations-agree.sh",
+      // Both sides of the agreement, and the script that compares them.
+      inputs: [
+        "integrations/**",
+        "infra/cloudflare/setup-assets/install.sh",
+        "tools/ci/integrations-agree.sh",
+      ],
+    },
+    lockfile: {
+      command: "tools/ci/lockfile-in-sync.sh",
+      // The lock, the root manifest, and every workspace manifest the root's
+      // own globs reach.
+      inputs: [
+        "package-lock.json",
+        "package.json",
+        "packages/*/package.json",
+        "tools/ci/lockfile-in-sync.sh",
+      ],
+    },
     // The check reads the lock rather than regenerating it, so every way a
     // lock can fall behind has to be written down as a case. Its first
     // version compared bytes against a fresh `npm install
     // --package-lock-only`, which passed here and failed in CI over a
     // difference that could not be reproduced here afterwards.
-    "lockfile:test": "tools/ci/test-lockfile-in-sync.sh",
+    "lockfile:test": {
+      command: "tools/ci/test-lockfile-in-sync.sh",
+      inputs: ["tools/ci/lockfile-in-sync.sh", "tools/ci/test-lockfile-in-sync.sh"],
+    },
 
-    manifests:
-      "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
+    manifests: {
+      command:
+        "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
+      inputs: ["packages/*/package.json"],
+    },
 
     // --- The whole thing -----------------------------------------------
     //

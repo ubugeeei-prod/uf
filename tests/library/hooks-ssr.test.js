@@ -43,6 +43,7 @@ import {
   useElementSize,
   useElementState,
   useEventListener,
+  useEventSource,
   useFocusWithin,
   useGeolocation,
   useHover,
@@ -195,6 +196,20 @@ describe("the environment hooks, prerendered", () => {
     expect(markupOf(<Probe />)).toBe(
       "<output>false false false false true false null unknown</output>",
     );
+  });
+
+  it("opens no event stream, and says nothing has been attempted", () => {
+    // `idle` rather than `connecting`, because they are different facts and
+    // only one of them is true here: a prerender neither connects nor is about
+    // to. A hook that reported `connecting` would put a spinner in every
+    // prerendered document that uses one.
+    component Probe() {
+      const stream = useEventSource("/api/feed");
+      return (
+        <output>{[stream.status, String(stream.supported), String(stream.last)].join(" ")}</output>
+      );
+    }
+    expect(markupOf(<Probe />)).toBe("<output>idle false null</output>");
   });
 
   it("leaves the page alone when a dialog asks for the scroll to be locked", () => {
