@@ -93,6 +93,51 @@ people actually ask when a command surprises them, which is "who is doing
 this, and which file decided that". An integrated toolchain that cannot say
 what it is doing is a black box — see [Architecture](/guide/architecture).
 
+### uf routes list
+
+Prints the route table `uf build` counts from: the path, the parameters it
+captures, how many middlewares run before it answers, and the page file each
+one resolved to.
+
+It is the same `discover_routes` the build runs, so a route that is missing
+here is a route that will be missing from the site. A directory uf reserves
+without serving, or a `[...rest]` with a segment after it, is reported as the
+error `uf build` would give rather than silently left out of the table.
+
+### uf routes add PATH [--layout] [--loader] [--middleware]
+
+Writes a route: the directory, `_uf.page.js`, and whichever of the rest was
+asked for.
+
+```
+uf routes add /articles/[slug] --loader
+```
+
+`PATH` is a URL path in the spelling the directories already use —
+`/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what you type
+is what appears in `RoutePath`. The page is typed from the path: a `[slug]`
+becomes `+slug: string` and a `[...path]` becomes
+`+path: $ReadOnlyArray<string>`.
+
+`--loader` is the one flag that is not a file. A loader is an export of the
+page module rather than a name uf reserves, so `--loader` adds the export and
+the `data` prop rather than writing a file of its own.
+
+What it writes is exported by name — `Page`, `Layout`, `middleware` — which is
+the spelling `uf new` uses and the one `react/no-default-export-component` does
+not report. A scaffold that made `uf lint` speak on its first run would be
+teaching that the rule is noise.
+
+The file names come from the same grammar `uf build` discovers routes with, so
+a scaffold uf writes is a route uf finds. A spelling uf reserves without
+serving — `@team`, `(.)photo` — is refused here with the sentence `uf build`
+and `uf lint` give for it, rather than written now and reported later. Nothing
+is overwritten: a route whose page already exists is an error, and a run that
+stops has written none of its files.
+
+`uf prepare` regenerates `router.js`, so the new path joins `RoutePath` on the
+next run of it.
+
 ## Running and building
 
 ### uf dev

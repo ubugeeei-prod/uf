@@ -1617,10 +1617,36 @@ fn ask_the_artefact(empty: &Path, adapter: &str, questions: &str) -> String {
 /// Everything but `prerendered`, which only the two adapters carrying a static
 /// half are asked for — a `node` artefact's static half is `server.js`'s, and
 /// `server.js` takes a socket rather than answering a function call.
-fn shared_answers(said: &str) -> Vec<&str> {
+///
+/// And with the render anchor's envelope blanked. `routerView` renders a
+/// `RenderProvider` above every application (ubugeeei-prod/uf#559), and what
+/// it fixes is *this* render's instant and *this* render's seed — four
+/// adapters asked in four processes are four renders, so the anchor differs
+/// there by construction and nowhere else. That the anchor is *present* is
+/// asserted in [`assert_artefact_answers`], against every adapter, so blanking
+/// it here cannot hide one that lost it.
+fn shared_answers(said: &str) -> Vec<String> {
     said.lines()
         .filter(|line| !line.starts_with("prerendered "))
+        .map(without_the_render_anchor)
         .collect()
+}
+
+/// `line` with the contents of the `uf:render` meta replaced by a placeholder.
+///
+/// A string scan rather than a regular expression, because the attribute's
+/// value is React's own escaping and the only `"` inside it is the one that
+/// ends it — `JSON.stringify` produces `&quot;` here, never a bare quote.
+fn without_the_render_anchor(line: &str) -> String {
+    const OPEN: &str = "<meta name=\"uf:render\" content=\"";
+    let Some(start) = line.find(OPEN) else {
+        return line.to_owned();
+    };
+    let value = start + OPEN.len();
+    let Some(end) = line[value..].find('"') else {
+        return line.to_owned();
+    };
+    format!("{}<envelope>{}", &line[..value], &line[value + end..])
 }
 
 /// Assert on the answers themselves, once, for whichever adapter produced them.
@@ -1648,6 +1674,14 @@ fn assert_artefact_answers(answers: &str) {
     assert!(
         rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
         "a route with no prerendered file has to be rendered per request:\n{rendered}"
+    );
+    // The render anchor, which `shared_answers` blanks before comparing
+    // adapters and which therefore has to be asserted somewhere that does not:
+    // an adapter that rendered a document without one would be an adapter
+    // whose pages have a hydration mismatch wherever a clock or a shuffle is.
+    assert!(
+        rendered.contains("<meta name=\"uf:render\" content=\""),
+        "every rendered document carries the anchor `routerView` fixes:\n{rendered}"
     );
     let missing = answers
         .lines()
@@ -1896,10 +1930,7 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
         let answers = ask_the_artefact(empty.path(), adapter, SERVED_APP_QUESTIONS);
         assert_artefact_answers(&answers);
 
-        let shared: Vec<String> = shared_answers(&answers)
-            .iter()
-            .map(|line| (*line).to_owned())
-            .collect();
+        let shared = shared_answers(&answers);
         match &reference {
             None => reference = Some((adapter, shared)),
             Some((first, expected)) => {
