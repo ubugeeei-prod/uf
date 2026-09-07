@@ -86,15 +86,11 @@ A layout renders the document. It is a `component`, and it receives the page as
 
 ```js
 // @flow
-import * as React from "@uniflowed/react";
-import { Suspense } from "@uniflowed/react";
 
-export component Layout(children: React.Node) {
+export component Layout(children: mixed) {
   return (
     <html lang="en">
-      <body>
-        <Suspense fallback={null}>{children}</Suspense>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
@@ -113,13 +109,25 @@ The router takes `module.default ?? module.Page`, so a default export works too
 — but `uf check` warns on a default-exported component, on the grounds that a
 route wired by name is easier to find than one wired by position.
 
-`React.Node` there is a type imported by a package name, and it resolves:
-`uf check` reads `@uniflowed/react`'s manifest out of `node_modules`, follows
-its `exports` map, and types `children` against what the package actually
-declares. It used to say `mixed` instead, because the checker resolved no
-package and an annotation written against an any-typed value is an error —
+Once your dependencies are installed, write `children: React.Node` instead —
+import it with `import * as React from "@uniflowed/react"`. That is the type a
+layout's children actually have, and `uf check` reads it: it finds
+`@uniflowed/react`'s manifest in `node_modules`, follows its `exports` map, and
+types `children` against what the package declares. It did not always;
 [#248](https://github.com/ubugeeei-prod/uf/issues/248) and
 [#403](https://github.com/ubugeeei-prod/uf/issues/403) are that history.
+
+The scaffold writes `mixed` because `uf create` runs *before* `uf install`, and
+until then `@uniflowed/react` resolves to nothing — an annotation written
+against it would be an error in the first file uf ever wrote for you. `mixed`
+is what a document shell can say with nothing installed, and an intrinsic
+element takes it.
+
+The scaffold also wraps the page in no `<Suspense>`. One with `fallback={null}`
+around every page is worse than none: a page that suspends under it renders as
+an empty document instead of failing the way React says it should, and nothing
+says so. [Routing](/guide/routing) covers declaring a boundary where a route
+wants one.
 
 Both files are Flow, both use `component` syntax, and neither needs a plugin
 declared anywhere. [Routing](/guide/routing) covers nesting, parameters and

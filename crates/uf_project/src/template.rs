@@ -213,17 +213,32 @@ export default routerView("./app");
     .to_string()
 }
 
+/// The document, and nothing else.
+///
+/// Two things it deliberately does not do.
+///
+/// It wraps the page in **no `<Suspense>`**. One with `fallback={null}` around
+/// every page is worse than none: a page that suspends under it renders as an
+/// empty document instead of failing the way React says it should, and nothing
+/// says so. That is the argument `RouteView` already makes for not inserting
+/// one — `tests/library/streaming.test.js` — and a scaffold should not ship
+/// the shape the router refuses. A route that wants a boundary declares one.
+///
+/// And `children` is **`mixed`, not `React.Node`**, which is a scaffold
+/// decision rather than advice. `React.Node` comes from `@uniflowed/react`,
+/// and `uf create` writes a project whose dependencies are not installed yet:
+/// until `uf install` runs, that import resolves to nothing and an annotation
+/// written against it is an error. `mixed` is what a document shell can say
+/// with nothing installed, and an intrinsic element takes it. A project that
+/// has installed its dependencies should write `React.Node`; see
+/// `/guide/project`.
 fn app_layout() -> String {
     r#"// @flow
-import * as React from "@uniflowed/react";
-import { Suspense } from "@uniflowed/react";
 
-export component Layout(children: React.Node) {
+export component Layout(children: mixed) {
   return (
     <html lang="en">
-      <body>
-        <Suspense fallback={null}>{children}</Suspense>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

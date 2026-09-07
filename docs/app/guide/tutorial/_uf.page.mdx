@@ -303,11 +303,12 @@ export component Layout(children: React.Node) {
 the same way it resolves the `Article` above: through `@uniflowed/react`'s own
 manifest in `node_modules` and the `exports` map in it. That line used to read
 `children: mixed`, because the checker resolved no package and an annotation
-written against an any-typed value is an error rather than a weak type — the
-scaffold wrote `mixed` for the same reason.
+written against an any-typed value is an error rather than a weak type.
 [#248](https://github.com/ubugeeei-prod/uf/issues/248) and
 [#403](https://github.com/ubugeeei-prod/uf/issues/403) are the two halves of
-the work that changed it back.
+the work that changed it back. The scaffold still writes `mixed`, for a reason
+that has not gone away: it runs before `uf install`, so nothing is resolvable
+when it writes.
 
 A layout stays mounted while you navigate between pages under it, so the
 header's count survives navigation without being lifted anywhere.
