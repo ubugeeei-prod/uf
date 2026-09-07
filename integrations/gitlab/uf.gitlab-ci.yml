@@ -1,0 +1,121 @@
+# uf on GitLab CI.
+#
+# Include it, then extend `.uf` in any job that needs the toolchain:
+#
+#     include:
+#       - remote: "https://raw.githubusercontent.com/ubugeeei-prod/uf/uf@0.0.0-alpha.10/integrations/gitlab/uf.gitlab-ci.yml"
+#
+#     variables:
+#       UF_VERSION: "0.0.0-alpha.10"
+#
+#     check:
+#       extends: .uf
+#       script:
+#         - uf check
+#
+# Pin the `include` to a tag. A `remote:` include is fetched at pipeline
+# creation, so one on a branch changes what a pipeline runs without anything in
+# the project changing.
+#
+# The ready-made jobs at the bottom — `uf:check`, `uf:test`, `uf:build` — are
+# there so that a project with nothing unusual about it writes no script at all.
+# They are ordinary jobs: override, extend or delete them.
+#
+# ## Why the toolchain is installed inside the project directory
+#
+# GitLab's cache only carries paths under `$CI_PROJECT_DIR`, and its artifacts
+# only carry paths under it too. An installer that put `uf` in `$HOME/.local`
+# would work and would download the release on every job of every pipeline.
+# `.uf-toolchain/` is inside the project, so `cache:` can keep it — and it is
+# in `.gitignore` terms a build directory, not something to commit.
+
+variables:
+  # Pin this. `latest` is the newest release including prereleases — which is
+  # every release uf has published so far — so it moves under a pipeline that
+  # did not change, and it is the one value the cache below cannot help with.
+  UF_VERSION: "latest"
+  # Where the installer is fetched from. Point it at a mirror, or at a raw URL
+  # on a pinned tag, if a pipeline must not depend on this host.
+  #
+  # `UF_CI_` rather than `UF_`, here and for `UF_CI_SKIP_APT` below, because
+  # `UF_*` is the installer's namespace and these two are this template's own.
+  # GitLab has one place to put configuration and the installer reads whatever
+  # is in the environment, so without the split a typo here would look like a
+  # setting the installer ignored. `tools/ci/integrations-agree.sh` holds the
+  # line.
+  UF_CI_SETUP_URL: "https://setup.uniflowed.dev"
+  # Kept under the project directory so `cache:` can carry it. See above.
+  UF_INSTALL_ROOT: "${CI_PROJECT_DIR}/.uf-toolchain"
+  UF_BIN_DIR: "${CI_PROJECT_DIR}/.uf-toolchain/bin"
+
+# The setup itself. Extend this; do not run it as a job.
+#
+# GitLab runs `before_script` and `script` as one shell script, so the `export
+# PATH` below reaches every line a job writes. A job that replaces
+# `before_script` replaces this too, and has to install the toolchain itself.
+#
+# `image` is Debian rather than Alpine on purpose: uf ships a
+# `*-unknown-linux-gnu` binary, and Alpine is musl, where a glibc binary does
+# not start. Override `image` with any glibc distribution.
+.uf:
+  image: debian:stable-slim
+  cache:
+    # On the version, so a pipeline that pins one is never handed another.
+    # `latest` is in the key too, and the `before_script` below deliberately
+    # ignores what it restores: a cache keyed on the word `latest` answers with
+    # whatever release was newest the first time the pipeline ran, and goes on
+    # answering with it after a newer one ships. So on `latest` this cache is
+    # inert, and a pipeline that wants it to do anything should pin a version.
+    key: "uf-${UF_VERSION}"
+    paths:
+      - .uf-toolchain/
+    policy: pull-push
+  before_script:
+    - |
+      set -eu
+      if [ -z "${UF_CI_SKIP_APT:-}" ]; then
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends ca-certificates curl tar >/dev/null
+      fi
+      # A restored cache is believed only when the binary in it answers: a
+      # cache that lost a symlink, or one restored onto a different
+      # architecture, looks like a hit and can run nothing.
+      if [ "$UF_VERSION" != "latest" ] && [ -x "${UF_BIN_DIR}/uf" ] \
+        && "${UF_BIN_DIR}/uf" --version >/dev/null 2>&1; then
+        echo "uf ${UF_VERSION} restored from the cache"
+      else
+        # The installer verifies the archive's sha256 against the checksum
+        # published beside it before unpacking. That is the reason to run it
+        # rather than to fetch a tarball here.
+        curl -fsSL "$UF_CI_SETUP_URL" | sh
+      fi
+      export PATH="${UF_BIN_DIR}:${PATH}"
+      uf --version
+
+# --- Ready-made jobs -------------------------------------------------------
+#
+# Delete what a project does not want. `uf check` is both halves — the linter
+# and Flow's own inference — so a pipeline that runs it does not also need a
+# separate lint job.
+
+uf:check:
+  extends: .uf
+  stage: test
+  script:
+    - uf check
+
+uf:test:
+  extends: .uf
+  stage: test
+  script:
+    - uf test
+
+uf:build:
+  extends: .uf
+  stage: build
+  script:
+    - uf build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week

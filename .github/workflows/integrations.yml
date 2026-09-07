@@ -1,0 +1,82 @@
+# The `setup-uf` action, run.
+#
+# `tools/ci/integrations-agree.sh` checks that the three integrations name
+# variables the installer reads. It cannot check that the action *works*: that
+# needs a runner, a network, and a published release to install. This does.
+#
+# It is separate from `Toolchain` on purpose. That workflow builds `uf` from
+# this checkout and is what gates a pull request; this one installs the *last
+# published* release, so it fails when a release is broken rather than when a
+# branch is — which is a different question and belongs to a different red
+# check. It is also the only workflow here that would fail with no code change
+# at all, the day `setup.uniflowed.dev` stops answering.
+name: Integrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - integrations/**
+      - .github/workflows/integrations.yml
+      - infra/cloudflare/setup-assets/install.sh
+  pull_request:
+    paths:
+      - integrations/**
+      - .github/workflows/integrations.yml
+      - infra/cloudflare/setup-assets/install.sh
+  # A release can break the action without either changing, so once a week and
+  # on request.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  action:
+    name: setup-uf (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both families uf publishes for. The macOS runner is aarch64 and the
+        # Ubuntu one x86_64, so between them the matrix covers every target the
+        # installer can select on a hosted runner.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The action under test, from this checkout rather than from a tag, so a
+      # pull request tests the version it is proposing.
+      - name: Install uf
+        id: setup
+        uses: ./integrations/github-actions
+        with:
+          version: latest
+
+      # `uf` on PATH, not by full path: the action's last step is what puts it
+      # there, and running the binary directly would pass while that step was
+      # broken.
+      - name: uf answers by name
+        run: |
+          uf --version
+          ufx --version
+          test "$(uf --version | awk '{ print $2 }')" = '${{ steps.setup.outputs.version }}'
+
+      # An installed toolchain that cannot scaffold and check a project is not
+      # installed in any sense the user cares about. This is the first five
+      # minutes, run: create, install, check.
+      - name: A project it scaffolds checks clean
+        run: |
+          set -eu
+          work="$(mktemp -d)"
+          cd "$work"
+          uf create app react smoke
+          cd smoke
+          uf install
+          uf check

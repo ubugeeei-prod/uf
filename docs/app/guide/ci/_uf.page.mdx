@@ -1,0 +1,160 @@
+---
+title: "uf in CI · uf"
+---
+
+<p className="eyebrow">The tools</p>
+
+# uf in CI
+
+<div className="lede">
+Setup for GitHub Actions, GitLab CI and CircleCI. Each is one step that
+installs the toolchain, and each is thin because all three run the same
+installer a human runs.
+</div>
+
+`uf` is one binary. A pipeline does not build it, install a package manager to
+fetch it, or configure a toolchain around it: it downloads a release, puts three
+names on `PATH`, and runs `uf check`.
+
+Three files in the repository do exactly that, one per system. Each is thin on
+purpose — every one of them runs the same installer a human runs — and each
+documents its own inputs:
+
+| System | Where it lives |
+| --- | --- |
+| GitHub Actions | [`integrations/github-actions/action.yml`](https://github.com/ubugeeei-prod/uf/blob/main/integrations/github-actions/action.yml) |
+| GitLab CI | [`integrations/gitlab/uf.gitlab-ci.yml`](https://github.com/ubugeeei-prod/uf/blob/main/integrations/gitlab/uf.gitlab-ci.yml) |
+| CircleCI | [`integrations/circleci/orb.yml`](https://github.com/ubugeeei-prod/uf/blob/main/integrations/circleci/orb.yml) |
+
+## GitHub Actions
+
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ubugeeei-prod/uf/integrations/github-actions@uf@0.0.0-alpha.10
+        with:
+          version: 0.0.0-alpha.10
+      - run: uf install
+      - run: uf check
+      - run: uf test
+```
+
+Inputs: `version`, `cache`, `setup-url`, `repository`. Outputs: `version`,
+`bin-dir`, `cache-hit`.
+
+On a Windows runner it **fails** rather than skipping. uf publishes macOS and
+Linux binaries only, and a matrix leg that quietly does nothing still reports
+the matrix green — which is the failure mode that would let a Windows job pass
+for a year without running anything. Run uf under WSL2 there.
+
+## GitLab CI
+
+```yaml
+include:
+  - remote: "https://raw.githubusercontent.com/ubugeeei-prod/uf/uf@0.0.0-alpha.10/integrations/gitlab/uf.gitlab-ci.yml"
+
+variables:
+  UF_VERSION: "0.0.0-alpha.10"
+
+check:
+  extends: .uf
+  script:
+    - uf install
+    - uf check
+```
+
+The template also ships `uf:check`, `uf:test` and `uf:build` as ready-made jobs,
+so a project with nothing unusual about it writes no `script` at all. They are
+ordinary jobs: extend, override or delete them.
+
+Two details are GitLab's rather than uf's. The toolchain installs into
+`$CI_PROJECT_DIR/.uf-toolchain`, because GitLab's cache only carries paths
+inside the project directory — install it in `$HOME` and every job of every
+pipeline downloads the release again. And the default image is Debian rather
+than Alpine: uf ships a `*-unknown-linux-gnu` binary, and a glibc binary does
+not start on musl.
+
+## CircleCI
+
+```yaml
+version: 2.1
+orbs:
+  uf: uniflowed/uf@1
+
+workflows:
+  ci:
+    jobs:
+      - uf/run:
+          name: check
+          version: 0.0.0-alpha.10
+          command: uf check
+```
+
+`uf/install` is the command on its own, for a job that does more than run one
+`uf` line. `uf/default` is a glibc executor with `curl` and `tar`, which is
+everything the installer needs.
+
+## Pin the version
+
+Every one of the three defaults to `latest`, and every one of them tells you not
+to leave it there. `latest` means *the newest release including prereleases* —
+which is every release uf has published so far — so it moves under a pipeline
+that did not change.
+
+It is also the one value the caches cannot help with. A cache keyed on the word
+`latest` answers with whatever release was newest the first time the pipeline
+ran, and goes on answering with it after a newer one ships: worse than no cache,
+because it looks like it is working. So all three skip the cache when the
+version is `latest`, and all three say so where the option is documented.
+
+A cache that *is* used is not believed on the strength of its key either. Each
+integration runs `uf --version` out of the restored directory before trusting
+it, because a cache that lost a symlink, or one restored onto an architecture
+the key did not distinguish, is a hit that can run nothing.
+
+## What is actually being run
+
+All three fetch and run
+[`install.sh`](https://github.com/ubugeeei-prod/uf/blob/main/infra/cloudflare/setup-assets/install.sh) —
+the same script behind `curl -fsSL https://setup.uniflowed.dev | sh`, configured
+through the environment:
+
+| Variable | What it decides |
+| --- | --- |
+| `UF_VERSION` | The release, or `latest` |
+| `UF_INSTALL_ROOT` | Where `runtimes/uf@<version>` is unpacked |
+| `UF_BIN_DIR` | Where `uf`, `ufr` and `ufx` are linked |
+| `UF_REPO` | The GitHub repository releases are downloaded from |
+
+It resolves the version, downloads `uf-<target>.tar.gz`, **verifies its sha256
+against the checksum published beside it**, refuses an archive whose members
+would land outside their own directory, unpacks it, and links the three names.
+Those steps are the reason the integrations run the installer instead of
+fetching a tarball themselves: three reimplementations would be three places to
+forget the checksum.
+
+If a pipeline must not depend on `setup.uniflowed.dev`, point `setup-url` (or
+`UF_CI_SETUP_URL` on GitLab) at a mirror, or at the raw file on a pinned tag.
+
+## Behind a proxy, or with no network at all
+
+The installer needs `curl`, `tar`, `mktemp` and `uname`, and it needs to reach
+GitHub Releases. An air-gapped runner has two options that do not involve these
+files: mirror the release assets and set `UF_RELEASE_BASE` to the mirror, which
+switches the installer to a flat `<base>/<version>/<asset>` layout; or build
+from source, which needs the pinned nightly Rust toolchain and the vendored
+Flow submodule, and takes minutes rather than seconds.
+
+## What is not here
+
+There is no Jenkins, Buildkite, Woodpecker or Drone file, and no Docker image
+that ships uf preinstalled. All of them are the same four lines — install,
+`PATH`, cache, run — and none of them is written here yet. `curl -fsSL
+https://setup.uniflowed.dev | sh` followed by adding `~/.local/bin` to `PATH`
+is the whole of what any of them would do.

@@ -165,6 +165,11 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Environments",
         blurb: "A pinned toolchain per repository, in a shared store, with a collector.",
       },
+      {
+        href: "/guide/ci",
+        title: "uf in CI",
+        blurb: "GitHub Actions, GitLab and CircleCI: one step each, and why they all pin.",
+      },
     ],
   },
   {
