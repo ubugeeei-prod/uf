@@ -180,6 +180,74 @@ describe("methods", () => {
     expect(response?.status).toBe(405);
   });
 
+  it("does not answer a verb that is not on the list, however the module spells it", async () => {
+    // The list was closed in name only: `pick` looked the method up on the
+    // module, so an *upper-case* export answered a request named after it, and
+    // `HELPER` above only failed because the export is lower-case. A module
+    // that happens to export `PURGE` is not a module that speaks `PURGE`.
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/thing", {
+            GET: () => new Response("read"),
+            PURGE: () => new Response("purged"),
+          }),
+        ],
+      }),
+    );
+
+    const response = await dispatch(get("/api/thing", { method: "PURGE" }));
+    expect(response?.status).toBe(405);
+    expect(response?.headers.get("allow")).toBe("GET, HEAD");
+  });
+
+  it("answers a QUERY, which is the GET whose parameters did not fit in a URL", async () => {
+    // Safe, idempotent, and carrying a body — the thing a search has been
+    // faking with a `POST` for twenty years. The dispatcher treats it like any
+    // other verb, which is the whole of what it should do; what refuses it is
+    // everything between the client and here, and `@uniflowed/router/handler`
+    // says so at length.
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/search", {
+            QUERY: async (request) => Response.json({ asked: await request.json() }),
+          }),
+        ],
+      }),
+    );
+
+    const response = await dispatch(
+      get("/api/search", {
+        method: "QUERY",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filters: ["a", "b"] }),
+      }),
+    );
+
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ asked: { filters: ["a", "b"] } });
+  });
+
+  it("names QUERY in Allow, so a client can tell it is offered", async () => {
+    // A client that has to guess whether the origin speaks QUERY is a client
+    // that sends a POST instead, which is the reason the method is not already
+    // everywhere.
+    const dispatch = hosted(
+      createDispatcher({
+        handlers: [
+          record("/api/search", {
+            GET: () => new Response("read"),
+            QUERY: () => new Response("searched"),
+          }),
+        ],
+      }),
+    );
+
+    const response = await dispatch(get("/api/search", { method: "DELETE" }));
+    expect(response?.headers.get("allow")).toBe("GET, HEAD, QUERY");
+  });
+
   it("answers HEAD with GET, minus the body", async () => {
     const response = await table()(get("/api/thing", { method: "HEAD" }));
     expect(response?.status).toBe(200);

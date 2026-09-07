@@ -183,7 +183,11 @@ The conventions line up more closely than the capabilities do:
 | `app/[...rest]/` | `app/[...rest]/` |
 | `app/(group)/` | `app/(group)/` |
 | `app/api/x/route.ts` | `app/api/x/_uf.route.js` — `Request` in, `Response` out, **`uf dev` only** |
-| `not-found.tsx` | `_uf.not-found.js`, read at the router root only ([#263](https://github.com/ubugeeei-prod/uf/issues/263)) |
+| `not-found.tsx` | `_uf.not-found.js`, a segment file resolved by the nearest one above the path; a project that declares none gets uf's page inside the root's layouts |
+| `template.tsx` | `_uf.template.js` — a layout that remounts, keyed on the pathname |
+| `@slot/` | **refused by name.** uf has no parallel routes, so there is no second place for a route to render ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
+| `(.)folder/` | **refused by name.** uf has no intercepting routes: a navigation carries where it is going and not where it came from ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
+| `default.tsx` | nothing — it exists to resolve a slot a URL says nothing about, and there are no slots |
 | `middleware.ts` | `_uf.middleware.js`, never called |
 | `generateStaticParams` | `generateStaticParams` |
 | `export const metadata` | `metadata` on a page or layout, merged along the path with the page last |

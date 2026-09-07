@@ -20,6 +20,7 @@ import path from "node:path";
 /** The file names the router reserves inside the router root. */
 export const RESERVED = Object.freeze({
   layout: "_uf.layout",
+  template: "_uf.template",
   page: "_uf.page",
   middleware: "_uf.middleware",
   notFound: "_uf.not-found",
@@ -27,6 +28,31 @@ export const RESERVED = Object.freeze({
   loading: "_uf.loading",
   route: "_uf.route",
 });
+
+/**
+ * Directory names uf reserves inside the router root without serving them.
+ *
+ * One spelling each, and they are here so `crates/uf_router/tests/
+ * reserved_names.rs` can hold this router and `uf_router::RouteSegment` to the
+ * same list — the way it already holds the two to the same `_uf.*` roles. A
+ * spelling one router refuses and the other serves as a URL is exactly the
+ * disagreement that made this necessary.
+ *
+ * `@team` is Next.js's parallel-route slot and `(.)photo` its intercepting
+ * route. uf has neither, and until #267 both fell through to "a literal URL
+ * segment": `@team` became `/@team`, `(.)photo` became `/(.)photo` — the test
+ * for a `(group)` is that the segment *ends* in `)` — and the generated
+ * `RoutePath` union contained them, so `route("/@team", …)` type checked. A
+ * convention served as nonsense is worse than one that is refused, because the
+ * project looks like it works.
+ */
+export const UNSUPPORTED_SEGMENTS = Object.freeze([
+  "@team",
+  "(.)photo",
+  "(..)photo",
+  "(...)photo",
+  "(..)(..)photo",
+]);
 
 /** Extensions a page or layout may use; `.mdx` is a page written as content. */
 const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx"];
@@ -47,6 +73,8 @@ const MAX_DEPTH = 32;
  * @property {ReadonlyArray<{above: number, module: string}>} loading the
  *   `<Suspense>` boundaries in scope, root first; `above` is how many of
  *   `layouts` are outside each one
+ * @property {ReadonlyArray<{above: number, module: string}>} templates the
+ *   `_uf.template.js` wrappers in scope, root first, with the same `above`
  * @property {boolean} mdx whether the page is MDX content
  */
 
@@ -86,7 +114,9 @@ const MAX_DEPTH = 32;
  *
  * @typedef {object} NotFoundBoundary
  * @property {string} path route path of the directory that declares it
- * @property {string} page absolute path of the page module
+ * @property {?string} page absolute path of the page module, or `null` for the
+ *   record the scan synthesises at the router root when a project declares
+ *   none — see `scanRoutes`
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
  * @property {boolean} mdx whether the page is MDX content
  */
@@ -103,7 +133,8 @@ const MAX_DEPTH = 32;
  *
  * @typedef {object} ErrorBoundary
  * @property {string} path route path of the directory that declares it
- * @property {string} module absolute path of the error module
+ * @property {?string} module absolute path of the error module, or `null` for
+ *   the synthesised root record
  * @property {ReadonlyArray<string>} layouts absolute paths, root first
  */
 
@@ -136,6 +167,10 @@ const MAX_DEPTH = 32;
  * Directories that do not exist yield an empty table rather than an error: a
  * library project has no router root, and that is not a mistake.
  *
+ * Throws for a directory named the way a parallel route or an intercepting
+ * route is spelled: uf has neither, and both used to become literal URL
+ * segments. See {@link UNSUPPORTED_SEGMENTS}.
+ *
  * @param {string} appRoot absolute path of the router root (`app/`)
  * @returns {{
  *   routes: Route[],
@@ -153,7 +188,11 @@ export function scanRoutes(appRoot) {
   const errors = [];
   if (!isDirectory(appRoot)) return { routes, handlers, middleware, notFound, errors };
 
-  const walk = (directory, segments, layouts, loading, depth) => {
+  // The layouts in scope at the router root, kept because the two synthesised
+  // records below are made of them. See the note beside them.
+  let rootLayouts = [];
+
+  const walk = (directory, segments, layouts, loading, templates, depth) => {
     if (depth > MAX_DEPTH) return;
     const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
@@ -161,6 +200,9 @@ export function scanRoutes(appRoot) {
 
     const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS);
     const nextLayouts = ownLayout ? [...layouts, ownLayout] : layouts;
+    if (depth === 0) {
+      rootLayouts = nextLayouts;
+    }
 
     // Inside this directory's own layout, which is where Next.js puts it and
     // the only placement that makes sense: the fallback is what shows *within*
@@ -172,6 +214,17 @@ export function scanRoutes(appRoot) {
     const nextLoading = ownLoading
       ? [...loading, { above: nextLayouts.length, module: ownLoading }]
       : loading;
+
+    // A template accumulates the way a layout does, and is placed the way a
+    // loading file is: inside its own segment's layout and outside everything
+    // below, so `nextLayouts.length` is taken after the own layout is added.
+    // Every template above a route is on that route, one inside the next, for
+    // the reason every layout is — the difference between the two is a `key`,
+    // not a shape.
+    const ownTemplate = findModule(directory, RESERVED.template, MODULE_EXTENSIONS);
+    const nextTemplates = ownTemplate
+      ? [...templates, { above: nextLayouts.length, module: ownTemplate }]
+      : templates;
 
     // A middleware guards this directory and everything below it, whether or
     // not this directory is itself a route: `app/dashboard/_uf.middleware.js`
@@ -191,6 +244,7 @@ export function scanRoutes(appRoot) {
         page,
         layouts: nextLayouts,
         loading: nextLoading,
+        templates: nextTemplates,
         mdx: page.endsWith(".mdx"),
       });
     }
@@ -233,17 +287,49 @@ export function scanRoutes(appRoot) {
       // A leading dot or underscore is private to the author: `_components/`
       // beside a page is a place to put things, not a route.
       if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+      // Checked before descending, and after the private-directory test for
+      // the same reason `uf_router` prunes them: `app/_drafts/@team/` is not a
+      // route uf would have served, so it is not one to refuse.
+      const refused = unsupportedSegmentReason(entry.name);
+      if (refused != null) {
+        throw new Error(`${path.join(directory, entry.name)}: ${refused}`);
+      }
       walk(
         path.join(directory, entry.name),
         [...segments, entry.name],
         nextLayouts,
         nextLoading,
+        nextTemplates,
         depth + 1,
       );
     }
   };
 
-  walk(appRoot, [], [], [], 0);
+  walk(appRoot, [], [], [], [], 0);
+
+  // A boundary at the router root for a project that declared none, carrying
+  // the root's layouts and no module of its own.
+  //
+  // Without it the router had no record to answer an unmatched URL with, so it
+  // answered with the framework's page and `layouts: []` — and a site whose
+  // root layout owns the masthead, the stylesheet and often `<html>` itself
+  // replied to a stale link with a white page saying 404, with no way to leave
+  // it. That was never the nearest-ancestor rule failing: the rule had nothing
+  // to find. `uf create` scaffolds neither boundary, so this is the state every
+  // new project is in until it writes one. See ubugeeei-prod/uf#351.
+  //
+  // Only when nothing is at `/` already. A `(group)` directory is not a URL
+  // segment, so `app/(marketing)/_uf.not-found.js` is a boundary at `/` too and
+  // adding a second one there would put a second answer at a path the URL
+  // cannot choose between.
+  const atRoot = (boundaries) => boundaries.some((boundary) => boundary.path === "/");
+  if (!atRoot(notFound)) {
+    notFound.push({ path: "/", page: null, layouts: rootLayouts, mdx: false });
+  }
+  if (!atRoot(errors)) {
+    errors.push({ path: "/", module: null, layouts: rootLayouts });
+  }
+
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
   handlers.sort(byPath);
@@ -288,26 +374,111 @@ function findModule(directory, stem, extensions) {
 }
 
 /**
+ * What one directory name means to the route path.
+ *
+ * Mirrors `uf_router::classify_route_segment`, which is the same six answers
+ * in the same order. The order is load-bearing in one place: an interception
+ * marker is a `(…)` *prefix* with a route after it, and a `(group)` is a
+ * segment that ends in `)`, so the interception test has to come first or
+ * every group would be read as one.
+ *
+ * @param {string} segment one directory name
+ * @returns {{kind: "group"}
+ *   | {kind: "param", name: string}
+ *   | {kind: "catchAll", name: string}
+ *   | {kind: "literal", name: string}
+ *   | {kind: "slot", name: string}
+ *   | {kind: "interception", marker: string, route: string}}
+ */
+export function classifyRouteSegment(segment) {
+  if (segment.startsWith("@")) return { kind: "slot", name: segment.slice(1) };
+  const intercepted = interceptionMarker(segment);
+  if (intercepted != null) return { kind: "interception", ...intercepted };
+  if (segment.startsWith("(") && segment.endsWith(")")) return { kind: "group" };
+  if (segment.startsWith("[...") && segment.endsWith("]")) {
+    return { kind: "catchAll", name: segment.slice(4, -1) };
+  }
+  if (segment.startsWith("[") && segment.endsWith("]")) {
+    return { kind: "param", name: segment.slice(1, -1) };
+  }
+  return { kind: "literal", name: segment };
+}
+
+/**
+ * The `(.)`-style prefix of `segment` and the route after it, or `null`.
+ *
+ * One or more of `(.)`, `(..)` and `(...)` — every marker Next.js defines;
+ * `(..)(..)` is two of them rather than a fourth — followed by something for
+ * them to intercept. A marker with nothing after it names no route and is the
+ * `(group)` it has always been.
+ */
+function interceptionMarker(segment) {
+  let consumed = 0;
+  while (segment[consumed] === "(") {
+    const close = segment.indexOf(")", consumed);
+    if (close === -1) break;
+    const inner = segment.slice(consumed + 1, close);
+    if (inner.length === 0 || inner.length > 3 || /[^.]/.test(inner)) break;
+    consumed = close + 1;
+  }
+  if (consumed === 0 || consumed === segment.length) return null;
+  return { marker: segment.slice(0, consumed), route: segment.slice(consumed) };
+}
+
+/**
+ * Why uf refuses a directory named `segment`, or `null` when it serves it.
+ *
+ * The message is this router's own rather than `uf_router`'s, because the two
+ * are reached differently: the Rust one fails `uf build` and `uf dev` through
+ * the route manifest, and this one fails a project driving Vite itself. Both
+ * say the same two things — which feature the spelling belongs to, and that it
+ * is refused rather than served as a URL.
+ */
+export function unsupportedSegmentReason(segment) {
+  const classified = classifyRouteSegment(segment);
+  if (classified.kind === "slot") {
+    return (
+      `\`${segment}\` is a parallel-route slot, and uf does not have parallel routes — a route ` +
+      "here renders in one place, so there is nothing for a slot to render into. It is refused " +
+      `rather than served as the URL segment \`/${segment}\`, which is what it used to become. ` +
+      "Rename the directory; a URL segment that really starts with `@` has no spelling in this " +
+      "grammar, so capture it with a `[param]`. https://github.com/ubugeeei-prod/uf/issues/267"
+    );
+  }
+  if (classified.kind === "interception") {
+    return (
+      `\`${segment}\` is an intercepting route, and uf does not have interception — a navigation ` +
+      "carries where it is going and not where it came from, so nothing here could match " +
+      `\`${classified.route}\`. It is refused rather than served as the URL segment ` +
+      `\`/${segment}\`, which is what it used to become. Move the route to the path it belongs ` +
+      "at, or rename the directory. https://github.com/ubugeeei-prod/uf/issues/267"
+    );
+  }
+  return null;
+}
+
+/**
  * Turn directory segments into a route path and its parameters.
  *
  * `(group)` segments organise files without appearing in the URL, `[name]`
- * captures one segment, and `[...name]` captures the rest of the path.
+ * captures one segment, and `[...name]` captures the rest of the path. A slot
+ * or an interception never reaches here: {@link scanRoutes} refuses the
+ * directory before it walks into it.
  */
 export function routeFromSegments(segments) {
   const params = [];
   const out = [];
   for (const segment of segments) {
-    if (segment.startsWith("(") && segment.endsWith(")")) continue;
-    if (segment.startsWith("[...") && segment.endsWith("]")) {
-      const name = segment.slice(4, -1);
-      params.push({ name, catchAll: true });
-      out.push(`:${name}*`);
+    const classified = classifyRouteSegment(segment);
+    if (classified.kind === "group") continue;
+    if (classified.kind === "catchAll") {
+      params.push({ name: classified.name, catchAll: true });
+      out.push(`:${classified.name}*`);
       continue;
     }
-    if (segment.startsWith("[") && segment.endsWith("]")) {
-      const name = segment.slice(1, -1);
-      params.push({ name, catchAll: false });
-      out.push(`:${name}`);
+    if (classified.kind === "param") {
+      params.push({ name: classified.name, catchAll: false });
+      out.push(`:${classified.name}`);
       continue;
     }
     out.push(segment);
@@ -316,11 +487,21 @@ export function routeFromSegments(segments) {
   return { path: routePath, pattern: routePath.replace(/:(\w+)\*/g, "*$1"), params };
 }
 
-/** Virtual module ids the router plugin serves. */
+/**
+ * Virtual module ids the router plugin serves.
+ *
+ * `actions` is the one that does not come from this file's directory scan: it
+ * is generated from the RSC manifest by `internal/rsc.js`, because which
+ * `"use server"` exports are callable endpoints is an answer about the module
+ * graph and not about the filesystem. It is here because it is a virtual
+ * module id and this is where they are named, and because
+ * `serverModuleSource` below is the only thing that imports it.
+ */
 export const VIRTUAL = Object.freeze({
   routes: "virtual:uf/routes",
   client: "virtual:uf/client",
   server: "virtual:uf/server",
+  actions: "virtual:uf/actions",
 });
 
 /**
@@ -412,6 +593,23 @@ export function routesModuleSource(table, options = {}) {
     return id;
   };
 
+  // Templates are deduplicated for the reason layouts are — one
+  // `app/_uf.template.js` wraps every route under it — and are lazy for the
+  // reason layouts are too: a template is part of the route's own tree rather
+  // than a fallback React has to have in hand at the moment something goes
+  // wrong, so it is awaited with the layouts before the first render.
+  const templateIds = new Map();
+  const templateImports = [];
+  const templateId = (file) => {
+    let id = templateIds.get(file);
+    if (id === undefined) {
+      id = `template${templateIds.size}`;
+      templateIds.set(file, id);
+      templateImports.push(`const ${id} = () => import(${JSON.stringify(file)});`);
+    }
+    return id;
+  };
+
   const entries = table.routes.map((route) => {
     if (!shipsPage(route)) {
       return `  {
@@ -421,11 +619,15 @@ export function routesModuleSource(table, options = {}) {
     file: ${JSON.stringify(route.page)},
     layouts: [],
     loading: [],
+    templates: [],
   }`;
     }
     const layouts = route.layouts.map(layoutId);
     const loading = (route.loading ?? []).map(
       (boundary) => `{ above: ${boundary.above}, module: ${loadingId(boundary.module)} }`,
+    );
+    const templates = (route.templates ?? []).map(
+      (entry) => `{ above: ${entry.above}, module: ${templateId(entry.module)} }`,
     );
     return `  {
     path: ${JSON.stringify(route.path)},
@@ -435,8 +637,18 @@ export function routesModuleSource(table, options = {}) {
     page: () => import(${JSON.stringify(route.page)}),
     layouts: [${layouts.join(", ")}],
     loading: [${loading.join(", ")}],
+    templates: [${templates.join(", ")}],
   }`;
   });
+
+  // A boundary the scan synthesised has no module to import — the framework's
+  // own page renders in its place — so it emits `null` where a declared one
+  // emits a loader, and a name for `file` rather than a path nothing wrote.
+  // See the note in `scanRoutes` and ubugeeei-prod/uf#351.
+  const SYNTHESISED = JSON.stringify("@uniflowed/router");
+  const boundaryModule = (file) =>
+    file == null ? "null" : `() => import(${JSON.stringify(file)})`;
+  const boundaryFile = (file) => (file == null ? SYNTHESISED : JSON.stringify(file));
 
   // A list, because a not-found is a segment file: every directory may declare
   // one and the router takes the nearest above the path. `layoutId` is the
@@ -446,8 +658,8 @@ export function routesModuleSource(table, options = {}) {
     (boundary) => `  {
     path: ${JSON.stringify(boundary.path)},
     mdx: ${boundary.mdx},
-    file: ${JSON.stringify(boundary.page)},
-    page: () => import(${JSON.stringify(boundary.page)}),
+    file: ${boundaryFile(boundary.page)},
+    page: ${boundaryModule(boundary.page)},
     layouts: [${boundary.layouts.map(layoutId).join(", ")}],
   }`,
   );
@@ -459,8 +671,8 @@ export function routesModuleSource(table, options = {}) {
   const errorEntries = (table.errors ?? []).map(
     (boundary) => `  {
     path: ${JSON.stringify(boundary.path)},
-    file: ${JSON.stringify(boundary.module)},
-    module: () => import(${JSON.stringify(boundary.module)}),
+    file: ${boundaryFile(boundary.module)},
+    module: ${boundaryModule(boundary.module)},
     layouts: [${boundary.layouts.map(layoutId).join(", ")}],
   }`,
   );
@@ -493,13 +705,18 @@ export function routesModuleSource(table, options = {}) {
   // Last, because it is defined by what everything above did *not* import: a
   // layout a kept route also uses is already in the graph as a lazy chunk, and
   // importing it here as well would pull it into the entry chunk instead.
-  const carried = new Set([...layoutIds.keys(), ...loadingIds.keys()]);
+  const carried = new Set([...layoutIds.keys(), ...loadingIds.keys(), ...templateIds.keys()]);
   const styleOnlyImports = [];
   for (const route of table.routes) {
     if (shipsPage(route)) {
       continue;
     }
-    const files = [route.page, ...route.layouts, ...(route.loading ?? []).map((it) => it.module)];
+    const files = [
+      route.page,
+      ...route.layouts,
+      ...(route.loading ?? []).map((it) => it.module),
+      ...(route.templates ?? []).map((it) => it.module),
+    ];
     for (const file of files) {
       if (carried.has(file)) {
         continue;
@@ -509,7 +726,7 @@ export function routesModuleSource(table, options = {}) {
     }
   }
 
-  return `${[...styleOnlyImports, ...layoutImports, ...loadingImports].join("\n")}
+  return `${[...styleOnlyImports, ...layoutImports, ...loadingImports, ...templateImports].join("\n")}
 export const routes = [
 ${entries.join(",\n")}
 ];
@@ -558,6 +775,16 @@ hydrate({ App, routes, notFound, errors });
  * request — one decides whether the router is reached at all, the others
  * decide what the router renders when it is.
  *
+ * `callAction` goes between the two, and its position is the same argument
+ * made twice. Below `runMiddleware`, because an action call is a request to a
+ * path and the guard on that path is owed the same say over it as over the
+ * page — which is why the call is a `POST` to the page's own URL rather than
+ * to a reserved one. Above `dispatch`, because a request that names an action
+ * has named it: letting it fall through to a route handler that happens to sit
+ * at the same path would answer somebody's action with somebody else's
+ * function. It declines every request that carries no action id, so a project
+ * with no actions pays one `headers.get` per request and nothing else.
+ *
  * `internal/serve.js` and `driver.js` call them in that order, and
  * `packages/vite/index.js` does the same for a project driving Vite itself.
  *
@@ -583,11 +810,13 @@ hydrate({ App, routes, notFound, errors });
  */
 export function serverModuleSource(appEntry) {
   return `import {
+  createActionDispatcher,
   createDispatcher,
   createMiddlewareRunner,
   createRenderer,
 } from "@uniflowed/router/server";
 import { routes, handlers, middleware, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
+import { actions } from ${JSON.stringify(VIRTUAL.actions)};
 import App from ${JSON.stringify(appEntry)};
 export { routes, handlers, middleware, notFound, errors };
 export { beginRequest } from "@uniflowed/router/server";
@@ -595,6 +824,7 @@ const renderer = createRenderer({ App, routes, notFound, errors });
 export const render = renderer.render;
 export const prerender = renderer.prerender;
 export const dispatch = createDispatcher({ handlers });
+export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
 `;
 }

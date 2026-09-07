@@ -44,9 +44,32 @@
 // into the `handler.js` beside the generated `worker.js`. See
 // ubugeeei-prod/uf#389.
 
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+
+/**
+ * What a Worker can do, plus whatever the deployment supplied.
+ *
+ * Streams, and does not persist — the one split in this package where the two
+ * flags disagree, which is why they are two flags. A Worker writes a body as
+ * it is produced, so an event stream is exactly as good here as it is on Node.
+ * It is also an isolate the platform may tear down the moment the response is
+ * out, which is the whole reason `after()` on this target goes through
+ * `ctx.waitUntil` rather than being awaited — so an in-process queue is work
+ * pushed into something that may not be there to drain it, and
+ * `./internal/capabilities.js` refuses one.
+ *
+ * `websocket` is the deployment's. Cloudflare's upgrade is `new WebSocketPair`,
+ * `server.accept()` and a `Response` carrying `webSocket` — four lines, using
+ * two globals nothing outside a real Worker can produce, which is the same
+ * reason `./lambda.js` does not implement response streaming.
+ */
+export function edgeCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(capabilitiesFor("edge", { stream: true, persistent: false }, options));
+}
 
 /**
  * The `ASSETS` binding, as much of it as this module uses.

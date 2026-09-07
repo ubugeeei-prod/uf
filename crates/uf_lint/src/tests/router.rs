@@ -93,3 +93,70 @@ fn router_reserved_files_leaves_project_owned_names_alone() {
         );
     }
 }
+
+/// `router/unsupported-segment`: the two directory spellings uf reserves
+/// without serving.
+///
+/// The diagnostic lands on a file because a file is what `uf lint` can point
+/// at; what is wrong is the directory the file is in. Before this, `@team` and
+/// `(.)photo` were literal URL segments in both routers and nothing said so.
+#[test]
+fn router_unsupported_segment_reports_a_slot_and_an_interception() {
+    for path in [
+        "app/dashboard/@team/_uf.page.js",
+        "app/@team/_uf.layout.js",
+        "app/feed/(.)photo/_uf.page.js",
+        "app/feed/(..)(..)photo/_uf.page.js",
+    ] {
+        let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
+
+        assert!(
+            fired(&diagnostics, "router/unsupported-segment"),
+            "{path} should be reported"
+        );
+    }
+}
+
+/// The message has to say the directory is refused, not merely unrecognised:
+/// "unsupported" reads as "ignored", and being ignored is what it used to be.
+#[test]
+fn router_unsupported_segment_says_what_the_spelling_is_and_that_it_is_refused() {
+    let diagnostics = lint_one(
+        "router/unsupported-segment",
+        "app/dashboard/@team/_uf.page.js",
+        "// @flow\n",
+    );
+    let message = &diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.rule == "router/unsupported-segment")
+        .expect("a diagnostic")
+        .message;
+
+    assert!(message.contains("@team"), "{message}");
+    assert!(message.contains("parallel route"), "{message}");
+    assert!(message.contains("refused"), "{message}");
+    assert!(message.contains("267"), "{message}");
+}
+
+#[test]
+fn router_unsupported_segment_leaves_the_segments_uf_serves_alone() {
+    for path in [
+        "app/_uf.page.js",
+        "app/(marketing)/about/_uf.page.js",
+        "app/posts/[slug]/_uf.page.js",
+        "app/docs/[...path]/_uf.page.js",
+        // A private subtree: neither router walks into it, so a slot there is
+        // not a route uf would have served.
+        "app/_drafts/@team/notes.js",
+        // Outside the router root entirely. `@scope` is a directory, not a
+        // route, and a rule that reported it would report every workspace.
+        "packages/@uniflowed/router/index.js",
+    ] {
+        let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
+
+        assert!(
+            !fired(&diagnostics, "router/unsupported-segment"),
+            "{path} should be untouched"
+        );
+    }
+}

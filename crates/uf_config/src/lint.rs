@@ -69,7 +69,7 @@ pub enum FlowLintParser {
 /// Each rule's full rationale, category, and one-line description live on its
 /// `uf_lint::RuleDescriptor`; `uf_lint` has a test asserting this table and that
 /// catalogue agree exactly, in both directions, so the two cannot drift apart.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 53] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -162,6 +162,9 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 53] = [
     ("server/use-client-directive-position", RuleLevel::Error),
     ("server/use-server-actions", RuleLevel::Error),
     ("router/reserved-files", RuleLevel::Error),
+    // `@slot` and `(.)segment` used to be served as literal URLs, which is
+    // worse than not supporting them: the project looks like it works.
+    ("router/unsupported-segment", RuleLevel::Error),
     ("package/no-npm-scripts", RuleLevel::Error),
     ("fetch/no-global-override", RuleLevel::Error),
     // XSS and arbitrary code execution: never a warning.

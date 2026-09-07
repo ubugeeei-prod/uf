@@ -48,8 +48,31 @@
 //!   be given a call-site type that says it is one.
 //! * **A dispatcher.** There is no runtime that takes a name and calls an
 //!   action, so this file declares no function. It is types only, and it
-//!   compiles to nothing: every import in it is `import typeof`, which is
-//!   erased, so importing this file pulls no server module into a bundle.
+//!   compiles to nothing: every import in it is `import type` or
+//!   `import typeof`, both erased, so importing this file pulls no server
+//!   module into a bundle.
+//!
+//! # The one thing it asserts rather than describes
+//!
+//! Everything above restates what is already written somewhere. Two lines do
+//! not: the ones that hold every action's arguments and result against
+//! [`ActionValue`], which is what a server action's arguments are allowed to
+//! be (`packages/router/internal/action-wire.js`).
+//!
+//! ```js
+//! export type ServerActionArgsFitTheWire =
+//!   ActionArguments<ServerActionArgs<ServerActionName>>;
+//! ```
+//!
+//! Flow already catches `createUser(36)` against `createUser(name: string)` at
+//! the call site, in the browser as on the server, because it reads the
+//! declaration either way. What it cannot get from a declaration is whether
+//! `string` is a thing that can cross a network at all — and an action taking
+//! a callback, or returning a `Map`, type-checks perfectly and then arrives as
+//! an empty object. These two lines are the endpoint's argument boundary,
+//! stated once at build time over every action the project has.
+//!
+//! [`ActionValue`]: https://github.com/ubugeeei-prod/uf/blob/main/packages/router/internal/action-wire.js
 
 use std::fs;
 
@@ -58,6 +81,15 @@ use compact_str::CompactString;
 
 use crate::RscError;
 use crate::action::{ServerActionKind, ServerActionRegistry};
+
+/// The module the wire-boundary types are imported from.
+///
+/// The browser's half of the action runtime, which is where they have to be:
+/// a client component reaches it, so it may not be `@uniflowed/server`. The
+/// generated file names it because a project with a callable action already
+/// depends on it — the references `@uniflowed/vite` substitutes for that
+/// project's `"use server"` modules import the same module.
+const ACTION_TYPES_MODULE: &str = "@uniflowed/router/action";
 
 /// File name of the generated action types, in the project root.
 ///
@@ -86,8 +118,14 @@ pub const SERVER_ACTION_TYPES_HEADER: &str = "\
 // applies to what it publishes. An inline `\"use server\"` closure is not here:
 // it has no export name to refer to.
 //
-// Type-only. Every import below is `import typeof`, which is erased, so
-// importing this file adds nothing to a bundle.
+// The last two lines are the only ones that assert rather than describe: they
+// hold every action's arguments and result against what a server action's
+// arguments are allowed to be. An action taking a callback, or returning a
+// `Map`, is a `uf check` error here rather than a request that arrives with an
+// empty object in it.
+//
+// Type-only. Every import below is `import type` or `import typeof`, both of
+// which are erased, so importing this file adds nothing to a bundle.
 ";
 
 /// One row of the generated table.
@@ -143,6 +181,12 @@ pub fn generate_server_action_types(registry: &ServerActionRegistry) -> String {
     let mut output = String::from(SERVER_ACTION_TYPES_HEADER);
     if !modules.is_empty() {
         output.push('\n');
+        // The bare specifier first, then the project's own modules: the order
+        // `uf fmt` leaves an import block in, and the order every hand-written
+        // module in `packages/` is already written in.
+        output.push_str(&format!(
+            "import type {{ ActionArguments, ActionResult }} from \"{ACTION_TYPES_MODULE}\";\n"
+        ));
         for (index, module) in modules.iter().enumerate() {
             output.push_str(&format!(
                 "import typeof * as Module{index} from \"./{}\";\n",
@@ -185,6 +229,20 @@ pub fn generate_server_action_types(registry: &ServerActionRegistry) -> String {
          \nexport type ServerActionResult<Name extends ServerActionName> = \
          ReturnType<ServerActions[Name]>;\n",
     );
+
+    // The wire boundary, and only for a project that has an action to hold
+    // against it. `ServerActionName` is `empty` when the table is empty, so
+    // these two lines would be asking about no function at all — and they
+    // would name `@uniflowed/router/action` in a project that has no reason to
+    // depend on the router yet.
+    if !rows.is_empty() {
+        output.push_str(
+            "\nexport type ServerActionArgsFitTheWire = \
+             ActionArguments<ServerActionArgs<ServerActionName>>;\n\
+             \nexport type ServerActionResultsFitTheWire = \
+             ActionResult<ServerActionResult<ServerActionName>>;\n",
+        );
+    }
     output
 }
 

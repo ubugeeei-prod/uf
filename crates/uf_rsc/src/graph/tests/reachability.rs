@@ -253,3 +253,86 @@ fn the_client_bundle_takes_a_client_module_and_everything_above_one() {
             .requires_client_bundle()
     );
 }
+
+#[test]
+fn a_use_server_module_a_client_module_imports_stays_on_the_server() {
+    // The mirror of `a_client_module_imported_by_a_server_module_is_a_boundary`.
+    // The server does not execute a `"use client"` module, and the client does
+    // not execute a `"use server"` one: `@uniflowed/vite` gives the browser one
+    // `createServerReference` per callable export and nothing else, so the
+    // module's body and everything it imported are the server's.
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js").with_import("./actions.js"));
+    builder.add_source(
+        "app/actions.js",
+        "\"use server\";\nimport { rows } from \"./db.js\";\nexport async function count() {}\n",
+    );
+    builder.add_module(server("app/db.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(
+        graph.module("app/actions.js").unwrap().reachability,
+        ModuleReachability::ServerOnly
+    );
+    // And the walk continues with the server colour, so the data layer an
+    // action reaches is not shared code either.
+    assert_eq!(
+        graph.module("app/db.js").unwrap().reachability,
+        ModuleReachability::ServerOnly
+    );
+    // It is not a client bundle root and nothing about it is: the reference is
+    // what the browser gets, and a reference is not a module of this graph.
+    assert_eq!(graph.client_bundle_roots().len(), 1);
+    assert_eq!(
+        graph
+            .module_by_id(graph.client_bundle_roots()[0])
+            .unwrap()
+            .path,
+        "app/Counter.js"
+    );
+}
+
+#[test]
+fn a_server_only_import_reached_only_through_an_action_is_not_a_client_leak() {
+    // The same rule seen from the diagnostic that used to fire. Before the
+    // client colour stopped at a `"use server"` module, `app/actions.js` was
+    // client-reachable, so importing `@uniflowed/server` from it was reported
+    // as server code in the browser's graph — which it was, because there was
+    // no transform to make it otherwise. There is one now, and the analysis
+    // says what the bundle does.
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js").with_import("./actions.js"));
+    builder.add_source(
+        "app/actions.js",
+        "\"use server\";\nimport { cookies } from \"@uniflowed/server\";\n\
+         export async function whoami() {}\n",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(
+        graph.diagnostics(),
+        &[],
+        "a `use server` module is not in the client graph, so its server-only imports are not a leak"
+    );
+}
+
+#[test]
+fn a_client_module_importing_server_only_code_directly_is_still_a_leak() {
+    // And the rule it must not have widened: the exemption is for a module
+    // that becomes a reference, not for anything a client component imports.
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js").with_import("@uniflowed/server"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(graph.diagnostics().len(), 1);
+    assert_eq!(
+        graph.diagnostics()[0].rule(),
+        "rsc/server-only-import-in-client"
+    );
+}

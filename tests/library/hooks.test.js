@@ -28,6 +28,7 @@ import {
   useElementRef,
   useElementState,
   useEventListener,
+  useEventSource,
   useFocusWithin,
   useGeolocation,
   useHover,
@@ -1779,5 +1780,153 @@ describe("Strict Mode, which renders and mounts everything twice", () => {
     await userEvent.click(screen.getByRole("button"));
     expect(screen.getByText("written")).toBeInTheDocument();
     unmount();
+  });
+});
+
+describe("useEventSource", () => {
+  /** Every stream the hook has opened since `install`. */
+  let opened: Array<$FlowFixMe> = [];
+
+  /**
+   * An `EventSource` the test drives.
+   *
+   * Installed on the global rather than injected, because that is where the
+   * hook looks: an event stream is a facility of the runtime, and the hook has
+   * to work in a process where a document was installed onto another host's
+   * global — which is every process this suite runs in.
+   */
+  class FakeStream {
+    url: string;
+    readyState: number = 0;
+    closed: boolean = false;
+    listeners: Map<string, Array<(event: $FlowFixMe) => mixed>> = new Map();
+
+    constructor(url: string) {
+      this.url = url;
+      opened.push(this);
+    }
+
+    addEventListener(type: string, listener: (event: $FlowFixMe) => mixed) {
+      const held = this.listeners.get(type) ?? [];
+      held.push(listener);
+      this.listeners.set(type, held);
+    }
+
+    removeEventListener(type: string, listener: (event: $FlowFixMe) => mixed) {
+      const held = this.listeners.get(type) ?? [];
+      this.listeners.set(
+        type,
+        held.filter((one) => one !== listener),
+      );
+    }
+
+    close() {
+      this.closed = true;
+      this.readyState = 2;
+    }
+
+    emit(type: string, event: $FlowFixMe) {
+      for (const listener of this.listeners.get(type) ?? []) {
+        listener(event);
+      }
+    }
+  }
+
+  const install = () => {
+    opened = [];
+    globalThis.EventSource = FakeStream;
+  };
+
+  afterEach(() => {
+    uft.useRealTimers();
+    globalThis.EventSource = undefined;
+  });
+
+  component Probe() {
+    const stream = useEventSource("/api/feed", { events: ["tick"], retryDelay: 10 });
+    return (
+      <output>
+        {[
+          stream.status,
+          stream.last?.name ?? "-",
+          stream.last?.data ?? "-",
+          stream.lastEventId ?? "-",
+        ].join(" ")}
+      </output>
+    );
+  }
+
+  it("reports the named event a message listener would have missed", async () => {
+    // A stream that sends `event: tick` delivers nothing to a `message`
+    // listener, which is the single most common way an event stream looks
+    // connected and silent.
+    install();
+    render(<Probe />);
+    const stream = opened[0];
+
+    act(() => {
+      stream.emit("open", {});
+    });
+    expect(screen.getByText("open - - -")).toBeInTheDocument();
+
+    act(() => {
+      stream.emit("tick", { data: "42", lastEventId: "7" });
+    });
+    expect(screen.getByText("open tick 42 7")).toBeInTheDocument();
+  });
+
+  it("stays out of the way while the browser is retrying by itself", async () => {
+    // `EventSource` reconnects on its own and sends `Last-Event-ID` with it,
+    // which is strictly better than anything this hook can do. Two
+    // reconnection schedules on one connection is worse than either.
+    uft.useFakeTimers();
+    install();
+    render(<Probe />);
+    const stream = opened[0];
+
+    act(() => {
+      stream.readyState = 0;
+      stream.emit("error", {});
+    });
+    advance(1000);
+
+    expect(screen.getByText("connecting - - -")).toBeInTheDocument();
+    expect(opened.length).toBe(1);
+  });
+
+  it("opens a new connection when the browser has given up for good", async () => {
+    // The one case the platform does not recover from: a response that is not
+    // a 200 with `content-type: text/event-stream`. A deployment restarting
+    // answers 502 for a second or two, and without this every open stream in
+    // every tab is dead until somebody reloads the page.
+    uft.useFakeTimers();
+    install();
+    render(<Probe />);
+
+    act(() => {
+      opened[0].readyState = 2;
+      opened[0].emit("error", {});
+    });
+    expect(opened.length).toBe(1);
+
+    advance(10);
+    expect(opened.length).toBe(2);
+
+    act(() => {
+      opened[1].emit("open", {});
+    });
+    expect(screen.getByText("open - - -")).toBeInTheDocument();
+  });
+
+  it("closes the connection when the component goes", async () => {
+    // An `EventSource` nobody is listening to still holds a connection and
+    // still reconnects, so leaving it open is a socket per navigation for the
+    // life of the tab.
+    install();
+    const { unmount } = render(<Probe />);
+    const stream = opened[0];
+
+    unmount();
+    expect(stream.closed).toBe(true);
   });
 });
