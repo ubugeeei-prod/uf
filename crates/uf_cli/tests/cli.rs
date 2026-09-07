@@ -2483,7 +2483,10 @@ fn env_use_records_the_active_environment() {
     assert!(stdout.contains("✓ mode staging"), "{stdout}");
     assert!(stdout.contains(".env.staging"), "{stdout}");
     assert_eq!(
-        fs::read_to_string(dir.path().join(".uniflowed/profile")).unwrap(),
+        fs::read_to_string(dir.path().join(".uf/profile")).unwrap(),
         "staging\n"
     );
+    // And nowhere else. `.uf/` is the one directory uf keeps per-project state
+    // in; `.uniflowed/` was a second one that no `.gitignore` knew about.
+    assert!(!dir.path().join(".uniflowed").exists());
 }
