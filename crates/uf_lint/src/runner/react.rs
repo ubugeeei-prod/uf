@@ -167,6 +167,15 @@ pub(crate) fn run_react_no_default_export_component(
         if !code[at..].starts_with("export default") {
             continue;
         }
+        // Source that this module *generates* is not source that this module
+        // *is*. `packages/vite/driver.js` builds a Cloudflare Worker entry as
+        // text, and its `export default { fetch: … }` was reported against the
+        // line of the file holding the template rather than against a file that
+        // does not exist yet (ubugeeei-prod/uf#451). Every adapter does this,
+        // and so does `internal/routes.js`.
+        if line.in_string(at) {
+            continue;
+        }
         push_in_code(
             diagnostics,
             scan,
