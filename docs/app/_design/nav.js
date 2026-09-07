@@ -108,7 +108,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/vitals",
         title: "Web vitals",
-        blurb: "Five numbers the browser already has, and nothing that leaves the machine.",
+        blurb:
+          "Five numbers the browser already has, and nothing that leaves the machine unless you ask.",
       },
       {
         href: "/guide/ui",
@@ -129,11 +130,6 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/effect",
         title: "Effects",
         blurb: "Failures in the type, and what Flow costs against Effect-TS.",
-      },
-      {
-        href: "/guide/state",
-        title: "State",
-        blurb: "Atoms are declarations; a store holds the values; React reads them safely.",
       },
       {
         href: "/guide/tui",
@@ -159,7 +155,7 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/auth",
         title: "Signing in",
         blurb:
-          "A contract rather than a provider: PKCE, a single-use state, and a store you replace.",
+          "A contract rather than a provider: PKCE, a single-use state, and a session store you can replace.",
       },
       {
         href: "/guide/logging",
@@ -225,7 +221,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/reference/i18n",
         title: "Internationalisation",
-        blurb: "MessageFormat 2 with typed arguments, and the subset uf implements.",
+        blurb:
+          "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops.",
       },
     ],
   },
