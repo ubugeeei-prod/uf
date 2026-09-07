@@ -37,6 +37,7 @@ fn report(level: Option<Level>, rows: Vec<Row>) -> Report {
         rows,
         undecidable: 0,
         unreachable: Vec::new(),
+        deprecation: None,
     }
 }
 
@@ -256,4 +257,23 @@ fn the_root_manifest_is_a_dot_and_a_package_is_its_directory() {
         relative(root, Utf8Path::new("/p/packages/ui/package.json")),
         "packages/ui"
     );
+}
+
+/// ubugeeei-prod/uf#540: a project still reading through `publish.registry` is
+/// told which key to move to, beside the answer rather than instead of it.
+#[test]
+fn a_project_on_the_old_registry_key_is_told_where_the_new_one_is() {
+    let mut report = report(None, vec![row("react", "^18.2.0", "19.2.0", Level::Major)]);
+    report.deprecation = Some(
+        uf_config::RegistrySource::PublishFallback
+            .deprecation()
+            .expect("a deprecation")
+            .to_owned(),
+    );
+
+    let out = drawn(&report);
+    assert!(out.contains("pm.registry"), "{out}");
+    assert!(out.contains("publish.registry"), "{out}");
+    // The report it came for is still there.
+    assert!(out.contains("19.2.0"), "{out}");
 }

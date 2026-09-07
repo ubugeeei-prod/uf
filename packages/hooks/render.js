@@ -115,7 +115,7 @@ import * as React from "@uniflowed/react";
 // began rendering a `RenderProvider`, because this module reached the one build
 // where it matters — the single file `uf build --compile` links with Bun —
 // only then, and it failed at startup rather than at a call site.
-import { createContext, useContext, useMemo, useState } from "@uniflowed/react";
+import { createContext, useContext, useState } from "@uniflowed/react";
 import { currentClock } from "@uniflowed/core/clock";
 import type { Random } from "@uniflowed/core/random";
 import { hostSeed, seededRandom, shuffled } from "@uniflowed/core/random";
@@ -290,10 +290,11 @@ export hook useRenderEnvelope(): RenderEnvelope | null {
 export hook useRenderedAt(): Instant {
   const found = useRenderEnvelope();
   const at = found?.at;
-  // The number, not the instant, in the dependency: `Instant` is a new object
-  // every render and depending on it would rebuild this on every one.
+  // The number, not the instant, is what the memoization keys on: `Instant` is
+  // a new object every render, so a scope that depended on one would rebuild
+  // this on every render rather than on every change of clock.
   const clockAt = at ?? currentClock().now();
-  return useMemo(() => Temporal.Instant.fromEpochMilliseconds(clockAt), [clockAt]);
+  return Temporal.Instant.fromEpochMilliseconds(clockAt);
 }
 
 /**
@@ -321,9 +322,9 @@ export hook useRenderTimeZone(): string {
  * two sides.
  *
  * The stream is stateful, so a component that draws from it during render draws
- * different numbers on a re-render. Draw in a `useMemo` keyed by what the
- * numbers are for, or in an event, and never in the body of a component React
- * may render twice.
+ * different numbers on a re-render. Draw into a `const` keyed by what the
+ * numbers are for — which the React Compiler memoizes — or in an event, and
+ * never twice in the body of a component React may render twice.
  *
  * Outside a provider the seed is a constant rather than the host's, which looks
  * like the wrong default and is the right one: two renders with no envelope
@@ -335,18 +336,19 @@ export hook useRenderTimeZone(): string {
 export hook useRandom(label: string): Random {
   const found = useRenderEnvelope();
   const seed = found?.seed;
-  return useMemo(() => seededRandom(seed ?? "uf").fork(label), [seed, label]);
+  return seededRandom(seed ?? "uf").fork(label);
 }
 
 /**
  * `items`, shuffled the same way on both sides of a hydration.
  *
- * The shuffle is a `useMemo` over the seed, the label and the items, so it is
- * one shuffle rather than one per render — which matters for more than speed:
- * a fresh draw on every render would reorder the list under the reader every
- * time anything else on the page changed.
+ * The shuffle is memoized over the seed, the label and the items — by the React
+ * Compiler, which is where uf's memoization comes from — so it is one shuffle
+ * rather than one per render. That matters for more than speed: a fresh draw on
+ * every render would reorder the list under the reader every time anything else
+ * on the page changed.
  */
 export hook useShuffled<T>(items: $ReadOnlyArray<T>, label: string): Array<T> {
   const random = useRandom(label);
-  return useMemo(() => shuffled(items, random), [items, random]);
+  return shuffled(items, random);
 }

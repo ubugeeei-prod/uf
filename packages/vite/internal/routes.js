@@ -547,6 +547,25 @@ export const VIRTUAL = Object.freeze({
  * `virtual:uf/server` is generated with the default and always will be: the
  * server renders every route, so its table is the complete one.
  *
+ * # `relativeTo`, and the one string in this table a browser can read
+ *
+ * Every `import()` here is a specifier Vite resolves and rewrites to a chunk
+ * URL, so no absolute path survives the build — except `file`, which is a
+ * string. It is the route's source path, kept for diagnostics: the middleware
+ * table's is what names a module in an error, and `router.js`'s generated
+ * types are about the same files.
+ *
+ * The server's table can hold an absolute path; it is read on the machine that
+ * has those files. The browser's cannot, because that table is downloaded:
+ * uf's own manual shipped `/home/<user>/…/docs/app/guide/cache/_uf.page.mdx`
+ * for each of thirty-four routes to every visitor, which publishes the build
+ * machine's layout and its user's name for nothing — the browser has no
+ * filesystem to resolve them against and reads them only in a message.
+ *
+ * So the client call passes the project root and every `file` here is emitted
+ * relative to it. Diagnostics keep a path a person can act on — a shorter one
+ * — and a deploy stops describing the machine it was built on.
+ *
  * @param {{
  *   routes: Route[],
  *   handlers?: Handler[],
@@ -554,10 +573,29 @@ export const VIRTUAL = Object.freeze({
  *   notFound?: NotFoundBoundary[],
  *   errors?: ErrorBoundary[],
  * }} table
- * @param {{shipsPage?: (route: Route) => boolean}} [options]
+ * @param {{
+ *   shipsPage?: (route: Route) => boolean,
+ *   relativeTo?: string,
+ * }} [options]
  */
 export function routesModuleSource(table, options = {}) {
   const shipsPage = options.shipsPage ?? (() => true);
+  const relativeTo = options.relativeTo ?? null;
+  /**
+   * A `file` as this table should state it.
+   *
+   * Relative even when that means leading `..` segments — a module outside the
+   * project root is rare and a `../` path still says where it is without
+   * saying where the machine is, which is the whole property. Separators are
+   * POSIX because this string is read wherever the bundle is opened rather
+   * than where it was written.
+   */
+  const displayFile = (file) => {
+    if (relativeTo == null || file == null) {
+      return file;
+    }
+    return path.relative(relativeTo, file).split(path.sep).join("/");
+  };
   const layoutIds = new Map();
   const layoutImports = [];
   const layoutId = (file) => {
@@ -616,7 +654,7 @@ export function routesModuleSource(table, options = {}) {
     path: ${JSON.stringify(route.path)},
     params: ${JSON.stringify(route.params)},
     mdx: ${route.mdx},
-    file: ${JSON.stringify(route.page)},
+    file: ${JSON.stringify(displayFile(route.page))},
     layouts: [],
     loading: [],
     templates: [],
@@ -633,7 +671,7 @@ export function routesModuleSource(table, options = {}) {
     path: ${JSON.stringify(route.path)},
     params: ${JSON.stringify(route.params)},
     mdx: ${route.mdx},
-    file: ${JSON.stringify(route.page)},
+    file: ${JSON.stringify(displayFile(route.page))},
     page: () => import(${JSON.stringify(route.page)}),
     layouts: [${layouts.join(", ")}],
     loading: [${loading.join(", ")}],
@@ -648,7 +686,7 @@ export function routesModuleSource(table, options = {}) {
   const SYNTHESISED = JSON.stringify("@uniflowed/router");
   const boundaryModule = (file) =>
     file == null ? "null" : `() => import(${JSON.stringify(file)})`;
-  const boundaryFile = (file) => (file == null ? SYNTHESISED : JSON.stringify(file));
+  const boundaryFile = (file) => (file == null ? SYNTHESISED : JSON.stringify(displayFile(file)));
 
   // A list, because a not-found is a segment file: every directory may declare
   // one and the router takes the nearest above the path. `layoutId` is the
@@ -684,7 +722,7 @@ export function routesModuleSource(table, options = {}) {
     (handler) => `  {
     path: ${JSON.stringify(handler.path)},
     params: ${JSON.stringify(handler.params)},
-    file: ${JSON.stringify(handler.module)},
+    file: ${JSON.stringify(displayFile(handler.module))},
     load: () => import(${JSON.stringify(handler.module)}),
   }`,
   );
@@ -697,7 +735,7 @@ export function routesModuleSource(table, options = {}) {
   const middlewareEntries = (table.middleware ?? []).map(
     (entry) => `  {
     path: ${JSON.stringify(entry.path)},
-    file: ${JSON.stringify(entry.module)},
+    file: ${JSON.stringify(displayFile(entry.module))},
     load: () => import(${JSON.stringify(entry.module)}),
   }`,
   );

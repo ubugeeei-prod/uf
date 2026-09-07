@@ -244,6 +244,32 @@ fn a_generation_failure_stops_the_run_and_the_record_says_which_steps_never_ran(
     );
 }
 
+/// A staged file `.gitignore` names is still checked.
+///
+/// git stops applying `.gitignore` to a path the moment that path is in the
+/// index, so a force-added file is as much a part of the commit as any other.
+/// Discovery reads `.gitignore` now (ubugeeei-prod/uf#483), and a run that let
+/// it narrow the staged set would have skipped the one file the commit is
+/// about while reporting "no problems" — a hook that passes because it never
+/// opened the file is worse than no hook.
+#[test]
+fn a_staged_file_the_gitignore_names_is_still_checked() {
+    let dir = a_repository();
+    fs::write(dir.path().join("ignored.js"), LINTS_BADLY).expect("a file with a lint error");
+    let gitignore = dir.path().join(".gitignore");
+    let scaffolded = fs::read_to_string(&gitignore).expect("the scaffold's .gitignore");
+    fs::write(&gitignore, format!("{scaffolded}ignored.js\n")).expect("a .gitignore naming it");
+    git(dir.path(), &["add", "--force", "ignored.js"]);
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+
+    assert_eq!(code, FOUND_A_PROBLEM, "{stdout}{stderr}");
+    assert!(
+        stdout.contains("security/no-eval"),
+        "the staged file was not linted:\n{stdout}"
+    );
+}
+
 /// A project with server actions: the types are written, and they are checked.
 ///
 /// `server-actions.js` and `router.js` are git-ignored in a scaffolded project,

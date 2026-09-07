@@ -170,6 +170,25 @@ under `guards`, and in `.uf/build/meta/uf-build-manifest.json` as
 the guard, and which half of `dist/` you deploy is the one thing the build
 cannot know.
 
+Every route the build wrote **no** document for is listed too, under `answered
+by a server` and in the same manifest as `rendering.perRequest`: a page with
+parameters and no `generateStaticParams`, a page that exports `dynamic =
+"force-dynamic"`, a `_uf.route.js` handler. Those routes need a process, and
+until they were reported the only way to find out that `dist/` did not contain
+one was a 404 after the deploy.
+
+Which of the two a project will accept is
+[`app.rendering.modes`](/reference/config#renderingmodes) and
+[`build.staticBuild`](/reference/config#buildstaticbuild). A project that has
+said it deploys to a static host gets a build **error** naming the route
+instead of a `dist/` with a hole in it, and a project that has said it renders
+everything per request gets no prerendered documents at all. The summary's
+`rendering` row says which of the three happened.
+
+The builder that does all of this is [`builder.module`](/reference/config#builder),
+which is `@uniflowed/vite` unless a project names another; `uf explain build`
+prints the one that will run and its version.
+
 The build's own notes go in `.uf/build/meta/` rather than in the output
 directory: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
 `uf-bundle-report.json` describe the application instead of being part of it,
@@ -246,6 +265,12 @@ preview's `Host` header against it and a preview bound to a routable address
 with nothing allowed would refuse every request. `--mode MODE` chooses the
 `.env` files, `production` by default.
 
+For a project that emits no server — `build.staticBuild`, or a
+`rendering.modes` that allows only `ssg` — nothing is mounted behind the file
+server, and that is the point rather than a limitation: what a static host does
+with the output directory is exactly what this then does with it, so the
+preview is right about the deployment that is actually happening.
+
 ### uf start
 
 Serves the same build through uf's own server, with **no bundler in the
@@ -267,6 +292,12 @@ The `.env` files are read when the server starts, in `production` mode unless
 changed without rebuilding. A variable already set in the environment — which is
 how a container or a secret manager provides one — always wins over a file. See
 [Environments](/guide/env).
+
+A project whose build emits no server is **refused**, by name, rather than
+served: `build.staticBuild` says the build leaves documents behind, and a
+`uf start` that quietly served them would be uf answering requests the real
+host answers. Deploy the output directory to any static host, or check it with
+`uf preview`.
 
 ### uf build --adapter TARGET
 
@@ -746,7 +777,7 @@ Takes packages out of every dependency field that lists them, out of the
 lockfile and out of `node_modules`. A name the manifest never listed is not an
 error: the project ends up the way it was asked to be either way.
 
-### uf update [PACKAGE...] [--latest | --minor | --patch] [--dry-run]
+### uf update [PACKAGE...]
 
 Two different things go by this name, and `uf update` does both.
 

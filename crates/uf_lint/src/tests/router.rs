@@ -46,13 +46,38 @@ fn router_reserved_files_still_rejects_names_uf_does_not_define() {
         "app/_uf.handler.js",
         "app/_uf.page.server.js",
         "app/_uf.page.native.test.js",
-        "app/_uf.page.jsx",
+        "app/_uf.page.ts",
+        // A layout the build's router would never load, because a layout is a
+        // component and Markdown cannot be one. `_uf.page.mdx` *is* loaded and
+        // is not here — see ubugeeei-prod/uf#437.
+        "app/_uf.layout.mdx",
     ] {
         let diagnostics = lint_one("router/reserved-files", name, "// @flow\n");
 
         assert!(
             fired(&diagnostics, "router/reserved-files"),
             "{name} should be rejected"
+        );
+    }
+}
+
+/// ubugeeei-prod/uf#437, #386: the build's router has accepted `.jsx` and
+/// `.mdx` since it was written, and this rule called them names uf does not
+/// define — so every `.mdx` page in a documentation site was a finding.
+#[test]
+fn router_reserved_files_accepts_every_extension_the_build_runs() {
+    for name in [
+        "app/_uf.page.js",
+        "app/_uf.page.jsx",
+        "app/_uf.page.mdx",
+        "app/_uf.layout.jsx",
+        "app/_uf.not-found.mdx",
+    ] {
+        let diagnostics = lint_one("router/reserved-files", name, "// @flow\n");
+
+        assert!(
+            !fired(&diagnostics, "router/reserved-files"),
+            "{name} is a file the build loads"
         );
     }
 }

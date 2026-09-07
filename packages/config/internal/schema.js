@@ -161,8 +161,15 @@ export type UniflowedConfig = {
   readonly build?: {
     readonly entries?: $ReadOnlyArray<string>,
     readonly outDir?: string,
+    // Prerender every route and leave no server bundle behind. Read together
+    // with `app.rendering.modes`; see docs/app/reference/config.
     readonly staticBuild?: boolean,
     readonly sourcemap?: boolean,
+  },
+  // Which builder uf drives. Vite is the default, not a dependency: any module
+  // satisfying the contract in docs/architecture.md can be named here.
+  readonly builder?: {
+    readonly module?: string,
   },
   readonly dev?: {
     readonly host?: string,
@@ -222,6 +229,43 @@ export type UniflowedConfig = {
     readonly lockfile?: "uf.lock",
     readonly storeDir?: string,
     readonly allowLifecycleScripts?: false,
+    /**
+     * The registry uf *reads* from: packuments, provenance attestations, and
+     * the versions `uf update` reports against.
+     *
+     * Unset means `publish.registry`, which is where this lived until it
+     * turned out to be answering two questions with one value. A project that
+     * publishes to a company registry and installs through a read-through
+     * mirror sets both; one that has only ever set `publish.registry` keeps
+     * working and is told, once, which key to move to.
+     */
+    readonly registry?: string,
+    /**
+     * Which registry answers for which scope: `{ "@company": "https://…" }`.
+     *
+     * A scope named here resolves from that registry **and nowhere else**.
+     * There is no fallback to the public registry, deliberately: publishing
+     * `@company/internal-thing` to npmjs and waiting for a resolver to fall
+     * back to it is the dependency-confusion attack, so the fallback is the
+     * vulnerability rather than a recovery from it. A name the bound registry
+     * does not have is an error that names the scope and the registry.
+     *
+     * uf refuses an install whose lockfile resolves a bound scope from
+     * somewhere else. It does not rewrite the project's `.npmrc`: the manager
+     * that resolves is the manager that has to be told, in its own
+     * configuration.
+     */
+    readonly scopes?: { readonly [scope: string]: string },
+    /**
+     * How hard `uf install` looks at npm provenance attestations.
+     *
+     * `"report"`, the default, reads the attestation of every package the
+     * install brought in or moved: an attestation that is not about the
+     * tarball being installed stops the install, and a package with none is a
+     * line in the summary. `"off"` reads none, for a machine with no route to
+     * a registry.
+     */
+    readonly provenance?: "report" | "off",
   },
   readonly rm?: {
     readonly module?: "@uniflowed/rm",

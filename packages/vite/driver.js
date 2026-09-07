@@ -6,7 +6,10 @@
 // `uf start` spawn.
 //
 //   <host> driver.js dev     --root <dir> [--mode <m>] [--host <h>] [--port <n>] [--strict-port]
+//                            [--uf-env-file <file>]...
 //   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
+//                            [--prerender everything|possible|nothing]
+//                            [--static-build] [--because <sentence>]
 //   <host> driver.js compile --root <dir> [--mode <m>] [--out-dir <dir>] --assets <file> --bundle <dir>
 //   <host> driver.js deploy  --root <dir> [--mode <m>] [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
 //   <host> driver.js preview --root <dir> [--mode <m>] [--out-dir <dir>] [--host <h>] [--port <n>]
@@ -18,6 +21,12 @@
 // files it selected have already been read, by `uf`, into this process's
 // environment — see `viteConfig` below and `crates/uf_config/src/env_files.rs`.
 // `start` has no Vite in it and therefore no mode.
+//
+// `--uf-env-file` names those files, one flag each, so `dev` can watch them and
+// say when one moved; nothing here reads their contents. The prefix is load
+// bearing: node claims `--env-file` for itself and honours it wherever it
+// appears on the command line, script arguments included, so a driver argument
+// by that name is an argument node eats and then exits 9 over.
 //
 // `uf` in Rust owns the terminal; this process owns Vite. They talk over
 // stdout, one JSON event per line (see `./internal/events.js`), and the driver
@@ -34,7 +43,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { emit, errorEvent, eventLogger, reportRenderError } from "./internal/events.js";
+import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { send, toRequest } from "./internal/http.js";
 import { withProjectConfig } from "./merge.js";
@@ -50,6 +59,16 @@ import {
 function argument(name) {
   const at = process.argv.indexOf(name);
   return at === -1 ? null : process.argv[at + 1];
+}
+
+/** Every value of a repeated argument, in the order they were given. */
+function argumentAll(name) {
+  const values = [];
+  for (let at = 0; at < process.argv.length; at += 1) {
+    if (process.argv[at] === name && process.argv[at + 1] != null)
+      values.push(process.argv[at + 1]);
+  }
+  return values;
 }
 
 function flag(name) {
@@ -182,26 +201,21 @@ async function viteConfig(config, mode) {
  * Vite in middleware mode serves nothing on its own: with no `index.html` at
  * the project root it answers every navigation with "Cannot GET /", which is
  * what `uf dev` used to do for every project it started. A uf project has no
- * `index.html` — the document comes from a layout — so the server has to render
- * it, which is what this middleware does:
+ * `index.html` — the document comes from a layout — so the server has to
+ * render it.
  *
- *   1. load the server entry through `ssrLoadModule`, so it is transformed the
- *      same way the browser's copy is and picks up edits without a restart;
- *   2. run the middleware guarding this path, which may answer instead;
- *   3. render the URL, pointing the client script at the dev entry rather than
- *      at a built asset;
- *   4. hand the HTML to `transformIndexHtml`, which is what injects the HMR
- *      client and lets any Vite plugin see the document.
+ * That rendering is **not** here. It is one middleware, in `./index.js`'s
+ * `configureServer`, and this function installs none of its own. It used to
+ * install a second one, and two middlewares rendering the same request is how
+ * `uf dev` came to answer a route handler with a page and a redirect without
+ * its `Location`: `configureServer`'s post hook runs inside `createServer`,
+ * and anything added here runs after it returns, so of the two the plugin's
+ * was always the one that decided. See ubugeeei-prod/uf#349 and #338, and the
+ * comment above that middleware for what it now has to do.
  *
- * Step 4 is why `uf dev` collects the stream instead of piping it: Vite's HTML
- * hook takes a whole document and any plugin may rewrite any part of it, so
- * there is no first byte to send until it has run. `uf start` and `uf preview`
- * have no such hook and stream — see `internal/serve.js` — and it is worth
- * being clear that this is a property of the development server rather than of
- * the renderer. Streaming through the transform is ubugeeei-prod/uf#374.
- *
- * Anything Vite already serves — a module, a public file — never reaches this,
- * because the middleware runs after Vite's own.
+ * What is left here is the half that is genuinely the driver's: the Vite
+ * config, the socket, the event channel back to `uf`, and the two watchers
+ * below.
  */
 async function dev() {
   const { createServer } = await import("vite");
@@ -211,100 +225,6 @@ async function dev() {
   // and always passes the answer. The fallback is for a driver started by hand.
   const inline = await viteConfig(config, argument("--mode") ?? "development");
   const server = await createServer({ ...inline, appType: "custom" });
-
-  // In dev the browser loads the client entry from Vite, not from a manifest;
-  // its stylesheets arrive through that module rather than as <link> tags.
-  const assets = { scripts: [`/@id/${VIRTUAL.client}`], styles: [], preloads: [] };
-
-  server.middlewares.use(async (request, response, next) => {
-    const url = request.originalUrl ?? request.url ?? "/";
-    // Declared out here so the catch below can still settle: a request that
-    // failed is a request that happened, and a middleware that logged its
-    // arrival is owed its callback either way.
-    let lifecycle = null;
-    try {
-      const entry = await server.ssrLoadModule(VIRTUAL.server);
-      const asRequest = await toRequest(request, server.config);
-
-      // The request begins here and ends when the document has been written,
-      // which is what `after()` promises and what `uf preview`, `uf start` and
-      // a compiled binary all do too — a middleware that logs a response's
-      // status has to mean the same thing in development as in production.
-      // `entry.beginRequest` rather than an import: the storage that holds the
-      // request belongs to the application's own copy of `@uniflowed/server`.
-      // See `internal/serve.js` and ubugeeei-prod/uf#389.
-      lifecycle = entry.beginRequest(asRequest);
-      const answered = await lifecycle.run(async () => {
-        // Middleware first, above everything: it guards a subtree, so it has to
-        // run for a page, for a route handler, and for a path under it that
-        // matches neither. Running it inside the dispatcher and again inside the
-        // renderer would have left `/dashboard/typo` unguarded and run it twice
-        // for a path that is both.
-        const guarded = await entry.runMiddleware(asRequest);
-        if (guarded != null) {
-          await send(response, guarded);
-          return true;
-        }
-
-        // A server action next, below the guard and above the handlers. It
-        // declines every request that carries no action id, so this costs a
-        // page request one header lookup; and it answers every request that
-        // carries one, refusals included, so an action can never fall through
-        // to a route handler that happens to sit at the URL it was posted to.
-        const acted = await entry.callAction(asRequest);
-        if (acted != null) {
-          await send(response, acted);
-          return true;
-        }
-
-        // Route handlers next, and for every method: a handler is the only
-        // thing that answers a POST, and it may also answer a GET for a path
-        // that has no page.
-        const handled = await entry.dispatch(asRequest);
-        if (handled != null) {
-          await send(response, handled);
-          return true;
-        }
-
-        // Only a navigation reaches the renderer. A page cannot answer a POST,
-        // and letting one try would turn a missing handler into a rendered page
-        // with a 200 rather than a 404.
-        if (request.method !== "GET" && request.method !== "HEAD") {
-          return false;
-        }
-
-        const result = await entry.render(url, assets, {
-          // A boundary that threw after the shell went out. `result.error` cannot
-          // carry it — the caller already has the result by then — so the
-          // terminal hears about it here or not at all.
-          onError: (error) => reportRenderError(server, url, error),
-        });
-        if (result.error != null) reportRenderError(server, url, result.error);
-        const html = await server.transformIndexHtml(url, await result.text());
-        response.statusCode = result.status ?? 200;
-        response.setHeader("content-type", "text/html; charset=utf-8");
-        response.end(html);
-        return true;
-      });
-
-      if (!answered) {
-        // The one path where uf is not the one writing the response: a
-        // non-navigation nothing claimed goes back to Vite's chain. The guard
-        // has still run and may have deferred work, so `close` — the socket
-        // saying the response is over, however it ended — is the only honest
-        // signal left that the bytes are out.
-        response.once("close", lifecycle.settle);
-        next();
-        return;
-      }
-      await lifecycle.settle();
-    } catch (error) {
-      if (lifecycle != null) await lifecycle.settle();
-      // Map the stack back onto the Flow source before it reaches the overlay.
-      if (error instanceof Error) server.ssrFixStacktrace(error);
-      next(error);
-    }
-  });
 
   await server.listen();
   const urls = server.resolvedUrls ?? { local: [], network: [] };
@@ -316,6 +236,7 @@ async function dev() {
     ),
   });
   watchSources(server);
+  watchEnvFiles(server);
 
   const shutdown = async () => {
     await server.close();
@@ -363,6 +284,45 @@ function watchSources(server) {
 }
 
 /**
+ * Restart the server when one of the `.env` files uf read changes.
+ *
+ * uf reads the `.env` cascade itself, in Rust, before this process starts —
+ * one parser, one precedence, one answer for every command (see `viteConfig`
+ * above and `crates/uf_config/src/env_files.rs`) — and `envDir: false` turns
+ * Vite's own file loading off so there cannot be two answers. The cost of that
+ * was that nothing watched them: a value edited while `uf dev` ran changed
+ * nothing until somebody restarted the command by hand, and the guide had to
+ * document it as a limitation. See ubugeeei-prod/uf#428.
+ *
+ * `uf` passes the files it would consult with `--uf-env-file`, one per file, in
+ * cascade order, whether or not each exists today — a `.env.local` *created*
+ * while the server runs changes the answer exactly as much as an edit to one
+ * that was already there, and watching only what was read would have missed
+ * it. They are added to Vite's watcher explicitly because they are in no
+ * module graph, which is the same reason the RSC manifest is added in
+ * `index.js`.
+ *
+ * What is emitted is "these values are stale", and the Rust side restarts this
+ * process with the files re-read. A restart rather than a hot update is the
+ * honest granularity: a prefixed value reaches the browser by substitution
+ * into the bundle, so a new value has to be substituted again, and every
+ * module that read one has to be re-evaluated. Vite's watcher is still the
+ * only watcher — a second one over the same tree, in Rust, would be a second
+ * answer to "did this file change".
+ */
+function watchEnvFiles(server) {
+  const files = argumentAll("--uf-env-file").map((file) => path.resolve(root, file));
+  if (files.length === 0) return;
+  const watched = new Set(files);
+  server.watcher.add(files);
+  for (const event of ["add", "change", "unlink"]) {
+    server.watcher.on(event, (file) => {
+      if (watched.has(path.resolve(file))) emit("env-changed", { file, change: event });
+    });
+  }
+}
+
+/**
  * The preview server: the build, as Vite serves it.
  *
  * Vite's `preview()` is a static file server, and a uf build is not only
@@ -386,37 +346,57 @@ async function preview() {
   const { preview: startPreview } = await import("vite");
   const config = await loadConfig();
   const inline = await viteConfig(config, argument("--mode") ?? "production");
-  const build = await loadBuild({
-    root,
-    outDir: inline.build.outDir,
-    serverDir: path.join(".uf", "build", "server"),
-  });
+  // A build that declared it emits no server has none to mount. `uf` refuses
+  // `uf start` for such a project and lets this one through, because a preview
+  // of files *is* the deployment: what a static host does with `dist/` is
+  // exactly what Vite's preview server does with it, and mounting a request
+  // handler behind it would make this preview right about a deployment that is
+  // not the one happening. See `uf_cli`'s `commands::serve`.
+  const staticBuild = flag("--static-build");
+  const build = staticBuild
+    ? null
+    : await loadBuild({
+        root,
+        outDir: inline.build.outDir,
+        serverDir: path.join(".uf", "build", "server"),
+      });
 
   const server = await startPreview({ ...inline, appType: "custom" });
-  const handle = createServeHandler({ ...build, cache: config.app?.rendering?.cache });
-  server.middlewares.use(async (request, response, next) => {
-    try {
-      const asRequest = await toRequest(request, server.config);
-      // The same lifecycle `uf start` gets from `nodeListener`, spelled out
-      // because this door is Vite's connect chain rather than a bare
-      // `node:http` server: the whole request runs inside it, and it settles
-      // once `send` has returned. A preview whose `after()` fired at a
-      // different moment from the production server's would be a preview that
-      // is checked and believed and wrong.
-      await withRequest(build.entry, asRequest, async () => {
-        await send(response, await handle(asRequest));
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
+  if (build != null) {
+    const handle = createServeHandler({ ...build, cache: config.app?.rendering?.cache });
+    server.middlewares.use(async (request, response, next) => {
+      try {
+        const asRequest = await toRequest(request, server.config);
+        // The same lifecycle `uf start` gets from `nodeListener`, spelled out
+        // because this door is Vite's connect chain rather than a bare
+        // `node:http` server: the whole request runs inside it, and it settles
+        // once `send` has returned. A preview whose `after()` fired at a
+        // different moment from the production server's would be a preview that
+        // is checked and believed and wrong.
+        await withRequest(build.entry, asRequest, async () => {
+          await send(response, await handle(asRequest));
+        });
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
 
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
     local: urls.local,
     network: urls.network,
-    routes: build.entry.routes.map((route) => route.path),
-    handlers: build.entry.handlers.map((handler) => handler.path),
+    // From the filesystem when there is no bundle to ask, which is the same
+    // scan `dev` reports from. The count is what a reader checks the build
+    // against, so answering "0 routes" for a static site that has thirty would
+    // be the report being wrong about the thing it exists to report.
+    routes:
+      build == null
+        ? scanRoutes(path.resolve(root, config.app?.router?.root ?? "app")).routes.map(
+            (route) => route.path,
+          )
+        : build.entry.routes.map((route) => route.path),
+    handlers: build == null ? [] : build.entry.handlers.map((handler) => handler.path),
   });
 
   const shutdown = async () => {
@@ -498,6 +478,15 @@ async function build() {
   const inline = await viteConfig(config, mode);
   const outDir = path.resolve(root, inline.build.outDir);
   const serverDir = path.join(root, ".uf", "build", "server");
+  // How much of the route table to prerender, and whether the server bundle
+  // survives the build. Both are `uf`'s answer rather than this file's: they
+  // come from two settings in `uf.config.js` that only mean something read
+  // together, and `uf_config`'s `RenderingPlan` is where they are. A driver
+  // started by hand gets the behaviour every uf build had before either
+  // setting was read.
+  const prerender = argument("--prerender") ?? "possible";
+  const staticBuild = flag("--static-build");
+  const because = argument("--because") ?? "this build prerenders every route";
 
   // 1. The client: everything the browser loads, with a manifest so the
   //    server render knows which script and stylesheet tags to write.
@@ -530,11 +519,39 @@ async function build() {
     },
   });
 
-  // 3. Every static route, rendered to an HTML document.
+  // 3. Which routes this build renders when, and every route it renders now.
+  //
+  //    The decision comes from `uf.config.js` and is made in Rust — see
+  //    `uf_config`'s `RenderingPlan` — because `app.rendering.modes` and
+  //    `build.staticBuild` are two settings that have to be read together. It
+  //    arrives here as one word, and this is where it meets the route table.
   emit("phase", { name: "prerender" });
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
   const assets = assetsFromManifest(manifest);
-  const pages = await staticPaths(server.routes);
+  const plan = await renderingPlan(server, prerender);
+  emit("rendering", {
+    prerender,
+    prerendered: plan.urls.length,
+    perRequest: plan.perRequest.map((route) => route.path),
+  });
+  // A build that has to prerender everything, and a route it cannot: the
+  // refusal ubugeeei-prod/uf#336 and ubugeeei-prod/uf#385 are both about.
+  // Before the loop below, so no document is written for a build that is not
+  // going to be one, and with the whole list rather than the first item — a
+  // project that has just narrowed `rendering.modes` wants to see every route
+  // the narrowing costs it, not one per rebuild.
+  if (prerender === "everything" && plan.perRequest.length > 0) {
+    const listed = plan.perRequest.map((entry) => `  ${entry.path} — ${entry.why}`).join("\n");
+    emit("error", {
+      message:
+        `${plan.perRequest.length} ${plural(plan.perRequest.length, "route")} in this project ` +
+        `can only be answered by a server, and ${because}\n${listed}\n\n` +
+        "Give each page a `generateStaticParams` and take out the handlers and middleware, or " +
+        'allow `"ssr"` in `app.rendering.modes` and deploy a server.',
+    });
+    process.exit(1);
+  }
+  const pages = plan.urls;
 
   // A route that throws fails *that route*, and the rest of the build still
   // happens. This loop had no `try`: the first page to throw rejected out of
@@ -598,7 +615,11 @@ async function build() {
   // host would then serve uf's error page to every visitor who mistyped a URL,
   // and nothing between the throw and the deploy would have mentioned it.
   let attempted = pages.length;
-  if (server.notFound.some((boundary) => boundary.path === "/")) {
+  // Not for a build that prerenders nothing. `404.html` is a file a static
+  // host serves for every path it has no file for, and a project whose
+  // `rendering.modes` allows only `ssr` has no such host: its not-found
+  // boundary is rendered per request, by the server, with the right status.
+  if (prerender !== "nothing" && server.notFound.some((boundary) => boundary.path === "/")) {
     attempted += 1;
     // `/404` rather than `/__uf_not_found__`: the internal path is how the
     // router is asked, and the file the reader is looking for is `404.html`.
@@ -644,6 +665,16 @@ async function build() {
     });
     process.exit(1);
   }
+
+  // `build.staticBuild` is "prerender everything and emit no server bundle",
+  // and this is the second half of it. The bundle is still *built*: the
+  // prerender renders through it, so a build with no server bundle at any
+  // point would be a build with no documents either. What the declaration is
+  // about is what is left behind — so it goes once the last document is
+  // written, and `uf start`, `uf preview` and every server adapter then find
+  // nothing to serve, which is the honest outcome for a project that said it
+  // deploys files.
+  if (staticBuild) rmSync(serverDir, { recursive: true, force: true });
 
   emit("done", { outDir: path.relative(root, outDir), pages: pages.length });
   process.exit(0);
@@ -1204,24 +1235,127 @@ function readManifest(outDir) {
 }
 
 /**
- * The URLs to prerender: every route without parameters, plus every set of
- * parameters a page's `generateStaticParams` returns.
+ * What this build renders now, and what it leaves for a server.
+ *
+ * The rendering decision, per route, and it has three answers rather than the
+ * two `staticPaths` used to have:
+ *
+ *   * **prerender it** — a route with no parameters, or a route whose page
+ *     exports `generateStaticParams`, once per set of parameters it returns;
+ *   * **leave it to the server** — a route with parameters and no
+ *     `generateStaticParams`, or a page that has said `export const dynamic =
+ *     "force-dynamic"`;
+ *   * **refuse** — which is not decided here. This function reports what it
+ *     found and the caller, which knows whether the project allows a server,
+ *     is the one that turns "there is a route here a static host cannot
+ *     answer" into an error.
+ *
+ * `dynamic` is the spelling ubugeeei-prod/uf#336 asked for: a route with *no*
+ * parameters whose content depends on the request had no way to say so, and
+ * `generateStaticParams` cannot say it — there are no parameters to generate.
+ * It is Next.js's name for the same declaration, because a person arriving
+ * from `app/` should not have to learn a second word for a decision they have
+ * already made once.
+ *
+ * Two of Next's four values are missing and are not silently accepted:
+ * `"force-static"` and `"error"` are refused by name, because each is a
+ * *constraint* on a page that uf does not yet check, and accepting one would
+ * be reading a declaration and ignoring it — the failure the two issues behind
+ * this function are about.
+ *
+ * Handlers and middleware are in the same list, and they belong there: this is
+ * the list of things that need a process, and a `_uf.route.js` needs one more
+ * obviously than any page does. They carry no per-route render — the build has
+ * never written a file for either — so they appear only when the answer might
+ * be a refusal.
+ *
+ * @param {{routes: Route[], handlers: Handler[], middleware: Middleware[]}} server
+ * @param {"everything" | "possible" | "nothing"} prerender
  */
-async function staticPaths(routes) {
+async function renderingPlan(server, prerender) {
   const urls = [];
-  for (const route of routes) {
+  const perRequest = [];
+
+  // Nothing is prerendered and nothing is refused, so no page module is
+  // loaded: a project that renders everything per request should not pay for
+  // a `generateStaticParams` this build will not call.
+  if (prerender === "nothing") {
+    return {
+      urls,
+      perRequest: server.routes.map((route) => ({
+        path: route.path,
+        why: "this build prerenders nothing",
+      })),
+    };
+  }
+
+  for (const route of server.routes) {
+    // Every page module, and not only the parameterised ones: `dynamic` is a
+    // declaration any page can make. A module that cannot be imported at all
+    // is a failure of *that route*, so a route with no parameters goes into
+    // the prerender anyway and the loop below reports it the way it has always
+    // reported a page that throws — named, with the rest of the build still
+    // happening. A parameterised one still rejects out of the build, which is
+    // what it did before there was anything else to load a page module for.
+    let module;
+    try {
+      module = await route.page();
+    } catch (error) {
+      if (route.params.length > 0) throw error;
+      urls.push(route.path);
+      continue;
+    }
+    const declared = module.dynamic ?? "auto";
+    if (declared !== "auto" && declared !== "force-dynamic") {
+      throw new Error(
+        `uf: ${route.file} exports \`dynamic = ${JSON.stringify(declared)}\`, and uf reads ` +
+          '`"auto"` and `"force-dynamic"`. `"force-static"` and `"error"` are Next.js values ' +
+          "for constraints uf does not check yet, and accepting one would be reading a " +
+          "declaration and ignoring it.",
+      );
+    }
+    if (declared === "force-dynamic") {
+      perRequest.push({
+        path: route.path,
+        why: 'its page exports `dynamic = "force-dynamic"`',
+      });
+      continue;
+    }
     if (route.params.length === 0) {
       urls.push(route.path);
       continue;
     }
-    const module = await route.page();
     const generate = module.generateStaticParams;
-    if (typeof generate !== "function") continue;
+    if (typeof generate !== "function") {
+      perRequest.push({
+        path: route.path,
+        why: "it has parameters and its page exports no `generateStaticParams`",
+      });
+      continue;
+    }
     for (const params of await generate()) {
       urls.push(fillParams(route.path, params));
     }
   }
-  return urls;
+
+  for (const handler of server.handlers ?? []) {
+    perRequest.push({
+      path: handler.path,
+      why: "it is a route handler, and a handler answers a request rather than producing a file",
+    });
+  }
+  for (const entry of server.middleware ?? []) {
+    // A middleware is reported by the path it guards rather than by the route
+    // it guards, which is why it cannot be folded into the loop above: it runs
+    // for a page, for a handler, and for a path under it that is neither, so
+    // "which route is this" has no single answer.
+    perRequest.push({
+      path: `${entry.path === "/" ? "" : entry.path}/*`,
+      why: "a middleware guards it, and a middleware runs once per request",
+    });
+  }
+
+  return { urls, perRequest };
 }
 
 function fillParams(routePath, params) {

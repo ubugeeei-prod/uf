@@ -5,6 +5,7 @@
 
 pub(crate) mod assets;
 pub(crate) mod build;
+pub(crate) mod builder;
 pub(crate) mod check;
 pub(crate) mod clean;
 pub(crate) mod compile;
