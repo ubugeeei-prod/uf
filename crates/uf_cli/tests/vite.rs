@@ -1484,10 +1484,12 @@ if (adapter === "edge" || adapter === "serverless") {
 /// no path is reserved for it, and the middleware guarding that page is the
 /// one that runs above the call.
 const SERVER_ACTION_QUESTIONS: &str = r#"
-const rscManifest = JSON.parse(
-  fs.readFileSync(path.join(staticDir, "uf-rsc-manifest.json"), "utf8"),
-);
-const actionId = rscManifest.serverActions[0].id;
+// Substituted by the test rather than read out of the artefact. The manifest
+// is not in the deployed artefact and must not be: ubugeeei-prod/uf#339 moved
+// every build manifest out of the served directory, and a list of every server
+// action with the ids the server dials is the last file to hand a browser.
+// `deployed_action_id` reads it from the project's own `.uf/build/meta/`.
+const actionId = "__UF_ACTION_ID__";
 const post = (headers, body) => ({ method: "POST", headers, body });
 const dialable = {
   origin: "http://127.0.0.1",
@@ -1525,6 +1527,26 @@ await ask(
 /// because `dist/`, `node_modules` and the source are all still there and an
 /// artefact quietly reading one of them would pass. Returns the build's stdout
 /// and the temporary directory holding `app/`, which the caller keeps alive.
+/// The single server action's id, out of the build that just ran.
+///
+/// `.uf/build/meta/`, never `dist/` or a deploy artefact's `static/`: the
+/// manifest is not served, by design (ubugeeei-prod/uf#339), so a test that
+/// found it there would be reporting a disclosure rather than reading a value.
+///
+/// Read again after every build, because the id is an HMAC over a per-build
+/// secret and each build mints a new one.
+fn deployed_action_id(root: &Path) -> String {
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/uf-rsc-manifest.json"))
+            .expect("`uf build` writes the RSC manifest beside the output directory"),
+    )
+    .expect("the RSC manifest is JSON");
+    manifest["serverActions"][0]["id"]
+        .as_str()
+        .expect("the fixture declares exactly one server action")
+        .to_owned()
+}
+
 fn deploy_and_copy(root: &Path, adapter: &str) -> (String, tempfile::TempDir) {
     let output = uf()
         .arg("--cwd")
@@ -3393,9 +3415,15 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
     // The id in the browser is the id the server dials into. Read out of the
     // manifest rather than recomputed: it is an HMAC over a per-build secret,
     // so there is nowhere else it could come from — which is the point of it.
-    let manifest: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dist.join("uf-rsc-manifest.json")).unwrap())
-            .unwrap();
+    // From `.uf/build/meta/`, not from `dist/`. Everything in the output
+    // directory is served, and ubugeeei-prod/uf#339 moved the build's own
+    // metadata out of it for exactly that reason — a manifest of every server
+    // action, with the ids the server dials, is the last file to hand a
+    // browser.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/uf-rsc-manifest.json")).unwrap(),
+    )
+    .unwrap();
     let actions = manifest["serverActions"].as_array().unwrap();
     assert_eq!(actions.len(), 1, "manifest: {manifest}");
     assert_eq!(actions[0]["module"], "app/counter/_actions/tally.js");
@@ -3453,7 +3481,14 @@ fn every_adapter_answers_the_same_server_action_call() {
     let mut answers: Option<(String, String)> = None;
     for adapter in ["node", "edge", "serverless", "container"] {
         let (_, empty) = deploy_and_copy(&root, adapter);
-        let said = ask_the_artefact(empty.path(), adapter, SERVER_ACTION_QUESTIONS);
+        // After the build, and once per adapter. The id is an HMAC over a
+        // per-build secret, so every one of these four builds mints its own —
+        // which is the property that makes an id from a previous build useless
+        // to somebody who kept one, and the reason this cannot be hoisted out
+        // of the loop.
+        let questions =
+            SERVER_ACTION_QUESTIONS.replace("__UF_ACTION_ID__", &deployed_action_id(&root));
+        let said = ask_the_artefact(empty.path(), adapter, &questions);
 
         // The action ran, inside the request the host began, and answered with
         // what the server made of the argument — `tallyFor(4)` is `9`, and the
