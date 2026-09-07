@@ -9,7 +9,8 @@ use uf_config::UniflowedConfig;
 use walkdir::WalkDir;
 
 pub use crate::reserved::{
-    ReservedFile, ReservedName, ReservedRole, ReservedVariant, classify_reserved_file,
+    ReservedFile, ReservedName, ReservedRole, ReservedVariant, RouteSegment,
+    classify_reserved_file, classify_route_segment,
 };
 
 pub const RESERVED_LAYOUT: &str = "_uf.layout.js";
@@ -200,6 +201,28 @@ pub enum RouterError {
         /// The catch-all's parameter name, for the suggested spelling.
         parameter: String,
     },
+    /// A directory spelled the way a parallel route or an intercepting route
+    /// is: `@team`, `(.)photo`. uf has neither.
+    ///
+    /// Refused rather than served, and the refusal is the whole of what
+    /// ubugeeei-prod/uf#267 asks for first. Neither spelling was one this
+    /// grammar had an opinion about, so both fell through to a literal
+    /// segment: `@team` became the URL `/@team`, and `(.)photo` became
+    /// `/(.)photo`, because the test for a `(group)` is that the segment
+    /// *ends* in `)`. Both then appeared in the generated `RoutePath` union
+    /// and in `uf inspect`, so a project migrating from Next.js got output
+    /// that looked like it worked.
+    ///
+    /// `reason` comes from [`RouteSegment::unsupported_reason`], so this and
+    /// `uf lint`'s `router/unsupported-segment` say the same sentence about
+    /// the same directory.
+    #[error("{directory}: {reason}")]
+    UnsupportedRouteDirectory {
+        /// The directory, as it is written on disk.
+        directory: Utf8PathBuf,
+        /// What is wrong with it and what to do instead.
+        reason: String,
+    },
 }
 
 pub fn discover_routes(
@@ -210,6 +233,10 @@ pub fn discover_routes(
     if !app_root.exists() {
         return Ok(Vec::new());
     }
+
+    // Before any route is built, because the point is that none is: a slot or
+    // an interception used to become a literal URL segment and a live route.
+    refuse_unsupported_directories(&app_root)?;
 
     let mut routes = Vec::new();
     for entry in WalkDir::new(&app_root) {
@@ -253,6 +280,49 @@ pub fn discover_routes(
 
     routes.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(routes)
+}
+
+/// Refuse the directory spellings uf reserves without serving.
+///
+/// A pass of its own rather than a check inside the page walk above, and the
+/// difference is what gets caught: `app/@team/` may hold a layout, a loading
+/// file and no page at all, and it is still a directory the author wrote
+/// expecting a parallel route. The walk above only ever sees `_uf.page.js`.
+///
+/// Private directories are pruned, because the build's router prunes them: a
+/// leading `.` or `_` means the directory is a place to put things rather than
+/// a route, so `app/_drafts/@team/` is not a route uf would have served and is
+/// not one it should refuse.
+///
+/// The first offender wins, sorted by name so the message does not depend on
+/// the order the filesystem hands entries back.
+fn refuse_unsupported_directories(app_root: &Utf8Path) -> Result<(), RouterError> {
+    let walk = WalkDir::new(app_root)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_dir()
+                || !entry.file_name().to_string_lossy().starts_with(['.', '_'])
+        });
+
+    for entry in walk {
+        let entry = entry.map_err(|source| RouterError::Walk {
+            path: app_root.to_path_buf(),
+            source,
+        })?;
+        if entry.depth() == 0 || !entry.file_type().is_dir() {
+            continue;
+        }
+        let segment = entry.file_name().to_string_lossy().into_owned();
+        let Some(reason) = classify_route_segment(&segment).unsupported_reason(&segment) else {
+            continue;
+        };
+        let directory = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
+            .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
+        return Err(RouterError::UnsupportedRouteDirectory { directory, reason });
+    }
+    Ok(())
 }
 
 /// Every `_uf.middleware.js` from `app_root` down to `directory`, outermost
@@ -385,13 +455,13 @@ fn non_terminal_catch_all(relative: &Utf8Path) -> Option<(String, String)> {
         .split('/')
         .filter(|segment| !segment.is_empty())
     {
-        if segment.starts_with('(') && segment.ends_with(')') {
+        if classify_route_segment(segment) == RouteSegment::Group {
             continue;
         }
         if let Some(found) = catch_all {
             return Some((found.to_string(), segment.to_string()));
         }
-        if segment.starts_with("[...") && segment.ends_with(']') {
+        if matches!(classify_route_segment(segment), RouteSegment::CatchAll(_)) {
             catch_all = Some(segment);
         }
     }
@@ -407,35 +477,31 @@ fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
         .split('/')
         .filter(|segment| !segment.is_empty())
     {
-        if segment.starts_with('(') && segment.ends_with(')') {
-            continue;
+        match classify_route_segment(segment) {
+            RouteSegment::Group => {}
+            RouteSegment::CatchAll(name) => {
+                params.push(RouteParam {
+                    name: name.to_compact_string(),
+                    kind: RouteParamKind::CatchAll,
+                });
+                segments.push(format!(":{name}*"));
+            }
+            RouteSegment::Param(name) => {
+                params.push(RouteParam {
+                    name: name.to_compact_string(),
+                    kind: RouteParamKind::Single,
+                });
+                segments.push(format!(":{name}"));
+            }
+            // A slot or an interception cannot reach here: `discover_routes`
+            // refuses the directory before it builds a path. Spelled out
+            // rather than folded into the literal arm so that a third
+            // unsupported spelling has to be decided about here too.
+            RouteSegment::Literal(name) => segments.push(name.to_string()),
+            RouteSegment::Slot(_) | RouteSegment::Interception { .. } => {
+                segments.push(segment.to_string());
+            }
         }
-
-        if let Some(name) = segment
-            .strip_prefix("[...")
-            .and_then(|name| name.strip_suffix(']'))
-        {
-            params.push(RouteParam {
-                name: name.to_compact_string(),
-                kind: RouteParamKind::CatchAll,
-            });
-            segments.push(format!(":{name}*"));
-            continue;
-        }
-
-        if let Some(name) = segment
-            .strip_prefix('[')
-            .and_then(|name| name.strip_suffix(']'))
-        {
-            params.push(RouteParam {
-                name: name.to_compact_string(),
-                kind: RouteParamKind::Single,
-            });
-            segments.push(format!(":{name}"));
-            continue;
-        }
-
-        segments.push(segment.to_string());
     }
 
     let path = if segments.is_empty() {

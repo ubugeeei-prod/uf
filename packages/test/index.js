@@ -12,6 +12,7 @@
 //
 // The whole surface is importable from here, so a test file has one import.
 
+export type { Expect, Expectation, Matchers } from "./internal/expect.js";
 export type { Body as TestBody, Case, Modifier, Suite, TestOptions } from "./internal/registry.js";
 export type { ModuleFactory, ModuleNamespace } from "./internal/modules.js";
 export type { Uft } from "./internal/namespace.js";

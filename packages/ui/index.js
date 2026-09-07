@@ -99,8 +99,9 @@
 //   plain element does not; if it ever stops being true, the component should
 //   be deleted rather than fixed.
 // - `menu.js` — the arrow keys, typeahead, submenus and `Escape` stacking.
-// - `combobox.js` — `aria-activedescendant` over a filtered list, and the
-//   count a screen reader is told.
+// - `combobox.js` — `aria-activedescendant` over a filtered list, the count a
+//   screen reader is told, and the option groups that make a command palette a
+//   composition rather than a seventh module.
 // - `select.js` — the other half of the combobox pattern: the select-only one,
 //   with typeahead, option groups and a value a form can submit.
 // - `tabs.js` — the roving `tabindex`, and automatic versus manual activation.
@@ -186,6 +187,8 @@ import { Checkbox } from "./checkbox.js";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "./collapsible.js";
 import {
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxInput,
   ComboboxLabel,
   ComboboxList,
@@ -755,13 +758,19 @@ export const Menu = {
  *     <Combobox.Label>Country</Combobox.Label>
  *     <Combobox.Input />
  *     <Combobox.List>
- *       {matches.map((each) => (
- *         <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
- *       ))}
+ *       <Combobox.Group>
+ *         <Combobox.GroupLabel>Europe</Combobox.GroupLabel>
+ *         {european.map((each) => (
+ *           <Combobox.Option key={each} value={each}>{each}</Combobox.Option>
+ *         ))}
+ *       </Combobox.Group>
  *     </Combobox.List>
  *     <Combobox.Empty>No matches.</Combobox.Empty>
  *     <Combobox.Status />
  *   </Combobox.Root>
+ *
+ * `Combobox.Label` names the field and `Combobox.GroupLabel` names a group of
+ * options, which is why there are two of them.
  */
 export const Combobox = {
   Root: ComboboxRoot,
@@ -769,6 +778,8 @@ export const Combobox = {
   Input: ComboboxInput,
   List: ComboboxList,
   Option: ComboboxOption,
+  Group: ComboboxGroup,
+  GroupLabel: ComboboxGroupLabel,
   Empty: ComboboxEmpty,
   Status: ComboboxStatus,
 };

@@ -48,9 +48,39 @@ import { Buffer } from "node:buffer";
 
 import { createStaticHandler } from "./node.js";
 
+import { Temporal } from "@uniflowed/core/temporal";
+import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
+import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+
+/**
+ * What a Lambda can do, which is neither of the two things this is asked.
+ *
+ * Both flags are `false`, and both are facts about the platform rather than
+ * about this module. The response is a JSON value, so [`toResult`] reads the
+ * whole body before the invocation returns — an event stream would be held in
+ * memory until it closed, which for a stream that stays open is a timeout. And
+ * the invocation is frozen the moment it answers, so work pushed into its own
+ * memory is dropped rather than run.
+ *
+ * So an upgrader handed here is refused where the host is wired, before a
+ * single connection is accepted and dropped, and so is a queue that does not
+ * survive the process. That is the whole point of the pair being values: the
+ * alternative is a deployment that accepts WebSocket handshakes all day and a
+ * customer wondering why nothing arrives.
+ *
+ * A durable queue is not refused. Pushing to SQS from a Lambda is ordinary and
+ * correct; what cannot be here is the *consumer*, which is a second function
+ * or a container. `./queue.js` says which half is whose.
+ */
+export function lambdaCapabilities(options?: CapabilityOptions): ServerCapabilities {
+  return assertCapable(
+    capabilitiesFor("serverless", { stream: false, persistent: false }, options),
+  );
+}
 
 /**
  * An HTTP API payload format 2.0 event, as much of it as this module reads.
@@ -236,14 +266,21 @@ export function createLambdaHandler(
   return async function lambdaHandler(event: LambdaHttpEvent): Promise<LambdaHttpResult> {
     const request = toRequest(event);
     const lifecycle = beginRequest(request);
+    const started = Temporal.Now.instant();
+    // Declared out here so the `finally` can say what this invocation answered.
+    // A Lambda has no terminal, so the line it leaves in CloudWatch is the only
+    // account of the request there will ever be.
+    let status = 500;
     try {
-      return await lifecycle.run(async () => {
+      const result = await lifecycle.run(async () => {
         const asset = serveStatic == null ? null : await serveStatic(request);
         return await toResult(asset ?? (await handle(request)));
       });
+      status = result.statusCode;
+      return result;
     } catch (error) {
       // The same 500 `./node.js`'s `nodeListener` writes, and for the same
-      // reasons: the body must not carry the stack, and the console — which on
+      // reasons: the body must not carry the stack, and the log — which on
       // Lambda is CloudWatch — is where the operator is already looking. A
       // rejected invocation would be a 502 from API Gateway instead, which is
       // a different answer from `uf start`'s for the same failure.
@@ -251,7 +288,7 @@ export function createLambdaHandler(
       // `toRequest` above is deliberately outside this: an event in the wrong
       // format is a misconfigured function rather than a failed request, and
       // answering it 500 forever would hide that.
-      console.error(error);
+      processLogger().error("request failed", { error });
       return {
         statusCode: 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
@@ -260,6 +297,14 @@ export function createLambdaHandler(
         isBase64Encoded: false,
       };
     } finally {
+      logRequest(processLogger(), {
+        requestId: lifecycle.context.id,
+        method: request.method.toUpperCase(),
+        path: new URL(request.url).pathname,
+        route: lifecycle.context.route,
+        status,
+        durationMs: elapsedMs(started),
+      });
       await lifecycle.settle();
     }
   };

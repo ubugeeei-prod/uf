@@ -50,6 +50,7 @@ uf_router = { path = "../uf_router" }
 uf_rsc = { path = "../uf_rsc" }
 uf_runtime = { path = "../uf_runtime" }
 uf_stylex = { path = "../uf_stylex" }
+uf_task = { path = "../uf_task" }
 uf_term = { path = "../uf_term" }
 uf_test = { path = "../uf_test" }
 uf_transform = { path = "../uf_transform" }
@@ -60,6 +61,10 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+# Also a dependency above. Named again so the integration tests can
+# assert against the cache bound by its constant rather than by a
+# number copied out of it.
+uf_infra = { path = "../uf_infra" }
 assert_cmd.workspace = true
 image.workspace = true
 similar-asserts.workspace = true

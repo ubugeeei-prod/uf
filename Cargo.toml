@@ -23,6 +23,7 @@ members = [
   "crates/uf_runtime",
   "crates/uf_std",
   "crates/uf_stylex",
+  "crates/uf_task",
   "crates/uf_term",
   "crates/uf_test",
   "crates/uf_transform",
@@ -76,6 +77,7 @@ flow_typing_type = { path = "upstream/flow/rust_port/crates/flow_typing_type" }
 flow_typing_utils = { path = "upstream/flow/rust_port/crates/flow_typing_utils" }
 flow_utils_concurrency = { path = "upstream/flow/rust_port/crates/flow_utils_concurrency" }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+globset = "0.4.20"
 # Decoding, resizing and re-encoding images, for `uf_assets`. `default-features
 # = false` is the whole point of the line: the default set drags in codecs uf
 # does not emit, and the three named here are pure Rust with no C toolchain and

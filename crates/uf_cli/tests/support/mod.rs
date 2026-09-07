@@ -133,3 +133,28 @@ pub fn host_ready() -> bool {
     }
     node && installed
 }
+
+/// Whether a test that runs Bun can run here: `bun` on PATH.
+///
+/// The same policy as [`host_ready`] and for the same reason, one step
+/// stricter: this asserts rather than returning quietly, because the two
+/// things that need Bun — `uf build --compile`, which embeds Bun's runtime,
+/// and `tests/bun_host.rs`, which is the only place any Bun claim uf makes is
+/// checked — are both of the kind that reads exactly like a green run when it
+/// skips. Set `UF_ALLOW_FIXTURE_SKIP=1` to opt out on a machine that genuinely
+/// has no Bun; CI sets nothing and so can never skip.
+pub fn bun_ready() -> bool {
+    if std::process::Command::new("bun")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+    {
+        return true;
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "this test needs `bun` on PATH and there is none, so it would prove nothing"
+    );
+    eprintln!("skipping: `bun` is not on PATH");
+    false
+}

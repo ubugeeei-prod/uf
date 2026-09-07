@@ -1750,6 +1750,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ignore"
+version = "0.4.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00b69833ed729dc5aa7d19541d96d6cf8e9137194207a04916d658e43168402f"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
+]
+
+[[package]]
 name = "im"
 version = "15.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3452,6 +3468,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_flow",
+ "uf_infra",
 ]
 
 [[package]]
@@ -3489,6 +3506,7 @@ dependencies = [
  "uf_rsc",
  "uf_runtime",
  "uf_stylex",
+ "uf_task",
  "uf_term",
  "uf_test",
  "uf_transform",
@@ -3577,6 +3595,7 @@ dependencies = [
  "rustc-hash",
  "simdutf8",
  "smallvec",
+ "tempfile",
 ]
 
 [[package]]
@@ -3658,6 +3677,7 @@ version = "0.0.0-alpha.12"
 dependencies = [
  "camino",
  "compact_str",
+ "ignore",
  "tempfile",
  "thiserror",
  "uf_config",
@@ -3761,6 +3781,24 @@ dependencies = [
  "uf_infra",
  "uf_plugin",
  "uf_rsc",
+]
+
+[[package]]
+name = "uf_task"
+version = "0.0.0-alpha.12"
+dependencies = [
+ "base64",
+ "camino",
+ "compact_str",
+ "globset",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "uf_config",
+ "uf_infra",
+ "walkdir",
 ]
 
 [[package]]

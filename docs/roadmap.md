@@ -9,9 +9,13 @@ on every runtime and deploys anywhere, including as a single executable file.
 
 - Beat Vite+ on Flow React DX, framework completeness, build latency, and dev
   server feedback loops.
-- Use Vite Task for cached, dependency-aware task execution while beating Vitest
-  and Bun Test on native test throughput, runtime startup, package manager
-  performance, and integrated toolchain coverage.
+- Run `uf.config.js` tasks natively — a dependency graph rather than a
+  recursion, a concurrency limit, and a cache keyed on the files each task
+  says it reads — while beating Vitest and Bun Test on native test throughput,
+  runtime startup, package manager performance, and integrated toolchain
+  coverage. Vite Task still runs a task that names no command of its own;
+  everything anybody actually writes is uf's, because `uf.config.js` is where
+  a task's meaning is written down and `vp run` cannot read it.
 - Keep Vite itself as the internal bundler, dev server, and plugin system, but
   make `uf.config.js` the only user-authored config entry.
 - Reach the feature surface of the tools a user would otherwise reach for —
@@ -39,8 +43,10 @@ listing it here rather than trusting anyone to remember:
    and the batch a check runs over is the closure of what the files asked about
    import, `node_modules` included
    ([#403](https://github.com/ubugeeei-prod/uf/issues/403)). `uf check` reports
-   1,883 errors over this repository's 357 checked files, and they are errors
-   about types rather than about the resolver.
+   1,905 errors over this repository's 358 checked files, and they are errors
+   about types rather than about the resolver. Some of them are wanted: the
+   fixtures under `tests/type-tests/` exist to fail, and each is held to the
+   exact diagnostics it predicts.
 3. **A feature that works for the demo.** Every fix in this repository carries
    a test that fails before it and passes after, and the corpus tests run the
    formatter over 8,100 modules nobody here wrote. That is the standard, and
