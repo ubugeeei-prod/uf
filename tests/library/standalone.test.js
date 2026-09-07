@@ -104,6 +104,10 @@ function application() {
       asked.guarded.push(new URL(request.url).pathname);
       return null;
     },
+    // No action, and the real answer for a build that declares none: the
+    // endpoint declines every request that carries no id, which is what puts
+    // it in the order below without changing what anything else answers.
+    callAction: async () => null,
     dispatch: async (request: Request) => {
       const { pathname } = new URL(request.url);
       asked.dispatched.push(`${request.method} ${pathname}`);
@@ -300,6 +304,7 @@ describe("route handlers", () => {
         beginRequest,
         render: async () => rendered(200, "<!doctype html><p>rendered</p>"),
         runMiddleware: async () => null,
+        callAction: async () => null,
         dispatch: async (request: Request) => {
           dispatched.push(new URL(request.url).pathname);
           return new Response("handled", { status: 201 });
@@ -358,6 +363,7 @@ describe("writing a handler's body to the socket", () => {
         beginRequest,
         render: async () => rendered(200, "<p>unused</p>"),
         runMiddleware: async () => null,
+        callAction: async () => null,
         dispatch: async () =>
           new Response(
             new ReadableStream({
@@ -477,6 +483,7 @@ describe("a render that fails after the shell", () => {
           beginRequest,
           render: async () => failingRender(error),
           runMiddleware: async () => null,
+          callAction: async () => null,
           dispatch: async () => null,
         },
         assets,
