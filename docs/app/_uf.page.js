@@ -118,7 +118,7 @@ export default component Home() {
         </p>
         <Command>curl -fsSL https://setup.uniflowed.dev | sh</Command>
         <p>Then a project, and a dev server, with nothing to configure in between:</p>
-        <Command>uf create app my-site</Command>
+        <Command>uf new my-site</Command>
         <Command>cd my-site &amp;&amp; uf dev</Command>
         <p>
           That is the whole setup. No <code>npm install</code> of a toolchain, no config to copy

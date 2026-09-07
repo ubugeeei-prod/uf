@@ -748,7 +748,7 @@ enforces `build.budgets`.
 `loader` data embedded for hydration, `metadata` hoisted into `<head>`,
 client-side navigation with `Link` prefetching on intent, and `notFound()`/
 `redirect()`. A page or layout exports its component as `default` or as the
-named `Page`/`Layout` that `uf create` scaffolds.
+named `Page`/`Layout` that `uf new` scaffolds.
 
 Generated projects do not use npm scripts. Tasks are declared in
 `uf.config.js` and executed by `uf run` through Vite Task.

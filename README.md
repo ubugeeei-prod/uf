@@ -94,7 +94,7 @@ Three of these stand between the next section and a reader who follows it, so
 they are named here rather than found there. All three are scoped to a version
 on purpose: this block goes when the release that closes them does.
 
-- **A new project installs `0.0.0-alpha.1` packages.** `uf create` writes
+- **A new project installs `0.0.0-alpha.1` packages.** `uf new` writes
   `"latest"` for each `@uniflowed/*` dependency, and `latest` on npm still
   points where the first publish left it, because a prerelease must not displace
   a stable release and there has never been one. `uf test` in such a project
@@ -114,7 +114,7 @@ on purpose: this block goes when the release that closes them does.
   `uf.config.js`.
 
 What does work on `0.0.0-alpha.7` as published, from a default
-`uf create app react` followed by `uf install`: `uf build` writes `dist/`, and
+`uf init` followed by `uf install`: `uf build` writes `dist/`, and
 `uf lint` and `uf check` report on the project. For the rest, a checkout is the
 way in until the next release — see
 [Building from a checkout](#building-from-a-checkout).
@@ -159,7 +159,7 @@ bodies run there. `uf info` prints the one it found.
 ## Five minutes
 
 ```sh
-uf create app react hello
+uf new hello
 cd hello
 uf install
 uf dev          # a dev server on :5173, with Fast Refresh through `component`
@@ -167,12 +167,12 @@ uf build        # dist/, prerendered, with real gzip and brotli sizes
 uf test
 ```
 
-`uf create` writes the project and nothing else — no `node_modules`, no lockfile,
+`uf new` writes the project and nothing else — no `node_modules`, no lockfile,
 no git history:
 
 ```
-uf create · hello
-─────────────────
+uf new · hello
+──────────────
 
   hello
   ├─ app
@@ -260,7 +260,7 @@ uf test · hello
 ✓ 1 passed, 0 failed in 297.6ms
 ```
 
-Those four blocks are one real run of `uf create`, `uf install`, `uf build` and
+Those four blocks are one real run of `uf new`, `uf install`, `uf build` and
 `uf test`, at version `0.0.0-alpha.7` on Node v25.8.1, trimmed — the banner,
 npm's own output, the per-asset size table and absolute paths — and not
 otherwise edited. `uf dev` has no transcript here because it does not exit.
@@ -285,7 +285,7 @@ reference, with every flag and exit code.
 
 | | |
 | --- | --- |
-| `uf create app`, `uf create lib` | Scaffold an application or a library |
+| `uf new`, `uf init` | Scaffold an application into a new directory, or into this one |
 | `uf dev` | Vite's dev server, with React Fast Refresh through `component` declarations |
 | `uf build` | Client and server bundles, prerendered routes, a size report and the build manifest |
 | `uf preview`, `uf start` | Serve that build — through Vite, or through uf's own server with no bundler in the process |

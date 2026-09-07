@@ -67,7 +67,7 @@ in `uf`.
 
 ## P0: Toolchain Spine
 
-- Keep the first executable native slice green: `uf create`, `uf build`,
+- Keep the first executable native slice green: `uf new`, `uf build`,
   `uf dev`, `uf install`, `uf upgrade`, `uf use`, `uf publish`,
   `uf release`, `ufx`, `uf test`, `uf prepare`, and `uf lsp` already produce
   local artifacts or protocol responses.

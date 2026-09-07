@@ -54,7 +54,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("build", "vite.rs and cli.rs: needs @uniflowed/vite"),
     ("check", "here, and typecheck.rs for the diagnostics"),
     ("completion", "here, and cli.rs for the script's shape"),
-    ("create", "here, and cli.rs for the scaffold's contents"),
+    // Where `create` was, because this list is `uf --help`'s order and that is
+    // the parser's declaration order rather than the alphabet.
+    ("init", "here, and cli.rs for the scaffold's contents"),
+    ("new", "here, and cli.rs for the scaffold's contents"),
     ("dev", "vite.rs and cli.rs: binds a socket"),
     ("doc", "here, and cli.rs for the generated Markdown"),
     ("env", "here, and env.rs for the store"),

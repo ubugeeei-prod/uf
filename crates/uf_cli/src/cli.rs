@@ -195,7 +195,54 @@ pub(crate) enum Commands {
         #[arg(trailing_var_arg = true)]
         words: Vec<String>,
     },
-    /// Scaffold a new application or library.
+    /// Scaffold a project into the current directory.
+    ///
+    /// `uf init` is the current directory and `uf new <path>` is a new one,
+    /// which is the split `uf create` did not make: it took one optional
+    /// positional that was a template when it named one and a directory when
+    /// it did not, so `uf create app react` and `uf create app my-site` did
+    /// two different things and neither spelling said which. See
+    /// ubugeeei-prod/uf#322 for what that cost, and #488 for the rename.
+    Init {
+        /// The template to scaffold. `react` is the only one today.
+        #[arg(value_name = "TEMPLATE")]
+        template: Option<String>,
+        /// Scaffold a library rather than an application.
+        #[arg(long)]
+        lib: bool,
+        /// The package name, when it should not be the directory's.
+        #[arg(long)]
+        name: Option<String>,
+        /// Write into a directory that already holds files.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Scaffold a project into a new directory.
+    New {
+        /// The directory to create, relative to the current one. Its last
+        /// segment is the package's name unless `--name` says otherwise.
+        #[arg(value_name = "PATH")]
+        path: Utf8PathBuf,
+        /// The template to scaffold. `react` is the only one today.
+        #[arg(value_name = "TEMPLATE")]
+        template: Option<String>,
+        /// Scaffold a library rather than an application.
+        #[arg(long)]
+        lib: bool,
+        /// The package name, when it should not be the directory's.
+        #[arg(long)]
+        name: Option<String>,
+        /// Write into a directory that already holds files.
+        #[arg(long)]
+        force: bool,
+    },
+    /// The older spelling of `uf init` and `uf new`.
+    ///
+    /// Hidden rather than removed: it is in every published document and in
+    /// `ufx @uniflowed/create`, and an alpha that deletes the command its own
+    /// home page prints teaches people to distrust the next release more than
+    /// it teaches them the new name.
+    #[command(hide = true)]
     Create {
         #[command(subcommand)]
         command: CreateCommand,
