@@ -28,6 +28,7 @@ import {
   useEventListener,
   useFocusWithin,
   useGeolocation,
+  useHash,
   useHover,
   useIdle,
   useIntersecting,
@@ -1447,29 +1448,245 @@ describe("the browser hooks that need a real browser", () => {
     unmount();
   });
 
-  it("reports the connection it can see and admits what it cannot", () => {
+  /**
+   * `measured: null` has to mean one thing.
+   *
+   * The shape this replaced reported `downlink: null` both for a browser with
+   * no Network Information and for a Chromium that had not decided yet, and a
+   * caller could not tell the two apart without also reading `supported`. A
+   * regression to that shape would let this document — which has no
+   * `navigator.connection` at all — report a connection it never measured.
+   */
+  it("separates the connection it measured from the one it could not", () => {
     component Probe() {
       const network = useNetwork();
       return (
-        <output>{`${String(network.online)} ${String(network.supported)} ${String(network.effectiveType)}`}</output>
+        <output>{`${String(network.online)} ${network.measured == null ? "unmeasured" : String(network.measured.effectiveType)}`}</output>
       );
     }
     render(<Probe />);
-    // `online` is everywhere; Network Information is Chromium's alone, and
-    // this document has none — which is exactly the case `supported` exists
-    // for.
-    expect(screen.getByText("true false null")).toBeInTheDocument();
+    // `online` is everywhere; Network Information is Chromium's alone, and this
+    // document has none.
+    expect(screen.getByText("true unmeasured")).toBeInTheDocument();
   });
 
+  /**
+   * A document with no geolocation must not look like one that is still asking.
+   *
+   * `position: null` used to mean "no browser", "not asked", "refused" and
+   * "waiting" at once, so a page could not tell a device that cannot answer
+   * from a reader who has not answered yet. The status says which.
+   */
   it("says geolocation is unsupported rather than throwing on a document without it", () => {
     component Probe() {
       const where = useGeolocation();
+      return <output>{where.status}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("unsupported")).toBeInTheDocument();
+  });
+
+  /**
+   * A hook that is switched off says so, rather than looking unavailable.
+   *
+   * `enabled: false` on a device that has geolocation is a different fact from
+   * a device that does not, and a page that offers a "find me" button needs the
+   * difference to decide whether to show the button at all.
+   */
+  it("reports idle for a watch nobody asked for, whatever the device can do", () => {
+    component Probe() {
+      const where = useGeolocation({ enabled: false });
+      return <output>{where.status}</output>;
+    }
+    render(<Probe />);
+    // "idle" rather than "unsupported": `enabled` is the caller's own decision,
+    // so it answers the same on a server and here, and a page that switches
+    // watching off does not see its markup change under it at hydration.
+    expect(screen.getByText("idle")).toBeInTheDocument();
+  });
+});
+
+describe("useHash", () => {
+  // Every test here writes the address bar of a document the whole worker
+  // shares, so each one puts the fragment back. The path and the query are left
+  // exactly as they were found, which is also what one of these tests asserts.
+  afterEach(() => {
+    const win = globalThis.window;
+    win.history.replaceState(null, "", win.location.pathname + win.location.search);
+  });
+
+  /**
+   * Two components reading the fragment have to agree about it.
+   *
+   * `history.pushState` and `history.replaceState` fire nothing at all — not
+   * `hashchange`, not `popstate` — so a hook that listened only to the platform
+   * would leave every component except the one that wrote showing the fragment
+   * from before the write. The module-level registry is what closes that, and
+   * this is the test that would fail without it.
+   */
+  it("tells every component about a fragment one of them wrote", async () => {
+    component Probe() {
+      const [fragment, write] = useHash();
+      const [elsewhere] = useHash();
       return (
-        <output>{`${String(where.supported)} ${String(where.position)} ${String(where.error)}`}</output>
+        <div>
+          <button type="button" onClick={() => write("billing")}>
+            go
+          </button>
+          <output>{`[${fragment}] [${elsewhere}]`}</output>
+        </div>
       );
     }
     render(<Probe />);
-    expect(screen.getByText("false null null")).toBeInTheDocument();
+    expect(screen.getByText("[] []")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("[billing] [billing]")).toBeInTheDocument();
+    expect(globalThis.window.location.hash).toBe("#billing");
+  });
+
+  /**
+   * A writer that promises a fragment must not be able to write anything else.
+   *
+   * The obvious spelling — `history.pushState(null, "", "#" + next)` — hands a
+   * caller's string to a URL parser, and `../admin?token=1` then resolves to a
+   * different path with a query on it: a same-origin rewrite that `pushState`
+   * permits, from a call that said it was setting a fragment. Going through
+   * `URL`'s own setter is what confines it, and this asserts the confinement
+   * rather than the spelling.
+   */
+  it("puts a caller's text in the fragment and leaves the rest of the URL alone", async () => {
+    component Probe() {
+      const [fragment, write] = useHash();
+      return (
+        <div>
+          <button type="button" onClick={() => write("../admin?token=1")}>
+            write
+          </button>
+          <output>{`[${fragment}]`}</output>
+        </div>
+      );
+    }
+    render(<Probe />);
+    const before = globalThis.window.location;
+    const origin = before.origin;
+    const pathname = before.pathname;
+    const search = before.search;
+
+    await userEvent.click(screen.getByRole("button"));
+
+    const after = globalThis.window.location;
+    expect(after.origin).toBe(origin);
+    expect(after.pathname).toBe(pathname);
+    expect(after.search).toBe(search);
+    // It round-trips: what went in as a fragment comes back as one.
+    expect(screen.getByText("[../admin?token=1]")).toBeInTheDocument();
+  });
+
+  /**
+   * A fragment is a name, and names have accents in them.
+   *
+   * `location.hash` is percent-encoded, so a hook that handed it back raw would
+   * make `fragment === section.id` false for every heading not written in
+   * ASCII — and the caller who reached for `decodeURIComponent` would then have
+   * a render that throws on the lone `%` somebody can type into the address bar.
+   */
+  it("round-trips a fragment that is not ASCII", async () => {
+    component Probe() {
+      const [fragment, write] = useHash();
+      return (
+        <div>
+          <button type="button" onClick={() => write("café & crème")}>
+            write
+          </button>
+          <output>{`[${fragment}]`}</output>
+        </div>
+      );
+    }
+    render(<Probe />);
+    await userEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("[café & crème]")).toBeInTheDocument();
+  });
+
+  it("leaves a fragment that is not valid percent-encoding as it was typed", () => {
+    component Probe() {
+      const [fragment] = useHash();
+      return <output>{`[${fragment}]`}</output>;
+    }
+    // Written straight into the address bar, the way a reader pasting a link
+    // would: `%zz` is not an escape, and `decodeURIComponent` throws on it.
+    globalThis.window.history.replaceState(null, "", "#100%zz");
+    render(<Probe />);
+    expect(screen.getByText("[100%zz]")).toBeInTheDocument();
+  });
+
+  /**
+   * The reader's own navigation still moves the value.
+   *
+   * The registry above covers writes made through the hook; `hashchange` and
+   * `popstate` are what cover an anchor the reader clicked, an address bar they
+   * edited, and the back button. Losing either subscription would leave the
+   * page showing a section nobody is looking at.
+   */
+  it("follows the address bar when the reader changes it", () => {
+    component Probe() {
+      const [fragment] = useHash();
+      return <output>{`[${fragment}]`}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("[]")).toBeInTheDocument();
+
+    act(() => {
+      globalThis.window.history.replaceState(null, "", "#section-two");
+      fireEvent.hashChange(globalThis.window);
+    });
+    expect(screen.getByText("[section-two]")).toBeInTheDocument();
+
+    act(() => {
+      globalThis.window.history.replaceState(null, "", "#section-three");
+      fireEvent.popState(globalThis.window);
+    });
+    expect(screen.getByText("[section-three]")).toBeInTheDocument();
+  });
+
+  it("removes both of its listeners at unmount", () => {
+    // Whatever the previous test left mounted comes down first. `render` cleans
+    // up before it mounts, so its removals would otherwise be counted against
+    // this one and the balance would look wrong for the wrong reason.
+    render(<output>nothing yet</output>);
+
+    const win = globalThis.window;
+    const added = [];
+    const removed = [];
+    const realAdd = win.addEventListener.bind(win);
+    const realRemove = win.removeEventListener.bind(win);
+    win.addEventListener = (type, listener, options) => {
+      added.push(type);
+      realAdd(type, listener, options);
+    };
+    win.removeEventListener = (type, listener, options) => {
+      removed.push(type);
+      realRemove(type, listener, options);
+    };
+
+    component Probe() {
+      const [fragment] = useHash();
+      return <output>{`[${fragment}]`}</output>;
+    }
+    try {
+      const { unmount } = render(<Probe />);
+      unmount();
+    } finally {
+      win.addEventListener = realAdd;
+      win.removeEventListener = realRemove;
+    }
+
+    // Both, and each exactly as many times as it was added: an unbalanced
+    // subscription is the bug Strict Mode's second mount exists to find.
+    expect(added.filter((type) => type === "hashchange").length).toBe(1);
+    expect(removed.filter((type) => type === "hashchange").length).toBe(1);
+    expect(added.filter((type) => type === "popstate").length).toBe(1);
+    expect(removed.filter((type) => type === "popstate").length).toBe(1);
   });
 });
 

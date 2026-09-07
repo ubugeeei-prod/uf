@@ -32,6 +32,12 @@
 // its sidebar under 48rem wants `false` on the server and one that renders a
 // mobile menu wants `true`, and a library cannot know which.
 //
+// Where there is exactly one honest answer, the caller is not asked. `useHash`
+// takes no server value because the browser strips the fragment before the
+// request goes out, so `""` is not a default standing in for something better —
+// it is what the server knows, and offering an override would have invited a
+// caller to state a value that cannot be true.
+//
 // The hooks built on effects rather than stores — everything in `dom.js`, and
 // the three in `browser.js` whose first value only arrives in a callback — do
 // nothing at all before hydration, and report the same starting value on both
@@ -60,7 +66,9 @@
 //   throttle, frames, idleness, and the clock behind "3 minutes ago".
 // - `async.js` — one promise: its states, its abort signal, its retries.
 // - `browser.js` — the ambient environment: viewport, scroll, connection,
-//   position, permissions, preferences.
+//   position, permissions, preferences, the fragment in the address bar. Its
+//   header carries the table of what every one of them renders before
+//   hydration.
 // - `dom.js` — one element the caller holds a ref to: listen, measure,
 //   observe, press.
 // - `keyboard.js` — what is being pressed: a chord, and a held key.
@@ -90,7 +98,8 @@
 // **Implemented and tested.** The component's life; the state shapes; every
 // timer, including the adaptive schedule behind `useTimeAgo`; `useAsync` with
 // abort and retry; media queries, colour scheme, reduced motion, online,
-// document visibility, window size and scroll, scroll lock; element size,
+// document visibility, window size and scroll, the address bar's fragment,
+// scroll lock; element size,
 // intersection, mutations, hover, focus-within, click-outside, long press,
 // element scroll, the element as state; key chords and held keys; storage with
 // cross-tab sync;
@@ -120,6 +129,8 @@
 
 export type { Async, AsyncOptions } from "./async.js";
 export type {
+  BrowserHistory,
+  BrowserLocation,
   BrowserNavigator,
   BrowserWindow,
   EffectiveConnectionType,
@@ -127,6 +138,7 @@ export type {
   Geoposition,
   Network,
   NetworkConnection,
+  NetworkMeasurement,
   PermissionAnswer,
   PermissionName,
   ScrollOffset,
@@ -169,6 +181,7 @@ export {
   browserWindow,
   useDocumentVisible,
   useGeolocation,
+  useHash,
   useMediaQuery,
   useNetwork,
   useOnline,

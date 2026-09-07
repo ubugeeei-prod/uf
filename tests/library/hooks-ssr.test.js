@@ -36,6 +36,7 @@ import {
   useClipboard,
   useCounter,
   useCycle,
+  useDebouncedCallback,
   useDebouncedValue,
   useDocumentVisible,
   useElementRef,
@@ -44,15 +45,18 @@ import {
   useEventListener,
   useFocusWithin,
   useGeolocation,
+  useHash,
   useHover,
   useIdle,
   useIntersecting,
   useInterval,
+  useIsomorphicLayoutEffect,
   useKeyCombo,
   useKeyHeld,
   useList,
   useLongPress,
   useMediaQuery,
+  useMount,
   useMounted,
   useMutationObserver,
   useNetwork,
@@ -62,15 +66,19 @@ import {
   usePreferredColorScheme,
   usePrefersReducedMotion,
   usePrevious,
+  useRerender,
   useScroll,
   useScrollLock,
   useSet,
+  useStableCallback,
   useStorage,
   useSupported,
   useThrottledCallback,
   useTimeAgo,
+  useTimeout,
   useToggle,
   useUndoable,
+  useUnmount,
   useWindowScroll,
   useWindowSize,
 } from "@uniflowed/hooks";
@@ -171,6 +179,7 @@ describe("the environment hooks, prerendered", () => {
       const channel = useBroadcast("uf-ssr", () => {});
       const network = useNetwork();
       const where = useGeolocation();
+      const idle = useGeolocation({ enabled: false });
       const permission = usePermission("geolocation");
       return (
         <output>
@@ -178,18 +187,43 @@ describe("the environment hooks, prerendered", () => {
             String(supported),
             String(clipboard.supported),
             String(channel.supported),
-            String(network.supported),
+            String(network.measured),
             String(network.online),
-            String(where.supported),
-            String(where.position),
+            where.status,
+            idle.status,
             permission,
           ].join(" ")}
         </output>
       );
     }
+    // `measured: null` and `status: "unsupported"` are the shapes that replaced
+    // a `supported` boolean beside fields that meant nothing without it: a
+    // prerender cannot measure a connection or find anybody, and the type is
+    // where it says so.
     expect(markupOf(<Probe />)).toBe(
-      "<output>false false false false true false null unknown</output>",
+      "<output>false false false null true unsupported idle unknown</output>",
     );
+  });
+
+  /**
+   * The fragment is the one part of the URL a server has never seen.
+   *
+   * A browser strips everything after `#` before the request goes out, so there
+   * is no value for a prerender to know and no caller who could supply a better
+   * one — which is why `useHash` takes no server value where `useMediaQuery`
+   * and `useOnline` do. A version of this hook that read `location.hash`
+   * directly would throw here rather than render.
+   */
+  it("renders an empty fragment, because a request never carried one", () => {
+    component Probe() {
+      const [fragment, write] = useHash();
+      const [, again] = useHash();
+      // One identity for the writer, from two calls in one render: it is a
+      // module-level function rather than a closure, so nothing has to memoize
+      // it and a caller can put it in a dependency array.
+      return <output>{`[${fragment}] ${String(write === again)}`}</output>;
+    }
+    expect(markupOf(<Probe />)).toBe("<output>[] true</output>");
   });
 
   it("leaves the page alone when a dialog asks for the scroll to be locked", () => {
@@ -321,6 +355,44 @@ describe("state and time, prerendered", () => {
       return <output>{`${String(idle)} ${settled} ${typeof throttled}`}</output>;
     }
     expect(markupOf(<Probe />)).toBe("<output>false typed function</output>");
+    expect(ran).toBe(0);
+  });
+
+  /**
+   * The last seven names in the package, so the claim covers all of them.
+   *
+   * `index.js` says this file "renders the whole surface in a process that has
+   * no DOM at all", and for a while that was true of every hook whose subject
+   * was the browser and of none of the seven whose subject is the component.
+   * A `useMount` body that ran during a prerender would double every effect a
+   * page has, on the server, where nothing can undo it.
+   */
+  it("runs none of the lifecycle bodies and schedules nothing", () => {
+    let ran = 0;
+    component Probe() {
+      useIsomorphicLayoutEffect(() => {
+        ran += 1;
+      }, []);
+      useMount(() => {
+        ran += 1;
+      });
+      useUnmount(() => {
+        ran += 1;
+      });
+      useTimeout(() => {
+        ran += 1;
+      }, 1);
+      const debounced = useDebouncedCallback(() => {
+        ran += 1;
+      }, 1);
+      // Called during the render on purpose: the ref behind a stable callback is
+      // seeded with the body and only *updated* in an insertion effect, so a
+      // prerender that called one would otherwise reach a `null.current`.
+      const stable = useStableCallback(() => "stable");
+      const rerender = useRerender();
+      return <output>{`${typeof debounced} ${stable()} ${typeof rerender}`}</output>;
+    }
+    expect(markupOf(<Probe />)).toBe("<output>function stable function</output>");
     expect(ran).toBe(0);
   });
 

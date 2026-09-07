@@ -1,0 +1,170 @@
+---
+title: "Browser hooks · uf"
+description: "What each one renders before hydration, and how the ones with no server answer say so."
+---
+
+<p className="eyebrow">Reference</p>
+
+# Browser hooks
+
+<div className="lede">
+The half of `@uniflowed/hooks` whose subject is the browser, and therefore the
+half that has to have an answer on a server. Every one of them renders a stated
+value during a prerender, renders the same value again in the client's first
+render, and only then reports what the browser says.
+</div>
+
+```js
+// @flow
+import { useHash, useMediaQuery, useOnline } from "@uniflowed/hooks";
+
+component Sidebar() {
+  // `false` is what the prerender assumes, and the page says so rather than
+  // finding out by accident.
+  const wide = useMediaQuery("(min-width: 48rem)", false);
+  const online = useOnline();
+  const [section] = useHash();
+  return <aside data-open={wide} data-section={section} data-offline={!online} />;
+}
+```
+
+The rest of the package — timers, the state shapes, the element observers, the
+key chords — is not here, because it has no server half to document. Each of
+those modules carries its own header in
+[`packages/hooks`](https://github.com/ubugeeei-prod/uf/tree/main/packages/hooks).
+
+## Why a prerender is the constraint
+
+uf prerenders every static route, so each of these runs once where there is no
+`window`. That is not an edge case to guard against; it is the first thing that
+happens to every hook in the package.
+
+The shape that survives it is `useSyncExternalStore`, which takes the server's
+value as a *separate argument* — so what a prerender sees is stated rather than
+being whatever a `typeof window` check fell through to. React reads the value
+when it commits rather than when it renders, which is what stops a media query
+that changes mid-render from tearing, and it uses the server snapshot again for
+the client's hydrating render, which is what stops the first paint from
+disagreeing with the markup it is attaching to.
+
+Writing the same hook with `useState` and a `useEffect` produces a value that is
+right one frame later, is invisible to a crawler, and moves the layout when it
+arrives. That is the version this package exists to replace.
+
+## What each one renders before hydration
+
+| Hook | Prerender, and the first client render | Afterwards |
+| --- | --- | --- |
+| `useSupported(probe)` | `false` | what `probe` says |
+| `useMediaQuery(query, serverValue?)` | `serverValue`, default `false` | whether it matches |
+| `usePreferredColorScheme(serverValue?)` | `serverValue`, default `"light"` | the reader's setting |
+| `usePrefersReducedMotion(serverValue?)` | `serverValue`, default `false` | the reader's setting |
+| `useOnline(serverValue?)` | `serverValue`, default `true` | `navigator.onLine` |
+| `useDocumentVisible(serverValue?)` | `serverValue`, default `true` | the visibility state |
+| `useHash()` | `""`, and no way to say otherwise | the fragment |
+| `useWindowSize(serverValue?)` | `serverValue`, default `0×0` | the viewport |
+| `useWindowScroll(serverValue?)` | `serverValue`, default `0,0` | the offset |
+| `useNetwork(serverValue?)` | `{ online: serverValue, measured: null }` | what Chromium measured |
+| `useGeolocation(options?)` | `"unsupported"` | `"pending"`, then a fix or a failure |
+| `usePermission(name)` | `"unknown"` | what the browser answers |
+| `useStorage(key, initial)` | `initial` | what is under the key |
+| `useClipboard()` | `supported: false` | whether the clipboard is there |
+| `useBroadcast(name, onMessage)` | `supported: false` | whether channels exist |
+| `useScrollLock(locked)` | nothing at all — effects do not run | the page is held |
+
+Where there is no honest default the caller supplies one, because a library
+cannot know it: a page that hides its sidebar under 48rem wants `false` on the
+server, and one that renders a mobile menu wants `true`.
+
+Where there is exactly one honest answer the caller is not asked. `useHash` has
+no `serverValue` argument because a browser strips the fragment before the
+request goes out — `""` is not a default standing in for something better, it is
+what the server knows, and an override would only have invited somebody to state
+a value that cannot be true.
+
+## The address bar
+
+`useHash` is the only URL hook here, and the boundary is worth stating. The path
+and the query are on the request, so `@uniflowed/router` has already resolved
+them and [`useRoute`](/guide/routing) is where a page reads them. The fragment
+is the part nothing on the server has ever seen.
+
+```js
+// @flow
+import { useHash } from "@uniflowed/hooks";
+
+component Tabs() {
+  const [tab, setTab] = useHash();
+  return (
+    <nav>
+      <button type="button" onClick={() => setTab("billing", { replace: true })}>
+        Billing
+      </button>
+      <output>{tab === "" ? "overview" : tab}</output>
+    </nav>
+  );
+}
+```
+
+Three things to know about it:
+
+- **It does not scroll.** Moving to a section and recording which tab is open
+  are separate intentions, and the platform couples them only because assigning
+  `location.hash` is the old way of doing both at once. Call
+  `element.scrollIntoView()` where scrolling was what you wanted.
+- **`replace` overwrites the current history entry.** Eleven tab clicks should
+  not be eleven presses of the back button.
+- **It cannot see a `history.pushState` made elsewhere.** That call fires no
+  event of any kind — not `hashchange`, not `popstate` — so no listener the
+  platform offers would hear it. Writes made through `useHash` announce
+  themselves to every other component using it; a write made anywhere else is
+  invisible, and that is the platform's gap rather than the hook's choice.
+
+## The ones with no server answer
+
+Two readings cannot be made on a server *or* in most browsers, and both used to
+say so with a null and a boolean beside it. Both now say so in the type, so
+there is no combination of fields left to interpret.
+
+`useGeolocation` returns one of five states rather than three nullable fields:
+
+```js
+// @flow
+const where = useGeolocation();
+switch (where.status) {
+  case "idle":        // enabled: false — nobody asked for a watch
+  case "unsupported": // a server render, or a browser without geolocation
+  case "pending":     // the reader has been asked and has not answered
+  case "located":     // where.position is a Geoposition, guaranteed
+  case "failed":      // where.error, and no earlier fix to fall back on
+}
+```
+
+The record it replaced could represent eight states, four of which could never
+happen, and `position == null` meant "no browser", "not asked", "refused" and
+"still waiting" at once. Flow now refuses to read `position` on any state that
+does not have one.
+
+`useNetwork` puts the three fields that arrive together behind one nullable
+object, and keeps `online` — the field almost every caller wants — flat:
+
+```js
+// @flow
+const network = useNetwork();
+network.online; // everywhere
+network.measured; // null unless this browser implements Network Information
+network.measured?.effectiveType; // "4g" | "3g" | "2g" | "slow-2g" | null
+```
+
+`measured: null` says one thing: nothing on this side can answer. It used to be
+a `supported` boolean sitting next to a `downlink` that was `null` both because
+the browser does not measure bandwidth and because it had not decided yet.
+
+## Proving it
+
+`tests/library/hooks-ssr.test.js` renders every hook in the package in a process
+with **no document at all** — the globals are removed before the file runs and
+put back after — and asserts the markup each one produces. A row of the table
+above that stopped being true fails there rather than in somebody's browser, and
+a hook that reached for `window` during its first render would not render at
+all.
