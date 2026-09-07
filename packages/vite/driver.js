@@ -246,6 +246,17 @@ async function dev() {
           return true;
         }
 
+        // A server action next, below the guard and above the handlers. It
+        // declines every request that carries no action id, so this costs a
+        // page request one header lookup; and it answers every request that
+        // carries one, refusals included, so an action can never fall through
+        // to a route handler that happens to sit at the URL it was posted to.
+        const acted = await entry.callAction(asRequest);
+        if (acted != null) {
+          await send(response, acted);
+          return true;
+        }
+
         // Route handlers next, and for every method: a handler is the only
         // thing that answers a POST, and it may also answer a GET for a path
         // that has no page.

@@ -64,6 +64,22 @@ export type Application = {|
   /** The route handler for this request, or `null` when no handler claims it. */
   readonly dispatch: (request: Request) => Promise<Response | null>,
   /**
+   * The server action this request names, or `null` when it names none.
+   *
+   * Between the guard and the handlers in every host, and it answers every
+   * request carrying an action id — including every refusal — so a `POST`
+   * naming an action can never fall through to a route handler at the same
+   * path. See `packages/router/internal/action-endpoint.js` for what it
+   * refuses and why, and `docs/security.md` for the boundary those refusals
+   * are keeping.
+   *
+   * Called rather than tested for, for the reason `runMiddleware` is: a
+   * server bundle without it is a `TypeError` on the first request rather than
+   * an application whose actions quietly stopped being reachable once it was
+   * built.
+   */
+  readonly callAction: (request: Request) => Promise<Response | null>,
+  /**
    * The guard on the path, run before anything under it answers.
    *
    * Called rather than tested for: a server bundle without it is a `TypeError`
