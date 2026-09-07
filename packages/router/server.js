@@ -23,7 +23,7 @@
 // `internal/stream.js` holds the mechanics and says which React renderer serves
 // which.
 
-import { DATA_ID, ROOT_ID } from "./internal/document.js";
+import { ROOT_ID } from "./internal/document.js";
 import * as React from "react";
 
 import {
@@ -218,13 +218,20 @@ export function createRenderer(options: {|
    * The route to render, or the redirect to answer with instead.
    *
    * Shared by both entry points, because *what* a URL resolves to has nothing
-   * to do with how the answer is delivered. Returning the redirect rather than
-   * throwing it keeps the two callers from each having to remember that a
-   * redirect is the one thing `resolveMatch` lets out.
+   * to do with how the answer is delivered — with one exception, which is
+   * `defer` and is the exception that proves it. Whether the router may hand
+   * the page a loader that has not answered yet *is* a question about delivery:
+   * only a renderer with a `<Suspense>` fallback to send first has anywhere to
+   * put the wait. `render` says yes and `prerender` says no; see
+   * `ResolveOptions.defer` and ubugeeei-prod/uf#373.
+   *
+   * Returning the redirect rather than throwing it keeps the two callers from
+   * each having to remember that a redirect is the one thing `resolveMatch`
+   * lets out.
    */
-  async function resolve(url: string): Promise<Resolution> {
+  async function resolve(url: string, defer: boolean): Promise<Resolution> {
     try {
-      return { kind: "route", route: await resolveMatch(table, url) };
+      return { kind: "route", route: await resolveMatch(table, url, { defer }) };
     } catch (error) {
       if (error instanceof RedirectError) {
         return { kind: "redirect", error };
@@ -238,7 +245,7 @@ export function createRenderer(options: {|
     assets: RenderAssets,
     settings?: RenderOptions,
   ): Promise<RenderResult> {
-    const resolution = await resolve(url);
+    const resolution = await resolve(url, true);
     if (resolution.kind === "redirect") {
       return redirectDocument(resolution.error);
     }
@@ -264,7 +271,7 @@ export function createRenderer(options: {|
     let body: DocumentBody;
     try {
       body = await renderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(resolved, assets),
+        shell: shellFor(assets),
         onError,
       });
       streaming = true;
@@ -294,7 +301,7 @@ export function createRenderer(options: {|
       // where somebody can fix it.
       streaming = true;
       body = await renderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(resolved, assets),
+        shell: shellFor(assets),
         onError,
       });
     }
@@ -313,7 +320,7 @@ export function createRenderer(options: {|
     assets: RenderAssets,
     settings?: RenderOptions,
   ): Promise<PrerenderResult> {
-    const resolution = await resolve(url);
+    const resolution = await resolve(url, false);
     if (resolution.kind === "redirect") {
       return redirectResult(redirectDocument(resolution.error));
     }
@@ -323,7 +330,7 @@ export function createRenderer(options: {|
     let html: string;
     try {
       html = await prerenderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(resolved, assets),
+        shell: shellFor(assets),
         onError: report,
       });
     } catch (error) {
@@ -332,7 +339,7 @@ export function createRenderer(options: {|
       }
       resolved = await resolveFailure(table, url, error);
       html = await prerenderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(resolved, assets),
+        shell: shellFor(assets),
         onError: report,
       });
     }
@@ -386,14 +393,29 @@ function redirectDocument(error: RedirectError): RenderResult {
  * `internal/stream.js` picks between them on the opening bytes React writes;
  * everything either shape is made of is here, so what a uf document contains is
  * still readable in one place.
+ *
+ * # Why the shell is three strings and not one
+ *
+ * Because uf's own `<head>` has to still be open when React's head tags arrive.
+ * React hoists a `<title>`, a `<meta>` and a `<link>` into the head it wrote
+ * itself, and here it wrote none — so with one string this shell closed its
+ * head before the app had rendered a byte, and every `og:` tag and the
+ * `<link rel="canonical">` landed in the body, where a crawler ignores them.
+ * `open` is uf's head up to that point, `body` is the rest of it and the
+ * wrapper, and what goes between them is whatever `assembled` lifts out of the
+ * app's own markup. See ubugeeei-prod/uf#547.
+ *
+ * That is also why no `<title>` is written here any more. It was, from
+ * `resolved.metadata.title` — the same string `Head` renders — so a document
+ * carried two of them, one in each place, and only one was where a browser
+ * looks. Hoisting the rendered one leaves the metadata with a single source.
  */
-function shellFor(resolved: ResolvedRoute, assets: RenderAssets): DocumentShell {
-  const head = headTags(assets) + dataScript(resolved.data);
-  const title =
-    resolved.metadata.title != null ? `<title>${escapeText(resolved.metadata.title)}</title>` : "";
+function shellFor(assets: RenderAssets): DocumentShell {
+  const head = headTags(assets);
   return {
     head,
-    open: `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${title}${head}</head><body><div id="${ROOT_ID}">`,
+    open: `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`,
+    body: `${head}</head><body><div id="${ROOT_ID}">`,
     close: `</div></body></html>\n`,
   };
 }
@@ -412,28 +434,6 @@ function headTags(assets: RenderAssets): string {
   return tags;
 }
 
-/**
- * The loader data, embedded for hydration.
- *
- * `<` is escaped inside the JSON so a string holding `</script>` cannot end
- * the element early, and the script's type keeps the browser from executing
- * it.
- */
-function dataScript(data: mixed): string {
-  if (data === undefined) {
-    return "";
-  }
-  const json = JSON.stringify(data)
-    .replace(/</g, "\\u003c")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-  return `<script id="${DATA_ID}" type="application/json">${json}</script>`;
-}
-
 function escapeAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-}
-
-function escapeText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

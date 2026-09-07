@@ -96,6 +96,11 @@ layouts already follow.
 `notFound()` thrown from a loader lands on the same boundary — the nearest one
 above the path being rendered, not the root one.
 
+A project that declares none anywhere still gets a usable 404: uf's own page
+renders inside the router root's layouts, so the masthead and the stylesheet are
+there and the reader can leave. Writing `app/_uf.not-found.js` replaces the page;
+it is not what makes the site appear around it.
+
 ## When a page throws
 
 `_uf.error.js` is the other boundary, resolved by the same nearest-ancestor
@@ -134,10 +139,10 @@ loader's, it re-runs the resolution; when it was the browser rendering, it
 mounts the page again.
 
 A project that declares no `_uf.error.js` still does not lose the document: uf
-renders its own page inside the outermost boundary. What it does not do is show
-the exception — that text is written for whoever deployed the application, so
-it goes to `uf dev`'s terminal instead, and `uf build` fails the route it
-belongs to.
+renders its own page, inside the router root's layouts for the same reason the
+404 is. What it does not do is show the exception — that text is written for
+whoever deployed the application, so it goes to `uf dev`'s terminal instead, and
+`uf build` fails the route it belongs to.
 
 A route that throws during `uf build` fails *that route*: the build reports the
 URL, writes every route that did render, and then exits non-zero. It does not
@@ -185,13 +190,30 @@ A segment with no `_uf.loading.js` gets no boundary at all. uf does not insert a
 invisible one: a page that suspends with nothing above it fails the way React
 says it should, rather than rendering as a blank document.
 
-What suspends today is a page that waits **while rendering** — `use()` on a
-promise, or a component that suspends. A page's `loader` is still awaited before
-the render begins, so a slow loader shows its fallback for no time; deferring it
-is [#373](https://github.com/ubugeeei-prod/uf/issues/373). `uf dev` also
-collects the document rather than streaming it, because Vite's HTML transform
-takes a whole one — [#374](https://github.com/ubugeeei-prod/uf/issues/374).
-`uf start`, `uf preview` and the deploy adapters stream.
+A page's `loader` streams too. When a route declares a `_uf.loading.js`, the
+server hands the page the loader's promise rather than its value and unwraps it
+inside the innermost boundary — so the layouts and the fallback go out while the
+loader is still running, which is what the fallback beside a slow loader was
+always meant to be for.
+
+Two rules come with that, and both are worth knowing rather than discovering:
+
+- **A route that generates metadata from its data waits.** `generateMetadata`
+  reads the loader's answer, metadata goes in the head, and the head is written
+  before the body. A page that wants to stream keeps its metadata static.
+- **A deferred loader has no say in the response.** The status line goes out
+  with the shell, so `notFound()` and `redirect()` thrown from a loader that was
+  deferred arrive at the error boundary rather than at the 404 page, and the
+  document is a 200. Nothing can undo bytes that have already been sent. A route
+  whose loader decides the response should not declare a `_uf.loading.js`.
+
+`uf build` never defers: a file being written to disk has no first paint to
+improve, so `prerender` resolves the loader and writes the finished page.
+
+`uf dev` also collects the document rather than streaming it, because Vite's
+HTML transform takes a whole one —
+[#374](https://github.com/ubugeeei-prod/uf/issues/374). `uf start`, `uf preview`
+and the deploy adapters stream.
 
 What none of this covers is a route handler. `_uf.route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting
@@ -240,6 +262,13 @@ the result as hoistable head elements before it renders anything else, which is
 why it works for a crawler that runs no JavaScript — unlike `useHead` from
 `@uniflowed/web`, which is a browser-only escape hatch for a component that is
 already on screen.
+
+The tags land in `<head>` whether or not the application renders its own
+`<html>`. React hoists them into a document it rendered itself; with uf's shell
+there is no such document, so uf lifts them into the head it wrote — which is
+the same head, in the same place, for both shapes. It used to be neither: on the
+shell every `og:` tag and the canonical link stayed in the body, where Google
+ignores a canonical.
 
 `metadataBase` is the site's origin, and it is what makes the rest correct.
 Open Graph and Twitter both require **absolute** image URLs, and a route module

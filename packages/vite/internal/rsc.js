@@ -140,10 +140,20 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
     if (needed(route.page)) return true;
     if (route.layouts.some(needed)) return true;
     if ((route.loading ?? []).some((entry) => needed(entry.module))) return true;
+    // A boundary with no module of its own is the record the scan synthesises
+    // at the router root, and what renders there is the framework's own page —
+    // already in `@uniflowed/router`, reaching nothing this project wrote. It
+    // is skipped rather than left to `needed`, whose answer for a value that is
+    // not a file is "assume it is needed": that answer is right for a path the
+    // manifest has never heard of and wrong for the absence of a path, and
+    // taking it here would have kept every page of every project in the client
+    // bundle. See ubugeeei-prod/uf#351.
     for (const boundary of notFound) {
+      if (boundary.page == null) continue;
       if (covers(boundary.path, route.path) && needed(boundary.page)) return true;
     }
     for (const boundary of errors) {
+      if (boundary.module == null) continue;
       if (covers(boundary.path, route.path) && needed(boundary.module)) return true;
     }
     return false;
