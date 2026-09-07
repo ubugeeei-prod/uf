@@ -33,6 +33,7 @@ use crate::ui::Ui;
 /// against clap's own in `tests`, so it cannot drift.
 const COMMANDS: &[&str] = &[
     "add",
+    "audit",
     "build",
     "check",
     "create",
@@ -47,13 +48,16 @@ const COMMANDS: &[&str] = &[
     "install",
     "i",
     "lint",
+    "ls",
     "lsp",
     "prepare",
     "preview",
     "publish",
     "release",
     "remove",
+    "uninstall",
     "run",
+    "search",
     "start",
     "test",
     "update",
@@ -83,8 +87,23 @@ const CREATE_KINDS: &[&str] = &["app", "lib"];
 /// people reach for are here; the four package-manager ones are here because
 /// naming the manager that will run is the whole reason to ask.
 const EXPLAINABLE: &[&str] = &[
-    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "add", "remove",
-    "update", "why",
+    "dev",
+    "build",
+    "preview",
+    "start",
+    "doc",
+    "test",
+    "fmt",
+    "lint",
+    "check",
+    "add",
+    "remove",
+    "update",
+    "why",
+    "ls",
+    "audit",
+    "search",
+    "uninstall",
 ];
 
 /// Print the completion script for `shell`.

@@ -401,7 +401,10 @@ pub(crate) fn exec_package(
 
     let detection = detect_package_manager(&resolved.root);
     let manager = fetchable(detection.package_manager);
-    let mut invocation = command_for(manager, Operation::DlxExec);
+    // Every manager has a fetch-and-run, which is what `fetchable` guarantees:
+    // it maps a manager without one onto the one uf would use instead.
+    let mut invocation = command_for(manager, Operation::DlxExec)
+        .expect("every fetchable manager has a fetch-and-run command");
     invocation.args.push(Cow::Owned(package.to_owned()));
     invocation
         .args

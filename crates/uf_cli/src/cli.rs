@@ -387,6 +387,11 @@ pub(crate) enum Commands {
     /// Takes them out of every dependency field that lists them, out of the
     /// lockfile, and out of `node_modules`. A name the manifest never listed is
     /// not an error: the project ends up the way it was asked to be either way.
+    ///
+    /// `uninstall` is the same command. npm and pnpm both accept that spelling,
+    /// and a reader who types it should not meet clap's "unrecognized
+    /// subcommand" over a word two of the five managers call it by.
+    #[command(alias = "uninstall")]
     Remove {
         /// The packages, by name.
         #[arg(value_name = "NAME", required = true)]
@@ -505,6 +510,43 @@ pub(crate) enum Commands {
     Use {
         /// The toolchain to activate.
         runtime: String,
+    },
+    /// List the installed dependency tree, through the project's own package
+    /// manager.
+    Ls {
+        /// Package names, which narrow the tree to what depends on them.
+        ///
+        /// Names only. A manager's own flags are the manager's own surface and
+        /// are reached with `uf exec` — uf cannot know which of them only read,
+        /// and `pnpm audit --fix` rewrites a lockfile. Refusing a flag also
+        /// keeps `uf ls --oops` at exit 2, uf failing to parse its own
+        /// argument, rather than exit 1 from a manager uf handed a word to.
+        #[arg(value_name = "NAME", trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Audit the installed tree for known vulnerabilities.
+    ///
+    /// Every manager uf supports has one, and each spells its severity
+    /// threshold and its fix differently, so the flags are its own.
+    Audit {
+        /// Package names, where the manager narrows an audit to them.
+        ///
+        /// Names only, for the reason `uf ls` gives: every manager spells its
+        /// severity threshold and its `--fix` differently, and one of those
+        /// rewrites a lockfile.
+        #[arg(value_name = "NAME", trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Search the registry.
+    ///
+    /// npm and pnpm can. Yarn and bun cannot, and uf says so rather than
+    /// running a manager the project did not choose — a tool that quietly
+    /// reaches for a different one is how a lockfile comes to be written by
+    /// something nobody selected.
+    Search {
+        /// What to search for.
+        #[arg(value_name = "TERM", required = true, trailing_var_arg = true)]
+        terms: Vec<String>,
     },
     /// Explain why a package is in the dependency tree.
     ///

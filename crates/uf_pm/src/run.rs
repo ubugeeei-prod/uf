@@ -144,6 +144,21 @@ pub enum ManagerRunError {
         /// Why it was refused, and what to write instead.
         reason: String,
     },
+    /// The project's manager has no command for what was asked.
+    ///
+    /// Reported rather than worked around. uf could run a different manager's
+    /// equivalent, and that is exactly the substitution a project chose its
+    /// manager to avoid — the replacement would resolve against its own
+    /// registry configuration and could write its own lockfile.
+    #[error("{manager} has no `{operation}`: {hint}")]
+    Unsupported {
+        /// The manager the project uses.
+        manager: String,
+        /// The uf operation it cannot perform.
+        operation: &'static str,
+        /// What to do instead.
+        hint: String,
+    },
 }
 
 /// Install `root`'s dependencies with the package manager that drives it.
@@ -215,6 +230,22 @@ pub fn run_operation(
     })
 }
 
+/// What to do about an operation the project's manager does not have.
+///
+/// One sentence per operation, naming the managers that do have it — the
+/// reader's next question is always "then what", and "your package manager
+/// cannot" is only half an answer.
+fn unsupported_hint(operation: Operation<'_>) -> String {
+    match operation {
+        Operation::Search => {
+            "npm and pnpm can search the registry; `uf exec --yes npm search` runs npm's \
+             without changing what this project installs with"
+        }
+        _ => "no package manager uf knows spells this one differently",
+    }
+    .to_owned()
+}
+
 /// The exact command `run_operation` would spawn.
 ///
 /// Separate from the spawn so that what uf is about to run can be asserted on,
@@ -229,7 +260,12 @@ pub fn invocation_for(
     operands: &[String],
     allow_scripts: bool,
 ) -> Result<Invocation, ManagerRunError> {
-    let mut invocation = command_for(manager, operation);
+    let mut invocation =
+        command_for(manager, operation).ok_or_else(|| ManagerRunError::Unsupported {
+            manager: manager.to_string(),
+            operation: operation.name(),
+            hint: unsupported_hint(operation),
+        })?;
 
     // A dependency's `postinstall` is the supply-chain hole uf's own resolver
     // was going to close by never running one. Delegating to a manager that

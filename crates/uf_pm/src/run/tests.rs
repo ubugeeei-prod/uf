@@ -130,8 +130,14 @@ fn a_read_only_query_is_never_told_to_ignore_scripts() {
 fn an_operand_is_always_the_last_argument() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
-            let invocation = invocation_for(manager, operation, &operands(&["lodash"]), false)
-                .expect("a package name is passable");
+            let invocation = match invocation_for(manager, operation, &operands(&["lodash"]), false)
+            {
+                Ok(invocation) => invocation,
+                // The manager has no such command, which is what
+                // `search_is_unsupported_where_the_manager_has_none` asserts.
+                Err(ManagerRunError::Unsupported { .. }) => continue,
+                Err(error) => panic!("{manager} {operation:?}: {error}"),
+            };
             assert!(PROGRAMS.contains(&invocation.program));
             assert_eq!(
                 invocation.args.last().map(std::borrow::Cow::as_ref),

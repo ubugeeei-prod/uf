@@ -109,6 +109,59 @@ pub(crate) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
 /// The one command here that changes nothing, so it neither takes the
 /// `install_workspace` guard — there is no install to guard — nor rewrites
 /// `uf.lock`. Asking why a package is installed must not install anything.
+/// `uf ls`, `uf audit` and `uf search`: read the project, change nothing.
+///
+/// The same shape as [`why`] and for the same reason — the manager's own
+/// output is the answer, so uf says who it is about to ask and then gets out
+/// of the way. What differs is only which operation, and whether there are
+/// operands.
+///
+/// A manager with no such command is reported rather than substituted. uf
+/// could run npm's `search` for a bun project and it would even work; it would
+/// also be uf choosing a package manager the project did not, which is the one
+/// thing a manager-agnostic tool must not do. See
+/// [`uf_pm::ManagerRunError::Unsupported`].
+pub(crate) fn query(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    title: &str,
+    operation: Operation<'_>,
+    operands: &[String],
+) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let detection = detect_package_manager(&resolved.root);
+    let (manager, substituted) = installable(&detection);
+
+    let invocation = uf_pm::invocation_for(manager, operation, operands, true)?;
+    let project = project_label(&resolved.root).to_string();
+    let manager_label = manager.to_string();
+    let source = chosen_by(&detection.source, substituted);
+    let command = invocation.to_string();
+    let title = title.to_owned();
+    ui.render(|renderer, out| {
+        renderer.banner(out, &title, Some(&project));
+        renderer.blank(out);
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::new("manager", &manager_label),
+                KeyValue::toned("chosen by", &source, Tone::Muted),
+                KeyValue::toned("command", &command, Tone::Path),
+            ],
+        );
+        renderer.blank(out);
+    });
+
+    run_operation(&resolved.root, operation, operands, true).map_err(|error| {
+        failed_hint(
+            error,
+            &format!("{manager_label} reported a problem; its output is above"),
+        )
+    })?;
+    Ok(())
+}
+
 pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     let resolved = load_config(cwd)?;
     let detection = detect_package_manager(&resolved.root);
