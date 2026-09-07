@@ -444,9 +444,13 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "Picture",
                 "SkipLink",
                 "Time",
+                "VITALS_ENDPOINT",
+                "collectVitals",
                 "relative",
                 "useCookie",
                 "useHead",
+                "useVitals",
+                "vitalsBeacon",
             ],
         ),
         NativeModule::new(
