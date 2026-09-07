@@ -3,9 +3,11 @@
 
 mod deps;
 mod install;
+mod update;
 
-pub(crate) use deps::{add, query, remove, update, why};
+pub(crate) use deps::{add, query, remove, why};
 pub(crate) use install::install;
+pub(crate) use update::update;
 
 use std::fs;
 

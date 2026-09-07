@@ -108,9 +108,17 @@ pub(crate) fn quoted_list(patterns: &[String]) -> String {
 /// Render a count with the right plural, e.g. `1 file` / `3 files`.
 pub(crate) fn plural(count: usize, singular: &str) -> String {
     if count == 1 {
-        format!("{count} {singular}")
-    } else {
-        format!("{count} {singular}s")
+        return format!("{count} {singular}");
+    }
+    // `dependency` → `dependencies`. English has plenty of plurals this does
+    // not cover, and every word uf puts through here is one of the few hundred
+    // that only need these two rules — the alternative is a pluralisation
+    // library for a table header.
+    match singular.strip_suffix('y') {
+        Some(stem) if !stem.ends_with(['a', 'e', 'i', 'o', 'u']) => {
+            format!("{count} {stem}ies")
+        }
+        _ => format!("{count} {singular}s"),
     }
 }
 
