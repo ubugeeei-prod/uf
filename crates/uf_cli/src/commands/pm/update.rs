@@ -97,12 +97,15 @@ pub(crate) fn update(
         super::deps::update(cwd, ui, packages)?;
     }
 
-    // The same registry `uf.lock` records, through the same inference — so the
+    // The registry uf *reads* from, which since ubugeeei-prod/uf#540 is
+    // `pm.registry` and no longer the one `uf publish` pushes to — so the
     // versions this report is about are the versions `uf install` would resolve
-    // against. uf has one registry setting and it lives under `publish`, which
-    // is the wrong place for a value that is also read from; see
-    // ubugeeei-prod/uf#540.
-    let registry_url = uf_pm::PackageManagerPlan::infer_from_config(&resolved.config).registry;
+    // against even in a project that installs through a mirror. A scope bound
+    // in `pm.scopes` is asked of its own registry and of nothing else; see
+    // [`uf_pm::registry`].
+    let read = resolved.config.read_registry();
+    let deprecation = read.source.deprecation().map(str::to_owned);
+    let routing = registry::RegistryRouting::from_config(&resolved.config);
     let names: Vec<CompactString> = wanted
         .iter()
         .filter(|declaration| Range::parse(&declaration.range).is_some())
@@ -110,7 +113,7 @@ pub(crate) fn update(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let published = registry::packuments(&registry_url, &names);
+    let published = registry::packuments(&routing, &names);
 
     let mut rows = Vec::new();
     let mut changes: BTreeMap<Utf8PathBuf, Changes> = BTreeMap::new();
@@ -177,6 +180,7 @@ pub(crate) fn update(
         rows,
         undecidable,
         unreachable,
+        deprecation,
         asked_about: names.len(),
         manifests: declared
             .iter()
@@ -247,6 +251,8 @@ struct Report {
     undecidable: usize,
     /// One line per package the registry did not answer for.
     unreachable: Vec<String>,
+    /// The deprecation to print, when this project is relying on the old key.
+    deprecation: Option<String>,
     asked_about: usize,
     manifests: usize,
 }
@@ -393,8 +399,14 @@ fn render(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
     render_notes(renderer, out, report);
 }
 
-/// The two things that are true whether or not anything moved.
+/// The things that are true whether or not anything moved.
 fn render_notes(renderer: &uf_term::Renderer, out: &mut String, report: &Report) {
+    // Printed here rather than at the top: the project still got its answer,
+    // and the answer is what it came for. A deprecation is the sentence after
+    // it, not instead of it.
+    if let Some(deprecation) = &report.deprecation {
+        renderer.status(out, Status::Warn, deprecation);
+    }
     if report.undecidable > 0 {
         renderer.status(
             out,

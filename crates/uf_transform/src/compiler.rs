@@ -137,7 +137,12 @@ pub fn compile(
     }
 }
 
-fn plugin_options(
+/// The options uf drives the official compiler with, for every caller.
+///
+/// One function rather than one per entry point: `uf build` and the
+/// redundant-memoization question in [`crate::memo`] must ask the compiler the
+/// same thing, or the linter would report a memoization the build then keeps.
+pub(crate) fn plugin_options(
     source: &str,
     options: &TransformOptions,
 ) -> Result<PluginOptions, TransformError> {

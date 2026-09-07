@@ -40,6 +40,25 @@ pub fn is_assignment(tokens: &[Token], index: usize) -> bool {
     !inside_a_tag(tokens, index)
 }
 
+/// Whether the `{` at `index` is the value of a JSX attribute.
+///
+/// `value={…}` and `onClick={…}` put a brace after an `=` that
+/// [`is_assignment`] already refuses to call a write, for the same reason: the
+/// `=` belongs to a tag. What the *scope* stack needs from that answer is
+/// different — an attribute value is an expression the element evaluates
+/// exactly once where it stands, so it conditions nothing inside it, and
+/// counting it as a block reported a hook called in
+/// `value={useMemo(() => …, [x])}` as a conditional call.
+///
+/// The other `=` inside an unclosed `<…>` is the default of a type parameter,
+/// `<T = { a: number }>`. That is not code at all, so the same answer is the
+/// right one there.
+pub fn is_jsx_attribute_value(tokens: &[Token], index: usize) -> bool {
+    index
+        .checked_sub(1)
+        .is_some_and(|at| tokens[at].is_punct(b'=') && inside_a_tag(tokens, at))
+}
+
 /// Whether the token at `index` stands inside an unclosed `<…>`.
 ///
 /// Two things are written that way and neither is a write: a JSX attribute —
