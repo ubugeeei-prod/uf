@@ -18,8 +18,8 @@
 //   every mutation of a node.
 // * `internal/schedule.js` — when subscribers are told, as opposed to when
 //   values change. Batching lives here and knows nothing about cells.
-// * `internal/source.js` — cells that hold a value: the roots.
-// * `internal/derived.js` — cells that run a function: `computed` and
+// * `internal/source.js` — cells that hold a value: `state`, the roots.
+// * `internal/derived.js` — cells that run a function: `derived` and
 //   `effect`, which are the same machinery pointed at different ends.
 // * `internal/resource.js` — cells whose value arrives from a promise.
 //
@@ -36,6 +36,37 @@
 // nothing is watching, and glitch-free once something is — a diamond
 // dependency runs its join once per write, not once per path. Named exports
 // only, so a bundler can drop what an application does not reach.
+//
+// # Why `state` and `derived`, and why the package is still `cell`
+//
+// The two constructors were `cell` and `computed` until ubugeeei-prod/uf#521,
+// and each named the machine rather than the value. `cell` named the node the
+// call allocates, at the one place a reader is asking a different question —
+// does this hold a value, or follow from one? `computed` named something that
+// had already happened, for a value that is usually computed later and
+// sometimes never. `state` and `derived` are the two answers to that question,
+// so the pair now says what the split is: everything in the graph is one or
+// the other, and `effect` is the derived cell whose value nobody reads.
+//
+// The package keeps its name because `cell` is still exactly right for what it
+// is. `Cell<T>` is what both constructors return, `@uniflowed/loader` hands
+// cells across a package boundary, and reaching for this module at all means
+// stepping below `@uniflowed/state`'s atoms to work with the graph directly —
+// which is the moment "a node in a dependency graph" is the useful word.
+// `@uniflowed/state` could not have absorbed it in any case: five of its
+// exports — `read`, `write`, `subscribe`, `refresh`, `batch` — already mean
+// something else there, resolved against a store rather than against a value
+// the cell holds, and it depends on `@uniflowed/react`, which the reactive
+// core must not.
+//
+// There are no aliases for the old spellings, and that is a decision rather
+// than an oversight. Neither name has ever been importable: `@uniflowed/cell`
+// is not on npm — it waits in `tools/release/pending-packages.txt` — so an
+// alias would be a second name for one thing, kept for a population that is
+// empty by construction, and an alias promised for one release is an alias
+// still there three releases later. The first published version of this
+// package exports `state` and `derived` and nothing that used to be called
+// something else.
 
 import type {
   Cell,
@@ -67,15 +98,15 @@ export type {
 };
 
 export { batch } from "./internal/schedule.js";
-export { cell } from "./internal/source.js";
-export { computed, effect } from "./internal/derived.js";
+export { state } from "./internal/source.js";
+export { derived, effect } from "./internal/derived.js";
 export { refresh, resource, status } from "./internal/resource.js";
 export { untracked };
 
 /**
  * Read a cell.
  *
- * Called inside a `computed` or an `effect`, this is also what records the
+ * Called inside a `derived` or an `effect`, this is also what records the
  * dependency — there is no separate subscribe step, and no way to read a value
  * a derive depends on without depending on it, short of [`peek`].
  *
