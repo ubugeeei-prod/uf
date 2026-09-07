@@ -55,7 +55,17 @@ import {
   preambleCode,
   refreshRuntimeSource,
 } from "./internal/refresh.js";
-import { RSC_MANIFEST_ENV, clientRouteFilter, readRscManifest } from "./internal/rsc.js";
+import {
+  ACTION_HEADER,
+  RSC_MANIFEST_ENV,
+  actionReferenceSource,
+  actionsModuleSource,
+  clientRouteFilter,
+  readRscManifest,
+  rscManifestKey,
+  serverActionModules,
+  serverActionTable,
+} from "./internal/rsc.js";
 import {
   RESERVED,
   VIRTUAL,
@@ -188,6 +198,35 @@ function flowPlugin({ routerRoot, appEntry, command }) {
     return routesModuleSource(table, { shipsPage: (route) => kept.has(route) });
   };
 
+  /**
+   * The manifest's two action tables, re-read only when the file changes.
+   *
+   * `load` runs for every module in the graph and has to ask "is this a
+   * `"use server"` module?" about each one, so parsing the manifest per call
+   * would put a JSON parse of the whole graph between Vite and every file it
+   * opens. Size and modification time are the identity — the same pair
+   * `.uf/cache/transform` keys on — and `uf dev` drops the memo outright when
+   * its watcher sees the file change, so a rewrite inside one millisecond is
+   * still seen.
+   */
+  let actionMemo = null;
+  const forgetActions = () => {
+    actionMemo = null;
+  };
+  const actionTables = () => {
+    const file = process.env[RSC_MANIFEST_ENV];
+    const key = rscManifestKey(file);
+    if (actionMemo == null || actionMemo.key !== key) {
+      const manifest = readRscManifest(file);
+      actionMemo = {
+        key,
+        modules: serverActionModules(manifest, root),
+        table: serverActionTable(manifest, root),
+      };
+    }
+    return actionMemo;
+  };
+
   return {
     name: "uf:flow",
     enforce: "pre",
@@ -256,7 +295,36 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       }
       if (id === resolved(VIRTUAL.client)) return clientModuleSource(entryPath);
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
+      // Only `virtual:uf/server` imports this, so it is only ever asked for in
+      // the server environment — but the table it carries is every callable
+      // endpoint of the build, so it is worth saying that a browser asking for
+      // it gets nothing rather than getting the list.
+      if (id === resolved(VIRTUAL.actions)) {
+        if (!isSsr(this, loadOptions))
+          return "export const actions = [];\nexport default actions;\n";
+        return actionsModuleSource(actionTables().table);
+      }
       if (id.startsWith(STYLE_PREFIX)) return styles.get(id) ?? "";
+
+      // A `"use server"` module, in the browser's graph only: what the client
+      // gets is one `createServerReference` per callable export, and never the
+      // file. This is where the second half of the RSC split actually happens
+      // — the route filter above decides which *pages* the browser is given,
+      // and this decides that an action module's body, its imports and
+      // everything only they reached are not the browser's business at all.
+      //
+      // Substituting the source rather than rewriting it: a transform that
+      // stripped the body would have to be right about every way a module can
+      // name something, and being wrong once means shipping a database handle.
+      // The exports the reference module declares come from the manifest, so
+      // they are exactly the exports `uf_rsc` decided are callable endpoints
+      // and an import of anything else is a build error rather than a silent
+      // `undefined`. `crates/uf_rsc/src/graph/build.rs` colours these modules
+      // server for the same reason, so the analysis and the bundle agree.
+      if (!isSsr(this, loadOptions)) {
+        const references = actionTables().modules.get(cleanId(id));
+        if (references != null) return actionReferenceSource(references);
+      }
       return null;
     },
 
@@ -378,8 +446,15 @@ function flowPlugin({ routerRoot, appEntry, command }) {
         devServer.watcher.add(manifestPath);
         const onManifest = (file) => {
           if (path.resolve(file) !== manifestPath) return;
+          // The action tables are read from the same file and are memoised on
+          // its size and modification time, which is a pair two writes inside
+          // one millisecond can share. This is the answer that does not
+          // depend on a clock.
+          forgetActions();
           const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
           if (routes) devServer.moduleGraph.invalidateModule(routes);
+          const actions = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.actions));
+          if (actions) devServer.moduleGraph.invalidateModule(actions);
           devServer.ws.send({ type: "full-reload", path: "*" });
         };
         devServer.watcher.on("add", onManifest);
@@ -391,7 +466,14 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       // the renderer.
       return () => {
         devServer.middlewares.use(async (request, response, next) => {
-          if (!wantsDocument(request)) return next();
+          // Two kinds of request reach uf here, and the second one is why this
+          // is not `wantsDocument` alone: a server action is a `POST` carrying
+          // `uf-action`, which every gate below the renderer would refuse.
+          // `driver.js` claims every request and can afford to decide later;
+          // this middleware is mounted behind Vite's own and has to say up
+          // front which ones are uf's.
+          const document = wantsDocument(request);
+          if (!document && !isActionCall(request)) return next();
           try {
             const url = request.url ?? "/";
             const entry = await importServerEntry(devServer);
@@ -418,6 +500,19 @@ function flowPlugin({ routerRoot, appEntry, command }) {
                 return;
               }
 
+              // Then a server action, below the guard and above the handlers.
+              // It declines anything that carries no action id, so the two
+              // lines cost a document request one `headers.get`; and it never
+              // declines one that does, so an action call cannot reach a route
+              // handler that happens to share the URL it was posted to. The
+              // same two lines are in `driver.js`, in `fetch.js` for every
+              // deploy adapter, and in `standalone.js`.
+              const acted = await entry.callAction(asRequest);
+              if (acted != null) {
+                await send(response, acted);
+                return;
+              }
+
               // Then the route handlers, above the renderer and for the same
               // reason `driver.js` puts them there: a path that answers a
               // request is not a document, whatever the client said it would
@@ -435,6 +530,18 @@ function flowPlugin({ routerRoot, appEntry, command }) {
               const handled = await entry.dispatch(asRequest);
               if (handled != null) {
                 await send(response, handled);
+                return;
+              }
+
+              // A `POST` this middleware claimed because it named an action,
+              // that the endpoint then declined and no handler answered. It
+              // cannot happen — the endpoint answers every request carrying an
+              // id, including every refusal — and a page cannot answer a
+              // `POST` anyway, so the honest end is a 404 rather than a
+              // rendered document with a 200.
+              if (!document) {
+                response.statusCode = 404;
+                response.end();
                 return;
               }
 
@@ -505,6 +612,20 @@ async function importServerEntry(devServer) {
     return ssr.runner.import(VIRTUAL.server);
   }
   return devServer.ssrLoadModule(VIRTUAL.server);
+}
+
+/**
+ * Whether this request is a server action call.
+ *
+ * The header alone, and never the path: an action is posted to the page's own
+ * URL, so there is nothing about the URL to recognise. Deliberately *not* the
+ * whole set of checks the endpoint makes — the origin, the content type, the
+ * body — because those decide whether the call is *allowed*, and a call that
+ * is not allowed must be refused by the endpoint rather than handed on to
+ * Vite's chain as though nobody had claimed it.
+ */
+function isActionCall(request) {
+  return request.method === "POST" && request.headers[ACTION_HEADER] != null;
 }
 
 function wantsDocument(request) {
