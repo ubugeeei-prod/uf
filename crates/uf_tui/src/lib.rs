@@ -61,17 +61,18 @@ impl Default for TuiFrameworkContract {
             standard: TuiStandard::OpenTui,
             renderer: TuiRenderer::CellDiff,
             layout: TuiLayoutEngine::FlexboxCells,
-            input: TuiInputModel::KeyboardFocus,
+            input: TuiInputModel::KeyboardMouseFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
-            // Eight, not twenty-three. Every one of these is exercised by
+            // Nine, not twenty-three. Every one of these is exercised by
             // `tests/library/tui.test.js` against a rendered frame; the other
-            // fifteen variants of `TuiFeature` name parts of OpenTUI that uf
+            // fourteen variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
             features: smallvec::smallvec![
                 TuiFeature::Flexbox,
                 TuiFeature::CellDiff,
                 TuiFeature::Keyboard,
+                TuiFeature::Mouse,
                 TuiFeature::Focus,
                 TuiFeature::RichText,
                 TuiFeature::Scrollback,
@@ -149,12 +150,19 @@ pub enum TuiLayoutEngine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TuiInputModel {
-    /// Keyboard events, routed to one declaratively focused node.
+    /// Keyboard events to one declaratively focused node; mouse events to
+    /// whatever is under the pointer, bubbling to its parents.
     ///
-    /// Mouse reporting and text selection are OpenTUI's other two input
-    /// sources and are not implemented; they are ubugeeei-prod/uf#314. This
-    /// value used to say they were.
-    KeyboardFocus,
+    /// It said `keyboard-focus` until the mouse landed, and the two halves are
+    /// named separately because they are routed differently and a reader has
+    /// to know which: focus is a prop the application sets, and a hit target
+    /// is a fact about the frame that the renderer works out.
+    ///
+    /// Text selection is OpenTUI's third input source and is still not
+    /// implemented; it is ubugeeei-prod/uf#314. So is key *release*, which
+    /// needs the Kitty keyboard protocol — `KeyEvent.eventType` is always
+    /// `"press"`.
+    KeyboardMouseFocus,
 }
 
 /// How the framework reaches an application's code.
@@ -181,6 +189,13 @@ pub enum TuiFeature {
     /// Keyboard input.
     Keyboard,
     /// Mouse input.
+    ///
+    /// Press, release, motion, hover, drag with capture, drop and the wheel,
+    /// routed to the node under the pointer and bubbling to its parents. Two
+    /// things a reader might expect from the word are not behind it: there is
+    /// no `zIndex`, so "topmost" means "painted last"; and reporting is off
+    /// unless the application asks for it, because a terminal in mouse mode
+    /// stops offering its own click-and-drag selection.
     Mouse,
     /// Focus management.
     Focus,
@@ -188,10 +203,11 @@ pub enum TuiFeature {
     Selection,
     /// A window onto content taller than it, and a bar saying where.
     ///
-    /// `ScrollBox`. What is *not* behind this: a terminal's own scrollback
-    /// buffer, and the mouse wheel — there is no mouse input in the package
-    /// at all (ubugeeei-prod/uf#314), so an offset is a prop and scrolling is
-    /// something the application does with it.
+    /// `ScrollBox`. What is *not* behind this is a terminal's own scrollback
+    /// buffer. The wheel arrives — it is an `onMouseScroll` event like any
+    /// other mouse event — but the offset is still a prop, so scrolling
+    /// remains something the application does rather than something the
+    /// component does to itself.
     Scrollback,
     /// Key binding and command routing.
     Keymap,

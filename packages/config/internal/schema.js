@@ -26,6 +26,37 @@ export type TaskDefinition =
 export type CapabilityJsHost = "node" | "deno" | "bun";
 
 /**
+ * What the project's own code may reach.
+ *
+ * Absent from `uf.config.js` means no permission model: the toolchain starts
+ * its host the way it always has. Present means **deny by default** — the
+ * project's code gets what is listed and nothing else — and `permissions: {}`
+ * is a legitimate thing to write, meaning "nothing beyond what uf itself needs
+ * to load and transform the project". There is deliberately no way to spell
+ * "everything"; a project that wants everything does not declare a set.
+ *
+ * Every field is a list of literal strings, because `uf.config.js` is read as
+ * text and parsed as JSON5 rather than executed: a computed path or a
+ * `process.env` read here would not parse.
+ *
+ * The set is uf's, not a runtime's. Node.js enforces `read` and `write`, Deno
+ * enforces all five, and Bun has no permission model at all — a host that
+ * cannot enforce what is declared **refuses the run** rather than applying part
+ * of it. `docs/hosts.md` is the table.
+ *
+ * The declared paths are *added to* the ones uf needs to run the project, so
+ * what a set denies is the rest of the machine — `~/.ssh`, the network, the
+ * environment — and not the project's own files.
+ */
+export type Permissions = {
+  readonly read?: $ReadOnlyArray<string>,
+  readonly write?: $ReadOnlyArray<string>,
+  readonly net?: $ReadOnlyArray<string>,
+  readonly env?: $ReadOnlyArray<string>,
+  readonly run?: $ReadOnlyArray<string>,
+};
+
+/**
  * Percentages a coverage gate requires, as whole numbers between 0 and 100.
  *
  * A metric nobody names is not checked, which is not the same as requiring
@@ -161,8 +192,15 @@ export type UniflowedConfig = {
   readonly build?: {
     readonly entries?: $ReadOnlyArray<string>,
     readonly outDir?: string,
+    // Prerender every route and leave no server bundle behind. Read together
+    // with `app.rendering.modes`; see docs/app/reference/config.
     readonly staticBuild?: boolean,
     readonly sourcemap?: boolean,
+  },
+  // Which builder uf drives. Vite is the default, not a dependency: any module
+  // satisfying the contract in docs/architecture.md can be named here.
+  readonly builder?: {
+    readonly module?: string,
   },
   readonly dev?: {
     readonly host?: string,
@@ -216,6 +254,7 @@ export type UniflowedConfig = {
     >,
     readonly typescriptDeclarationsToFlow?: true,
   },
+  readonly permissions?: Permissions,
   readonly pm?: {
     readonly module?: "@uniflowed/pm",
     readonly resolver?: "uf-native",

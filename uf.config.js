@@ -182,18 +182,34 @@ export default defineConfig({
     // *which rules*, which only changes when somebody changes one.
     // ubugeeei-prod/uf#433.
     //
-    // Seven suppressions stand in the packages, each on the line, under the
-    // paragraph that argues it: `Node<any>` and `Cell<any>` where Flow has no
-    // existential and the types are invariant in their parameter, the event
-    // constructors that Flow's own libdef declares with writable init
-    // properties, `fireEvent`'s proxy (#401), `act`'s promise branch, the
-    // router's one cast, and `expect`'s matcher indexer (#402). Two have a fix
-    // somebody can go and do and are filed; the rest end in something Flow
-    // does not have. Two more suppressions stand outside that rule, and both
-    // are a rule being right in general: `Object.assign` onto a callable in
-    // `@uniflowed/test`, which an object spread cannot produce, and the theme
-    // bootstrap in the documentation layout, which has to be `__html` because
-    // React escapes a text child. Nine directives were added to reach zero, and
+    // Every suppression in the packages stands on its own line, names its rule,
+    // and sits under the paragraph that argues it. Grouped by rule, because the
+    // rule is what a reader can act on and a count is not — see the lesson
+    // below, and #433:
+    //
+    //   * `flow/unclear-type`, for the types Flow cannot say. `Node<any>`,
+    //     `Cell<any>`, `Binding<any, any>` and `Job<any>` where there is no
+    //     existential and the parameter is invariant; the event constructors
+    //     Flow's own libdef declares with writable init properties; `act`'s
+    //     promise branch; the router's one cast. One of them is not a type at
+    //     all: `expect.any`'s signature, which the rule reads as an `any`
+    //     because it scans source text and `readonly any:` is not a shape it
+    //     recognises as a property key.
+    //   * `flow/unsafe-getters-setters`, in two files, for the `signal` getter
+    //     `@uniflowed/query` puts on a request context so that *reading* it is
+    //     what opts a query into cancellation.
+    //   * `security/no-dangerously-set-inner-html`, three times, for the JSON
+    //     and theme payloads a render has to write as `__html` because React
+    //     escapes a text child.
+    //   * `fetch/no-global-override`, once, in the package whose entire job is
+    //     to intercept `fetch`.
+    //
+    // The two `flow/unclear-type` suppressions that had a fix somebody could go
+    // and do are gone rather than counted: `fireEvent`'s proxy (#401), and
+    // `expect`'s matcher indexer (#402), whose table now takes `mixed` the way
+    // most of it always did while the published `Matchers` keeps the narrow
+    // signature each name deserves. What is left ends in something Flow does
+    // not have, or in a rule being right in general.
     // `uniflowed/unknown-lint-suppression` keeps every suppression in the tree
     // naming a rule that exists.
     //

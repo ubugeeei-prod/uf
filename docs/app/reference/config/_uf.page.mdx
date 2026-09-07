@@ -33,6 +33,7 @@ which is the fastest way to answer "what is it actually using".
 | --- | --- |
 | `app` | The application: router, runtime, React, rendering, built-ins |
 | `build` | The production build: entries, output, budgets, source maps |
+| `builder` | Which builder uf drives. Vite by default |
 | `dev` | The dev server: host, port, file access, allowed hosts |
 | `docs` | The documentation build, if the project has one |
 | `site` | Where the built site is served from, and what `uf build` writes for a crawler |
@@ -40,6 +41,7 @@ which is the fastest way to answer "what is it actually using".
 | `fmt` | `uf fmt` |
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test` |
+| `permissions` | What the project's own code may reach. Absent means no limit |
 | `plugins` | Vite plugins, appended to uf's own |
 | `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
@@ -66,7 +68,48 @@ which is the fastest way to answer "what is it actually using".
 | `builtins.markdown.mdx.highlight.langs` | `[]` | Grammars beyond the ones a uf project uses |
 | `builtins.reactCompiler` | on | The official React Compiler |
 | `builtins.style` | — | The style engine |
+| `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
+| `rendering.cache.*` | all `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
 | `targets` | — | Runtime targets the build must satisfy |
+
+### rendering.modes
+
+An **allowlist**, not a request. It does not ask for a strategy; it says which
+ones this project is willing to deploy, and `uf build` picks between them per
+route: a route with no parameters is prerendered, a route with parameters is
+prerendered when its page exports `generateStaticParams`, and anything left
+over is rendered per request.
+
+That matters because the two answers are deployed to different places. A
+prerendered document is a file a CDN serves; a route rendered per request needs
+a process.
+
+| The list | What `uf build` does |
+| --- | --- |
+| contains `ssg` and `ssr` (the default) | Prerenders what it can; the rest are rendered by `uf start`, `uf preview` or a deploy adapter |
+| `["ssg"]` | Prerenders everything, and **fails**, naming the route, if anything can only be answered per request |
+| `["ssr"]` | Prerenders nothing. Every route is rendered per request |
+
+`ppr` and `isr` are **Planned**. Naming one alongside an implemented mode is
+allowed and selects nothing; a list that names *only* planned modes is refused
+while the config is read, because there is no build behind it.
+
+Three things can only be answered per request, and under `["ssg"]` each is an
+error naming the route: a page with parameters and no `generateStaticParams`, a
+`_uf.route.js` handler, and anything under a `_uf.middleware.js`.
+
+A page can also say so for itself:
+
+```js
+// app/now/_uf.page.js
+export const dynamic = "force-dynamic";
+```
+
+which is how a route with *no* parameters keeps out of the prerender —
+`generateStaticParams` cannot say it, because there are no parameters to
+generate. `"auto"` is the default. Next.js's `"force-static"` and `"error"` are
+constraints uf does not check yet, and a page that names one is refused rather
+than quietly rendered as `"auto"`.
 
 ## dev
 
@@ -92,12 +135,49 @@ your source tree; the reasoning is in
 | `entries` | `["app.js"]` | Entry modules |
 | `outDir` | `"dist"` | Output directory |
 | `sourcemap` | `true` | Emit source maps |
-| `staticBuild` | `false` | Declared, and read by nothing yet — the build emits a server bundle either way ([#385](https://github.com/ubugeeei-prod/uf/issues/385)) |
+| `staticBuild` | `false` | Prerender everything and emit no server bundle — see below |
 | `budgets` | unset | Size budgets that fail the build when exceeded |
 | `hooks` | `{}` | Commands to run around the build |
 
 Budgets are unset on purpose: failing a build nobody asked uf to police is worse
 than reporting the size and moving on.
+
+### build.staticBuild
+
+The same declaration as `rendering.modes: ["ssg"]`, made about the *artefact*
+rather than about the routes: this build prerenders every route, and what it
+leaves behind is documents.
+
+The server bundle is still built — the prerender renders through it — and then
+removed, so `.uf/build/server/` is empty when the build finishes. Two things
+follow:
+
+- `uf start` **refuses**, by name, rather than failing later on a missing file.
+  It is the one command that loads that bundle, and for a project deploying
+  documents there is no deployment that runs uf at all. Deploy the output
+  directory to any static host, or run `uf preview`, which serves it the way
+  one would.
+- a `_uf.route.js` or a `_uf.middleware.js` anywhere in the project is a build
+  error, which is the refusal
+  [#342](https://github.com/ubugeeei-prod/uf/issues/342) asked for: a guard
+  that can never run is a guard that looks enforced and is not.
+- a `"use server"` export the browser can reach is a build error too, and it is
+  the one that is not a route. The client bundle carries a server reference for
+  it — an id and a `fetch` — so the button is wired whether or not anything
+  answers; a deployment of documents is the case where nothing does. Keep the
+  module out of the client's reach, or drop `staticBuild`.
+
+`uf build --adapter <target>` and `uf build --compile` still work, and that is
+not an oversight. Each links the application again from source and reads none
+of the removed bundle, so each still produces a correct artefact — a static
+site inside a Worker, or inside one executable, is a deployment somebody wants.
+What `staticBuild` describes is what the *ordinary* build leaves behind. Those
+two builds are also the ones the server-action refusal does not apply to: what
+each writes can answer an endpoint, so there is no unanswered one to refuse.
+
+`staticBuild: true` alongside a `rendering.modes` that does not allow `ssg` is
+refused while the config is read. Neither declaration is wrong on its own and
+there is no behaviour that honours both.
 
 `uf build` also writes three files *beside* the output directory, in
 `.uf/build/meta/`: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
@@ -165,6 +245,49 @@ already set in the environment beats every file. Only a name starting with
 `VITE_` — or Vite's own `envPrefix`, if the project sets one — reaches browser
 code; everything else is the server's. [Environments](/guide/env) is the whole
 of it.
+
+## permissions
+
+Absent, and there is no limit — the toolchain uf has always been. Present, and
+it is **deny by default**: the project's code gets what this block lists and
+nothing else. `permissions: {}` is a legitimate thing to write and means
+"nothing beyond what uf itself needs".
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `read` | `[]` | Paths the project's code may read |
+| `write` | `[]` | Paths it may write |
+| `net` | `[]` | Hosts it may reach, optionally with a port |
+| `env` | `[]` | Environment variables it may read |
+| `run` | `[]` | Programs it may start |
+
+```js
+// @flow
+export default defineConfig({
+  permissions: {
+    read: ["./fixtures"],
+    write: ["./.uf"],
+  },
+});
+```
+
+The set is uf's, not a runtime's, and each host is handed as much of it as it
+can enforce — **or refuses the run**. Node.js enforces `read` and `write`; Deno
+enforces all five; Bun has no permission model, so a project that declares one
+and runs on Bun is stopped with a message naming the hosts that can.
+`uf explain test` prints which host is enforcing what.
+[`docs/hosts.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/hosts.md)
+is the whole table, including the two grants uf makes for itself on Node and why
+they cannot be scoped.
+
+Two things worth knowing before you write one:
+
+- **It does not narrow access to the project's own files.** A host has to read
+  the project to run it, so those reads are uf's and are added to yours. What
+  the set denies is the rest of the machine.
+- **A misspelled key is an error.** Every other block here ignores a key it does
+  not recognize; this one refuses, because a dropped `net` would leave a project
+  believing it had declared a permission nobody granted.
 
 ## fmt
 
@@ -288,6 +411,61 @@ A threshold that is not reached fails the run. They are checked whenever
 coverage was collected, so `enabled: false` plus `--coverage` still gates — the
 number CI fails on is the number a laptop fails on. A metric nobody names is not
 checked, which is not the same as requiring zero.
+
+## builder
+
+Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `module` | `"@uniflowed/vite"` | The module implementing the builder contract |
+
+```js
+export default defineConfig({
+  builder: { module: "./tools/my-builder" },
+});
+```
+
+Vite is the **default**, not a dependency. A package name is resolved by
+walking up `node_modules` the way a `import` is; a path starting with `.` or
+`/` is resolved from the project root and refused if it leaves it, which is how
+a builder is tried before it is published.
+
+A builder is a directory whose `package.json` declares one:
+
+```json
+{
+  "uf": {
+    "builder": {
+      "driver": "./driver.js",
+      "preload": { "bun": "@uniflowed/host/bun-preload" }
+    }
+  }
+}
+```
+
+`driver` is the module uf spawns on the project's Capability JS Host, and
+`preload` names what to `--preload` when that host is Bun, which is how a
+builder that transforms Flow installs its hooks on a runtime with no
+`module.register`. Both are optional; `./driver.js` is assumed when neither is
+declared, so a builder published before this key existed still runs.
+
+What uf hands that driver and what it expects back — the subcommands, the
+arguments and the one-JSON-event-per-line vocabulary — is the contract, and it
+is written out in
+[`docs/architecture.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md).
+`uf explain build` names the builder that will run and its version.
+
+Which *build* of a builder runs is the same key. uf pins the Vite that
+`@uniflowed/vite` depends on, and a project that needs another one names a
+module of its own — a directory that re-exports uf's driver beside the
+dependency it wants — rather than forking uf. `uf explain build` prints the
+version it resolved, so the pin is checkable without running a build.
+
+**Readiness.** The seam is Implemented and `@uniflowed/vite` is the only
+builder uf ships. A second production builder — Rolldown, rspack, esbuild — is
+**Planned** and is separate work; `crates/uf_cli/tests/fixtures/paper-builder`
+is a conformance fixture rather than a builder to use.
 
 ## vite
 

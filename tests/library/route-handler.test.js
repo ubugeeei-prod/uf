@@ -11,7 +11,9 @@
 import { describe, expect, it } from "@uniflowed/test";
 import { createDispatcher } from "@uniflowed/router/handler";
 import { beginRequest } from "@uniflowed/router/server";
-import { cookies, headers } from "@uniflowed/server";
+import { cookies, draftMode, headers } from "@uniflowed/server";
+import { manualClock, setClock } from "@uniflowed/core/clock";
+import { Temporal } from "@uniflowed/core/temporal";
 
 /** A table entry whose module is given inline. */
 const record = (path, module) => ({
@@ -362,5 +364,214 @@ describe("the request a handler is inside", () => {
     await expect(dispatch(get("/api/thing"))).rejects.toThrow(
       "dispatch() was called outside a request",
     );
+  });
+});
+
+/**
+ * Draft mode, end to end, through the one thing that can turn it on.
+ *
+ * The dispatcher is where a route handler runs, and a route handler is one of
+ * the two places `draftMode().enable()` is allowed — so this file is where the
+ * round trip can be asserted without a server, a port or a build. The other
+ * place is a server action, and `server-actions.test.js` drives that one.
+ *
+ * What the round trip is: a handler enables draft mode, the response carries a
+ * signed cookie, and a *later* request carrying that cookie is in draft mode.
+ * None of it worked before ubugeeei-prod/uf#282 — `enable()` set a field on an
+ * object that was discarded when the response was sent, so `isEnabled` was
+ * `false` in every request.
+ */
+describe("draft mode", () => {
+  /** A dispatcher for one handler at `/api/preview`. */
+  const preview = (handler) =>
+    hosted(createDispatcher({ handlers: [record("/api/preview", { GET: handler })] }));
+
+  /** The `__Host-uf.draft` cookie a response set, whole. */
+  const draftCookie = (response) =>
+    response.headers.getSetCookie().find((value) => value.startsWith("__Host-uf.draft=")) ?? null;
+
+  /** That cookie as a browser would send it back. */
+  const asRequestCookie = (response) => {
+    const set = draftCookie(response);
+    if (set == null) throw new Error("the response set no draft cookie");
+    return set.slice(0, set.indexOf(";"));
+  };
+
+  it("answers with a signed, host-only, HttpOnly cookie", async () => {
+    const response = await preview(() => {
+      draftMode().enable();
+      return new Response("previewing");
+    })(get("/api/preview"));
+
+    const cookie = draftCookie(response);
+    expect(cookie).not.toBe(null);
+    const set = cookie ?? "";
+    // Every attribute is load-bearing and each one has a row in
+    // `docs/security.md`: `__Host-` so a subdomain cannot plant one, `HttpOnly`
+    // so one XSS is not every draft, `SameSite=Lax` so the CMS's top-level
+    // link works and a cross-site `POST` does not, and `Max-Age` so the token
+    // expires at all.
+    expect(set.includes("Path=/")).toBe(true);
+    expect(set.includes("HttpOnly")).toBe(true);
+    expect(set.includes("SameSite=Lax")).toBe(true);
+    expect(set.includes("Secure")).toBe(true);
+    expect(set.includes("Max-Age=3600")).toBe(true);
+    // Signed, not a flag. A value anybody can type is a feature anybody can
+    // turn on for themselves, which is the thing this must not be.
+    const value = set.slice("__Host-uf.draft=".length, set.indexOf(";"));
+    const [expiry, signature] = value.split(".");
+    expect(Number(expiry) > 0).toBe(true);
+    expect((signature ?? "").length >= 43).toBe(true);
+  });
+
+  it("makes the next request's isEnabled true", async () => {
+    const enabled = await preview(() => {
+      draftMode().enable();
+      return new Response("previewing");
+    })(get("/api/preview"));
+
+    const seen = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
+      get("/api/preview", { headers: { cookie: asRequestCookie(enabled) } }),
+    );
+
+    expect(await seen.json()).toEqual({ draft: true });
+  });
+
+  it("carries the cookie on a redirect, which is what the CMS flow returns", async () => {
+    // `Response.redirect` has an immutable header guard, so appending to it
+    // throws and the cookie has to go onto a copy. A preview link that
+    // redirected without its cookie would be the whole feature failing on the
+    // one shape it is for.
+    const response = await preview(() => {
+      draftMode().enable();
+      return Response.redirect("http://localhost/drafts/1", 307);
+    })(get("/api/preview"));
+
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe("http://localhost/drafts/1");
+    expect(draftCookie(response)).not.toBe(null);
+  });
+
+  it("clears it on disable(), and the next request is out of draft mode", async () => {
+    const enabled = await preview(() => {
+      draftMode().enable();
+      return new Response("on");
+    })(get("/api/preview"));
+
+    const cleared = await preview(() => {
+      draftMode().disable();
+      return new Response("off");
+    })(get("/api/preview", { headers: { cookie: asRequestCookie(enabled) } }));
+
+    // A browser has to be told to drop the one it holds; answering with no
+    // `Set-Cookie` at all would leave draft mode on for the next hour.
+    expect((draftCookie(cleared) ?? "").includes("Max-Age=0")).toBe(true);
+
+    const seen = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
+      get("/api/preview", { headers: { cookie: asRequestCookie(cleared) } }),
+    );
+    expect(await seen.json()).toEqual({ draft: false });
+  });
+
+  it("does not set a cookie on a request that never asked", async () => {
+    const response = await preview(() => new Response("ordinary"))(get("/api/preview"));
+    expect(draftCookie(response)).toBe(null);
+  });
+
+  it("is not turned on by a forged cookie value", async () => {
+    const dispatch = preview(() => Response.json({ draft: draftMode().isEnabled }));
+
+    for (const forged of [
+      "1",
+      "true",
+      "9999999999999.",
+      "9999999999999.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      ".AAAA",
+      `${"9".repeat(64)}.AAAA`,
+    ]) {
+      const response = await dispatch(
+        get("/api/preview", { headers: { cookie: `__Host-uf.draft=${forged}` } }),
+      );
+      expect(await response.json()).toEqual({ draft: false });
+    }
+  });
+
+  it("is not turned on by a cookie whose expiry was edited", async () => {
+    const enabled = await preview(() => {
+      draftMode().enable();
+      return new Response("on");
+    })(get("/api/preview"));
+
+    // The expiry is in the clear, which is fine, and it is *inside* the
+    // signature, which is the property that matters: a holder cannot give
+    // themselves another century.
+    const value = asRequestCookie(enabled).slice("__Host-uf.draft=".length);
+    const stretched = `${String(Number(value.slice(0, value.indexOf("."))) + 31_536_000_000)}${value.slice(value.indexOf("."))}`;
+
+    const response = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
+      get("/api/preview", { headers: { cookie: `__Host-uf.draft=${stretched}` } }),
+    );
+    expect(await response.json()).toEqual({ draft: false });
+  });
+
+  it("refuses a secret too short to be a key, and names the variable", async () => {
+    // A word is not a key, and an application whose unpublished content is
+    // gated by one is an application whose unpublished content is not gated.
+    // Refusing at the moment a cookie is issued is what puts the failure where
+    // an operator is looking, rather than never.
+    const before = process.env.UF_DRAFT_SECRET;
+    process.env.UF_DRAFT_SECRET = "hunter2";
+    try {
+      await expect(
+        preview(() => {
+          draftMode().enable();
+          return new Response("on");
+        })(get("/api/preview")),
+      ).rejects.toThrow("UF_DRAFT_SECRET");
+
+      // And a request that arrives carrying a cookie is simply not in draft
+      // mode, rather than a 500: a misconfiguration must not become an outage
+      // for every visitor who still has one in their browser.
+      const response = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
+        get("/api/preview", { headers: { cookie: "__Host-uf.draft=9999999999999.AAAA" } }),
+      );
+      expect(await response.json()).toEqual({ draft: false });
+    } finally {
+      if (before == null) {
+        delete process.env.UF_DRAFT_SECRET;
+      } else {
+        process.env.UF_DRAFT_SECRET = before;
+      }
+    }
+  });
+
+  it("stops being accepted once its hour is up", async () => {
+    // uf's clock rather than the machine's, which is what makes this a test
+    // rather than an hour. The expiry is enforced by uf and not only by the
+    // browser's `Max-Age`, because a client decides whether it sends a cookie
+    // and does not decide whether uf accepts one.
+    const clock = manualClock(Temporal.Instant.from("2026-01-02T03:04:05Z").epochMilliseconds);
+    const restore = setClock(clock.clock);
+    try {
+      const enabled = await preview(() => {
+        draftMode().enable();
+        return new Response("on");
+      })(get("/api/preview"));
+      const cookie = asRequestCookie(enabled);
+
+      const inside = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
+        get("/api/preview", { headers: { cookie } }),
+      );
+      expect(await inside.json()).toEqual({ draft: true });
+
+      clock.advance(3601 * 1000);
+
+      const after = await preview(() => Response.json({ draft: draftMode().isEnabled }))(
+        get("/api/preview", { headers: { cookie } }),
+      );
+      expect(await after.json()).toEqual({ draft: false });
+    } finally {
+      restore();
+    }
   });
 });

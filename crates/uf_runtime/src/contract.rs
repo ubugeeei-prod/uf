@@ -28,7 +28,15 @@ pub struct RuntimeContract {
     pub io: NativeIoModel,
     /// Capabilities the app may rely on.
     pub capabilities: CapabilityList,
-    /// Hosts that satisfy this contract.
+    /// Hosts this contract is written for.
+    ///
+    /// Targets, not a report. `wintertc_hermes_native` naming seven hosts for a
+    /// runtime nobody has written makes that plain, and the default's three
+    /// were being read the other way — as a claim that a uf project runs on
+    /// each of them, which for Deno was never true.
+    /// [`crate::HostSupport`] is the report: one row per host, graded, each
+    /// naming the test that starts it. Every host listed here has a row there,
+    /// and `crate::tests` fails if one does not.
     pub hosts: HostList,
 }
 
@@ -69,7 +77,11 @@ impl Default for RuntimeContract {
 }
 
 impl RuntimeContract {
-    /// Whether a host satisfies the contract.
+    /// Whether this contract is written for a host.
+    ///
+    /// Not whether it works there today — see [`crate::HostSupport::level`] for
+    /// that, and see the field's own note for why the two are different
+    /// questions.
     pub fn supports_host(&self, host: RuntimeHost) -> bool {
         self.hosts.contains(&host)
     }
