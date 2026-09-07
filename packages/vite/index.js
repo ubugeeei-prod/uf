@@ -492,6 +492,25 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       // claims every request, runs the guard, the action endpoint and the
       // dispatcher for every method, and hands back to Vite's chain what none
       // of them answered.
+      //
+      // # What is still not `createFetchHandler`
+      //
+      // One middleware rather than two, and still not the function every
+      // deployment runs. It cannot be: `transformIndexHtml` takes a whole
+      // document, so the render has to be collected here rather than streamed
+      // (ubugeeei-prod/uf#374), and a request nothing claimed has to go back
+      // to Vite's chain rather than become a 404 — neither of which a handler
+      // that always answers with a `Response` can do.
+      //
+      // What that still costs, written down so the next reader does not have
+      // to find it: `createFetchHandler` renders inside a cache scope even
+      // with no cache configured, so a component calling `cacheLife` states a
+      // lifetime nobody honours; here there is no scope, so the same component
+      // throws under `uf dev` and renders under `uf start`. Closing that means
+      // the generated server entry handing the host a scope the way it already
+      // hands it `beginRequest` — see `serverModuleSource` in
+      // `./internal/routes.js` — and it is the next thing to remove from this
+      // list rather than something this middleware can decide on its own.
       return () => {
         // The browser's own reporting channel, mounted above the application
         // so that a report never reaches a project's `_uf.middleware.js` or

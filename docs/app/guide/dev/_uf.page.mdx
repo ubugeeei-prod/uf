@@ -59,8 +59,9 @@ lead to your terminal:
 - `/__uf/vitals` — where `vitalsBeacon()` posts by default, so the five numbers
   a page is judged on turn up beside the reload that caused them. See
   [Web vitals](/guide/vitals).
-- `/__uf/diagnostic` — where `reportDiagnostic()` from `@uniflowed/hmr` posts,
-  for a diagnostic only the browser can produce.
+- `/__uf/diagnostic` — where a diagnostic only the browser can produce is
+  posted. A hydration mismatch is the one that does it today, and *When
+  hydration fails* below is what it says.
 
 Both print with the severity, the page they came from and a code frame when
 there is a position to draw one around, which is the point of them: every other
@@ -98,11 +99,13 @@ Decide the value once, above the tree, and pass it down, so both renders read
 the same number instead of each working one out.
 ```
 
-The same text goes to the console, so a headless run sees it too. Three causes
-are named where the difference gives them away — a value that moves, a reading
-only a browser can make, and markup that cannot nest — and anything else is
-reported as unknown rather than guessed at, because a wrong diagnosis costs more
-than none.
+The same text goes to three places: the overlay, the console — so a headless
+run sees it too — and the terminal you started `uf dev` in, through
+`/__uf/diagnostic` above. One formatter writes all three, so they cannot drift
+into describing the same failure differently. Three causes are named where the
+difference gives them away — a value that moves, a reading only a browser can
+make, and markup that cannot nest — and anything else is reported as unknown
+rather than guessed at, because a wrong diagnosis costs more than none.
 
 It is a development tool and it is not in your bundle. The overlay is imported
 dynamically behind `import.meta.hot`, so a production build has no path to the

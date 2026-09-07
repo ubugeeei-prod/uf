@@ -23,7 +23,3 @@ export {
   nativeChannel,
   parseUpdate,
 } from "./internal/client.js";
-
-export type { BrowserDiagnostic, DiagnosticSeverity } from "./internal/diagnostics.js";
-
-export { DIAGNOSTIC_ENDPOINT, reportDiagnostic } from "./internal/diagnostics.js";

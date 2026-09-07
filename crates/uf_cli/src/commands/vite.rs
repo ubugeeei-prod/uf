@@ -678,7 +678,13 @@ pub(crate) fn render_diagnostic(ui: &mut Ui, root: &Utf8Path, diagnostic: &Brows
             _ => renderer.status(out, status, &diagnostic.message),
         }
         if let Some(origin) = &diagnostic.origin {
-            renderer.key_values(out, 2, &[KeyValue::toned("at", origin, Tone::Muted)]);
+            // `page` rather than `at`, which is what every other uf diagnostic
+            // uses for a location: what follows is the URL the browser was on
+            // and not the place the problem is, and the hydration report's own
+            // detail already has an `at` naming the DOM node. Two `at` lines in
+            // one report pointing at two different things is worse than one
+            // word that is not the house word.
+            renderer.key_values(out, 2, &[KeyValue::toned("page", origin, Tone::Muted)]);
         }
         for line in &diagnostic.detail {
             out.push_str("  ");

@@ -15,9 +15,9 @@
 // feature. Two things report on it today:
 //
 //   * `POST /__uf/diagnostic` — a diagnostic a browser-side runtime produced
-//     and wants a person to read. `@uniflowed/hmr`'s `reportDiagnostic` is the
-//     client half; the hydration-mismatch report in `@uniflowed/router` is the
-//     first caller.
+//     and wants a person to read. `@uniflowed/router`'s `internal/diagnostics.js`
+//     is the client half, and the hydration-mismatch report beside it is what
+//     calls it.
 //   * `POST /__uf/vitals`     — the five numbers `@uniflowed/web/vitals`
 //     measures, posted by `vitalsBeacon()`. In production a project points the
 //     beacon at an endpoint of its own; in development there was nothing at
@@ -51,12 +51,12 @@
 // # Why the paths are written out here
 //
 // `VITALS_ENDPOINT` in `@uniflowed/web/vitals` and `DIAGNOSTIC_ENDPOINT` in
-// `@uniflowed/hmr` are the same two strings, and they are the contract. They
-// cannot be *imported* here: this module is loaded by Vite before any Flow
-// transform exists, and both of those are Flow. So they are written out, and
-// `tests/library/dev-channel.test.js` asserts that all four spellings agree —
-// a duplicated constant with a test on it is honest, and one without is how
-// the browser ends up posting to a path nothing serves.
+// `@uniflowed/router`'s `internal/diagnostics.js` are the same two strings, and
+// they are the contract. They cannot be *imported* here: this module is loaded
+// by Vite before any Flow transform exists, and both of those are Flow. So they
+// are written out, and `tests/library/dev-channel.test.js` asserts that all
+// four spellings agree — a duplicated constant with a test on it is honest, and
+// one without is how the browser ends up posting to a path nothing serves.
 //
 // # Why `/__uf/`
 //
@@ -65,7 +65,7 @@
 // path a project wrote. That is what makes it safe as a default destination
 // and available to the dev server.
 
-/** Where `@uniflowed/hmr`'s `reportDiagnostic` posts. */
+/** Where `@uniflowed/router`'s `reportDiagnostic` posts. */
 export const DIAGNOSTIC_ENDPOINT = "/__uf/diagnostic";
 
 /** Where `@uniflowed/web/vitals`'s `vitalsBeacon()` posts by default. */

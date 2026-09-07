@@ -3,10 +3,11 @@
 // The channel a browser reports on, and what `uf dev` does with what arrives.
 //
 // Two endpoints under `/__uf/`, one channel out: a diagnostic a browser-side
-// runtime produced (`@uniflowed/hmr`'s `reportDiagnostic`) and the five numbers
-// `@uniflowed/web/vitals` measures both become the same `diagnostic` event on
-// the driver's control channel, and the Rust side renders both the way it
-// renders a type error. See ubugeeei-prod/uf#557 and #583.
+// runtime produced (`@uniflowed/router`'s hydration report, through its
+// `reportDiagnostic`) and the five numbers `@uniflowed/web/vitals` measures
+// both become the same `diagnostic` event on the driver's control channel, and
+// the Rust side renders both the way it renders a type error. See
+// ubugeeei-prod/uf#557 and #583.
 //
 // Everything here runs without a socket, which is the point of testing it here
 // rather than only through `crates/uf_cli/tests/vite.rs`: the middleware is a
@@ -18,8 +19,17 @@
 // `dev_answers_the_fixture_the_way_a_build_does` in `vite.rs`.
 
 import { describe, expect, it } from "@uniflowed/test";
-import { DIAGNOSTIC_ENDPOINT, reportDiagnostic } from "@uniflowed/hmr";
 import { VITALS_ENDPOINT } from "@uniflowed/web";
+
+// The router's own, and not a package export: `internal/` is where the half of
+// `@uniflowed/router` that only exists under `uf dev` lives, and this is that
+// half's way out to the terminal. Its one caller — the hydration report — is
+// tested against it in `hydration.test.js`, which has a document to hydrate
+// into; what is tested here is the poster and the endpoint it agrees on.
+import {
+  DIAGNOSTIC_ENDPOINT,
+  reportDiagnostic,
+} from "../../packages/router/internal/diagnostics.js";
 
 // Not a package export, deliberately, for the reason `serve.test.js` gives
 // about `internal/serve.js`: this is the dev server's own wiring rather than an
@@ -111,12 +121,14 @@ async function ask(
 }
 
 describe("the endpoints the browser posts to", () => {
-  // The two constants are written out in three packages — the client half in
-  // `@uniflowed/hmr` and `@uniflowed/web`, the server half in
+  // The two constants are written out in three packages — the client halves in
+  // `@uniflowed/router` and `@uniflowed/web`, the server half in
   // `@uniflowed/vite` — because the server half is loaded by Vite before any
-  // Flow transform exists and cannot import either of the others. A duplicated
-  // constant with a test on it is honest; one without is how a browser ends up
-  // posting to a path nothing serves.
+  // Flow transform exists and cannot import either of the others, and because
+  // `tools/ci/publishable.sh` will not let a published package reach for an
+  // unpublished one to share them. A duplicated constant with a test on it is
+  // honest; one without is how a browser ends up posting to a path nothing
+  // serves.
   it("are the same strings on both halves", () => {
     expect(SERVED_DIAGNOSTIC_ENDPOINT).toBe(DIAGNOSTIC_ENDPOINT);
     expect(SERVED_VITALS_ENDPOINT).toBe(VITALS_ENDPOINT);

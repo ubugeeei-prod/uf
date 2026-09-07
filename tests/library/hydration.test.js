@@ -22,10 +22,11 @@
 
 import { createRequire } from "node:module";
 
-import { describe, expect, it } from "@uniflowed/test";
+import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { act, render } from "@uniflowed/react-testing";
 
 import { bodyOf, elementIn } from "./dom.js";
+import { DIAGNOSTIC_ENDPOINT } from "../../packages/router/internal/diagnostics.js";
 import {
   SERVER_MARKUP_LIMIT,
   captureServerMarkup,
@@ -66,8 +67,32 @@ function trees(serverMarkup: string, clientMarkup: string) {
   const container = document.createElement("div");
   container.innerHTML = clientMarkup;
   bodyOf().appendChild(container);
+  appended.push(container);
   return { document, container, serverMarkup };
 }
+
+/**
+ * Everything this file has put in the document, so it can take it out again.
+ *
+ * The document belongs to the process, not to the file: `uf test` runs several
+ * files in one worker and they share the DOM this suite installs. A container
+ * left behind here is a `<main>` or an `<img>` in the next file's document, and
+ * a `getByRole` there finds two of something and fails on a page it never
+ * rendered — which is what happened to `web.test.js` when this file grew and
+ * the scheduler moved the two into the same worker.
+ */
+const appended: Array<Element> = [];
+
+afterEach(() => {
+  while (appended.length > 0) {
+    appended.pop()?.remove();
+  }
+  // The panel too: `showHydrationReport` mounts it on the body rather than in a
+  // container, so it outlives everything above.
+  for (const host of Array.from(bodyOf().querySelectorAll("#uf-hydration-overlay"))) {
+    host.remove();
+  }
+});
 
 function reportFor(serverMarkup: string, clientMarkup: string, message: string = MISMATCH) {
   const built = trees(serverMarkup, clientMarkup);
@@ -440,6 +465,112 @@ describe("a real hydration, failing", () => {
     container.remove();
   });
 });
+
+describe("reaching the terminal", () => {
+  /**
+   * The half of the report that is not in the browser.
+   *
+   * A hydration mismatch used to exist in a panel and in the console, and
+   * nowhere else. Both are in a window that may not be in front, read by
+   * somebody who knows to look — while every other uf diagnostic arrives in the
+   * terminal the developer already has open. `uf dev` serves
+   * `DIAGNOSTIC_ENDPOINT` and renders what arrives with the severity, the page
+   * and the same words; this is the call that gets it there. See
+   * ubugeeei-prod/uf#583.
+   *
+   * The headline and the detail are asserted together with the overlay's text,
+   * because the point is that they are the *same* report: one formatter, three
+   * destinations, and no chance of the terminal and the panel disagreeing about
+   * what differed.
+   */
+  it("posts the report the panel shows to the dev server", () => {
+    render(<div />);
+    const document = globalThis.document;
+    const container = document.createElement("div");
+    container.innerHTML = "<p>4 items</p>";
+    bodyOf().appendChild(container);
+    appended.push(container);
+
+    const posted: Array<{ readonly target: string, readonly body: mixed }> = [];
+    const restore = stubFetch((target, init) => {
+      posted.push({ target, body: init.body });
+      return Promise.resolve(null);
+    });
+    try {
+      const handler = hydrationErrorHandler(container, "<p>3 items</p>", document);
+      handler(new Error(MISMATCH), {
+        componentStack: "\n    at Article (http://localhost/src/Article.js:12:3)\n    at App",
+      });
+    } finally {
+      restore();
+    }
+
+    const shown = elementIn(bodyOf(), "#uf-hydration-overlay").shadowRoot?.textContent ?? "";
+
+    expect(posted.length).toBe(1);
+    expect(posted[0].target).toBe(DIAGNOSTIC_ENDPOINT);
+    const sent = JSON.parse(String(posted[0].body));
+    // Loud, because a mismatch is wrong rather than merely worth knowing.
+    expect(sent.severity).toBe("error");
+    expect(sent.message).toBe("Hydration mismatch in <Article>");
+    // No file and no line: a mismatch is a fact about a DOM node, and a code
+    // frame drawn around an invented position would send the reader to a line
+    // that is not the answer.
+    expect(sent.file).toBe(undefined);
+    expect(sent.line).toBe(undefined);
+    const detail = sent.detail.join("\n");
+    for (const fact of ["3 items", "4 items", "different every time it is read"]) {
+      expect(detail).toContain(fact);
+      expect(shown).toContain(fact);
+    }
+  });
+
+  /**
+   * A production page has no `/__uf/` anything, and a browser that is not
+   * running under `uf dev` is the ordinary case for this module's one caller
+   * being wrong about its gate. Losing the report is the right outcome; turning
+   * it into an unhandled rejection in somebody's error reporter is not.
+   */
+  it("does not fail the page when nothing answers", () => {
+    render(<div />);
+    const document = globalThis.document;
+    const container = document.createElement("div");
+    container.innerHTML = "<p>b</p>";
+    bodyOf().appendChild(container);
+    appended.push(container);
+
+    const restore = stubFetch(() => Promise.reject(new Error("404")));
+    try {
+      const handler = hydrationErrorHandler(container, "<p>a</p>", document);
+      expect(() => {
+        handler(new Error(MISMATCH), { componentStack: "\n    at App" });
+      }).not.toThrow();
+    } finally {
+      restore();
+    }
+  });
+});
+
+/**
+ * Put `fetch` on the window the reporter reads, and give back the undo.
+ *
+ * `Object.defineProperty` and the previous descriptor rather than assignment
+ * and `delete`: the DOM this suite installs may define `fetch` on its window as
+ * an accessor or not define it at all, and both have to be put back exactly as
+ * they were or the next file in the run inherits this one's stub.
+ */
+function stubFetch(post: (target: string, init: { readonly body: mixed, ... }) => Promise<mixed>) {
+  const target: $FlowFixMe = globalThis.window ?? globalThis;
+  const previous = Object.getOwnPropertyDescriptor(target, "fetch");
+  Object.defineProperty(target, "fetch", { value: post, configurable: true, writable: true });
+  return () => {
+    if (previous == null) {
+      delete target.fetch;
+    } else {
+      Object.defineProperty(target, "fetch", previous);
+    }
+  };
+}
 
 describe("the overlay", () => {
   /**

@@ -60,7 +60,8 @@ function argument(name) {
 function argumentAll(name) {
   const values = [];
   for (let at = 0; at < process.argv.length; at += 1) {
-    if (process.argv[at] === name && process.argv[at + 1] != null) values.push(process.argv[at + 1]);
+    if (process.argv[at] === name && process.argv[at + 1] != null)
+      values.push(process.argv[at + 1]);
   }
   return values;
 }

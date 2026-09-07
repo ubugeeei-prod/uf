@@ -1,50 +1,57 @@
 // @flow
 //
-// `@uniflowed/hmr` — the way a diagnostic the browser produced reaches the
-// terminal.
+// Internal to `@uniflowed/router`: the way a diagnostic the browser produced
+// reaches the terminal.
 //
 // Every other uf diagnostic — a type error, a lint finding, a failing test, a
 // page that rendered its error boundary — arrives in the terminal the
 // developer already has open. One produced *in the browser* had nowhere to go:
 // the page is the only process that knows about it, and `uf dev`'s diagnostics
-// come up the driver's event channel from the Node process. So a browser-only
-// one had to be noticed, in a window that may not be in front, by somebody who
-// did not know to look. See ubugeeei-prod/uf#583.
+// come up the driver's event channel from the Node process. So the hydration
+// report added in ubugeeei-prod/uf#582 lived in a browser overlay and in the
+// console, which has to be noticed, in a window that may not be in front, by
+// somebody who does not know to look. See ubugeeei-prod/uf#583.
 //
 // This is the client half. The server half is `uf dev`, through
 // `@uniflowed/vite`'s `internal/diagnostics.js`, which turns what arrives into
-// the same `error`/`warning` rendering the terminal gives everything else.
+// the same rendering the terminal gives everything else: a severity, the page
+// it came from, and a code frame when there is a position to draw one around.
 //
-// # One channel
+// # One channel, and why the poster is not shared
 //
-// Deliberately one, rather than one per feature. `@uniflowed/web/vitals` posts
-// the five numbers it measures to `/__uf/vitals`, and the same dev-server code
-// turns those into the same kind of diagnostic — one contract, one endpoint to
-// serve, one place that decides how a browser's report reads in a terminal.
+// `/__uf/diagnostic` and `/__uf/vitals` are one channel: two paths, one payload
+// shape, one `diagnostic` event out of the driver, one renderer. What is *not*
+// shared is the twenty lines that post to it. `@uniflowed/web/vitals` has its
+// own `vitalsBeacon`, and this is the router's.
 //
-// The first caller of *this* endpoint is the hydration-mismatch report in
-// `@uniflowed/router`, which is ubugeeei-prod/uf#582 and is not merged yet.
-// That is why this exists before it has a caller in the tree: the report is a
-// browser diagnostic, and the whole of #583 is that a browser diagnostic
-// should not arrive by a route of its own.
+// `@uniflowed/hmr` would have been the tidier home — it is already "the browser
+// half of `uf dev`" — and it cannot be one. `tools/ci/publishable.sh` refuses a
+// published package that depends on an unpublished one, because the tarball
+// would name a version the registry does not have; `@uniflowed/router` is on
+// npm and `@uniflowed/hmr` is a declaration package that is not. What the two
+// posters do share is the contract, and `tests/library/dev-channel.test.js`
+// asserts that every spelling of these paths agrees — a duplicated constant
+// with a test on it is honest, and one without is how a browser ends up
+// posting to a path nothing serves.
 //
 // # It is development only, and it is best effort
 //
 // `uf dev` serves this path and nothing else does: a built application has no
 // `/__uf/` anything, so a call in production posts to a path that answers 404
-// and the rejected promise is swallowed here. That is the intended behaviour
-// rather than a hazard — but a caller should still gate on `import.meta.hot`,
-// so that a production bundle has no path to this module rather than merely no
-// answer from it.
+// and the rejected promise is swallowed here. That is a fallback rather than a
+// design — the only caller is behind `import.meta.hot` in `../client.js`, so a
+// production bundle has no path to this module rather than merely no answer
+// from it.
 //
-// Nothing here opens a connection until it is called, importing it does
-// nothing at all, and what it sends goes to the page's own origin. There is no
-// destination to configure, no third party, and nothing leaves the machine.
+// Nothing here opens a connection until it is called, importing it does nothing
+// at all, and what it sends goes to the page's own origin as a path rather than
+// a URL, so it cannot be pointed at somebody else's server. Nothing leaves the
+// machine.
 
 /**
  * The path `uf dev` serves the diagnostic channel on.
  *
- * Under `/__uf/`, beside the update stream this package's client opens and the
+ * Under `/__uf/`, beside the update stream `@uniflowed/hmr` opens and the
  * vitals endpoint `@uniflowed/web/vitals` posts to, for the reason that prefix
  * exists: a directory in `app/` whose name begins with `_` is not a route, so
  * no application can put anything here and nothing here can shadow a path a
@@ -58,8 +65,8 @@ export const DIAGNOSTIC_ENDPOINT: string = "/__uf/diagnostic";
  * `error` for something that is wrong, `warn` for something that is worth
  * knowing, `info` for something that is only a measurement. Three rather than
  * two because the vitals report on the same channel needs the third: a page
- * whose numbers are all good has still reported, and printing that as a
- * warning would teach the reader to ignore the warnings.
+ * whose numbers are all good has still reported, and printing that as a warning
+ * would teach the reader to ignore the warnings.
  */
 export type DiagnosticSeverity = "error" | "warn" | "info";
 
@@ -75,11 +82,11 @@ export type DiagnosticSeverity = "error" | "warn" | "info";
  * caller does not: a diagnostic that does not say which page produced it is a
  * diagnostic somebody has to reproduce before they can act on it.
  *
- * `file`, `line` and `column` are for the rare browser-side report that knows
- * a source position. When all three are present `uf dev` draws its ordinary
- * code frame; when they are not it prints the headline and the detail, which
- * is what a hydration mismatch — a fact about a DOM node rather than a line —
- * can honestly offer.
+ * `file`, `line` and `column` are for the rare browser-side report that knows a
+ * source position. When the file and the line are both there `uf dev` draws its
+ * ordinary code frame; when they are not it prints the headline and the detail,
+ * which is what a hydration mismatch — a fact about a DOM node rather than
+ * about a line — can honestly offer.
  */
 export type BrowserDiagnostic = {
   readonly severity: DiagnosticSeverity,
@@ -98,7 +105,7 @@ type ReportingWindow = {
   ...
 };
 
-/** For a call made where there is no browser to report from. */
+/** For a promise whose outcome is deliberately not looked at. */
 function noop(): void {}
 
 /**
@@ -149,8 +156,8 @@ export function reportDiagnostic(diagnostic: BrowserDiagnostic, endpoint?: strin
 /**
  * The window to report from, or `null` where there is no browser.
  *
- * The same reading `@uniflowed/web/vitals` makes, and for the same reason: in
- * a browser `globalThis` *is* the window, but not where a document has been
+ * The same reading `@uniflowed/web/vitals` makes, and for the same reason: in a
+ * browser `globalThis` *is* the window, but not where a document has been
  * installed onto another host's global, which is every uf test process. Asking
  * for the document first is what makes both cases work.
  */

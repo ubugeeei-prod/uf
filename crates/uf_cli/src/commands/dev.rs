@@ -129,6 +129,11 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     // re-evaluated. The banner is not printed again — the project, the host and
     // the transform have not changed — but the `listening` event that follows
     // prints the URLs, which is the thing a reader wants to see is still true.
+    // What that costs is the banner's `env files` row: creating a `.env.local`
+    // under a running server restarts it and leaves the row above naming the
+    // files read at start-up. The line the restart prints names the file that
+    // moved, which is the thing that changed; reprinting the whole banner for
+    // it would say four things nobody asked about to correct one.
     loop {
         let watched = env_files::candidate_files(&root, &resolved.config, env.mode())?;
         let mut driver = Driver::spawn(
