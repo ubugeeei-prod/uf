@@ -461,7 +461,7 @@ still a different token sequence and still fails.
 
 The default app preset is Flow-first React. New app templates use Flow component
 syntax, `app.js`, file-system routes, server actions, StyleX,
-query/effect APIs, Relay, `cell`, headless UI, hooks, and React
+query/effect APIs, Relay, `@uniflowed/cell`, headless UI, hooks, and React
 Native-compatible entry files.
 
 Server Components are the default. Client Components must opt in with

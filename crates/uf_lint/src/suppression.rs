@@ -179,7 +179,8 @@ mod tests {
             path: "app/index.js".to_string(),
             source: source.to_string(),
         };
-        let scan = FileScan::new(&file);
+        let masked = crate::scan::mask_inline_comments(&file.source);
+        let scan = FileScan::new(&file, &masked);
         let (suppressions, bad) = collect(&scan);
         (suppressions, bad)
     }

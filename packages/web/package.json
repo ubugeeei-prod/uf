@@ -22,6 +22,8 @@
     "*.js"
   ],
   "dependencies": {
+    "@uniflowed/core": "0.0.0-alpha.12",
+    "@uniflowed/hooks": "0.0.0-alpha.12",
     "@uniflowed/react": "0.0.0-alpha.12"
   }
 }

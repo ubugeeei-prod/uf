@@ -16,10 +16,17 @@
 // * React, through `useSyncExternalStore`.
 //
 // There is no second dependency graph here. A derived atom is instantiated
-// into a `computed` cell whose read is bound to a store, and every question
+// into a `derived` cell whose read is bound to a store, and every question
 // about *when* it recomputes is answered one layer down. Two implementations
 // of dependency tracking in one product is one too many, and the one that
 // would rot is the copy.
+//
+// The vocabularies are close enough to be worth telling apart. One layer down,
+// `state` and `derived` build cells that hold their own values; here, `atom`
+// and `selector` build *definitions* that have a different value in every
+// store. That is also why `read`, `write` and `subscribe` are spelled the same
+// in both packages and take different arguments: an atom needs a store to be
+// resolved against, and a cell is the value.
 //
 // # The file map
 //

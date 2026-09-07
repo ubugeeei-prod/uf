@@ -124,7 +124,15 @@ in `uf`.
   path is stable.
 - ORM, Valibot-class validator, Jotai-class state atoms, and cell runtime
   primitives.
-- Lite Temporal, PWA primitives, and opt-in-only cache controls.
+- Lite Temporal, PWA primitives, and opt-in-only cache controls. **Lite
+  Temporal is done**: `@uniflowed/core/temporal` uses `globalThis.Temporal`
+  where the host has it and implements `Instant`, `ZonedDateTime`, `PlainDate`,
+  `PlainTime` and `Duration` over `Intl.DateTimeFormat` where it does not, and
+  `Temporal.Now` reads uf's own clock in both cases so a server render and the
+  hydration after it can be made to agree. ISO 8601 only — a non-ISO calendar
+  needs the CLDR tables and so needs the binary, which is what
+  `@uniflowed/temporal`'s `withCalendar` still says. **Not done**: nanoseconds,
+  `round`, `with`, and the three plain types nothing uf ships needs yet.
 - React Compiler-safe motion primitives with reduced-motion defaults.
 - OpenTUI-aligned TUI framework. Flow React on a cell-diff renderer, with
   flexbox, keyboard and focus. **Done**; mouse, selection and rich content are

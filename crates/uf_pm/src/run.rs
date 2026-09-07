@@ -241,6 +241,10 @@ fn unsupported_hint(operation: Operation<'_>) -> String {
             "npm and pnpm can search the registry; `uf exec --yes npm search` runs npm's \
              without changing what this project installs with"
         }
+        Operation::Patch | Operation::PatchCommit => {
+            "pnpm and yarn 2+ can patch a dependency; on the others the ecosystem's answer is \
+             `patch-package`, which uf does not install for you"
+        }
         _ => "no package manager uf knows spells this one differently",
     }
     .to_owned()

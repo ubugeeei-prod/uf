@@ -368,7 +368,7 @@ function evaluateNode<T>(node: Node<T>): void {
   if (node.running) {
     // Without this the stack overflows somewhere inside user code and the
     // report names a frame that has nothing to do with the mistake.
-    throw Error("@uniflowed/cell computed cell depends on itself");
+    throw Error("@uniflowed/cell derived cell depends on itself");
   }
 
   const outerFrame = tracking;

@@ -8,7 +8,7 @@ use uf_config::UniflowedConfig;
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
     FileScan, ends_word, find_all, find_words, identifier_len, next_non_space, prev_non_space,
-    starts_word,
+    previous_word, starts_word,
 };
 use crate::{Diagnostic, push_in_code, severity};
 
@@ -22,6 +22,15 @@ pub(crate) fn run_flow_mixed_import_and_require(
         return;
     };
     if !scan.facts.has_esm_import {
+        return;
+    }
+    // `const require = createRequire(import.meta.url)` is how an ES module loads
+    // a `.node` addon, and Node documents no other way. The binding is local and
+    // its value came from `node:module`, so the module is not mixing module
+    // systems — it is using the one bridge the platform provides, and the free
+    // variable this rule is about is not in scope any more
+    // (ubugeeei-prod/uf#479).
+    if binds_require(scan) {
         return;
     }
 
@@ -51,6 +60,27 @@ pub(crate) fn run_flow_mixed_import_and_require(
             );
         }
     }
+}
+
+/// Whether the file declares `require` as a binding of its own.
+///
+/// `const`, `let` or `var` — any of the three shadows the CommonJS free
+/// variable, and a rule about mixing module systems has nothing to say about a
+/// local function that happens to share its name. The declaration is looked for
+/// rather than the `createRequire` call: a project that wraps it in a helper is
+/// making the same statement, and the name is what decides whether the free
+/// variable is reachable at all.
+fn binds_require(scan: &FileScan<'_>) -> bool {
+    scan.lines.iter().any(|line| {
+        let code = line.code();
+        find_words(code, "require").any(|at| {
+            // `= …` after it, so a call is not read as a declaration, and a
+            // keyword before it, so a property named `require` is not either.
+            next_non_space(code, at + "require".len()).is_some_and(|(_, byte)| byte == b'=')
+                && previous_word(code, at)
+                    .is_some_and(|(_, word)| matches!(word, "const" | "let" | "var"))
+        })
+    })
 }
 
 pub(crate) fn run_flow_non_const_var_export(
