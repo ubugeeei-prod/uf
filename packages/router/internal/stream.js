@@ -125,8 +125,13 @@ export type DocumentShell = {|
    * `</head>` React writes.
    */
   readonly head: string,
-  /** Everything before the markup of an app that renders no document. */
+  /**
+   * For an app that renders no document: everything up to the point uf's own
+   * head can still take tags — so it ends *inside* an open `<head>`.
+   */
   readonly open: string,
+  /** The rest of that head, and everything up to the app's markup. */
+  readonly body: string,
   /** Everything after it. */
   readonly close: string,
 |};
@@ -293,6 +298,11 @@ function queueDestination(queue: ChunkQueue): NodeDestination {
  * React writes a document with no head at all — an app whose root layout is
  * `<html><body>` — the tags go in a head of uf's own, inserted after the
  * opening tag, which is what the browser would have synthesized anyway.
+ *
+ * The shell case waits for the end of the run of hoistable elements React
+ * opened with, because that is where *its* tags go — see [`hoisted`]. Both
+ * waits are bounded by the head, and both are the same idea: the head goes out
+ * once, and everything that belongs in it has to be in hand by then.
  */
 async function* assembled(
   chunks: AsyncGenerator<string, void, void>,
@@ -302,7 +312,7 @@ async function* assembled(
   let shape = "unknown";
 
   for await (const chunk of chunks) {
-    if (shape === "document-open" || shape === "shell") {
+    if (shape === "document-open" || shape === "shell-open") {
       yield chunk;
       continue;
     }
@@ -312,11 +322,16 @@ async function* assembled(
       if (shape === "unknown") {
         continue;
       }
-      if (shape === "shell") {
-        yield shell.open + held;
-        held = "";
+    }
+    if (shape === "shell") {
+      const split = hoisted(held);
+      if (!split.complete) {
         continue;
       }
+      shape = "shell-open";
+      yield shell.open + split.head + shell.body + split.rest;
+      held = "";
+      continue;
     }
     // A document, and the tags go where its head closes.
     const close = held.indexOf("</head>");
@@ -335,17 +350,21 @@ async function* assembled(
     }
   }
 
-  // The render ended before the decision could be made, or before the head it
-  // opened was closed: an empty document, or one with neither `</head>` nor
-  // `<body>` in it. There is nothing left to wait for either way.
+  // The render ended before the decision could be made, or before what was
+  // being waited for arrived: an empty document, one with neither `</head>` nor
+  // `<body>` in it, or a shell that is hoistable elements all the way down.
+  // There is nothing left to wait for in any of them.
   if (shape === "document") {
     yield ufDoctype(held + shell.head);
     shape = "document-open";
-  } else if (shape === "unknown") {
-    shape = "shell";
-    yield shell.open + held;
+  } else if (shape === "shell" || shape === "unknown") {
+    // `complete` is not consulted: nothing more is coming, so a run that was
+    // still open is over and whatever was left of it is markup like any other.
+    const split = hoisted(held);
+    shape = "shell-open";
+    yield shell.open + split.head + shell.body + split.rest;
   }
-  if (shape === "shell") {
+  if (shape === "shell-open") {
     yield shell.close;
   } else {
     // The newline `assemble` ended a document with, kept: `uf build` writes
@@ -353,6 +372,97 @@ async function* assembled(
     // "\ No newline at end of file" in it forever.
     yield "\n";
   }
+}
+
+/**
+ * The head elements React opened the app's markup with, split from the rest.
+ *
+ * `complete` is false while the buffer might still be in the middle of one — a
+ * chunk that ends inside `<meta cont`, or after a `<link>` and before whatever
+ * follows it. Deciding on an incomplete buffer would be a classification that
+ * depends on where React split its output, which is the bug `documentShape`
+ * above is written the way it is to avoid. The split is filled in either way,
+ * because the caller that has run out of chunks has nothing left to wait for
+ * and wants it.
+ *
+ * # Why a leading run rather than the whole document
+ *
+ * React hoists a `<title>`, a `<meta>` and a `<link>` into the `<head>` of a
+ * document *it* rendered. uf's shell is not one — React is handed the app, not
+ * the document — so with the shell every one of those landed in the body, and
+ * `<link rel="canonical">` in a body is a canonical link Google does not read.
+ * The fix is for uf to do the hoisting into the head it wrote itself.
+ *
+ * A leading run is what can be hoisted without holding the document. `RouteView`
+ * renders the route's metadata first, before the layouts and the page, so the
+ * run is exactly that metadata and the wait ends at the first byte of the
+ * application's own markup. Scanning further would mean buffering an arbitrary
+ * amount of a document to find a `<meta>` that might be at the end of it, which
+ * is streaming in shape and buffering in fact — the same trade this module
+ * refuses in `ChunkQueue`. So a tag a component renders further in stays where
+ * it is, and on a client React will hoist it into `document.head` itself.
+ *
+ * # Reading React's markup with a regular expression
+ *
+ * Which is only safe because it is React's. React escapes `>` in an attribute
+ * value and `<` in text, so the first `>` after an opening tag ends it and the
+ * first `</title>` ends a title — neither can appear inside one. This function
+ * is not an HTML parser and must never be handed markup from anywhere else.
+ */
+function hoisted(held: string): HoistedHead {
+  let index = 0;
+  while (index < held.length) {
+    const rest = held.slice(index);
+    const split = { head: held.slice(0, index), rest, complete: false };
+    const open = rest.match(/^<(title|meta|link)(?=[\s/>])/i);
+    if (open == null) {
+      // Not a hoistable element, or not yet enough bytes to say it is not one.
+      return { ...split, complete: !couldOpenHoistable(rest) };
+    }
+    const close = held.indexOf(">", index);
+    if (close === -1) {
+      return split;
+    }
+    if (open[1].toLowerCase() !== "title") {
+      index = close + 1;
+      continue;
+    }
+    const end = held.indexOf("</title>", close);
+    if (end === -1) {
+      return split;
+    }
+    index = end + "</title>".length;
+  }
+  // Every byte so far is a complete hoistable element, and the next one may
+  // still be on its way — the case a document that is metadata and nothing else
+  // ends in, and the reason the loop is bounded by the buffer rather than by
+  // `true`: a `while (true)` here is a function the checker reads as returning
+  // `void` on a path it cannot see is unreachable.
+  return { head: held, rest: "", complete: false };
+}
+
+/** What [`hoisted`] found, and whether more bytes could still change it. */
+type HoistedHead = {|
+  /** The hoistable elements the markup opened with. */
+  readonly head: string,
+  /** Everything after them. */
+  readonly rest: string,
+  /** Whether the run is known to have ended. */
+  readonly complete: boolean,
+|};
+
+/**
+ * Whether `rest` could still turn into a hoistable element once more bytes
+ * arrive.
+ *
+ * True for `"<"` and for every proper prefix of `<title`, `<meta` and `<link` —
+ * the states a chunk boundary can leave the buffer in. False for `<main`, and
+ * false for `<titlebar>`, which is somebody's component and not a title however
+ * much of it has arrived.
+ */
+function couldOpenHoistable(rest: string): boolean {
+  const text = rest.toLowerCase();
+  return ["<title", "<meta", "<link"].some((tag) => tag.startsWith(text));
 }
 
 /**

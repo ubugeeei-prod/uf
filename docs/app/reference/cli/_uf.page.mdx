@@ -242,6 +242,22 @@ filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
 lives — not a second application.
 
+The one thing `handler.js` does say per target is what that target can do,
+because two of the answers differ:
+
+| Target | A body reaches the client as it is produced | The process outlives the response |
+| --- | --- | --- |
+| `node`, `container` | yes | yes |
+| `edge` | yes | no — the isolate may be torn down once the response is out |
+| `serverless` | no — a Lambda response is a JSON value, so the body is read to the end first | no |
+
+A route handler that returns an event stream, takes a WebSocket, or queues work
+asks through those, and is refused by name rather than by a connection nobody
+serves: an event stream on `serverless` fails where the handler builds it
+instead of timing out, and a WebSocket upgrader or an in-process queue handed
+to a target that cannot keep it fails where the host is wired instead of on the
+first connection. [Routing](/guide/routing) has the whole table and the API.
+
 The difference from `uf start` is what the host must already have. `uf start`
 reads `dist/` and `.uf/build/server` and needs the project's `node_modules`
 around them, because the server bundle leaves `react` and `react-dom` as bare
@@ -405,10 +421,31 @@ writing.
 
 ### uf run SCRIPT [ARGS...]
 
-Runs a script from `uf.config.js` through the task runner, forwarding
-everything after the script name. The task's shell has the project's `.env`
-values in it, as every command uf runs does; `--mode MODE`, before the script
-name, chooses which files those came from.
+Runs a task from `uf.config.js`, and everything its `dependsOn` reaches,
+forwarding everything after the script name. The task's shell has the project's
+`.env` values in it, as every command uf runs does; `--mode MODE`, before the
+script name, chooses which files those came from. An option `uf run` also has
+is reached past `--`.
+
+Dependencies with no path between them run **at once** — four at a time, or
+one per core when the machine has fewer, and `-j N` / `--concurrency N` says
+otherwise. `-j 1` is one at a time. While more than one task can be running,
+each line of output is written behind the name of the task that produced it;
+the task you asked for runs after everything it depends on, so it is alone and
+its output is untouched.
+
+A task that declares [`inputs`](/reference/config#tasks-and-plugins) is
+**cached**: uf hashes the files those patterns match, and a second run whose
+files all hash the same is answered from `.uf/cache/task` — output and all,
+so a replayed run reads like the run it is replaying. **A task that declares
+no `inputs` runs every time.** That is the default and it is not a soft one:
+uf cannot see what `sh -c` opens, and a cache that guessed would fail by
+reporting a check as passed without looking.
+
+`--force` runs everything whatever the cache holds, and still records what it
+finds. `--why` prints, for every task, the reason it ran or was replayed —
+`packages/core/index.js changed`, `declares no inputs, so it always runs`,
+`dist/app.js is missing`.
 
 ### uf exec PACKAGE [ARGS...]
 

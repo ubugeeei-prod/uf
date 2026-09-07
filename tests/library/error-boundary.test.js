@@ -55,11 +55,18 @@ function appRoot(files: $ReadOnlyArray<string>): string {
   return root;
 }
 
-/** The scanned error boundaries, with paths cut back to the router root. */
+/**
+ * The scanned error boundaries, with paths cut back to the router root.
+ *
+ * A `module` of `null` is the record the scan synthesises for the router root
+ * when a project declares none, so that the framework's error page renders
+ * inside the site's own layouts rather than in place of them. See
+ * ubugeeei-prod/uf#351, and `routing.test.js` for the not-found half.
+ */
 function boundaries(root: string) {
   return scanRoutes(root).errors.map((boundary) => ({
     path: boundary.path,
-    module: path.relative(root, boundary.module),
+    module: boundary.module == null ? null : path.relative(root, boundary.module),
     layouts: boundary.layouts.map((layout) => path.relative(root, layout)),
   }));
 }
@@ -90,11 +97,15 @@ describe("scanning for error boundaries", () => {
     // extensions and the file is simply not a boundary.
     const root = appRoot(["_uf.error.mdx"]);
 
-    expect(boundaries(root)).toEqual([]);
+    // The synthesised record, with no module: which is the scan saying the
+    // project declared none, and is exactly the claim this test makes.
+    expect(boundaries(root)).toEqual([{ path: "/", module: null, layouts: [] }]);
   });
 
-  it("reports none for a project that declares none", () => {
-    expect(boundaries(appRoot(["_uf.page.js"]))).toEqual([]);
+  it("synthesises one at the router root for a project that declares none", () => {
+    const root = appRoot(["_uf.layout.js", "_uf.page.js"]);
+
+    expect(boundaries(root)).toEqual([{ path: "/", module: null, layouts: ["_uf.layout.js"] }]);
   });
 });
 

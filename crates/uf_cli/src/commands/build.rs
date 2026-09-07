@@ -40,7 +40,9 @@ use uf_term::{
 use crate::commands::compile;
 use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
-use crate::commands::vite::{Driver, Event, package_dir, render_error, render_log, resolve_host};
+use crate::commands::vite::{
+    Driver, Event, LinkContext, package_dir, render_error, render_log, resolve_host,
+};
 use crate::support::{
     PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
 };
@@ -323,12 +325,20 @@ pub(crate) fn build(
     // After the size report and not before it: the binary is written into the
     // output directory, and an executable counted among the shipped assets
     // would put every budget in `uf.config.js` permanently over.
+    // The two link steps below take the same six answers, so they are built
+    // once: the second Vite run of a build has to see what the first one saw.
+    let link = LinkContext {
+        host: &host,
+        package: &package,
+        root: &root,
+        out_dir: &out_dir,
+        env: &env,
+        rsc_manifest: &rsc_input,
+    };
     let compiled = match &runtime {
         Some(runtime) => {
             progress.tick("compiling a standalone binary");
-            Some(timer.measure("compile", || {
-                compile::compile(ui, runtime, &host, &package, &root, &out_dir, &env)
-            })?)
+            Some(timer.measure("compile", || compile::compile(ui, runtime, link))?)
         }
         None => None,
     };
@@ -341,9 +351,7 @@ pub(crate) fn build(
                 "writing the {} adapter's output",
                 adapter.as_str()
             ));
-            Some(timer.measure("adapter", || {
-                deploy::deploy(ui, adapter, &host, &package, &root, &out_dir, &env)
-            })?)
+            Some(timer.measure("adapter", || deploy::deploy(ui, adapter, link))?)
         }
         None => None,
     };
