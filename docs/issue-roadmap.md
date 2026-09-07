@@ -115,7 +115,11 @@
 - [ ] Require server actions to opt in with `"use server";`.
 - [ ] Support RSC graph splitting.
 - [ ] Support PPR, SSR, SSG, and ISR.
-- [ ] Keep route, fetch, action, and data cache defaults OFF.
+- [x] Keep route, fetch, action, and data cache defaults OFF — and make two of
+      them mean something when they are on. `route` and `fetch` reach a store
+      with time and tag revalidation; `data` and `actions` are refused by the
+      config loader rather than reaching a manifest and doing nothing. See #277
+      and `docs/app/guide/cache`.
 - [x] Default to Node.js through the Capability JS Host contract.
 - [x] Keep Node.js, Deno, and Bun as zero-config host targets.
 - [ ] Align the deferred `uf` runtime with WinterTC.

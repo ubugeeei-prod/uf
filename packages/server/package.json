@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./cache": "./cache.js",
     "./edge": "./edge.js",
     "./fetch": "./fetch.js",
     "./host": "./host.js",
@@ -20,10 +21,11 @@
     "./standalone": "./standalone.js"
   },
   "files": [
+    "cache.js",
     "edge.js",
     "fetch.js",
-    "index.js",
     "host.js",
+    "index.js",
     "lambda.js",
     "node.js",
     "standalone.js",

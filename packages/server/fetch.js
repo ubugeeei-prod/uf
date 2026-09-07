@@ -28,6 +28,31 @@
 // rather than from a directory, and it writes into a Node response directly so
 // that a document is not converted through a `Response` on its way out.
 //
+// # The route cache
+//
+// One `GET` at a time, and only where three things line up: the host passed a
+// `cache` whose `route` is on (`rendering.cache.route` in `uf.config.js`), the
+// render stated a lifetime with `cacheLife`, and the render did not read the
+// request. All three are argued in `./cache.js`; what belongs here is the one
+// cost that is this function's rather than the store's.
+//
+// **A cached route is buffered, and an uncached one is streamed.** The body has
+// to be whole before it can be an entry, so the fill reads the document to its
+// last byte before answering — which gives up the thing the streaming path
+// exists for, on the fill. It buys two things back. The hit is the whole
+// document at once with no render at all, which is faster than streaming a
+// render; and the read of `requestStateReads` is only trustworthy *after* the
+// last byte, because a component inside a `<Suspense>` boundary renders long
+// after the shell resolved and `cookies()` in one of those is exactly the read
+// that must stop the entry being stored. A cache that decided at the shell
+// would cache a document whose tail was about one person.
+//
+// So the trade is per route and stated by the route: say nothing and stream as
+// before, call `cacheLife` and buffer once per lifetime. `HEAD` never
+// participates in either direction — it neither fills an entry nor reads one —
+// because a `HEAD` is a request for a status and a length, and letting it fill
+// a document cache would let a request that wants no body pay for one.
+//
 // # What it deliberately does not do
 //
 // Static files. A build's assets and its prerendered documents are the *host's*
@@ -37,7 +62,12 @@
 // adapter can be written for a worker: what is left after the files is exactly
 // this function.
 
+import { noStore } from "./cache.js";
 import type { Application, DocumentAssets } from "./internal/application.js";
+import type { CacheOptions, CacheOutcome } from "./internal/cache-store.js";
+import { newScope, runInScope } from "./internal/cache-store.js";
+import type { RequestContext } from "./internal/context.js";
+import { currentContext } from "./internal/context.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
 
@@ -47,6 +77,22 @@ export type FetchHandlerOptions = {|
   readonly app: Application,
   /** The script, stylesheet and preload URLs a rendered document references. */
   readonly document: DocumentAssets,
+  /**
+   * The cache this host installed, from `rendering.cache` in `uf.config.js`.
+   *
+   * Absent is the default and means no cache at all — every request renders,
+   * exactly as before this option existed. A host that passes one is saying
+   * two separate things with it, `route` and `fetch`, because the two switches
+   * in the configuration are two switches.
+   */
+  readonly cache?: CacheOptions,
+|};
+
+/** A whole document, as an entry: what a hit answers with without rendering. */
+type CachedDocument = {|
+  readonly status: number,
+  readonly headers: { readonly [string]: string },
+  readonly body: Uint8Array,
 |};
 
 /**
@@ -90,13 +136,33 @@ export type FetchHandlerOptions = {|
  * A caller that forgets is not left to discover *that*, at least:
  * `app.runMiddleware` refuses outside a request and names what establishes one.
  * See ubugeeei-prod/uf#389.
+ *
+ * # And the cache, if the host installed one
+ *
+ * `cache` is `rendering.cache` from `uf.config.js`, and it does two separate
+ * things here. It is put on the request before the guard runs, so that a route
+ * handler or a server action calling `revalidateTag()` reaches the store that
+ * is answering this request; and, when `route` is on, a `GET` goes through
+ * [`cachedDocument`] instead of the streaming path. Both halves are argued in
+ * the module header and in `./cache.js`. With no `cache` at all this function
+ * is what it has always been, one `AsyncLocalStorage.run` aside.
  */
 export function createFetchHandler(
   options: FetchHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const { app, document } = options;
+  const { app, cache, document } = options;
 
   return async function handle(request: Request): Promise<Response> {
+    // Before the guard, not after it. A route handler and a server action both
+    // run inside `dispatch`, and `revalidateTag()` in one of them has to reach
+    // the store that is answering this request — a mutation that invalidates
+    // nothing is the failure this whole seam exists to prevent, and it would
+    // be a silent one.
+    const context = currentContext();
+    if (context != null && cache != null) {
+      context.cache = cache;
+    }
+
     const guarded = await app.runMiddleware(request);
     if (guarded != null) return guarded;
 
@@ -109,15 +175,26 @@ export function createFetchHandler(
     }
 
     const url = new URL(request.url);
-    const result = await app.render(url.pathname + url.search, document, {
-      // Nothing better than the console here: this function is what a worker
-      // or a serverless invocation wraps, and it has no terminal of its own.
-      // Losing a boundary's exception entirely would be worse — it is the only
-      // trace a page that failed after its first byte leaves anywhere.
-      onError: (error: mixed) => {
-        console.error(error);
-      },
-    });
+    const target = url.pathname + url.search;
+    // Nothing better than the console here: this function is what a worker or
+    // a serverless invocation wraps, and it has no terminal of its own. Losing
+    // a boundary's exception entirely would be worse — it is the only trace a
+    // page that failed after its first byte leaves anywhere.
+    const onError = (error: mixed) => {
+      console.error(error);
+    };
+
+    if (method === "GET" && cache != null && cache.route === true) {
+      return cachedDocument(app, cache, context, url, target, document, onError);
+    }
+
+    // Rendered inside a scope even with no cache in sight, so that a component
+    // calling `cacheLife` is a component that states a lifetime nobody is
+    // honouring rather than a component that throws. Turning the route cache
+    // off must not change what an application is allowed to say.
+    const result = await runInScope(newScope({ key: [] }), () =>
+      app.render(target, document, { onError }),
+    );
     const headers = new Headers(result.headers ?? {});
     headers.set("content-type", "text/html; charset=utf-8");
     // A `HEAD` gets the status and the headers and no body, which is what the
@@ -132,4 +209,102 @@ export function createFetchHandler(
     // the browser while the page they surround is still resolving.
     return new Response(result.stream(), { status: result.status ?? 200, headers });
   };
+}
+
+/**
+ * Answer a `GET` from the route cache, filling it if it has to.
+ *
+ * The fill is the interesting half, and everything it refuses is refused for a
+ * reason it can name:
+ *
+ * * **The render read the request.** `requestStateReads` is compared across the
+ *   whole document rather than across the shell; see the module header.
+ * * **The render did not answer 200.** A 404 or a 500 is a fact about this
+ *   moment far more often than it is a fact about the URL, and a cached 500 is
+ *   an outage that outlives its cause.
+ * * **The render set a cookie.** A `Set-Cookie` in a shared entry is one
+ *   person's session handed to the next reader. This is belt and braces — a
+ *   render that set a cookie almost certainly read one first — and it is here
+ *   because the cost of being wrong is not symmetric.
+ *
+ * A render that states no lifetime is refused by the store itself, which is
+ * where "no lifetime, no entry" belongs: it is a property of the cache, not of
+ * documents.
+ */
+async function cachedDocument(
+  app: Application,
+  cache: CacheOptions,
+  context: RequestContext | null,
+  url: URL,
+  target: string,
+  document: DocumentAssets,
+  onError: (error: mixed) => void,
+): Promise<Response> {
+  const result = await cache.store.resolve(
+    { key: ["route", "GET", url.pathname, url.search], path: url.pathname },
+    async (): Promise<CachedDocument> => {
+      const before = context?.requestStateReads ?? 0;
+      const rendered = await app.render(target, document, { onError });
+      const body = await drain(rendered.stream());
+      const status = rendered.status ?? 200;
+      const headers: { [string]: string } = { ...(rendered.headers ?? {}) };
+
+      if (status !== 200) {
+        noStore(`the render answered ${status}`);
+      } else if (Object.keys(headers).some((name) => name.toLowerCase() === "set-cookie")) {
+        noStore("the render set a cookie");
+      } else if ((context?.requestStateReads ?? 0) > before) {
+        noStore("the render read cookies(), headers() or draftMode()");
+      }
+      return { status, headers, body };
+    },
+  );
+
+  const headers = new Headers(result.value.headers);
+  headers.set("content-type", "text/html; charset=utf-8");
+  // What this request did to the cache, in one word. It is the only way to see
+  // a cache working from outside the process — a benchmark reads it, and so
+  // does anybody wondering why a page is fast.
+  headers.set("x-uf-cache", label(result.outcome));
+  return new Response(result.value.body, { status: result.value.status, headers });
+}
+
+/** The header word for an outcome. */
+function label(outcome: CacheOutcome): string {
+  return match (outcome) {
+    "hit" => "HIT",
+    "stale" => "STALE",
+    "coalesced" => "COALESCED",
+    "miss" => "MISS",
+    "uncacheable" => "BYPASS",
+  };
+}
+
+/**
+ * Every byte of `stream`, as one array.
+ *
+ * The chunks are collected and joined once rather than concatenated as they
+ * arrive: a document is a few hundred chunks, and growing an array per chunk
+ * copies the whole document per chunk.
+ */
+async function drain(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Array<Uint8Array> = [];
+  let total = 0;
+  for (;;) {
+    const step = await reader.read();
+    if (step.done === true) break;
+    const chunk = step.value;
+    if (chunk != null) {
+      chunks.push(chunk);
+      total += chunk.byteLength;
+    }
+  }
+  const body = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return body;
 }

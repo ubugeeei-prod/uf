@@ -48,6 +48,18 @@
 // `tests/library/standalone.test.js` and
 // `compile_writes_one_file_that_serves_the_site_from_an_empty_directory` for
 // this one.
+//
+// # The one thing this door does not have
+//
+// The route cache. `rendering.cache.route` reaches `createFetchHandler` —
+// which is `uf preview`, `uf start`, and every `--adapter` target through the
+// `handler.js` uf generates — and this module renders every request whatever
+// the configuration says. It is the fourth front door and the only one where
+// the caching is not a shared function but a second copy of the same
+// buffering, the same refusal to store a render that read the request, and the
+// same header, which is exactly the "two copies that agree until they do not"
+// this file's header is otherwise about. It is stated here rather than left to
+// be discovered, and ubugeeei-prod/uf#277 carries it.
 
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";

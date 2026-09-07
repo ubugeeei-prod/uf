@@ -445,6 +445,56 @@ Server Components are the default. Client Components must opt in with
 Caches are off by default. React 19, Suspense, `use`, and Async React are
 assumed.
 
+### The cache
+
+`rendering.cache` has four switches and had, for a long time, no cache behind
+any of them: all four were read once, copied into `dist/uf-build-manifest.json`
+and read by nothing, so setting one to `true` changed one field of one JSON file
+and no behaviour anywhere. Two of them mean something now, and two of them are
+refused rather than ignored — `rendering.cache.data: true` and
+`rendering.cache.actions: true` fail the config load by name, because a key that
+accepts `true` and does nothing is indistinguishable from a cache that is off.
+See ubugeeei-prod/uf#277.
+
+The store is `packages/server/internal/cache-store.js`, and its header answers
+the five questions every cache bug is one of: what a key is, what an entry is,
+when an entry is stale, who evicts, and what happens to a request that arrives
+while an entry is being filled. In short — a key is a list of strings; an entry
+is a value with the two instants that end it, its tags and its path; time makes
+an entry *stale* and a tag makes it *expired*, which are deliberately different;
+eviction is least-recently-used, bounded by count, with no background sweep; and
+a request that arrives during a fill joins it rather than starting a second one.
+
+The key departs from both of the disk caches described above, and the departure
+is the reason the store is in memory. `.uf/cache/check` and `.uf/cache/transform`
+each put the identity of the `uf` that produced the entry into the key, because
+both outlive the process that wrote them. This one cannot, so that identity is a
+constant rather than an input — and the day a durable store exists behind
+`resolve`, the key gains a build id before anything is written to it.
+
+Nothing is cached without a stated lifetime: a route says `cacheLife` and
+`cacheTag` from inside its own render, a request says `cache` at the call, and a
+page or a call that says nothing behaves exactly as it did. A rendered document
+is refused outright if the render read `cookies()`, `headers()` or `draftMode()`
+— counted across the whole document rather than up to the shell, because a
+component inside a `<Suspense>` boundary renders long after the shell resolved.
+That is a runtime refusal; `uf_rsc` already answers the reachability question
+that would make it a build error, and does not answer it for cached scopes yet.
+
+One page whose loader takes 50 ms, served twice (`uf run bench:route-cache`,
+Node 24, twenty pairs, medians):
+
+| | first | second | renders per pair | renders for 10 at once |
+| --- | --- | --- | --- | --- |
+| no cache | 52.35 ms | 52.41 ms | 2 | 10 |
+| route cache | 52.45 ms | 0.16 ms | 1 | 1 |
+
+The cold request is fractionally slower because a document has to be whole
+before it can be an entry, so a cached route buffers where an uncached one
+streams. It is in memory and in one process, which means four server processes
+hold four caches that disagree and a restart empties one. `docs/app/guide/cache`
+says all of that to a reader rather than to a maintainer.
+
 That analysis is load-bearing at the route level, and only there. `uf_rsc`
 resolves the module graph and marks every module a `"use client"` boundary is
 reachable from; `uf build` and `uf dev` write the result to

@@ -49,6 +49,30 @@ function require$Context(binding: string) {
 }
 
 /**
+ * The current request's context, counting this as a read of request state.
+ *
+ * The three bindings below that answer about *this* request go through this
+ * one, and `after()` deliberately does not: registering deferred work says
+ * nothing about what the response contains. What the count is for is the route
+ * cache — `./fetch.js` reads it before the render and again after the last
+ * byte, and stores the document only if nothing in between asked who was
+ * asking. A page that read a cookie is a page about one person, and a page
+ * about one person must not be served to the next person from a cache.
+ *
+ * Counted at the call rather than at the value, which is conservative in the
+ * one direction that is safe: `const store = cookies()` followed by no `get`
+ * counts, so such a render is re-rendered rather than cached. Slower, never
+ * wrong — and the alternative, instrumenting the getters, would have to decide
+ * what `has()` on a name that is absent means, which is a question with no
+ * answer that is safe in both directions.
+ */
+function require$VaryingContext(binding: string) {
+  const context = require$Context(binding);
+  context.requestStateReads += 1;
+  return context;
+}
+
+/**
  * The request's headers, read-only.
  *
  * Read-only because a response header set from inside a render has no defined
@@ -56,7 +80,7 @@ function require$Context(binding: string) {
  * component deep in the tree renders.
  */
 export function headers(): HeaderStore {
-  return require$Context("headers").headers;
+  return require$VaryingContext("headers").headers;
 }
 
 /**
@@ -66,7 +90,7 @@ export function headers(): HeaderStore {
  * before a response exists and can say so in it.
  */
 export function cookies(): CookieStore {
-  return require$Context("cookies").cookies;
+  return require$VaryingContext("cookies").cookies;
 }
 
 /**
@@ -76,7 +100,7 @@ export function cookies(): CookieStore {
  * handled at once cannot see each other's answer.
  */
 export function draftMode(): DraftMode {
-  const context = require$Context("draftMode");
+  const context = require$VaryingContext("draftMode");
   return {
     isEnabled: context.draft,
     enable: () => {

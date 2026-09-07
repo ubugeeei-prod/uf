@@ -21,6 +21,8 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import type { CacheOptions } from "./cache-store.js";
+
 /** A read-only view of one request's headers. */
 export type HeaderStore = {
   readonly get: (name: string) => string | null,
@@ -53,6 +55,35 @@ export type RequestContext = {
   draft: boolean,
   /** Work deferred until the response has been sent. */
   readonly deferred: Array<() => mixed | Promise<mixed>>,
+  /**
+   * How many times this request has read state that varies per request.
+   *
+   * A counter rather than a flag, and the difference is what makes a route
+   * cache possible at all. A middleware that reads a cookie to decide whether
+   * to let the request through has not made the *page* vary — it either
+   * answered or it did not — so a flag set by that read would refuse to cache
+   * every page in every application that has an auth guard. A counter can be
+   * read before the render and again after the last byte, and what moved in
+   * between is exactly what the document depended on.
+   *
+   * Incremented by `../index.js`'s three bindings and by nothing else.
+   * `after()` reads the context too and does not touch this: registering
+   * deferred work says nothing about what the response contains.
+   */
+  requestStateReads: number,
+  /**
+   * The cache the host installed for this request, or `null`.
+   *
+   * On the context rather than in a module-level variable, which is the same
+   * decision `storage` above is and rests on the same fact: two requests are
+   * answered at once, and anything a server function reaches for by name has
+   * to be scoped to the request or it is scoped to whichever request set it
+   * last. It also means `revalidateTag()` in a server action reaches the store
+   * that answered the request the action is part of, rather than a copy some
+   * other module instance is holding — the hazard ubugeeei-prod/uf#389 is
+   * about, pointed at a cache.
+   */
+  cache: CacheOptions | null,
 };
 
 /**
@@ -142,6 +173,8 @@ export function contextFor(request: Request): RequestContext {
     },
     draft: false,
     deferred: [],
+    requestStateReads: 0,
+    cache: null,
   };
 }
 
