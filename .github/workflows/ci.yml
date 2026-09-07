@@ -204,7 +204,29 @@ jobs:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
-      - run: ./target/release/uf run docs:build
+      # `docs:verify` rather than `docs:build`: it builds the site and then
+      # runs four checks over that one build, in one task graph, because
+      # `uf run` takes one task and `docs:build` is always run — four
+      # invocations would build the site four times.
+      #
+      # `docs:links` is the reason this is not `docs:build` any more. A page
+      # that moves takes every link to its old name with it, and each page
+      # prerenders on its own, so a dead `<a href>` renders perfectly and
+      # 404s when a reader clicks it. Anchors are checked against the ids the
+      # markdown pipeline rendered and `sitemap.xml` against the documents
+      # that were prerendered — both of which exist only in the output.
+      # Offline, so it cannot fail on somebody else's host;
+      # `docs:links:external` is the network half and runs on a schedule.
+      # See #527.
+      #
+      # `security:scan` is here rather than in `Metadata` for the same
+      # reason: two of its three passes read what `uf build` wrote and what
+      # `uf new` writes, and neither exists in a job that does not build. It
+      # audits `docs/security.md` against the repository — a row that names a
+      # test names one that exists — scans the published output for
+      # credential files, well-known token shapes and the build machine's own
+      # path, and audits a freshly scaffolded project. See #524.
+      - run: ./target/release/uf run docs:verify
 
   library:
     name: Library

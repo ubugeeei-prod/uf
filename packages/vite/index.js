@@ -195,7 +195,15 @@ function flowPlugin({ routerRoot, appEntry, command }) {
     if (server == null) {
       emit("rsc-split", { pages: kept.size, routes: table.routes.length });
     }
-    return routesModuleSource(table, { shipsPage: (route) => kept.has(route) });
+    // `relativeTo` only here, and never for the server's copy below. Every
+    // `import()` in this table becomes a chunk URL, but `file` is a string and
+    // survives the build — so the browser's table was shipping the absolute
+    // path of every page on the machine that built the site, to every visitor.
+    // The server's table is read where those files are and keeps them.
+    return routesModuleSource(table, {
+      shipsPage: (route) => kept.has(route),
+      relativeTo: root,
+    });
   };
 
   /**
