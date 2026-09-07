@@ -5,6 +5,7 @@
 #   npm login
 #   tools/release/promote-latest.sh           # show the plan, then move them
 #   tools/release/promote-latest.sh --yes     # without the question
+#   tools/release/promote-latest.sh --otp=123456   # for a run with no terminal
 #
 # `publish.yml` publishes a prerelease on the `alpha` tag and never on
 # `latest`, which is the right rule and stays: a prerelease must not displace a
@@ -71,10 +72,20 @@ cd "$repo_root"
 
 check_only=false
 assume_yes=false
+# One code for the whole run.
+#
+# `npm dist-tag add` on a 2FA account asks for a one-time password per write,
+# and there are seventeen. Interactively npm handles that itself — it keeps the
+# terminal and either prompts or opens a browser — so this is for the case
+# where it cannot: a run with no terminal, and the `--otp` npm's own docs give
+# for exactly that. `UF_NPM_OTP` is the same value from the environment, so a
+# code never has to be a shell argument, where it would land in a history file.
+otp="${UF_NPM_OTP:-}"
 for argument in "$@"; do
   case "$argument" in
     --check) check_only=true ;;
     -y | --yes) assume_yes=true ;;
+    --otp=*) otp="${argument#--otp=}" ;;
     *) echo "promote-latest: unknown option: $argument" >&2; exit 2 ;;
   esac
 done
@@ -244,11 +255,38 @@ if [ "$assume_yes" != true ]; then
   esac
 fi
 
+# On file descriptor 3, not on stdin.
+#
+# `done <"$plan"` redirects stdin for the *whole loop*, so every `npm` in it
+# inherits the plan file instead of the terminal — and `npm dist-tag add` on a
+# 2FA account needs the terminal: it asks for a one-time password, or prints a
+# URL and waits for the browser. With the file on stdin it can do neither and
+# fails immediately with `EOTP`, on the first name, having moved nothing. That
+# is what happened on `uf@0.0.0-alpha.12`.
 moved=0
-while read -r name version; do
+failed=0
+failures=""
+while read -r name version <&3; do
   echo "promote-latest: ${name}@${version} -> latest"
-  npm dist-tag add "${name}@${version}" latest
-  moved=$((moved + 1))
-done <"$plan"
+  # Not `set -e`'s business. Seventeen writes with one authentication between
+  # them: a code that expires on the ninth must not throw away the eight that
+  # worked, or the report of which they were. The command is idempotent and the
+  # plan is read from the registry, so the recovery is to run it again — and
+  # the names already moved will not be in the next plan.
+  if npm dist-tag add "${name}@${version}" latest ${otp:+--otp="$otp"}; then
+    moved=$((moved + 1))
+  else
+    failed=$((failed + 1))
+    failures="${failures}  ${name}@${version}
+"
+  fi
+done 3<"$plan"
 
 printf '\npromote-latest: %s moved.\n' "$moved"
+if [ "$failed" -gt 0 ]; then
+  printf 'promote-latest: %s did not move:\n%s' "$failed" "$failures" >&2
+  printf '\nRun it again — it reads the plan from the registry, so the names\n'  >&2
+  printf 'that moved are not in the next one. If npm asked for a one-time\n'      >&2
+  printf 'password, `--otp=<code>` passes one to every write in the run.\n'       >&2
+  exit 1
+fi
