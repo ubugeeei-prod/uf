@@ -40,6 +40,17 @@ import { afterAll, describe, expect, it } from "@uniflowed/test";
 import { renderWithReadableStream } from "../../packages/router/internal/stream.js";
 import { RESERVED, routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
 
+// `@uniflowed/router/client` statically imports `react-dom/client`, which reads
+// `document` while it is being evaluated — so the DOM has to exist before the
+// *import* and not merely before the first render. `rsc-split.test.js` reaches
+// for the same two for the same reason, and says so at greater length.
+import { installDom } from "../../packages/react-testing/internal/dom.js";
+
+async function clientModule() {
+  installDom();
+  return import("@uniflowed/router/client");
+}
+
 const roots: Array<string> = [];
 
 afterAll(() => {
@@ -376,7 +387,337 @@ describe("rendering a route that suspends", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The loader, which is the thing a page most often waits for
+// ---------------------------------------------------------------------------
+//
+// Everything above is a page that suspends while *rendering*. A page whose
+// `loader` is slow could not stream at all: `resolveRoute` awaited it before it
+// returned, so by the time React saw the tree the data was already in hand and
+// the fallback beside it showed for no time at all. See ubugeeei-prod/uf#373.
+
+/**
+ * A one-route table whose page has a loader the test settles by hand.
+ *
+ * `page` is what the loader's value renders as, so an assertion on the markup
+ * is an assertion about the data having arrived rather than about a component
+ * having run.
+ */
+function loaderTable(
+  waited: Promise<string>,
+  options?: {|
+    readonly loading?: boolean,
+    readonly generateMetadata?: boolean,
+  |},
+) {
+  component DataPage(data: mixed) {
+    return <p>{typeof data === "string" ? data : "no data"}</p>;
+  }
+  component SiteLayout(children: React.Node) {
+    return (
+      <div>
+        <nav>the layout is here</nav>
+        {children}
+      </div>
+    );
+  }
+  component Loading() {
+    return <p>the fallback is here</p>;
+  }
+  const page = {
+    default: DataPage,
+    loader: () => waited,
+    ...(options?.generateMetadata === true
+      ? {
+          generateMetadata: (args: { readonly data: mixed, ... }) => ({ title: String(args.data) }),
+        }
+      : {}),
+  };
+  return {
+    routes: [
+      {
+        path: "/slow",
+        params: [],
+        mdx: false,
+        file: "app/slow/_uf.page.js",
+        page: () => Promise.resolve(page),
+        layouts: [() => Promise.resolve({ default: SiteLayout })],
+        loading:
+          options?.loading === false
+            ? []
+            : [{ above: 1, module: () => Promise.resolve({ default: Loading }) }],
+      },
+    ],
+    notFound: [],
+    errors: [],
+  };
+}
+
+describe("rendering a route whose loader is slow", () => {
+  it("sends the layout and the fallback before the loader resolves", async () => {
+    // The bug, in one assertion. `resolveMatch` awaited the loader, so
+    // `renderer.render` did not resolve until the loader had — and every route's
+    // time to first byte was its slowest loader however many `_uf.loading.js`
+    // files were beside it.
+    const waited = deferred();
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(waited.promise),
+    });
+
+    let settled = false;
+    setTimeout(() => {
+      settled = true;
+      waited.resolve();
+    }, 120);
+    const result = await renderer.render("/slow", assets);
+
+    // The shell is ready while the loader is still running. Before this it
+    // could not be: the loader was awaited before React saw the tree at all.
+    expect(settled).toBe(false);
+    expect(result.status).toBe(200);
+
+    const chunks = await chunksOf(result);
+    const shell = chunks[0];
+    expect(shell.text).toContain("the layout is here");
+    expect(shell.text).toContain("the fallback is here");
+    expect(shell.text).not.toContain("the page is here");
+    expect(shell.at < 120).toBe(true);
+
+    const rest = chunks
+      .slice(1)
+      .map((chunk) => chunk.text)
+      .join("");
+    expect(rest).toContain("the page is here");
+  });
+
+  it("waits for a loader whose data the route's metadata is generated from", async () => {
+    // The rule the design states rather than hides: metadata goes in the head,
+    // the head is written before the body, so a title computed from the data
+    // genuinely cannot be deferred. A page that wants to stream keeps its
+    // metadata static.
+    const waited = deferred();
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(waited.promise, { generateMetadata: true }),
+    });
+
+    let settled = false;
+    setTimeout(() => {
+      settled = true;
+      waited.resolve();
+    }, 40);
+    const result = await renderer.render("/slow", assets);
+
+    expect(settled).toBe(true);
+    const document = (await chunksOf(result)).map((chunk) => chunk.text).join("");
+    expect(document).toContain("<title>the page is here</title>");
+  });
+
+  it("waits for a loader the segment declares no fallback for", async () => {
+    // Nothing to defer into. A page held back by a boundary that does not exist
+    // is a page React holds the whole shell for, which is what it already did —
+    // so the loader is awaited and the document is the one this route had
+    // before any of this.
+    const waited = deferred();
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(waited.promise, { loading: false }),
+    });
+
+    let settled = false;
+    setTimeout(() => {
+      settled = true;
+      waited.resolve();
+    }, 40);
+    const result = await renderer.render("/slow", assets);
+
+    expect(settled).toBe(true);
+    const document = await result.text();
+    expect(document).toContain("the page is here");
+    expect(document).not.toContain("$RC(");
+  });
+
+  it("embeds the deferred data, which the head had already gone without", async () => {
+    // `dataScript` wrote the loader's answer into the head, and a deferred
+    // answer is not known when the head goes out. Losing it would mean the
+    // browser running every deferred route's loader a second time on the way
+    // in, so it is rendered in the tree instead — on both sides, which is what
+    // keeps hydration matching.
+    const waited = deferred();
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(waited.promise),
+    });
+
+    const result = await renderer.render("/slow", assets);
+    setTimeout(waited.resolve, 0);
+    const document = (await chunksOf(result)).map((chunk) => chunk.text).join("");
+
+    expect(document).toContain('<script id="__uf_data" type="application/json">');
+    expect(document).toContain('"the page is here"');
+  });
+
+  it("writes the same data element whether it deferred the loader or not", async () => {
+    // Which is what makes the hydration test below cover both. A deferred
+    // render sends the element inside the boundary and patches it into place
+    // with `$RC()`; a static one writes it where it lands. The document a
+    // browser holds once the stream has finished is the same either way, and
+    // this is that claim without running React's patch script in a test.
+    const streamedWait = deferred();
+    const streamed = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(streamedWait.promise),
+    });
+    const result = await streamed.render("/slow", assets);
+    setTimeout(streamedWait.resolve, 0);
+    const document = (await chunksOf(result)).map((chunk) => chunk.text).join("");
+
+    const staticWait = deferred();
+    setTimeout(staticWait.resolve, 0);
+    const built = await createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(staticWait.promise),
+    }).prerender("/slow", assets);
+
+    const element = /<script id="__uf_data"[^>]*>[^<]*<\/script>/;
+    const fromStream = document.match(element);
+    expect(fromStream).toBeTruthy();
+    expect(built.html).toContain(fromStream?.[0] ?? "no data element was streamed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// And the browser, which has to be able to pick it up again
+// ---------------------------------------------------------------------------
+
+describe("hydrating a route whose loader answered on the server", () => {
+  /**
+   * One table, and a count of how often its loader ran.
+   *
+   * Built once and shared by both renders on purpose: `loadOnce` caches a
+   * module by the identity of the function that loads it, and hydration is
+   * React comparing two renders of the same components. Two tables would be two
+   * sets of components and the comparison would mean nothing.
+   */
+  function countedTable(seen: { loads: number, ... }) {
+    component DataPage(data: mixed) {
+      return <p>{typeof data === "string" ? data : "no data"}</p>;
+    }
+    component Loading() {
+      return <p>the fallback is here</p>;
+    }
+    return {
+      routes: [
+        {
+          path: "/slow",
+          params: [],
+          mdx: false,
+          file: "app/slow/_uf.page.js",
+          page: () =>
+            Promise.resolve({
+              default: DataPage,
+              loader: () => {
+                seen.loads += 1;
+                return "the page is here";
+              },
+            }),
+          layouts: [],
+          loading: [{ above: 0, module: () => Promise.resolve({ default: Loading }) }],
+        },
+      ],
+      notFound: [],
+      errors: [],
+    };
+  }
+
+  it("reads the embedded data rather than running the loader a second time", async () => {
+    // The half of ubugeeei-prod/uf#373 that is about the browser. The loader's
+    // answer used to be written into the head, where `hydrate` reads it before
+    // `hydrateRoot`; a deferred answer does not exist when the head goes out, so
+    // it moved into the tree. If the browser could not find it there, every
+    // deferred route would fetch its data twice — once for the document and
+    // once on the way in — and nothing would say so.
+    const seen = { loads: 0 };
+    const table = countedTable(seen);
+    const renderer = createRenderer({ App: routerView("./app"), ...table });
+
+    const { html } = await renderer.prerender("/slow", assets);
+    expect(seen.loads).toBe(1);
+    expect(html).toContain('<script id="__uf_data"');
+
+    installDom();
+    const parsed = new globalThis.DOMParser().parseFromString(html, "text/html");
+    const rendered = parsed.getElementById("uf-root");
+    const root = globalThis.document.createElement("div");
+    root.id = "uf-root";
+    root.innerHTML = rendered?.innerHTML ?? "";
+    globalThis.document.body.replaceChildren(root);
+    globalThis.window.history.pushState(null, "", "/slow");
+
+    const { hydrate } = await clientModule();
+    await act(async () => {
+      await hydrate({ App: routerView("./app"), ...table });
+    });
+
+    // Still one: the browser found the answer the document carried.
+    expect(seen.loads).toBe(1);
+    expect(globalThis.document.getElementById("uf-root")?.textContent).toContain(
+      "the page is here",
+    );
+  });
+
+  it("hoists the route's metadata into the head it is hydrated beside", async () => {
+    // The two fixes meeting. `Head` renders a `<title>` in the tree, uf's shell
+    // lifts it into the real head (#547), and React on the client claims that
+    // element rather than making a second one — so a hydrated document has one
+    // title, in the head, and the body has none.
+    const seen = { loads: 0 };
+    const table = countedTable(seen);
+    table.routes[0].page = () =>
+      Promise.resolve({
+        default: (props: { readonly data: mixed, ... }) => (
+          <p>{typeof props.data === "string" ? props.data : "no data"}</p>
+        ),
+        loader: () => "the page is here",
+        metadata: { title: "The manual", canonical: "https://docs.uniflowed.dev/slow" },
+      });
+    const { html } = await createRenderer({
+      App: routerView("./app"),
+      ...table,
+    }).prerender("/slow", assets);
+
+    installDom();
+    const parsed = new globalThis.DOMParser().parseFromString(html, "text/html");
+    expect(parsed.head.querySelectorAll("title").length).toBe(1);
+    expect(parsed.head.querySelector('link[rel="canonical"]')).toBeTruthy();
+    expect(parsed.getElementById("uf-root")?.querySelector("title")).toBe(null);
+  });
+});
+
 describe("prerendering the same route", () => {
+  it("waits for the loader, because a file in dist/ has nothing to stream to", async () => {
+    // `uf build`'s half of ubugeeei-prod/uf#373. Deferring costs the loader its
+    // say in the response — a status is decided when the shell goes out — and
+    // buys a first paint that a file being written to disk does not have. So
+    // the static renderer resolves the loader exactly as it always did.
+    const waited = deferred();
+    setTimeout(waited.resolve, 20);
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(waited.promise),
+    });
+
+    const result = await renderer.prerender("/slow", assets);
+
+    expect(result.status).toBe(200);
+    expect(result.html).toContain("the page is here");
+    expect(result.html).not.toContain("the fallback is here");
+    expect(result.html).not.toContain("$RC(");
+  });
+});
+
+describe("prerendering a route that suspends", () => {
   it("writes a document with the resolved page in it, not a fallback", async () => {
     // `uf build`'s half. A file whose slow parts are `<template>` elements
     // waiting for `$RC()` is a page that is blank to a crawler and to `curl`,
@@ -397,6 +738,93 @@ describe("prerendering the same route", () => {
       result.html.startsWith("<!DOCTYPE html>") || result.html.startsWith("<!doctype html>"),
     ).toBe(true);
     expect(result.html).toContain("</html>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The head the shell lifts out of the app's markup
+// ---------------------------------------------------------------------------
+
+describe("hoisting head elements into the shell's own head", () => {
+  // `head` is empty because it is the other shape's: an app that renders its
+  // own `<html>` gets uf's tags spliced before the `</head>` React wrote, and
+  // an app that does not gets them from `open` and `body` instead.
+  const shell = {
+    head: "",
+    open: "<!doctype html><html><head>",
+    body: "</head><body>",
+    close: "</body></html>",
+  };
+
+  /** A `renderToReadableStream` that hands back exactly these chunks. */
+  function writing(chunks: $ReadOnlyArray<string>) {
+    const encoder = new TextEncoder();
+    let index = 0;
+    return async () => ({
+      getReader: () => ({
+        read: () =>
+          Promise.resolve(
+            index < chunks.length
+              ? { done: false, value: encoder.encode(chunks[index++]) }
+              : { done: true },
+          ),
+        releaseLock: () => {},
+      }),
+    });
+  }
+
+  /** The document those chunks assemble into. */
+  async function documentOf(chunks: $ReadOnlyArray<string>): Promise<string> {
+    const body = await renderWithReadableStream(writing(chunks), <p>unused</p>, {
+      shell,
+      onError: () => {},
+    });
+    return body.text();
+  }
+
+  it("puts them in the head wherever React split its output", async () => {
+    // The reason this is driven through a renderer of the test's own rather
+    // than through React: where the chunk boundaries fall is React's decision,
+    // and a scanner that only worked when a tag arrived whole would be a bug
+    // that appeared under load and nowhere else. Every split below is the same
+    // document.
+    const whole = '<title>a page</title><meta name="description" content="a>b"/><main>body</main>';
+    const splits = [
+      [whole],
+      ["<title>a pa", "ge</title><meta name=", '"description" content="a>b"/><main>body</main>'],
+      ['<title>a page</title><meta name="description" content="a>b"/>', "<main>body</main>"],
+      ["<", "title>a page</title>", '<meta name="description" content="a>b"/><main>body</main>'],
+    ];
+
+    for (const chunks of splits) {
+      const html = await documentOf(chunks);
+      expect(html.indexOf("<title>a page</title>")).toBeLessThan(html.indexOf("</head>"));
+      expect(html.indexOf('name="description"')).toBeLessThan(html.indexOf("</head>"));
+      expect(html.indexOf("<main>body</main>")).toBeGreaterThan(html.indexOf("<body>"));
+    }
+  });
+
+  it("stops at the first thing that is not one, however much it looks like one", async () => {
+    // `<titlebar>` is somebody's component. The run ends there, and the two
+    // elements after it stay in the body where they were written — hoisting
+    // them would mean holding the document to look for them, which is
+    // streaming in shape and buffering in fact.
+    const html = await documentOf([
+      '<title>a page</title><titlebar><meta name="late" content="x"/></titlebar>',
+    ]);
+
+    expect(html.indexOf("<title>a page</title>")).toBeLessThan(html.indexOf("</head>"));
+    expect(html.indexOf('name="late"')).toBeGreaterThan(html.indexOf("<body>"));
+  });
+
+  it("writes a document for markup that is nothing but head elements", async () => {
+    // The run never ends, so nothing tells the scanner to stop until the
+    // chunks do. It must still close the document rather than wait forever.
+    const html = await documentOf(["<title>only this</title>"]);
+
+    expect(html).toBe(
+      "<!doctype html><html><head><title>only this</title></head><body></body></html>",
+    );
   });
 });
 
@@ -427,7 +855,12 @@ describe("the Web-standard renderer", () => {
     return { render, seen };
   }
 
-  const shell = { head: "", open: "<!doctype html><html><body>", close: "</body></html>" };
+  const shell = {
+    head: "",
+    open: "<!doctype html><html><head>",
+    body: "</head><body>",
+    close: "</body></html>",
+  };
 
   it("stops the render when the consumer gives up on it", async () => {
     // The Node path holds `renderToPipeableStream`'s `abort` and calls it from
