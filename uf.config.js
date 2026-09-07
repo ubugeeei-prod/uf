@@ -481,6 +481,30 @@ export default defineConfig({
       inputs: ["tools/ci/lockfile-in-sync.sh", "tools/ci/test-lockfile-in-sync.sh"],
     },
 
+    // And that the gate at the bottom of `ci.yml` still covers `ci.yml`. The
+    // `CI` job there is red unless every job it names came back `success`, and
+    // it is what stands between a `Toolchain` that does not compile and an
+    // armed auto-merge onto `main`. #367 is the morning before it existed:
+    // `Toolchain` failed to compile, every job that needs it reported
+    // `skipped`, GitHub counted five skipped required checks as satisfied, and
+    // the merge went through onto a `main` that `cargo check` exits 101 on.
+    //
+    // The gate only holds while its `needs:` names every job, which is a list
+    // somebody has to add to — the same shape as the drift that left this
+    // task list eight tasks behind the pipeline. So it is checked rather than
+    // trusted, along with the other ways a required context can come back
+    // `skipped` and be read as a pass.
+    "ci:gate": {
+      command: "tools/ci/gate-covers-every-job.sh",
+      // Every workflow, not just `ci.yml`: `Zizmor` is a required context and
+      // lives in `security.yml`.
+      inputs: [".github/workflows/*.yml", "tools/ci/gate-covers-every-job.sh"],
+    },
+    "ci:gate:test": {
+      command: "tools/ci/test-gate-covers-every-job.sh",
+      inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
+    },
+
     manifests: {
       command:
         "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
@@ -528,6 +552,8 @@ export default defineConfig({
         "release:bump:test",
         "release:changelog",
         "release:changelog:test",
+        "ci:gate",
+        "ci:gate:test",
         // Not `install:test`. It packages a release before installing it, and
         // packaging needs `wild-linker`, which CI installs in that job and a
         // laptop has no reason to have. A `uf run ci` that fails on a fresh
