@@ -29,8 +29,18 @@ pub enum CheckError {
         /// The configured limit.
         limit: usize,
     },
-    /// Inference ran out of its wall-clock budget.
-    #[error("type inference for {path} exceeded its {limit_ms}ms budget")]
+    /// Inference ran out of a wall-clock budget a caller asked for.
+    ///
+    /// Says what it is out loud on purpose. A budget is a measurement of the
+    /// machine and not of the file — the same file reaches it on a loaded
+    /// runner and does not on an idle laptop — so a reader who sees this must
+    /// not read it as "this file is wrong". `uf check` sets no budget; only an
+    /// embedder that has to bound how long a keystroke waits does.
+    /// ubugeeei-prod/uf#565.
+    #[error(
+        "type inference for {path} was stopped by a caller's {limit_ms}ms wall-clock \
+         budget before it finished; this measures the machine, not the file"
+    )]
     Budget {
         /// The file being checked.
         path: CompactString,

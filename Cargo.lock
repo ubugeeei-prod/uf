@@ -3679,10 +3679,12 @@ dependencies = [
 name = "uf_pm"
 version = "0.0.0-alpha.13"
 dependencies = [
+ "base64",
  "camino",
  "compact_str",
  "serde",
  "serde_json",
+ "sha2",
  "smallvec",
  "tempfile",
  "thiserror",

@@ -169,6 +169,54 @@ fn a_file_that_does_not_exist_is_skipped() {
     assert_eq!(env.files().len(), 1);
 }
 
+/// What a watcher is given: the cascade, existing or not.
+///
+/// [`ProjectEnv::files`] answers "which files were read" and is what goes on a
+/// banner. A watcher needs the other answer: a `.env.local` created while
+/// `uf dev` runs changes the environment exactly as much as an edit to one that
+/// was already there, and a watcher primed with only what existed at startup
+/// would never see it. See ubugeeei-prod/uf#428.
+#[test]
+fn the_files_a_watcher_is_given_are_the_whole_cascade() {
+    let dir = project(&[(".env", "PRESENT=1\n")]);
+    let root = root(&dir);
+
+    let watched = candidate_files(&root, &UniflowedConfig::default(), "development").unwrap();
+
+    assert_eq!(
+        watched,
+        vec![
+            root.join(".env"),
+            root.join(".env.local"),
+            root.join(".env.development"),
+            root.join(".env.development.local"),
+        ]
+    );
+    // And the mode is in the answer, so a watcher started for one mode is not
+    // watching another's files.
+    let production = candidate_files(&root, &UniflowedConfig::default(), "production").unwrap();
+    assert!(production.contains(&root.join(".env.production")));
+    assert!(!production.contains(&root.join(".env.development")));
+}
+
+/// `env.files` replaces the cascade for the watcher too, and is still refused
+/// when it names something outside the project.
+#[test]
+fn the_files_a_watcher_is_given_follow_env_files() {
+    let dir = project(&[("config/shared.env", "A=1\n")]);
+    let root = root(&dir);
+    let mut config = UniflowedConfig::default();
+    config.env.files = vec![compact_str::CompactString::const_new("config/shared.env")];
+
+    assert_eq!(
+        candidate_files(&root, &config, "development").unwrap(),
+        vec![root.join("config/shared.env")]
+    );
+
+    config.env.files = vec![compact_str::CompactString::const_new("../outside.env")];
+    assert!(candidate_files(&root, &config, "development").is_err());
+}
+
 #[test]
 fn comments_blank_lines_and_export_are_understood() {
     let dir = project(&[(

@@ -60,7 +60,7 @@ use flow_typing_errors::{flow_error, intermediate_error};
 use flow_utils_concurrency::check_budget::CheckBudget;
 use flow_utils_concurrency::job_error::JobError;
 
-use crate::cache::{CheckCache, Digest, Fields, Record, hex};
+use crate::cache::{CachedAnswer, CheckCache, Digest, Fields, Record, hex};
 use crate::diagnostic::TypeDiagnostic;
 use crate::limits::CHECK_STACK_BYTES;
 use crate::upstream::graph::{Graph, ModuleFacts};
@@ -275,16 +275,28 @@ fn check_batch(
         // The record is about this file; the digest says whether it is still
         // about this *batch*. Both have to hold, and they fail for different
         // reasons: the key stops matching when the file was edited, the digest
-        // when something it reaches was.
-        if let Some(record) = records[index]
+        // when something it reaches was — and a record carries an answer per
+        // batch, so a project checked both whole and by path finds both here.
+        let believed = records[index]
             .as_ref()
-            .filter(|record| record.dependencies == dependencies)
-        {
-            diagnostics.extend(record.diagnostics.iter().cloned());
+            .and_then(|record| record.answer(&dependencies))
+            .map(<[TypeDiagnostic]>::to_vec);
+        if let Some(found) = believed {
+            diagnostics.extend(found);
             // Counted against `files_checked`, which is why a `@noflow` file is
             // not counted at all: it was not checked either way.
             if !facts[index].skipped {
                 from_cache += 1;
+            }
+            // The answer this batch used goes to the front, so eviction drops
+            // the batch nobody asks for rather than the one that keeps being
+            // answered without a write. Written back only when the order really
+            // moved, so a settled warm run still touches no file on disk.
+            if let Some(cache) = cache
+                && let Some(record) = records[index].as_mut()
+                && record.touch(&dependencies)
+            {
+                cache.write(&keys[index], record);
             }
             continue;
         }
@@ -292,10 +304,16 @@ fn check_batch(
         match check_one(index, &options, &mk_builtins, limits, source, &modules) {
             Ok(found) => {
                 if let Some(cache) = cache {
-                    cache.write(
-                        &keys[index],
-                        &record_of(source.path, &facts[index], dependencies, &found),
-                    );
+                    // Onto whatever the record already knew, not over it: the
+                    // answer another batch computed for this same file is still
+                    // true of that batch. ubugeeei-prod/uf#406.
+                    let record =
+                        records[index].get_or_insert_with(|| record_of(source.path, &facts[index]));
+                    record.remember(CachedAnswer {
+                        dependencies,
+                        diagnostics: found.clone(),
+                    });
+                    cache.write(&keys[index], record);
                 }
                 diagnostics.extend(found);
             }
@@ -345,19 +363,19 @@ fn file_key(
 }
 
 /// Every limit that can change what a check reports, as one field.
+///
+/// [`CheckLimits::file_timeout`] is deliberately not here. It decides whether a
+/// check *finishes*, never what it says: a run that completes under a budget
+/// reports what a run with no budget would have reported, and a run that
+/// exhausts one writes nothing for the file it gave up on. Keying on it would
+/// only mean an editor that bounds its own latency and a `uf check` that does
+/// not could never read each other's entries — the same "two batches, one
+/// record" waste as ubugeeei-prod/uf#406, for a difference that is not a
+/// difference.
 fn limits_field(limits: &CheckLimits) -> String {
     format!(
-        "max-source-bytes={};recursion-limit={};type-expansion-recursion-limit={};file-timeout-nanos={}",
-        limits.max_source_bytes,
-        limits.recursion_limit,
-        limits.type_expansion_recursion_limit,
-        // A batch with no budget is not a batch with an enormous one: the
-        // budget decides whether a slow file is an error, so "none" needs a
-        // spelling of its own.
-        limits.file_timeout.map_or_else(
-            || "none".to_owned(),
-            |timeout| timeout.as_nanos().to_string()
-        ),
+        "max-source-bytes={};recursion-limit={};type-expansion-recursion-limit={}",
+        limits.max_source_bytes, limits.recursion_limit, limits.type_expansion_recursion_limit,
     )
 }
 
@@ -391,22 +409,19 @@ fn unhex(spelling: &str) -> Option<Digest> {
     Some(digest)
 }
 
-/// The record one checked file leaves behind.
-fn record_of(
-    path: &str,
-    facts: &ModuleFacts,
-    dependencies: String,
-    diagnostics: &[TypeDiagnostic],
-) -> Record {
-    Record {
-        version: crate::cache::RECORD_VERSION,
-        path: path.to_compact_string(),
-        signature: facts.signature.as_ref().map(hex),
-        requires: facts.requires.clone(),
-        skipped: facts.skipped,
-        dependencies,
-        diagnostics: diagnostics.to_vec(),
-    }
+/// An empty record about the file `facts` describes.
+///
+/// What a file *is* — its signature, its imports, whether it opted out — is a
+/// property of its own text and of the compiler, both of which the key already
+/// covers. So this is the same for every batch, and only the answers hung off
+/// it differ.
+fn record_of(path: &str, facts: &ModuleFacts) -> Record {
+    Record::new(
+        path,
+        facts.signature.as_ref().map(hex),
+        facts.requires.clone(),
+        facts.skipped,
+    )
 }
 
 fn check_one(

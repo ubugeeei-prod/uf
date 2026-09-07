@@ -341,16 +341,42 @@ was an `any`-typed value, and each *use* of one as a type was an error —
 Nothing is checked twice. A run keeps one record per file under
 `.uf/cache/check/`, keyed by the identity of the `uf` that wrote it — its path,
 size and modification time, the discipline `.uf/cache/transform` already
-holds — together with the limits the check ran under, a digest of the project's
-library definitions, and the file's own path and text. A record also carries a *dependency digest*, over the packed signature of
-every module the file reaches and how each of those modules' specifiers
-resolved; the diagnostics in it are believed only while that digest still
-describes the batch. So editing one file re-checks that file and the files that
-reach it, and nothing else — and editing a function body, which moves no
-declaration and changes no exported type, re-checks only the file itself. A
-process that cannot name its own binary caches nothing in either direction, and
-an entry that is unreadable, out of date, or about another file is a miss rather
-than an error.
+holds — together with every limit that can change what a check reports, a digest
+of the project's library definitions, and the file's own path and text. A record carries one *answer* per batch the file has
+been checked in, each stamped with the *dependency digest* it was computed
+under: a digest over the packed signature of every module the file reaches and
+how each of those modules' specifiers resolved. An answer is believed only while
+its digest still describes the batch in front of it. So editing one file
+re-checks that file and the files that reach it, and nothing else — and editing
+a function body, which moves no declaration and changes no exported type,
+re-checks only the file itself.
+
+Several answers rather than one, because a file is checked in more than one
+batch: `uf check` hands over the whole project, `uf check <path>` hands over the
+closure of one file, and an editor hands over less again. Those are different
+batches and so different digests, and a record that held one of them had the two
+runs taking each other's entry back for every file they both named — alternating
+between them left the project's cache permanently cold
+([#406](https://github.com/ubugeeei-prod/uf/issues/406)). Four answers per
+record, least recently used first, so a project checked many ways stays bounded.
+The cap is a bound on disk and never on correctness: a digest still has to match
+exactly, and a record with no answer for this batch is a miss like any other. It
+is the inner of two bounds — the directory-wide sweep described below is the
+outer one, and it was already the ceiling before a record held more than one
+answer.
+
+A process that cannot name its own binary caches nothing in either direction,
+and an entry that is unreadable, out of date, over its bounds, or about another
+file is a miss rather than an error.
+
+None of this may change what `uf check` reports, and neither may the machine it
+runs on. The limits inference runs under are a recursion depth, a type-expansion
+depth and a source size — all three functions of the file — and there is no
+wall-clock budget: a flat 30-second one used to abort a 6,300-line test file on
+a loaded runner and pass it on an idle laptop, with a failure a reader could not
+tell from a real one ([#565](https://github.com/ubugeeei-prod/uf/issues/565)).
+The bound against inference that does not terminate is Flow's own recursion
+limit, which counts work rather than time.
 
 All three disk caches — `.uf/cache/check`, `.uf/cache/transform` and
 `.uf/cache/task` — are bounded by one policy in `uf_infra::cache`: 128 MiB per

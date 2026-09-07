@@ -4,15 +4,28 @@
 //! missing one, is a checker that lies, and it lies quietly. So most of what is
 //! here is about *invalidation* — one test per input the key claims to cover,
 //! each of which fails if that input is taken back out of it.
+//!
+//! The other half is the invariant a user actually holds the checker to: **the
+//! same tree reports the same diagnostics, in the same order, whatever ran
+//! before it.** A cache is allowed to decide how long a run takes and nothing
+//! else, so the tests at the end of this file check the orderings a person
+//! really produces — whole project, one path, an edit, an edit reverted — and
+//! demand the same bytes from every one of them.
 
 use std::fs;
+use std::time::Duration;
 
 use tempfile::TempDir;
 
-use crate::cache::CheckCache;
+use crate::cache::{CachedAnswer, CheckCache, MAX_RECORD_ANSWERS, Record};
 use crate::{CheckLimits, CheckReport, Source, check_sources_cached};
 
-/// Tests must not race the wall clock; a loaded CI box is not a type error.
+/// The limits `uf check` runs under, which bound the file and never the clock.
+///
+/// `without_timeout` is redundant against today's default and stated anyway:
+/// it is the thing these tests depend on, and a test that raced a wall clock
+/// would pass on an idle laptop and fail on a loaded CI box, which is the
+/// failure ubugeeei-prod/uf#565 was about.
 fn limits() -> CheckLimits {
     CheckLimits::default().without_timeout()
 }
@@ -464,4 +477,318 @@ fn a_cache_that_cannot_be_written_is_a_slower_run_and_not_a_failed_one() {
     assert_eq!(first.files_from_cache, 0);
     assert_eq!(second.files_from_cache, 0);
     assert_eq!(second.files_checked, first.files_checked);
+}
+
+/// A batch with something to disagree about.
+///
+/// A type error in the file the reader asked about and another two modules
+/// away, an import that resolves to nothing, a file that opted out, and a file
+/// that reaches none of it. Enough that a run which lost or duplicated one
+/// file's answers reports a different number from one that did not.
+const NOISY: [(&str, &str); 5] = [
+    (
+        "app.js",
+        "// @flow\nimport type { Mode } from \"./mode.js\";\nimport { thing } from \"some-package\";\nexport const mode: Mode = \"never\";\nexport const used: mixed = thing;\n",
+    ),
+    (
+        "mode.js",
+        "// @flow\nimport type { Name } from \"./names.js\";\nexport type Mode = Name;\n",
+    ),
+    (
+        "names.js",
+        "// @flow\nexport type Name = \"onSubmit\" | \"onChange\";\nexport const wrong: number = \"no\";\n",
+    ),
+    ("opted.js", "// @noflow\nconst n: number = \"no\";\n"),
+    ("alone.js", "// @flow\nexport const one: number = 1;\n"),
+];
+
+/// `NOISY`'s first file on its own: the same bytes, a different batch.
+///
+/// `./mode.js` resolves to nothing here, so `Mode` is not a type this batch
+/// has and the diagnostics are not the ones the whole-project run computes.
+/// That is the point — it is what `uf check app.js` after `uf check` really is.
+const NOISY_SCOPED: [(&str, &str); 1] = [NOISY[0]];
+
+/// Every diagnostic in a report, as the bytes a reader would be shown.
+fn rendered(report: &CheckReport) -> String {
+    serde_json::to_string(&report.diagnostics).expect("diagnostics serialize")
+}
+
+/// Every record on disk that is about `path`.
+///
+/// There is at most one: a record is filed under the file's own text, and these
+/// tests never change it while asking.
+fn records_about(project: &TempDir, path: &str) -> Vec<Record> {
+    let directory = project.path().join(".uf").join("cache").join("check");
+    let Ok(entries) = fs::read_dir(&directory) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .filter_map(|document| serde_json::from_str::<Record>(&document).ok())
+        .filter(|record| record.path == path)
+        .collect()
+}
+
+#[test]
+fn a_path_scoped_run_and_a_whole_project_run_do_not_take_back_each_others_entries() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+
+    check(&cache, &limits(), &NOISY);
+    let scoped = check(&cache, &limits(), &NOISY_SCOPED);
+    let whole = check(&cache, &limits(), &NOISY);
+    let scoped_again = check(&cache, &limits(), &NOISY_SCOPED);
+
+    assert_eq!(
+        scoped.files_from_cache, 0,
+        "a batch of one is a batch this file has not been checked in"
+    );
+    // ubugeeei-prod/uf#406: with one digest per record these two runs took each
+    // other's entry back, every file they both named, and never settled.
+    assert_eq!(
+        whole.files_from_cache, whole.files_checked,
+        "the scoped run must not have taken the project's answers back"
+    );
+    assert_eq!(
+        scoped_again.files_from_cache,
+        NOISY_SCOPED.len(),
+        "nor the project run the scoped one's"
+    );
+}
+
+#[test]
+fn the_same_batch_reports_the_same_diagnostics_whatever_ran_before_it() {
+    if !crate::is_available() {
+        return;
+    }
+
+    // Cold, with nothing at all before it. This is the answer every other
+    // ordering has to agree with, because it is the only one a reader can
+    // reproduce from the source alone.
+    let cold = TempDir::new().unwrap();
+    let first = check(&CheckCache::open(cold.path()).unwrap(), &limits(), &NOISY);
+
+    // Warm: the same batch again, through the cache it just filled.
+    let warm = TempDir::new().unwrap();
+    let warm_cache = CheckCache::open(warm.path()).unwrap();
+    check(&warm_cache, &limits(), &NOISY);
+    let warm_again = check(&warm_cache, &limits(), &NOISY);
+
+    // The two orders a user actually produces: `uf check <path>` before
+    // `uf check`, and after it.
+    let scoped_first = TempDir::new().unwrap();
+    let scoped_first_cache = CheckCache::open(scoped_first.path()).unwrap();
+    check(&scoped_first_cache, &limits(), &NOISY_SCOPED);
+    let after_scoped = check(&scoped_first_cache, &limits(), &NOISY);
+
+    let scoped_between = TempDir::new().unwrap();
+    let scoped_between_cache = CheckCache::open(scoped_between.path()).unwrap();
+    check(&scoped_between_cache, &limits(), &NOISY);
+    check(&scoped_between_cache, &limits(), &NOISY_SCOPED);
+    let settled = check(&scoped_between_cache, &limits(), &NOISY);
+
+    for (ordering, report) in [
+        ("a second run through a warm cache", &warm_again),
+        ("a run after a path-scoped one", &after_scoped),
+        ("a run with a path-scoped one in the middle", &settled),
+    ] {
+        // ubugeeei-prod/uf#564: the number `uf check` reports has to be a fact
+        // about the code, not about what the cache happened to hold.
+        assert_eq!(
+            rendered(report),
+            rendered(&first),
+            "{ordering} reported different diagnostics"
+        );
+        assert_eq!(report.untyped_modules, first.untyped_modules, "{ordering}");
+        assert_eq!(report.files_checked, first.files_checked, "{ordering}");
+        assert_eq!(report.files_skipped, first.files_skipped, "{ordering}");
+    }
+    assert_eq!(
+        settled.files_from_cache, settled.files_checked,
+        "and the project's own run is free again afterwards"
+    );
+}
+
+#[test]
+fn a_wall_clock_budget_is_not_part_of_what_a_file_is_filed_under() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+
+    let cold = check(&cache, &limits(), &NOISY);
+    // A budget decides whether a check *finishes*, never what it says, so an
+    // embedder that bounds its own latency reads what `uf check` wrote and
+    // reports the same thing. ubugeeei-prod/uf#565.
+    let budgeted = check(
+        &cache,
+        &limits().with_file_timeout(Duration::from_secs(600)),
+        &NOISY,
+    );
+
+    assert_eq!(budgeted.files_from_cache, cold.files_checked);
+    assert_eq!(rendered(&budgeted), rendered(&cold));
+}
+
+#[test]
+fn a_file_checked_many_ways_keeps_a_bounded_number_of_answers() {
+    if !crate::is_available() {
+        return;
+    }
+    // Six batches, one per spelling of the type `app.js` checks against: the
+    // same file, the same key, six dependency digests.
+    const MODES: [&str; 6] = [
+        "// @flow\nexport type Mode = \"onSubmit\";\n",
+        "// @flow\nexport type Mode = \"onSubmit\" | \"a\";\n",
+        "// @flow\nexport type Mode = \"onSubmit\" | \"b\";\n",
+        "// @flow\nexport type Mode = \"onSubmit\" | \"c\";\n",
+        "// @flow\nexport type Mode = \"onSubmit\" | \"d\";\n",
+        "// @flow\nexport type Mode = \"onSubmit\" | \"e\";\n",
+    ];
+    let app = (
+        "app.js",
+        "// @flow\nimport type { Mode } from \"./mode.js\";\nexport const mode: Mode = \"onSubmit\";\n",
+    );
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+    for mode in MODES {
+        check(&cache, &limits(), &[app, ("mode.js", mode)]);
+    }
+
+    let held = records_about(&project, "app.js");
+
+    assert_eq!(held.len(), 1, "one record, six answers asked of it");
+    assert_eq!(
+        held[0].answers.len(),
+        MAX_RECORD_ANSWERS,
+        "a project checked twenty ways must not grow twenty copies of every file"
+    );
+    // The four that are kept are the four most recently used, so the batch a
+    // project is really checked in stays and the one-off leaves.
+    let newest = check(&cache, &limits(), &[app, ("mode.js", MODES[5])]);
+    let oldest = check(&cache, &limits(), &[app, ("mode.js", MODES[0])]);
+
+    assert_eq!(newest.files_from_cache, 2, "both files were still known");
+    assert_eq!(
+        oldest.files_from_cache, 1,
+        "`mode.js` is filed under its own text and still hits; `app.js`'s \
+         answer for this batch was evicted"
+    );
+}
+
+#[test]
+fn a_record_claiming_more_answers_than_the_bound_is_refused_whole() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+    let first = check(&cache, &limits(), &NOISY);
+
+    // A record is a file anything can write, and a document claiming more
+    // answers than `MAX_RECORD_ANSWERS` is not one this build wrote. It is
+    // refused whole rather than trusted as far as the bound: reading the first
+    // four answers out of a document somebody else authored is still reading
+    // it, and the bound exists to cap what a read costs, not to repair a file.
+    let directory = project.path().join(".uf").join("cache").join("check");
+    let mut inflated = 0;
+    for entry in fs::read_dir(&directory).unwrap() {
+        let path = entry.unwrap().path();
+        let mut record: Record =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).expect("a record we wrote");
+        while record.answers.len() <= MAX_RECORD_ANSWERS {
+            record.answers.push(CachedAnswer {
+                dependencies: format!("padding-{}", record.answers.len()),
+                diagnostics: Vec::new(),
+            });
+        }
+        fs::write(&path, serde_json::to_string(&record).unwrap()).unwrap();
+        inflated += 1;
+    }
+    assert_eq!(inflated, NOISY.len(), "one record per file was written");
+
+    let second = check(&cache, &limits(), &NOISY);
+
+    assert_eq!(
+        second.files_from_cache, 0,
+        "a record over its bound is a miss, not a partial read"
+    );
+    assert_eq!(rendered(&second), rendered(&first));
+}
+
+/// [`NOISY`] with one file's text replaced.
+fn noisy_with(path: &str, source: &'static str) -> Vec<(&'static str, &'static str)> {
+    NOISY
+        .iter()
+        .map(|(name, text)| {
+            if *name == path {
+                (*name, source)
+            } else {
+                (*name, *text)
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn a_dependency_flipped_back_is_answered_from_the_cache_it_already_filled() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+    let edited = noisy_with(
+        "names.js",
+        "// @flow\nexport type Name = \"onSubmit\";\nexport const wrong: number = \"no\";\n",
+    );
+
+    check(&cache, &limits(), &NOISY);
+    let changed = check(&cache, &limits(), &edited);
+    let back = check(&cache, &limits(), &NOISY);
+
+    assert!(
+        changed.files_from_cache < changed.files_checked,
+        "the edit has to reach something for the flip back to mean anything"
+    );
+    // ubugeeei-prod/uf#406's smaller case, and the one a rebase or a bisect
+    // produces every day: with one digest per record the answer computed
+    // before the edit was gone, so flipping back cost the same inference twice.
+    assert_eq!(
+        back.files_from_cache, back.files_checked,
+        "flipping a dependency back must not re-infer what was already computed"
+    );
+}
+
+#[test]
+fn a_batch_only_half_of_which_was_re_inferred_reports_what_a_cold_run_does() {
+    if !crate::is_available() {
+        return;
+    }
+    // `alone.js` is imported by nothing, so editing it re-infers exactly one
+    // file and leaves the rest to be replayed. That mixture is where an
+    // inference that depended on which files were already resolved would show
+    // up as a diagnostic appearing twice, or not at all.
+    let edited = noisy_with("alone.js", "// @flow\nexport const one: number = 2;\n");
+
+    let cold = TempDir::new().unwrap();
+    let fresh = check(&CheckCache::open(cold.path()).unwrap(), &limits(), &edited);
+
+    let warm = TempDir::new().unwrap();
+    let cache = CheckCache::open(warm.path()).unwrap();
+    check(&cache, &limits(), &NOISY);
+    let partial = check(&cache, &limits(), &edited);
+
+    assert_eq!(
+        partial.files_from_cache,
+        partial.files_checked - 1,
+        "only the edited file should have been inferred again"
+    );
+    assert_eq!(rendered(&partial), rendered(&fresh));
+    assert_eq!(partial.untyped_modules, fresh.untyped_modules);
 }
