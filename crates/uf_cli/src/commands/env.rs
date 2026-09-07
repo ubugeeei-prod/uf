@@ -80,7 +80,7 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     // Before the links are made, not after: a `.uniflowed` from an older uf
     // holds links into the store that nothing rebuilds, and as a *file* it is
     // what stops `uf env install` outright — ubugeeei-prod/uf#427.
-    let migrated = uf_env::project::migrate_legacy_dir(&resolved.root);
+    let migrated = uf_env::project::migrate_legacy_dir(&resolved.root)?;
     let envs = uf_env::project::Envs::discover()?;
     let linked = uf_env::project::link(&resolved.root, &envs, &store, &pins)?;
     let entries: Vec<String> = pins.iter().map(uf_env::Pin::slug).collect();
@@ -408,7 +408,7 @@ mod tests {
             Some("review")
         );
 
-        assert!(uf_env::project::migrate_legacy_dir(&root));
+        assert!(uf_env::project::migrate_legacy_dir(&root).unwrap());
         assert_eq!(
             fs::read_to_string(root.join(PROFILE_FILE)).unwrap(),
             "review\n"

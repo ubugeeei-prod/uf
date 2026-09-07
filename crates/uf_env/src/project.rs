@@ -161,27 +161,39 @@ pub fn declared(config: &UniflowedConfig, platform: Platform) -> Result<Vec<Pin>
 ///   leftover from an older `uf env use` stops `uf env install` outright.
 ///
 /// Returns whether anything was there.
-pub fn migrate_legacy_dir(root: &Utf8Path) -> bool {
+///
+/// # Errors
+///
+/// When the profile cannot be copied to its new home. Nothing is removed in
+/// that case — the point of copying rather than renaming is that a failure
+/// leaves the original where the reader can still see it, and deleting
+/// `.uniflowed/` after a copy that did not happen would lose the profile and
+/// report that it had moved.
+pub fn migrate_legacy_dir(root: &Utf8Path) -> Result<bool, EnvError> {
     let legacy = root.join(LEGACY_ENV_DIR);
     if !legacy.exists() {
-        return false;
+        return Ok(false);
     }
 
     let legacy_profile = root.join(uf_config::env_files::LEGACY_PROFILE_FILE);
     let profile = root.join(uf_config::env_files::PROFILE_FILE);
+    // Only when there is nothing at the new path already: a project that has
+    // run `uf env use` since upgrading has said something newer.
     if legacy_profile.is_file() && !profile.exists() {
         if let Some(parent) = profile.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).map_err(|source| EnvError::Write {
+                path: parent.to_path_buf(),
+                source,
+            })?;
         }
-        // Copied and then removed with the rest, rather than renamed: a rename
-        // across the two paths is one syscall that either works or does not,
-        // and a copy that fails leaves the original where the reader can still
-        // see it.
-        let _ = fs::copy(&legacy_profile, &profile);
+        fs::copy(&legacy_profile, &profile).map_err(|source| EnvError::Write {
+            path: profile.clone(),
+            source,
+        })?;
     }
 
     // Either shape: the directory it became, and the file it used to be.
-    fs::remove_dir_all(&legacy).is_ok() || fs::remove_file(&legacy).is_ok()
+    Ok(fs::remove_dir_all(&legacy).is_ok() || fs::remove_file(&legacy).is_ok())
 }
 
 /// Rebuild the links for the project at `root` so they point at exactly

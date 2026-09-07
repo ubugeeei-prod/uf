@@ -59,12 +59,15 @@ Each tool is unpacked once, into a store keyed by tool, version and platform —
 links to the same copy. Two projects on the same Node share it; a third on a
 different one gets its own, and neither disturbs the other.
 
-Nothing is written outside the store and the repository. There is no `sudo`
-step, no shell profile to edit, and no version manager to initialise in your
-`.zshrc`. The download's checksum is verified before anything is unpacked,
-against the digest the publisher ships beside the archive.
+uf writes in three places and no others: the store, the per-project link
+directory beside it, and `.uf/profile` in the repository once you have picked
+an environment. There is no `sudo` step, no shell profile to edit, and no
+version manager to initialise in your `.zshrc`. The download's checksum is
+verified before anything is unpacked, against the digest the publisher ships
+beside the archive.
 
-The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides it.
+The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides
+it; the links live beside it under `uf/envs`, and `$UF_ENVS` overrides those.
 
 ## Using it
 

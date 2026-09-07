@@ -410,7 +410,7 @@ fn a_directory_from_an_older_uf_is_removed_whichever_shape_it_is() {
 
     let as_directory = root.join("a");
     std::fs::create_dir_all(as_directory.join(".uniflowed/env/bin")).unwrap();
-    assert!(project::migrate_legacy_dir(&as_directory));
+    assert!(project::migrate_legacy_dir(&as_directory).unwrap());
     assert!(!as_directory.join(".uniflowed").exists());
 
     // The profile in it is a decision somebody made, and is moved rather
@@ -418,7 +418,7 @@ fn a_directory_from_an_older_uf_is_removed_whichever_shape_it_is() {
     let with_profile = root.join("p");
     std::fs::create_dir_all(with_profile.join(".uniflowed")).unwrap();
     std::fs::write(with_profile.join(".uniflowed/profile"), "review\n").unwrap();
-    assert!(project::migrate_legacy_dir(&with_profile));
+    assert!(project::migrate_legacy_dir(&with_profile).unwrap());
     assert_eq!(
         std::fs::read_to_string(with_profile.join(".uf/profile")).unwrap(),
         "review\n"
@@ -428,11 +428,35 @@ fn a_directory_from_an_older_uf_is_removed_whichever_shape_it_is() {
     let as_file = root.join("b");
     std::fs::create_dir_all(&as_file).unwrap();
     std::fs::write(as_file.join(".uniflowed"), "default\n").unwrap();
-    assert!(project::migrate_legacy_dir(&as_file));
+    assert!(project::migrate_legacy_dir(&as_file).unwrap());
     assert!(!as_file.join(".uniflowed").exists());
 
     // And a project that never had one is not a failure.
     let clean = root.join("c");
     std::fs::create_dir_all(&clean).unwrap();
-    assert!(!project::migrate_legacy_dir(&clean));
+    assert!(!project::migrate_legacy_dir(&clean).unwrap());
+}
+
+/// A profile that cannot be moved is not a profile that is deleted.
+///
+/// `.uf` as a *file* is the shape that makes the copy fail. Removing
+/// `.uniflowed/` anyway would lose the profile and let `uf env install` report
+/// that it had moved it.
+#[test]
+fn a_profile_that_cannot_be_copied_leaves_the_original_alone() {
+    let (_guard, root) = temp();
+    let project = root.join("p");
+    std::fs::create_dir_all(project.join(".uniflowed")).unwrap();
+    std::fs::write(project.join(".uniflowed/profile"), "review\n").unwrap();
+    // `.uf` is a file, so `.uf/profile` cannot be created.
+    std::fs::write(project.join(".uf"), "not a directory\n").unwrap();
+
+    let error = project::migrate_legacy_dir(&project).unwrap_err();
+
+    assert!(matches!(error, EnvError::Write { .. }), "{error:?}");
+    assert_eq!(
+        std::fs::read_to_string(project.join(".uniflowed/profile")).unwrap(),
+        "review\n",
+        "the profile was removed with the directory it could not leave"
+    );
 }
