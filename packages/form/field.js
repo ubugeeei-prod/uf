@@ -59,6 +59,22 @@
 // and it would be a worse trade: a structural match that holds until somebody
 // changes one of them.
 //
+// # The edge reads backwards, and stays until #210
+//
+// ubugeeei-prod/uf#614 is right that a headless form store depending on a
+// component library is the wrong direction, and that `docs/architecture.md`
+// asks for the two to be independently consumable. The decision recorded there
+// is to keep the edge and hold it to a *type*: Flow erases this import, so
+// nothing of `@uniflowed/ui` is loaded, bundled or run by a project that
+// installs this package — the cost is an entry in `package.json` so `uf check`
+// can resolve it, and not a component library in a form store's runtime. The
+// line that would make it a real dependency is a *value* crossing, and
+// `tests/library/published-packages.test.js` fails on one.
+//
+// The trigger to reverse it is #210. Once `@uniflowed/form` is on npm,
+// `publishable.sh` allows `ui → form`, and `FieldSource` belongs in the package
+// that produces it rather than the one that consumes it.
+//
 // # The subscription is this component's, not the form's
 //
 // `useFormState({ control, name })` rather than reading `form.formState`. A form
