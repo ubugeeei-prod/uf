@@ -69,7 +69,7 @@ pub mod alloc;
 pub mod report;
 pub mod scope;
 
-pub use alloc::{AllocCounter, AllocDelta, AllocSnapshot, CountingAllocator};
+pub use alloc::{AllocCounter, AllocDelta, AllocSnapshot, CountingAllocator, Window};
 pub use report::{IterationRecord, Report, ReportConfig, SortBy, SpanAggregate};
 pub use scope::{ScopeGuard, ScopeRecord};
 
@@ -105,7 +105,12 @@ impl Recorder {
     /// workload whose result is dropped is a workload the optimiser is
     /// entitled to delete.
     pub fn record<R>(&mut self, mut workload: impl FnMut() -> R) -> R {
-        // Records first: anything left from a previous window is not this
+        // Exclusive for the whole iteration, and taken before anything is
+        // cleared: a second recorder opening midway would rebase the peaks
+        // this one is measuring against and empty the worker spans it has
+        // already collected. See `alloc::Window`.
+        let _window = Window::open();
+        // Records next: anything left from a previous window is not this
         // one's, and a span from before the baseline would be attributed
         // here with allocations it did not make.
         scope::reset_thread_spans();

@@ -107,6 +107,12 @@ impl Report {
             allocations.deallocations += run.allocations.deallocations;
             allocations.bytes_allocated += run.allocations.bytes_allocated;
             allocations.bytes_deallocated += run.allocations.bytes_deallocated;
+            // Summed, not maxed: live growth is a signed difference, and what
+            // a reader wants across a repeated workload is what it left behind
+            // in total. Leaving it out kept the report's own field at its
+            // default, so every report said `"liveGrowth":0` and dropped the
+            // live-memory line — including the runs that had a leak to show.
+            allocations.live_growth += run.allocations.live_growth;
             allocations.peak_above_baseline = allocations
                 .peak_above_baseline
                 .max(run.allocations.peak_above_baseline);

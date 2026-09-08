@@ -191,3 +191,51 @@ fn the_json_carries_every_span_rather_than_only_the_drawn_rows() {
         assert!(json.contains(name), "{name} is missing from {json}");
     }
 }
+
+/// Live growth is folded across iterations like everything else it sits beside.
+///
+/// It was the one field `from_iterations` walked past. The report therefore
+/// kept the default — zero — so `"liveGrowth":0` went out on every run and the
+/// live-memory line was dropped from every table, including the runs whose
+/// whole point was that a workload had left something behind. A leak that
+/// reports as no leak is worse than no field at all.
+#[test]
+fn live_growth_is_summed_over_the_iterations() {
+    let iterations = vec![
+        IterationRecord {
+            elapsed: Duration::from_millis(1),
+            allocations: AllocDelta {
+                live_growth: 4_096,
+                ..AllocDelta::default()
+            },
+            spans: Vec::new(),
+        },
+        IterationRecord {
+            elapsed: Duration::from_millis(1),
+            allocations: AllocDelta {
+                live_growth: 2_048,
+                ..AllocDelta::default()
+            },
+            spans: Vec::new(),
+        },
+        // Negative, because a window that frees more than it takes is what a
+        // cache being dropped looks like, and the sum has to be able to say so.
+        IterationRecord {
+            elapsed: Duration::from_millis(1),
+            allocations: AllocDelta {
+                live_growth: -1_024,
+                ..AllocDelta::default()
+            },
+            spans: Vec::new(),
+        },
+    ];
+
+    let report = Report::from_iterations("fold", iterations, ReportConfig::default());
+
+    assert_eq!(report.allocations.live_growth, 4_096 + 2_048 - 1_024);
+    assert!(
+        report.render_json().contains("\"liveGrowth\":5120"),
+        "{}",
+        report.render_json()
+    );
+}

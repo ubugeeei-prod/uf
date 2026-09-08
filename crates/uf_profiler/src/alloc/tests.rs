@@ -145,3 +145,105 @@ fn a_counter_measures_from_where_it_started() {
     assert!(delta.bytes_allocated >= 32 * 1024, "{delta:?}");
     drop(held);
 }
+
+/// A window's peak is the window's, not the biggest thing the process ever did.
+///
+/// `peak_live_bytes` is a high-water mark, and a mark kept since the process
+/// started says the largest thing that ever happened rather than the largest
+/// thing that happened here. Subtracting the window's starting live bytes from
+/// it does not make it a window figure — it makes it a stale peak with a fresh
+/// baseline, which is worse, because it looks like an answer. One heavy
+/// iteration used to poison every iteration after it.
+#[test]
+fn a_window_measures_a_peak_and_a_largest_of_its_own() {
+    let _lock = exclusive();
+    CountingAllocator::enable();
+
+    // Before the window: something big, then freed. The process-wide marks are
+    // now high and live bytes are back down — the exact shape that used to be
+    // reported as the next window's peak.
+    let heavy = Vec::<u8>::with_capacity(64 * 1024 * 1024);
+    std::hint::black_box(&heavy);
+    drop(heavy);
+
+    let window = Window::open();
+    let before = AllocSnapshot::capture();
+    let light = Vec::<u8>::with_capacity(256 * 1024);
+    std::hint::black_box(&light);
+    let after = AllocSnapshot::capture();
+    let delta = after.delta_from(&before);
+    drop(light);
+    drop(window);
+    CountingAllocator::disable();
+
+    // Not to the byte: the harness frees its own odds and ends while this
+    // runs, so live bytes dip under the window's own total by a rounding
+    // error. The gap this test is about is a factor of 256, not a kilobyte.
+    assert!(
+        delta.peak_above_baseline >= 200 * 1024,
+        "the window's own allocation is in its peak: {delta:?}"
+    );
+    assert!(
+        delta.peak_above_baseline < 16 * 1024 * 1024,
+        "the 64 MiB from before the window is not: {delta:?}"
+    );
+    assert!(
+        delta.largest_allocation >= 256 * 1024,
+        "the window's own allocation is its largest: {delta:?}"
+    );
+    assert!(
+        delta.largest_allocation < 16 * 1024 * 1024,
+        "the 64 MiB from before the window is not: {delta:?}"
+    );
+}
+
+/// And the marks go back when the window closes, so nesting composes.
+///
+/// The inner counter measures only its own stretch; the outer one, once the
+/// inner has handed the marks back, covers its own stretch *and* the inner's.
+/// That is the whole point of restoring with `fetch_max` rather than a store —
+/// a store would drop whichever of the two was bigger, and the bigger one is
+/// usually the child's.
+#[test]
+fn a_nested_counter_measures_its_own_stretch_and_the_outer_one_covers_both() {
+    let _lock = exclusive();
+    CountingAllocator::enable();
+
+    // Again a high mark set before anything opens, so that a counter reading
+    // the process-wide peak would be caught doing it.
+    let heavy = Vec::<u8>::with_capacity(64 * 1024 * 1024);
+    std::hint::black_box(&heavy);
+    drop(heavy);
+
+    let outer = AllocCounter::start();
+    let small = Vec::<u8>::with_capacity(256 * 1024);
+    std::hint::black_box(&small);
+
+    let inner = AllocCounter::start();
+    let big = Vec::<u8>::with_capacity(4 * 1024 * 1024);
+    std::hint::black_box(&big);
+    let inner_delta = inner.delta();
+    drop(big);
+
+    let outer_delta = outer.delta();
+    drop(small);
+    CountingAllocator::disable();
+
+    assert!(
+        inner_delta.peak_above_baseline >= 4 * 1000 * 1024,
+        "the inner counter saw its own 4 MiB: {inner_delta:?}"
+    );
+    assert!(
+        inner_delta.peak_above_baseline < 16 * 1024 * 1024,
+        "and not the 64 MiB from before it opened: {inner_delta:?}"
+    );
+    assert!(
+        outer_delta.peak_above_baseline >= 4 * 1024 * 1024 + 200 * 1024,
+        "the outer counter covers the inner's peak as well as its own: \
+         {outer_delta:?}"
+    );
+    assert!(
+        outer_delta.peak_above_baseline < 16 * 1024 * 1024,
+        "and still not the 64 MiB: {outer_delta:?}"
+    );
+}

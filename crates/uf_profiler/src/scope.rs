@@ -98,8 +98,8 @@ struct Frame {
     child_time: Duration,
     /// [`None`] when the counting allocator is not counting.
     ///
-    /// Reading the counters costs 7.8 ns a span pair, and against a 42 ns
-    /// guard that is a fifth of it — for four numbers that are all zero when
+    /// Reading the counters costs 11.0 ns a span pair, and against a 44.4 ns
+    /// guard that is a quarter of it — for four numbers that are all zero when
     /// nothing is counting them. A binary that never installed
     /// [`crate::CountingAllocator`] should not pay for the columns it cannot
     /// fill.

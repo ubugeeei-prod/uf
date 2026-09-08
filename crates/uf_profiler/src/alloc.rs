@@ -28,6 +28,7 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 
 /// Power-of-two size classes tallied, `0..=2^31` bytes and everything above.
 ///
@@ -111,6 +112,54 @@ impl Counters {
 }
 
 static COUNTERS: Counters = Counters::new();
+
+/// The high-water marks a window or a span displaced when it opened.
+///
+/// `peak_live_bytes` and `largest_allocation` are maxima, and a maximum kept
+/// since the process started answers a question nobody asked: it says the
+/// biggest thing that ever happened, not the biggest thing that happened
+/// *here*. Reading one as if it were window-scoped is wrong in a way that
+/// looks right — the number is plausible, it is just somebody else's.
+///
+/// So a window rebases them on the way in and puts them back on the way out,
+/// folding what it saw into what it displaced. A span nested inside another
+/// does the same, which is what makes the pattern compose: the child measures
+/// only its own stretch, and the parent, on restore, ends up with the maximum
+/// over its own stretch *and* every child's. Two atomic swaps in, two out.
+#[derive(Debug, Clone, Copy)]
+pub struct SavedPeaks {
+    peak_live_bytes: u64,
+    largest_allocation: u64,
+}
+
+/// Start a fresh pair of high-water marks, returning the displaced ones.
+///
+/// The peak restarts at the live bytes standing now rather than at zero, so
+/// that "peak above the baseline" is a difference between two numbers measured
+/// the same way.
+#[inline]
+fn rebase_peaks() -> SavedPeaks {
+    let live = COUNTERS.live_bytes.load(Ordering::Relaxed);
+    SavedPeaks {
+        peak_live_bytes: COUNTERS.peak_live_bytes.swap(live, Ordering::Relaxed),
+        largest_allocation: COUNTERS.largest_allocation.swap(0, Ordering::Relaxed),
+    }
+}
+
+/// Put back what [`rebase_peaks`] displaced, keeping the larger of the two.
+///
+/// `fetch_max` rather than a store: whoever is above wants the maximum over
+/// its own stretch and this one's, and a plain store would throw away
+/// whichever of the two was bigger.
+#[inline]
+fn restore_peaks(saved: SavedPeaks) {
+    COUNTERS
+        .peak_live_bytes
+        .fetch_max(saved.peak_live_bytes, Ordering::Relaxed);
+    COUNTERS
+        .largest_allocation
+        .fetch_max(saved.largest_allocation, Ordering::Relaxed);
+}
 
 /// Which power-of-two bucket `size` falls in.
 ///
@@ -279,9 +328,66 @@ impl AllocSnapshot {
             // added on top of what was already live.
             peak_above_baseline: self.peak_live_bytes.saturating_sub(baseline.live_bytes),
             live_growth: self.live_bytes as i64 - baseline.live_bytes as i64,
-            largest_allocation: self.largest_allocation.max(baseline.largest_allocation),
+            // Since the window opened, because that is when the counter was
+            // last rebased. Taking `max` with the baseline's, as this once
+            // did, could not do anything: the counter only rises, so the
+            // later snapshot's value is always the larger and the window's
+            // own largest was never computed at all.
+            largest_allocation: self.largest_allocation,
             size_classes,
         }
+    }
+}
+
+/// Held for as long as a measurement window is open. See [`Window::open`].
+static WINDOW: Mutex<()> = Mutex::new(());
+
+/// One measurement window: exclusive, and with high-water marks of its own.
+///
+/// Two things go wrong when windows overlap, and this fixes both by not
+/// letting them.
+///
+/// The peaks are the first. They are process-wide maxima, so a window has to
+/// rebase them to get a figure that is about itself (see [`SavedPeaks`]); two
+/// windows rebasing each other's would each report the other's stretch.
+///
+/// The worker spans are the second. A window clears the shared span storage
+/// when it opens, so that a span left over from earlier is not attributed to
+/// it — and a second window opening midway through the first would clear the
+/// spans the first had already collected, deleting worker time from a report
+/// that gave no sign anything was missing.
+///
+/// So a window is exclusive. Opening one while another is open blocks until
+/// that one closes, which for the profiler's callers — a benchmark harness,
+/// `uf profile` — is the behaviour they would have written by hand.
+pub struct Window {
+    saved: SavedPeaks,
+    /// Dropped last, after the peaks are back, so the next window opens onto a
+    /// consistent pair.
+    _exclusive: MutexGuard<'static, ()>,
+}
+
+impl Window {
+    /// Open a window, waiting for any other to close first.
+    ///
+    /// A panic inside a window poisons nothing that matters here: the counters
+    /// are plain integers and the next window rebases them anyway, so the
+    /// poison is stepped over rather than propagated.
+    #[must_use]
+    pub fn open() -> Self {
+        let exclusive = WINDOW
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Self {
+            saved: rebase_peaks(),
+            _exclusive: exclusive,
+        }
+    }
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        restore_peaks(self.saved);
     }
 }
 
@@ -335,22 +441,36 @@ impl AllocDelta {
 /// twice, thirty-two of them a size-class histogram that
 /// [`crate::ScopeRecord`] does not carry and no report prints per span. An
 /// enter/drop pair measured 41.9 ns that way. Reading the four counters a span
-/// delta is actually made of, it is a fraction of that — and the spans that
-/// most need measuring are the ones in per-node loops, where forty nanoseconds
-/// is not a measurement, it is the thing being measured.
+/// delta is actually made of, the pair is 11.0 ns of a 44.4 ns guard — and the
+/// spans that most need measuring are the ones in per-node loops, where forty
+/// nanoseconds is not a measurement, it is the thing being measured.
 ///
 /// The histogram is still captured per *window* by [`AllocSnapshot`], where it
 /// is read twice an iteration rather than twice a span.
+///
+/// Two of those nanoseconds are the peak rebase, which is not free and is not
+/// optional: without it the peak this reports is the largest thing the process
+/// ever did, which is a number about somebody else's work. The clock pair
+/// alone is 38.7 ns of the 44.4, so the correctness costs six per cent of a
+/// span and none of the floor.
 #[derive(Debug, Clone, Copy)]
 pub struct AllocCounter {
     allocations: u64,
     bytes_allocated: u64,
     bytes_deallocated: u64,
     live_bytes: u64,
+    /// The enclosing window's high-water marks, held until this span closes.
+    saved: SavedPeaks,
 }
 
 impl AllocCounter {
-    /// Take the baseline: four relaxed loads.
+    /// Take the baseline: four relaxed loads, and a fresh pair of peaks.
+    ///
+    /// The peaks are rebased rather than merely read, because a maximum is not
+    /// a difference and cannot be turned into one by subtraction — see
+    /// [`SavedPeaks`]. [`Self::delta`] puts back what this displaced, so a
+    /// `start`/`delta` pair must be balanced, which [`crate::ScopeGuard`]
+    /// guarantees by doing the second in `Drop`.
     #[must_use]
     #[inline]
     pub fn start() -> Self {
@@ -359,10 +479,16 @@ impl AllocCounter {
             bytes_allocated: COUNTERS.bytes_allocated.load(Ordering::Relaxed),
             bytes_deallocated: COUNTERS.bytes_deallocated.load(Ordering::Relaxed),
             live_bytes: COUNTERS.live_bytes.load(Ordering::Relaxed),
+            saved: rebase_peaks(),
         }
     }
 
-    /// What has happened since.
+    /// What has happened since, and the end of this span's stretch.
+    ///
+    /// Closes the window [`Self::start`] opened: the peak read here is the one
+    /// this span drove, and the enclosing window's is restored around it. Call
+    /// it once — a second call would report the peak since the first, against
+    /// a baseline that has already been handed back.
     ///
     /// `size_classes` is left empty and `largest_allocation` zero: neither is
     /// a per-span number, and putting a figure there that no span report reads
@@ -375,6 +501,7 @@ impl AllocCounter {
         let bytes_deallocated = COUNTERS.bytes_deallocated.load(Ordering::Relaxed);
         let live_bytes = COUNTERS.live_bytes.load(Ordering::Relaxed);
         let peak_live_bytes = COUNTERS.peak_live_bytes.load(Ordering::Relaxed);
+        restore_peaks(self.saved);
         AllocDelta {
             allocations: allocations.saturating_sub(self.allocations),
             deallocations: 0,
