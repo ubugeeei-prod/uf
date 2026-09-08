@@ -193,6 +193,67 @@ describe("the audit itself", () => {
     expect(sent.length).toBe(1);
   });
 
+  it("audits the tree a mutation left behind, even one that arrived mid-run", async () => {
+    // The engine reads the tree as it was when the run started, so a mutation
+    // that lands while it is working is about a page the answer in flight says
+    // nothing about. The timer that would have covered it has already cleared
+    // itself by the time `audit` discovers the engine is busy — so returning
+    // there dropped the mutation for good: nothing was left scheduled, and the
+    // DOM it settled into never got audited at all.
+    //
+    // The engine is replaced outright rather than held open around a real run.
+    // What is under test is the scheduling, `axe` is a singleton whose lock is
+    // process-wide, and a case that parks the real engine for the length of a
+    // real audit makes every case after it wait on this one. A stand-in that
+    // answers "nothing wrong" costs nothing and pins the same thing.
+    const axe = (await import("axe-core")).default;
+    const real = axe.run;
+    let started = 0;
+    let finished = 0;
+    let release = () => {};
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    axe.run = async () => {
+      started += 1;
+      // Only the first run is held; the rest answer at once.
+      if (started === 1) await held;
+      finished += 1;
+      return { violations: [] };
+    };
+
+    try {
+      const stop = start({ endpoint: ENDPOINT, settleMs: 1, axe: {} });
+
+      // Wait until the engine is inside the first run and holding.
+      await uft.waitFor(() => {
+        expect(started).toBe(1);
+      });
+
+      // Now move the DOM. The timer this schedules fires while the run is
+      // still held, which is the case being pinned.
+      bodyOf().setAttribute("data-changed", "1");
+      await uft.waitUntil(() => started > 1, { timeout: 60 }).catch(() => {});
+      expect(started).toBe(1);
+
+      release();
+      // The run that was owed to the mutation, which used to never come.
+      await uft.waitFor(() => {
+        expect(started).toBeGreaterThan(1);
+      });
+      stop();
+      // Drained before the case ends: a run still in flight holds the engine's
+      // process-wide lock, and the next case's first audit would come back
+      // "Axe is already running" — a failure with nothing to do with the case
+      // it lands in.
+      await uft.waitFor(() => {
+        expect(finished).toBe(started);
+      });
+    } finally {
+      axe.run = real;
+    }
+  });
+
   it("says nothing at all about a page with nothing wrong with it", async () => {
     const sent = collect();
     render(

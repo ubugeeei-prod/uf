@@ -37,6 +37,16 @@
 
 import axe from "axe-core";
 
+/**
+ * Whether the engine is mid-run, for every audit in the process.
+ *
+ * Module scope because `axe` is a singleton and holds a single-run lock of its
+ * own: asking it for a second run while one is going answers "Axe is already
+ * running" rather than a result, and a per-page flag would not see the other
+ * page's run. One engine, one lock.
+ */
+let engineBusy = false;
+
 /** Most violations one report names; the rest are counted. */
 const MAX_VIOLATIONS_REPORTED = 8;
 
@@ -60,7 +70,10 @@ export function start(options) {
   const runOptions = axeOptions(options.axe ?? {});
   const floor = options.axe?.minImpact ?? null;
   let timer = null;
-  let running = false;
+  // Whether `stop` has been called. A run already in flight cannot be
+  // cancelled, but nothing after it should act as though the page is still
+  // being watched.
+  let stopped = false;
   // What the last report said, so a re-render that changes nothing the audit
   // cares about does not print the same block again. A page under active
   // editing re-renders constantly; a terminal that repeats itself every time
@@ -68,10 +81,25 @@ export function start(options) {
   let reported = "";
 
   const audit = async () => {
-    if (running || document.hidden) return;
-    running = true;
+    if (stopped || document.hidden) return;
+    if (engineBusy) {
+      // Not a run to skip — a run to come back for. The timer that brought us
+      // here cleared itself before calling, so returning without scheduling
+      // again loses the mutation for good: nothing is left pending, and the
+      // DOM it settled into never gets audited. Rescheduling rather than
+      // queueing a flag also means the wait is another settle, which is right
+      // — the tree may still be moving — and it is the same answer whether the
+      // engine is busy for this page or for another one.
+      schedule();
+      return;
+    }
+    engineBusy = true;
     try {
       const results = await axe.run(document, runOptions);
+      // The engine takes as long as it takes, and `stop` can land in the
+      // middle of it. A caller that has said it is done is not expecting one
+      // more report a second later.
+      if (stopped) return;
       const violations = (results?.violations ?? []).filter((violation) =>
         atOrAbove(violation.impact, floor),
       );
@@ -86,7 +114,7 @@ export function start(options) {
       // over — `reported` is left as it was so the next settle tries again.
       report(endpoint, null, error);
     } finally {
-      running = false;
+      engineBusy = false;
     }
   };
 
@@ -113,6 +141,7 @@ export function start(options) {
   // generated call in `./a11y.js` ignores it: a dev server's page is over when
   // the document is, and nothing outlives that.
   return () => {
+    stopped = true;
     if (timer != null) clearTimeout(timer);
     observer.disconnect();
   };
