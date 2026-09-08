@@ -1415,9 +1415,10 @@ fn completion_offers_every_command_explain_accepts() {
 /// The other half of {@link explain_describes_every_command_that_delegates}:
 /// the test asks `uf` itself for its commands, so a new one has to land in
 /// one list or the other. `help` and `completion` are clap's; `create`,
-/// `explain`, `info`, `inspect` and `routes` are uf's own work start to
-/// finish — `routes` walks the router root with `discover_routes` and writes
-/// files, and there is no second implementation of either to name.
+/// `explain`, `info`, `inspect`, `routes` and `i18n` are uf's own work start
+/// to finish — `routes` walks the router root with `discover_routes` and
+/// writes files, `i18n` parses the project with `uf_flow` and writes a
+/// catalogue, and there is no second implementation of any of them to name.
 ///
 /// `exec` left this list when it started running things: three of its four
 /// paths hand control to something else, so there is a provider to name.
@@ -1427,6 +1428,7 @@ const SELF_CONTAINED: &[&str] = &[
     "create",
     "explain",
     "help",
+    "i18n",
     "info",
     "init",
     "inspect",
