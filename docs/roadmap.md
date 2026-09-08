@@ -208,6 +208,15 @@ in `uf`.
   in-memory renderer runs the same code the terminal one does, and a frame is
   asserted as cells.
 - Add Testing Library-compatible queries and user events.
+- In-source tests: `import.meta.uf.test` collected by the same discovery that
+  finds a `.test.js` file, and compiled out of a build. **Done**, with the
+  elimination asserted against a real `uf build` rather than assumed.
+- Accessibility assertions: `expect(el).toHaveNoAxeViolations()` over a
+  rendered tree, and the same audit against the page `uf dev` is serving, with
+  one rule set in `uf.config.js`. **Done**, with axe-core an optional
+  dependency. What a Node worker can decide is limited by its DOM: happy-dom
+  computes no layout, so the contrast and overlap rules come back *incomplete*
+  there and are answered only by the audit that runs in the browser.
 - Add story system, MSW-compatible mocks, Playwright-compatible browser
   automation, and VRT baseline diffing.
 - Add `uf prepare` with lint-staged-compatible checks and code generation.

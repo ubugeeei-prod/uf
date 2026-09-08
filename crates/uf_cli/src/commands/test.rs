@@ -189,8 +189,9 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return watch::watch(ui, &root, resolved.config, &env, args);
     }
 
-    let mut host =
-        test_host(&root, &resolved.config, &env)?.with_snapshot_updates(args.update_snapshots);
+    let mut host = test_host(&root, &resolved.config, &env)?
+        .with_snapshot_updates(args.update_snapshots)
+        .with_axe(resolved.config.accessibility.axe.as_json());
 
     // Every JavaScript file the project has, before discovery narrows it to the
     // ones that declare tests: a file no test imports never becomes a script,
