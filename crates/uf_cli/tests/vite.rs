@@ -5004,3 +5004,283 @@ fn the_served_fixture_records_every_route_a_server_has_to_answer() {
         "the build did not report them:\n{said}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The other build: a library.
+//
+// `uf new --lib` wrote a project whose `build` task could not succeed, because
+// `uf build` had one build in it and a library has no `app.js` for the client
+// entry to import. See ubugeeei-prod/uf#268. These drive the real scaffold
+// through the real driver, and the first of them ends outside uf entirely.
+// ---------------------------------------------------------------------------
+
+/// Scaffold a library into `project` with `uf init --lib`, named `name`.
+///
+/// The scaffold uf actually writes, not a hand-made copy of it: the bug this
+/// replaces was the template and the build disagreeing, and a fixture that
+/// restates the template could not have caught it.
+fn scaffold_library(project: &Project, name: &str) -> String {
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["init", "--lib", "--force", "--name", name])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "the scaffold failed:\n{said}");
+    said
+}
+
+/// The whole of ubugeeei-prod/uf#268, end to end and then one step past it.
+///
+/// `uf init --lib` writes the project, `uf build` builds it, and the result is
+/// installed into a directory that holds **nothing else** — no `uf.config.js`,
+/// no `@uniflowed/*`, no Flow transform, not even a `node_modules` above it —
+/// and imported by name from a plain `node`. That last step is the claim the
+/// whole design rests on: a library built by uf is consumable without adopting
+/// the toolchain that built it.
+///
+/// It imports by the package **name** rather than by a path, so what is being
+/// tested is the `exports` map: a resolver that knows no conditions takes
+/// `default`, and `default` has to be the compiled build. With the source
+/// there instead — which is what the template published before this — `node`
+/// answers with a syntax error on `opaque type`.
+#[test]
+fn a_scaffolded_library_builds_and_is_importable_with_no_toolchain() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "scaffolded-lib");
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "the scaffold's own build task failed:\n{said}");
+    // The summary says which of the two builds ran and which key decided,
+    // which is what #268 asked `uf explain build` for and what a reader needs
+    // when `dist/` does not hold what they expected.
+    assert!(said.contains("library"), "{said}");
+    assert!(said.contains("app.router.enabled"), "{said}");
+
+    let built = project.path().join("dist/index.js");
+    assert!(built.is_file(), "no module was written:\n{said}");
+    let source = fs::read_to_string(&built).unwrap();
+    assert!(
+        !source.contains("opaque type"),
+        "the output is still Flow:\n{source}"
+    );
+    // The sourcemap names the Flow source, which is why the manifest's `files`
+    // has to ship it: a map to a file that is not in the tarball is a map to
+    // nothing.
+    assert!(project.path().join("dist/index.js.map").is_file());
+
+    // Installed the way a consumer installs it, in a directory with nothing
+    // else in it and nothing uf's above it.
+    let consumer = tempfile::tempdir().unwrap();
+    let installed = consumer.path().join("node_modules/scaffolded-lib");
+    fs::create_dir_all(&installed).unwrap();
+    for file in ["package.json", "index.js"] {
+        fs::copy(project.path().join(file), installed.join(file)).unwrap();
+    }
+    copy_tree(&project.path().join("dist"), &installed.join("dist"));
+
+    fs::write(
+        consumer.path().join("consumer.mjs"),
+        "import { createId } from \"scaffolded-lib\";\nprocess.stdout.write(createId(\"flow\"));\n",
+    )
+    .unwrap();
+    let ran = Command::new("node")
+        .arg("consumer.mjs")
+        .current_dir(consumer.path())
+        .output()
+        .unwrap();
+    let reported = format!(
+        "{}{}",
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    assert!(
+        ran.status.success(),
+        "the consumer could not run:\n{reported}"
+    );
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "flow", "{reported}");
+}
+
+/// Dependencies are external by default, which is the opposite of the
+/// application build.
+///
+/// Proved by a dependency that is **not installed**: if the build tried to
+/// resolve it, it would fail. It succeeds, and the import survives into the
+/// output — which is what makes a library one copy of a package rather than a
+/// second one inside everybody who installs it.
+///
+/// The `cjs` half is here too, because the two questions share a fixture: a
+/// `.cjs` extension rather than `.js` is not cosmetic when the manifest says
+/// `"type": "module"`.
+#[test]
+fn a_library_leaves_a_declared_dependency_an_import_and_writes_both_formats() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "external-lib");
+    project.write(
+        "index.js",
+        "// @flow\nimport leftPad from \"left-pad\";\n\nexport function pad(raw: string): string {\n  return leftPad(raw, 4);\n}\n",
+    );
+    let manifest = project.path().join("package.json");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        text.replace(
+            "\"type\": \"module\",",
+            "\"type\": \"module\",\n  \"dependencies\": { \"left-pad\": \"^1.3.0\" },",
+        ),
+    )
+    .unwrap();
+    project.write(
+        "uf.config.js",
+        &config_with(
+            "  app: { router: { enabled: false } },\n  build: { lib: { formats: [\"es\", \"cjs\"] } },\n",
+        ),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(
+        succeeded,
+        "a declared dependency was resolved rather than externalised:\n{said}"
+    );
+    let es = fs::read_to_string(project.path().join("dist/index.js")).unwrap();
+    assert!(es.contains("\"left-pad\""), "the import was inlined:\n{es}");
+    let cjs = fs::read_to_string(project.path().join("dist/index.cjs")).unwrap();
+    assert!(cjs.contains("left-pad"), "{cjs}");
+    assert!(said.contains("external packages"), "{said}");
+}
+
+/// A library whose manifest names a built file the build did not write.
+///
+/// The package installs, the build succeeds, and importing that subpath fails.
+/// Every check that existed before this one passes it, which is why the build
+/// says so.
+#[test]
+fn a_library_reports_an_exports_target_it_did_not_build() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "half-exported-lib");
+    let manifest = project.path().join("package.json");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        text.replace(
+            "\"default\": \"./dist/index.js\"\n    }\n  },",
+            "\"default\": \"./dist/index.js\"\n    },\n    \"./parse\": \"./dist/parse.js\"\n  },",
+        ),
+    )
+    .unwrap();
+
+    // The edit above is a string replacement over the template's own bytes, so
+    // it is checked rather than assumed: a template that reformatted its
+    // manifest would otherwise turn this test into one that asserts nothing.
+    assert!(
+        fs::read_to_string(&manifest)
+            .unwrap()
+            .contains("./dist/parse.js"),
+        "the fixture did not add the unbuilt subpath",
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(
+        said.contains("./dist/parse.js"),
+        "the unbuilt export is not named:\n{said}"
+    );
+    // And the source, which is outside the output directory, is not reported:
+    // it is in the checkout rather than in the build.
+    assert!(!said.contains("./index.js"), "{said}");
+}
+
+/// `--compile` and `--adapter` write a deployment that serves an application.
+///
+/// Refused by name and before anything is built, which is the rule
+/// ubugeeei-prod/uf#638 applied to the same two flags. `--compile` needs no
+/// Bun here for the same reason: nothing is resolved before the refusal.
+#[test]
+fn a_library_refuses_the_two_flags_that_write_a_deployment() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "not-a-deployment");
+
+    for (flags, expected) in [
+        (vec!["build", "--compile"], "executable"),
+        (vec!["build", "--adapter", "node"], "directory"),
+    ] {
+        let output = uf()
+            .arg("--cwd")
+            .arg(project.path())
+            .args(&flags)
+            .output()
+            .unwrap();
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!output.status.success(), "{flags:?} was accepted:\n{said}");
+        assert!(said.contains(expected), "{flags:?}:\n{said}");
+        assert!(said.contains("app.router.enabled"), "{flags:?}:\n{said}");
+        assert!(
+            !project.path().join("dist/index.js").exists(),
+            "{flags:?} built something before refusing"
+        );
+    }
+}
+
+/// `uf explain build` says which of the two builds will run, and why.
+///
+/// ubugeeei-prod/uf#268's first acceptance item: whichever mechanism decides,
+/// the command that exists to say who does the work has to say which build it
+/// is. Both directions, because "library" printed for every project would pass
+/// half of this.
+#[test]
+fn explain_build_names_the_build_that_will_run() {
+    if !fixture_ready() {
+        return;
+    }
+    let library = Project::new(&[]);
+    scaffold_library(&library, "explained-lib");
+    let said = explain_build(library.path());
+    assert!(said.contains("library"), "{said}");
+    assert!(said.contains("app.router.enabled"), "{said}");
+    // The stages an application has and a library does not.
+    assert!(!said.contains("prerender"), "{said}");
+    assert!(!said.contains("adapter"), "{said}");
+
+    let application = Project::new(&minimal_app());
+    let said = explain_build(application.path());
+    assert!(said.contains("application"), "{said}");
+    assert!(said.contains("prerender"), "{said}");
+}
+
+/// `uf explain build` in `root`, as one string.
+fn explain_build(root: &Path) -> String {
+    let output = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{said}");
+    said
+}
