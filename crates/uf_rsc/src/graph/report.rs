@@ -13,7 +13,7 @@ use crate::scan::{ExportKind, ImportSpecifier};
 use super::build::ResolvedImports;
 use super::diagnostic::RscDiagnostic;
 use super::resolve::{is_server_only_path, is_server_only_specifier};
-use super::{ModuleReachability, RscModule, RscModuleInput};
+use super::{ModuleReachability, RscModule, RscModuleInput, client_only_hook_package};
 
 pub(crate) fn report_module_diagnostics(
     module: &RscModuleInput,
@@ -64,16 +64,29 @@ pub(crate) fn report_module_diagnostics(
         }
         // Under exactly the same condition, and for the same reason: a hook
         // the name lists do not know is only a question worth asking about
-        // code the server runs. Reported rather than assumed harmless, because
-        // "the graph said nothing" and "the graph checked and found nothing"
-        // are the same output today and are not the same fact.
+        // code the server runs.
+        //
+        // Two answers now. A hook `@uniflowed/hooks` exports is decided, from
+        // the `server_component_safe` the registry has carried for it all
+        // along; anything else is still reported as the question it is,
+        // because "the graph said nothing" and "the graph checked and found
+        // nothing" are the same output otherwise and are not the same fact.
         for call in &module.hook_calls {
-            diagnostics.push(RscDiagnostic::UnclassifiedHookInServerModule {
-                module: module.path.clone(),
-                hook: call.name.clone(),
-                line: call.line,
-                column: call.column,
-            });
+            match client_only_hook_package(&call.name, external) {
+                Some(package) => diagnostics.push(RscDiagnostic::ClientOnlyHookInServerModule {
+                    module: module.path.clone(),
+                    hook: call.name.clone(),
+                    package: CompactString::from(package),
+                    line: call.line,
+                    column: call.column,
+                }),
+                None => diagnostics.push(RscDiagnostic::UnclassifiedHookInServerModule {
+                    module: module.path.clone(),
+                    hook: call.name.clone(),
+                    line: call.line,
+                    column: call.column,
+                }),
+            }
         }
     }
 

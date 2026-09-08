@@ -62,6 +62,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
         config.app.runtime.deploy.adapters,
         vec![
             DeployAdapter::Node,
+            DeployAdapter::Bun,
             DeployAdapter::Edge,
             DeployAdapter::Serverless,
             DeployAdapter::Static,
@@ -78,17 +79,19 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     // named and rejected rather than half-published.
     assert!(DeployAdapter::Static.is_implemented());
     assert_eq!(DeployAdapter::Static.tracking_issue(), None);
-    // And the two that are not, each of which is waiting for something named
-    // rather than for somebody's attention.
-    for adapter in [DeployAdapter::Bun, DeployAdapter::Deno] {
-        assert!(!adapter.is_implemented(), "{}", adapter.as_str());
-        assert_eq!(adapter.tracking_issue(), Some(391));
-        assert!(
-            adapter.unimplemented_because().is_some(),
-            "{}",
-            adapter.as_str()
-        );
-    }
+    // `bun` joined them once the thing it was waiting for happened: a
+    // benchmark, on the same emitted handler, showing the native server ahead
+    // of `node:http` on both halves of a request — +32% dynamic, +26% static.
+    // See ubugeeei-prod/uf#391.
+    assert!(DeployAdapter::Bun.is_implemented());
+    assert_eq!(DeployAdapter::Bun.tracking_issue(), None);
+    assert_eq!(DeployAdapter::Bun.unimplemented_because(), None);
+    // And the one that is not, which is waiting for something named rather
+    // than for somebody's attention: the same benchmark, on a machine that has
+    // a Deno to run it on.
+    assert!(!DeployAdapter::Deno.is_implemented());
+    assert_eq!(DeployAdapter::Deno.tracking_issue(), Some(391));
+    assert!(DeployAdapter::Deno.unimplemented_because().is_some());
     assert_eq!(DeployAdapter::Node.unimplemented_because(), None);
     assert!(!config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.route);

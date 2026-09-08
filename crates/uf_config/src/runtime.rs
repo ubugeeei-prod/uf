@@ -188,7 +188,7 @@ impl DeployAdapter {
     ///
     /// "Writes something the platform accepts, in that platform's documented
     /// shape, driven by a test" — and not "has been deployed". None of the
-    /// four server targets has ever run on the platform it targets; the
+    /// five server targets has ever run on the platform it targets; the
     /// sandbox uf is developed in has no credentials for any cloud and cannot
     /// bind a socket. What the tests establish is the emitted file set, the
     /// emitted handler's answers in process, and that those answers match
@@ -203,17 +203,17 @@ impl DeployAdapter {
     pub const fn is_implemented(self) -> bool {
         matches!(
             self,
-            Self::Node | Self::Edge | Self::Serverless | Self::Static | Self::Container
+            Self::Node | Self::Bun | Self::Edge | Self::Serverless | Self::Static | Self::Container
         )
     }
 
     /// The issue that tracks an adapter nobody has written yet.
     ///
-    /// One issue rather than one per target, because what is left is one piece
-    /// of work: `bun` and `deno` need a benchmark before they need code. The
-    /// `node` output already runs unchanged on both, so an adapter that is not
-    /// measurably faster is a directory with a different name on it, and
-    /// nobody has run that benchmark.
+    /// One issue rather than one per target, because what is left is one
+    /// target: `deno`. It needs the benchmark `bun` has now had — the `node`
+    /// output already runs unchanged on both, so an adapter that is not
+    /// measurably faster is a directory with a different name on it — and the
+    /// machine uf is developed on has no Deno to run it with.
     #[must_use]
     pub const fn tracking_issue(self) -> Option<u32> {
         if self.is_implemented() {
@@ -233,10 +233,11 @@ impl DeployAdapter {
     #[must_use]
     pub const fn unimplemented_because(self) -> Option<&'static str> {
         match self {
-            Self::Bun | Self::Deno => Some(
-                "the `node` output already runs unchanged on both, so this is worth writing \
+            Self::Deno => Some(
+                "the `node` output already runs unchanged on Deno, so this is worth writing \
                  only once a benchmark shows the native server beating `node:http` under the \
-                 same handler",
+                 same handler — as one now has for Bun, on a machine that had no Deno to \
+                 measure",
             ),
             _ => None,
         }
