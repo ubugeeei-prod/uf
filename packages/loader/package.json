@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/loader",
-  "version": "0.0.0-alpha.14",
+  "version": "0.0.0-alpha.15",
   "description": "Flow declarations for @uniflowed/loader, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -17,8 +17,8 @@
     "index.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.14",
-    "@uniflowed/cell": "0.0.0-alpha.14",
-    "@uniflowed/fetch": "0.0.0-alpha.14"
+    "@uniflowed/core": "0.0.0-alpha.15",
+    "@uniflowed/cell": "0.0.0-alpha.15",
+    "@uniflowed/fetch": "0.0.0-alpha.15"
   }
 }
