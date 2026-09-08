@@ -141,3 +141,47 @@ fn the_installers_declared_logo_size_is_the_logo_it_embeds() {
         "the installer tells iTerm2 the image is {declared} bytes, but embeds {decoded}"
     );
 }
+
+/// The installer and `uf use` have to unpack into and read from one store.
+///
+/// `install.sh` writes `${UF_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/uf}/runtimes`;
+/// `uf_rm::XdgLayout::versions_dir` is the same path, and was
+/// `…/uniflowed/runtimes` until ubugeeei-prod/uf#534 — a directory `uf use`
+/// filled and the installer never looked at, with the two of them taking turns
+/// overwriting `~/.local/bin/uf` with different kinds of file.
+#[test]
+fn the_installer_and_uf_rm_name_the_same_runtime_store() {
+    let script = installer();
+
+    assert!(
+        script.contains(
+            r#"install_root="${UF_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/uf}""#
+        ),
+        "the installer no longer spells its install root the way uf_rm assumes"
+    );
+    assert!(
+        script.contains(r#"runtime_dir="${install_root}/runtimes/uf@${version}""#),
+        "the installer no longer unpacks into <root>/runtimes/uf@<version>"
+    );
+
+    let layout = uf_rm::XdgLayout::from_env(uf_rm::XdgEnv {
+        home: "/home/uf",
+        config_home: None,
+        data_home: None,
+        cache_home: None,
+        state_home: None,
+        runtime_dir: None,
+    });
+    assert_eq!(layout.versions_dir, "/home/uf/.local/share/uf/runtimes");
+    assert_eq!(layout.bin_dir, "/home/uf/.local/bin");
+
+    let layout = uf_rm::XdgLayout::from_env(uf_rm::XdgEnv {
+        home: "/home/uf",
+        config_home: None,
+        data_home: Some("/xdg/data"),
+        cache_home: None,
+        state_home: None,
+        runtime_dir: None,
+    });
+    assert_eq!(layout.versions_dir, "/xdg/data/uf/runtimes");
+}

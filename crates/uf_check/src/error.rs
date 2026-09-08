@@ -53,6 +53,31 @@ pub enum CheckError {
         /// The file being checked.
         path: CompactString,
     },
+    /// A project's `.flowconfig` could not be read.
+    ///
+    /// Reported rather than skipped: the file is the author's, the fix is on
+    /// the line named, and checking on without the `[libs]` it declares would
+    /// report every type those libdefs describe as an error.
+    #[error("{path}:{line}: {detail}")]
+    FlowConfig {
+        /// The configuration file.
+        path: CompactString,
+        /// The line upstream's parser objected to, or `0` for the file itself.
+        line: u32,
+        /// What upstream reported.
+        detail: CompactString,
+    },
+    /// A library definition the project supplied did not parse.
+    ///
+    /// Distinct from [`Self::Builtins`] because the fix is: this file is the
+    /// project's, and it is one a user wrote and can correct.
+    #[error("the library definition {path} failed to parse: {detail}")]
+    LibDef {
+        /// The library definition file.
+        path: CompactString,
+        /// What upstream's parser reported, with a position.
+        detail: CompactString,
+    },
     /// The builtin library definitions did not merge.
     ///
     /// This means the vendored `upstream/flow` submodule and the checker
