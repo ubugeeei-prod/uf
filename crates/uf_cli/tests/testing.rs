@@ -1040,6 +1040,108 @@ it("still has a clock that moves", async () => {
 }
 
 #[test]
+fn a_file_that_leaves_the_document_dirty_does_not_break_the_next_one() {
+    if !host_ready() {
+        return;
+    }
+    // The third occurrence of one seam, after the leaked stub
+    // (ubugeeei-prod/uf#417) and the leaked clock (#581): a worker serves many
+    // files out of one process, and what a file reaches around this package to
+    // change is handed to whichever file the schedule puts next. The document
+    // is the easiest of the three to miss, because nothing in `@uniflowed/test`
+    // installs it — `@uniflowed/react-testing` puts one on the global object on
+    // the first render and keeps it for the life of the process on purpose,
+    // since replacing it would strand every React root already mounted in the
+    // old one.
+    //
+    // Two real files through one real worker, which is the only shape this is
+    // visible in: `uf test` fans files across workers by size, so whether the
+    // second file follows the first in the same process is a property of the
+    // schedule rather than of the run. That is also the defect — on `main` the
+    // library suite passed on a cold schedule and failed six to ten cases on a
+    // warm one, with `getByRole "img": found 6 elements` naming the file that
+    // queried rather than the file that wrote. See ubugeeei-prod/uf#607.
+    let project = Project::new(&[
+        (
+            "src/writes-the-body.test.js",
+            r#"// @flow
+import { expect, it } from "@uniflowed/test";
+import { render } from "@uniflowed/react-testing";
+
+it("writes markup into the body by hand and never takes it out", () => {
+  // Which a hydration test must do — hydration is React attaching to markup
+  // that is already there — and which `cleanup()` therefore does not undo: it
+  // unmounts what `render` mounted, and this is not that. `rsc-split.test.js`
+  // and `streaming.test.js` both do exactly this to a real document.
+  render(<p>a document, please</p>);
+  const left = globalThis.document.createElement("img");
+  left.setAttribute("alt", "left behind");
+  globalThis.document.body.replaceChildren(left);
+  globalThis.document.body.setAttribute("class", "left-behind");
+
+  expect(globalThis.document.body.children.length).toBe(1);
+});
+"#,
+        ),
+        (
+            "src/queries-the-body.test.js",
+            r#"// @flow
+import { expect, it } from "@uniflowed/test";
+import { render, screen } from "@uniflowed/react-testing";
+
+it("is handed a document nobody else has written to", () => {
+  // The document exists because the file before this one installed it, and
+  // these two assertions are what say the worker put its *contents* back.
+  // Asserting on the body before rendering is deliberate: it names the leak
+  // rather than leaving it to be inferred from a count further down.
+  expect(globalThis.document.body.innerHTML).toBe("");
+  expect(globalThis.document.body.getAttributeNames().length).toBe(0);
+
+  render(<img alt="the only one" src="/b.png" />);
+  expect(screen.getAllByRole("img").length).toBe(1);
+});
+"#,
+        ),
+    ]);
+    let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf()).unwrap();
+    let mut worker = Worker::spawn(&worker_command(project.path())).expect("node starts");
+
+    let case_budget = Duration::from_secs(15);
+    // Generous for the reason the clock test above gives: the first file's
+    // `import` is what pays to transform `@uniflowed/react-testing`, React and
+    // everything under them through `uf transform`, and a cold cache on a
+    // loaded machine spends tens of seconds there before a line of the test
+    // runs. What bounds the regression is the assertion the second file opens
+    // with, not this.
+    let file_budget = Duration::from_secs(240);
+    let first = worker.run_file(
+        root.join("src/writes-the-body.test.js").as_str(),
+        "src/writes-the-body.test.js",
+        None,
+        case_budget,
+        file_budget,
+    );
+    let second = worker.run_file(
+        root.join("src/queries-the-body.test.js").as_str(),
+        "src/queries-the-body.test.js",
+        None,
+        case_budget,
+        file_budget,
+    );
+    worker.kill();
+
+    assert_eq!(first.status, FileStatus::Completed, "{first:?}");
+    assert_eq!(first.records.len(), 1, "{first:?}");
+    assert_eq!(first.records[0].status, TestStatus::Passed, "{first:?}");
+
+    assert_eq!(second.status, FileStatus::Completed, "{second:?}");
+    let [record] = second.records.as_slice() else {
+        panic!("the second file ran its one case: {second:?}");
+    };
+    assert_eq!(record.status, TestStatus::Passed, "{record:?}");
+}
+
+#[test]
 fn a_file_that_registers_nothing_fails_rather_than_passing() {
     if !host_ready() {
         return;
