@@ -8,6 +8,7 @@
     "@uniflowed/react": "0.0.0-alpha.5",
     "@uniflowed/router": "0.0.0-alpha.5",
     "@uniflowed/server": "0.0.0-alpha.5",
+    "@uniflowed/validator": "0.0.0-alpha.5",
     "@uniflowed/vite": "0.0.0-alpha.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
