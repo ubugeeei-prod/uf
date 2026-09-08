@@ -358,3 +358,133 @@ fn a_message_wider_than_the_cap_is_cut_from_its_tail() {
     let padded = format!("{}short", "\x1b".repeat(2_000));
     assert_eq!(safe_message(&padded), "short");
 }
+
+/// The cap is the *rendered* width, so an emoji-presentation sequence counts.
+///
+/// `char_width` gives a variation selector zero and the narrow scalar before it
+/// one, which sums to half of what a terminal draws: `a\u{fe0f}` repeated 120
+/// times summed to 120 — exactly the cap — and rendered as 240 columns. A name
+/// built out of those could wrap the row the bound exists to hold whatever the
+/// bound said. See ubugeeei-prod/uf#671.
+#[test]
+fn an_emoji_presentation_sequence_counts_the_columns_it_draws() {
+    let path = "a\u{fe0f}".repeat(120);
+    let drawn = safe_path(&path);
+
+    assert!(
+        display_width(&drawn) <= MAX_PATH_WIDTH,
+        "{}",
+        display_width(&drawn)
+    );
+    assert!(drawn.starts_with('\u{2026}'), "it was elided: {drawn:?}");
+    // The same sequence inside the cap is left whole.
+    let short = "a\u{fe0f}".repeat(10);
+    assert_eq!(safe_path(&short), short);
+}
+
+/// A joined cluster is one cluster, and is not charged per scalar.
+///
+/// The other half of the same mistake, in the other direction: summing
+/// `char_width` charges every scalar of a zero-width-joiner sequence, so a
+/// path of them would be elided long before it filled the row.
+#[test]
+fn a_zero_width_joiner_sequence_is_charged_once() {
+    // A single rendered glyph made of three scalars joined by two joiners.
+    let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+    let path = format!("src/{}.js", family.repeat(20));
+    let drawn = safe_path(&path);
+
+    // Well inside the cap once the joins are counted, so nothing is elided.
+    assert_eq!(display_width(&drawn), display_width(&path));
+    assert!(!drawn.starts_with('\u{2026}'), "{drawn:?}");
+}
+
+/// And a message is measured the same way.
+#[test]
+fn a_message_counts_the_columns_it_draws_too() {
+    let message = "a\u{fe0f}".repeat(MAX_MESSAGE_WIDTH);
+    let drawn = safe_message(&message);
+
+    assert!(
+        display_width(&drawn) <= MAX_MESSAGE_WIDTH,
+        "{}",
+        display_width(&drawn)
+    );
+    assert!(drawn.ends_with('\u{2026}'), "{drawn:?}");
+}
+
+/// The per-scalar costs are [`display_width`], split up — checked exhaustively.
+///
+/// The caps read the costs forward and stop at whatever boundary the budget
+/// runs out on, so any place the two rules disagree is a place a cap is wrong
+/// about the row. Rather than trust that the second copy of the state machine
+/// matches the first by eye, every sequence of up to four scalars drawn from
+/// the interesting alphabet — narrow, wide, a variation selector, a joiner —
+/// is checked to sum to exactly what the string renders as.
+#[test]
+fn the_costs_sum_to_what_the_string_renders_as() {
+    const ALPHABET: [char; 5] = ['a', '漢', VS16, ZWJ, '\u{1f469}'];
+
+    let mut sequences: Vec<Vec<char>> = vec![Vec::new()];
+    for _ in 0..4 {
+        let mut longer = Vec::new();
+        for sequence in &sequences {
+            for &ch in &ALPHABET {
+                let mut next = sequence.clone();
+                next.push(ch);
+                longer.push(next);
+            }
+        }
+        sequences.extend(longer);
+    }
+
+    for sequence in &sequences {
+        let rendered: String = sequence.iter().collect();
+        assert_eq!(
+            columns(sequence)
+                .iter()
+                .map(|column| column.cost)
+                .sum::<usize>(),
+            display_width(&rendered),
+            "{rendered:?}"
+        );
+    }
+}
+
+/// And what the cap keeps is under the cap, whatever it had to cut through.
+///
+/// Dropping from the front can stop in the middle of a cluster, where the
+/// costs were counted against scalars that are no longer there. The one that
+/// would be unsafe — keeping a joined scalar whose joiner was dropped, which
+/// the model charged nothing and the terminal charges in full — cannot happen,
+/// because dropping a zero-cost scalar never brings the total under the budget
+/// and so never ends the loop. This holds the property rather than the reason.
+#[test]
+fn every_cut_leaves_a_path_inside_the_cap() {
+    const ALPHABET: [char; 5] = ['a', '漢', VS16, ZWJ, '\u{1f469}'];
+
+    // Long enough that the cap always bites — every scalar draws at most two
+    // columns, so twice the cap in scalars is at least the cap in columns — and
+    // seeded differently each round so the boundary lands on each kind of
+    // scalar, and on each kind of run leading up to one, in turn.
+    let mut seed = 0x2545_f491_4f6c_dd1du64;
+    for _ in 0..500 {
+        let mut path = String::with_capacity(MAX_MESSAGE_WIDTH * 8);
+        for _ in 0..MAX_MESSAGE_WIDTH * 2 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            path.push(ALPHABET[(seed % ALPHABET.len() as u64) as usize]);
+        }
+        let drawn = safe_path(&path);
+        assert!(
+            display_width(&drawn) <= MAX_PATH_WIDTH,
+            "{} columns: {drawn:?}",
+            display_width(&drawn)
+        );
+        assert!(
+            display_width(&safe_message(&path)) <= MAX_MESSAGE_WIDTH,
+            "message: {drawn:?}"
+        );
+    }
+}
