@@ -136,15 +136,17 @@ fn transform_post_at(
         return Ok(Edit::Keep);
     }
 
-    let keys: Vec<String> = object
-        .keys()
-        .filter(|key| !SKIPPED_KEYS.contains(&key.as_str()))
-        .cloned()
-        .collect();
-    for key in keys {
-        let Some(child) = object.get_mut(&key) else {
+    // Walked through the map itself. This used to collect the keys into a
+    // `Vec<String>` first — a vector and an owned copy of every key, on every
+    // node of every module — because `get_mut` cannot run while `keys` is
+    // borrowed. Nothing in the loop adds or removes a key, only writes into
+    // one, so `iter_mut` is the same walk without the copies. Both the
+    // lowering and the Babel conversion come through here, so it is paid twice
+    // a module. See ubugeeei-prod/uf#668.
+    for (key, child) in object.iter_mut() {
+        if SKIPPED_KEYS.contains(&key.as_str()) {
             continue;
-        };
+        }
         match child {
             Value::Array(items) => {
                 let mut rebuilt = Vec::with_capacity(items.len());

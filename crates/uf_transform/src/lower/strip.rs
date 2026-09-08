@@ -56,19 +56,64 @@ pub fn lower(program: &mut Value) -> Result<(), TransformError> {
     Ok(())
 }
 
+/// The node types [`strip_node`] treats specially, as a value rather than a name.
+///
+/// The classification happens while the type is still borrowed from the node,
+/// so nothing is owned. Reading it as a `&str` and keeping it across the arms
+/// below — which all need the node mutably — is what `str::to_owned` was
+/// paying for: one `String` per node of every module, for a name that is
+/// compared and dropped. See ubugeeei-prod/uf#668.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Strip {
+    Cast,
+    Class,
+    Export,
+    ExportAll,
+    Function,
+    Import,
+    Pattern,
+    PropertyDefinition,
+    TypeOnly,
+    Other,
+}
+
+impl Strip {
+    fn of(kind: &str) -> Self {
+        if TYPE_ONLY_STATEMENTS.contains(&kind) {
+            return Self::TypeOnly;
+        }
+        match kind {
+            "AsExpression" | "AsConstExpression" | "TypeCastExpression" | "SatisfiesExpression" => {
+                Self::Cast
+            }
+            "ClassDeclaration" | "ClassExpression" => Self::Class,
+            "ExportNamedDeclaration" => Self::Export,
+            "ExportAllDeclaration" => Self::ExportAll,
+            "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression" => {
+                Self::Function
+            }
+            "ImportDeclaration" => Self::Import,
+            "Identifier" | "ObjectPattern" | "ArrayPattern" | "RestElement"
+            | "AssignmentPattern" => Self::Pattern,
+            "PropertyDefinition" => Self::PropertyDefinition,
+            _ => Self::Other,
+        }
+    }
+}
+
 fn strip_node(node: &mut Value) -> Edit {
-    let Some(kind) = node_type(node).map(str::to_owned) else {
+    let Some(kind) = node_type(node).map(Strip::of) else {
         return Edit::Keep;
     };
-    if TYPE_ONLY_STATEMENTS.contains(&kind.as_str()) {
+    if kind == Strip::TypeOnly {
         return Edit::Remove;
     }
 
-    match kind.as_str() {
-        "AsExpression" | "AsConstExpression" | "TypeCastExpression" | "SatisfiesExpression" => {
+    match kind {
+        Strip::Cast => {
             return Edit::Replace(take(node, "expression"));
         }
-        "ImportDeclaration" => {
+        Strip::Import => {
             if matches!(str_field(node, "importKind"), Some("type" | "typeof")) {
                 return Edit::Remove;
             }
@@ -86,13 +131,13 @@ fn strip_node(node: &mut Value) -> Edit {
             }
             remove_key(node, "importKind");
         }
-        "ExportAllDeclaration" => {
+        Strip::ExportAll => {
             if str_field(node, "exportKind") == Some("type") {
                 return Edit::Remove;
             }
             remove_key(node, "exportKind");
         }
-        "ExportNamedDeclaration" => {
+        Strip::Export => {
             if str_field(node, "exportKind") == Some("type") {
                 return Edit::Remove;
             }
@@ -111,10 +156,10 @@ fn strip_node(node: &mut Value) -> Edit {
             }
             remove_key(node, "exportKind");
         }
-        "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression" => {
+        Strip::Function => {
             strip_function(node);
         }
-        "ClassDeclaration" | "ClassExpression" => {
+        Strip::Class => {
             for key in [
                 "typeParameters",
                 "superTypeArguments",
@@ -124,7 +169,7 @@ fn strip_node(node: &mut Value) -> Edit {
                 remove_key(node, key);
             }
         }
-        "PropertyDefinition" => {
+        Strip::PropertyDefinition => {
             if node.get("declare").and_then(Value::as_bool) == Some(true) {
                 return Edit::Remove;
             }
@@ -132,7 +177,7 @@ fn strip_node(node: &mut Value) -> Edit {
                 remove_key(node, key);
             }
         }
-        "Identifier" | "ObjectPattern" | "ArrayPattern" | "RestElement" | "AssignmentPattern" => {
+        Strip::Pattern => {
             remove_key(node, "typeAnnotation");
             remove_key(node, "optional");
         }
