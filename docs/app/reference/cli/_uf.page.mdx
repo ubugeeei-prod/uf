@@ -352,19 +352,20 @@ host answers. Deploy the output directory to any static host, or check it with
 ### uf build --adapter TARGET
 
 Writes `.uf/deploy/TARGET/`: everything the target needs and nothing that is
-still in your checkout — no `node_modules`, no source, no `uf`. Five targets
-are implemented. Four of them run an application and share every line of it;
-the fifth runs none:
+still in your checkout — no `node_modules`, no source, no `uf`. Six targets
+are implemented. Five of them run an application and share every line of it;
+the sixth runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
 | `node` | `handler.js`, `server.js`, `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
+| `bun` | the same file names, with `Bun.serve` and `Bun.file` behind them | `cd .uf/deploy/bun && bun server.js` |
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json`, `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
 | `static` | your build, file for file, and nothing else | upload it to any static host |
 
-`handler.js` is the seam and is identical work in the four that have one: it is
+`handler.js` is the seam and is identical work in the five that have one: it is
 `@uniflowed/server/fetch`'s handler over your server bundle, it touches no
 filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
@@ -379,7 +380,7 @@ because two of the answers differ:
 
 | Target | A body reaches the client as it is produced | The process outlives the response |
 | --- | --- | --- |
-| `node`, `container` | yes | yes |
+| `node`, `bun`, `container` | yes | yes |
 | `edge` | yes | no — the isolate may be torn down once the response is out |
 | `serverless` | no — a Lambda response is a JSON value, so the body is read to the end first | no |
 
@@ -530,20 +531,43 @@ so this target adds no output. What it adds is that a project a static host
 
 Each finding names the URL, the file it is in, and what to do instead — which
 is usually `--adapter node`, since the application is the same file in all
-four server targets and the project does not have to change to use one. One
+five server targets and the project does not have to change to use one. One
 prerendered document is enough for a parameterised route: a
 `generateStaticParams` that named three slugs wrote three files, and whether it
 named *every* slug is a question about your data that no build can ask.
 
-#### The two that are not written
+#### bun
 
-`bun` and `deno` are names in `DeployAdapter` and nothing else. Asking for one
-is an error that says which and why, and names
+The same two files as `node`, with `@uniflowed/server/bun` in place of
+`@uniflowed/server/node`: `Bun.serve` for the socket and `Bun.file` for a
+static asset. Everything else — the application, the path policy, the
+containment and symlink checks, the draft rule — is the same code the `node`
+adapter runs, so the two are one implementation with one line swapped.
+
+It exists because the benchmark this adapter was waiting on was run, on the
+same emitted `handler.js`, and Bun won both halves of a request:
+
+| path | node | bun | |
+| --- | ---: | ---: | --- |
+| dynamic — `/api/health`, c=32 | 14,006/s | 18,480/s | **+32%** |
+| static — 215 KB asset, c=32 | 5,742/s | 7,251/s | **+26%** |
+| static — 508 B asset, c=64 | 18,125/s | 27,862/s | **+54%** |
+
+The static half is the reason `bun.js` exists rather than the `node` output
+being blessed for Bun. `Bun.serve` handed a Node stream measures 5,670/s on
+that 215 KB asset against `node:http`'s 5,732 — level. The win is `Bun.file`,
+and nothing else. [#391](https://github.com/ubugeeei-prod/uf/issues/391) has
+the method and the limits.
+
+#### The one that is not written
+
+`deno` is a name in `DeployAdapter` and nothing else. Asking for it is an error
+that says why, and names
 [#391](https://github.com/ubugeeei-prod/uf/issues/391).
 
 | Target | Why not |
 | --- | --- |
-| `bun`, `deno` | The `node` output already runs unchanged on both. An adapter here is `Bun.serve` or `Deno.serve` in place of `node:http`, and it is worth writing only once a benchmark shows the native server beating `node:http` *under the same handler* — otherwise it is a directory with a different name on it. Nobody has run that benchmark. |
+| `deno` | The `node` output already runs unchanged on Deno. An adapter here is `Deno.serve` in place of `node:http`, and it is worth writing only once a benchmark shows the native server beating `node:http` *under the same handler* — otherwise it is a directory with a different name on it. That benchmark has been run for Bun and not for Deno, on a machine that has no Deno. |
 
 `app.runtime.deploy.adapters` lists what this toolchain can actually produce,
 and `uf explain build` names the adapter a build will run.

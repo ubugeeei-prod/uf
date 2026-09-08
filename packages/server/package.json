@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./bun": "./bun.js",
     "./cache": "./cache.js",
     "./edge": "./edge.js",
     "./events": "./events.js",
@@ -26,6 +27,7 @@
     "./standalone": "./standalone.js"
   },
   "files": [
+    "bun.js",
     "cache.js",
     "edge.js",
     "events.js",

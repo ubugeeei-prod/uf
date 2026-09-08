@@ -53,9 +53,7 @@
 // way when it is deployed.
 
 import { createReadStream } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import path from "node:path";
 import { Readable } from "node:stream";
 
 import type { Instant } from "@uniflowed/core/temporal";
@@ -63,7 +61,7 @@ import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
-import { prerenderedMayAnswer } from "./internal/draft.js";
+import { locateStatic, staticRoot } from "./internal/static.js";
 import type { Logger } from "./internal/log.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
@@ -95,37 +93,6 @@ export { prerenderedMayAnswer } from "./internal/draft.js";
 export function nodeCapabilities(options?: CapabilityOptions): ServerCapabilities {
   return assertCapable(capabilitiesFor("node", { stream: true, persistent: true }, options));
 }
-
-/**
- * Content types for what a uf build emits.
- *
- * A closed table rather than a dependency, and deliberately short: every entry
- * is an extension `uf build` actually writes or a project actually puts in
- * `public/`. Anything else is `application/octet-stream`, which a browser
- * downloads rather than executes — the safe answer for a file whose type we do
- * not know, and the reason this is not a guess based on the bytes.
- */
-const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
-  ".avif": "image/avif",
-  ".css": "text/css; charset=utf-8",
-  ".gif": "image/gif",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webmanifest": "application/manifest+json",
-  ".webp": "image/webp",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".xml": "application/xml; charset=utf-8",
-});
 
 /**
  * The pieces of a Node request this module touches.
@@ -276,124 +243,26 @@ function writable(outgoing: NodeResponse): Promise<void> {
 /**
  * The static half: a file under `root`, or `null` for the caller to carry on.
  *
- * `GET` and `HEAD` only. A `POST` to a path that happens to have a file under
- * it belongs to a route handler, and answering it with the file's bytes would
- * be the same mistake as rendering a page for it.
- *
- * # The path is checked once, after it is resolved
- *
- * `docs/security.md` rule 2: never authorize against a raw request string or a
- * partially decoded path. The pathname is decoded first, then resolved against
- * the root, and *then* checked to be inside it — so `%2e%2e%2f`, a backslash
- * on Windows, and a symlinked directory all reduce to the same question, asked
- * once, of the value that is actually opened.
+ * Which file, and with what headers, is
+ * [`locateStatic`](./internal/static.js) — shared with every other host,
+ * because none of it is about Node. What is Node's is the last line: the body.
  */
 export function createStaticHandler(options: {|
   readonly root: string,
 |}): (request: Request) => Promise<Response | null> {
-  const rootDir = path.resolve(options.root);
-  // Resolved once, lazily: the root is fixed for the life of the handler, and a
-  // checkout reached through a symlink — which is every macOS `/tmp` — would
-  // otherwise fail its own containment test. Lazily because this is a
-  // constructor and it cannot await.
-  let realRoot: string | null = null;
+  const state = staticRoot(options.root);
 
   return async function serveStatic(request: Request): Promise<Response | null> {
-    const method = request.method.toUpperCase();
-    if (method !== "GET" && method !== "HEAD") return null;
-
-    const pathname = decodePathname(new URL(request.url).pathname);
-    if (pathname == null) return null;
-
-    const resolved = path.resolve(rootDir, `.${pathname}`);
-    if (resolved !== rootDir && !resolved.startsWith(rootDir + path.sep)) return null;
-
-    realRoot ??= (await realpathOrNull(rootDir)) ?? rootDir;
-    const root = realRoot;
-
-    // `/guide/` and `/guide` are the same prerendered document, and neither
-    // spelling is the one a person types. `<path>.html` is last because a
-    // build writes `guide/index.html`, and only a hand-placed file in
-    // `public/` is ever `guide.html`.
-    const candidates =
-      pathname.endsWith("/") === true
-        ? [path.join(resolved, "index.html")]
-        : [resolved, path.join(resolved, "index.html"), `${resolved}.html`];
-
-    // A draft request is never answered with a prerendered document, and
-    // `internal/draft.js`'s `prerenderedMayAnswer` is where that is argued —
-    // once, for all four front doors. What is this door's own is the last
-    // sentence of it: which of these bytes are a *document*. Here that is the
-    // file's extension, because here the bytes are files.
-    const prerendered = prerenderedMayAnswer(request.headers.get("cookie"));
-
-    for (const candidate of candidates) {
-      if (!prerendered && candidate.toLowerCase().endsWith(".html")) continue;
-      const info = await statFile(candidate);
-      if (info == null || !info.isFile()) continue;
-      // The containment check above is textual, and a symlink is how a path
-      // that reads as inside the root opens a file outside it. `dist/` is
-      // written by the build, but `public/` is copied verbatim from whatever
-      // the author — or a dependency's install script — put there, so the
-      // check has to be made again on the value that is actually opened.
-      // ubugeeei-prod/uf#550; the same shape as the tarball traversals in
-      // `docs/security.md`, at the serving end.
-      //
-      // A link that stays inside the root still works, because that is a thing
-      // people do on purpose. One that leaves is a 404, indistinguishable from
-      // a file that is not there — which is what it should look like.
-      const opened = await realpathOrNull(candidate);
-      if (opened == null || (opened !== root && !opened.startsWith(root + path.sep))) {
-        continue;
-      }
-      const headers = {
-        "content-type":
-          CONTENT_TYPES[path.extname(candidate).toLowerCase()] ?? "application/octet-stream",
-        "content-length": String(info.size),
-      };
-      if (method === "HEAD") return new Response(null, { headers });
-      // Streamed rather than read into memory, so serving a large asset costs
-      // a buffer rather than the file.
-      // $FlowFixMe[incompatible-call] - a Node web stream is a `BodyInit`.
-      return new Response(Readable.toWeb(createReadStream(candidate)), { headers });
-    }
-    return null;
+    const found = await locateStatic(state, request);
+    if (found == null) return null;
+    if (found.headOnly) return new Response(null, { headers: found.headers });
+    // Streamed rather than read into memory, so serving a large asset costs
+    // a buffer rather than the file. This line is the whole of what is
+    // host-specific about serving a directory — see `./internal/static.js`,
+    // and `./bun.js` for the same function with the other body.
+    // $FlowFixMe[incompatible-call] - a Node web stream is a `BodyInit`.
+    return new Response(Readable.toWeb(createReadStream(found.path)), { headers: found.headers });
   };
-}
-
-function decodePathname(pathname: string): string | null {
-  try {
-    const decoded = decodeURIComponent(pathname);
-    // A NUL truncates the name every C-level `open` sees, so a path holding
-    // one is refused rather than normalised into something shorter.
-    return decoded.includes("\0") ? null : decoded;
-  } catch {
-    // A percent escape that is not one. There is no file behind it.
-    return null;
-  }
-}
-
-/**
- * `fs.realpath`, or `null` when the path cannot be resolved.
- *
- * A broken symlink, a component that is not a directory, or a permission the
- * process does not have all end here — and all of them mean the same thing to
- * the caller: this is not a file to serve.
- */
-async function realpathOrNull(file: string): Promise<string | null> {
-  try {
-    return await realpath(file);
-  } catch {
-    return null;
-  }
-}
-
-async function statFile(file: string) {
-  try {
-    return await stat(file);
-  } catch {
-    return null;
-  }
 }
 
 /**

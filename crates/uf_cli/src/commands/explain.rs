@@ -952,10 +952,10 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
 /// "which of the seven targets did that build produce" is a question a person
 /// asks at exactly the moment they can least afford to guess.
 ///
-/// Five of the seven have something to name. `static` is described by what it
+/// Six of the seven have something to name. `static` is described by what it
 /// copies and what it refuses rather than by an entry, because it writes no
-/// entry; `bun` and `deno` are described as "nothing yet", which is what
-/// `uf build` would say if a project configured one.
+/// entry; `deno` is described as "nothing yet", which is what `uf build` would
+/// say if a project configured it.
 ///
 /// A project that has asked for none is told so, and told what the build
 /// therefore is: `dist/` plus a server bundle that needs the checkout around
@@ -1008,15 +1008,15 @@ fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
 /// the entry wrapped around it and the platform file, if any, beside it.
 fn adapter_entries(adapter: DeployAdapter) -> &'static str {
     match adapter {
-        DeployAdapter::Node => "handler.js, server.js",
+        DeployAdapter::Node | DeployAdapter::Bun => "handler.js, server.js",
         DeployAdapter::Container => "handler.js, server.js, Dockerfile",
         DeployAdapter::Edge => "handler.js, worker.js, wrangler.json",
         DeployAdapter::Serverless => "handler.js, lambda.js",
-        // `uf build` refuses these, so this is what `uf explain build` says
-        // about a project that has configured one: the same "nothing", named.
+        // `uf build` refuses `deno`, so this is what `uf explain build` says
+        // about a project that has configured it: the same "nothing", named.
         // `static` never reaches here — it has no entry and [`adapter_stage`]
         // describes it without asking this table.
-        DeployAdapter::Bun | DeployAdapter::Deno | DeployAdapter::Static => "nothing yet",
+        DeployAdapter::Deno | DeployAdapter::Static => "nothing yet",
     }
 }
 
@@ -1316,6 +1316,35 @@ mod tests {
         let root = Utf8Path::from_path(dir.path()).unwrap().to_path_buf();
         let resolved = load_config(&root).unwrap();
         (dir, resolved)
+    }
+
+    /// An adapter that is written names the files it writes.
+    ///
+    /// [`adapter_entries`] is a table beside [`DeployAdapter::is_implemented`]
+    /// and nothing made them agree, so when `bun` became implemented this
+    /// still said "nothing yet" about it — `uf explain build` describing a
+    /// build that does not happen, which is the exact failure the stage's own
+    /// comment says it exists to stop. The rule is one sentence: only an
+    /// adapter uf refuses may answer "nothing yet", and `static` is outside it
+    /// because [`adapter_stage`] describes that one without asking this table.
+    #[test]
+    fn every_written_adapter_names_the_entry_it_writes() {
+        for adapter in DeployAdapter::ALL
+            .iter()
+            .copied()
+            .filter(|adapter| *adapter != DeployAdapter::Static)
+        {
+            let entries = adapter_entries(adapter);
+            if adapter.is_implemented() {
+                assert!(
+                    entries.contains("handler.js"),
+                    "`{}` is written and names {entries:?}",
+                    adapter.as_str()
+                );
+            } else {
+                assert_eq!(entries, "nothing yet", "{}", adapter.as_str());
+            }
+        }
     }
 
     /// The list and the dispatch are one thing said twice, and this is what
