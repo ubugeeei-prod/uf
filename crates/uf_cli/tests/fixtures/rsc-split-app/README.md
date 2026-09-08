@@ -29,12 +29,21 @@ project small enough to read.
   is one `createServerReference` per callable export — an id and a `fetch` —
   and in the server bundle it is the module itself. So a route the browser
   certainly does need still keeps something off it.
+- It has two exports because there are two ways a browser reaches one.
+  `recordCount` is a click, called with a number. `submitNote` is a form:
+  `Counter.js` renders `<form action={…}>` around `useActionState`, React hands
+  the action the previous state and a `FormData`, and the action validates the
+  raw fields with `@uniflowed/validator` before it believes any of them. Two
+  callable exports of one module is also the only place the fixture exercises a
+  reference module that declares more than one name.
 - What it keeps off is the point. `tally.js` imports `cookies` from
   `@uniflowed/server`, which imports `node:async_hooks`: "a page that calls
   `cookies()` puts that import in the browser's graph, and nothing stops it" is
   the sentence in ubugeeei-prod/uf#252 that this replaces. It also imports
   `app/counter/_actions/ledger.js`, an ordinary module with no directive of its
-  own, standing in for the database handle an action reaches for.
+  own, standing in for the database handle an action reaches for, and
+  `@uniflowed/validator`, whose parse path is 9.7 kB of the server bundle and
+  none of the client's.
 - The action reads a cookie and returns what the ledger made of its argument,
   so a test that calls it proves the request reached the function rather than
   that something answered `200`.
@@ -57,7 +66,8 @@ see ubugeeei-prod/uf#518.
 `crates/uf_cli/tests/vite.rs` builds this project and asserts that the
 counter's marker is in `dist/assets/*.js`, that the almanac's, the tally's, the
 ledger's and the in-source block's are not, that `async_hooks` is not either,
-and that the same action answers identically through all four deploy adapters.
+and that the same two actions — the click and the form — answer identically
+through all four deploy adapters.
 
 The documentation site cannot answer any of that: its root layout imports a
 `"use client"` theme toggle, so every route in it reaches a boundary and

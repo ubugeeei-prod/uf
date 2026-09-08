@@ -54,6 +54,18 @@
 // prototype keys, no constructor named by the payload. See that module's
 // header for what is excluded and why.
 //
+// A submitted form is inside that boundary and does not widen it: `<form
+// action={fn}>` reaches here as the same `application/json` body, with the
+// form's entries beside the values under a `form` key, bounded in count and in
+// field-name length and holding strings only. Nothing about it is multipart
+// and nothing about it is a content type a cross-origin `<form>` could
+// produce, so rule 4 is exactly as true of a form call as of any other. The
+// cost of keeping it that way is written down where it is paid — a form that
+// submits before its page has hydrated throws in the page rather than posting
+// anywhere, because React writes `action="javascript:throw …"` for a form
+// whose action carries no `$$FORM_ACTION`, and giving it one would mean
+// accepting a native form post here.
+//
 // **6. Nothing about a failure goes back.** An action that throws is a `500`
 // with a fixed body; the exception goes to the host's error reporting. A
 // message, a name or a stack in that response is an application's internals
@@ -81,7 +93,7 @@ import { asResponder } from "@uniflowed/server/host";
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
-  type ActionValue,
+  type ActionArgument,
   ActionValueError,
   MAX_ACTION_BODY_BYTES,
   decodeActionArguments,
@@ -163,7 +175,7 @@ export function createActionDispatcher(options: {|
       return refusal(413);
     }
 
-    let args: Array<ActionValue>;
+    let args: Array<ActionArgument>;
     try {
       args = decodeActionArguments(body);
     } catch (error) {
@@ -213,7 +225,7 @@ export function createActionDispatcher(options: {|
     return asResponder("a server action", async () => {
       let result: mixed;
       try {
-        // The build-time contract says this is `async (...ActionValue) => …`
+        // The build-time contract says this is `async (...ActionArgument) => …`
         // (`ServerActionBoundary` in `../action.js`), and Flow cannot read that
         // through a module loaded by a thunk. The arguments are the ones
         // `decodeActionArguments` produced, so what is unchecked here is the

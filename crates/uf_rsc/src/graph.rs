@@ -322,6 +322,19 @@ impl RscGraph {
         self.modules.get(id.index())
     }
 
+    /// The id of the module at `path`, if the graph has one.
+    ///
+    /// [`Self::modules`] hands out modules and not ids, which is all a reader
+    /// that only wants to *print* them needs. Anything that then asks the
+    /// graph a second question about one — [`Self::client_bundle_reason`] is
+    /// the first such question — needs the id, and deriving it from a position
+    /// in `modules()` would be a caller relying on an ordering this type does
+    /// not promise to keep.
+    pub fn module_id(&self, path: impl AsRef<str>) -> Option<ModuleId> {
+        let path = normalize_module_path(Utf8Path::new(path.as_ref()));
+        self.index.get(&path).copied()
+    }
+
     /// Server-to-client import edges, ordered.
     pub fn client_boundaries(&self) -> &[ClientBoundary] {
         &self.boundaries
@@ -343,6 +356,130 @@ impl RscGraph {
             .iter()
             .any(|diagnostic| diagnostic.severity() == RscSeverity::Error)
     }
+
+    /// Why the browser has to be able to evaluate `id` — or why it does not.
+    ///
+    /// [`RscModule::requires_client_bundle`] answers the same question with a
+    /// `bool`, which is what the bundler needs. This answers it with the chain
+    /// of imports that decided it, which is what a *person* needs when the
+    /// bundler's answer surprises them, and it is the whole of what makes
+    /// "why is this in the client bundle" a question uf can answer from its
+    /// own analysis rather than by reading a bundle back.
+    ///
+    /// # One decision, read two ways
+    ///
+    /// [`ClientBundleReason::Isolated`] is returned for exactly the modules
+    /// `requires_client_bundle` answers `false` for, and never for one it
+    /// answers `true` for — both read the same two fields, and
+    /// `graph::tests::reachability` holds them against each other over every
+    /// module of every graph it builds. An explanation that could disagree
+    /// with the split would be a second analysis of the same question, which
+    /// is the thing this crate exists in order not to have.
+    ///
+    /// # Why a chain always exists when one is claimed
+    ///
+    /// [`ClientBoundaryProximity::ReachesBoundary`] is propagated *backwards*
+    /// from the importer side of every client boundary, so a module that has
+    /// it is one from which some server-reachable module that imports a
+    /// `"use client"` module is forward-reachable. The walk below is that path
+    /// taken forwards, and it therefore cannot come up empty. Where it does
+    /// the answer is [`ClientBundleReason::Isolated`] rather than a panic: a
+    /// report is not worth stopping a build for, and the `bool` beside it is
+    /// still the one the bundle was built from.
+    ///
+    /// # Termination
+    ///
+    /// Breadth-first with a seen-set and one predecessor per module, no
+    /// recursion — the same shape, and for the same reason, as the propagation
+    /// this module's header describes. Every module and every edge is visited
+    /// at most once, so it is `O(V + E)` on a cyclic import graph as much as on
+    /// an acyclic one, and the chain rebuilt from the predecessors is acyclic
+    /// by construction because a module is given a predecessor only once.
+    ///
+    /// Breadth-first rather than depth-first for the reader rather than for the
+    /// complexity: a module can reach a boundary many ways, and the one worth
+    /// printing is the shortest, which is the one a person can hold in their
+    /// head while deciding what to move.
+    pub fn client_bundle_reason(&self, id: ModuleId) -> ClientBundleReason {
+        let Some(module) = self.module_by_id(id) else {
+            return ClientBundleReason::Isolated;
+        };
+        if module.environment == ModuleEnvironment::Client {
+            return ClientBundleReason::Declared;
+        }
+        if !module.proximity.reaches_boundary() {
+            return ClientBundleReason::Isolated;
+        }
+
+        // `u32::MAX` is "no predecessor", which is also what the start module
+        // has. A graph with `u32::MAX` modules in it cannot be built — the ids
+        // are `u32` — so the sentinel cannot collide with a real position.
+        const NONE: u32 = u32::MAX;
+        let mut predecessor = vec![NONE; self.modules.len()];
+        let mut seen = vec![false; self.modules.len()];
+        let mut work = std::collections::VecDeque::new();
+        seen[id.index()] = true;
+        work.push_back(id);
+
+        while let Some(current) = work.pop_front() {
+            for target in self.modules[current.index()].imports.iter().copied() {
+                if seen[target.index()] {
+                    continue;
+                }
+                seen[target.index()] = true;
+                predecessor[target.index()] = current.0;
+                if self.modules[target.index()].environment == ModuleEnvironment::Client {
+                    return ClientBundleReason::Imports(self.chain_to(id, target, &predecessor));
+                }
+                work.push_back(target);
+            }
+        }
+        ClientBundleReason::Isolated
+    }
+
+    /// Walk the predecessors back from `target` to `from`, and turn them round.
+    ///
+    /// Separated from the search because the two are read for different
+    /// reasons: above is "which module do we reach", and this is "say it in
+    /// the order somebody would write the imports down".
+    fn chain_to(&self, from: ModuleId, target: ModuleId, predecessor: &[u32]) -> Vec<ModuleId> {
+        let mut chain = vec![target];
+        let mut current = target;
+        while current != from {
+            let previous = predecessor[current.index()];
+            debug_assert_ne!(previous, u32::MAX, "a visited module has a predecessor");
+            current = ModuleId(previous);
+            chain.push(current);
+        }
+        chain.reverse();
+        chain
+    }
+}
+
+/// Why the browser has to be able to evaluate a module.
+///
+/// The answer [`RscGraph::client_bundle_reason`] gives, and the three shapes it
+/// can take. There is no fourth: a module is a boundary, is above one, or is
+/// not the browser's business.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientBundleReason {
+    /// Nothing the browser evaluates reaches this module.
+    ///
+    /// The module is server code, or it is dead code, and either way its
+    /// source is not in a bundle a visitor downloads.
+    Isolated,
+    /// The module declares `"use client"`.
+    ///
+    /// It is a client bundle root by definition, and there is no chain to
+    /// give: the directive on its first line is the whole answer.
+    Declared,
+    /// The module imports a `"use client"` module, through this chain.
+    ///
+    /// The first element is the module that was asked about and the last is
+    /// the `"use client"` module it reaches; every element imports the one
+    /// after it. Never empty, and never one element long — a chain of one
+    /// would be [`Self::Declared`] said badly.
+    Imports(Vec<ModuleId>),
 }
 
 #[cfg(test)]
