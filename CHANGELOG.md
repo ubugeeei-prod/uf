@@ -1,5 +1,67 @@
 # Changelog
 
+## uf@0.0.0-alpha.16
+
+_2026-09-08_
+
+Twenty-one changes. The one to read first is the one that made a check pass by
+checking nothing: `uf check` in an npm workspace resolved a hoisted dependency
+to nothing, so an app in a monorepo — where the dependency is installed at the
+root and not beside the project — was typed as `any` throughout and told it was
+fine. Three separate causes had to be fixed for the fix to do anything, and the
+last of them was a path resolver refusing a `..` it could not cancel, which is
+why the first two had looked like they worked.
+
+Beside it, a diagnostic now counts the columns a path *draws* rather than the
+ones its scalars would draw alone. A name built out of emoji-presentation
+sequences rendered at twice the cap meant to keep it inside one row — the same
+family as alpha.15's lead, and the same input: a name out of a clone uf did not
+write.
+
+The rest is spread evenly. A form the browser submits reaches a server action,
+and `uf dev` says which module put a component in the client bundle and why.
+Every route has a typed link, including the ones that take no parameters. A
+test can live beside the code it tests, and an accessibility audit reads the
+tree while you edit it. And `uf profile` is a profiler rather than a wall-clock
+number — hierarchical spans, a counting allocator, and a report saying where
+the time and the memory went. Its first findings are in this release: building
+a Babel tree costs 31% fewer allocations, the effects rule stopped asking for a
+tree it never used, and the formatter lost two more passes. `uf lint` over a
+111 KiB module went from 839,000 allocations to 442,000.
+
+### Added
+
+- **test, transform, vite**: a test beside the code it tests, and an audit that reads the tree (#643)
+- **router, rsc, dev**: a form the browser submits to a server action, and the chain that puts a module in the client bundle (#636)
+- **profiler**: where uf's time and memory actually go (#660)
+- **router, check**: a typed link for every route, including the ones that take no parameters (#655)
+- **build, cli**: the runtime a compiled binary embeds is the project's own, and the machine it is for (#638)
+
+### Fixed
+
+- **vite**: a dev 404 for a page says which header decided it (#677)
+- **term**: the columns a path draws, not the ones its scalars would draw alone (#672)
+- **server, vite, infra**: one rule for a prerendered document, and a policy on the site that argues for them (#652)
+- **check**: a hoisted dependency is read, so a workspace app has types at all (#667)
+- **config, testing, react-testing**: a config type a test holds, and three surfaces that named nothing (#644)
+- **config, vite**: the MDX highlighter reads the keys the reference documents (#664)
+- **term, cli, security**: a diagnostic prints four things out of a checkout, not one (#663)
+
+### Performance
+
+- **lint**: react/derived-state needs a setter, so a module with no useState is not parsed (#670)
+- **lint, transform**: the effects rule reads the lowered tree, not the Babel one (#676)
+- **transform**: 31% fewer allocations building the Babel tree (#673)
+- **fmt**: build a concat straight into the arena rather than through a Vec (#665)
+- **fmt**: compute a node's sorted children once rather than once per comment (#661)
+
+### Internal
+
+- **std**: hold the form/ui edge to a type, and say why it points that way (#674)
+- **vite**: two dev-server tests ask the operating system for their port (#669)
+- **release**: name #650 in the alpha.15 section (#662)
+- **release**: the changelog date is UTC, held by two commits an hour apart (#647)
+
 ## uf@0.0.0-alpha.15
 
 _2026-09-08_
