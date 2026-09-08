@@ -126,7 +126,16 @@ in `uf`.
   fallbacks keeps its page module out of the client bundle, and the browser is
   not asked to hydrate it. Splitting a *module* — dropping a Server Component
   that sits above a boundary — is not, and is blocked on a Flight-shaped
-  payload the client can re-render a tree from.
+  payload the client can re-render a tree from. That payload is a second module
+  graph rather than a second dependency: React's Flight renderer loads only
+  under the `react-server` export condition, which resolves `react` to the
+  build with no `useState` in it, while the renderer that turns the payload
+  into HTML needs the ordinary one — so `@uniflowed/vite` grows an environment
+  before anything else can happen (`docs/architecture.md`). **The split can now
+  be read**:
+  `uf dev` reports what moved across the client bundle on each save and names
+  the shortest chain of imports that put it there, so `"use client"` costs what
+  it costs in the terminal rather than in a bundle somebody measures later.
 - Server action transform and request bridge. **Done for a module export**: a
   `"use server"` module is replaced in the client graph by one reference per
   callable export, the browser posts the keyed id to the page's own URL, and

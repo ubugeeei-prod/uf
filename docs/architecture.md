@@ -599,6 +599,38 @@ boundary: uf's client hydrates by re-rendering the matched tree from the same
 modules the server used, so dropping one needs a Flight-shaped payload uf does
 not have. See ubugeeei-prod/uf#252.
 
+What that payload costs is worth writing down, because it is not a module and
+the shape of the answer decides where it can go. React's own Flight renderer —
+`react-server-dom-*/server` — refuses to load unless the `react-server` export
+condition is on, because it needs the *other* build of React, the one with no
+`useState` in it; and `react-dom/server`, which turns the payload into HTML,
+needs the ordinary one. Two builds of React in one module registry is not a
+thing Node or a bundler will do, so a Flight renderer is a second module graph
+rather than a second import: `node --conditions react-server` for a whole
+process, a worker thread started with those `execArgv`, or a bundler
+environment resolved with that condition — which is the shape `@uniflowed/vite`
+would have to grow, since the first two are Node-only and uf's edge, serverless
+and workerd adapters all serve the same `handler.js`. That is the size of
+ubugeeei-prod/uf#519, and it is why the answer is not a smaller version of
+itself: half a payload format in the tree is the worst state for the thing
+whose whole risk is deserialisation.
+
+Until that lands, which modules the browser gets is a decision a reader has to
+be able to see, and `"use client"` is a directive whose cost is invisible until
+somebody measures a bundle: it moves the module it is on and every module above
+it, and "every module above it" is a property of the whole graph rather than of
+the file being edited. So `uf dev` says so. The rescan that keeps the manifest
+current already knows the client bundle before and after each save, and it now
+reports what moved across it and why — `app/section.js imports
+app/counter/_components/Counter.js, which declares "use client"`, which is the
+shortest chain of imports from the module that moved to the boundary that moved
+it. The chain comes from `RscGraph::client_bundle_reason`, one walk of the same
+graph `requires_client_bundle` is read from, because an explanation that can
+disagree with the split is worse than none; `crates/uf_rsc` holds the two
+against each other over every module of every graph its tests build. This is
+the client/server third of ubugeeei-prod/uf#520 — the other two boundaries, and
+an inspector for the payload, wait on the payload.
+
 A call is a `POST` to the page's own URL carrying `uf-action: <id>`, so the
 middleware guarding that path runs above it and no path is reserved. Every host
 runs it between the guard and the route handlers — `uf dev`, `uf preview`,
