@@ -53,6 +53,17 @@ const REDUNDANT_MEMO: &str = "react/no-redundant-memo";
 /// a measurement is exactly the shape this rule must not move into render.
 const EFFECT: &str = "useEffect";
 
+/// The other word `react/derived-state` cannot fire without.
+///
+/// The rule reports an effect whose only job is to store a value derived from
+/// its dependencies, and it finds those stores through the **setters**
+/// `declared_state` collects from `useState` destructuring. A module with no
+/// `useState` has no setter, so it can have no finding — and building a Babel
+/// AST to discover that is 790,000 allocations and 65 MiB for a 111 KiB
+/// module, which is 94% of what `uf lint` spends on it. See
+/// ubugeeei-prod/uf#668.
+const STATE: &str = "useState";
+
 /// Report the rules that need the module's tree.
 pub(crate) fn run_react_tree_rules(
     scan: &FileScan<'_>,
@@ -77,7 +88,10 @@ pub(crate) fn run_react_tree_rules(
     }
 
     let source = &scan.file.source;
-    let wants_effects = derived.is_some() && source.contains(EFFECT);
+    // Both words, not just the effect: see `STATE`. Textual on purpose — the
+    // point is to decide without parsing, and a module that mentions
+    // `useState` in a comment costs one parse it would have paid anyway.
+    let wants_effects = derived.is_some() && source.contains(EFFECT) && source.contains(STATE);
     let wants_memo =
         memo.is_some() && (source.contains("useMemo") || source.contains("useCallback"));
     if !wants_effects && !wants_memo {
