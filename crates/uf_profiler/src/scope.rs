@@ -254,11 +254,20 @@ pub struct ScopeRecord {
 
 impl ScopeRecord {
     /// Mean inclusive time per hit.
+    ///
+    /// Divided in nanoseconds rather than with `Duration::checked_div`, which
+    /// takes a `u32`. `hits` is a `u64`, and a span in a per-node loop is
+    /// exactly the kind that gets hit more than four billion times — at which
+    /// point the cast truncates, and at exactly `u32::MAX + 1` it truncates to
+    /// *zero*, so `checked_div` returns `None` and the mean of a span that ran
+    /// for hours reads as zero.
     #[must_use]
     pub fn mean(&self) -> Duration {
-        self.inclusive
-            .checked_div(self.hits as u32)
-            .unwrap_or(Duration::ZERO)
+        if self.hits == 0 {
+            return Duration::ZERO;
+        }
+        let nanos = self.inclusive.as_nanos() / u128::from(self.hits);
+        Duration::from_nanos(u64::try_from(nanos).unwrap_or(u64::MAX))
     }
 
     /// Bytes allocated per hit, which is the number a "does this allocate per

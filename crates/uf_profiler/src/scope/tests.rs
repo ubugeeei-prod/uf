@@ -185,3 +185,31 @@ fn calibration_is_zero_when_spans_are_off_and_positive_when_they_are_on() {
     );
     crate::scope::disable();
 }
+
+/// A span hit more than four billion times still has a mean.
+///
+/// `Duration::checked_div` takes a `u32` and `hits` is a `u64`, so the cast
+/// this used to make truncated — and at exactly `u32::MAX + 1` it truncated to
+/// zero, `checked_div` returned `None`, and a span that had run for hours
+/// reported a mean of nothing. A per-node span in a long window is precisely
+/// the one that gets there.
+#[test]
+fn a_span_hit_more_than_u32_times_still_has_a_mean() {
+    let record = ScopeRecord {
+        name: "per-node",
+        hits: u64::from(u32::MAX) + 1,
+        inclusive: Duration::from_secs(8_589),
+        self_time: Duration::from_secs(8_589),
+        allocations: 0,
+        bytes_allocated: 0,
+        peak_above_baseline: 0,
+        slowest: Duration::from_micros(1),
+    };
+
+    // 8_589 s over 2^32 hits is almost exactly two microseconds.
+    let mean = record.mean();
+    assert!(
+        mean >= Duration::from_nanos(1_990) && mean <= Duration::from_nanos(2_010),
+        "{mean:?}"
+    );
+}
