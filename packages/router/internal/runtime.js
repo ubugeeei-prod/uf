@@ -732,6 +732,68 @@ function matchSegments(
   return index === parts.length ? params : null;
 }
 
+/**
+ * The URL for a route pattern and the parameters it takes.
+ *
+ * The inverse of [`matchSegments`], and deliberately built out of the same
+ * [`compile`]: a builder that parsed patterns its own way would drift from the
+ * matcher, and the drift would show up as a link that 404s rather than as a
+ * failure anybody could see.
+ *
+ * The generated `router.js` is what a project calls — `route("/posts/:slug",
+ * { slug })` — and it is typed there, so the parameters are checked before this
+ * runs. This still refuses a bad call rather than building a wrong URL,
+ * because the types are only in front of the callers that have them: a value
+ * that arrived from JSON, or from a module that opted out of Flow, reaches
+ * here unchecked. A link to `/posts/undefined` is the failure this exists to
+ * turn into an error with a name on it.
+ *
+ * Each segment is `encodeURIComponent`d, which is what [`decodeSegment`]
+ * undoes on the way back — so a slug with a slash in it round-trips as one
+ * segment rather than becoming two.
+ */
+export function buildRoute(routePath: string, params?: RouteParams): string {
+  const values: RouteParams = params ?? {};
+  const parts: Array<string> = [];
+  for (const segment of compile(routePath)) {
+    match (segment) {
+      {kind: "static", value: const value} => {
+        parts.push(value);
+      }
+      {kind: "param", name: const name} => {
+        const value = values[name];
+        if (typeof value !== "string") {
+          throw new Error(
+            `route ${routePath} takes a string for :${name}, and got ${describeParam(value)}`,
+          );
+        }
+        parts.push(encodeURIComponent(value));
+      }
+      {kind: "catchAll", name: const name} => {
+        const value = values[name];
+        if (value == null || typeof value === "string") {
+          throw new Error(
+            `route ${routePath} takes an array of segments for :${name}*, and got ` +
+              describeParam(value),
+          );
+        }
+        for (const part of value) {
+          parts.push(encodeURIComponent(part));
+        }
+      }
+    }
+  }
+  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
+}
+
+/** What a parameter was, for the message that says it was the wrong thing. */
+function describeParam(value: string | $ReadOnlyArray<string> | void): string {
+  if (value === undefined) {
+    return "nothing";
+  }
+  return typeof value === "string" ? `the string ${JSON.stringify(value)}` : "an array";
+}
+
 function decodeSegment(segment: string): string {
   try {
     return decodeURIComponent(segment);
