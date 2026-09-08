@@ -287,27 +287,7 @@ fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Optio
     if subjects.is_empty() {
         return Ok(None);
     }
-    // The date of the commit being released rather than the wall clock: a
-    // changelog regenerated next week should say the same thing, and there is
-    // no date crate in this binary to read a clock with anyway.
-    //
-    // In one timezone, though. `%cs` renders a commit in the timezone that
-    // commit recorded, and this repository has both: alpha.13 was squashed
-    // from a `+09:00` commit and alpha.14 from a `+00:00` one five hours
-    // later, so the later release was dated the earlier day. Each was "the
-    // date of the commit being released" by the rule above, and the pair was
-    // still wrong to whoever read it. `TZ=UTC` with `format-local` makes the
-    // date a property of the release rather than of whoever pressed the merge
-    // button, and keeps the determinism the rule exists for. See #630.
-    let date = git_env(
-        root,
-        &["log", "-1", "--date=format-local:%Y-%m-%d", "--format=%cd"],
-        &[("TZ", "UTC")],
-    )
-    .map(|date| date.trim().to_owned())
-    .filter(|date| !date.is_empty())
-    .unwrap_or_else(|| String::from("unreleased"));
-    let section = crate::changelog::section(tag, &date, &subjects);
+    let section = crate::changelog::section(tag, &release_date(root), &subjects);
     let file = root.join("CHANGELOG.md");
     let existing = fs::read_to_string(&file).ok();
     let contents = crate::changelog::prepend(existing.as_deref(), &section);
@@ -317,6 +297,46 @@ fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Optio
         changes: subjects.len(),
         unnumbered: unnumbered(&subjects),
     }))
+}
+
+/// The date to head a release section with: the released commit's, in UTC.
+///
+/// Two decisions, and the second exists because the first was not enough.
+///
+/// **The commit rather than the clock.** A changelog regenerated next week
+/// should produce the same section it produced today — `release:bump:test`
+/// holds `uf release` to exactly that — and there is no date crate in this
+/// binary to read a clock with anyway.
+///
+/// **One timezone rather than each commit's own.** `%cs` renders a commit in
+/// the timezone the person who made it was in, and this repository has commits
+/// in `+09:00` and in `+00:00`. So `uf@0.0.0-alpha.13`, released from a squash
+/// carrying `+09:00` at 18:44 UTC, is dated 2026-09-08, and
+/// `uf@0.0.0-alpha.14`, released five hours later from a commit carrying
+/// `+00:00`, is dated 2026-09-07: the later release dated a day before the
+/// earlier one, each of them correctly "the date of the commit being
+/// released". A date that moves with whoever pressed the merge button is not a
+/// property of the release. UTC is, it is what the tags and the registry
+/// timestamps are already in, and it keeps every bit of the determinism the
+/// rule above exists for — the same commit renders the same date on every
+/// machine, which `%cs` did not guarantee either. See ubugeeei-prod/uf#630.
+///
+/// `git` is asked to do the conversion (`--date=format-local:` renders in
+/// `TZ`, which [`git`] pins to `UTC`) rather than this function converting a
+/// Unix timestamp itself, for the same reason there is no date crate here:
+/// civil-date arithmetic written out by hand is a thing to get wrong, and the
+/// tool that already has the timestamp also already has the formatter.
+///
+/// `"unreleased"` when there is no history to read, which is what the section
+/// said before this and is better than an empty pair of underscores.
+fn release_date(root: &Utf8Path) -> String {
+    git(
+        root,
+        &["log", "-1", "--date=format-local:%Y-%m-%d", "--format=%cd"],
+    )
+    .map(|date| date.trim().to_owned())
+    .filter(|date| !date.is_empty())
+    .unwrap_or_else(|| String::from("unreleased"))
 }
 
 /// The subjects that carry no `(#NNN)` pull request number.
@@ -415,22 +435,22 @@ fn previous_tag(root: &Utf8Path, tag_prefix: &str) -> Option<String> {
 }
 
 /// Run `git` in `root`, or [`None`] when it is not there or says no.
-fn git(root: &Utf8Path, args: &[&str]) -> Option<String> {
-    git_env(root, args, &[])
-}
-
-/// `git`, with `env` set for the one call.
 ///
-/// Only the changelog date needs it, and it needs it for a reason worth
-/// keeping local to that call rather than making every `git` here run in a
-/// timezone it did not ask for.
-fn git_env(root: &Utf8Path, args: &[&str], env: &[(&str, &str)]) -> Option<String> {
-    let mut command = std::process::Command::new("git");
-    command.arg("-C").arg(root.as_str()).args(args);
-    for (key, value) in env {
-        command.env(key, value);
-    }
-    let output = command.output().ok()?;
+/// Always in UTC, which is the timezone this command chooses once: `git`
+/// renders a date in `TZ` wherever it is asked to render one locally, and
+/// pinning it here rather than at the one call site is what makes "one
+/// timezone" a property of this module rather than of whoever writes the next
+/// `--date=` argument. It changes nothing else — `TZ` reaches only date
+/// formatting, and every other call here asks for subjects and tag names. See
+/// [`release_date`] for why the question came up.
+fn git(root: &Utf8Path, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .env("TZ", "UTC")
+        .arg("-C")
+        .arg(root.as_str())
+        .args(args)
+        .output()
+        .ok()?;
     output
         .status
         .success()
@@ -621,6 +641,78 @@ mod tests {
             .refusal("uf@0.0.0-alpha.13", "0.0.0-alpha.12", false)
             .is_none()
         );
+    }
+
+    /// One commit, committed in a repository that runs `git` in a scratch
+    /// directory, with the timestamp and timezone the test names.
+    ///
+    /// `GIT_COMMITTER_DATE` takes `<unix seconds> <offset>`, and the offset is
+    /// the whole subject here: it is what `%cs` renders in, and what a
+    /// release's date must not depend on.
+    fn commit_at(root: &Utf8Path, message: &str, when: &str) {
+        let run = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(root.as_str())
+                .args(args)
+                .env("GIT_AUTHOR_DATE", when)
+                .env("GIT_COMMITTER_DATE", when)
+                .env("GIT_AUTHOR_NAME", "uf")
+                .env("GIT_AUTHOR_EMAIL", "uf@example.test")
+                .env("GIT_COMMITTER_NAME", "uf")
+                .env("GIT_COMMITTER_EMAIL", "uf@example.test")
+                .output()
+                .expect("git runs")
+                .status
+                .success();
+            assert!(ok, "git {args:?} failed");
+        };
+        std::fs::write(root.join("file.txt"), message).unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-m", message, "--no-gpg-sign"]);
+    }
+
+    /// #630: two releases cut an hour apart cannot be dated a day apart.
+    ///
+    /// The pair is the repository's own. `uf@0.0.0-alpha.13` was released from
+    /// a squash carrying `+09:00` and `uf@0.0.0-alpha.14` five hours later
+    /// from one carrying `+00:00`, so `%cs` rendered 2026-09-08 and then
+    /// 2026-09-07 — the later release dated a day before the earlier one, with
+    /// neither of them wrong by the rule that produced it.
+    #[test]
+    fn the_date_is_the_commits_and_not_its_authors_timezone() {
+        let scratch = tempfile::tempdir().expect("a temp directory");
+        let root = Utf8PathBuf::from_path_buf(scratch.path().to_path_buf()).expect("a UTF-8 path");
+        let started = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root.as_str())
+            .args(["init", "--quiet"])
+            .output()
+            .is_ok_and(|output| output.status.success());
+        if !started {
+            // No `git` here, and the function under test answers `"unreleased"`
+            // for exactly that. There is nothing else to assert.
+            assert_eq!(release_date(&root), "unreleased");
+            return;
+        }
+
+        // 2026-09-07T18:44:47+00:00, which is 2026-09-08 in Tokyo.
+        commit_at(&root, "earlier, written in Tokyo", "1788806687 +0900");
+        let earlier = release_date(&root);
+
+        // An hour later, written by somebody keeping UTC.
+        commit_at(&root, "later, written in UTC", "1788810287 +0000");
+        let later = release_date(&root);
+
+        assert_eq!(
+            earlier, "2026-09-07",
+            "the earlier commit is 18:44 UTC whatever its author's clock said"
+        );
+        assert_eq!(earlier, later, "an hour apart is not a day apart");
+        // And it is still a function of the commit rather than of the clock:
+        // asking twice for the same `HEAD` gives the same answer, which is what
+        // `release:bump:test` holds the whole command to.
+        assert_eq!(release_date(&root), later);
     }
 
     #[test]

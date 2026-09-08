@@ -3,11 +3,11 @@
 //! # Reading
 //!
 //! Every `package.json` [`crate::discover_package_manifests`] finds — the root
-//! and every workspace package, submodules and `node_modules` excluded — and
-//! the four fields a range can be declared in. A monorepo that declares `react`
-//! in six packages has six [`Declaration`]s, because six is how many places
-//! have to change and a report that said "react" once would be hiding five of
-//! them.
+//! and every workspace package, nested checkouts and `node_modules` excluded —
+//! and the four fields a range can be declared in. A monorepo that declares
+//! `react` in six packages has six [`Declaration`]s, because six is how many
+//! places have to change and a report that said "react" once would be hiding
+//! five of them.
 //!
 //! # Writing
 //!
