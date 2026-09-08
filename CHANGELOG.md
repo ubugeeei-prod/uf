@@ -4,7 +4,7 @@
 
 _2026-09-08_
 
-Fourteen changes. The one to read first is the one that was wrong in a way
+Fifteen changes. The one to read first is the one that was wrong in a way
 nothing could see: a diagnostic printed a module path exactly as it came off
 the filesystem, and a repository is attacker-authored input — `uf` is run
 against a clone, and a file in it can be named `src/\x1b[2Jgotcha.js`. Registry
@@ -23,6 +23,7 @@ that replaces `uf` rather than the one that only said so.
 
 ### Added
 
+- **vite, router, query**: React DevTools on purpose, Strict Mode by default, and the request it was cancelling (#631)
 - **lib, cli, ui, stylex**: a readiness per component, the parts list a test reads, and the constraint a select group states (#628)
 - **cli, rm**: the command that replaces uf, and the one that only said so (#627)
 - **assets**: OgImage as a template uf can draw, fonts it subsets, and icons it sprites (#625)
