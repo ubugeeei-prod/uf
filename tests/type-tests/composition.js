@@ -94,6 +94,7 @@ import {
 import { PaginationContent, PaginationItem, PaginationNext } from "../../packages/ui/pagination.js";
 import {
   SelectGroup,
+  SelectGroupLabel,
   SelectList,
   SelectOption,
   SelectSeparator,
@@ -166,8 +167,8 @@ export const optionInAMenu: mixed = (
 // --- Combobox.List -----------------------------------------------------------
 //
 // Options and groups, since ubugeeei-prod/uf#357. A group holds options and its
-// own heading and nothing else, which is a constraint `Select.Group` does not
-// state yet.
+// own heading and nothing else — the constraint `Select.Group` below now states
+// too, since ubugeeei-prod/uf#562.
 
 export const combobox: mixed = (
   <ComboboxList>
@@ -216,6 +217,46 @@ export const divInASelect: mixed = (
       <div>France</div>
     }
   </SelectList>
+);
+
+// --- Select.Group ------------------------------------------------------------
+//
+// ubugeeei-prod/uf#562: the same listbox as `Combobox.Group` above, and it took
+// `React.Node` until it was not the last one that did. The two misuses below
+// are the two a caller actually writes — a wrapper element around the options,
+// and a rule inside the group rather than between groups.
+
+export const selectGroup: mixed = (
+  <SelectGroup>
+    <SelectGroupLabel>Europe</SelectGroupLabel>
+    <SelectOption value="FR">France</SelectOption>
+  </SelectGroup>
+);
+
+export const divInASelectGroup: mixed = (
+  <SelectGroup>
+    {
+      // expect: does not render union type
+      <div>Europe</div>
+    }
+  </SelectGroup>
+);
+
+// A rule separates groups, so it belongs in the list beside them — where
+// `select` above puts one and this file's `SelectList` case accepts it. Inside
+// a group it is a rule with nothing on one side of it, and now it does not
+// compile.
+//
+// This one reports the members by name rather than saying "union type", for
+// `optionInAMenu`'s reason above: the child is a component of this package, so
+// the checker has two named things to compare and says which two.
+export const separatorInASelectGroup: mixed = (
+  <SelectGroup>
+    {
+      // expect: Either SelectSeparator element does not render SelectGroupLabel
+      <SelectSeparator />
+    }
+  </SelectGroup>
 );
 
 // --- Toast.Region ------------------------------------------------------------

@@ -16,7 +16,8 @@ use serde_json::{Value, json};
 #[cfg(feature = "upstream-typecheck")]
 use uf_check::{
     BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic,
-    active_backend, backend_name, check_sources_cached, module_closure, prepare_builtins,
+    active_backend, backend_name, check_sources_cached, lib_paths, module_closure,
+    prepare_builtins,
 };
 #[cfg(feature = "upstream-typecheck")]
 use uf_infra::FxHashSet;
@@ -59,6 +60,13 @@ struct Batch {
     /// that paid for the merge must not print "warm" because it paid a moment
     /// earlier than the footer looks.
     builtins: BuiltinsTiming,
+    /// How many library definitions the project added to Flow's own.
+    ///
+    /// Reported because it is the difference between "this project declares
+    /// nothing" and "uf did not find what it declares": both look like a clean
+    /// footer and one of them is a project about to be told its own types do
+    /// not exist.
+    libdefs: usize,
 }
 
 /// Severity counts from the type-checking half of `uf check`.
@@ -221,21 +229,47 @@ pub(crate) fn check(
 #[cfg(feature = "upstream-typecheck")]
 fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path) -> TypeCheck {
     let limits = CheckLimits::default();
+    // The project's own library definitions, before anything is merged: they
+    // are part of the environment every file is checked in, so a batch that
+    // asked for the environment first would be handed one without them.
+    // ubugeeei-prod/uf#480.
+    let libdefs = match lib_paths(root.as_std_path()) {
+        Ok(paths) => libdefs::load(root, &paths),
+        Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
+        Err(error) => return TypeCheck::Failed(error),
+    };
+    let libs: Vec<Source<'_>> = libdefs.iter().map(as_input).collect();
     // Before the walk, because the walk merges the builtins too and whichever
     // call gets there first is the one that pays. Asking here is what lets the
     // footer say which.
-    let builtins = match prepare_builtins() {
+    let builtins = match prepare_builtins(&libs) {
         Ok(builtins) => builtins,
         Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
         Err(error) => return TypeCheck::Failed(error),
     };
-    let seeds: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
+    // A library definition is not a file to check. It *declares* the
+    // environment every other file is checked in — `declare module` and a
+    // top-level `declare type` are library syntax, and a source file that used
+    // them would be reported for using them — so it is merged and then taken
+    // out of the batch, which is what `flow check` does with a lib file too.
+    // The scan collects `flow-typed/` like any other directory, so without
+    // this the same file would be both the environment and a file checked
+    // against it.
+    let declared: FxHashSet<&str> = libs.iter().map(|lib| lib.path).collect();
+    let checked: Vec<&SourceFile> = sources
+        .iter()
+        .filter(|source| !declared.contains(source.path.as_str()))
+        .collect();
+    let seeds: Vec<&str> = checked.iter().map(|source| source.path.as_str()).collect();
     // What the walk searches. `available` is empty when `paths` selected
     // everything, and then the selection already is every file the scan found.
-    let project = if available.is_empty() {
-        sources
+    let project: Vec<&SourceFile> = if available.is_empty() {
+        checked.clone()
     } else {
         available
+            .iter()
+            .filter(|source| !declared.contains(source.path.as_str()))
+            .collect()
     };
 
     // The batch is what was asked about plus what it imports, because an
@@ -256,10 +290,11 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
         let round = {
             let pool: Vec<Source<'_>> = project
                 .iter()
+                .copied()
                 .chain(installed.iter())
                 .map(as_input)
                 .collect();
-            match module_closure(&seeds, &pool, &limits) {
+            match module_closure(&seeds, &pool, &libs, &limits) {
                 Ok(closure) => Ok((
                     closure
                         .sources
@@ -286,14 +321,16 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
     let reached: FxHashSet<&str> = batch_paths.iter().map(String::as_str).collect();
     let batch: Vec<Source<'_>> = project
         .iter()
+        .copied()
         .chain(installed.iter())
         .filter(|source| reached.contains(source.path.as_str()))
         .map(as_input)
         .collect();
     let counts = Batch {
-        requested: sources.len(),
-        imported: batch.len().saturating_sub(sources.len()),
+        requested: checked.len(),
+        imported: batch.len().saturating_sub(checked.len()),
         builtins,
+        libdefs: libs.len(),
     };
 
     // Under the project root, because that is what the cache is about: the same
@@ -307,10 +344,10 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
     if let Some(cache) = cache.as_ref() {
         cache.sweep();
     }
-    match check_sources_cached(&batch, &limits, cache.as_ref()) {
+    match check_sources_cached(&batch, &libs, &limits, cache.as_ref()) {
         Ok(mut report) => {
             let asked_about: FxHashSet<&str> =
-                sources.iter().map(|source| source.path.as_str()).collect();
+                checked.iter().map(|source| source.path.as_str()).collect();
             report.diagnostics.retain(|diagnostic| {
                 // A dependency was checked so that the files asked about could
                 // be typed against it, not so that its own errors could be
@@ -363,6 +400,7 @@ fn type_check_payload(types: &TypeCheck) -> Value {
         if let Some(batch) = types.batch() {
             value["requested"] = json!(batch.requested);
             value["imported"] = json!(batch.imported);
+            value["libdefs"] = json!(batch.libdefs);
         }
         value["filesSkipped"] = json!(report.files_skipped);
         value["filesFromCache"] = json!(report.files_from_cache);
@@ -573,6 +611,8 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             // Only shown when it happened. A project with nothing opted out
             // should not have to read a line saying so.
             let skipped = report.files_skipped.to_string();
+            // Only shown when the project declares any; see below.
+            let libdefs = batch.libdefs.to_string();
             // Only shown when the cache answered something: a project being
             // checked for the first time should not have to read a zero.
             let cached = format!("{} of {files}", report.files_from_cache);
@@ -589,6 +629,11 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             }
             if report.files_skipped > 0 {
                 rows.insert(1, KeyValue::toned("@noflow", &skipped, Tone::Muted));
+            }
+            // Only when the project has some. A project with no `[libs]` and
+            // no `flow-typed` should not have to read a zero to find that out.
+            if batch.libdefs > 0 {
+                rows.insert(1, KeyValue::toned("libdefs", &libdefs, Tone::Muted));
             }
             let untyped = untyped_module_list(report);
             ui.render(|renderer, out| {
@@ -634,6 +679,8 @@ fn untyped_module_list(report: &CheckReport) -> Vec<String> {
 
 #[cfg(feature = "upstream-typecheck")]
 mod dependencies;
+#[cfg(feature = "upstream-typecheck")]
+mod libdefs;
 
 #[cfg(test)]
 mod tests;

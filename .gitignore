@@ -42,8 +42,9 @@ node_modules/
 /tests/library/.uf-module-mock-types/
 
 # The formatter corpus: ~1 GB of third-party Flow, checked out by
-# `tools/corpus/sync.sh` from `tools/corpus/repos.txt`. The four entries that
-# are still submodules are tracked and unaffected by this. See #137.
+# `tools/corpus/sync.sh` from `tools/corpus/repos.txt`. Every entry is a pin
+# in that file and nothing here is tracked; the four that used to be
+# submodules stopped being an exception in #137.
 /tests/fixtures/git/*
 
 # Upstream integration sources, fetched on request by

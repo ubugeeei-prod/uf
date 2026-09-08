@@ -591,7 +591,7 @@ fn a_scaffolded_project_gets_a_test_task_that_runs_tests() {
 fn scaffolded_tasks_name_real_commands() {
     const COMMANDS: &[&str] = &[
         "build", "check", "create", "dev", "env", "exec", "explain", "fmt", "info", "inspect",
-        "install", "lint", "lsp", "prepare", "publish", "release", "run", "test", "upgrade", "use",
+        "install", "lint", "lsp", "prepare", "publish", "release", "run", "test", "use",
     ];
 
     for (kind, files) in [("app", app_react_files("demo")), ("lib", lib_files("demo"))] {

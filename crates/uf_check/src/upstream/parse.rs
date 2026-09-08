@@ -15,7 +15,6 @@ use std::sync::Arc;
 use dupe::Dupe;
 use flow_common::docblock::{Docblock, FlowMode};
 use flow_common::options::Options;
-use flow_parser::PERMISSIVE_PARSE_OPTIONS;
 use flow_parser::ast;
 use flow_parser::file_key::FileKey;
 use flow_parser::loc::Loc;
@@ -99,8 +98,13 @@ pub(super) fn parse_file(
     // command, because a file that parses for the formatter and not for the
     // checker is worse than one that parses for neither. See
     // ubugeeei-prod/uf#204.
-    let (ast, parse_errors) =
-        uf_flow::module::parse(content, &PERMISSIVE_PARSE_OPTIONS, Some(&file_key.dupe()));
+    //
+    // It used to be called with `PERMISSIVE_PARSE_OPTIONS`, which is the
+    // port's own set and not uf's: it turns `esproposal_decorators` on, so a
+    // decorated class was a file `uf check` accepted and `uf fmt`, `uf lint`
+    // and `uf transform` refused. There is no options argument any more —
+    // ubugeeei-prod/uf#430.
+    let (ast, parse_errors) = uf_flow::module::parse(content, Some(&file_key.dupe()));
     let file_sig = Arc::new(FileSig::from_program(
         &file_key,
         &ast,

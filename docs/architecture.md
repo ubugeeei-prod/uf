@@ -124,6 +124,20 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
   with no path beside it — and `await` outside an `async` function in one is
   still refused, as it is inside a function that is not `async`.
 
+  The *options* are that function's too, and take no argument. They used to,
+  and `uf check` passed the port's `PERMISSIVE_PARSE_OPTIONS` through it while
+  the other three passed `uf_flow::PARSE_OPTIONS`: a decorated class was a file
+  the checker accepted and the formatter, linter and transform refused, which
+  is the one thing four callers of one function were supposed to make
+  impossible ([#430](https://github.com/ubugeeei-prod/uf/issues/430)). A
+  parameter is a place two callers can disagree, so there is not one;
+  `crates/uf_transform/tests/parse_options.rs` runs the same samples through
+  all four and reads the crates for a fifth caller of the port's parser.
+  Syntax errors leave by one route as well — every command passes them through
+  `uf_flow::explain`, so the sentence and the caret are the same whichever
+  command found the file
+  ([#431](https://github.com/ubugeeei-prod/uf/issues/431)).
+
 `flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
 `tools/upstream/sync.sh` checks those out too and asserts they arrived.
@@ -303,11 +317,46 @@ a package that declares no `@flow` anywhere is not read either: it exports `any`
 whether it is in the batch or not, so reading it would buy a parse of every byte
 it ships and nothing else.
 
+*Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
+by climbing `node_modules` from the file that wrote it, so code inside
+`node_modules/foo` that imports `bar` gets `node_modules/foo/node_modules/bar`
+when one is installed and the root's copy only when it is not. The closure
+therefore hands back the importer beside each unanswered specifier rather than a
+set of names, and two versions of one package can be in one batch and resolve
+correctly per importer — before that, both resolved to the hoisted copy and the
+files inside a nested consumer were typed against the wrong version
+([#486](https://github.com/ubugeeei-prod/uf/issues/486)).
+
+### The types a project declares itself
+
+A dependency that ships no Flow types is described by the project instead, in
+library definitions: the `declare module` block that says what it exports, the
+`declare type` that says what a global is. Flow loads those through
+`.flowconfig`'s `[libs]`, and `uf check` reads that section — with `flow_config`,
+Flow's own parser for the file, so a config uf accepts is one `flow check`
+accepts. `flow-typed` is on the list whether or not the config names it, which
+is Flow's own rule, and a project with no `.flowconfig` at all still gets it.
+The version constraint is ignored: uf embeds Flow's checker rather than being
+the `flow` binary a `[version]` pin is about. Nothing else in the file is read —
+the dialect, the lint severities and what the project owns are uf's to decide,
+and `uf explain check` names the section rather than the file so that the
+listing does not promise the rest.
+
+The libdefs are merged into the builtin environment after Flow's own, in
+declaration order, because a later definition shadows an earlier one. The merged
+environment is memoised per set of libdefs rather than once per process, and the
+digest of that set is part of every cache key: adding a `declare module` to
+`flow-typed` changes what every file in the project reports, including the files
+that import nothing. Until this landed, every type a project's libdefs declared
+was an `any`-typed value, and each *use* of one as a type was an error —
+506 of them against `flow check`'s 20 on the tree
+[#480](https://github.com/ubugeeei-prod/uf/issues/480) measured.
+
 Nothing is checked twice. A run keeps one record per file under
 `.uf/cache/check/`, keyed by the identity of the `uf` that wrote it — its path,
 size and modification time, the discipline `.uf/cache/transform` already
-holds — together with every limit that can change what a check reports and the
-file's own path and text. A record carries one *answer* per batch the file has
+holds — together with every limit that can change what a check reports, a digest
+of the project's library definitions, and the file's own path and text. A record carries one *answer* per batch the file has
 been checked in, each stamped with the *dependency digest* it was computed
 under: a digest over the packed signature of every module the file reaches and
 how each of those modules' specifiers resolved. An answer is believed only while
@@ -676,8 +725,10 @@ Implemented native slices already cover:
 - Rust-native `uf dev` HTTP state and health endpoint
 - `uf install` workspace discovery, `uf.lock`, store manifest, and
   content-addressed package entries
-- `uf use` local current-binary runtime activation through XDG directories
-- `uf upgrade` package/runtime manifest generation
+- `uf use` and `uf self-update` runtime acquisition and activation, through the
+  installer `curl -fsSL https://setup.uniflowed.dev | sh` runs and the store it
+  unpacks into
+- `uf install` package/runtime plan generation into `.uf/install.json`
 - `ufx` native execution for known `@uniflowed/*` package entrypoints
 - `uf publish` and `uf release` metadata generation for trusted publishing
 - source-level native `uf test` execution for the first assertion subset,
