@@ -18,8 +18,14 @@
 //! The tests skip, loudly, when Node or the workspace's `node_modules` are
 //! absent, so a checkout that never ran `npm ci` still passes `cargo test`
 //! and a CI runner that forgot to will say so rather than silently cover less.
-//! `uf build --compile` needs Bun as well, and skips on the same terms; see
-//! `support::bun_ready`, which `tests/bun_host.rs` shares.
+//! `uf build --compile` needs a runtime to embed, and which one depends on the
+//! project: `support::bun_ready` gates the Bun backend on the same terms (and
+//! `tests/bun_host.rs` shares it), while `support::node_sea_ready` gates the
+//! Node one on a *fact about the runtime* rather than about the machine — a
+//! Node below 25.5, or one built without single-executable support, cannot do
+//! it, so those skip with a printed reason and no opt-out. CI runs Node 24 and
+//! is one of them; `compile_on_an_old_node_names_the_version_it_needs` is the
+//! half of that pair which runs there.
 //!
 //! Two tests here assert about an *artefact* rather than about a server: the
 //! directory `uf build --adapter node` writes and the file `uf build
@@ -42,7 +48,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use support::{Project, assert_plain, bun_ready, uf, uf_path};
+use support::{
+    NODE_SEA_FLOOR, Project, assert_plain, bun_ready, node_sea_ready, node_version, uf, uf_path,
+};
 
 /// The repository's `docs/` directory.
 fn docs_root() -> PathBuf {
@@ -1896,6 +1904,69 @@ fn preview_and_start_serve_the_whole_of_a_build() {
     }
 }
 
+/// The `uf:render` envelope a response carries, which is what says whether it
+/// was rendered for this request.
+///
+/// `routerView` fixes *this* render's instant and *this* render's seed into
+/// the anchor ([`without_the_render_anchor`] is the same fact from the other
+/// side, where four adapters differ there by construction). So two reads of
+/// one prerendered file carry the same envelope and two renders never do,
+/// which is a discriminator every front door already emits — nothing has to be
+/// planted in `dist/` to get one. That matters here: [`assert_served`] is
+/// asked of a deployment *copied out of* that directory as well as of the
+/// directory itself, and a marker written into one is not in the other.
+fn render_envelope(response: &str) -> Option<&str> {
+    const OPEN: &str = "<meta name=\"uf:render\" content=\"";
+    let start = response.find(OPEN)? + OPEN.len();
+    let end = response[start..].find('"')?;
+    Some(&response[start..start + end])
+}
+
+/// The envelope reader, against the two answers it has to tell apart.
+///
+/// Written as its own test because every assertion that uses it needs a
+/// loopback socket, and a machine that cannot bind one would otherwise never
+/// find out that the reader had stopped reading. The two documents below are
+/// what `uf start` answered for `/guide/` before and after a draft cookie, cut
+/// to the `<head>` that carries the anchor.
+#[test]
+fn the_render_envelope_is_read_off_a_document_and_tells_two_renders_apart() {
+    const PRERENDERED: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
+         <!doctype html><html lang=\"en\"><head><meta charSet=\"utf-8\"/>\
+         <meta name=\"uf:render\" content=\"{&quot;at&quot;:1788840631074,&quot;\
+         timeZone&quot;:&quot;UTC&quot;,&quot;seed&quot;:&quot;x8q4fwyl&quot;}\"/>\
+         <title>served-app</title></head><body><h1>served-app guide</h1></body></html>";
+    // The same route a moment later: a different instant and a different seed,
+    // which is what `routerView` fixes per render.
+    let rendered = PRERENDERED
+        .replace("1788840631074", "1788840699001")
+        .replace("x8q4fwyl", "b3ktz9rm");
+
+    let published = render_envelope(PRERENDERED).expect("the anchor is in the document");
+    assert!(published.contains("1788840631074"), "{published}");
+    // Two reads of one file are one answer, and that is what makes the
+    // inequality below mean "rendered" rather than "different bytes".
+    assert_eq!(render_envelope(PRERENDERED), Some(published));
+    assert_ne!(render_envelope(&rendered), Some(published));
+
+    // A response with no document in it has no anchor, rather than an empty
+    // one that would compare equal to another absence.
+    assert_eq!(render_envelope("HTTP/1.1 200 OK\r\n\r\nexport {};"), None);
+}
+
+/// Any value: the doors read the cookie's *name* and never its signature,
+/// which `packages/server/internal/draft.js` argues at `carriesDraftCookie` —
+/// they run before any application code and cannot reach the verified answer.
+const DRAFT_COOKIE: &str = "__Host-uf.draft=1.whatever";
+
+/// The hydration script a served document names, as a path to ask for.
+fn document_script(body: &str) -> Option<String> {
+    let at = body.find("<script type=\"module\" src=\"")?;
+    let rest = &body[at + "<script type=\"module\" src=\"".len()..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_owned())
+}
+
 /// The script a deployed directory is asked with, when no socket may be had.
 ///
 /// It is written *beside* the copied directory rather than inside it, and
@@ -2931,6 +3002,80 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("did not serve the nested route", &guide)
     );
+    let published = render_envelope(&guide).map(str::to_owned);
+    assert!(
+        published.is_some(),
+        "{}",
+        context(
+            "served a document with no `uf:render` anchor, and the anchor is what the two \
+             assertions below read to tell a file from a render",
+            &guide
+        )
+    );
+    // Asked twice, and the same answer twice is what says this one came off
+    // disk: an anchor is fixed per *render*, so a route rendered per request
+    // could not give the same one back. Without this the assertion below would
+    // hold for a server that renders everything, which is not draft mode.
+    let again = get(server, port, "/guide/", said);
+    assert_eq!(
+        render_envelope(&again).map(str::to_owned),
+        published,
+        "{}",
+        context(
+            "rendered a route it had a prerendered document for; the assertions below are \
+             only about draft mode if this one is about a file",
+            &again
+        )
+    );
+
+    // 2b. The same route, asked for by somebody carrying the draft cookie. It
+    //     has to be *rendered* — a file in `dist/` is what the site said before
+    //     the draft existed, and `packages/server/internal/draft.js`'s
+    //     `prerenderedMayAnswer` is where that is argued for every front door.
+    //
+    //     Asked of both servers because they used to disagree: `uf start` owns
+    //     its socket and applied the rule in its own static handler, while
+    //     `uf preview` delegates the static half to Vite, whose file middleware
+    //     runs in front of anything uf mounts behind it — so draft mode looked
+    //     switched off there and worked everywhere else. See
+    //     ubugeeei-prod/uf#620, and #342 for the same shape one layer up.
+    let drafting = http_get_with("127.0.0.1", port, "/guide/", &[("Cookie", DRAFT_COOKIE)]);
+    assert!(
+        drafting.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not answer a draft request at all", &drafting)
+    );
+    assert!(
+        drafting.contains("served-app guide"),
+        "{}",
+        context(
+            "answered a draft request with something that is not the route",
+            &drafting
+        )
+    );
+    assert_ne!(
+        render_envelope(&drafting).map(str::to_owned),
+        published,
+        "{}",
+        context(
+            "handed a draft request the prerendered document — the same `uf:render` anchor \
+             the two requests above shared — so draft mode is off here and on everywhere else",
+            &drafting
+        )
+    );
+
+    // And its assets still come off disk, because a chunk is the same bytes in
+    // draft mode as out of it — skipping those would leave the page unstyled
+    // and unhydrated for no gain.
+    let script = document_script(body);
+    if let Some(script) = script.as_deref() {
+        let chunk = http_get_with("127.0.0.1", port, script, &[("Cookie", DRAFT_COOKIE)]);
+        assert!(
+            chunk.starts_with("HTTP/1.1 200"),
+            "{}",
+            context("refused a draft request its own hydration script", &chunk)
+        );
+    }
 
     // 3. A route with a parameter and no `generateStaticParams`, which the
     //    build wrote no file for: the only way this can be a 200 is a render
@@ -3366,6 +3511,27 @@ fn http_get(host: &str, port: u16, path: &str) -> String {
 /// the only thing that can answer, and therefore the half a build that serves
 /// only files gets wrong.
 fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&str>) -> String {
+    http_request_with(host, port, method, path, body, &[])
+}
+
+/// One `GET` carrying extra headers, which is how a cookie reaches a server.
+///
+/// Written as a separate entry point rather than a sixth parameter on every
+/// call site: the requests above are the ones a browser makes with nothing
+/// attached, and that is what makes them the requests every other assertion
+/// here is about.
+fn http_get_with(host: &str, port: u16, path: &str, headers: &[(&str, &str)]) -> String {
+    http_request_with(host, port, "GET", path, None, headers)
+}
+
+fn http_request_with(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    headers: &[(&str, &str)],
+) -> String {
     let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
     stream
         .set_read_timeout(Some(Duration::from_secs(60)))
@@ -3379,10 +3545,14 @@ fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&s
             body.len()
         )
     });
+    let extra = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect::<String>();
     write!(
         stream,
         "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\n\
-         Connection: close\r\n{}",
+         Connection: close\r\n{extra}{}",
         if entity.is_empty() {
             String::from("\r\n")
         } else {
@@ -3433,13 +3603,23 @@ fn compile_writes_one_file_that_serves_the_site_from_an_empty_directory() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_plain(&stdout);
-    for expected in ["standalone", "binary", "bun", "✓ build succeeded in"] {
+    for expected in ["standalone", "binary", "runtime", "✓ build succeeded in"] {
         assert!(
             stdout.contains(expected),
             "missing {expected:?} in:\n{stdout}"
         );
     }
-    let embedded = summary_value(&stdout, "embedded assets");
+    // Which runtime went in is the project's choice now rather than a
+    // constant — ubugeeei-prod/uf#312 — so what this asserts is that the
+    // summary *says*, and that what it says is one of the two backends. Which
+    // one it picked here depends on the Node this ran on; the two tests below
+    // pin each backend on its own terms.
+    let embedded_runtime = standalone_value(&stdout, "runtime");
+    assert!(
+        ["bun", "node"].contains(&embedded_runtime.split(' ').next().unwrap_or_default()),
+        "the summary has to name the runtime inside the binary, not {embedded_runtime:?}:\n{stdout}"
+    );
+    let embedded = standalone_value(&stdout, "embedded assets");
     assert!(
         embedded.parse::<u32>().is_ok_and(|count| count > 0),
         "the summary must report how many assets went in, not {embedded:?}:\n{stdout}"
@@ -3512,6 +3692,21 @@ fn compile_writes_one_file_that_serves_the_site_from_an_empty_directory() {
 }
 
 /// The value beside `key` in the build summary's aligned key/value block.
+/// A `key value` row from the summary's `standalone` block.
+///
+/// Scoped to the block rather than searched for in the whole summary, because
+/// the phase timings printed above it have a `runtime` row of their own — how
+/// long resolving the backend took — and a search of the whole output finds
+/// that one first. The two rows are called the same thing because they are
+/// about the same thing, and only one of them is a runtime.
+fn standalone_value(stdout: &str, key: &str) -> String {
+    let block = stdout
+        .split_once("  standalone\n")
+        .unwrap_or_else(|| panic!("no standalone block in:\n{stdout}"))
+        .1;
+    summary_value(block, key)
+}
+
 fn summary_value(stdout: &str, key: &str) -> String {
     stdout
         .lines()
@@ -3784,6 +3979,496 @@ fn compile_refuses_a_native_addon_and_names_it() {
         "the same project must still build without `--compile`:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&plain.stdout),
         String::from_utf8_lossy(&plain.stderr)
+    );
+}
+
+/// The `uf.config.js` of a project that will compile on exactly one host.
+///
+/// `autoDetect: false` is the load-bearing half: with it on, the resolution
+/// falls through to whatever else is installed, and a test that meant to
+/// exercise one backend would quietly exercise the other on a machine that
+/// happens to have both. See `commands::compile::runtime`.
+fn compiles_on(host: &str) -> String {
+    config_with(&format!(
+        "  app: {{ runtime: {{ capabilityJsHost: {{ default: \"{host}\", autoDetect: false }} }} }},\n"
+    ))
+}
+
+/// The file `--compile` writes for a project, which is named after it.
+fn compiled_binary(root: &Path) -> PathBuf {
+    let name = root.file_name().expect("a project has a directory name");
+    root.join("dist").join(name)
+}
+
+/// A project that pins Node compiles on Node, with no Bun in the answer.
+///
+/// This is ubugeeei-prod/uf#312 in one test. `app.runtime.capabilityJsHost` is
+/// how a project says which JavaScript host it runs on, every other command
+/// respects it, and `--compile` was the one that did not: it required Bun, so
+/// a project that pins Node could not produce a binary at all on a machine
+/// that had only Node. What it now does is `node --build-sea` — a copy of the
+/// running `node` with the application appended to it — and the summary names
+/// the runtime that went in, because "compiled" is no longer one thing.
+///
+/// # What this proves and where it can prove it
+///
+/// The whole of it, on a machine with a Node that can build a SEA: the file is
+/// produced, it is the host's own executable format, and — copied into a
+/// directory holding nothing else — it starts and reports the assets it
+/// carries. `--build-sea` arrived in Node 25.5 and support for it is also a
+/// *build-time* option of the `node` binary, so [`node_sea_ready`] skips with
+/// a printed reason where neither is true. CI runs Node 24 and is one of those
+/// places; the backend is verified locally on a Node that has it, and the
+/// refusal that CI's Node gets instead is
+/// [`compile_on_an_old_node_names_the_version_it_needs`].
+#[test]
+fn a_project_that_pins_node_compiles_on_node() {
+    if !fixture_ready() || !node_sea_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write("uf.config.js", &compiles_on("node"));
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let runtime = standalone_value(&stdout, "runtime");
+    assert!(
+        runtime.starts_with("node "),
+        "a project that pins Node must be told Node is what went in, not {runtime:?}:\n{stdout}"
+    );
+    let embedded = standalone_value(&stdout, "embedded assets");
+
+    let binary = compiled_binary(project.path());
+    assert!(
+        binary.is_file(),
+        "`--compile` wrote no {}",
+        binary.display()
+    );
+    let head = fs::read(&binary).unwrap()[..4].to_vec();
+    assert!(
+        // Mach-O 64, either byte order, or ELF. The point is only that this is
+        // an executable rather than the JavaScript that went into it.
+        head == [0xcf, 0xfa, 0xed, 0xfe] || head == [0xfe, 0xed, 0xfa, 0xcf] || head == *b"\x7fELF",
+        "the binary must be this machine's executable format, and starts {head:02x?}"
+    );
+
+    // Copied out rather than run in place, for the reason the docs-site test
+    // gives: in place, a binary quietly reading `dist/` would pass.
+    let empty = tempfile::tempdir().unwrap();
+    let copy = empty.path().join("compiled");
+    fs::copy(&binary, &copy).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&copy, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let said = run_briefly(&copy, empty.path());
+    assert!(
+        said.contains(&format!("uf: {embedded} embedded files")),
+        "a Node-built binary has to carry the output directory the build reported:\n{said}"
+    );
+}
+
+/// A Node too old for `--build-sea` is told the version, not shown a failure.
+///
+/// The floor is real and is not a preference: before 25.5 the procedure needs
+/// `postject` installed into the user's project, and a build step whose first
+/// act is to install a package is not one this toolchain owns. What matters
+/// for a reader is that they are told *before* the bundle, by name, and told
+/// what would work instead — which is the acceptance criterion
+/// ubugeeei-prod/uf#312 spells out as "an unsupported combination is refused
+/// by name before any bundling happens".
+///
+/// Only where there is something to refuse: a machine whose Node is new enough
+/// has no old Node to be told about, and pinning the host with `autoDetect:
+/// false` is what keeps an installed Bun from answering in its place. CI runs
+/// Node 24, so this is the test that runs there while
+/// [`a_project_that_pins_node_compiles_on_node`] skips — the two are the same
+/// question asked on either side of the floor.
+#[test]
+fn compile_on_an_old_node_names_the_version_it_needs() {
+    if !fixture_ready() {
+        return;
+    }
+    let Some((version, numbers)) = node_version() else {
+        return;
+    };
+    if numbers >= NODE_SEA_FLOOR {
+        eprintln!("skipping: node {version} is new enough, so there is no refusal to read");
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write("uf.config.js", &compiles_on("node"));
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "node {version} cannot build a single-executable application:\n{said}"
+    );
+    assert!(
+        said.contains("25.5.0"),
+        "the refusal has to name the version that works:\n{said}"
+    );
+    assert!(
+        said.contains("--build-sea"),
+        "the refusal has to name what is missing:\n{said}"
+    );
+    assert!(
+        !project.path().join(".uf/build/compile/server.js").exists(),
+        "the refusal has to come before the bundle, and a bundle was written:\n{said}"
+    );
+}
+
+/// `--target` builds for a machine that is not this one.
+///
+/// ubugeeei-prod/uf#310. Bun cross-compiles by *downloading* the target's
+/// runtime and linking against it, which is why this was its own issue rather
+/// than a line in #245: it puts a network fetch and a cache write in the
+/// middle of a build. uf answers both — the cache is `.uf/cache/bun` inside
+/// the project, so the build does the same thing on a laptop and on a
+/// sandboxed runner that cannot write to `$HOME`, and the fetch is announced
+/// before the bundle rather than discovered as a silent minute.
+///
+/// # What this test proves, and what it cannot
+///
+/// It proves the file is an executable for the platform that was asked for —
+/// the magic number and the architecture field out of its own header — and
+/// that the runtime was cached inside the project rather than beside it. That
+/// is what ubugeeei-prod/uf#310's acceptance asks for, in as many words:
+/// "`file(1)` or the ELF/PE magic is enough; running it is not possible on the
+/// build machine and is not what this test is for."
+///
+/// It cannot prove the binary *works*. Nothing here can execute a foreign
+/// platform's binary, so what is checked is that uf produced the right kind of
+/// artefact for the right machine, not that the artefact serves the
+/// application. The half that proves *that* is
+/// [`compile_writes_one_file_that_serves_the_site_from_an_empty_directory`],
+/// which runs for this machine's own platform.
+///
+/// # Two things this is careful about
+///
+/// The project is left on the default configuration deliberately. `node` is
+/// the default host and Node cannot cross-compile, so this is also the test
+/// that the host walk *narrows* on `--target` rather than refusing: a default
+/// project on a machine with Bun installed gets the foreign binary, and the
+/// summary says which runtime is inside it. Pinning the host with
+/// `autoDetect: false` is the opposite case, and is
+/// [`a_pinned_node_host_refuses_a_target_it_cannot_build`].
+///
+/// And the target is chosen by [`a_foreign_target`] rather than written down,
+/// because "cross" is a relation and not a triple:
+/// `x86_64-unknown-linux-gnu` is a cross-compile from a Mac and is the *host*
+/// on the Linux runner CI uses, where nothing would be downloaded and the
+/// cache below would be a directory uf had no reason to create.
+#[test]
+fn cross_compiling_writes_a_binary_for_another_machine() {
+    if !fixture_ready() || !bun_ready() {
+        return;
+    }
+    let (triple, runtime_prefix, expected) = a_foreign_target();
+    let project = Project::new(&minimal_app());
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile", "--target", triple])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        standalone_value(&stdout, "target"),
+        triple,
+        "a build for another machine has to say which one:\n{stdout}"
+    );
+
+    let binary = compiled_binary(project.path());
+    let bytes = fs::read(&binary).expect("`--compile --target` writes a binary");
+    expected(&bytes);
+
+    // Inside the project, which is the whole of the cache decision: Bun's own
+    // default is `~/.bun/install/cache`, and a build that writes outside the
+    // tree it was pointed at is a build that fails differently on a runner
+    // that cannot write there. #310 records that failure as an `EPERM`.
+    let cache = project.path().join(".uf/cache/bun");
+    let cached: Vec<String> = fs::read_dir(&cache)
+        .expect("the cross-compiled runtime is cached inside the project")
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        cached.iter().any(|name| name.starts_with(runtime_prefix)),
+        "the {triple} runtime has to be in {}, and it holds {cached:?}",
+        cache.display()
+    );
+
+    // The runtime that was fetched is a row of its own, because "this build
+    // went to the network" is a fact about a build and not about an
+    // application. A build that found it cached must not report one.
+    assert!(
+        stdout.contains("runtime downloaded"),
+        "the first build for a target fetches its runtime and has to say so:\n{stdout}"
+    );
+}
+
+/// A triple that is not this machine, Bun's name for its runtime, and how to
+/// recognise the file.
+///
+/// Two entries rather than eight: what the test needs is *a* machine that is
+/// not this one, and reading the executable's own header is what separates
+/// "uf built a binary" from "uf built the binary that was asked for". The
+/// numbers are the platforms' own — `\x7fELF` with `e_machine` 0x3E for
+/// x86-64 Linux, and a little-endian 64-bit Mach-O with `cputype` 0x0100000C
+/// for arm64 macOS.
+///
+/// The runtime prefix is what Bun names its cached copy, and for the macOS
+/// entry that is not what `--target` took: Bun accepts `arm64` and writes
+/// `aarch64`. uf carries both spellings for exactly that reason, and this is
+/// the assertion that caught it not doing so — a cache lookup keyed on the
+/// wrong one finds nothing, so the build reports no download after making one.
+fn a_foreign_target() -> (&'static str, &'static str, fn(&[u8])) {
+    if cfg!(target_os = "macos") {
+        (
+            "x86_64-unknown-linux-gnu",
+            "bun-linux-x64-v",
+            |bytes: &[u8]| {
+                assert_eq!(&bytes[..4], b"\x7fELF", "a Linux binary is an ELF file");
+                assert_eq!(bytes[4], 2, "64-bit");
+                assert_eq!(bytes[5], 1, "little-endian");
+                assert_eq!(
+                    u16::from_le_bytes([bytes[18], bytes[19]]),
+                    0x3e,
+                    "the ELF header has to name x86-64"
+                );
+            },
+        )
+    } else {
+        (
+            "aarch64-apple-darwin",
+            "bun-darwin-aarch64-v",
+            |bytes: &[u8]| {
+                assert_eq!(
+                    &bytes[..4],
+                    &[0xcf, 0xfa, 0xed, 0xfe],
+                    "a macOS binary is a little-endian 64-bit Mach-O"
+                );
+                assert_eq!(
+                    u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+                    0x0100_000c,
+                    "the Mach-O header has to name arm64"
+                );
+            },
+        )
+    }
+}
+
+/// A project that pinned Node and asked for another machine is told why.
+///
+/// The counterpart to the test above, and the reason `autoDetect` is the flag
+/// that decides between them: `autoDetect: false` is a project saying it does
+/// not want uf inferring a host, so the one host it named is the whole of the
+/// answer. What it is told depends on which Node it has, and both sentences
+/// are asserted here rather than only the one this machine produces:
+///
+/// * a Node at or above the floor is a working backend that *cannot
+///   cross-compile*, and that is the sentence — the reason `--target` narrows
+///   the host walk;
+/// * a Node below the floor never becomes a backend at all, so the reason is
+///   the floor. CI runs Node 24 and is this case.
+///
+/// Both name the triple, and neither writes a bundle first — which is the part
+/// that is the same either way and the part ubugeeei-prod/uf#312 asks for.
+#[test]
+fn a_pinned_node_host_refuses_a_target_it_cannot_build() {
+    if !fixture_ready() {
+        return;
+    }
+    let Some((_, numbers)) = node_version() else {
+        return;
+    };
+    let project = Project::new(&minimal_app());
+    project.write("uf.config.js", &compiles_on("node"));
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile", "--target", "x86_64-unknown-linux-gnu"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{said}");
+    assert!(said.contains("x86_64-unknown-linux-gnu"), "{said}");
+    if numbers >= NODE_SEA_FLOOR {
+        assert!(said.contains("no cross-compilation"), "{said}");
+        assert!(
+            said.contains("Bun"),
+            "the refusal has to name the backend that can:\n{said}"
+        );
+    } else {
+        assert!(
+            said.contains("25.5.0"),
+            "a Node below the floor is refused for being below it:\n{said}"
+        );
+    }
+    assert!(
+        said.contains("Cross-compiling is Bun's backend only"),
+        "either way the refusal has to say where cross-compiling lives:\n{said}"
+    );
+    assert!(
+        !project.path().join(".uf/build/compile/server.js").exists(),
+        "the refusal has to come before the bundle, and a bundle was written:\n{said}"
+    );
+}
+
+/// A triple uf does not build for is refused by name, with the list.
+///
+/// Before anything is bundled, which is the same rule `--compile` and
+/// `--adapter` already follow. The failure this replaces is Bun's own — a
+/// build that spends a minute on two Vite runs and then fails inside a
+/// subprocess with a target name the person never typed.
+///
+/// Needs no Bun and no Node floor: the triple is checked before a backend is
+/// even looked for, because "uf does not build for this" is true regardless of
+/// what is installed.
+#[test]
+fn an_unknown_target_is_refused_with_the_list_uf_does_build_for() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile", "--target", "sparc-sun-solaris"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{said}");
+    assert!(said.contains("sparc-sun-solaris"), "{said}");
+    for triple in [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+    ] {
+        assert!(
+            said.contains(triple),
+            "the refusal has to be the list, and {triple} is missing:\n{said}"
+        );
+    }
+    assert!(
+        !project.path().join(".uf/build/compile/server.js").exists(),
+        "the refusal has to come before the bundle, and a bundle was written:\n{said}"
+    );
+
+    // And Bun's own spelling of a real machine is answered with the triple
+    // rather than with the list, because that reader named the right platform
+    // in the other vocabulary.
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile", "--target", "bun-linux-x64"])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(!output.status.success(), "{said}");
+    assert!(said.contains("x86_64-unknown-linux-gnu"), "{said}");
+}
+
+/// `--target` without `--compile` is a flag with nothing to act on.
+#[test]
+fn target_without_compile_names_the_flag_it_needs() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--target", "x86_64-unknown-linux-gnu"])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(!output.status.success(), "{said}");
+    assert!(said.contains("--compile"), "{said}");
+}
+
+/// A permission set Bun cannot enforce stops the compile rather than shipping.
+///
+/// ubugeeei-prod/uf#617 made `permissions` a property of the toolchain,
+/// translated per host and refused where a host cannot enforce it. A compiled
+/// binary is where that rule has the most to lose: the artefact leaves the
+/// machine, and nobody downstream can check what it was built with. Node bakes
+/// the set into the executable's `execArgv` and enforces it; Bun has nothing to
+/// translate into, so uf refuses rather than handing over a binary that looks
+/// sandboxed and is not.
+#[test]
+fn compiling_on_bun_refuses_a_permission_set_it_cannot_enforce() {
+    if !fixture_ready() || !bun_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with(
+            "  app: { runtime: { capabilityJsHost: { default: \"bun\", autoDetect: false } } },\n  \
+             permissions: { read: [\"/srv/data\"] },\n",
+        ),
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "a declared permission set Bun cannot enforce must stop the compile:\n{said}"
+    );
+    assert!(said.contains("permission model"), "{said}");
+    assert!(
+        said.contains("Compile on Node"),
+        "the refusal has to name the backend that can:\n{said}"
     );
 }
 

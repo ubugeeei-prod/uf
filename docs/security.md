@@ -82,7 +82,7 @@ decisions are:
 | Image optimizer: unbounded disk cache, CPU exhaustion from remote images, cache deception | Image caching is opt-in, remote sources require an explicit host allowlist, decode work is bounded by pixel budget, and the cache has a size ceiling | todo |
 | A draft-mode cookie anybody can set for themselves — a flag rather than a token, so unpublished content is gated by a value you can type | The value is an expiry and an HMAC-SHA256 over it — domain-separated `uf-draft-v1`, length-prefixed, keyed with the deployment's secret, the same construction `crates/uf_rsc/src/action.rs` argues for under a different name — compared in constant time, with the expiry *inside* the signature so a holder cannot extend it and checked against uf's clock as well as by `Max-Age`. `__Host-` prefixed, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, one name for every scheme so there is no second name a subdomain could plant. The key is `UF_DRAFT_SECRET`, refused below 32 bytes rather than stretched, and a per-process one otherwise with a `warn` saying what that costs | `tests/library/route-handler.test.js` |
 | A cookie or a response header set from inside a render, at a moment when the headers may already be on the wire | `headers()` and `cookies()` are read-only, and `draftMode().enable()` — the one case that needs a response — is allowed only where a response is being produced: a route handler or a server action, marked by `asResponder`. Anywhere else, a guard included, it is a named `DraftModeError` rather than a decision nothing writes down | `tests/library/server.test.js`, `tests/library/request-lifecycle.test.js` |
-| Draft content served out of a shared cache, or a published document served to somebody who came to see the draft | A request in draft mode never reaches the route cache and is never answered with a prerendered document — from `dist/` under `uf start` and every adapter, and from the embedded copy in a compiled binary. The other direction holds too: reading `draftMode()` counts as reading request state, so a render that consulted it is never stored | `tests/library/cache.test.js`, `tests/library/serve.test.js`, `tests/library/standalone.test.js` |
+| Draft content served out of a shared cache, or a published document served to somebody who came to see the draft | A request in draft mode never reaches the route cache and is never answered with a prerendered document. **Why** is written once, in `packages/server/internal/draft.js`'s `prerenderedMayAnswer`, and every front door asks it rather than deciding again: `uf start`'s static handler, the compiled binary's embedded index, a worker's assets binding, and `uf preview` — where Vite's own file middleware runs in front of anything uf mounts behind it, so uf mounts the question in front of Vite instead. Documents only; a chunk is the same bytes either way. The other direction holds too: reading `draftMode()` counts as reading request state, so a render that consulted it is never stored | `tests/library/cache.test.js`, `tests/library/serve.test.js`, `tests/library/standalone.test.js` |
 | XSS via CSP nonce handling and `beforeInteractive` scripts | Nonces are generated per response and never reused across a cached response; script injection points are typed, not string-concatenated | todo |
 
 ### The argument boundary
@@ -399,6 +399,25 @@ every core on the machine — which is why Next.js pairs its optimizer with
 imports, at widths the project declared, at build time. A request-time path is
 worth having for user-supplied and remote images, and when it is added it needs
 the allow-list in the first commit rather than after one.
+
+## The site this document is on
+
+`docs.uniflowed.dev` is a static build behind a Cloudflare Worker, and it is
+the one deployment this repository owns. That makes it the one place uf sets a
+response header — and for a long time the site that argues about CSP sent no
+`content-security-policy` at all
+([#598](https://github.com/ubugeeei-prod/uf/issues/598)).
+
+| Concern | Decision in `uf` | Where |
+| --- | --- | --- |
+| No `content-security-policy` on the site that argues about them | One is sent on every branch of the worker, and it is derived from what the build actually wrote rather than copied in: `'self'` for every source, a `sha256-` per inline script the pages hold — uf's theme bootstrap and its JSON-LD, React's two streaming blocks — and `'none'` for `object-src`, `base-uri`, `frame-src`, `frame-ancestors` and `form-action`, none of which the site uses. `script-src` carries neither `'unsafe-inline'` nor `'unsafe-eval'`. The one exemption is `style-src`, which Shiki's 9,602 per-token `style` attributes buy | `infra/cloudflare/workers/docs.js` |
+| That policy going stale, in either direction: the header stops being sent, or a page starts loading something it forbids | The check drives the worker rather than reading it — `ASSETS` stood in for, `fetch` called, headers read off five paths — and then re-derives the policy from `docs/dist/docs`: every inline script must be named by a hash, every hash must name a script that exists, every `src` and `href` must be same-origin, and the `'none'`s must still be `'none'`. A React upgrade changes two of those hashes, and this is where that is found rather than in a browser nobody is watching | `tools/ci/docs-csp.sh` |
+
+`docs/dist/docs/.vite/manifest.json` — Vite's module-to-chunk map — ships with
+the site. Nothing reads it to answer a request, so it is disclosure with no
+reader rather than a vulnerability, which is the same argument this document
+makes about `uf-rsc-manifest.json`. Turning it off is a build-configuration
+decision and is recorded here rather than made a rule.
 
 ## Supply chain of `uf` itself
 

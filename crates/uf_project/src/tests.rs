@@ -247,7 +247,7 @@ fn both_templates_pin_the_version_of_the_uf_that_wrote_them() {
 ///
 /// The list is not written twice: anything uf refuses to *lint* because it
 /// generated it has to be something uf refuses to *commit*, so the template
-/// is checked against `ALWAYS_IGNORED` and the default `lint.ignore`. `target`
+/// is checked against `ALWAYS_IGNORED` and the default `ignore`. `target`
 /// is the exception and is named as one — it is Cargo's, and a scaffolded
 /// Flow project has none.
 #[test]
@@ -283,7 +283,8 @@ fn both_templates_ignore_what_uf_generates() {
                 "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
             );
         }
-        for entry in &UniflowedConfig::default().lint.ignore {
+        let defaults = UniflowedConfig::default();
+        for entry in defaults.project_ignore().entries {
             if entry == "target" {
                 continue;
             }
@@ -551,7 +552,9 @@ fn an_ignore_entry_with_a_separator_still_means_one_place() {
     fs::write(root.join("lib/generated/keep.js"), "// @flow\n").unwrap();
 
     let mut config = UniflowedConfig::default();
-    config.lint.ignore.push("app/generated".into());
+    let mut ignore = uf_config::DEFAULT_IGNORE.to_vec();
+    ignore.push("app/generated".into());
+    config.ignore = Some(ignore);
     config.lint.files.push("lib".into());
 
     let files = scan_source_files(&root, &config).unwrap().files;
@@ -775,7 +778,7 @@ fn a_large_project_is_walked_once_and_within_a_bound() {
 /// An ignored directory is ignored at every depth, including inside a package
 /// inside a workspace.
 ///
-/// A bare name in `lint.ignore` names a kind of directory rather than a place;
+/// A bare name in `ignore` names a kind of directory rather than a place;
 /// this is the case that makes the difference visible, because a root-anchored
 /// list would have walked into all four of these.
 #[test]
@@ -808,7 +811,7 @@ fn an_ignored_directory_is_ignored_at_every_depth() {
 
 /// `.uf` is uf's own working directory, and a project cannot opt back into it.
 ///
-/// The other names are ordinary `lint.ignore` entries a project may remove;
+/// The other names are ordinary `ignore` entries a project may remove;
 /// this one is not, because the transform cache and the compiled config are
 /// uf's own output and linting them says nothing about the project.
 #[test]
@@ -820,13 +823,13 @@ fn a_project_cannot_opt_back_into_ufs_own_working_directory() {
 
     // Everything the default list holds, removed. `.uf` is not on that list.
     let mut config = UniflowedConfig::default();
-    config.lint.ignore.clear();
+    config.ignore = Some(Vec::new());
 
     let scan = scan_source_files(&root, &config).expect("a walk");
 
     assert!(
         paths(&scan).contains(&"node_modules/dep/index.js"),
-        "clearing lint.ignore must un-ignore node_modules: {:?}",
+        "an empty `ignore` must un-ignore node_modules: {:?}",
         paths(&scan)
     );
     assert!(

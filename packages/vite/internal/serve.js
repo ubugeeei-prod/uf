@@ -363,6 +363,36 @@ export function createServeHandler({ entry, assets, distDir, cache }) {
 }
 
 /**
+ * Whether a file server may answer this request, or uf has to go first.
+ *
+ * `@uniflowed/server`'s `prerenderedMayAnswer`, reached the same way
+ * `createStaticHandler` is. It exists out here because of the one request
+ * `uf preview` may not leave to Vite: `createServeHandler` above is mounted
+ * *behind* Vite's static middleware, which is fine for everything except a
+ * request carrying the draft cookie. `createStaticHandler` declines a
+ * prerendered document for such a request and, under `uf preview`, never sees
+ * it — so draft mode appeared to be off there while it worked under `uf dev`
+ * and `uf start`. That is ubugeeei-prod/uf#620.
+ *
+ * `driver.js` asks this in a middleware mounted in *front* of Vite's, and
+ * mounts `createServeHandler` behind it for the answer, so a draft request
+ * goes through the same handler `uf start` uses and gets the same answer —
+ * including its stylesheets and chunks, which that handler still serves off
+ * disk. Every other request is untouched and Vite's file middleware runs as
+ * before.
+ *
+ * A gate rather than a second handler, because the caller has a request
+ * lifecycle to open and must not open one for a request it is about to hand
+ * on.
+ */
+export function createPrerenderGate() {
+  const ready = deployment().then(({ prerenderedMayAnswer }) => prerenderedMayAnswer);
+  return async function prerenderedMayAnswer(cookieHeader) {
+    return (await ready)(cookieHeader ?? null);
+  };
+}
+
+/**
  * A `Request`/`Response` handler as a Node request listener.
  *
  * `@uniflowed/server/node`'s, which is also what the `server.js` an adapter

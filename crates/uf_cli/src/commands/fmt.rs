@@ -10,11 +10,14 @@ use uf_fmt::format_source;
 use uf_project::scan_selected_source_files;
 use uf_term::Status;
 
-use crate::support::{plural, quoted_list, selects, unreadable_lines};
+use crate::support::{
+    ignore_deprecation, plural, quoted_list, render_ignore_deprecation, selects, unreadable_lines,
+};
 use crate::ui::Ui;
 
 pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) -> Result<()> {
     let resolved = load_config(cwd)?;
+    let deprecation = ignore_deprecation(&resolved.config);
     // Discovery returns `package.json` too, because the linter reads it. The
     // formatter must not touch it: it is a Flow formatter, and running it
     // over JSON inserts a statement terminator and leaves the file unparseable.
@@ -198,6 +201,11 @@ pub(crate) fn fmt(cwd: &Utf8Path, ui: &mut Ui, check: bool, paths: &[String]) ->
             );
         }
     });
+    // After the summary, and outside the closure that draws it: the answer is
+    // what a reader came for, and the note about a key they should move is the
+    // sentence after it. `uf fmt` is the command the old name misleads about,
+    // so it is the one that most has to say this.
+    render_ignore_deprecation(ui, deprecation);
 
     if !unreadable.is_empty() {
         bail!("{} could not be read", plural(unreadable.len(), "file"));
