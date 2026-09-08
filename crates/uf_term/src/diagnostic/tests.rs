@@ -275,3 +275,48 @@ fn a_four_digit_line_number_widens_the_gutter_consistently() {
     assert!(rendered.contains("1234 │ const value"));
     assert_eq!(caret_offset(&rendered), source_offset(&rendered, "any"));
 }
+
+/// The path in a frame header cannot steer the terminal.
+///
+/// Every reporter that draws a code frame — `uf lint`, `uf check`, `uf build`,
+/// and the dev server's diagnostics — puts the path on the header line through
+/// here, so this is the one place the escape has to die. A repository is
+/// attacker-authored input: `uf` is run against a clone, and a file in it can
+/// be named anything the filesystem accepts. See ubugeeei-prod/uf#640.
+#[test]
+fn a_frame_header_cannot_be_made_to_clear_the_screen() {
+    let hostile = CodeFrame::new(
+        DiagnosticLevel::Error,
+        "unclear type",
+        "src/\x1b[2J\x1b[Hgotcha.js",
+        3,
+        1,
+    );
+    let rendered = render(&hostile);
+    // The renderer is `ColorLevel::Never`, so the only way an escape reaches
+    // the output at all is out of the path.
+    assert!(!rendered.contains('\x1b'), "{rendered:?}");
+    assert!(!rendered.contains('\r'), "{rendered:?}");
+    // And the name is still readable, which is what the diagnostic is for.
+    assert!(rendered.contains("src/[2J[Hgotcha.js:3:1"), "{rendered:?}");
+}
+
+/// The header stays on one line however the file was named.
+#[test]
+fn a_frame_header_is_one_line_whatever_the_path_contains() {
+    let newline = CodeFrame::new(
+        DiagnosticLevel::Error,
+        "unclear type",
+        "src/a\nerror: fabricated\nb.js",
+        3,
+        1,
+    );
+    let rendered = render(&newline);
+    // Header, and nothing else: no source line was attached, so a second line
+    // in the output could only have come out of the path.
+    assert_eq!(rendered.lines().count(), 2, "{rendered:?}");
+    assert!(
+        rendered.contains("src/aerror: fabricatedb.js"),
+        "{rendered:?}"
+    );
+}
