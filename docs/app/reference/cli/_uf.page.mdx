@@ -308,8 +308,9 @@ host answers. Deploy the output directory to any static host, or check it with
 ### uf build --adapter TARGET
 
 Writes `.uf/deploy/TARGET/`: everything the target needs and nothing that is
-still in your checkout — no `node_modules`, no source, no `uf`. Four targets
-are implemented, and they share every line of the application:
+still in your checkout — no `node_modules`, no source, no `uf`. Five targets
+are implemented. Four of them run an application and share every line of it;
+the fifth runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
@@ -317,12 +318,17 @@ are implemented, and they share every line of the application:
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json`, `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
+| `static` | your build, file for file, and nothing else | upload it to any static host |
 
-`handler.js` is the seam and is identical work in all four: it is
+`handler.js` is the seam and is identical work in the four that have one: it is
 `@uniflowed/server/fetch`'s handler over your server bundle, it touches no
 filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
 lives — not a second application.
+
+`static` has no `handler.js` at all, because a static host runs no
+application — see [static](#static) below, whose whole implementation is the
+refusal.
 
 The one thing `handler.js` does say per target is what that target can do,
 because two of the answers differ:
@@ -346,14 +352,19 @@ around them, because the server bundle leaves `react` and `react-dom` as bare
 imports. An adapter's output links them in, so the directory is the whole of
 what has to travel.
 
-**No adapter output has ever been deployed.** uf is developed in a sandbox with
-no cloud credentials, no Docker daemon and no ability to bind a socket. What
-its tests establish is that each directory has the file set the platform
-documents, that the emitted entry answers when it is driven in process, and
-that all four answer *identically* — byte for byte, the same as `uf start`.
-None of that is a deployment. The first person to run `wrangler deploy` or
-upload the zip is finding something out, and
+**No server adapter's output has ever been deployed.** uf is developed in a
+sandbox with no cloud credentials, no Docker daemon and no ability to bind a
+socket. What its tests establish is that each directory has the file set the
+platform documents, that the emitted entry answers when it is driven in
+process, and that all four answer *identically* — byte for byte, the same as
+`uf start`, including a loader's `redirect()`, whose whole answer is a
+`Location` header. None of that is a deployment. The first person to run
+`wrangler deploy` or upload the zip is finding something out, and
 [#391](https://github.com/ubugeeei-prod/uf/issues/391) is where to say what.
+
+`static` is the exception, and only because there is nothing to deploy *to*: a
+directory of files is what every static host serves, and uf's own
+documentation site is built through this target in the test suite.
 
 #### node and container
 
@@ -452,16 +463,43 @@ comes back in the result's `cookies` rather than in `headers`, because
 iterating headers would join two cookies into one field nothing can parse
 apart. A response body whose media type is not text comes back base64-encoded.
 
-#### The three that are not written
+#### static
 
-`bun`, `deno` and `static` are names in `DeployAdapter` and nothing else.
-Asking for one is an error that says which and why, and names
+The output is your build — `dist/`, file for file, at the top of
+`.uf/deploy/static/` rather than inside a `static/` beside a server. There is
+no `handler.js`, no `server.js` and no `package.json`, because a static host
+serves whatever is in the directory and a file the application never mentions
+is a URL you did not mean to publish. Upload it to a CDN, an object store, or
+anything else that returns files; uf names no host, because naming one would
+be uf choosing a hosting company on your behalf.
+
+**The implementation is the refusal.** `uf build` has always written `dist/`,
+so this target adds no output. What it adds is that a project a static host
+*cannot* serve is now rejected by name instead of published with holes in it:
+
+| What | Why a file is not it |
+| --- | --- |
+| a `_uf.route.js` | it answers a request, and a `POST` has no file behind it |
+| a `_uf.middleware.js` | it runs once per request, before the route resolves, and nothing runs on a static host |
+| a route the prerender wrote no document for — parameters and no `generateStaticParams` | there is nothing to upload for it |
+| a `"use server"` export the browser can call | an action is a `POST` back to the application, at the page's own URL |
+
+Each finding names the URL, the file it is in, and what to do instead — which
+is usually `--adapter node`, since the application is the same file in all
+four server targets and the project does not have to change to use one. One
+prerendered document is enough for a parameterised route: a
+`generateStaticParams` that named three slugs wrote three files, and whether it
+named *every* slug is a question about your data that no build can ask.
+
+#### The two that are not written
+
+`bun` and `deno` are names in `DeployAdapter` and nothing else. Asking for one
+is an error that says which and why, and names
 [#391](https://github.com/ubugeeei-prod/uf/issues/391).
 
 | Target | Why not |
 | --- | --- |
 | `bun`, `deno` | The `node` output already runs unchanged on both. An adapter here is `Bun.serve` or `Deno.serve` in place of `node:http`, and it is worth writing only once a benchmark shows the native server beating `node:http` *under the same handler* — otherwise it is a directory with a different name on it. Nobody has run that benchmark. |
-| `static` | It emits nothing new: `uf build` already writes `dist/`. Its whole job is to **refuse** — a project whose routes include a handler, a middleware, or a route with parameters and no `generateStaticParams` cannot be served statically, and a build that silently dropped them is the failure this target exists to prevent. That needs the route table rather than a bundler, and it is a different piece of work from the other six. |
 
 `app.runtime.deploy.adapters` lists what this toolchain can actually produce,
 and `uf explain build` names the adapter a build will run.

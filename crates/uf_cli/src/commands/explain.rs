@@ -237,7 +237,11 @@ fn config_sources(resolved: &ResolvedConfig) -> Vec<String> {
         sources.push("package.json".to_string());
     }
     if resolved.root.join(".flowconfig").exists() {
-        sources.push(".flowconfig".to_string());
+        // Named with the section, because that is all of it uf reads and a
+        // bare `.flowconfig` here promised the rest. `[options]`, `[lints]`
+        // and `[ignore]` are uf's own to decide; `[libs]` is source the
+        // project wrote, and is merged. See `uf_check::flowconfig`.
+        sources.push(".flowconfig ([libs] only)".to_string());
     }
     sources
 }
@@ -848,12 +852,31 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
 /// "which of the seven targets did that build produce" is a question a person
 /// asks at exactly the moment they can least afford to guess.
 ///
+/// Five of the seven have something to name. `static` is described by what it
+/// copies and what it refuses rather than by an entry, because it writes no
+/// entry; `bun` and `deno` are described as "nothing yet", which is what
+/// `uf build` would say if a project configured one.
+///
 /// A project that has asked for none is told so, and told what the build
 /// therefore is: `dist/` plus a server bundle that needs the checkout around
 /// it. That sentence is the honest description of `uf build` today, and it is
 /// the reason `--adapter` exists.
 fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
     match resolved.config.app.runtime.deploy.adapter {
+        // The one target with no entry to name: `static` runs no application,
+        // so its artefact is the output directory and nothing beside it. What
+        // a reader wants to be told here instead is the thing that *can* stop
+        // this build — a route a static host cannot serve is refused rather
+        // than dropped.
+        Some(DeployAdapter::Static) => Stage {
+            name: "adapter",
+            provider: "uf (static)".to_string(),
+            detail: format!(
+                ".uf/deploy/static: {} copied, and a refusal naming any route, handler, \
+                 middleware or server action a static host cannot answer",
+                resolved.config.build.out_dir
+            ),
+        },
         Some(adapter) => Stage {
             name: "adapter",
             provider: format!("uf ({})", adapter.as_str()),
@@ -891,6 +914,8 @@ fn adapter_entries(adapter: DeployAdapter) -> &'static str {
         DeployAdapter::Serverless => "handler.js, lambda.js",
         // `uf build` refuses these, so this is what `uf explain build` says
         // about a project that has configured one: the same "nothing", named.
+        // `static` never reaches here — it has no entry and [`adapter_stage`]
+        // describes it without asking this table.
         DeployAdapter::Bun | DeployAdapter::Deno | DeployAdapter::Static => "nothing yet",
     }
 }
@@ -1161,11 +1186,19 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![Stage {
-        name: "type checking",
-        provider: "flow (upstream)".to_string(),
-        detail: "uf does not type-check; Flow is the type system".to_string(),
-    }]
+    vec![
+        Stage {
+            name: "library definitions",
+            provider: "flow (upstream)".to_string(),
+            detail: "Flow's own, then `flow-typed` and whatever `.flowconfig`'s [libs] names"
+                .to_string(),
+        },
+        Stage {
+            name: "type checking",
+            provider: "flow (upstream)".to_string(),
+            detail: "uf does not type-check; Flow is the type system".to_string(),
+        },
+    ]
 }
 
 #[cfg(test)]

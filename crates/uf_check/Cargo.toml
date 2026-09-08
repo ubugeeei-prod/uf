@@ -21,6 +21,7 @@ upstream-typecheck = [
   "dep:flow_aloc",
   "dep:flow_common",
   "dep:flow_common_errors",
+  "dep:flow_config",
   "dep:flow_data_structure_wrapper",
   "dep:flow_flowlib",
   "dep:flow_lazy",
@@ -53,6 +54,7 @@ dupe = { workspace = true, optional = true }
 flow_aloc = { workspace = true, optional = true }
 flow_common = { workspace = true, optional = true }
 flow_common_errors = { workspace = true, optional = true }
+flow_config = { workspace = true, optional = true }
 flow_data_structure_wrapper = { workspace = true, optional = true }
 flow_flowlib = { workspace = true, optional = true }
 flow_lazy = { workspace = true, optional = true }
