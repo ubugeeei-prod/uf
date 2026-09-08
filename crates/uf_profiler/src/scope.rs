@@ -31,6 +31,7 @@
 //! what it is showing is the measurement itself.
 
 use std::cell::RefCell;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -277,6 +278,72 @@ pub fn take_thread_spans() -> Vec<ScopeRecord> {
         };
         std::mem::take(&mut state.records)
     })
+}
+
+/// Records handed over by threads that are about to end.
+///
+/// Uncontended in practice: a thread touches this once, when it is finished,
+/// and never on the hot path. The lock is what makes it correct anyway.
+static COLLECTED: Mutex<Vec<ScopeRecord>> = Mutex::new(Vec::new());
+
+/// Hand this thread's records to the collector and clear them.
+///
+/// Spans are thread-local so the hot path needs no lock, which means a worker
+/// thread's spans die with it unless it says otherwise. Most of uf's work
+/// happens on such a thread — `uf_fmt::format_source` runs the formatter on
+/// one with a bigger stack, `uf_infra::parallel` fans out across a pool, and
+/// `uf_test` has a pool of its own — so without this the profiler could
+/// profile almost nothing uf actually does.
+///
+/// Call it at the end of the work, on the thread that did it.
+pub fn flush_thread_spans() {
+    let records = take_thread_spans();
+    if records.is_empty() {
+        return;
+    }
+    let Ok(mut collected) = COLLECTED.lock() else {
+        // A poisoned lock means some other thread panicked mid-flush. Losing
+        // a profile is not worth a second panic on top of the first.
+        return;
+    };
+    for record in records {
+        fold(&mut collected, record);
+    }
+}
+
+/// Fold a whole record into `records`, by name.
+///
+/// The counterpart to [`merge`], which folds one closed span. A record
+/// arriving from another thread already carries its own hit count, so adding
+/// it as a single hit would undercount every span a worker entered twice.
+fn fold(records: &mut Vec<ScopeRecord>, record: ScopeRecord) {
+    if let Some(slot) = records.iter_mut().find(|slot| slot.name == record.name) {
+        slot.hits += record.hits;
+        slot.inclusive += record.inclusive;
+        slot.self_time += record.self_time;
+        slot.allocations += record.allocations;
+        slot.bytes_allocated += record.bytes_allocated;
+        slot.peak_above_baseline = slot.peak_above_baseline.max(record.peak_above_baseline);
+        slot.slowest = slot.slowest.max(record.slowest);
+        return;
+    }
+    records.push(record);
+}
+
+/// Take everything every thread has flushed.
+#[must_use]
+pub fn take_collected_spans() -> Vec<ScopeRecord> {
+    COLLECTED
+        .lock()
+        .map(|mut collected| std::mem::take(&mut *collected))
+        .unwrap_or_default()
+}
+
+/// Drop everything flushed, without reading it.
+pub fn reset_collected_spans() {
+    if let Ok(mut collected) = COLLECTED.lock() {
+        collected.clear();
+    }
 }
 
 /// Drop this thread's records without reading them.

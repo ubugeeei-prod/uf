@@ -109,15 +109,23 @@ impl Recorder {
         // one's, and a span from before the baseline would be attributed
         // here with allocations it did not make.
         scope::reset_thread_spans();
+        scope::reset_collected_spans();
         let before = AllocSnapshot::capture();
         let start = std::time::Instant::now();
         let output = workload();
         let elapsed = start.elapsed();
         let after = AllocSnapshot::capture();
+        // This thread's spans and everything a worker flushed while the
+        // window was open. A workload that fans out — which most of uf's
+        // does — records on threads this one never sees.
+        let mut spans = scope::take_thread_spans();
+        for record in scope::take_collected_spans() {
+            spans.push(record);
+        }
         self.iterations.push(IterationRecord {
             elapsed,
             allocations: after.delta_from(&before),
-            spans: scope::take_thread_spans(),
+            spans,
         });
         output
     }
