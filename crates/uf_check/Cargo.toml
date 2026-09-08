@@ -76,3 +76,7 @@ uf_flow = { path = "../uf_flow", optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
+# For `examples/alloc_report.rs`: the counting allocator behind the figures in
+# ubugeeei-prod/uf#678, so the next person to touch the checker can take them
+# again rather than trust them.
+uf_profiler = { path = "../uf_profiler" }

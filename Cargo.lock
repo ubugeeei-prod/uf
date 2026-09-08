@@ -3590,6 +3590,7 @@ dependencies = [
  "thiserror",
  "uf_flow",
  "uf_infra",
+ "uf_profiler",
 ]
 
 [[package]]
