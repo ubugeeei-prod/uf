@@ -193,6 +193,61 @@ fn a_submodule_is_not_one_of_the_project_s_packages() {
     assert_eq!(names, ["demo"], "the submodule was locked as a package");
 }
 
+/// A checkout that is not a submodule is still not ours.
+///
+/// `.gitmodules` names the repositories git tracks a gitlink for, and that is
+/// only some of the repositories inside this one. `tools/corpus/sync.sh`
+/// fetches fifteen third-party trees into `tests/fixtures/git`, each with a
+/// `.git` file pointing at a git directory outside the checkout, and eleven of
+/// them were never in `.gitmodules` at all — so Parcel's twenty-eight scripts
+/// were being read as this project breaking its own no-scripts rule, and
+/// `uf install` refused to run. ubugeeei-prod/uf#137 took the other four out
+/// of `.gitmodules`, which would have made that every one of them.
+///
+/// A `.git` *file* rather than a directory, because that is the shape all of
+/// them have: `git init --separate-git-dir` writes one, and so does a
+/// submodule.
+#[test]
+fn a_nested_checkout_is_not_one_of_the_project_s_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{ "name": "demo", "version": "1.0.0" }"#,
+    )
+    .unwrap();
+    // No `.gitmodules`: this is a pinned fetch, not a submodule.
+    let fetched = root.join("tests/fixtures/git/parcel");
+    fs::create_dir_all(&fetched).unwrap();
+    fs::write(
+        fetched.join(".git"),
+        "gitdir: ../../../../.git/corpus/parcel\n",
+    )
+    .unwrap();
+    fs::write(
+        fetched.join("package.json"),
+        r#"{ "name": "@parcel/monorepo", "version": "2.0.0", "scripts": { "build": "gulp" } }"#,
+    )
+    .unwrap();
+    // And its own workspace packages, which are equally not ours.
+    let nested = fetched.join("packages/core");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(
+        nested.join("package.json"),
+        r#"{ "name": "@parcel/core", "version": "2.0.0" }"#,
+    )
+    .unwrap();
+
+    let report = install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+    let names: Vec<&str> = report
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    assert_eq!(names, ["demo"], "a nested checkout was locked as a package");
+}
+
 #[test]
 fn a_directory_that_merely_looks_like_a_submodule_is_still_ours() {
     let dir = tempfile::tempdir().unwrap();

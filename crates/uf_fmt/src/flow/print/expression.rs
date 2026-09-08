@@ -193,10 +193,19 @@ impl<'a> Printer<'a> {
         expression: &'a Expression,
     ) -> Doc<'a> {
         use expression::UnaryOperator as U;
-        if matches!(unary.operator, U::Await) {
-            return self.print_await(unary, expression);
-        }
+        // The operator table below is (spelling, needs a trailing space), and
+        // every arm that is not in it leaves through a `return`. Leaving from
+        // inside the `match` rather than from a guard above it is what keeps
+        // the table honest: `await` had a row here for a long time, spelled
+        // `("await", true)`, that nothing could ever read, because the guard
+        // returned first. Now a second `U::Await` row is an unreachable
+        // pattern, which `-D warnings` refuses to compile. See
+        // ubugeeei-prod/uf#432.
         let (operator, word) = match unary.operator {
+            // `await` breaks differently depending on what encloses it — a
+            // callee and a member object indent, everything else does not —
+            // so it needs the parent, which the table has no way to consult.
+            U::Await => return self.print_await(unary, expression),
             U::Minus => ("-", false),
             U::Plus => ("+", false),
             U::Not => ("!", false),
@@ -204,7 +213,8 @@ impl<'a> Printer<'a> {
             U::Typeof => ("typeof", true),
             U::Void => ("void", true),
             U::Delete => ("delete", true),
-            U::Await => ("await", true),
+            // `x!` is a suffix; the `!` is appended below and this row only
+            // has to contribute nothing before the argument.
             U::Nonnull => ("", false),
         };
         let argument = self.print_expression(&unary.argument);

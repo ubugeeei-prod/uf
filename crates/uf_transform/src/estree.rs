@@ -111,6 +111,36 @@ mod tests {
         assert_eq!(statement["await"], true);
     }
 
+    /// The parser's half of ubugeeei-prod/uf#432.
+    ///
+    /// `for await` is `for-await-of` and nothing else, and Flow's AST says so
+    /// in its shape rather than in a check: `ForOf` carries `await`, `ForIn`
+    /// carries only `each` — the E4X-era flag — and there is no field for a
+    /// `ForInStatement` to answer `await` with. So no tree this parser
+    /// produces can ask a printer for `for await (… in …)`.
+    ///
+    /// Pinned here because it is a guarantee the printers lean on and nothing
+    /// else checks. `uf_fmt` prints from the typed AST, where the shape makes
+    /// it unrepresentable; `uf_transform::print` works on JSON and has to
+    /// refuse the node itself, because it also prints trees uf did not parse.
+    #[test]
+    fn a_for_in_has_no_await_to_carry() {
+        let program = parse("// @flow\nfor (const k in o) {}\n").unwrap();
+        let statement = &program["body"].as_array().unwrap()[0];
+        assert_eq!(statement["type"], "ForInStatement");
+        assert!(statement.get("await").is_none(), "{statement}");
+        assert_eq!(statement["each"], false);
+    }
+
+    /// And the syntax is a parse error rather than something the parser bends
+    /// into a `ForInStatement` with a flag set.
+    #[test]
+    fn for_await_over_in_does_not_parse() {
+        let source = "// @flow\nexport const rows = [];\nfor await (const k in o) {}\n";
+        let error = parse(source).unwrap_err();
+        assert!(matches!(error, TransformError::Syntax { .. }), "{error:?}");
+    }
+
     #[test]
     fn refuses_await_outside_async_in_the_same_words_as_the_linter() {
         // A script, which is where `await` is still an identifier: the same

@@ -351,10 +351,10 @@ struct PackageStoreEntry<'a> {
 
 /// Every `package.json` in the workspace: the root's, and each package's.
 ///
-/// `node_modules`, `dist`, `target`, `.git`, `.uf` and every path `.gitmodules`
-/// lists are skipped — a submodule is somebody else's repository that happens
-/// to be checked out inside this one, and its manifest is not one of this
-/// project's.
+/// `node_modules`, `dist`, `target`, `.git`, `.uf`, every directory that holds
+/// a `.git` of its own, and every path `.gitmodules` lists are skipped — a
+/// checkout inside this one is somebody else's repository, and its manifest is
+/// not one of this project's.
 ///
 /// # Errors
 ///
@@ -381,6 +381,15 @@ pub fn discover_package_manifests(
 /// package; it went unnoticed only because that manifest happens to declare
 /// no scripts. Checking out a fixture that does declare some — React Native,
 /// Metro — turned it into `uf install` refusing to run at all.
+///
+/// This list is no longer the whole answer, and never was: it names the
+/// repositories git tracks a gitlink for, and [`should_skip_dir`] now also
+/// skips any directory holding a `.git` of its own. A vendored clone or a
+/// pinned fetch is as much somebody else's repository as a submodule is, and
+/// `tools/corpus/sync.sh` checks out fifteen of them under
+/// `tests/fixtures/git`. What `.gitmodules` still adds is the submodule that
+/// is *declared and not checked out*: an empty directory with no `.git` to
+/// recognise it by.
 ///
 /// Parsed by hand rather than with a git library, because it is four lines
 /// of `key = value` and a dependency on libgit2 to read them would be the
@@ -439,12 +448,30 @@ fn visit_package_dirs(
     Ok(())
 }
 
+/// Whether a directory is somebody else's, or ours but not a package.
+///
+/// A directory holding a `.git` is another repository — a submodule, a
+/// vendored clone, a pinned fetch, a worktree — and none of them holds this
+/// project's packages. `.git` is a file rather than a directory for all but
+/// the plainest clone, so this asks whether the path exists rather than what
+/// it is; that is the same test `uf_rsc`'s project scan draws the line at.
+///
+/// `.gitmodules` alone was not enough. It named four of the fifteen
+/// repositories `tools/corpus/sync.sh` checks out under `tests/fixtures/git`
+/// — the four that were submodules — and every other one was walked, so
+/// `uf install` in this repository refused to run the moment Parcel or Yarn
+/// was fetched: their manifests declare scripts, and a manifest that declares
+/// scripts is refused. ubugeeei-prod/uf#137 removed the four gitlinks, which
+/// would have made that total rather than fixing it.
 fn should_skip_dir(root: &Utf8Path, path: &Utf8Path, submodules: &[Utf8PathBuf]) -> bool {
     let name = path.file_name().unwrap_or_default();
     if matches!(
         name,
         ".git" | ".uf" | "dist" | "node_modules" | "target" | "__uf_vrt__"
     ) {
+        return true;
+    }
+    if path.join(".git").exists() {
         return true;
     }
     let Ok(relative) = path.strip_prefix(root) else {
