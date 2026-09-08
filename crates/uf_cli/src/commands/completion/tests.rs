@@ -59,6 +59,7 @@ fn enum_arguments_complete_to_their_variants() {
     assert_eq!(complete_line(&["create", ""]), vec!["app", "lib"]);
     assert_eq!(complete_line(&["env", ""]), vec!["doctor", "use"]);
     assert_eq!(complete_line(&["i18n", ""]), vec!["extract", "merge"]);
+    assert_eq!(complete_line(&["routes", ""]), vec!["list", "add"]);
     assert!(complete_line(&["explain", ""]).contains(&"build".to_string()));
 }
 

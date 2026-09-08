@@ -8,6 +8,13 @@
 //! port's types are re-exported here as [`ast`] and [`Loc`], and [`parse`]
 //! hands back a [`Parsed`] built from them.
 //!
+//! [`ast_visitor`] comes with them, for the same reason. A caller that only
+//! wants one kind of node still has to descend through every other kind to
+//! find it, and a hand-written descent is a second definition of Flow syntax:
+//! it goes quietly out of date on the next `tools/upstream/sync.sh`, with a
+//! rule that stopped firing as the symptom. The port's own visitor walks
+//! whatever the port parses.
+//!
 //! # Ceilings
 //!
 //! The port is a recursive-descent parser, and a stack overflow cannot be

@@ -479,6 +479,17 @@ pub(crate) enum Commands {
         #[arg(value_name = "NAME", required = true)]
         names: Vec<String>,
     },
+    /// List the routes under `app/`, or write a new one.
+    ///
+    /// A route is a directory and one to four reserved files, and both halves
+    /// of this command read `crates/uf_router/src/reserved.rs` — the same
+    /// grammar `uf build` discovers routes with. A generator with a list of
+    /// its own would be a second answer to "what is a route called", and the
+    /// first two disagreeing is what ubugeeei-prod/uf#224, #291 and #386 were.
+    Routes {
+        #[command(subcommand)]
+        command: RoutesCommand,
+    },
     /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
         /// Run in this mode, which chooses `.env.<mode>` and is what
@@ -772,6 +783,45 @@ impl Commands {
             _ => false,
         }
     }
+}
+
+/// What `uf routes` can do with the route table.
+#[derive(Debug, Subcommand)]
+pub(crate) enum RoutesCommand {
+    /// Print the table `uf build` counts from.
+    List,
+    /// Write a route: the directory, its page, and whichever of the rest was
+    /// asked for.
+    ///
+    /// The path is a URL path in the spelling the directories already use —
+    /// `/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what
+    /// is typed is what appears in `RoutePath`. A spelling uf reserves without
+    /// serving (`@team`, `(.)photo`) is refused here with the same sentence
+    /// `uf build` and `uf lint` give, rather than written and reported later.
+    ///
+    /// Nothing is overwritten: a route whose page exists is an error, and a
+    /// run that stops has written none of its files.
+    Add {
+        /// The route's URL path, as its directories spell it.
+        #[arg(value_name = "PATH")]
+        path: String,
+        /// Also write `_uf.layout.js`: a wrapper for this path and everything
+        /// under it.
+        #[arg(long)]
+        layout: bool,
+        /// Give the page a `loader`, which runs before it renders.
+        ///
+        /// The one flag here that is not a file. A loader is an export of the
+        /// page module rather than a name uf reserves, and the flag is still
+        /// the right spelling: from where a reader stands the question is
+        /// "does this route load data", and which of the answers happens to be
+        /// a separate file is uf's business rather than theirs.
+        #[arg(long)]
+        loader: bool,
+        /// Also write `_uf.middleware.js`: what runs before this path answers.
+        #[arg(long)]
+        middleware: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

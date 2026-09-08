@@ -62,6 +62,7 @@ const COMMANDS: &[&str] = &[
     "release",
     "remove",
     "uninstall",
+    "routes",
     "run",
     "search",
     "start",
@@ -85,35 +86,6 @@ const RELEASE_BUMPS: &[&str] = &["alpha", "patch", "minor", "major"];
 
 /// What `uf create` takes.
 const CREATE_KINDS: &[&str] = &["app", "lib"];
-
-/// What `uf explain` knows how to describe.
-///
-/// A subset of `explain::KNOWN`, which is the list `uf explain` itself refuses
-/// an unknown name with. Completing a name is a convenience and the commands
-/// people reach for are here; the four package-manager ones are here because
-/// naming the manager that will run is the whole reason to ask.
-const EXPLAINABLE: &[&str] = &[
-    "dev",
-    "build",
-    "preview",
-    "start",
-    "doc",
-    "test",
-    "fmt",
-    "lint",
-    "check",
-    "add",
-    "remove",
-    "update",
-    "patch",
-    "pm",
-    "catalog",
-    "why",
-    "ls",
-    "audit",
-    "search",
-    "uninstall",
-];
 
 /// Print the completion script for `shell`.
 pub(crate) fn completion(ui: &mut Ui, shell: Shell) {
@@ -202,11 +174,22 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         ["run"] => matching(current, tasks.iter().copied()),
         ["release"] => matching(current, RELEASE_BUMPS.iter().copied()),
         ["create"] => matching(current, CREATE_KINDS.iter().copied()),
-        ["explain"] => matching(current, EXPLAINABLE.iter().copied()),
+        // `explain::KNOWN` itself, not a copy of part of it. These were two
+        // hand-maintained lists and nothing compared them, so completion
+        // offered a subset — missing `install`, `upgrade`, `run`, `exec` and
+        // `env`, every one of which `uf explain` answers — and a person using
+        // tab completion to find out what is explainable was told less than
+        // the truth (ubugeeei-prod/uf#425).
+        //
+        // A test that failed when they differed was the other option, and it
+        // would have kept the second list rather than removed it. This is a
+        // list that cannot drift because there is only one of it.
+        ["explain"] => matching(current, super::explain::KNOWN.iter().copied()),
         ["env"] => matching(current, ["doctor", "use"]),
         ["catalog"] => matching(current, ["set"]),
         ["pm"] => matching(current, ["approve-builds"]),
         ["i18n"] => matching(current, ["extract", "merge"]),
+        ["routes"] => matching(current, ["list", "add"]),
         _ => Vec::new(),
     }
 }
