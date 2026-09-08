@@ -3410,13 +3410,17 @@ fn server_said(said: &Mutex<String>) -> String {
 /// port stopped listening, and `http_get`'s bare `expect` reported
 /// `ConnectionRefused` and nothing about the process that had refused it.
 fn get(server: &mut Server, port: u16, path: &str, said: &Mutex<String>) -> String {
-    if TcpStream::connect(("127.0.0.1", port)).is_err() {
-        panic!(
-            "the dev server answered `/` and then stopped listening, before {path}\n{}",
+    match try_http_request("127.0.0.1", port, "GET", path, None, &[]) {
+        Ok(response) => response,
+        // The whole exchange, not just the connect. A server that has gone
+        // away mid-request resets rather than refusing, and reporting that as
+        // a bare `unwrap` on a read threw away the one thing the failure was
+        // written to carry: what the process itself said before it went.
+        Err(error) => panic!(
+            "the dev server answered `/` and then stopped answering, at {path}: {error}\n{}",
             server.evidence(said)
-        );
+        ),
     }
-    http_get("127.0.0.1", port, path)
 }
 
 /// A port nothing is listening on, released before the server binds it.
@@ -3443,14 +3447,23 @@ fn free_port() -> u16 {
 }
 
 /// Poll until the server answers, or give up.
+///
+/// The request is the probe. Connecting first and then asking looked like the
+/// careful order and was the opposite: a server that has bound its port but is
+/// not serving yet accepts the connection and resets it, so the poll would
+/// connect happily, hand the socket to a helper that unwrapped the read, and
+/// panic with `Connection reset by peer` — inside the loop written to wait for
+/// exactly that. It cost two green pull requests an hour apart.
+///
+/// So the whole exchange is fallible here, and an error is a reason to sleep
+/// rather than a reason to stop. The connect is also no longer made twice.
 fn wait_for_http(port: u16, path: &str, budget: Duration) -> Option<String> {
     let started = Instant::now();
     while started.elapsed() < budget {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            let body = http_get("127.0.0.1", port, path);
-            if !body.is_empty() {
-                return Some(body);
-            }
+        if let Ok(body) = try_http_request("127.0.0.1", port, "GET", path, None, &[])
+            && !body.is_empty()
+        {
+            return Some(body);
         }
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -3487,10 +3500,29 @@ fn http_request_with(
     body: Option<&str>,
     headers: &[(&str, &str)],
 ) -> String {
-    let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(60)))
-        .unwrap();
+    match try_http_request(host, port, method, path, body, headers) {
+        Ok(response) => response,
+        Err(error) => panic!("{method} {path} on {host}:{port} did not complete: {error}"),
+    }
+}
+
+/// The same exchange, for a caller that has a reason to expect it to fail.
+///
+/// [`wait_for_http`] is that caller: while a server is coming up, a connect
+/// that succeeds and a read that is reset are the same event seen half a
+/// millisecond apart, and a poll cannot tell them apart by connecting first.
+/// Everything above this returns the response or panics, because by then the
+/// server has answered once and a failure is the test's finding.
+fn try_http_request(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    headers: &[(&str, &str)],
+) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect((host, port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
     // The body's headers only when there is a body: a `GET` carrying
     // `Content-Length: 0` is legal and is still not the request a browser
     // makes, and this is the request every other assertion here is made about.
@@ -3513,11 +3545,10 @@ fn http_request_with(
         } else {
             entity
         }
-    )
-    .unwrap();
+    )?;
     let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    response
+    stream.read_to_string(&mut response)?;
+    Ok(response)
 }
 
 /// The whole claim, end to end: one file, an empty directory, a served page.
