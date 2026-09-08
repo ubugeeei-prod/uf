@@ -4,7 +4,7 @@
 
 _2026-09-08_
 
-Eighteen changes. The one to read first is the one that was wrong in a way
+Nineteen changes. The one to read first is the one that was wrong in a way
 nothing could see: a diagnostic printed a module path exactly as it came off
 the filesystem, and a repository is attacker-authored input — `uf` is run
 against a clone, and a file in it can be named `src/\x1b[2Jgotcha.js`. Registry
@@ -46,6 +46,7 @@ that replaces `uf` rather than the one that only said so.
 
 ### Internal
 
+- **merge-queue**: the checks a batch is merged on, and the trigger they report to (#648)
 - **semver**: compute the crates that cannot be compared, rather than listing them (#657)
 - **publish**: the verify job reads the version the publish job published (#641)
 - **publish**: the runtimes the workspace suite starts, in every job that runs it (#635)
