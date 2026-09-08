@@ -59,8 +59,21 @@ pub fn create_app(path: &std::path::Path) -> String {
 /// A project that imports `@uniflowed/test` has to sit under a directory with
 /// `node_modules` above it, because that is how every JavaScript host resolves
 /// a bare specifier. A system temp directory has none, so these fixtures live
-/// under the repository's own `.uf/`, which is git-ignored and which
-/// `uf_project` always excludes from discovery.
+/// inside the repository, in a git-ignored directory `uf_project` excludes
+/// from discovery.
+///
+/// `.uf-test-projects/` and not `.uf/`, which is where they used to be.
+/// `.uf/` is uf's *output* — the bundled server, the deploy adapters, the
+/// asset module — and nothing in it is source anybody wrote, which is what
+/// lets `is_flow_module` skip the lot rather than hand uf's own eight-megabyte
+/// generated bundle back to the Flow parser (ubugeeei-prod/uf#679). Project
+/// source living inside a build directory is what made those two rules
+/// collide: every fixture here stopped being Flow, and eight asset tests
+/// failed with `Flow is not supported` pointing at their own `app/_uf.page.js`.
+///
+/// The name is deliberately a sibling rather than a child: `is_flow_module`
+/// matches the `.uf` path *segment*, so `.uf-test-projects` is ordinary source
+/// and `tests/library/flow-modules.test.js` has the row that says so.
 pub struct Project {
     root: std::path::PathBuf,
 }
@@ -71,7 +84,7 @@ impl Project {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static NEXT: AtomicUsize = AtomicUsize::new(0);
 
-        let root = repo_root().join(".uf/test-projects").join(format!(
+        let root = repo_root().join(".uf-test-projects").join(format!(
             "{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::SeqCst)

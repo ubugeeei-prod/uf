@@ -22,6 +22,10 @@ coverage/
 /server-actions.js
 node_modules/
 .uf/
+# Throwaway projects `crates/uf_cli/tests/support` builds. A sibling of
+# `.uf/` rather than a child: that directory is uf's own output and nothing in
+# it is Flow source. See ubugeeei-prod/uf#679.
+/.uf-test-projects/
 /.wrangler/
 /.direnv/
 .terraform/
