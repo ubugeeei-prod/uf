@@ -1891,25 +1891,60 @@ fn preview_and_start_serve_the_whole_of_a_build() {
          the `Location` assertion below would be about a document rather than a redirect"
     );
 
-    // A mark in the prerendered document, so that "this came off disk" and
-    // "this was rendered" are two visibly different answers below. The build
-    // wrote this file a moment ago and the servers have not started, so this is
-    // the same document either of them would have served.
-    let guide = root.join("dist/guide/index.html");
-    let published = fs::read_to_string(&guide).unwrap();
-    assert!(
-        published.contains("served-app guide"),
-        "the prerendered guide is not the guide: {published}"
-    );
-    fs::write(&guide, format!("{published}<!--{FROM_DISK}-->")).unwrap();
-
     for command in ["preview", "start"] {
         serve_and_assert(&root, command);
     }
 }
 
-/// The mark that says a document came off disk rather than out of a render.
-const FROM_DISK: &str = "uf-test-prerendered";
+/// The `uf:render` envelope a response carries, which is what says whether it
+/// was rendered for this request.
+///
+/// `routerView` fixes *this* render's instant and *this* render's seed into
+/// the anchor ([`without_the_render_anchor`] is the same fact from the other
+/// side, where four adapters differ there by construction). So two reads of
+/// one prerendered file carry the same envelope and two renders never do,
+/// which is a discriminator every front door already emits — nothing has to be
+/// planted in `dist/` to get one. That matters here: [`assert_served`] is
+/// asked of a deployment *copied out of* that directory as well as of the
+/// directory itself, and a marker written into one is not in the other.
+fn render_envelope(response: &str) -> Option<&str> {
+    const OPEN: &str = "<meta name=\"uf:render\" content=\"";
+    let start = response.find(OPEN)? + OPEN.len();
+    let end = response[start..].find('"')?;
+    Some(&response[start..start + end])
+}
+
+/// The envelope reader, against the two answers it has to tell apart.
+///
+/// Written as its own test because every assertion that uses it needs a
+/// loopback socket, and a machine that cannot bind one would otherwise never
+/// find out that the reader had stopped reading. The two documents below are
+/// what `uf start` answered for `/guide/` before and after a draft cookie, cut
+/// to the `<head>` that carries the anchor.
+#[test]
+fn the_render_envelope_is_read_off_a_document_and_tells_two_renders_apart() {
+    const PRERENDERED: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
+         <!doctype html><html lang=\"en\"><head><meta charSet=\"utf-8\"/>\
+         <meta name=\"uf:render\" content=\"{&quot;at&quot;:1788840631074,&quot;\
+         timeZone&quot;:&quot;UTC&quot;,&quot;seed&quot;:&quot;x8q4fwyl&quot;}\"/>\
+         <title>served-app</title></head><body><h1>served-app guide</h1></body></html>";
+    // The same route a moment later: a different instant and a different seed,
+    // which is what `routerView` fixes per render.
+    let rendered = PRERENDERED
+        .replace("1788840631074", "1788840699001")
+        .replace("x8q4fwyl", "b3ktz9rm");
+
+    let published = render_envelope(PRERENDERED).expect("the anchor is in the document");
+    assert!(published.contains("1788840631074"), "{published}");
+    // Two reads of one file are one answer, and that is what makes the
+    // inequality below mean "rendered" rather than "different bytes".
+    assert_eq!(render_envelope(PRERENDERED), Some(published));
+    assert_ne!(render_envelope(&rendered), Some(published));
+
+    // A response with no document in it has no anchor, rather than an empty
+    // one that would compare equal to another absence.
+    assert_eq!(render_envelope("HTTP/1.1 200 OK\r\n\r\nexport {};"), None);
+}
 
 /// Any value: the doors read the cookie's *name* and never its signature,
 /// which `packages/server/internal/draft.js` argues at `carriesDraftCookie` —
@@ -2923,13 +2958,29 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("did not serve the nested route", &guide)
     );
+    let published = render_envelope(&guide).map(str::to_owned);
     assert!(
-        guide.contains(FROM_DISK),
+        published.is_some(),
         "{}",
         context(
-            "rendered a route it had a prerendered document for; the assertion below is only \
-             about draft mode if this one is about a file",
+            "served a document with no `uf:render` anchor, and the anchor is what the two \
+             assertions below read to tell a file from a render",
             &guide
+        )
+    );
+    // Asked twice, and the same answer twice is what says this one came off
+    // disk: an anchor is fixed per *render*, so a route rendered per request
+    // could not give the same one back. Without this the assertion below would
+    // hold for a server that renders everything, which is not draft mode.
+    let again = get(server, port, "/guide/", said);
+    assert_eq!(
+        render_envelope(&again).map(str::to_owned),
+        published,
+        "{}",
+        context(
+            "rendered a route it had a prerendered document for; the assertions below are \
+             only about draft mode if this one is about a file",
+            &again
         )
     );
 
@@ -2958,12 +3009,13 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
             &drafting
         )
     );
-    assert!(
-        !drafting.contains(FROM_DISK),
+    assert_ne!(
+        render_envelope(&drafting).map(str::to_owned),
+        published,
         "{}",
         context(
-            "handed a draft request the prerendered document, so draft mode is off here and \
-             on everywhere else",
+            "handed a draft request the prerendered document — the same `uf:render` anchor \
+             the two requests above shared — so draft mode is off here and on everywhere else",
             &drafting
         )
     );
