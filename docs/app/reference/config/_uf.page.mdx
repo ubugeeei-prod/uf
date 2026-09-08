@@ -358,6 +358,12 @@ Two things worth knowing before you write one:
 - **A misspelled key is an error.** Every other block here ignores a key it does
   not recognize; this one refuses, because a dropped `net` would leave a project
   believing it had declared a permission nobody granted.
+- **A compiled binary carries the set too.** `uf build --compile` on Node bakes
+  `--permission` into the executable, so it is in force on a machine uf will
+  never see; on Bun there is nothing to bake it into, so the compile is refused
+  rather than producing an unrestricted binary. That artefact is the one place
+  uf adds no grants of its own — it loads no project — so what you declared is
+  the whole of what it may reach.
 
 ## fmt
 
