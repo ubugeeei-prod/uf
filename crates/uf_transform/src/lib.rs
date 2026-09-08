@@ -205,10 +205,48 @@ pub const FLOW_EXTENSIONS: [&str; 4] = [".js", ".jsx", ".mjs", ".cjs"];
 /// [`uf_flow::parse`] says how much that costs and why the ceiling is where it
 /// is.
 pub fn babel_ast(source: &str) -> Result<(Value, lower::Lowered), TransformError> {
-    let mut program = estree::parse(source)?;
-    let lowered = lower::lower(&mut program, source)?;
+    let (program, lowered) = lowered_ast(source)?;
     let file = babel::to_babel(program, source)?;
     Ok((file, lowered))
+}
+
+/// [`babel_ast`] stopping one stage early: parsed and lowered, not converted.
+///
+/// The tree is ESTree as the Flow parser renders it, with Flow's own syntax
+/// already desugared — a `component` is a function here, and a `match` is a
+/// conditional — but with ESTree's names rather than Babel's: literals are
+/// `Literal` and not `StringLiteral`, an object's entries are `Property` and
+/// not `ObjectProperty`, a span is `range` and not `start`/`end`, and a `loc`
+/// column counts code points where Babel's counts UTF-16 units.
+///
+/// It exists because the conversion is a third of the cost of `babel_ast` and
+/// not every caller needs what it buys. `uf_lint`'s `react/no-derived-state-
+/// effect` asks about effects, setters and the expressions between them, all
+/// of which this tree already answers; only `react/no-redundant-memo` needs
+/// Babel's shape, because the official React Compiler crate reads it. See
+/// ubugeeei-prod/uf#668.
+///
+/// # Errors
+///
+/// [`TransformError::SourceTooLarge`], [`TransformError::Syntax`] and
+/// [`TransformError::Lowering`], exactly as [`babel_ast`] raises them.
+///
+/// # Call this from a thread with `uf_flow::PARSE_STACK_BYTES` of stack
+///
+/// For the reason [`babel_ast`] gives.
+pub fn lowered_ast(source: &str) -> Result<(Value, lower::Lowered), TransformError> {
+    let mut program = estree::parse(source)?;
+    let lowered = lower::lower(&mut program, source)?;
+    Ok((program, lowered))
+}
+
+/// The rest of [`babel_ast`], for a caller that already has [`lowered_ast`].
+///
+/// # Errors
+///
+/// [`TransformError::Lowering`] when the tree does not fit Babel's schema.
+pub fn babel_from_lowered(program: Value, source: &str) -> Result<Value, TransformError> {
+    babel::to_babel(program, source)
 }
 
 /// Transform one Flow module to JavaScript.
