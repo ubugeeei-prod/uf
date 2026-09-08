@@ -12,6 +12,7 @@ authors.workspace = true
 camino.workspace = true
 compact_str.workspace = true
 uf_config = { path = "../uf_config" }
+uf_fmt = { path = "../uf_fmt" }
 thiserror.workspace = true
 walkdir.workspace = true
 
@@ -20,7 +21,6 @@ criterion.workspace = true
 similar-asserts.workspace = true
 # The generated router types are checked against the formatter uf ships, so a
 # project cannot be scaffolded with code `uf fmt --check` rejects.
-uf_fmt = { path = "../uf_fmt" }
 tempfile.workspace = true
 
 [[bench]]

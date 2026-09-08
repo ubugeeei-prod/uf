@@ -23,6 +23,11 @@ thiserror.workspace = true
 criterion.workspace = true
 similar-asserts.workspace = true
 tempfile.workspace = true
+# `tests/flow_schema.rs` reads `@uniflowed/config`'s Flow type and compares the
+# keys it declares with the ones this crate deserializes. uf ships a Flow
+# parser, so a regular expression over the declaration would be a second and
+# worse answer to a question the repository has already answered.
+uf_flow = { path = "../uf_flow" }
 
 [[bench]]
 name = "config"

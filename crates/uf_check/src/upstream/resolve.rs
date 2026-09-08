@@ -57,9 +57,21 @@ pub(super) fn join(importer: &str, specifier: &str) -> Option<CompactString> {
         .filter(|segment| !segment.is_empty() && *segment != ".")
     {
         if segment == ".." {
-            // A `..` that cannot be cancelled has left the project root, and
-            // nothing in the batch is above it.
-            segments.pop()?;
+            // A `..` cancels the segment before it when there is one to
+            // cancel. When there is not, the path is *above* the batch root —
+            // which a hoisted dependency in a workspace is, since npm installs
+            // an app's packages in the repository root's `node_modules` and
+            // the app is below it — so the `..` is kept rather than the path
+            // refused. It used to be refused, on the assumption that nothing
+            // in a batch is above its root, and that assumption is what made
+            // every `@uniflowed/*` type in a workspace app resolve to nothing.
+            // See ubugeeei-prod/uf#654.
+            match segments.last() {
+                Some(last) if *last != ".." => {
+                    segments.pop();
+                }
+                _ => segments.push(".."),
+            }
         } else {
             segments.push(segment);
         }
@@ -190,10 +202,47 @@ mod tests {
         );
     }
 
+    /// A `..` that cannot be cancelled is kept, not refused.
+    ///
+    /// It used to be refused, on the stated assumption that nothing in a batch
+    /// is above its root. That stopped being true when `uf check` learned to
+    /// read a *hoisted* dependency: npm installs a workspace app's packages in
+    /// the repository root's `node_modules`, which is above the app, so a
+    /// manifest at `../node_modules/dep/package.json` has to be able to
+    /// resolve its own `main`. Refusing it is what made every `@uniflowed/*`
+    /// type in such an app resolve to nothing. See ubugeeei-prod/uf#654.
     #[test]
-    fn climbing_above_the_project_root_resolves_to_nothing() {
-        assert_eq!(join("app.js", "../outside.js"), None);
-        assert_eq!(join("a/b.js", "../../../outside.js"), None);
+    fn climbing_above_the_project_root_keeps_the_dots() {
+        assert_eq!(
+            join("app.js", "../outside.js").as_deref(),
+            Some("../outside.js")
+        );
+        assert_eq!(
+            join("a/b.js", "../../../outside.js").as_deref(),
+            Some("../../outside.js")
+        );
+        // The case it exists for: a hoisted package resolving its own entry.
+        assert_eq!(
+            join("../node_modules/dep/package.json", "index.js").as_deref(),
+            Some("../node_modules/dep/index.js")
+        );
+    }
+
+    /// And escaping still resolves to nothing, because the batch decides.
+    ///
+    /// Keeping the `..` moved the refusal rather than removing it: a path is
+    /// only a module if the batch holds one at it, and a relative import that
+    /// climbs out of the project reaches nothing uf read.
+    #[test]
+    fn a_path_above_the_root_is_a_module_only_when_the_batch_holds_one() {
+        let index = ModuleIndex::new(["app.js", "../node_modules/dep/index.js"]);
+
+        assert_eq!(
+            index.resolve("app.js", "../node_modules/dep/index.js"),
+            Some(1)
+        );
+        assert_eq!(index.resolve("app.js", "../outside.js"), None);
+        assert_eq!(index.resolve("app.js", "../../../../etc/passwd"), None);
     }
 
     #[test]
