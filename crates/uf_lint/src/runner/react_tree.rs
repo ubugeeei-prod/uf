@@ -142,20 +142,29 @@ pub(crate) fn run_react_tree_rules(
         let (Some(level), Some(line)) = (level, scan.lines.get(index)) else {
             continue;
         };
-        // The AST counts columns in UTF-16 code units and a diagnostic carries
-        // bytes, so the conversion reads the line out of the *unmasked* source:
-        // `mask_inline_comments` replaces a comment byte for byte, which keeps
-        // every offset but not every character.
+        // A diagnostic carries bytes, and the conversion reads the line out of
+        // the *unmasked* source: `mask_inline_comments` replaces a comment byte
+        // for byte, which keeps every offset but not every character.
         let text = source
             .get(line.offset..line.offset + line.text.len())
             .unwrap_or(line.text);
+        // The two rules read two trees now, and the trees count columns
+        // differently: the Flow translator's `loc` counts code points, and
+        // `babel::finalize` recomputes them as UTF-16 code units. Both are the
+        // same number until a line holds an astral character, and then they are
+        // not — so the unit is chosen by which tree the finding came from
+        // rather than assumed to be one of them.
+        let column = match finding.kind {
+            FindingKind::DerivedState => byte_column_of_code_point(text, finding.column),
+            FindingKind::RedundantMemo => byte_column(text, finding.column),
+        };
         push_at(
             diagnostics,
             scan,
             rule,
             level,
             index,
-            byte_column(text, finding.column),
+            column,
             finding.message,
         );
     }
@@ -196,16 +205,27 @@ fn analyse(
     };
 
     let work = || {
-        let (file, _) = uf_transform::babel_ast(source).ok()?;
+        // Parsed and lowered, and converted to Babel's shape only if the memo
+        // rule is the one asking. `to_babel` is 184,472 allocations of the
+        // 575,198 this file used to cost — a third of the tree's price — and
+        // `react/no-derived-state-effect` never needed what it buys. See
+        // ubugeeei-prod/uf#668.
+        //
+        // Lowered, not raw: `component` and `match` are Flow's own syntax, and
+        // this rule reads functions and calls. After the lowering a component
+        // *is* a `FunctionDeclaration`, which is the tree the rule was always
+        // written against.
+        let (program, _) = uf_transform::lowered_ast(source).ok()?;
         let mut found = Vec::new();
         if wants_effects {
-            found.extend(derived_state_effects(&file));
+            found.extend(derived_state_effects(&program));
         }
         // An error here is a bug in uf rather than in the module — the tree
         // did not fit the compiler's own schema — and it says nothing about
         // the effects the other rule already found, so it costs that rule
         // nothing.
         if wants_memo
+            && let Ok(file) = uf_transform::babel_from_lowered(program, source)
             && let Ok(redundant) = uf_transform::redundant_memoization(&file, source, &options)
         {
             found.extend(redundant.into_iter().map(|memo| TreeFinding {
@@ -243,6 +263,9 @@ fn compiler_mode(config: &UniflowedConfig) -> ReactCompilerMode {
 }
 
 /// Byte offset within `line` of the `column`-th UTF-16 code unit.
+///
+/// What `react/no-redundant-memo` needs: it reads the Babel tree, whose `loc`
+/// `babel::finalize` recomputed in UTF-16 units.
 fn byte_column(line: &str, column: u32) -> usize {
     let mut units = 0u32;
     for (offset, character) in line.char_indices() {
@@ -252,6 +275,18 @@ fn byte_column(line: &str, column: u32) -> usize {
         units += u32::try_from(character.len_utf16()).unwrap_or(u32::MAX);
     }
     line.len()
+}
+
+/// Byte offset within `line` of the `column`-th code point.
+///
+/// What `react/no-derived-state-effect` needs: it reads the lowered ESTree
+/// tree, and the Flow translator's `loc` columns count code points. The two
+/// agree on every line that is entirely BMP and part company on one that is
+/// not — an emoji before an effect would put the caret one column early.
+fn byte_column_of_code_point(line: &str, column: u32) -> usize {
+    line.char_indices()
+        .nth(column as usize)
+        .map_or(line.len(), |(offset, _)| offset)
 }
 
 // --- react/no-derived-state-effect -----------------------------------------
@@ -395,12 +430,15 @@ impl SetterScope {
 }
 
 /// Node types whose `body` is a function body.
-const FUNCTIONS: [&str; 5] = [
+///
+/// Three, not Babel's five: ESTree has no `ClassMethod` or `ObjectMethod`. A
+/// class method is a `MethodDefinition` and an object method a `Property`, and
+/// in both the function itself is the `FunctionExpression` underneath — which
+/// is the node that carries the body, and is already here.
+const FUNCTIONS: [&str; 3] = [
     "ArrowFunctionExpression",
-    "ClassMethod",
     "FunctionDeclaration",
     "FunctionExpression",
-    "ObjectMethod",
 ];
 
 /// Every function in `file` that declares a `useState` setter, with the span
@@ -556,9 +594,10 @@ fn identifiers_in<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
                     Some("MemberExpression" | "OptionalMemberExpression") if key_is_a_name => {
                         "property"
                     }
-                    Some("ObjectProperty" | "ObjectMethod" | "ClassMethod") if key_is_a_name => {
-                        "key"
-                    }
+                    // `Property` and `MethodDefinition` are ESTree's spelling
+                    // of what Babel calls `ObjectProperty`, `ObjectMethod` and
+                    // `ClassMethod`.
+                    Some("Property" | "MethodDefinition") if key_is_a_name => "key",
                     _ => "",
                 };
                 pending.extend(
@@ -697,14 +736,11 @@ fn dependency_names(node: &Value) -> Option<Vec<&str>> {
 }
 
 /// Expression node types that are pure however they are combined.
-const PURE_LITERALS: [&str; 6] = [
-    "BigIntLiteral",
-    "BooleanLiteral",
-    "NullLiteral",
-    "NumericLiteral",
-    "RegExpLiteral",
-    "StringLiteral",
-];
+///
+/// One name, because ESTree has one: a string, a number, a boolean, `null`, a
+/// regular expression and a bigint are all `Literal`, and it is `to_babel`
+/// that splits them into the six Babel spells them with.
+const PURE_LITERALS: [&str; 1] = ["Literal"];
 
 /// Unary operators that read their operand and nothing else.
 ///
@@ -783,10 +819,15 @@ fn identifier_name(node: &Value) -> Option<&str> {
     node.get("name")?.as_str()
 }
 
+/// The span's start, from the ESTree `range` pair.
+///
+/// `start` and `end` as their own fields are Babel's; `babel::finalize` splits
+/// `range` into them. This tree has not been through it.
 fn span_start(node: &Value) -> Option<u64> {
-    node.get("start")?.as_u64()
+    node.get("range")?.as_array()?.first()?.as_u64()
 }
 
+/// The span's end, from the same pair.
 fn span_end(node: &Value) -> Option<u64> {
-    node.get("end")?.as_u64()
+    node.get("range")?.as_array()?.get(1)?.as_u64()
 }
