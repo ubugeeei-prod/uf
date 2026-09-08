@@ -318,7 +318,10 @@ const SPECS: &[Spec] = &[
         name: "uf_check",
         effect: Effect::Reads,
         speaks: Speaks::Json,
-        description: "Type-check the project with Flow and report diagnostics as JSON.",
+        description: "Type-check the project with Flow and report diagnostics as JSON. \
+                      The report holds two lists: `diagnostics` is lint findings and \
+                      `typeCheck.diagnostics` is type errors, and `errors` is the sum \
+                      of both \u{2014} so a project can fail with `diagnostics` empty.",
         schema: paths_only,
     },
     Spec {
