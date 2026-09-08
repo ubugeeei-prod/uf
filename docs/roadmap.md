@@ -66,7 +66,7 @@ rather than a note:
 | --- | --- | --- |
 | Runs on every runtime | Node and Bun, each with a test that starts the binary. Deno loads no Flow and the edge runtimes have no host at all; the per-host matrix is [docs/hosts.md](hosts.md) | [#246](https://github.com/ubugeeei-prod/uf/issues/246) |
 | Builds a standalone binary | `uf build --compile` writes one, and needs Bun on PATH to do it; cross-compiling to another platform does not exist | [#310](https://github.com/ubugeeei-prod/uf/issues/310) |
-| Deploys anywhere | `uf build --adapter` writes for `node`, `container`, `edge` and `serverless`, and no output has ever been deployed to a real platform; `bun`, `deno` and `static` are names in a config struct | [#391](https://github.com/ubugeeei-prod/uf/issues/391) |
+| Deploys anywhere | `uf build --adapter` writes for `node`, `container`, `edge`, `serverless` and `static`, and no server output has ever been deployed to a real platform; `bun` and `deno` are names in a config struct, waiting on a benchmark | [#391](https://github.com/ubugeeei-prod/uf/issues/391) |
 | Inference reaches the end of a program | It does: a type imported by its published name resolves, from the workspace or from `node_modules`. What is left is a dependency that opts into no Flow, which is `any` by Flow's own rule | [#248](https://github.com/ubugeeei-prod/uf/issues/248), [#403](https://github.com/ubugeeei-prod/uf/issues/403) |
 | Everything implemented reaches a user | Ten implemented packages are on nobody's npm; `@uniflowed/tui` is a contract nobody can run | [#210](https://github.com/ubugeeei-prod/uf/issues/210), [#247](https://github.com/ubugeeei-prod/uf/issues/247) |
 
@@ -100,24 +100,43 @@ in `uf`.
 
 - File-system router compiler for web and React Native targets.
 - Nuxt-like web primitives: Font, Image, Link with prefetch, Page, Layout,
-  Time, Announcer, Picture, useCookie, and useHead. `OgImage` is not among
-  them: generating an image from JSX needs a text-shaping and rasterising path
-  uf does not ship.
+  Time, Announcer, Picture, useCookie, useHead, Icon, IconSprite, and
+  `OgImage`. **The decision on `OgImage` has been made and it is not "an image
+  from JSX"**: rendering a document to an image is a CSS layout engine, and the
+  only two ways to have one are to ship a browser — a dependency uf refuses to
+  make building an application need — or to approximate one, which produces
+  cards that are subtly wrong on somebody else's website. uf draws a
+  **declared template** instead: a `*.og.json` with a background, a rule, an
+  eyebrow, a title and a subtitle, rasterised natively with `ab_glyph`. It does
+  no shaping, so it **refuses** right-to-left and Brahmic scripts, Thai and its
+  neighbours, combining marks, emoji, and any character the font lacks a glyph
+  for, naming the character — rather than drawing the wrong glyphs in the wrong
+  order. uf ships no typeface, so a template with text names one.
 - The metadata files. **Done**: `sitemap.xml` and `robots.txt`, written by
   `uf build` from the documents the prerender wrote and the origin `site.url`
   names, and a `Metadata` wide enough for a canonical URL, a Twitter card and
   an absolute `metadataBase`. **Not done**: a web app manifest, which overlaps
   `@uniflowed/pwa`; `opensearch.xml`; and a feed, which the route table cannot
   describe.
-- The pipeline behind `Image` and `Font`. **Done at build time**: `uf assets`
-  decodes an imported image once, writes a variant at every declared width in
-  the source's own format and in WebP where the WebP is smaller, and emits the
-  `srcset`, `sizes`, intrinsic dimensions and blur placeholder from it; an
-  imported font is self-hosted under a content hash and declared with a
-  `size-adjust` fallback computed from its own `OS/2` metrics. **Not done**:
-  AVIF and lossy WebP, which need encoders uf does not ship; font subsetting;
-  and a request-time endpoint for remote and user-supplied images, which needs
-  `remotePatterns` in the same commit (`docs/security.md`).
+- The pipeline behind `Image`, `Font`, `Icon` and `OgImage`. **Done at build
+  time**: `uf assets` decodes an imported image once, writes a variant at every
+  declared width in the source's own format and in WebP where the WebP is
+  smaller, and emits the `srcset`, `sizes`, intrinsic dimensions and blur
+  placeholder from it; an imported font is self-hosted under a content hash and
+  declared with a `size-adjust` fallback computed from its own `OS/2` metrics;
+  `subset: "ranges"` splits a family into script buckets with exact
+  `unicode-range` values through `skera`, Google Fonts' Rust port of
+  `hb-subset`, and exactly one face is preloaded however many buckets there
+  are; `uf:icon/…` turns an SVG into a `<symbol>` and `uf:icon-sprite` is one
+  sprite holding the icons the build actually reached; a `*.og.json` template
+  is drawn to a card. Every manifest is cached under a digest of its inputs, so
+  a warm build does none of it again. **Not done**: AVIF and lossy WebP, which
+  need encoders uf does not ship; a WOFF2 *encoder*, so a subsetted face is
+  emitted as WOFF 1.0; subsetting a CFF font or a WOFF2 source, both refused
+  with the file to use instead; an import syntax for `text` subsetting, which
+  the `uf assets` protocol carries and no `.js` file can express without a
+  query; and a request-time endpoint for remote and user-supplied images, which
+  needs `remotePatterns` in the same commit (`docs/security.md`).
 - Fully type-safe `useRoute`, `useRouter`, navigation guards, Remix-style
   loaders/actions, Next-style metadata/static params, and React Router-style
   route modules.

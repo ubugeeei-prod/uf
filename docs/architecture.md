@@ -751,7 +751,8 @@ Native engines being deepened:
 - deploy-anywhere adapters in a Nitro-like model: `node`, `container`, `edge`
   (Cloudflare Workers) and `serverless` (AWS Lambda) are written against one
   `@uniflowed/server/fetch` handler and none has been deployed to a real
-  platform; Deno, Bun and static are not written
+  platform; `static` runs no application and its implementation is the refusal
+  of a project a static host cannot serve; Deno and Bun are not written
 
 ## Testing
 
