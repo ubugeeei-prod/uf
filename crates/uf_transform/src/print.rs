@@ -47,8 +47,11 @@ pub struct Printed {
 ///
 /// # Errors
 ///
-/// [`TransformError::Internal`] for a node kind the printer does not know,
-/// which means a stage before it produced something outside the contract.
+/// [`TransformError::Internal`] for a node kind the printer does not know, and
+/// for a node whose fields describe syntax that does not exist — a
+/// `ForInStatement` marked `await`. Either means a stage before it produced
+/// something outside the contract; printing it anyway would emit a module no
+/// engine will load.
 pub fn print(file: &Value) -> Result<Printed, TransformError> {
     let mut printer = Printer::default();
     printer.program(&file["program"])?;
@@ -348,25 +351,34 @@ impl Printer {
                 self.push(")");
                 self.body(&statement["body"])?;
             }
-            Some("ForInStatement" | "ForOfStatement") => {
+            Some("ForInStatement") => {
+                // `for await` is `for-await-of` and nothing else: the
+                // grammar hangs `await` off `ForOfStatement` alone, and
+                // `for await (x in y)` is not JavaScript. Flow's parser
+                // cannot hand us one — its `ForIn` has no `await` field at
+                // all, only the E4X-era `each` — so this is a claim about
+                // trees uf did not parse, which this printer also serves.
+                // Refusing is the whole point: the alternative is emitting a
+                // module that no engine will load, from a printer whose one
+                // job is to turn an AST back into JavaScript.
+                if bool_field(statement, "await") {
+                    return Err(TransformError::Internal(
+                        "printer was handed a ForInStatement marked await; \
+                         `for await` exists only over `of`"
+                            .to_owned(),
+                    ));
+                }
+                self.push("for (");
+                self.for_head(statement, " in ")?;
+                self.body(&statement["body"])?;
+            }
+            Some("ForOfStatement") => {
                 self.push("for");
                 if bool_field(statement, "await") {
                     self.push(" await");
                 }
                 self.push(" (");
-                let left = &statement["left"];
-                if node_type(left) == Some("VariableDeclaration") {
-                    self.variable_declaration(left)?;
-                } else {
-                    self.pattern(left)?;
-                }
-                self.push(if node_type(statement) == Some("ForInStatement") {
-                    " in "
-                } else {
-                    " of "
-                });
-                self.expression(&statement["right"], Prec::Assignment)?;
-                self.push(")");
+                self.for_head(statement, " of ")?;
                 self.body(&statement["body"])?;
             }
             Some("WhileStatement") => {
@@ -489,6 +501,25 @@ impl Printer {
             }
             _ => return Err(Self::unknown(statement, "statement position")),
         }
+        Ok(())
+    }
+
+    /// `left in right)` or `left of right)`, the part a `for-in` and a
+    /// `for-of` head share.
+    ///
+    /// The opening `for (` is the caller's, because that is where the two
+    /// differ: only `for-of` may carry `await`, and giving each statement its
+    /// own arm is what stops one of them printing the other's syntax.
+    fn for_head(&mut self, statement: &Value, keyword: &str) -> Result<(), TransformError> {
+        let left = &statement["left"];
+        if node_type(left) == Some("VariableDeclaration") {
+            self.variable_declaration(left)?;
+        } else {
+            self.pattern(left)?;
+        }
+        self.push(keyword);
+        self.expression(&statement["right"], Prec::Assignment)?;
+        self.push(")");
         Ok(())
     }
 
@@ -1550,6 +1581,44 @@ mod tests {
         assert!(code.contains("({ x } = y);"), "{code}");
         assert!(code.contains("typeof (a + b)"), "{code}");
         assert!(code.contains("- -a"), "{code}");
+    }
+
+    /// `for await` is `for-await-of`, and there is no `for await (… in …)`.
+    ///
+    /// Flow's parser cannot hand the printer that shape — its `ForIn` node
+    /// has no `await` field at all, only the E4X-era `each` — so this builds
+    /// the forbidden tree by hand and checks that the printer refuses it.
+    /// That refusal is the point of ubugeeei-prod/uf#432: the guarantee
+    /// belonged to the parser, and this printer also serves trees uf did not
+    /// parse. Printing the node as written would emit a module that no engine
+    /// will load.
+    #[test]
+    fn a_for_in_marked_await_is_refused_rather_than_printed() {
+        let source = "for (const k in o) {}\n";
+        let mut program = parse(source).unwrap();
+        lower::lower(&mut program, source).unwrap();
+        let mut file = crate::babel::to_babel(program, source).unwrap();
+
+        let statement = &mut file["program"]["body"][0];
+        assert_eq!(node_type(statement), Some("ForInStatement"), "{statement}");
+        statement["await"] = Value::Bool(true);
+
+        let error = print(&file).unwrap_err();
+        assert!(
+            matches!(&error, TransformError::Internal(message) if message.contains("ForInStatement")),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn for_await_is_printed_over_of_and_never_over_in() {
+        let code = printed(
+            "export const rows = [];\nfor await (const row of stream()) {}\nfor (const k in o) {}\n",
+        );
+        reparses(&code);
+        assert!(code.contains("for await (const row of stream())"), "{code}");
+        assert!(code.contains("for (const k in o)"), "{code}");
+        assert!(!code.contains("for await (const k in"), "{code}");
     }
 
     #[test]

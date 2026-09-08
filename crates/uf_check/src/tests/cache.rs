@@ -36,7 +36,7 @@ fn check(cache: &CheckCache, limits: &CheckLimits, files: &[(&str, &str)]) -> Ch
         .iter()
         .map(|(path, source)| Source::new(path, source))
         .collect();
-    check_sources_cached(&sources, limits, Some(cache)).expect("the checker runs")
+    check_sources_cached(&sources, &[], limits, Some(cache)).expect("the checker runs")
 }
 
 /// The error codes a report carries, in order, without the parse errors.
@@ -362,6 +362,45 @@ fn changing_the_limits_a_check_runs_under_is_a_different_check() {
 }
 
 #[test]
+fn a_library_definition_the_project_added_is_a_different_check() {
+    if !crate::is_available() {
+        return;
+    }
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).unwrap();
+    let sources = [Source::new(
+        "src/kind.js",
+        "// @flow\nexport const kind: UmlEdgeKind = \"assoc\";\n",
+    )];
+    let libs = [Source::new(
+        "flow-typed/globals.js",
+        "declare type UmlEdgeKind = string;\n",
+    )];
+
+    // Nothing about the file changed; what a global *means* did. A record
+    // filed without the libdefs in its key would answer here with the run
+    // that could not resolve the name.
+    let cold =
+        check_sources_cached(&sources, &[], &limits(), Some(&cache)).expect("the checker runs");
+    assert_eq!(codes(&cold), ["cannot-resolve-name"]);
+
+    let declared =
+        check_sources_cached(&sources, &libs, &limits(), Some(&cache)).expect("the checker runs");
+
+    assert_eq!(codes(&declared), Vec::<&str>::new());
+    assert_eq!(
+        declared.files_from_cache, 0,
+        "what the library definitions declare is not a property of any one file"
+    );
+    // And back, from the record the first run left rather than by inferring
+    // it again: the two keys are two entries and neither took the other back.
+    let again =
+        check_sources_cached(&sources, &[], &limits(), Some(&cache)).expect("the checker runs");
+    assert_eq!(codes(&again), ["cannot-resolve-name"]);
+    assert_eq!(again.files_from_cache, 1);
+}
+
+#[test]
 fn a_limit_a_cached_run_would_never_reach_is_still_enforced() {
     if !crate::is_available() {
         return;
@@ -378,7 +417,7 @@ fn a_limit_a_cached_run_would_never_reach_is_still_enforced() {
         .iter()
         .map(|(path, source)| Source::new(path, source))
         .collect();
-    let error = check_sources_cached(&sources, &tiny, Some(&cache))
+    let error = check_sources_cached(&sources, &[], &tiny, Some(&cache))
         .expect_err("every file in the batch is past the limit");
 
     assert!(matches!(error, crate::CheckError::SourceTooLarge { .. }));

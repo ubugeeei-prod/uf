@@ -67,7 +67,7 @@ const COMMANDS: &[&str] = &[
     "start",
     "test",
     "update",
-    "upgrade",
+    "self-update",
     "use",
     "why",
     "completion",

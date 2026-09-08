@@ -27,7 +27,7 @@ fn limits() -> CheckLimits {
 }
 
 fn check(path: &str, source: &str) -> Vec<TypeDiagnostic> {
-    check_source(Source::new(path, source), &limits()).expect("the checker runs")
+    check_source(Source::new(path, source), &[], &limits()).expect("the checker runs")
 }
 
 fn codes(diagnostics: &[TypeDiagnostic]) -> Vec<&str> {
@@ -239,7 +239,7 @@ fn a_batch_reports_diagnostics_in_the_order_it_was_given() {
         Source::new("b.js", UNHANDLED_NULL),
     ];
 
-    let report = check_sources(&sources, &limits()).expect("the checker runs");
+    let report = check_sources(&sources, &[], &limits()).expect("the checker runs");
 
     assert_eq!(report.files_checked, 2);
     assert!(report.has_errors());
@@ -255,7 +255,7 @@ fn a_batch_reports_diagnostics_in_the_order_it_was_given() {
 
 #[test]
 fn a_clean_file_costs_nothing_to_report() {
-    let report = check_sources(&[Source::new("clean.js", CLEAN_COMPONENT)], &limits())
+    let report = check_sources(&[Source::new("clean.js", CLEAN_COMPONENT)], &[], &limits())
         .expect("the checker runs");
 
     assert_eq!(report.count(Severity::Error), 0);
@@ -309,7 +309,7 @@ fn a_source_over_the_limit_is_rejected_before_it_is_parsed() {
     let limits = limits().with_max_source_bytes(64);
     let source = format!("// @flow\n{}\n", "const x: number = 1;".repeat(64));
 
-    let error = check_source(Source::new("big.js", &source), &limits)
+    let error = check_source(Source::new("big.js", &source), &[], &limits)
         .expect_err("the limit must be enforced");
 
     assert!(matches!(
@@ -323,8 +323,12 @@ fn a_five_megabyte_file_is_rejected_by_the_default_limits() {
     let source = "// @flow\n".to_owned() + &"const x: number = 1;\n".repeat(250_000);
     assert!(source.len() > 5_000_000);
 
-    let error = check_source(Source::new("huge.js", &source), &CheckLimits::default())
-        .expect_err("the default limit must be enforced");
+    let error = check_source(
+        Source::new("huge.js", &source),
+        &[],
+        &CheckLimits::default(),
+    )
+    .expect_err("the default limit must be enforced");
 
     assert!(matches!(error, CheckError::SourceTooLarge { .. }));
 }
@@ -348,6 +352,7 @@ fn ten_thousand_nested_generics_terminate_instead_of_overflowing() {
     // the process is not an option.
     let outcome = check_source(
         Source::new("nested.js", &source),
+        &[],
         &limits().with_file_timeout(Duration::from_secs(60)),
     );
 
@@ -367,10 +372,103 @@ fn ten_thousand_nested_generics_terminate_instead_of_overflowing() {
     }
 }
 
+/// Two versions of one package in one batch: `b` at the root and `b` again
+/// inside `a`, declaring the same name as two different types.
+///
+/// ubugeeei-prod/uf#486. Node resolves a bare specifier by climbing from the
+/// importing file, so the file inside `a` is typed against `a`'s own copy and
+/// the application against the hoisted one — in the same batch, with no
+/// dependence on which was handed over first.
+const TWO_VERSIONS: [(&str, &str); 6] = [
+    (
+        "app.js",
+        "// @flow\nimport type { Value } from \"b\";\nexport const v: Value = \"a string\";\n",
+    ),
+    (
+        "node_modules/a/index.js",
+        "// @flow\nimport type { Value } from \"b\";\nexport const v: Value = \"a string\";\n",
+    ),
+    (
+        "node_modules/a/package.json",
+        r#"{ "name": "a", "exports": { ".": "./index.js" } }"#,
+    ),
+    (
+        "node_modules/a/node_modules/b/index.js",
+        "// @flow\nexport type Value = string;\n",
+    ),
+    (
+        "node_modules/a/node_modules/b/package.json",
+        r#"{ "name": "b", "version": "1.0.0", "exports": { ".": "./index.js" } }"#,
+    ),
+    (
+        "node_modules/b/index.js",
+        "// @flow\nexport type Value = number;\n",
+    ),
+];
+
+/// The hoisted `b`'s manifest, kept apart so a test can put it first or last.
+const HOISTED_MANIFEST: (&str, &str) = (
+    "node_modules/b/package.json",
+    r#"{ "name": "b", "version": "2.0.0", "exports": { ".": "./index.js" } }"#,
+);
+
+/// The `(path, code)` of every diagnostic a batch reports.
+fn reported(sources: &[Source<'_>]) -> Vec<(String, &'static str)> {
+    check_sources(sources, &[], &limits())
+        .expect("the checker runs")
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.kind != DiagnosticKind::Parse)
+        .map(|diagnostic| {
+            (
+                diagnostic.primary.path.to_string(),
+                diagnostic.code.unwrap_or("<none>"),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_nested_dependency_is_typed_against_the_copy_installed_beside_it() {
+    let mut batch: Vec<Source<'_>> = TWO_VERSIONS
+        .iter()
+        .map(|(path, source)| Source::new(path, source))
+        .collect();
+    batch.push(Source::new(HOISTED_MANIFEST.0, HOISTED_MANIFEST.1));
+
+    // `a`'s own `b` says `Value` is a string, so `a` is clean; the root's says
+    // it is a number, so the application is not. One batch, two answers.
+    assert_eq!(
+        reported(&batch),
+        [("app.js".to_owned(), "incompatible-type")]
+    );
+}
+
+#[test]
+fn which_copy_a_file_sees_does_not_depend_on_the_batch_order() {
+    // The hoisted manifest first, then last. Before #486 the index kept
+    // whichever manifest the batch happened to hold first, so these two orders
+    // disagreed about `a`.
+    let mut hoisted_first: Vec<Source<'_>> =
+        vec![Source::new(HOISTED_MANIFEST.0, HOISTED_MANIFEST.1)];
+    hoisted_first.extend(
+        TWO_VERSIONS
+            .iter()
+            .map(|(path, source)| Source::new(path, source)),
+    );
+    let mut hoisted_last: Vec<Source<'_>> = TWO_VERSIONS
+        .iter()
+        .map(|(path, source)| Source::new(path, source))
+        .collect();
+    hoisted_last.push(Source::new(HOISTED_MANIFEST.0, HOISTED_MANIFEST.1));
+
+    assert_eq!(reported(&hoisted_first), reported(&hoisted_last));
+}
+
 #[test]
 fn builtins_are_merged_once_and_then_free() {
-    let first = prepare_builtins().expect("builtins merge");
-    let second = prepare_builtins().expect("builtins are cached");
+    let first = prepare_builtins(&[]).expect("builtins merge");
+    let second = prepare_builtins(&[]).expect("builtins are cached");
 
     assert!(!second.cold, "the second call must not rebuild");
     assert_eq!(first.cold_elapsed, second.cold_elapsed);
@@ -388,7 +486,7 @@ fn builtins_are_merged_once_and_then_free() {
 
 #[test]
 fn a_report_separates_the_builtin_cost_from_the_check_cost() {
-    let report = check_sources(&[Source::new("clean.js", CLEAN_COMPONENT)], &limits())
+    let report = check_sources(&[Source::new("clean.js", CLEAN_COMPONENT)], &[], &limits())
         .expect("the checker runs");
 
     assert_eq!(report.files_checked, 1);

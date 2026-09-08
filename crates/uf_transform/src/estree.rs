@@ -25,17 +25,6 @@ use crate::TransformError;
 /// scan in uf has an explicit ceiling rather than trusting its input.
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
-/// The parse options every part of uf uses, re-exported from `uf_flow`.
-///
-/// This crate used to declare its own literal, equal to `uf_flow`'s member for
-/// member and equal only by coincidence: nothing compared them, and a syntax
-/// the transform accepted and the linter did not would have shown up as a
-/// module that lints clean and fails to load. `uf_flow` owns Flow syntax for
-/// uf, and the options are part of what that means.
-///
-/// `tests/parse_options.rs` is what keeps this a re-export.
-pub use uf_flow::PARSE_OPTIONS;
-
 /// Parse `source` and render it as an ESTree `Program`.
 ///
 /// Comments come back twice: on the program (`comments`) and attached to the
@@ -58,9 +47,10 @@ pub fn parse(source: &str) -> Result<Value, TransformError> {
     let offsets = OffsetTable::make_with_kind(OffsetKind::JavaScript, source);
     // Through `uf_flow::module` rather than the port directly, so a module
     // that awaits at its top level transforms here for the same reason it
-    // formats and checks: one file, one reading, whichever command asked.
-    let (ast, errors): (_, Vec<(Loc, ParseError)>) =
-        uf_flow::module::parse(source, &PARSE_OPTIONS, None);
+    // formats and checks: one file, one reading, whichever command asked. The
+    // options are that call's to make, not this one's — see its documentation
+    // and ubugeeei-prod/uf#430.
+    let (ast, errors): (_, Vec<(Loc, ParseError)>) = uf_flow::module::parse(source, None);
 
     if let Some((loc, error)) = errors.first() {
         // Through `uf_flow` so a module that fails to transform is refused in
@@ -119,6 +109,36 @@ mod tests {
         let statement = &program["body"].as_array().unwrap()[1];
         assert_eq!(statement["type"], "ForOfStatement");
         assert_eq!(statement["await"], true);
+    }
+
+    /// The parser's half of ubugeeei-prod/uf#432.
+    ///
+    /// `for await` is `for-await-of` and nothing else, and Flow's AST says so
+    /// in its shape rather than in a check: `ForOf` carries `await`, `ForIn`
+    /// carries only `each` — the E4X-era flag — and there is no field for a
+    /// `ForInStatement` to answer `await` with. So no tree this parser
+    /// produces can ask a printer for `for await (… in …)`.
+    ///
+    /// Pinned here because it is a guarantee the printers lean on and nothing
+    /// else checks. `uf_fmt` prints from the typed AST, where the shape makes
+    /// it unrepresentable; `uf_transform::print` works on JSON and has to
+    /// refuse the node itself, because it also prints trees uf did not parse.
+    #[test]
+    fn a_for_in_has_no_await_to_carry() {
+        let program = parse("// @flow\nfor (const k in o) {}\n").unwrap();
+        let statement = &program["body"].as_array().unwrap()[0];
+        assert_eq!(statement["type"], "ForInStatement");
+        assert!(statement.get("await").is_none(), "{statement}");
+        assert_eq!(statement["each"], false);
+    }
+
+    /// And the syntax is a parse error rather than something the parser bends
+    /// into a `ForInStatement` with a flag set.
+    #[test]
+    fn for_await_over_in_does_not_parse() {
+        let source = "// @flow\nexport const rows = [];\nfor await (const k in o) {}\n";
+        let error = parse(source).unwrap_err();
+        assert!(matches!(error, TransformError::Syntax { .. }), "{error:?}");
     }
 
     #[test]

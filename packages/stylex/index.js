@@ -39,6 +39,32 @@
 // configuration flag. The preset is reached by importing it, so a project that
 // does not import it pays nothing, and one that imports half of it keeps half.
 //
+// # The half of a component catalogue that lives here
+//
+// "Not a component library" is a rule about what this package exports, and it
+// was read for a while as a rule about what it is responsible for. It is not.
+// About twenty of the catalogue `@uniflowed/ui` is measured against — Badge,
+// Card, Button, Input, Textarea, Label, Aspect Ratio and the rest — have no
+// behaviour at all: no role, no state machine, no keyboard map. A headless
+// package cannot ship them, because with the styles taken out a `Badge` is a
+// `<span>`. **They are this module's half of the split, and the answer is a
+// style function rather than a component** (ubugeeei-prod/uf#298).
+//
+// `buttonStyles({ tone, size })`, `cardStyles()`, `textStyles({ size, tone })`
+// and `fieldStyles()` are already that answer for four of them, and the shape
+// is the point: a caller spreads `{ className }` onto their own `<button>`, so
+// they keep `type="submit"`, `formAction`, the ref and every attribute a
+// wrapper would have had to remember to forward. Nothing here appears in
+// `@uniflowed/ui`'s types and nothing here renders an element — the rule holds
+// exactly as written; what changed is that the gap is now assigned rather than
+// left between the two packages.
+//
+// `crates/uf_lib/src/ui.rs` records the assignment component by component, and
+// `cargo test -p uf_lib` holds it to this file in both directions: an entry
+// there may not name a style `./preset.js` does not export, and a style
+// exported here must be named by some entry. A `badgeStyles` is the way to
+// close the Badge gap; a `<Badge>` in the other package is not.
+//
 // # Where the token values come from
 //
 // `@uniflowed/brand` owns uf's visual identity — the palette, the type,

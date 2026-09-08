@@ -268,3 +268,144 @@ fn an_unnarrowed_check_reports_every_file_it_was_given() {
     assert_eq!(batch.requested, project.len());
     assert_eq!(batch.imported, 0);
 }
+
+/// A file that reads a type out of a package that ships no Flow types.
+///
+/// Clean if — and only if — the library definitions that describe the package
+/// were merged. Without them `EdgeProps` is an `any`-typed value and using it
+/// as a type is an error, which is ubugeeei-prod/uf#480.
+#[cfg(feature = "upstream-typecheck")]
+const USES_A_LIBDEF: &str = "// @flow\nimport type { EdgeProps } from \"@xyflow/react\";\n\
+                             export function label(props: EdgeProps): string {\n  \
+                             return props.id;\n}\n";
+
+#[cfg(feature = "upstream-typecheck")]
+const LIBDEF: &str = "declare module \"@xyflow/react\" {\n  \
+                      declare export type EdgeProps = { readonly id: string };\n}\n";
+
+/// Write `files` into a fresh project root.
+#[cfg(feature = "upstream-typecheck")]
+fn project_root(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let root = scratch();
+    for (path, source) in files {
+        let path = root.path().join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("the directory is made");
+        std::fs::write(path, source).expect("the file is written");
+    }
+    root
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn checked_in(root: &tempfile::TempDir, sources: &[SourceFile]) -> TypeCheck {
+    type_check(
+        sources,
+        &[],
+        Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
+    )
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn app() -> Vec<SourceFile> {
+    vec![SourceFile {
+        path: "src/Edge.js".to_owned(),
+        source: USES_A_LIBDEF.to_owned(),
+    }]
+}
+
+/// The bug, stated as a test. ubugeeei-prod/uf#480.
+#[cfg(feature = "upstream-typecheck")]
+#[test]
+fn a_project_whose_libdefs_are_not_read_reports_every_type_they_declare() {
+    if !uf_check::is_available() {
+        return;
+    }
+    // The declarations are on disk, and no configuration names the directory
+    // they are in.
+    let root = project_root(&[("libdefs/packages.js", LIBDEF)]);
+
+    let types = checked_in(&root, &app());
+
+    assert_eq!(codes(&types), ["value-as-type"]);
+    assert_eq!(types.batch().expect("a checked batch").libdefs, 0);
+}
+
+#[cfg(feature = "upstream-typecheck")]
+#[test]
+fn a_project_is_checked_against_the_library_definitions_its_flowconfig_names() {
+    if !uf_check::is_available() {
+        return;
+    }
+    let root = project_root(&[
+        (".flowconfig", "[libs]\nlibdefs\n"),
+        ("libdefs/packages.js", LIBDEF),
+    ]);
+
+    let types = checked_in(&root, &app());
+
+    assert_eq!(codes(&types), Vec::<&str>::new());
+    assert_eq!(types.batch().expect("a checked batch").libdefs, 1);
+    let report = types.report().expect("a report");
+    assert!(
+        report.untyped_modules.is_empty(),
+        "a module the project declared is not a hole: {:?}",
+        report.untyped_modules
+    );
+}
+
+/// `flow-typed` is Flow's own implicit lib path, so a project that has one and
+/// no `.flowconfig` still gets it.
+#[cfg(feature = "upstream-typecheck")]
+#[test]
+fn the_conventional_directory_is_read_without_being_configured() {
+    if !uf_check::is_available() {
+        return;
+    }
+    let root = project_root(&[("flow-typed/packages.js", LIBDEF)]);
+
+    let types = checked_in(&root, &app());
+
+    assert_eq!(codes(&types), Vec::<&str>::new());
+    assert_eq!(types.batch().expect("a checked batch").libdefs, 1);
+}
+
+/// A `.flowconfig` a reader wrote and got wrong is reported, not skipped: the
+/// alternative is one error per declared type and no explanation.
+#[cfg(feature = "upstream-typecheck")]
+#[test]
+fn a_flowconfig_that_does_not_parse_fails_the_check_rather_than_being_ignored() {
+    if !uf_check::is_available() {
+        return;
+    }
+    let root = project_root(&[
+        (".flowconfig", "[libs]\nlibdefs\n\n[libs]\nmore\n"),
+        ("libdefs/packages.js", LIBDEF),
+    ]);
+
+    let types = checked_in(&root, &app());
+
+    assert_eq!(types.status(), "failed");
+}
+
+/// The scan collects `flow-typed/` like any other directory, so without a rule
+/// the same file would be both the environment and a file checked against it —
+/// and `declare module` in a file checked as a source is a syntax error. It is
+/// the environment.
+#[cfg(feature = "upstream-typecheck")]
+#[test]
+fn a_library_definition_is_the_environment_and_not_a_file_to_check() {
+    if !uf_check::is_available() {
+        return;
+    }
+    let root = project_root(&[("flow-typed/packages.js", LIBDEF)]);
+    let mut sources = app();
+    sources.push(SourceFile {
+        path: "flow-typed/packages.js".to_owned(),
+        source: LIBDEF.to_owned(),
+    });
+
+    let types = checked_in(&root, &sources);
+
+    assert_eq!(codes(&types), Vec::<&str>::new());
+    // And is not counted among the files the reader asked about.
+    assert_eq!(types.batch().expect("a checked batch").requested, 1);
+}

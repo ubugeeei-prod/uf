@@ -78,7 +78,7 @@ in `uf`.
 ## P0: Toolchain Spine
 
 - Keep the first executable native slice green: `uf new`, `uf build`,
-  `uf dev`, `uf install`, `uf upgrade`, `uf use`, `uf publish`,
+  `uf dev`, `uf install`, `uf self-update`, `uf use`, `uf publish`,
   `uf release`, `ufx`, `uf test`, `uf prepare`, and `uf lsp` already produce
   local artifacts or protocol responses.
 - Finish parser/typechecker integration against Flow's maintained parser and
@@ -205,7 +205,7 @@ in `uf`.
 - napi-rs-style target package generation with generated TS declarations
   converted back to Flow.
 - ox-content wasm-backed stdlib markdown renderer.
-- `uf install` and `uf upgrade`.
+- `uf install` and `uf self-update`.
 - First local `uf publish`, tokenless trusted publishing on `uf@*` tag push,
   and `uf release alpha` tag orchestration.
 - Hermes-backed `uf index.js` runtime, deferred until after the host runtime

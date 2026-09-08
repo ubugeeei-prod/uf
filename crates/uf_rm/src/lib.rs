@@ -138,7 +138,17 @@ pub struct XdgLayout {
     pub bin_dir: compact_str::CompactString,
     /// `uf` shim path.
     pub shim_path: compact_str::CompactString,
-    /// Runtime versions directory.
+    /// Directory holding one subdirectory per installed uf runtime.
+    ///
+    /// `<data>/uf/runtimes`, and the `uf` in it is not the `uniflowed` every
+    /// other directory here uses. That is deliberate: this one is not uf's to
+    /// choose. `infra/cloudflare/setup-assets/install.sh` unpacks releases
+    /// into `${UF_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/uf}/runtimes`,
+    /// and a second store under a second name is a store `uf use` activates
+    /// and the installer never fills — which is exactly the state
+    /// ubugeeei-prod/uf#534 found. `UF_INSTALL_ROOT` overrides it for both,
+    /// and is not an XDG variable, so it is read by the caller rather than
+    /// here.
     pub versions_dir: compact_str::CompactString,
 }
 
@@ -159,7 +169,7 @@ impl XdgLayout {
             runtime_dir: None,
             bin_dir: format_xdg(home, ".local/bin"),
             shim_path: format_xdg(home, ".local/bin/uf"),
-            versions_dir: format_xdg(home, ".local/share/uniflowed/runtimes"),
+            versions_dir: format_xdg(home, ".local/share/uf/runtimes"),
         }
     }
 
@@ -182,7 +192,7 @@ impl XdgLayout {
             runtime_dir,
             bin_dir: format_xdg(env.home, ".local/bin"),
             shim_path: format_xdg(env.home, ".local/bin/uf"),
-            versions_dir: append_path(data_base.as_str(), "uniflowed/runtimes"),
+            versions_dir: append_path(data_base.as_str(), "uf/runtimes"),
         }
     }
 }
