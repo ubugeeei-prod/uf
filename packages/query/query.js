@@ -46,6 +46,12 @@
 //
 // An explicit `cancelQueries` aborts either way: there the caller has said
 // what they want, and the cache does not get to second-guess it.
+//
+// *When* it aborts is [`Query.abandon`]: a microtask after the list emptied,
+// and still empty then. An observer that leaves and comes back inside one task
+// never stopped wanting the answer, which is what React's Strict Mode does to
+// every subscription on purpose and what a changed subscription plan does by
+// accident.
 
 import { hashKey } from "./key.js";
 import type { QueryKey } from "./key.js";
@@ -418,7 +424,7 @@ export class Query<T> {
       return;
     }
     if (this.pending != null && this.signalConsumed) {
-      this.cancel({ revert: true });
+      this.abandon(this.fetchId);
     }
     // Unless this entry has already been dropped — which is how the last
     // observer usually leaves a removed one. Scheduling its collection would
@@ -427,6 +433,46 @@ export class Query<T> {
     if (this.cache.get(this.hash) === this) {
       this.scheduleGc();
     }
+  }
+
+  /**
+   * Stop the request `id` started, unless somebody wants it again by then.
+   *
+   * A microtask later rather than here, and the microtask is the whole of it:
+   * "the last observer left" is a fact about the end of the task, not about
+   * the instant the list emptied. Within one task an observer can leave and
+   * come straight back — the same component, subscribing again — and a
+   * cancellation in between throws away a request that never stopped being
+   * wanted, reverts the entry to its pre-fetch state, and makes the resubscribe
+   * ask for it a second time. One page load, two requests, and the first of
+   * them aborted.
+   *
+   * That happens for two reasons and neither is exotic. React's Strict Mode
+   * runs subscribe, unsubscribe and subscribe in one commit to check that the
+   * pair is symmetrical, and `uf dev` mounts every application under it since
+   * ubugeeei-prod/uf#516 — so this was every `useQuery` on every development
+   * page load. The other is `useQuery`'s own `subscribe` identity, which
+   * changes when the subscription plan does: a `staleTime` that moves
+   * unsubscribes and resubscribes the same observer in the same commit, and did
+   * the same thing to a request in flight long before Strict Mode existed.
+   *
+   * A microtask, and not a timer, because it is the shortest delay that is
+   * still after all the synchronous work of a commit — which is where React
+   * does the taking-down and putting-back — and because nothing else in this
+   * class defers by a clock the caller can observe.
+   *
+   * `id` is what makes the deferral safe rather than merely late. Between the
+   * two turns the entry may have been refetched, cancelled explicitly, or
+   * dropped from the cache; `fetchId` moves on every one of those, so a stale
+   * abandonment finds a number that is no longer its own and does nothing.
+   */
+  abandon(id: number): void {
+    queueMicrotask(() => {
+      if (this.observers.length > 0 || this.fetchId !== id || this.pending == null) {
+        return;
+      }
+      this.cancel({ revert: true });
+    });
   }
 
   /** Replace the state and tell everybody. */

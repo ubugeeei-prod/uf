@@ -25,6 +25,8 @@
 // serves precisely the entry types the case names, so a test that thinks it is
 // measuring CLS cannot accidentally be served an LCP.
 
+import { StrictMode } from "react";
+
 import { afterEach, describe, expect, it, render } from "@uniflowed/testing";
 import { VITALS_ENDPOINT, collectVitals, useVitals, vitalsBeacon } from "@uniflowed/web";
 import type { Vital } from "@uniflowed/web";
@@ -517,13 +519,21 @@ describe("time to first byte", () => {
     expect(valueOf(seen, "TTFB")).toBe(240);
   });
 
-  it("reports for a page nobody ever leaves", () => {
+  it("reports for a page nobody ever leaves", async () => {
     // The counterpart: a tab left open forever never fires either of the
-    // events that finalise the other metrics, and TTFB is known immediately.
+    // events that finalise the other metrics, and TTFB is known as soon as the
+    // navigation entry has it.
+    //
+    // `await settle()` and not a synchronous read, because the first attempt is
+    // a microtask rather than a line inside `collectVitals` — a collector that
+    // reported anything before it could be stopped reported it twice under
+    // Strict Mode. What is asserted is unchanged: nothing puts this page away
+    // and it still gets its TTFB.
     fakeBrowser({ supports: [], responseStart: 91 });
     const { seen, report } = recorder();
 
     collectVitals({ report });
+    await settle();
 
     expect(valueOf(seen, "TTFB")).toBe(91);
   });
@@ -731,6 +741,37 @@ describe("useVitals", () => {
 
     expect(browser.constructed()).toBe(before);
     expect(seen.length).toBe(1);
+  });
+
+  it("reports each metric once under Strict Mode", async () => {
+    // The case ubugeeei-prod/uf#516 created. `uf dev` now hydrates inside
+    // `<StrictMode>`, so every effect is set up, torn down and set up again —
+    // and `collectVitals` is called twice against the same page, with the
+    // second collector replaying the same buffered entries.
+    //
+    // Everything the observers deliver was already safe, because their
+    // callbacks arrive in a later task and the first collector is stopped by
+    // then. `tryTtfb` was not: it read the navigation entry synchronously
+    // inside `collectVitals`, before the collector could be stopped, so the
+    // first collector reported TTFB and the second reported it again. With
+    // #602's `/__uf/vitals` that is two web-vitals reports in the terminal for
+    // one page load, on every project, from the moment Strict Mode went on.
+    const browser = fakeBrowser({ supports: ["paint"], responseStart: 91 });
+    const { seen, report } = recorder();
+
+    component Root() {
+      useVitals(report);
+      return <span />;
+    }
+    render(
+      <StrictMode>
+        <Root />
+      </StrictMode>,
+    );
+    await settle();
+    browser.deliver("paint", [paint("first-contentful-paint", 640)]);
+
+    expect(seen.map((vital) => vital.name)).toEqual(["TTFB", "FCP"]);
   });
 
   it("uses the reporter the latest render supplied", () => {

@@ -16,8 +16,12 @@
 // categories, a two-selector matcher's tie-break, an annotation inherited
 // through `.input`, and every construct uf refuses.
 
+import path from "node:path";
+
 import { describe, expect, it } from "@uniflowed/test";
 import type { Catalogue } from "@uniflowed/i18n";
+
+import { everyMisuseIsReported } from "./type-tests.js";
 import {
   MessageContractError,
   MessageFormatError,
@@ -702,5 +706,29 @@ describe("negotiation", () => {
 
   it("accepts a single tag as well as a list", () => {
     expect(negotiate("fr-CA", ["en-US", "fr"], "en-US")).toBe("fr");
+  });
+});
+
+describe("the five misuses a message's type has to refuse", () => {
+  // The claim `@uniflowed/i18n` is for, and the one nothing in this file can
+  // hold it to: `t("unread", {})`, `t("unread", { count: "12" })`,
+  // `t("unreadd", …)`, an argument too many and an argument to a message that
+  // takes none are all *type errors at the call*. No assertion about behaviour
+  // can say a different program would have been rejected — `t("unread", {})`
+  // throws at run time, but so would a `t` with no types at all — so it is
+  // proved the only way it can be, by running the checker over code that must
+  // fail and reading what it said.
+  //
+  // All five were verified against a scratch file while #567 was written, and
+  // the file was thrown away. `tests/type-tests/i18n.js` is that file, kept:
+  // the five misuses beside the calls that must keep compiling, marked with
+  // `// expect:` comments the harness compares against `uf check`.
+
+  it("reports every misuse, and only the misuses", () => {
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "i18n.js"),
+      alongside: ["packages/i18n"],
+      atLeast: 4,
+    });
   });
 });

@@ -1,3 +1,5 @@
+use camino::Utf8Path;
+
 use super::*;
 
 fn rendered(manager: PackageManager, operation: Operation<'_>) -> String {
@@ -514,8 +516,14 @@ fn patch_is_unsupported_where_the_manager_has_none() {
 /// cannot" is half an answer.
 #[test]
 fn the_patch_refusal_names_the_ecosystems_answer() {
-    let refusal = crate::invocation_for(PackageManager::Npm, Operation::Patch, &[], false)
-        .expect_err("npm has no patch");
+    let refusal = crate::invocation_for(
+        Utf8Path::new("/nowhere"),
+        PackageManager::Npm,
+        Operation::Patch,
+        &[],
+        false,
+    )
+    .expect_err("npm has no patch");
 
     let crate::ManagerRunError::Unsupported {
         manager,
