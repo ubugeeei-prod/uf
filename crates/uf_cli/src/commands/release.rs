@@ -290,10 +290,23 @@ fn write_changelog(root: &Utf8Path, tag: &str, tag_prefix: &str) -> Result<Optio
     // The date of the commit being released rather than the wall clock: a
     // changelog regenerated next week should say the same thing, and there is
     // no date crate in this binary to read a clock with anyway.
-    let date = git(root, &["log", "-1", "--format=%cs"])
-        .map(|date| date.trim().to_owned())
-        .filter(|date| !date.is_empty())
-        .unwrap_or_else(|| String::from("unreleased"));
+    //
+    // In one timezone, though. `%cs` renders a commit in the timezone that
+    // commit recorded, and this repository has both: alpha.13 was squashed
+    // from a `+09:00` commit and alpha.14 from a `+00:00` one five hours
+    // later, so the later release was dated the earlier day. Each was "the
+    // date of the commit being released" by the rule above, and the pair was
+    // still wrong to whoever read it. `TZ=UTC` with `format-local` makes the
+    // date a property of the release rather than of whoever pressed the merge
+    // button, and keeps the determinism the rule exists for. See #630.
+    let date = git_env(
+        root,
+        &["log", "-1", "--date=format-local:%Y-%m-%d", "--format=%cd"],
+        &[("TZ", "UTC")],
+    )
+    .map(|date| date.trim().to_owned())
+    .filter(|date| !date.is_empty())
+    .unwrap_or_else(|| String::from("unreleased"));
     let section = crate::changelog::section(tag, &date, &subjects);
     let file = root.join("CHANGELOG.md");
     let existing = fs::read_to_string(&file).ok();
@@ -403,12 +416,21 @@ fn previous_tag(root: &Utf8Path, tag_prefix: &str) -> Option<String> {
 
 /// Run `git` in `root`, or [`None`] when it is not there or says no.
 fn git(root: &Utf8Path, args: &[&str]) -> Option<String> {
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root.as_str())
-        .args(args)
-        .output()
-        .ok()?;
+    git_env(root, args, &[])
+}
+
+/// `git`, with `env` set for the one call.
+///
+/// Only the changelog date needs it, and it needs it for a reason worth
+/// keeping local to that call rather than making every `git` here run in a
+/// timezone it did not ask for.
+fn git_env(root: &Utf8Path, args: &[&str], env: &[(&str, &str)]) -> Option<String> {
+    let mut command = std::process::Command::new("git");
+    command.arg("-C").arg(root.as_str()).args(args);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let output = command.output().ok()?;
     output
         .status
         .success()

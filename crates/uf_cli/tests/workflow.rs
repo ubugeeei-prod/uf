@@ -369,6 +369,84 @@ fn release_writes_the_changelog_for_the_version_it_cuts() {
     similar_asserts::assert_eq!(twice, changelog);
 }
 
+/// The changelog date is UTC, so two releases cannot be dated out of order.
+///
+/// `%cs` renders a commit in the timezone *that commit* recorded. This
+/// repository has both, and the pair came out backwards: alpha.13 was squashed
+/// from a `+09:00` commit and dated 2026-09-08, alpha.14 from a `+00:00`
+/// commit five hours later and dated 2026-09-07 — the later release above the
+/// earlier date, each correct by the rule that produced it. See #630.
+///
+/// The two commits here are the same shape: `02:00+09:00` is `17:00Z`, and
+/// `18:00+00:00` is an hour after it. Under `%cs` they render a day apart in
+/// the wrong direction; in one timezone they are the same day.
+#[test]
+fn the_changelog_date_is_utc_rather_than_the_commit_s_own_timezone() {
+    let changelog_date = |committed: &str| -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "uf")
+                .env("GIT_AUTHOR_EMAIL", "uf@example.com")
+                .env("GIT_COMMITTER_NAME", "uf")
+                .env("GIT_COMMITTER_EMAIL", "uf@example.com")
+                .env("GIT_AUTHOR_DATE", committed)
+                .env("GIT_COMMITTER_DATE", committed)
+                .output()
+                .expect("git runs");
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        git(&["init", "--quiet", "--initial-branch", "main"]);
+        fs::write(root.join("a.txt"), "one\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "feat(cli): the first thing"]);
+        git(&["tag", "uf@0.0.0-alpha.2"]);
+        fs::write(root.join("b.txt"), "two\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "fix(cli): the second thing"]);
+
+        let output = uf()
+            .arg("--cwd")
+            .arg(root)
+            .args(["release", "alpha"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let changelog = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
+        let date = changelog
+            .lines()
+            .find_map(|line| line.strip_prefix('_')?.strip_suffix('_'))
+            .unwrap_or_else(|| panic!("no dated section in {changelog}"))
+            .to_owned();
+        assert_ne!(date, "unreleased", "{changelog}");
+        date
+    };
+
+    // 2026-09-08T02:00:00+09:00 is 2026-09-07T17:00:00Z.
+    let tokyo = changelog_date("2026-09-08T02:00:00+09:00");
+    // An hour after it, recorded in a different offset.
+    let utc = changelog_date("2026-09-07T18:00:00+00:00");
+
+    assert_eq!(tokyo, "2026-09-07", "the commit's own timezone leaked in");
+    assert_eq!(utc, "2026-09-07");
+    // The point of the pair: later commit, not an earlier date.
+    assert!(tokyo <= utc, "{tokyo} then {utc} is backwards");
+}
+
 /// `uf release` refuses to rewrite a version that has already gone out.
 ///
 /// The version comes from `env!("CARGO_PKG_VERSION")` — the binary that cuts a
