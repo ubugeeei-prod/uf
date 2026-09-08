@@ -394,11 +394,12 @@ export default defineConfig({
 
     // The `Docs build` job, in one command.
     //
-    // `uf run` takes one task, and five of the six below need the site on
-    // disk — so four invocations would build it four times, because
-    // `docs:build` declares no `inputs` and is always run. One invocation is
-    // one graph and `docs:build` is one node in it. Same shape as `ci`
-    // itself, for the same reason.
+    // `uf run` takes one task, and three of the five checks below read the
+    // site off disk — `docs:links`, `security:scan` and `docs:csp`, each of
+    // which names `docs:build` as a dependency. Run separately that is three
+    // builds of the same site, because `docs:build` declares no `inputs` and
+    // is always run. One invocation is one graph and `docs:build` is one node
+    // in it. Same shape as `ci` itself, for the same reason.
     "docs:verify": {
       command: "echo 'the site builds, and everything in it resolves'",
       dependsOn: [
