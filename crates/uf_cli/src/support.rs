@@ -6,6 +6,36 @@ use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use uf_config::ResolvedConfig;
 use uf_config::env_files::{self, ProjectEnv};
+use uf_term::Status;
+
+use crate::ui::Ui;
+
+/// Tell a project still writing `lint.ignore` which key it should be writing.
+///
+/// Printed by every command that walks the project — `uf fmt`, `uf lint`,
+/// `uf check`, `uf test` and `uf doc` — because all five read that list, and
+/// being read by all five while being named after one is the whole of what
+/// ubugeeei-prod/uf#575 is about. A person who only ever runs `uf fmt` is
+/// exactly the person the old name misled, so `uf fmt` is exactly where the
+/// sentence has to appear.
+///
+/// Nothing is printed for a project that never wrote the key: a deprecation
+/// about a line you do not have is noise, and the deprecation for a key that
+/// is still honoured has to be worth the space it takes.
+pub(crate) fn render_ignore_deprecation(ui: &mut Ui, deprecation: Option<&str>) {
+    let Some(deprecation) = deprecation else {
+        return;
+    };
+    ui.render(|renderer, out| {
+        renderer.status(out, Status::Warn, deprecation);
+        renderer.blank(out);
+    });
+}
+
+/// The sentence [`render_ignore_deprecation`] prints, for this project.
+pub(crate) fn ignore_deprecation(config: &uf_config::UniflowedConfig) -> Option<&'static str> {
+    config.project_ignore().source.deprecation()
+}
 
 /// The mode a dev server, a watch, or anything else a person leaves running
 /// takes when nothing says otherwise.
