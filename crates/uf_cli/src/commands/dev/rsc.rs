@@ -454,7 +454,8 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
     match update {
         RscUpdate::Unchanged => {}
         RscUpdate::Failed(message) => ui.render_err(|renderer, out| {
-            renderer.status(out, Status::Warn, message);
+            // The error names the module it could not analyse. #659.
+            renderer.status(out, Status::Warn, &uf_term::safe_message(message));
         }),
         RscUpdate::Cleared => ui.render_err(|renderer, out| {
             renderer.status(out, Status::Success, "the server-component contract holds");
@@ -481,7 +482,12 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                     // a code frame cannot say that. It would print `:0:1`,
                     // which reads as a line number and is not one.
                     if frame.line == 0 {
-                        let line = format!("{}: {}", frame.rule, frame.message);
+                        // This is the one path that bypasses `code_frame_at`,
+                        // and so the one that has to prepare the message
+                        // itself. The rule id is uf's own; the message is the
+                        // checkout's. #659.
+                        let line =
+                            format!("{}: {}", frame.rule, uf_term::safe_message(&frame.message));
                         renderer.status(out, frame.status(), &line);
                     } else {
                         renderer.code_frame_at(out, &frame.frame(), 4);
