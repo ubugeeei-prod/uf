@@ -380,6 +380,27 @@ fn a_command_that_renders_for_a_reader_returns_its_text() {
     assert!(text.contains("uf"), "{text}");
 }
 
+/// A JSON value that is not an object — an array, which is how JSON-RPC spells
+/// a batch, or a bare scalar. Neither is a message this server can act on, and
+/// both must be *answered*: a client waiting on a reply that never comes is a
+/// worse failure than one told its request was invalid.
+#[test]
+fn a_message_that_is_not_an_object_is_refused_rather_than_ignored() {
+    let dir = scratch();
+    let out = replies(
+        &path_of(&dir),
+        "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}]\n42\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}\n",
+    );
+
+    assert_eq!(out.len(), 3, "{out:?}");
+    for refused in &out[..2] {
+        assert_eq!(refused["error"]["code"], INVALID_REQUEST);
+        assert_eq!(refused["id"], Value::Null);
+    }
+    // And the well-formed request behind them was still answered.
+    assert_eq!(out[2]["id"], 3);
+}
+
 /// `serve` returns when the input does, rather than treating a closed stdin as
 /// an error: a client that exits is a session that ended.
 #[test]

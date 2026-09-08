@@ -76,6 +76,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("lint", "here, and output.rs for the report"),
     ("lsp", "cli.rs: speaks a protocol over stdio"),
     (
+        "mcp",
+        "tests/library/mcp.test.js: speaks MCP over stdio, against this binary",
+    ),
+    (
         "prepare",
         "here, and prepare.rs for the staged set and the steps",
     ),

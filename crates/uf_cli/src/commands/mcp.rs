@@ -123,6 +123,19 @@ fn serve(input: &mut impl BufRead, output: &mut impl Write, cwd: &Utf8Path) -> R
             respond_error(output, Value::Null, PARSE_ERROR, "the line was not JSON")?;
             continue;
         };
+        // A line that parsed but is not an object: an array (JSON-RPC batching,
+        // which MCP's stdio transport does not use), or a bare scalar. There is
+        // no `id` to answer with, so it is answered with a null one — silence
+        // would leave a client waiting for a reply that is never coming.
+        if !message.is_object() {
+            respond_error(
+                output,
+                Value::Null,
+                INVALID_REQUEST,
+                "a message must be a JSON object; this server does not accept batches",
+            )?;
+            continue;
+        }
         let id = message.get("id").cloned();
         let Some(method) = message.get("method").and_then(Value::as_str) else {
             // A notification with no method is nothing; a request with none is
