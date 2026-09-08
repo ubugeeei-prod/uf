@@ -52,7 +52,9 @@ use std::time::{Duration, Instant};
 use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::command::{Invocation, Operation, command_for};
-use crate::detect::{Detection, DetectionSource, PackageManager, detect_package_manager};
+use crate::detect::{
+    Detection, DetectionSource, PackageManager, detect_package_manager, is_pnpm_workspace_root,
+};
 use crate::progress::{InstallWatch, ManagerEvent, Reader};
 
 /// How often a watched install reports progress when the manager is silent.
@@ -201,7 +203,7 @@ pub fn run_operation(
 ) -> Result<ManagerRun, ManagerRunError> {
     let detection = detect_package_manager(root);
     let (manager, substituted) = installable(&detection);
-    let invocation = invocation_for(manager, operation, operands, allow_scripts)?;
+    let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
     let status = Command::new(invocation.program)
         .args(invocation.args.iter().map(AsRef::as_ref))
@@ -250,15 +252,61 @@ fn unsupported_hint(operation: Operation<'_>) -> String {
     .to_owned()
 }
 
-/// The exact command `run_operation` would spawn.
+/// The flag that says "yes, the workspace root is what I meant".
+///
+/// pnpm refuses `pnpm add` in a workspace root unless the root is named
+/// explicitly: `ERR_PNPM_ADDING_TO_ROOT`, whose advice is to run the same
+/// command again with `-w`. That advice cannot be followed through uf, because
+/// `-w` is a flag uf never passed — so `uf add --dev @uniflowed/test` in a
+/// pnpm monorepo failed, and told you to run the thing that had just failed
+/// (ubugeeei-prod/uf#484).
+///
+/// uf passes it, and only where pnpm's own check is:
+///
+/// * **pnpm only.** npm, Yarn and Bun add to the root of a workspace without
+///   asking, and `--workspace-root` is not a flag any of them has.
+/// * **`add` only.** The check lives in pnpm's `add` handler and nowhere else;
+///   `pnpm remove` and `pnpm update` at a root are not refused. A flag pushed
+///   onto a command that does not need it is a flag that can only be wrong
+///   later.
+/// * **Only when `root` is the workspace root itself.** That is the whole
+///   reason this is safe to do without asking. pnpm's check exists because a
+///   shell can be in the root by accident; uf's `root` is the nearest ancestor
+///   of the caller's `--cwd` holding a `package.json`, a uf config or a `.git`
+///   (`uf_config::discover_root`), so `uf add` inside a member resolves to the
+///   member, [`is_pnpm_workspace_root`] is false there, and the flag is not
+///   passed. When it *is* passed, the directory the user pointed uf at and the
+///   directory the dependency lands in are the same one.
+///
+/// It also makes uf's own report true: `delegate` diffs `root/package.json`
+/// either way, so the run that pnpm refused was the only one where the
+/// manifest uf reads and the manifest the manager writes could disagree.
+fn workspace_root_argument(
+    root: &Utf8Path,
+    manager: PackageManager,
+    operation: Operation<'_>,
+) -> Option<&'static str> {
+    let refused_at_the_root =
+        manager == PackageManager::Pnpm && matches!(operation, Operation::Add { .. });
+    (refused_at_the_root && is_pnpm_workspace_root(root)).then_some("--workspace-root")
+}
+
+/// The exact command `run_operation` would spawn in `root`.
 ///
 /// Separate from the spawn so that what uf is about to run can be asserted on,
-/// and printed — `uf explain add` names it — without running anything.
+/// and printed — `uf why` and `uf patch` name it — without running anything.
+///
+/// `root` is a parameter rather than something the caller adds afterwards
+/// because one of uf's additions depends on it: see
+/// [`workspace_root_argument`]. A command rendered without the root would be a
+/// command that differs from the one that runs, on exactly the projects where
+/// the difference decides whether it runs at all.
 ///
 /// # Errors
 ///
 /// [`ManagerRunError::Operand`] for an operand uf will not pass on.
 pub fn invocation_for(
+    root: &Utf8Path,
     manager: PackageManager,
     operation: Operation<'_>,
     operands: &[String],
@@ -270,6 +318,12 @@ pub fn invocation_for(
             operation: operation.name(),
             hint: unsupported_hint(operation),
         })?;
+
+    // Which project, before how to install it: a reader checking the `command`
+    // row wants the scope of the operation first.
+    if let Some(flag) = workspace_root_argument(root, manager, operation) {
+        invocation.args.push(std::borrow::Cow::Borrowed(flag));
+    }
 
     // A dependency's `postinstall` is the supply-chain hole uf's own resolver
     // was going to close by never running one. Delegating to a manager that
@@ -373,7 +427,7 @@ pub fn run_watched(
     let Some(reader) = Reader::for_manager(manager) else {
         return run_operation(root, operation, &[], allow_scripts);
     };
-    let mut invocation = invocation_for(manager, operation, &[], allow_scripts)?;
+    let mut invocation = invocation_for(root, manager, operation, &[], allow_scripts)?;
     // Asked for so that there is something to narrate: npm prints nothing at
     // all between "starting" and "done" when its output is a pipe. Every line
     // this flag causes is consumed by `Reader::classify` and no other, so the

@@ -46,7 +46,7 @@ pub use crate::detect::{
     MAX_ANCESTOR_DEPTH, MAX_MANIFEST_BYTES, MAX_PACKAGE_MANAGER_FIELD_BYTES, ManifestFault,
     PackageManager, PackageManagerFieldError, PackageManagerSpec, UnknownPackageManager, Version,
     WorkspaceMarker, YarnEdition, detect_package_manager, detect_package_manager_with,
-    parse_package_manager_field, scan_lockfiles, yarn_edition_in,
+    is_pnpm_workspace_root, parse_package_manager_field, scan_lockfiles, yarn_edition_in,
 };
 pub use crate::manifests::{Changes, DEPENDENCY_FIELDS, Declaration};
 pub use crate::progress::{

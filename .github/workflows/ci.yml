@@ -414,6 +414,7 @@ jobs:
       # that cannot report `skipped`. See #367.
       - run: ./target/release/uf run ci:gate
       - run: ./target/release/uf run ci:gate:test
+      - run: ./target/release/uf run ci:semver:test
       - run: ./target/release/uf run ci:runtimes
       - run: ./target/release/uf run ci:runtimes:test
 

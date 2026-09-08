@@ -282,19 +282,169 @@ fn a_prototype_pollution_key_is_not_a_package() {
     assert!(!snapshot.entries.contains_key("__proto__"));
 }
 
+/// A link is counted, at the version of the directory it points at.
+///
+/// This test used to assert the opposite — `Some(1)`, the link dropped — which
+/// is ubugeeei-prod/uf#426: the row has no `version` of its own, so it was
+/// skipped, and a package that is really installed went unreported. The
+/// version is not missing from the lockfile, only from that row: npm writes
+/// the target directory as its own entry, and `resolved` is the key.
 #[test]
-fn a_workspace_link_with_no_version_is_not_counted() {
+fn a_workspace_link_is_counted_at_the_version_its_target_records() {
     let (_guard, root) = temp();
     fs::write(
         root.join("package-lock.json"),
         r#"{"lockfileVersion":3,"packages":{"":{},
             "node_modules/@demo/ui":{"resolved":"packages/ui","link":true},
+            "packages/ui":{"name":"@demo/ui","version":"2.1.0"},
+            "node_modules/react":{"version":"18.3.1"}}}"#,
+    )
+    .unwrap();
+    let snapshot = snapshot(&root, PackageManager::Npm);
+
+    assert_eq!(snapshot.package_count(), Some(2));
+    let linked = &snapshot.entries["node_modules/@demo/ui"];
+    assert_eq!(linked.name.as_str(), "@demo/ui");
+    assert_eq!(linked.version.as_str(), "2.1.0");
+    assert!(linked.link, "it is still a link, not a registry artefact");
+    assert_eq!(linked.resolved.as_deref(), Some("packages/ui"));
+
+    // And the target row is not a second package: it is the same install seen
+    // from the other side, and `packages/ui` is not a path in the tree.
+    assert!(!snapshot.entries.contains_key("packages/ui"));
+}
+
+/// A link uf cannot price is reported as a link rather than dropped.
+///
+/// Three ways a lockfile can withhold the version — no `resolved` at all, a
+/// `resolved` naming a row that is not there, and a row that is there without
+/// a version. In every one the package is still installed, so it is still
+/// counted; what it is not is given a version somebody could act on.
+#[test]
+fn a_workspace_link_whose_version_is_unknowable_is_still_counted() {
+    let (_guard, root) = temp();
+    fs::write(
+        root.join("package-lock.json"),
+        r#"{"lockfileVersion":3,"packages":{"":{},
+            "node_modules/nowhere":{"link":true},
+            "node_modules/absent":{"resolved":"packages/absent","link":true},
+            "node_modules/silent":{"resolved":"packages/silent","link":true},
+            "packages/silent":{"name":"silent"}}}"#,
+    )
+    .unwrap();
+    let snapshot = snapshot(&root, PackageManager::Npm);
+
+    assert_eq!(snapshot.package_count(), Some(3));
+    for path in [
+        "node_modules/nowhere",
+        "node_modules/absent",
+        "node_modules/silent",
+    ] {
+        assert_eq!(snapshot.entries[path].version.as_str(), "link", "{path}");
+    }
+}
+
+/// The whole of ubugeeei-prod/uf#426, at the level the reader sees it.
+///
+/// A repository whose dependencies are all local paths — a monorepo whose
+/// members depend on each other, and uf's own `file:` fixtures — reported
+/// `0 packages` and an empty "dependency tree" section after an install that
+/// had just linked every one of them. The delta is what that section is made
+/// of, so it is asserted here rather than in the renderer.
+#[test]
+fn a_tree_of_only_path_dependencies_is_not_an_empty_tree() {
+    let (_guard, root) = temp();
+    let before = snapshot(&root, PackageManager::Npm);
+    fs::write(
+        root.join("package-lock.json"),
+        r#"{"lockfileVersion":3,"packages":{"":{},
+            "node_modules/one":{"resolved":"vendor/one","link":true},
+            "vendor/one":{"name":"one","version":"1.0.0"},
+            "node_modules/two":{"resolved":"vendor/two","link":true},
+            "vendor/two":{"name":"two","version":"2.0.0"}}}"#,
+    )
+    .unwrap();
+    let after = snapshot(&root, PackageManager::Npm);
+    let delta = diff(&before, &after);
+
+    assert_eq!(delta.packages_after, Some(2));
+    assert_eq!(
+        changed(&delta, ChangeKind::Added),
+        [
+            ("one".to_owned(), String::new(), "1.0.0".to_owned()),
+            ("two".to_owned(), String::new(), "2.0.0".to_owned()),
+        ]
+    );
+    assert!(!delta.is_unchanged());
+}
+
+/// A workspace package that was released is an update, not a silence.
+///
+/// The version moved in the target's row, which the link's row does not
+/// mention at all — so a delta that read only the link would have seen two
+/// identical rows and reported nothing.
+#[test]
+fn a_linked_package_that_changes_version_is_an_update() {
+    let (_guard, root) = temp();
+    let lock = |version: &str| {
+        format!(
+            r#"{{"lockfileVersion":3,"packages":{{"":{{}},
+                "node_modules/ui":{{"resolved":"packages/ui","link":true}},
+                "packages/ui":{{"name":"ui","version":"{version}"}}}}}}"#
+        )
+    };
+    fs::write(root.join("package-lock.json"), lock("1.0.0")).unwrap();
+    let before = snapshot(&root, PackageManager::Npm);
+    fs::write(root.join("package-lock.json"), lock("1.1.0")).unwrap();
+    let after = snapshot(&root, PackageManager::Npm);
+
+    assert_eq!(
+        changed(&diff(&before, &after), ChangeKind::Updated),
+        [("ui".to_owned(), "1.0.0".to_owned(), "1.1.0".to_owned())]
+    );
+}
+
+/// A link cannot borrow a version from a row uf refuses to read.
+///
+/// `resolved` is a string a lockfile chose, and it is used as a key into the
+/// same map the prototype-pollution rule governs. A row named `__proto__` is
+/// not a package anywhere else in this file, and it does not become one by
+/// being pointed at.
+#[test]
+fn a_link_resolving_to_a_polluting_key_borrows_nothing_from_it() {
+    let (_guard, root) = temp();
+    fs::write(
+        root.join("package-lock.json"),
+        r#"{"lockfileVersion":3,"packages":{"":{},
+            "__proto__":{"version":"9.9.9"},
+            "node_modules/ui":{"resolved":"__proto__","link":true}}}"#,
+    )
+    .unwrap();
+    let snapshot = snapshot(&root, PackageManager::Npm);
+
+    assert_eq!(snapshot.package_count(), Some(1));
+    assert_eq!(snapshot.entries["node_modules/ui"].version.as_str(), "link");
+}
+
+/// A row with neither a version nor a link is still not a package.
+///
+/// The `link: true` branch is the only one that was opened; a lockfile that
+/// omits `version` for anything else is a shape uf does not understand, and
+/// guessing at it would be the same silent wrongness in the other direction.
+#[test]
+fn a_versionless_row_that_is_not_a_link_is_still_dropped() {
+    let (_guard, root) = temp();
+    fs::write(
+        root.join("package-lock.json"),
+        r#"{"lockfileVersion":3,"packages":{"":{},
+            "node_modules/mystery":{"resolved":"https://registry.npmjs.org/x"},
             "node_modules/react":{"version":"18.3.1"}}}"#,
     )
     .unwrap();
     let snapshot = snapshot(&root, PackageManager::Npm);
 
     assert_eq!(snapshot.package_count(), Some(1));
+    assert!(!snapshot.entries.contains_key("node_modules/mystery"));
 }
 
 #[test]
