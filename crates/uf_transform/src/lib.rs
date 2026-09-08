@@ -165,6 +165,14 @@ pub fn is_flow_module(id: &str) -> bool {
     {
         return false;
     }
+    // uf's own working directory: the bundled server, the deploy adapters, and
+    // the asset module `uf build --compile` packs a site into are all output
+    // uf wrote as plain JavaScript. Parsing them as Flow was waste at every
+    // size and a failure at one — see `isFlowModule` in
+    // `packages/host/transform.js`, which this mirrors, and #679.
+    if path.starts_with(".uf/") || path.contains("/.uf/") {
+        return false;
+    }
     match path.rfind("/node_modules/") {
         Some(at) => path[at..].starts_with("/node_modules/@uniflowed/"),
         None => true,
@@ -245,6 +253,33 @@ mod tests {
         ));
         assert!(!is_flow_module("/app/styles.css"));
         assert!(!is_flow_module("/app/page.mdx"));
+    }
+
+    /// uf's own working directory is output, not source.
+    ///
+    /// The rows are `tests/library/flow-modules.test.js`'s, because the two
+    /// answers have to be one answer — `isFlowModule` there says so in its
+    /// documentation and this function's job is to mirror it.
+    ///
+    /// `assets.js` is why it matters. `uf build --compile` writes the whole
+    /// site into it as one base64 string literal, so it grows with the
+    /// project, and past eight megabytes the Flow parser refused the file uf
+    /// had written a moment earlier — `source is 8442536 bytes, over the
+    /// 8388608 byte ceiling`, from a ceiling that exists to distrust input.
+    /// See ubugeeei-prod/uf#679.
+    #[test]
+    fn ufs_own_build_directory_is_not_flow() {
+        assert!(!is_flow_module("/p/.uf/build/compile/assets.js"));
+        assert!(!is_flow_module("/p/.uf/build/compile/server.js"));
+        assert!(!is_flow_module("/p/.uf/deploy/node/handler.js"));
+        assert!(!is_flow_module(".uf/build/compile/assets.js"));
+        assert!(!is_flow_module("/p/node_modules/@uniflowed/core/.uf/x.js"));
+
+        // A directory whose name merely contains it, and a file merely named
+        // for it, are ordinary source.
+        assert!(is_flow_module("/p/.uf-notes/x.js"));
+        assert!(is_flow_module("/p/my.uf/x.js"));
+        assert!(is_flow_module("/p/app.uf.js"));
     }
 
     #[test]

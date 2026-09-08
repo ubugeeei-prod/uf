@@ -69,6 +69,20 @@ const table: $ReadOnlyArray<[string, boolean]> = [
   ["/p/node_modules/@uniflowed/core/node_modules/dep/index.js", false],
   ["/p/node_modules/dep/node_modules/@uniflowed/core/index.js", true],
   ["/node_modules/@uniflowed/core/a/b/c.cjs", true],
+  // uf's own working directory: output uf wrote, not source anybody typed.
+  // `assets.js` is the one that made this matter — it is the whole site
+  // base64'd into a string literal, and past eight megabytes the Flow parser
+  // refused the file uf had just written. See ubugeeei-prod/uf#679.
+  ["/p/.uf/build/compile/assets.js", false],
+  ["/p/.uf/build/compile/server.js", false],
+  ["/p/.uf/deploy/node/handler.js", false],
+  [".uf/build/compile/assets.js", false],
+  // A directory whose name merely contains it, and a file merely named for it.
+  ["/p/.uf-notes/x.js", true],
+  ["/p/my.uf/x.js", true],
+  ["/p/app.uf.js", true],
+  // And `.uf` under a dependency is still rejected, for the earlier reason.
+  ["/p/node_modules/@uniflowed/core/.uf/x.js", false],
 ];
 
 describe("which modules uf is responsible for", () => {

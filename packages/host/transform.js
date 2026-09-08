@@ -34,6 +34,19 @@ export const FLOW_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs"];
  * the deliberate exception: those packages ship Flow source, because that is
  * what uf tells everyone to write.
  *
+ * `.uf/` is the other directory of already-JavaScript, and for the same reason
+ * `node_modules` is: nothing in it was written by hand. It is uf's own working
+ * directory — the bundled server, the deploy adapters, and the asset module
+ * `uf build --compile` packs a whole site into — all of it output that uf
+ * itself wrote as plain JavaScript and then asked itself to parse as Flow.
+ *
+ * That was waste at every size and a failure at one. `assets.js` is the site's
+ * every asset base64'd into a single string literal, so it grows with the
+ * project, and on a site whose assets passed eight megabytes `uf build
+ * --compile` stopped working: `source is 8442536 bytes, over the 8388608 byte
+ * ceiling`, from a ceiling that exists to distrust *input*. See
+ * ubugeeei-prod/uf#679.
+ *
  * Which build tool is deliberately not named. This loader runs Flow on a
  * Capability JS Host and has no bundler in it; naming one would tie the answer
  * to a tool that is not in this file's dependency graph.
@@ -42,6 +55,7 @@ export function isFlowModule(id) {
   if (id.startsWith("\0")) return false;
   const clean = stripQuery(id);
   if (!FLOW_EXTENSIONS.some((extension) => clean.endsWith(extension))) return false;
+  if (clean.startsWith(".uf/") || clean.includes("/.uf/")) return false;
   const at = clean.lastIndexOf("/node_modules/");
   return at === -1 || clean.slice(at).startsWith("/node_modules/@uniflowed/");
 }
@@ -96,10 +110,12 @@ function stripQuery(id) {
  * about. `isFlowModule` remains the authority for those callers.
  */
 export const FLOW_MODULE_PATTERN = new RegExp(
-  // Reject when the *last* `/node_modules/` on the path is not followed by
-  // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
-  // lookahead: the inner negative lookahead is what pins "last".
-  String.raw`^(?!.*/node_modules/(?!.*/node_modules/)(?!@uniflowed/))` +
+  // Reject anything inside uf's own working directory, at the root or nested.
+  String.raw`^(?!\.uf/)(?!.*/\.uf/)` +
+    // Reject when the *last* `/node_modules/` on the path is not followed by
+    // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
+    // lookahead: the inner negative lookahead is what pins "last".
+    String.raw`(?!.*/node_modules/(?!.*/node_modules/)(?!@uniflowed/))` +
     String.raw`.*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})$`,
 );
 
