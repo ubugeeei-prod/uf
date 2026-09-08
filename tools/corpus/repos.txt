@@ -2,19 +2,30 @@
 #
 # name              url                                                    commit
 #
+# One line per repository, and this file is the only place a repository is
+# named. `tools/corpus/sync.sh` fetches each pin one commit deep into a git
+# directory outside the checkout.
+#
 # Pinned by commit rather than tracked as submodules. Two reasons, and the
 # second is the one that matters: a pinned fetch is one commit deep and
 # nothing else, where `git submodule update --depth 1` still brings a whole
-# tree per entry; and this is 700 MB of somebody else's code that no CI job
-# and no ordinary checkout needs, so it does not belong in `.gitmodules`
-# where every clone has to reckon with it.
+# tree per entry; and this is about a gigabyte of somebody else's code that no
+# CI job and no ordinary checkout needs, so it does not belong in
+# `.gitmodules`, where every clone has to reckon with it.
 #
-# React, Metro, Relay and React Native predate this file and remain
-# submodules. See ubugeeei-prod/uf#137.
+# React, Metro, Relay and React Native were submodules until
+# ubugeeei-prod/uf#137 and are the first four below, at the commits their
+# gitlinks pinned. `upstream/flow` is a submodule and stays one for a reason
+# that does not apply here: it is a cargo path dependency, so nothing in this
+# workspace builds without it. See `tools/upstream/repos.txt`.
 #
 # Bump a pin by replacing the commit. `tools/corpus/sync.sh` fetches the new
 # one; nothing is left behind to clean up.
 
+react             https://github.com/facebook/react.git                    f1f7ed2ac267a21dd2e3e67c4a606b9cf56e360b
+metro             https://github.com/facebook/metro.git                    7c2bc7a5845a3eefba20aafda2f50a42fc10d88f
+relay             https://github.com/facebook/relay.git                    52c26aed65a496182f2fa978f9911db5be4f652d
+react-native      https://github.com/facebook/react-native.git             8cfde6d0834baf27cc14efff45bf853434acb3aa
 recoil            https://github.com/facebookexperimental/Recoil.git       c1b97f3a0117cad76cbc6ab3cb06d89a9ce717af
 flux              https://github.com/facebook/flux.git                     4ee8c50865c357e005cb40ea03cdd403533aad26
 parcel            https://github.com/parcel-bundler/parcel.git             59484858a1a0bcbb71f74088956bb437a2db6505

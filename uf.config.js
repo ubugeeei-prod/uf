@@ -634,6 +634,31 @@ export default defineConfig({
       inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
     },
 
+    // And that a job which runs the workspace suite installs the runtimes the
+    // suite starts. `bun_host.rs`, `deno_host.rs` and `permissions.rs` start
+    // real processes and fail rather than skip when the runtime is absent —
+    // deliberately, so a host claim nobody checked cannot be green — which
+    // makes `cargo test --workspace` runnable only where all three are
+    // installed.
+    //
+    // `publish.yml` was not such a job. `uf@0.0.0-alpha.14` was tagged, its
+    // four binaries were built and released, and the publish job failed on six
+    // Deno tests before publishing a single package: a tag, a GitHub release,
+    // and nothing on npm. Deno had been added to `ci.yml`'s two suite-running
+    // jobs and not to the third, which lives in another file. See #634.
+    "ci:runtimes": {
+      command: "tools/ci/workspace-suite-runtimes.sh",
+      inputs: [
+        ".github/workflows/*.yml",
+        "crates/uf_cli/tests/*.rs",
+        "tools/ci/workspace-suite-runtimes.sh",
+      ],
+    },
+    "ci:runtimes:test": {
+      command: "tools/ci/test-workspace-suite-runtimes.sh",
+      inputs: ["tools/ci/workspace-suite-runtimes.sh", "tools/ci/test-workspace-suite-runtimes.sh"],
+    },
+
     manifests: {
       command:
         "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
@@ -683,6 +708,8 @@ export default defineConfig({
         "release:changelog:test",
         "ci:gate",
         "ci:gate:test",
+        "ci:runtimes",
+        "ci:runtimes:test",
         // `docs:verify` rather than the four checks under it, because that is
         // what the `Docs build` job runs and this list is the whole of
         // `uf run` in `.github/workflows/`. It reaches `docs:links`,

@@ -822,8 +822,26 @@ export component SelectOption(
  * `Select.GroupLabel` is rendered — the same rule, and the same reason, as
  * `Menu.Group`. The arrow keys pass over the label without stopping on it,
  * because they only ever look for `role="option"`.
+ *
+ * `children` is `renders* (SelectOption | SelectGroupLabel)`, which is what a
+ * `group` inside a `listbox` may hold: options, and the heading that names
+ * them. It took `React.Node` until ubugeeei-prod/uf#562, so a `<div>` in a
+ * group was a runtime surprise — an element with no role between two options,
+ * which the arrow keys walk straight past and a screen reader reads as a stray
+ * line — rather than a type error. `Combobox.Group` has stated the constraint
+ * since #558 and this is the same listbox.
+ *
+ * No `Select.Separator`, and that is deliberate rather than an omission: a rule
+ * separates *groups*, so it belongs between them in `Select.List` — which does
+ * admit one. A separator inside a group is a rule with nothing on one side of
+ * it.
+ *
+ * **Breaking.** A caller passing anything else — a `<div>` wrapper, a fragment
+ * of their own, a component that returns options — now fails `uf check`. The
+ * fix is to hand the options to the group directly; a wrapper had no effect on
+ * what this renders, because the group's element is the one below.
  */
-export component SelectGroup(children: React.Node, ...rest: Rest) {
+export component SelectGroup(children: renders* (SelectOption | SelectGroupLabel), ...rest: Rest) {
   const base = useId();
   const [labelled, setLabelled] = useState(false);
 
