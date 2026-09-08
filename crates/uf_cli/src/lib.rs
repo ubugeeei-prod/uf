@@ -208,6 +208,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             size_report,
             mode,
             compile,
+            target,
             adapter,
         } => commands::build::build(
             &cwd,
@@ -215,6 +216,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             size_report,
             mode.as_deref(),
             compile,
+            target.as_deref(),
             adapter.map(Into::into),
         ),
         Commands::Check {

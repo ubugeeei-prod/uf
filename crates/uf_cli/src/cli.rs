@@ -137,9 +137,24 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "MODE")]
         mode: Option<String>,
         /// Also write the application as one executable file, next to the
-        /// build. Needs Bun on PATH; the file itself needs nothing.
+        /// build. Produced on the project's Capability JS Host — Bun or Node
+        /// 25.5 and newer; the file itself needs nothing.
         #[arg(long)]
         compile: bool,
+        /// Compile for this platform rather than for this machine, as a
+        /// target triple: `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`.
+        ///
+        /// Cross-compiling downloads that platform's runtime, so the first
+        /// build for a target needs the network. Bun's backend only; Node
+        /// single-executable applications cannot cross-compile.
+        //
+        // A free-form string rather than a `ValueEnum`, for the reason
+        // `--adapter` is one: clap's list of accepted values cannot say *why*
+        // a triple is not accepted, and "uf has never built for this" and
+        // "your Bun is too old for this" are different sentences that a reader
+        // has to be able to tell apart. `compile::parse_target` says both.
+        #[arg(long, value_name = "TRIPLE", requires = "compile")]
+        target: Option<String>,
         /// Also write a directory that can be copied to a host with a
         /// JavaScript runtime and nothing else. Overrides
         /// `app.runtime.deploy.adapter`.
@@ -992,6 +1007,7 @@ mod tests {
                 size_report: false,
                 mode: None,
                 compile: false,
+                target: None,
                 adapter: None
             }
             .wants_json()
@@ -1029,6 +1045,7 @@ mod tests {
                 size_report: false,
                 mode: None,
                 compile: false,
+                target: None,
                 adapter: None
             }
             .owns_stdout()

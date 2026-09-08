@@ -68,8 +68,10 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
   matrix — what works, what does not, and what each gap is waiting for — is
   [`docs/hosts.md`](./docs/hosts.md).
 - **Deployment.** `uf build --adapter node` writes a directory that runs on a
-  bare JavaScript runtime, and `--compile` writes a single executable file. The
-  other six adapters are names in an enum
+  bare JavaScript runtime, and `--compile` writes a single executable file —
+  with Bun or with Node's single-executable applications, whichever the
+  project's Capability JS Host is, and `--target` builds it for another
+  platform. The other six adapters are names in an enum
   ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - **Server Components.** `"use client"` and `"use server"` are scanned, graphed
   and manifested, and the build reads that: a route no client boundary reaches
@@ -344,7 +346,7 @@ copy of a list is a fourth thing to keep true:
 | | What it means | Where it is kept |
 | --- | --- | --- |
 | **Implemented** | Reachable from the binary, covered by a test, documented. The command and config references describe only what exists | [Commands](https://docs.uniflowed.dev/reference/cli), [`uf.config.js`](https://docs.uniflowed.dev/reference/config) |
-| **Experimental** | Implemented, reachable, and expected to change — said on the page that documents it. `@uniflowed/effect`'s requirement subtraction, `@uniflowed/tui` without mouse or selection, `uf build --compile`, which needs Bun on `PATH` and cannot cross-compile | [Packages](https://docs.uniflowed.dev/reference/packages) |
+| **Experimental** | Implemented, reachable, and expected to change — said on the page that documents it. `@uniflowed/effect`'s requirement subtraction, `@uniflowed/tui` without mouse or selection, `uf build --compile`, whose cross-built binaries are checked by their file format because nothing here can run one | [Packages](https://docs.uniflowed.dev/reference/packages) |
 | **Planned** | Not written. Every gap carries an issue number, and the roadmap sorts them P0–P3 | [What uf does not do](https://docs.uniflowed.dev/guide/scope), [docs/roadmap.md](docs/roadmap.md) |
 
 A declared API that throws is not a feature, and this repository has a check that
