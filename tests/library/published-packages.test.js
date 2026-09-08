@@ -283,3 +283,113 @@ describe("what the published packages pack", () => {
     expect(missing).toEqual([]);
   });
 });
+
+/**
+ * Every `.js` file under `directory`, relative to the repository root.
+ */
+const sourcesUnder = (directory: string): Array<string> => {
+  const found = [];
+  const walk = (at: string) => {
+    for (const entry of fs.readdirSync(at, { withFileTypes: true })) {
+      const full = path.join(at, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules") walk(full);
+      } else if (entry.name.endsWith(".js")) {
+        found.push(path.relative(repository, full));
+      }
+    }
+  };
+  walk(path.join(repository, directory));
+  return found;
+};
+
+/**
+ * The `@uniflowed/*` specifiers `source` imports, and whether each is a type.
+ *
+ * Same approach as [`relativeImports`] and for the same reason: the comment-free
+ * source, a pattern over import positions, and a test below that the pattern
+ * still matches something.
+ */
+const packageImports = (source: string): Array<{| specifier: string, type: boolean |}> => {
+  const pattern = /\bimport\s+(type\s+)?([^;]*?)\bfrom\s*["'](@uniflowed\/[^"']*)["']/g;
+  const code = withoutComments(source);
+  const found = [];
+  let match;
+  while ((match = pattern.exec(code)) !== null) {
+    // `import { type Foo }` is a type import too, and is the form uf's own
+    // formatter produces when a value from the same module is imported beside
+    // it. A clause with any binding that is *not* prefixed is a value import.
+    const clause = match[2];
+    const inlineOnly =
+      /\{/.test(clause) &&
+      clause
+        .replace(/^[^{]*\{|\}[^}]*$/g, "")
+        .split(",")
+        .map((binding) => binding.trim())
+        .filter((binding) => binding !== "")
+        .every((binding) => binding.startsWith("type "));
+    found.push({ specifier: match[3], type: match[1] != null || inlineOnly });
+  }
+  return found;
+};
+
+describe("the edges between the packages", () => {
+  it("the scan finds the imports it is looking for", () => {
+    // The same guard `the scan reads code and not prose` gives the other
+    // pattern: an assertion over an empty list passes, and would go on passing
+    // after the shape of an import changed.
+    const found = packageImports(
+      'import type { A } from "@uniflowed/ui/field";\n' +
+        'import { b } from "@uniflowed/core";\n' +
+        'import { type C, d } from "@uniflowed/react";\n' +
+        'import { type E } from "@uniflowed/hooks";\n',
+    );
+    expect(found).toEqual([
+      { specifier: "@uniflowed/ui/field", type: true },
+      { specifier: "@uniflowed/core", type: false },
+      { specifier: "@uniflowed/react", type: false },
+      { specifier: "@uniflowed/hooks", type: true },
+    ]);
+  });
+
+  // `@uniflowed/form` depends on `@uniflowed/ui` for the `FieldSource` type,
+  // and the dependency reads backwards: a headless form store should not need
+  // a component library. ubugeeei-prod/uf#614 asked for that to be a decision
+  // rather than the only thing that compiled, and the decision is to keep the
+  // edge and hold it to a type.
+  //
+  // Kept because the alternative is worse today. Duplicating the type trades a
+  // resolvable, documented edge for silent drift — `Field.Root` accepting a
+  // shape that `useFieldSource` no longer produces would type-check on both
+  // sides and fail only where they meet — and a third package to own the
+  // contract costs a name, which #560 is the standing evidence is not free.
+  //
+  // Held to a type because that is what makes it tolerable: Flow erases it, so
+  // nothing of `@uniflowed/ui` is loaded, bundled or run by a project that
+  // installs `@uniflowed/form`. The cost is an entry in `package.json` so that
+  // `uf check` can resolve it. A *value* crossing this edge would make the
+  // component library a runtime dependency of the form store, which is the
+  // thing `docs/architecture.md` requires not be true, and is the line this
+  // test draws.
+  //
+  // The trigger to reverse it is #210: once `@uniflowed/form` is on npm,
+  // `publishable.sh` allows `ui → form` and the type belongs in the package
+  // that produces it. Delete this test then.
+  it("the only thing @uniflowed/form takes from @uniflowed/ui is a type", () => {
+    const offenders = [];
+    let seen = 0;
+    for (const file of sourcesUnder("packages/form")) {
+      const source = fs.readFileSync(path.join(repository, file), "utf8");
+      for (const found of packageImports(source)) {
+        if (!found.specifier.startsWith("@uniflowed/ui")) continue;
+        seen += 1;
+        if (!found.type) offenders.push(`${file} imports a value from ${found.specifier}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+    // And the edge is still there to be checked. A rename that made this scan
+    // find nothing would leave the assertion above passing over an empty list.
+    expect(seen).toBeGreaterThan(0);
+  });
+});
