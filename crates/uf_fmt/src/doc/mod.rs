@@ -256,12 +256,31 @@ impl<'a> Docs<'a> {
     }
 
     /// The parts printed one after another.
+    ///
+    /// Built straight into the arena. This used to `collect()` into a `Vec`
+    /// and copy that in — a heap allocation and a free per call, and the
+    /// printer makes this call about once per node. `ExactSizeIterator` is
+    /// what lets the arena take the iterator directly; every caller in the
+    /// printer passes an array, a `Vec`, or a `map`/`copied` over a slice, and
+    /// all of those are exact. One that is not can `collect` and use
+    /// [`Docs::concat_vec`], which is the honest place for the allocation.
     pub fn concat<I>(&self, parts: I) -> Doc<'a>
     where
         I: IntoIterator<Item = Doc<'a>>,
+        I::IntoIter: ExactSizeIterator,
     {
-        let parts: Vec<Doc<'a>> = parts.into_iter().collect();
-        self.concat_vec(parts)
+        let mut parts = parts.into_iter();
+        match parts.len() {
+            0 => &EMPTY,
+            // One part is that part: a `Concat` around it would be a node the
+            // printer walks for nothing.
+            1 => parts.next().unwrap_or(&EMPTY),
+            _ => {
+                let parts: &'a [Doc<'a>] = self.arena.alloc_slice_fill_iter(parts);
+                let breaks = parts.iter().any(|part| part.breaks);
+                self.node(DocKind::Concat(parts), breaks)
+            }
+        }
     }
 
     /// [`Docs::concat`] over an already collected vector.
@@ -278,8 +297,11 @@ impl<'a> Docs<'a> {
     }
 
     /// Two docs in sequence.
+    ///
+    /// A stack array rather than `vec![first, second]`: two elements did not
+    /// need the heap.
     pub fn pair(&self, first: Doc<'a>, second: Doc<'a>) -> Doc<'a> {
-        self.concat_vec(vec![first, second])
+        self.concat([first, second])
     }
 
     /// A group: flat if it fits, broken otherwise.

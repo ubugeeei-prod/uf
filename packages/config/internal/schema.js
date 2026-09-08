@@ -2,6 +2,30 @@
 //
 // Owns the Flow shape of `uf.config.js`; `index.js` keeps the public package
 // entry point thin.
+//
+// # Every key uf reads, and nothing else
+//
+// The guide says a config file "is type-checked as Flow code", which is the
+// whole reason to write one in Flow. That makes an undeclared key worse than a
+// missing feature: `lint.files`, `lint.ignore` and `app.router.enabled` were
+// documented in the configuration reference, accepted by the runtime, and
+// absent from this type — so a project following the reference had to choose
+// between the documented key and a config that checks
+// (ubugeeei-prod/uf#481). They were not the only three.
+//
+// So the key *names* below are no longer a person's job to keep in step with
+// the loader. `crates/uf_config`'s `the_flow_schema_declares_every_key_uf_reads`
+// parses this file with uf's own Flow parser and compares the paths it declares
+// against the paths `uf_config::UniflowedConfig` serializes — in both
+// directions, because a key declared here and read by nothing is an option that
+// silently does nothing, which is the same defect wearing the other face.
+//
+// The value *types* are still this file's own judgement, and deliberately so.
+// A test over names cannot say whether `"biome" | "prettier" | "none"` is the
+// right set, and several keys below are narrower than what the loader will
+// parse — `orm.module` is `"@uniflowed/orm"` because there is one
+// implementation, where the loader takes any string. Where this package means
+// to be more opinionated than the parser, that is what these say.
 
 export type RuleLevel = "off" | "warn" | "error" | 0 | 1 | 2 | boolean;
 
@@ -24,6 +48,68 @@ export type TaskDefinition =
     };
 
 export type CapabilityJsHost = "node" | "deno" | "bun";
+
+/**
+ * The package manager uf drives, overriding what it infers from the project.
+ *
+ * `"auto"` reads the project itself: an explicit `"packageManager"` field, then
+ * a lockfile, then the nearest workspace root, then uf's own resolver.
+ */
+// The eight below are the *names a project may pin*, not commands this module
+// runs: `@uniflowed/config` declares a type and executes nothing at all.
+// `uniflowed/no-npm-script-invocation` is a line scanner, and a string whose
+// entire contents is `pnpm` reads exactly like the `spawn("pnpm", […])` the
+// rule exists to catch — `crates/uf_lint/src/scan/search.rs` says so in its own
+// documentation and calls what is left "rare and suppressible". This is that
+// residue, and there is no spelling of these values that is not one of them.
+// uf-lint-disable uniflowed/no-npm-script-invocation
+export type PackageManagerPreference =
+  | "auto"
+  | "uf"
+  | "npm"
+  | "pnpm"
+  | "yarn"
+  | "yarn-classic"
+  | "yarn-berry"
+  | "bun";
+// uf-lint-enable uniflowed/no-npm-script-invocation
+
+export type RuntimeEngine = "uf" | "node" | "deno" | "bun" | "edge" | "serverless" | "container";
+
+export type DeployAdapter =
+  | "node"
+  | "bun"
+  | "deno"
+  | "edge"
+  | "serverless"
+  | "static"
+  | "container";
+
+/**
+ * One entry of `plugins: [...]`.
+ *
+ * A bare name takes the default band and applies to every pipeline; the long
+ * form says otherwise. Declaration order decides within a band, so the
+ * resolved pipeline is a function of this file alone.
+ */
+export type PluginEntry =
+  | string
+  | {
+      readonly name: string,
+      readonly order?: "pre" | "normal" | "post",
+      readonly apply?: "build" | "serve" | "always",
+    };
+
+/**
+ * A ceiling `uf build` fails over, and what it is measured on.
+ *
+ * `max` accepts a byte count or a size a person would write — `"180kb"` —
+ * because a budget is written by hand and read back by a report.
+ */
+export type SizeBudget = {
+  readonly max: number | string,
+  readonly metric?: "raw" | "gzip" | "brotli",
+};
 
 /**
  * What the project's own code may reach.
@@ -96,6 +182,26 @@ export type UniflowedConfig = {
     },
   },
   readonly app?: {
+    // Whether a component with no directive is rendered on the server or
+    // shipped to the browser.
+    readonly componentDefault?: "server" | "client",
+    readonly framework?: "uniflowed" | "react" | "react-native",
+    readonly react?: {
+      // React 19's Strict Mode, on by default in `uf dev`: it double-invokes
+      // render and effects so an impurity shows up in development rather
+      // than in production. Off has to be a choice a project makes.
+      readonly strictMode?: boolean,
+      readonly version?: string,
+      readonly asyncReact?: boolean,
+      readonly suspense?: boolean,
+      readonly useHook?: boolean,
+    },
+    // Whether the project builds React Server Components at all, and whether
+    // a `"use server"` export is wired to an endpoint.
+    readonly rsc?: boolean,
+    readonly serverActions?: boolean,
+    // The runtimes the build must satisfy.
+    readonly targets?: $ReadOnlyArray<"web" | "react-native" | "server" | "hermes">,
     readonly orm?: {
       readonly enabled?: boolean,
       readonly module?: "@uniflowed/orm",
@@ -104,11 +210,18 @@ export type UniflowedConfig = {
       readonly preparedByDefault?: true,
     },
     readonly builtins?: {
+      readonly data?: "uniflowed-query",
+      readonly effect?: "uniflowed-effect",
       readonly fetch?: {
         readonly module?: "@uniflowed/fetch",
         readonly overrideGlobalFetch?: false,
       },
       readonly cell?: boolean,
+      readonly frameworkLints?: boolean,
+      readonly nativeTestRunner?: boolean,
+      readonly reactTestingLibrary?: boolean,
+      readonly relay?: boolean,
+      readonly style?: "style-x",
       readonly reactCompiler?: {
         readonly enabled?: boolean,
         readonly implementation?: "official-rust",
@@ -217,10 +330,8 @@ export type UniflowedConfig = {
       },
     },
     readonly runtime?: {
-      readonly default?: "node" | "deno" | "bun" | "uf",
-      readonly compatibility?: $ReadOnlyArray<
-        "node" | "bun" | "deno" | "edge" | "serverless" | "container",
-      >,
+      readonly default?: RuntimeEngine,
+      readonly compatibility?: $ReadOnlyArray<RuntimeEngine>,
       readonly capabilityJsHost?: {
         readonly default?: CapabilityJsHost,
         readonly hosts?: $ReadOnlyArray<CapabilityJsHost>,
@@ -228,15 +339,20 @@ export type UniflowedConfig = {
       },
       readonly deploy?: {
         readonly enabled?: boolean,
-        readonly adapters?: $ReadOnlyArray<
-          "node" | "bun" | "deno" | "edge" | "serverless" | "static" | "container",
-        >,
+        // The target `uf build` writes an artefact for when none is named on
+        // the command line; `--adapter` beats it.
+        readonly adapter?: DeployAdapter,
+        readonly adapters?: $ReadOnlyArray<DeployAdapter>,
       },
     },
     readonly router?: {
+      // `false` says this project is not a uf application, and is the only way
+      // to say it: a library has no routes to scan for.
+      readonly enabled?: boolean,
       readonly entry?: string,
       readonly root?: string,
       readonly manifest?: string,
+      readonly convention?: "file-system",
       // Turning the file-system router off is what makes a project a
       // **library** rather than an application, and `uf build` reads it: see
       // `build.lib` below and docs/app/reference/config.
@@ -253,7 +369,17 @@ export type UniflowedConfig = {
     },
   },
   readonly build?: {
+    // Size ceilings that fail the build. Unset by default: failing a build
+    // nobody asked uf to police is worse than reporting the size.
+    readonly budgets?: {
+      readonly total?: SizeBudget,
+      readonly initialJs?: SizeBudget,
+      readonly perRoute?: SizeBudget,
+      readonly perAsset?: SizeBudget,
+    },
     readonly entries?: $ReadOnlyArray<string>,
+    // Commands to run around the build, in the same shape as `tasks`.
+    readonly hooks?: { readonly [string]: TaskDefinition },
     readonly outDir?: string,
     // Prerender every route and leave no server bundle behind. Read together
     // with `app.rendering.modes`; see docs/app/reference/config.
@@ -295,6 +421,17 @@ export type UniflowedConfig = {
     readonly host?: string,
     readonly port?: number,
     readonly strictPort?: boolean,
+    // Which files the dev server may serve. `deny` is evaluated on the
+    // canonical path and beats `allow`; see docs/security.md.
+    readonly fs?: {
+      readonly allow?: $ReadOnlyArray<string>,
+      readonly deny?: $ReadOnlyArray<string>,
+    },
+    // `--host` refuses to bind a routable address while this is empty: a dev
+    // server reachable from the network with no host allow-list is a file
+    // server for your source tree.
+    readonly allowedHosts?: $ReadOnlyArray<string>,
+    readonly allowedOrigins?: $ReadOnlyArray<string>,
   },
   readonly docs?: {
     readonly enabled?: boolean,
@@ -304,13 +441,19 @@ export type UniflowedConfig = {
     readonly staticBuild?: boolean,
     readonly deploy?: "void",
   },
-  readonly lint?: {
-    readonly engine?: "rust",
-    readonly flow?: {
-      readonly builtins?: "mixed",
-      readonly parser?: "official-flow-rust",
-    },
-    readonly rules?: { readonly [string]: RuleLevel },
+  /**
+   * The `.env` cascade, the mode it is read for, and the pinned toolchain.
+   *
+   * `active` empty means the command decides — `development` for `uf dev`,
+   * `production` for a build, `test` for `uf test`. `files` empty selects the
+   * conventional cascade rather than no files at all.
+   */
+  readonly env?: {
+    readonly active?: string,
+    readonly files?: $ReadOnlyArray<string>,
+    // Runtimes and package managers by exact version — `{ node: "24.14.0" }`.
+    // Exact, because a range is not an environment.
+    readonly toolchain?: { readonly [string]: string },
   },
   readonly fmt?: {
     readonly indentWidth?: number,
@@ -336,6 +479,43 @@ export type UniflowedConfig = {
     readonly quotes?: "single" | "double",
     readonly semicolons?: boolean,
   },
+  /**
+   * Paths no command walks into.
+   *
+   * Top level because every command that walks the project reads it: `uf fmt`,
+   * `uf lint`, `uf check`, `uf test` and `uf doc`. A bare name — `dist` — names
+   * a kind of directory and matches at any depth; a path — `src/generated` —
+   * names one place. `.uf` and `.git` are uf's and git's and are not a
+   * project's to opt back into.
+   *
+   * Absent takes uf's own list, `["node_modules", "dist", "target"]`. An empty
+   * list is a different instruction: it is a project that has looked at that
+   * list and wants none of it.
+   */
+  readonly ignore?: $ReadOnlyArray<string>,
+  readonly lint?: {
+    readonly engine?: "rust",
+    // Globs to lint.
+    readonly files?: $ReadOnlyArray<string>,
+    /**
+     * The old spelling of the top-level `ignore`.
+     *
+     * **Deprecated**, and read only when `ignore` is absent. It was never
+     * `uf lint`'s alone: `uf fmt`, `uf check`, `uf test` and `uf doc` walk the
+     * project through the same code and have always obeyed it, so the key was
+     * named after one of the five commands that read it. It keeps working for
+     * as long as alpha lasts, and every one of those commands says so once.
+     * See ubugeeei-prod/uf#575.
+     */
+    readonly ignore?: $ReadOnlyArray<string>,
+    readonly flow?: {
+      readonly builtins?: "mixed",
+      readonly parser?: "official-flow-rust",
+    },
+    // Changes to uf's rule table, not the whole of it: a rule you did not
+    // mention keeps the level uf ships. Say `"off"` to switch one off.
+    readonly rules?: { readonly [string]: RuleLevel },
+  },
   readonly package?: {
     readonly generator?: "napi-rs",
     readonly targets?: $ReadOnlyArray<
@@ -344,12 +524,17 @@ export type UniflowedConfig = {
     readonly typescriptDeclarationsToFlow?: true,
   },
   readonly permissions?: Permissions,
+  // Plugins the project adds, appended to uf's own and resolved in the order
+  // they are written. A name that names a file is code to run, so `uf_plugin`
+  // refuses any that reaches outside the project root.
+  readonly plugins?: $ReadOnlyArray<PluginEntry>,
   readonly pm?: {
     readonly module?: "@uniflowed/pm",
     readonly resolver?: "uf-native",
     readonly lockfile?: "uf.lock",
     readonly storeDir?: string,
     readonly allowLifecycleScripts?: false,
+    readonly packageManager?: PackageManagerPreference,
     /**
      * The registry uf *reads* from: packuments, provenance attestations, and
      * the versions `uf update` reports against.
@@ -509,10 +694,10 @@ export type UniflowedConfig = {
   readonly test?: {
     readonly module?: "@uniflowed/test",
     readonly runner?: {
-      readonly runtime?: "capability-js-host" | "uf-self-hosted",
+      readonly runtime?: "vite-task" | "capability-js-host" | "uf-self-hosted",
       readonly jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
-      readonly scheduler?: "native-work-stealing",
-      readonly performanceTarget?: "faster-than-bun",
+      readonly scheduler?: "vite-task-cache" | "native-work-stealing",
+      readonly performanceTarget?: "vite-task" | "faster-than-bun",
       readonly officialFlowParser?: true,
     },
     readonly reactTestingLibraryNative?: true,
@@ -535,6 +720,15 @@ export type UniflowedConfig = {
     },
   },
   readonly tasks?: { readonly [string]: TaskDefinition },
+  /**
+   * Vite's own configuration, merged over the one uf generates.
+   *
+   * uf reads none of it, which is the point: an option Vite adds tomorrow
+   * works in a uf project tomorrow rather than after a uf release that names
+   * it. Deliberately unshaped for the same reason — a Flow type over Vite's
+   * options would be the re-declaration this key exists to avoid.
+   */
+  readonly vite?: { readonly [string]: mixed },
   readonly vrt?: {
     readonly enabled?: boolean,
     readonly module?: "@uniflowed/vrt",

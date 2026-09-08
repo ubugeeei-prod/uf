@@ -190,7 +190,9 @@ impl WorkspacePackages {
         // copy the importer can see. Ties keep batch order, which only a
         // duplicated path can produce.
         for copies in installed.values_mut() {
-            copies.sort_by_key(|copy| std::cmp::Reverse(copy.enclosing.len()));
+            // By how near the copy is, not how long its path is: `..` is two
+            // characters and the furthest away of all.
+            copies.sort_by_key(|copy| std::cmp::Reverse(specificity(&copy.enclosing)));
         }
 
         Self {
@@ -298,10 +300,39 @@ fn installed_at(manifest_path: &str) -> Option<(&str, &str)> {
 /// The batch root encloses everything, which is the hoisted copy: it is what a
 /// climb reaches last and what answers when no nested copy does.
 fn encloses(enclosing: &str, importer: &str) -> bool {
-    enclosing.is_empty()
-        || (importer.len() > enclosing.len()
-            && importer.starts_with(enclosing)
-            && importer.as_bytes()[enclosing.len()] == b'/')
+    // A base of nothing but `..` is a directory above the batch root, and an
+    // ancestor encloses everything under it — that is the hoisted copy a
+    // workspace app resolves through, which is above the app rather than in
+    // it. See ubugeeei-prod/uf#654.
+    if enclosing.is_empty() || is_above_root(enclosing) {
+        return true;
+    }
+    importer.len() > enclosing.len()
+        && importer.starts_with(enclosing)
+        && importer.as_bytes()[enclosing.len()] == b'/'
+}
+
+/// Whether a base names a directory above the batch root.
+fn is_above_root(enclosing: &str) -> bool {
+    !enclosing.is_empty() && enclosing.split('/').all(|segment| segment == "..")
+}
+
+/// How specific a base is, so the nearest copy answers first.
+///
+/// Inside the root, deeper is nearer, and the root itself is zero. Above the
+/// root the sign flips: one directory up is `-1`, two is `-2`, and both come
+/// after every copy inside — which is Node's climb, where the hoisted copy is
+/// what answers when no nearer one does.
+fn specificity(enclosing: &str) -> isize {
+    if enclosing.is_empty() {
+        return 0;
+    }
+    let segments = enclosing.split('/').count() as isize;
+    if is_above_root(enclosing) {
+        -segments
+    } else {
+        segments
+    }
 }
 
 /// Whether a batch path is a package manifest.
@@ -726,5 +757,61 @@ mod tests {
         assert!(!is_manifest("packages/cell/index.js"));
         // A file whose name merely ends in the manifest's is not one.
         assert!(!is_manifest("packages/cell/not-package.json"));
+    }
+
+    /// A package hoisted **above** the batch root answers, and one inside it
+    /// wins over it.
+    ///
+    /// npm installs a workspace app's dependencies in the repository root's
+    /// `node_modules`, which is above the app — so `uf check` run from the app
+    /// reads them at `../node_modules/…`, and a base of nothing but `..`
+    /// encloses everything under it. Before this, `encloses` compared it as a
+    /// prefix, `"app.js".starts_with("..")` was false, and every hoisted
+    /// package resolved to nothing. See ubugeeei-prod/uf#654.
+    #[test]
+    fn a_package_above_the_batch_root_is_found_and_a_nearer_one_still_wins() {
+        let hoisted = r#"{ "name": "dep", "exports": { ".": "./hoisted.js" } }"#;
+        let nested = r#"{ "name": "dep", "exports": { ".": "./nested.js" } }"#;
+        let packages = packages(&[
+            Source::new("../node_modules/dep/package.json", hoisted),
+            Source::new("../node_modules/dep/hoisted.js", ""),
+            Source::new("node_modules/foo/package.json", r#"{ "name": "foo" }"#),
+            Source::new("node_modules/foo/node_modules/dep/package.json", nested),
+            Source::new("node_modules/foo/node_modules/dep/nested.js", ""),
+            Source::new("app.js", ""),
+        ]);
+
+        // From the app: nothing nearer, so the hoisted copy answers.
+        assert_eq!(
+            exact_from(&packages, "app.js", "dep"),
+            "../node_modules/dep/hoisted.js"
+        );
+
+        // From inside `foo`: its own nested copy is nearer than the hoisted
+        // one, and `..` must not outrank it just because it sorts oddly by
+        // path length.
+        assert_eq!(
+            exact_from(&packages, "node_modules/foo/index.js", "dep"),
+            "node_modules/foo/node_modules/dep/nested.js"
+        );
+    }
+
+    /// Two directories up answers too, and is further away than one.
+    #[test]
+    fn the_nearer_of_two_ancestors_answers_first() {
+        let one_up = r#"{ "name": "dep", "exports": { ".": "./one-up.js" } }"#;
+        let two_up = r#"{ "name": "dep", "exports": { ".": "./two-up.js" } }"#;
+        let packages = packages(&[
+            Source::new("../node_modules/dep/package.json", one_up),
+            Source::new("../node_modules/dep/one-up.js", ""),
+            Source::new("../../node_modules/dep/package.json", two_up),
+            Source::new("../../node_modules/dep/two-up.js", ""),
+            Source::new("app.js", ""),
+        ]);
+
+        assert_eq!(
+            exact_from(&packages, "app.js", "dep"),
+            "../node_modules/dep/one-up.js"
+        );
     }
 }

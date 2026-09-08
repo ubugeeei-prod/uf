@@ -1904,6 +1904,69 @@ fn preview_and_start_serve_the_whole_of_a_build() {
     }
 }
 
+/// The `uf:render` envelope a response carries, which is what says whether it
+/// was rendered for this request.
+///
+/// `routerView` fixes *this* render's instant and *this* render's seed into
+/// the anchor ([`without_the_render_anchor`] is the same fact from the other
+/// side, where four adapters differ there by construction). So two reads of
+/// one prerendered file carry the same envelope and two renders never do,
+/// which is a discriminator every front door already emits — nothing has to be
+/// planted in `dist/` to get one. That matters here: [`assert_served`] is
+/// asked of a deployment *copied out of* that directory as well as of the
+/// directory itself, and a marker written into one is not in the other.
+fn render_envelope(response: &str) -> Option<&str> {
+    const OPEN: &str = "<meta name=\"uf:render\" content=\"";
+    let start = response.find(OPEN)? + OPEN.len();
+    let end = response[start..].find('"')?;
+    Some(&response[start..start + end])
+}
+
+/// The envelope reader, against the two answers it has to tell apart.
+///
+/// Written as its own test because every assertion that uses it needs a
+/// loopback socket, and a machine that cannot bind one would otherwise never
+/// find out that the reader had stopped reading. The two documents below are
+/// what `uf start` answered for `/guide/` before and after a draft cookie, cut
+/// to the `<head>` that carries the anchor.
+#[test]
+fn the_render_envelope_is_read_off_a_document_and_tells_two_renders_apart() {
+    const PRERENDERED: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
+         <!doctype html><html lang=\"en\"><head><meta charSet=\"utf-8\"/>\
+         <meta name=\"uf:render\" content=\"{&quot;at&quot;:1788840631074,&quot;\
+         timeZone&quot;:&quot;UTC&quot;,&quot;seed&quot;:&quot;x8q4fwyl&quot;}\"/>\
+         <title>served-app</title></head><body><h1>served-app guide</h1></body></html>";
+    // The same route a moment later: a different instant and a different seed,
+    // which is what `routerView` fixes per render.
+    let rendered = PRERENDERED
+        .replace("1788840631074", "1788840699001")
+        .replace("x8q4fwyl", "b3ktz9rm");
+
+    let published = render_envelope(PRERENDERED).expect("the anchor is in the document");
+    assert!(published.contains("1788840631074"), "{published}");
+    // Two reads of one file are one answer, and that is what makes the
+    // inequality below mean "rendered" rather than "different bytes".
+    assert_eq!(render_envelope(PRERENDERED), Some(published));
+    assert_ne!(render_envelope(&rendered), Some(published));
+
+    // A response with no document in it has no anchor, rather than an empty
+    // one that would compare equal to another absence.
+    assert_eq!(render_envelope("HTTP/1.1 200 OK\r\n\r\nexport {};"), None);
+}
+
+/// Any value: the doors read the cookie's *name* and never its signature,
+/// which `packages/server/internal/draft.js` argues at `carriesDraftCookie` —
+/// they run before any application code and cannot reach the verified answer.
+const DRAFT_COOKIE: &str = "__Host-uf.draft=1.whatever";
+
+/// The hydration script a served document names, as a path to ask for.
+fn document_script(body: &str) -> Option<String> {
+    let at = body.find("<script type=\"module\" src=\"")?;
+    let rest = &body[at + "<script type=\"module\" src=\"".len()..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_owned())
+}
+
 /// The script a deployed directory is asked with, when no socket may be had.
 ///
 /// It is written *beside* the copied directory rather than inside it, and
@@ -2903,6 +2966,80 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("did not serve the nested route", &guide)
     );
+    let published = render_envelope(&guide).map(str::to_owned);
+    assert!(
+        published.is_some(),
+        "{}",
+        context(
+            "served a document with no `uf:render` anchor, and the anchor is what the two \
+             assertions below read to tell a file from a render",
+            &guide
+        )
+    );
+    // Asked twice, and the same answer twice is what says this one came off
+    // disk: an anchor is fixed per *render*, so a route rendered per request
+    // could not give the same one back. Without this the assertion below would
+    // hold for a server that renders everything, which is not draft mode.
+    let again = get(server, port, "/guide/", said);
+    assert_eq!(
+        render_envelope(&again).map(str::to_owned),
+        published,
+        "{}",
+        context(
+            "rendered a route it had a prerendered document for; the assertions below are \
+             only about draft mode if this one is about a file",
+            &again
+        )
+    );
+
+    // 2b. The same route, asked for by somebody carrying the draft cookie. It
+    //     has to be *rendered* — a file in `dist/` is what the site said before
+    //     the draft existed, and `packages/server/internal/draft.js`'s
+    //     `prerenderedMayAnswer` is where that is argued for every front door.
+    //
+    //     Asked of both servers because they used to disagree: `uf start` owns
+    //     its socket and applied the rule in its own static handler, while
+    //     `uf preview` delegates the static half to Vite, whose file middleware
+    //     runs in front of anything uf mounts behind it — so draft mode looked
+    //     switched off there and worked everywhere else. See
+    //     ubugeeei-prod/uf#620, and #342 for the same shape one layer up.
+    let drafting = http_get_with("127.0.0.1", port, "/guide/", &[("Cookie", DRAFT_COOKIE)]);
+    assert!(
+        drafting.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not answer a draft request at all", &drafting)
+    );
+    assert!(
+        drafting.contains("served-app guide"),
+        "{}",
+        context(
+            "answered a draft request with something that is not the route",
+            &drafting
+        )
+    );
+    assert_ne!(
+        render_envelope(&drafting).map(str::to_owned),
+        published,
+        "{}",
+        context(
+            "handed a draft request the prerendered document — the same `uf:render` anchor \
+             the two requests above shared — so draft mode is off here and on everywhere else",
+            &drafting
+        )
+    );
+
+    // And its assets still come off disk, because a chunk is the same bytes in
+    // draft mode as out of it — skipping those would leave the page unstyled
+    // and unhydrated for no gain.
+    let script = document_script(body);
+    if let Some(script) = script.as_deref() {
+        let chunk = http_get_with("127.0.0.1", port, script, &[("Cookie", DRAFT_COOKIE)]);
+        assert!(
+            chunk.starts_with("HTTP/1.1 200"),
+            "{}",
+            context("refused a draft request its own hydration script", &chunk)
+        );
+    }
 
     // 3. A route with a parameter and no `generateStaticParams`, which the
     //    build wrote no file for: the only way this can be a 200 is a render
@@ -3338,6 +3475,27 @@ fn http_get(host: &str, port: u16, path: &str) -> String {
 /// the only thing that can answer, and therefore the half a build that serves
 /// only files gets wrong.
 fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&str>) -> String {
+    http_request_with(host, port, method, path, body, &[])
+}
+
+/// One `GET` carrying extra headers, which is how a cookie reaches a server.
+///
+/// Written as a separate entry point rather than a sixth parameter on every
+/// call site: the requests above are the ones a browser makes with nothing
+/// attached, and that is what makes them the requests every other assertion
+/// here is about.
+fn http_get_with(host: &str, port: u16, path: &str, headers: &[(&str, &str)]) -> String {
+    http_request_with(host, port, "GET", path, None, headers)
+}
+
+fn http_request_with(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    headers: &[(&str, &str)],
+) -> String {
     let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
     stream
         .set_read_timeout(Some(Duration::from_secs(60)))
@@ -3351,10 +3509,14 @@ fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&s
             body.len()
         )
     });
+    let extra = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect::<String>();
     write!(
         stream,
         "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\n\
-         Connection: close\r\n{}",
+         Connection: close\r\n{extra}{}",
         if entity.is_empty() {
             String::from("\r\n")
         } else {

@@ -3651,6 +3651,7 @@ dependencies = [
  "thiserror",
  "uf_assets",
  "uf_bundle",
+ "uf_flow",
  "uf_runtime",
 ]
 
@@ -3810,6 +3811,13 @@ dependencies = [
  "smallvec",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "uf_profiler"
+version = "0.0.0-alpha.15"
+dependencies = [
+ "criterion",
 ]
 
 [[package]]

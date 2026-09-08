@@ -63,11 +63,20 @@ import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
-import { carriesDraftCookie } from "./internal/draft.js";
+import { prerenderedMayAnswer } from "./internal/draft.js";
 import type { Logger } from "./internal/log.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+
+// The fourth front door is not in this package: `uf preview` serves files with
+// Vite's own middleware, which runs in front of anything uf mounts behind it,
+// so the skip in `createStaticHandler` below never sees the request
+// (ubugeeei-prod/uf#620). It cannot re-argue the rule and it must not
+// re-implement it, so the rule is exported — `@uniflowed/vite`'s
+// `internal/serve.js` reaches it through this module, which is already the one
+// it loads for `createStaticHandler`.
+export { prerenderedMayAnswer } from "./internal/draft.js";
 
 /**
  * What a Node host can do, plus whatever the deployment supplied.
@@ -311,24 +320,15 @@ export function createStaticHandler(options: {|
         ? [path.join(resolved, "index.html")]
         : [resolved, path.join(resolved, "index.html"), `${resolved}.html`];
 
-    // A draft request is never answered with a prerendered document. A file in
-    // `dist/` is what the site said before the draft existed, so handing one to
-    // an editor who came to look at the draft answers a different question from
-    // the one they asked — and draft mode would be a feature that works
-    // everywhere except on the pages a build was able to prerender, which are
-    // the ones a CMS produces. Only documents: a stylesheet and a chunk are the
-    // same bytes in draft mode as out of it, and skipping those would leave the
-    // page unstyled and unhydrated for no gain.
-    //
-    // The *name* of the cookie decides it, not the signature. This module is
-    // the host's copy of `@uniflowed/server` rather than the bundle's, so it
-    // cannot reach the request context where the verified answer lives —
-    // `internal/draft.js`'s `carriesDraftCookie` says what a forged one is
-    // worth, which is one live render of a page that is public anyway.
-    const drafting = carriesDraftCookie(request.headers.get("cookie"));
+    // A draft request is never answered with a prerendered document, and
+    // `internal/draft.js`'s `prerenderedMayAnswer` is where that is argued —
+    // once, for all four front doors. What is this door's own is the last
+    // sentence of it: which of these bytes are a *document*. Here that is the
+    // file's extension, because here the bytes are files.
+    const prerendered = prerenderedMayAnswer(request.headers.get("cookie"));
 
     for (const candidate of candidates) {
-      if (drafting && candidate.toLowerCase().endsWith(".html")) continue;
+      if (!prerendered && candidate.toLowerCase().endsWith(".html")) continue;
       const info = await statFile(candidate);
       if (info == null || !info.isFile()) continue;
       // The containment check above is textual, and a symlink is how a path

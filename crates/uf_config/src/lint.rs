@@ -11,7 +11,21 @@ pub struct LintConfig {
     pub engine: LintEngine,
     pub files: Vec<CompactString>,
     pub flow: FlowLintConfig,
-    pub ignore: Vec<CompactString>,
+    /// The deprecated spelling of the project-wide ignore list.
+    ///
+    /// It was never `uf lint`'s: `uf fmt`, `uf check`, `uf test` and `uf doc`
+    /// walk the project through the same function and have always read it too,
+    /// so the key is named after one of the five commands that obey it. The
+    /// name it should have had is [`crate::UniflowedConfig::ignore`], and this
+    /// one keeps working for as long as alpha lasts — read only when that is
+    /// absent, and reported once when it is what answered. See
+    /// [`crate::UniflowedConfig::project_ignore`] and ubugeeei-prod/uf#575.
+    ///
+    /// An `Option` because the distinction it carries is the whole of the
+    /// migration: `None` means the project never wrote this key, and there is
+    /// nothing to tell anybody about; `Some(vec![])` means it wrote an empty
+    /// one, which is a project deliberately walking `node_modules`.
+    pub ignore: Option<Vec<CompactString>>,
     /// Rule levels, **merged over** [`DEFAULT_LINT_RULES`] rather than
     /// replacing it. See [`rules_over_defaults`].
     #[serde(deserialize_with = "rules_over_defaults")]
@@ -279,11 +293,11 @@ impl Default for LintConfig {
                 CompactString::const_new("tests"),
             ],
             flow: FlowLintConfig::default(),
-            ignore: vec![
-                CompactString::const_new("node_modules"),
-                CompactString::const_new("dist"),
-                CompactString::const_new("target"),
-            ],
+            // Absent, not empty, and the default list is no longer here: it
+            // moved to `crate::DEFAULT_IGNORE` with the key. A project that
+            // never wrote `lint.ignore` has nothing to be told about, and
+            // that is what `None` says.
+            ignore: None,
             rules,
         }
     }

@@ -34,7 +34,10 @@ use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
 use crate::commands::vite::{find_program, resolve_host};
 
-use crate::support::{TEST, plural, project_env, quoted_list, selects, unreadable_lines};
+use crate::support::{
+    TEST, ignore_deprecation, plural, project_env, quoted_list, render_ignore_deprecation, selects,
+    unreadable_lines,
+};
 use crate::ui::Ui;
 
 mod coverage;
@@ -146,6 +149,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // `tests/library/module-mock.test.js` does, so a killed run leaves nothing
     // behind — still has to be runnable by name.
     let scan = scan_selected_source_files(&root, &resolved.config, &args.paths)?;
+    render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));
     let unreadable = unreadable_lines(&scan.unreadable);
     let files = scan.files;
     // Before anything is run. A file uf could not read might have been a test,
