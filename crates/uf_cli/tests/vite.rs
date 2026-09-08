@@ -4949,7 +4949,17 @@ fn the_dev_server_and_the_production_server_each_read_their_own_mode() {
 ///    hydration script;
 /// 4. `uf build`'s summary says `1 of 2`, and it says it because the bundler
 ///    reported what it emitted rather than because uf predicted it;
-/// 5. the manifest published beside the build carries the same decision.
+/// 5. the manifest published beside the build carries the same decision;
+/// 6. the in-source test block in the counter is gone, while the counter is
+///    not.
+///
+/// (6) is here rather than in a fixture of its own because it needs exactly
+/// what this test already has — a built client bundle, read back as text — and
+/// a second project built for one grep would be another minute of every CI run
+/// to answer a question this one can answer for free. It is the same file and
+/// the same build that proves the module ships, which is the pairing that
+/// makes it mean something: "the bundle is missing a string" is only evidence
+/// when something else establishes the bundle is not missing the module.
 ///
 /// The stylesheet assertion inside (3) is the one that is not obvious. A uf
 /// build links the CSS it finds in the *client* graph, so the first version of
@@ -5034,6 +5044,17 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
     assert!(
         counter.contains("<script type=\"module\" src=\"/assets/"),
         "the interactive route lost its hydration script:\n{counter}"
+    );
+
+    // 6. The counter's in-source test block is not in what the browser
+    //    downloads. `uf` compiled `import.meta.uf.test` to `void 0` and the
+    //    bundler removed the branch; a build that shipped the block would ship
+    //    the assertions and, in a project that imported its API rather than
+    //    reading it from the marker, the test framework with them.
+    assert!(
+        !bundle.contains("in-source-marker-no-build-may-ship-this"),
+        "an in-source test block reached the client bundle:\n{}",
+        script_names(&scripts)
     );
 
     // 4. The summary is the bundler's own count of what it emitted, not a

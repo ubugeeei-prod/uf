@@ -45,6 +45,13 @@ import path from "node:path";
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
 
+import {
+  AUDIT_PUBLIC_PATH,
+  AUDIT_RESOLVED_ID,
+  auditAvailable,
+  auditRuntimeSource,
+  auditTag,
+} from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
 import { emit, reportRenderError } from "./internal/events.js";
 import { highlightPlugin } from "./internal/highlight.js";
@@ -129,8 +136,16 @@ export default function uniflowed(options = {}) {
   // client entry; see `flowPlugin`'s `load`. ubugeeei-prod/uf#516.
   const strictMode = app.react?.strictMode !== false;
 
+  const accessibility = ufConfig.accessibility ?? {};
+
   return [
-    flowPlugin({ routerRoot, appEntry, strictMode, command: options.command }),
+    flowPlugin({
+      routerRoot,
+      appEntry,
+      strictMode,
+      command: options.command,
+      accessibility,
+    }),
     mdxPlugin(markdown),
     assetPlugin({
       images: builtins.images ?? {},
@@ -142,9 +157,18 @@ export default function uniflowed(options = {}) {
   ];
 }
 
-function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
+function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }) {
   let root = process.cwd();
   let isProduction = false;
+  /**
+   * Whether this project has axe-core, so the audit has an engine.
+   *
+   * Answered once in `configResolved` rather than per document: it is a
+   * question about `node_modules`, the answer cannot change while the server
+   * runs without a restart anyway, and asking it per render would put a module
+   * resolution on the path of every page.
+   */
+  let auditsPage = false;
   let base = "/";
   let appRoot = "";
   let entryPath = "";
@@ -254,6 +278,10 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
     config(userConfig, env) {
       const projectRoot = path.resolve(userConfig.root ?? process.cwd());
       isProduction = env.mode === "production" || env.command === "build";
+      // Decided here rather than in `configResolved`, because the answer has to
+      // reach `optimizeDeps.include` below and that is written in this hook.
+      auditsPage =
+        !isProduction && (accessibility?.devAudit ?? true) && auditAvailable(projectRoot);
       return {
         // uf serves HTML itself; there is no index.html to fall back to.
         appType: "custom",
@@ -268,6 +296,16 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
             "react/compiler-runtime",
             "react-dom",
             "react-dom/client",
+            // The accessibility audit's engine, when this project has one.
+            //
+            // Named up front rather than left to be discovered. axe-core is
+            // CommonJS, and the only thing that imports it is a *virtual*
+            // module reached from the document — so Vite would meet it for the
+            // first time after a page had already loaded, optimise it then, and
+            // reload the page it had just served. A full reload in the middle
+            // of the first render of every `uf dev` session is a high price for
+            // a feature whose whole manner is to be quiet.
+            ...(auditsPage ? ["axe-core"] : []),
           ],
           // uf's packages ship Flow. The dependency optimiser pre-bundles
           // with a JavaScript parser and would reject every one of them.
@@ -295,6 +333,7 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
 
     resolveId(id) {
       if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
+      if (id === AUDIT_PUBLIC_PATH) return AUDIT_RESOLVED_ID;
       if (VIRTUAL_IDS.has(id)) return resolved(id);
       // A module's own stylesheet, which `transform` below asked for by
       // importing this id. Returning it unchanged marks it resolved without
@@ -305,6 +344,7 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
 
     load(id, loadOptions) {
       if (id === RUNTIME_RESOLVED_ID) return refreshRuntimeSource();
+      if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe);
       if (id === resolved(VIRTUAL.routes)) {
         const table = scanRoutes(appRoot);
         // The server renders every route, so the server's table is the whole
@@ -431,7 +471,7 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
     // argument, and the three conditions DevTools needs.
     transformIndexHtml() {
       if (isProduction) return [];
-      return [
+      const tags = [
         {
           tag: "script",
           children: devtoolsPreamble(),
@@ -444,6 +484,13 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
           injectTo: "head-prepend",
         },
       ];
+      // Only when the project has the engine. A tag pointing at a module that
+      // cannot resolve `axe-core` would be a red console on every page of a
+      // project that never asked for an audit, which is a worse default than
+      // no audit.
+      const audit = auditTag(base, auditsPage);
+      if (audit != null) tags.push(audit);
+      return tags;
     },
 
     configureServer(devServer) {

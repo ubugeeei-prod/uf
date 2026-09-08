@@ -156,7 +156,15 @@ describe("what a document is given", () => {
     // inline script runs while the parser is on it, so no module and no
     // `<script src>` a project's own Vite plugin injects can get between this
     // and the renderer — which is why the absence of `type` is asserted.
-    const flow = plugin();
+    // The accessibility audit is off, so what this counts is the DevTools
+    // document and nothing else. `uf dev` also injects the axe runtime when
+    // the project has the engine — this repository does — and that tag goes
+    // into the *body*, where it cannot come between the hook and the renderer;
+    // `a11y-audit.test.js` owns the assertion that it is there, is last, and
+    // leaves these two exactly as they are. Turning it off here rather than
+    // widening the count keeps this file able to fail when a third tag appears
+    // in the head, which is the failure ubugeeei-prod/uf#503 is about.
+    const flow = plugin({ accessibility: { devAudit: false } });
     forCommand(flow, "serve");
 
     const tags = flow.transformIndexHtml();

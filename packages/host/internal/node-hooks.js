@@ -47,7 +47,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isFlowModule, sharedService, transformFlow, ufBinaryIdentity } from "../transform.js";
+import {
+  inSourceTests,
+  isFlowModule,
+  sharedService,
+  transformFlow,
+  ufBinaryIdentity,
+} from "../transform.js";
 import { writeAtomically } from "../write-atomically.js";
 
 /**
@@ -59,7 +65,7 @@ import { writeAtomically } from "../write-atomically.js";
  * around a transform — the appended source map, the module format it forces —
  * and that is all it should ever be bumped for.
  */
-const CACHE_VERSION = "2";
+const CACHE_VERSION = "3";
 
 let cacheDirectory = null;
 let root = null;
@@ -108,6 +114,15 @@ function cacheEntryFor(identity, source, filename) {
     .update("\0")
     .update(identity)
     .update("\0")
+    // Every transform option that changes the output has to be in the key,
+    // and this is the first one that varies between two commands sharing a
+    // cache directory. `uf test` compiles `import.meta.uf.test` to uf's test
+    // API and `uf run` compiles it to `void 0`; without this byte the second
+    // command to touch a module would be served the first one's answer, and
+    // the symptom would be an in-source test that ran or did not depending on
+    // what somebody had typed earlier in the day.
+    .update(inSourceTests() ? "in-source" : "plain")
+    .update("\0")
     .update(filename)
     .update("\0")
     .update(source)
@@ -149,7 +164,12 @@ async function cachedTransform(source, filename) {
     }
   }
 
-  const out = await transformFlow(source, filename, { root, development: true, sourceMap: true });
+  const out = await transformFlow(source, filename, {
+    root,
+    development: true,
+    sourceMap: true,
+    inSourceTests: inSourceTests(),
+  });
   if (out == null) return null;
   const output = out.map
     ? `${out.code}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(out.map).toString("base64")}\n`

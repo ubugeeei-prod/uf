@@ -115,6 +115,22 @@ export function ufBinary() {
 }
 
 /**
+ * Whether this host is compiling for a run that collects in-source tests.
+ *
+ * `uf test` sets `UF_IN_SOURCE_TESTS` on every worker it starts, and nothing
+ * else sets it. The flag decides what `import.meta.uf.test` compiles to — uf's
+ * test API here, `void 0` everywhere else — which is why it has to reach the
+ * transform rather than only the runtime: a block that survives into a
+ * production bundle is worse than no in-source tests at all.
+ *
+ * Read per call rather than captured once, because the loader hooks are
+ * installed before `uf` has told the process anything.
+ */
+export function inSourceTests() {
+  return process.env.UF_IN_SOURCE_TESTS === "1";
+}
+
+/**
  * Which *build* of `uf` a host will transform through, or `null` when that
  * cannot be established.
  *

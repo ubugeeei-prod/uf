@@ -66,9 +66,11 @@
 // the only part of the issue that does.
 
 import type { AsymmetricMatcher } from "./asymmetric.js";
+import type { AxeOptions } from "./axe.js";
 import type { SpyCall } from "./spy.js";
 import * as asymmetric from "./asymmetric.js";
 import * as snapshot from "./snapshot.js";
+import { auditElement, describeViolations, violationIds } from "./axe.js";
 import { isSpy } from "./spy.js";
 import { equals, matchesObject, render } from "./equality.js";
 
@@ -90,7 +92,14 @@ export class AssertionError extends Error {
   }
 }
 
-/** What a matcher decided, and how to say it either way. */
+/**
+ * What a matcher decided, and how to say it either way.
+ *
+ * A matcher may answer with a promise of one. Only one does — the accessibility
+ * audit, whose engine has no synchronous entry point — and [`bind`] is where
+ * the two cases are told apart; see the note there for why the promise is not
+ * hidden from the caller.
+ */
 type Verdict = {|
   readonly pass: boolean,
   readonly failure: () => string,
@@ -177,6 +186,20 @@ export type Matchers<R> = {
   readonly toHaveClass: (...names: $ReadOnlyArray<string>) => R,
   readonly toHaveTextContent: (expected: string | RegExp) => R,
   readonly toHaveValue: (expected: mixed) => R,
+  /**
+   * Run axe-core over this element's subtree and require it to find nothing.
+   *
+   * `Promise<void>` rather than `R`, and it is the one matcher in this listing
+   * that is not generic: axe has no synchronous entry point, so the answer is
+   * a promise however the expectation was reached, and `await` is not optional.
+   *
+   *     await expect(container).toHaveNoAxeViolations();
+   *     await expect(container).toHaveNoAxeViolations({ tags: ["wcag2a"] });
+   *
+   * The rule set comes from `accessibility.axe` in `uf.config.js`; the argument
+   * narrows it for one assertion. See `./axe.js`.
+   */
+  readonly toHaveNoAxeViolations: (options?: AxeOptions) => Promise<void>,
   readonly not: Matchers<R>,
   ...
 };
@@ -318,7 +341,7 @@ function matchesThrown(thrown: mixed, expected: mixed): boolean {
  * ubugeeei-prod/uf#402.
  */
 function verdicts(received: mixed): {
-  readonly [string]: (...args: $ReadOnlyArray<mixed>) => Verdict,
+  readonly [string]: (...args: $ReadOnlyArray<mixed>) => Verdict | Promise<Verdict>,
 } {
   const shown = () => render(received);
   const simple = (pass: boolean, what: string, expected?: mixed): Verdict => ({
@@ -667,6 +690,23 @@ function verdicts(received: mixed): {
         failure: () => `expected the value ${render(actual)} to be ${render(expected)}`,
       };
     },
+    toHaveNoAxeViolations: async (options: mixed) => {
+      const node = element("toHaveNoAxeViolations");
+      const found = await auditElement(node, (options: $FlowFixMe));
+      const named = violationIds(found);
+      return {
+        pass: found.length === 0,
+        expected: "no accessibility violations",
+        received: found.length === 0 ? "none" : named,
+        failure: () =>
+          `expected no accessibility violations, and axe-core reported ` +
+          `${String(found.length)}:\n${describeViolations(found)}`,
+        // A passing audit is not proof of an accessible component — axe finds
+        // what a machine can find — so the negated message says what was
+        // actually established rather than implying the opposite verdict.
+        negatedFailure: () => "expected axe-core to report a violation, and it reported none",
+      };
+    },
   };
 
   /**
@@ -679,7 +719,16 @@ function verdicts(received: mixed): {
   function element(matcher: string): Element {
     const node: $FlowFixMe = received;
     if (node == null || typeof node.getAttribute !== "function") {
-      throw new AssertionError(`${matcher} needs an element, and received ${render(received)}`);
+      // All four arguments, unlike the first version of this: the runner
+      // renders `expected` and `received` beside the message, and a one
+      // argument call left both of them `undefined` on screen for the one
+      // failure whose whole content is what was received instead.
+      throw new AssertionError(
+        `${matcher} needs an element, and received ${render(received)}`,
+        matcher,
+        "an element",
+        render(received),
+      );
     }
     return node;
   }
@@ -780,8 +829,7 @@ function bind(received: mixed, negated: boolean): $FlowFixMe {
   const table = verdicts(received);
   const bound: $FlowFixMe = {};
   for (const name of Object.keys(table)) {
-    bound[name] = (...args: $ReadOnlyArray<mixed>) => {
-      const verdict = table[name](...args);
+    const decide = (verdict: Verdict) => {
       if (verdict.pass !== negated) {
         return undefined;
       }
@@ -792,6 +840,29 @@ function bind(received: mixed, negated: boolean): $FlowFixMe {
         verdict.expected ?? "",
         verdict.received ?? render(received),
       );
+    };
+    bound[name] = (...args: $ReadOnlyArray<mixed>) => {
+      const verdict = table[name](...args);
+      // A matcher whose engine is asynchronous answers with a promise of a
+      // verdict, and the promise is handed straight back rather than hidden.
+      //
+      // Hiding it was the alternative and it cannot be done: the only way to
+      // present an asynchronous answer synchronously is to decide before it
+      // arrives, which is deciding without it. What the promise costs is a
+      // forgotten `await`, and that case is not silent either — the rejection
+      // reaches the worker's unhandled-rejection handler, which fails the file
+      // the promise was created in and prints this same message. A missing
+      // `await` on a passing audit is the one case nothing reports, and it is
+      // the case where nothing happened.
+      //
+      // `instanceof Promise` rather than a `then` test, and it is safe for a
+      // reason that would not survive being generalised: every entry in the
+      // table is written in this file, so the only promise that can arrive
+      // here is one an `async` function in this module made, in this realm. A
+      // matcher registered from outside — which `@uniflowed/test` has no API
+      // for, deliberately — could hand back a foreign thenable, and this line
+      // would be the thing to revisit.
+      return verdict instanceof Promise ? verdict.then(decide) : decide(verdict);
     };
   }
   Object.defineProperty(bound, "not", { get: () => bind(received, !negated) });
@@ -840,7 +911,12 @@ function settled(promise: mixed, wanted: "resolve" | "reject", negated: boolean)
               throw value;
             }
           : value;
-      bind(subject, negated)[name](...args);
+      // Returned rather than called and dropped: the wrapper is `async`, so
+      // returning an asynchronous matcher's promise is what awaits it. Without
+      // this, `await expect(p).resolves.toHaveNoAxeViolations()` awaited the
+      // settling and not the audit, and a violation surfaced as an unhandled
+      // rejection under whichever file was running by then.
+      return bind(subject, negated)[name](...args);
     };
   }
   Object.defineProperty(bound, "not", { get: () => settled(promise, wanted, !negated) });
