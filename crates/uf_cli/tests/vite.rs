@@ -793,78 +793,67 @@ fn dev_reports_a_contract_violation_when_one_appears() {
     }
     let root = project_with_a_clean_server_component();
     let helper = root.join("app/greeting.js");
-    let mut refused = Vec::new();
+    let said = Mutex::new(String::new());
 
-    for attempt in 1..=PORT_ATTEMPTS {
-        let port = free_port();
-        let said = Mutex::new(String::new());
-
-        let served = std::thread::scope(|scope| {
-            let mut server =
-                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
-            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
-                refused.push(format!(
-                    "attempt {attempt} on port {port}: {}",
-                    server.evidence(&said)
-                ));
-                drop(server);
-                return false;
-            }
-
-            // A clean project says nothing. Asserted after the server has
-            // answered a request, which is well after the start-up analysis.
-            assert!(
-                !said_contains(&said, "server components"),
-                "a project with no violations must not report any:\n{}",
-                server_said(&said)
-            );
-
-            fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
-            let reported = wait_for_said(
-                &said,
-                "rsc/client-only-api-in-server",
-                Duration::from_secs(30),
-            );
-            assert!(
-                reported,
-                "the dev server did not report the violation that appeared:\n{}",
+    std::thread::scope(|scope| {
+        // See the note in `dev_answers_the_fixture_the_way_a_build_does`.
+        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
                 server.evidence(&said)
             );
-            let text = server_said(&said);
-            assert!(
-                text.contains("app/greeting.js"),
-                "the report must name the module:\n{text}"
-            );
-            assert!(
-                text.contains("localStorage"),
-                "the report must name the API:\n{text}"
-            );
-
-            // And it goes away again: a report that only ever accumulates is a
-            // report nobody can use to tell whether they fixed it.
-            fs::write(&helper, CLEAN_HELPER).unwrap();
-            let cleared = wait_for_said(
-                &said,
-                "the server-component contract holds",
-                Duration::from_secs(30),
-            );
-            assert!(
-                cleared,
-                "the dev server never said the violation was gone:\n{}",
+        };
+        if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+            panic!(
+                "the dev server announced port {port} and did not answer on it\n{}",
                 server.evidence(&said)
             );
-            true
-        });
-
-        if served {
-            return;
         }
-    }
 
-    panic!(
-        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
-        refused.join("\n\n")
-    );
+        // A clean project says nothing. Asserted after the server has
+        // answered a request, which is well after the start-up analysis.
+        assert!(
+            !said_contains(&said, "server components"),
+            "a project with no violations must not report any:\n{}",
+            server_said(&said)
+        );
+
+        fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
+        let reported = wait_for_said(
+            &said,
+            "rsc/client-only-api-in-server",
+            Duration::from_secs(30),
+        );
+        assert!(
+            reported,
+            "the dev server did not report the violation that appeared:\n{}",
+            server.evidence(&said)
+        );
+        let text = server_said(&said);
+        assert!(
+            text.contains("app/greeting.js"),
+            "the report must name the module:\n{text}"
+        );
+        assert!(
+            text.contains("localStorage"),
+            "the report must name the API:\n{text}"
+        );
+
+        // And it goes away again: a report that only ever accumulates is a
+        // report nobody can use to tell whether they fixed it.
+        fs::write(&helper, CLEAN_HELPER).unwrap();
+        let cleared = wait_for_said(
+            &said,
+            "the server-component contract holds",
+            Duration::from_secs(30),
+        );
+        assert!(
+            cleared,
+            "the dev server never said the violation was gone:\n{}",
+            server.evidence(&said)
+        );
+    });
 }
 
 /// Whether the server has said `needle` yet, waiting up to `budget` for it.
@@ -1329,11 +1318,21 @@ impl Drop for Server {
 /// times and prints three servers' reasons, which is more than the one line
 /// this used to give.
 ///
-/// [`dev_serves_the_docs_site_through_vite`] no longer needs it: `uf dev
-/// --port 0` asks the operating system for a port through the process that
-/// then holds it, and prints the answer, so there is no window to lose. The
-/// commands that have no such flag are still here, and this is still the best
-/// available answer for them.
+/// Most of the `uf dev` tests no longer need it: `uf dev --port 0` asks the
+/// operating system for a port *through the process that then holds it*, and
+/// prints the answer, so there is no window to lose. Three of them have moved
+/// — the two here and [`dev_serves_the_docs_site_through_vite`] — after this
+/// race failed CI five times in one afternoon, three of those on
+/// `Port … is already in use` after all three attempts lost, which is what a
+/// loaded runner does to a window this wide.
+///
+/// What is left needs a port it can name twice.
+/// [`dev_rereads_an_env_file_that_changed_under_it`] asserts across a
+/// **restart**: `--port` carries `--strict-port`, so a server that came back
+/// on the same number is the property being tested, and `--port 0` would give
+/// it a different one and turn a real regression into a passing test. The
+/// commands with no such flag are in the same position. For those this is
+/// still the best available answer.
 const PORT_ATTEMPTS: usize = 3;
 
 /// The port in the first `http://host:port` URL a server has printed, if any.
@@ -1528,36 +1527,28 @@ fn dev_answers_the_fixture_the_way_a_build_does() {
     // of them wrote.
     let _served = served_lock();
     let root = served_app_root();
-    let mut refused = Vec::new();
+    let said = Mutex::new(String::new());
 
-    for attempt in 1..=PORT_ATTEMPTS {
-        let port = free_port();
-        let said = Mutex::new(String::new());
-
-        let served = std::thread::scope(|scope| {
-            let mut server =
-                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
-            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
-                assert_dev_served(&mut server, port, &said, &body);
-                return true;
-            }
-            refused.push(format!(
-                "attempt {attempt} on port {port}: {}",
+    std::thread::scope(|scope| {
+        // `--port 0` rather than a port chosen here: asking the operating
+        // system *through the process that will hold the socket* leaves no
+        // window for anything else on the machine to take it. See
+        // [`Server::bound_port`].
+        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
                 server.evidence(&said)
-            ));
-            drop(server);
-            false
-        });
-
-        if served {
-            return;
-        }
-    }
-
-    panic!(
-        "the dev server never answered `served-app`, on {PORT_ATTEMPTS} different ports\n{}",
-        refused.join("\n\n")
-    );
+            );
+        };
+        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
+            panic!(
+                "the dev server announced port {port} and never answered `served-app`\n{}",
+                server.evidence(&said)
+            );
+        };
+        assert_dev_served(&mut server, port, &said, &body);
+    });
 }
 
 /// Everything `uf dev` has to answer for `served-app`, once it is listening.
@@ -3455,13 +3446,17 @@ fn server_said(said: &Mutex<String>) -> String {
 /// port stopped listening, and `http_get`'s bare `expect` reported
 /// `ConnectionRefused` and nothing about the process that had refused it.
 fn get(server: &mut Server, port: u16, path: &str, said: &Mutex<String>) -> String {
-    if TcpStream::connect(("127.0.0.1", port)).is_err() {
-        panic!(
-            "the dev server answered `/` and then stopped listening, before {path}\n{}",
+    match try_http_request("127.0.0.1", port, "GET", path, None, &[]) {
+        Ok(response) => response,
+        // The whole exchange, not just the connect. A server that has gone
+        // away mid-request resets rather than refusing, and reporting that as
+        // a bare `unwrap` on a read threw away the one thing the failure was
+        // written to carry: what the process itself said before it went.
+        Err(error) => panic!(
+            "the dev server answered `/` and then stopped answering, at {path}: {error}\n{}",
             server.evidence(said)
-        );
+        ),
     }
-    http_get("127.0.0.1", port, path)
 }
 
 /// A port nothing is listening on, released before the server binds it.
@@ -3488,23 +3483,27 @@ fn free_port() -> u16 {
 }
 
 /// Poll until the server answers, or give up.
+///
+/// The request is the probe. Connecting first and then asking looked like the
+/// careful order and was the opposite: a server that has bound its port but is
+/// not serving yet accepts the connection and resets it, so the poll would
+/// connect happily, hand the socket to a helper that unwrapped the read, and
+/// panic with `Connection reset by peer` — inside the loop written to wait for
+/// exactly that. It cost two green pull requests an hour apart.
+///
+/// So the whole exchange is fallible here, and an error is a reason to sleep
+/// rather than a reason to stop. The connect is also no longer made twice.
 fn wait_for_http(port: u16, path: &str, budget: Duration) -> Option<String> {
     let started = Instant::now();
     while started.elapsed() < budget {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            let body = http_get("127.0.0.1", port, path);
-            if !body.is_empty() {
-                return Some(body);
-            }
+        if let Ok(body) = try_http_request("127.0.0.1", port, "GET", path, None, &[])
+            && !body.is_empty()
+        {
+            return Some(body);
         }
         std::thread::sleep(Duration::from_millis(200));
     }
     None
-}
-
-/// One plain HTTP/1.1 request, so the test depends on nothing but the server.
-fn http_get(host: &str, port: u16, path: &str) -> String {
-    http_request(host, port, "GET", path, None)
 }
 
 /// The same, for a method and a body — which is the half a route handler is
@@ -3532,10 +3531,29 @@ fn http_request_with(
     body: Option<&str>,
     headers: &[(&str, &str)],
 ) -> String {
-    let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(60)))
-        .unwrap();
+    match try_http_request(host, port, method, path, body, headers) {
+        Ok(response) => response,
+        Err(error) => panic!("{method} {path} on {host}:{port} did not complete: {error}"),
+    }
+}
+
+/// The same exchange, for a caller that has a reason to expect it to fail.
+///
+/// [`wait_for_http`] is that caller: while a server is coming up, a connect
+/// that succeeds and a read that is reset are the same event seen half a
+/// millisecond apart, and a poll cannot tell them apart by connecting first.
+/// Everything above this returns the response or panics, because by then the
+/// server has answered once and a failure is the test's finding.
+fn try_http_request(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    headers: &[(&str, &str)],
+) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect((host, port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
     // The body's headers only when there is a body: a `GET` carrying
     // `Content-Length: 0` is legal and is still not the request a browser
     // makes, and this is the request every other assertion here is made about.
@@ -3558,11 +3576,10 @@ fn http_request_with(
         } else {
             entity
         }
-    )
-    .unwrap();
+    )?;
     let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    response
+    stream.read_to_string(&mut response)?;
+    Ok(response)
 }
 
 /// The whole claim, end to end: one file, an empty directory, a served page.
