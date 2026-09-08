@@ -38,7 +38,10 @@ use uf_term::{
 };
 
 use crate::fix::files::{FixMode, FixSummary, fix_project};
-use crate::support::{plural, problem_summary, quoted_list, selects, unreadable_lines};
+use crate::support::{
+    ignore_deprecation, plural, problem_summary, quoted_list, render_ignore_deprecation, selects,
+    unreadable_lines,
+};
 use crate::ui::Ui;
 
 /// How many skipped rules are named before the list is summarised.
@@ -85,6 +88,7 @@ pub(crate) fn lint_command(
         report,
         sources,
         unreadable,
+        ignore_deprecation,
         ..
     } = run_lint(cwd, paths)?;
     progress.finish();
@@ -95,6 +99,7 @@ pub(crate) fn lint_command(
     } else {
         render_lint_report(ui, command, &report, &sources, fixed.as_ref());
         render_unreadable(ui, &unreadable);
+        render_ignore_deprecation(ui, ignore_deprecation);
     }
 
     // Before the diagnostics count: a file nobody could read has no
@@ -146,6 +151,12 @@ pub(crate) struct LintRun {
     /// [`Self::sources`] already is the whole scan and holding a second copy of
     /// a project's text is a real cost for no answer.
     pub(crate) available: Vec<SourceFile>,
+    /// What to say about `lint.ignore`, when this project still writes it.
+    ///
+    /// Carried out of the run rather than re-read by the caller for the same
+    /// reason [`Self::root`] is: two reads of one config file are two chances
+    /// to disagree about what it said.
+    pub(crate) ignore_deprecation: Option<&'static str>,
 }
 
 pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
@@ -193,6 +204,7 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
         unreadable,
         root: resolved.root,
         available,
+        ignore_deprecation: ignore_deprecation(&resolved.config),
     })
 }
 
