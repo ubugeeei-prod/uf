@@ -50,6 +50,24 @@ pub struct UniflowedConfig {
     pub docs: DocsConfig,
     pub env: EnvConfig,
     pub fmt: FmtConfig,
+    /// Paths every command that walks the project stays out of, or `None` for
+    /// the list uf ships.
+    ///
+    /// Top level because it is read at the top level: `uf fmt`, `uf lint`,
+    /// `uf check`, `uf test` and `uf doc` all walk the project through
+    /// [`uf_project::scan_source_files`], and all five read this. It lived
+    /// under `lint` until ubugeeei-prod/uf#575, which is a name that answers
+    /// "which command?" with one of the five — so a person excluding a
+    /// directory from *formatting* had to write it under `lint`, and a person
+    /// reading `lint.ignore` had no reason to think it did anything to
+    /// `uf fmt`.
+    ///
+    /// `None` — the key absent — is not the same as `Some(vec![])`, which is
+    /// why this is an `Option` and not an empty default. Absent means uf's own
+    /// list; empty means a project that has looked at that list and wants none
+    /// of it. [`LintConfig::ignore`] is the deprecated spelling and is read
+    /// when this is absent; see [`UniflowedConfig::project_ignore`].
+    pub ignore: Option<Vec<CompactString>>,
     pub lint: LintConfig,
     pub package: PackageConfig,
     /// What the project's own code may reach, or `None` for no limit.
@@ -173,6 +191,40 @@ impl UniflowedConfig {
         }
     }
 
+    /// The paths every command that walks the project stays out of.
+    ///
+    /// One list, read by `uf fmt`, `uf lint`, `uf check`, `uf test` and
+    /// `uf doc` alike, which is why it is [`ignore`](Self::ignore) at the top
+    /// level and no longer `lint.ignore`. The old spelling is still read —
+    /// there is no release in which a project that wrote it stops being
+    /// honoured — and the reader is told which key it is, once, the way
+    /// [`Self::read_registry`] tells a project still resolving through
+    /// `publish.registry`.
+    ///
+    /// Precedence rather than union: two lists that both apply is a rule
+    /// nobody can predict from either file. The new key wins outright when it
+    /// is present, so a project migrating can move the list in one edit and
+    /// see exactly what it moved.
+    #[must_use]
+    pub fn project_ignore(&self) -> ProjectIgnore<'_> {
+        if let Some(ignore) = self.ignore.as_deref() {
+            return ProjectIgnore {
+                entries: ignore,
+                source: IgnoreSource::Project,
+            };
+        }
+        if let Some(ignore) = self.lint.ignore.as_deref() {
+            return ProjectIgnore {
+                entries: ignore,
+                source: IgnoreSource::LintFallback,
+            };
+        }
+        ProjectIgnore {
+            entries: &DEFAULT_IGNORE,
+            source: IgnoreSource::Default,
+        }
+    }
+
     /// The scope bindings, as `("@scope", registry)` pairs in scope order.
     ///
     /// Returned as a borrow of the config rather than copied: the caller is
@@ -183,6 +235,71 @@ impl UniflowedConfig {
             .iter()
             .map(|(scope, registry)| (scope.as_str(), registry.as_str()))
     }
+}
+
+/// What uf stays out of when a project says nothing.
+///
+/// Three directories nobody's editor, formatter or linter has an opinion about
+/// worth acting on: a dependency tree, a build output and cargo's. `.uf` and
+/// `.git` are *not* here — `uf_project` keeps those in a list of its own,
+/// because a project cannot opt back into them and this one it may replace
+/// entirely.
+pub static DEFAULT_IGNORE: [CompactString; 3] = [
+    CompactString::const_new("node_modules"),
+    CompactString::const_new("dist"),
+    CompactString::const_new("target"),
+];
+
+/// Which key supplied the project's ignore list.
+///
+/// Worth distinguishing because one of the three is deprecated and the reader
+/// has to be told which line of their config to move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IgnoreSource {
+    /// `ignore`, which is the setting that means "no command walks these".
+    Project,
+    /// `lint.ignore`, because `ignore` is absent and this project set it.
+    ///
+    /// Deprecated: it still works, and it is named after one of the five
+    /// commands that read it. See ubugeeei-prod/uf#575.
+    LintFallback,
+    /// Neither was set, so it is [`DEFAULT_IGNORE`].
+    Default,
+}
+
+impl IgnoreSource {
+    /// Whether this project is relying on the deprecated spelling.
+    #[must_use]
+    pub const fn is_deprecated(self) -> bool {
+        matches!(self, Self::LintFallback)
+    }
+
+    /// The sentence to print when it is.
+    ///
+    /// One sentence, naming both keys and why the old one is wrong, because
+    /// "deprecated" without the replacement is a message that costs a search —
+    /// and because the reason is the whole point here: the reader is being told
+    /// that a key they wrote under `lint` has been deciding what `uf fmt`
+    /// looks at all along.
+    #[must_use]
+    pub const fn deprecation(self) -> Option<&'static str> {
+        match self {
+            Self::LintFallback => Some(
+                "lint.ignore is read by uf fmt, uf lint, uf check, uf test and uf doc alike; \
+                 move it to the top-level `ignore`, which is what it has always meant",
+            ),
+            Self::Project | Self::Default => None,
+        }
+    }
+}
+
+/// The paths no command walks into, and which key they came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectIgnore<'a> {
+    /// The entries themselves, in the order the project wrote them.
+    pub entries: &'a [CompactString],
+    /// Which setting supplied them.
+    pub source: IgnoreSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -156,6 +156,20 @@ fn hooks_registry_prefers_react_idempotency() {
     assert!(hooks.iter().any(|hook| hook.server_component_safe));
 }
 
+/// Every name a module exports, split by the namespace it lives in.
+///
+/// Two lists rather than one because Flow has two namespaces and a barrel
+/// re-export has to name the right one: `export type { Queries }` from a module
+/// whose `Queries` is a value is as broken as naming nothing at all, and the
+/// error a reader gets is the same either way.
+#[derive(Debug, Default)]
+struct Exports {
+    /// Names importable with a plain `import { … }`.
+    values: Vec<String>,
+    /// Names importable only with `import type { … }`.
+    types: Vec<String>,
+}
+
 /// Every value a package's entry point exports, by name.
 ///
 /// Parsed rather than matched: uf ships a Flow parser, and a regular
@@ -164,28 +178,47 @@ fn hooks_registry_prefers_react_idempotency() {
 /// `export type`, and the difference between them wrong in ways nobody would
 /// notice until the check was believed.
 ///
-/// Types are deliberately not collected — see
-/// [`the_registry_names_exactly_what_each_package_exports`].
+/// Types are deliberately not collected here — see
+/// [`the_registry_names_exactly_what_each_package_exports`]. They are collected
+/// by [`exported_names`], which answers a different question:
+/// [`a_barrel_re_export_names_something_its_source_has`] has to know both
+/// namespaces because a barrel re-exports from both.
 fn exported_values(source: &str) -> Result<Option<Vec<String>>, String> {
+    Ok(exported_names(source)?.map(|exports| exports.values))
+}
+
+/// Both namespaces of one module, or [`None`] when it cannot be read.
+///
+/// `None` is `export * from "react"`: another package's whole surface, whose
+/// names are not in this file. It is the one answer that is neither "exports
+/// it" nor "does not", and every caller has to decide for itself what to do
+/// about it rather than being handed an empty list that reads like a fact.
+fn exported_names(source: &str) -> Result<Option<Exports>, String> {
     use uf_flow::ast::statement::{self, ExportKind};
 
     let parsed = uf_flow::parse(source).map_err(|error| format!("{error:?}"))?;
     if !parsed.diagnostics.is_empty() {
         return Err(format!("{:?}", parsed.diagnostics));
     }
-    let mut names = Vec::new();
+    let mut exports = Exports::default();
     for node in parsed.program.statements.iter() {
         let statement::StatementInner::ExportNamedDeclaration { inner, .. } = &**node else {
             continue;
         };
-        if inner.export_kind == ExportKind::ExportType {
-            continue;
-        }
         // `export { useIdle } from "./idle.js"` is an export of this package
         // and the name is right there, so a `source` is not a reason to skip —
         // these barrel modules are written almost entirely that way.
         if let Some(declaration) = &inner.declaration {
-            names.extend(declared_value_names(declaration));
+            if inner.export_kind == ExportKind::ExportType {
+                exports.types.extend(declared_type_names(declaration));
+            } else {
+                exports.values.extend(declared_value_names(declaration));
+                // `export type Alias = string` is written with the statement's
+                // own kind on some spellings and with a `TypeAlias`
+                // declaration under a value export on others; a declaration
+                // that binds a type binds a type either way.
+                exports.types.extend(declared_type_names(declaration));
+            }
         }
         // `export * from "react"` hands on another package's whole surface,
         // and the names are not in this file to be read. Recognised from the
@@ -201,17 +234,35 @@ fn exported_values(source: &str) -> Result<Option<Vec<String>>, String> {
             &inner.specifiers
         {
             for specifier in specifiers {
-                if specifier.export_kind == ExportKind::ExportType {
-                    continue;
-                }
                 let exported = specifier.exported.as_ref().unwrap_or(&specifier.local);
-                names.push(exported.name.to_string());
+                let name = exported.name.to_string();
+                if inner.export_kind == ExportKind::ExportType
+                    || specifier.export_kind == ExportKind::ExportType
+                {
+                    exports.types.push(name);
+                } else {
+                    exports.values.push(name);
+                }
             }
         }
     }
-    names.sort();
-    names.dedup();
-    Ok(Some(names))
+    exports.values.sort();
+    exports.values.dedup();
+    exports.types.sort();
+    exports.types.dedup();
+    Ok(Some(exports))
+}
+
+/// The names a declaration binds, when it binds types.
+fn declared_type_names(node: &uf_flow::ast::statement::Statement<Loc, Loc>) -> Vec<String> {
+    use uf_flow::ast::statement::StatementInner;
+
+    match &**node {
+        StatementInner::TypeAlias { inner, .. } => vec![inner.id.name.to_string()],
+        StatementInner::OpaqueType { inner, .. } => vec![inner.id.name.to_string()],
+        StatementInner::InterfaceDeclaration { inner, .. } => vec![inner.id.name.to_string()],
+        _ => Vec::new(),
+    }
 }
 
 /// The names a declaration binds, when it binds values.
@@ -389,5 +440,189 @@ fn the_export_reader_sees_every_shape_a_package_uses() {
     assert_eq!(
         exported_values("export\n  * from \"react\";\n").unwrap(),
         None
+    );
+}
+
+/// One `export … from "…"` written in a module.
+#[derive(Debug)]
+struct ReExport {
+    /// The name as the module it comes from spells it, before any `as`.
+    local: String,
+    /// That module's specifier, verbatim.
+    from: String,
+    /// Whether it was written `export type` — which namespace it claims.
+    is_type: bool,
+}
+
+/// Every `export { … } from "…"` in one module.
+///
+/// Unlike [`exported_names`], an `export * from` is not a reason to stop.
+/// This is about the names a module writes down, and a batch specifier writes
+/// none: it neither adds a claim to check nor invalidates the ones beside it.
+fn re_exports(source: &str) -> Result<Vec<ReExport>, String> {
+    use uf_flow::ast::statement::{self, ExportKind};
+
+    let parsed = uf_flow::parse(source).map_err(|error| format!("{error:?}"))?;
+    if !parsed.diagnostics.is_empty() {
+        return Err(format!("{:?}", parsed.diagnostics));
+    }
+    let mut found = Vec::new();
+    for node in parsed.program.statements.iter() {
+        let statement::StatementInner::ExportNamedDeclaration { inner, .. } = &**node else {
+            continue;
+        };
+        let Some((_, from)) = &inner.source else {
+            continue;
+        };
+        let Some(statement::export_named_declaration::Specifier::ExportSpecifiers(specifiers)) =
+            &inner.specifiers
+        else {
+            continue;
+        };
+        for specifier in specifiers {
+            found.push(ReExport {
+                // The *local* name, not the exported one: `export { a as b }
+                // from "./x.js"` asks `./x.js` for `a`, and renaming it here
+                // says nothing about what that module has.
+                local: specifier.local.name.to_string(),
+                from: from.value.to_string(),
+                is_type: inner.export_kind == ExportKind::ExportType
+                    || specifier.export_kind == ExportKind::ExportType,
+            });
+        }
+    }
+    Ok(found)
+}
+
+/// The file a module specifier names, when it is one this repository owns.
+///
+/// [`None`] for anything else — `react`, `react-relay`, `relay-runtime`. A
+/// re-export from a dependency is that dependency's business, and reading
+/// `node_modules` would make this test's answer depend on what happens to be
+/// installed rather than on what is in the repository.
+///
+/// A `@uniflowed/…` specifier is resolved through the package's own `exports`
+/// map rather than by assuming `index.js`, because `@uniflowed/core/temporal`
+/// is a subpath a package chose to publish and the manifest is the only thing
+/// that knows which file is behind it.
+fn resolve_specifier(packages: &Path, importer: &Path, specifier: &str) -> Option<PathBuf> {
+    if specifier.starts_with('.') {
+        return Some(importer.parent()?.join(specifier));
+    }
+    let rest = specifier.strip_prefix("@uniflowed/")?;
+    let (package, subpath) = match rest.split_once('/') {
+        Some((package, subpath)) => (package, format!("./{subpath}")),
+        None => (rest, ".".to_owned()),
+    };
+    let directory = packages.join(package);
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(directory.join("package.json")).ok()?).ok()?;
+    let target = manifest.get("exports")?.get(&subpath)?.as_str()?;
+    Some(directory.join(target))
+}
+
+/// A re-export names something the module it names actually exports.
+///
+/// # Why this exists
+///
+/// `@uniflowed/testing` re-exported a type called `Screen` from
+/// `@uniflowed/react-testing`, which exports `Queries` and has never exported a
+/// `Screen`. Nothing said so: a barrel is the one kind of module where a wrong
+/// name costs nothing to write and produces no error where it is written —
+/// Flow reports the missing binding at the *import*, in somebody else's
+/// project, as a name that resolves to nothing useful. That was the second
+/// list in one day to have drifted from what a package really has
+/// (ubugeeei-prod/uf#561 is the other), which is what
+/// ubugeeei-prod/uf#574 asked for a check about.
+///
+/// # What it checks, and in which namespace
+///
+/// Every `export { … } from "…"` and `export type { … } from "…"` under
+/// `packages/`, against the module the specifier names. The namespace is part
+/// of the claim and is checked as part of it: `export type { X }` from a module
+/// whose `X` is a value is as wrong as a name that is not there at all, and it
+/// fails the same way for the same reader.
+///
+/// Two things are deliberately not failures. A specifier this repository does
+/// not own is skipped, and so is a source module that hands on somebody else's
+/// surface with `export * from` — there, "the name is absent" is not something
+/// the file can be read to find out, and a check that guessed would be worse
+/// than one that says which modules it could not read.
+#[test]
+fn a_barrel_re_export_names_something_its_source_has() {
+    let root = repository_root();
+    let packages = root.join("packages");
+    let mut broken = Vec::new();
+    let mut checked = 0usize;
+
+    for entry in walkdir::WalkDir::new(&packages)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let importer = entry.path();
+        if !importer.is_file() || importer.extension().and_then(|it| it.to_str()) != Some("js") {
+            continue;
+        }
+        let Ok(source) = fs::read_to_string(importer) else {
+            continue;
+        };
+        let here = importer.strip_prefix(&root).unwrap_or(importer).display();
+        let written =
+            re_exports(&source).unwrap_or_else(|error| panic!("{here} does not parse: {error}"));
+        for written in written {
+            let Some(target) = resolve_specifier(&packages, importer, &written.from) else {
+                continue;
+            };
+            let Ok(target_source) = fs::read_to_string(&target) else {
+                broken.push(format!(
+                    "{here} re-exports `{}` from \"{}\", and there is no such module",
+                    written.local, written.from
+                ));
+                continue;
+            };
+            let named = target.strip_prefix(&root).unwrap_or(&target).display();
+            let Some(exports) = exported_names(&target_source)
+                .unwrap_or_else(|error| panic!("{named} does not parse: {error}"))
+            else {
+                continue;
+            };
+            checked += 1;
+            let (wanted, other) = if written.is_type {
+                (&exports.types, &exports.values)
+            } else {
+                (&exports.values, &exports.types)
+            };
+            if wanted.contains(&written.local) {
+                continue;
+            }
+            // The other namespace is worth saying, because a re-export written
+            // with the wrong `type` keyword and one written with a name that
+            // does not exist are different mistakes with different fixes.
+            let hint = if other.contains(&written.local) {
+                let (has, wrote) = if written.is_type {
+                    ("a value", "export type")
+                } else {
+                    ("a type", "export")
+                };
+                format!(", and it is {has} there rather than what `{wrote}` asks for")
+            } else {
+                String::new()
+            };
+            broken.push(format!(
+                "{here} re-exports `{}` from \"{}\", which does not export it{hint}",
+                written.local, written.from
+            ));
+        }
+    }
+
+    assert!(
+        checked > 200,
+        "the walk found almost no re-exports, so it is not checking anything: {checked}"
+    );
+    assert!(
+        broken.is_empty(),
+        "{} re-export(s) name something that is not there:\n  - {}",
+        broken.len(),
+        broken.join("\n  - ")
     );
 }

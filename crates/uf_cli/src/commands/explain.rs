@@ -964,7 +964,7 @@ fn doc_stages() -> Vec<Stage> {
         Stage {
             name: "discovery",
             provider: "uf_project".to_string(),
-            detail: "project-owned JavaScript files, after `lint.ignore`".to_string(),
+            detail: "project-owned JavaScript files, after `ignore`".to_string(),
         },
         Stage {
             name: "parse",

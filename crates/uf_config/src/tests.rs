@@ -1061,3 +1061,92 @@ fn a_serialized_config_reads_back_with_the_same_rule_table() {
 
     assert_eq!(parsed.lint.rules, config.lint.rules);
 }
+
+/// The project-wide ignore list has a project-wide name.
+///
+/// ubugeeei-prod/uf#575: `lint.ignore` was read by `uf fmt`, `uf lint`,
+/// `uf check`, `uf test` and `uf doc` — five commands, one of which the key was
+/// named after. The list is `ignore`, at the top level, where nothing about the
+/// name says which command it is for.
+#[test]
+fn the_ignore_list_is_read_from_the_key_that_is_not_named_after_one_command() {
+    let source = r#"export default defineConfig({ ignore: ["vendor"] });"#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let ignore = parsed.project_ignore();
+    assert_eq!(ignore.entries, ["vendor"]);
+    assert_eq!(ignore.source, IgnoreSource::Project);
+    assert!(!ignore.source.is_deprecated());
+    assert_eq!(ignore.source.deprecation(), None);
+}
+
+/// A project that has not moved yet keeps the behaviour it had, and is told.
+///
+/// The same shape ubugeeei-prod/uf#540 used for `publish.registry`: the old key
+/// still answers, and the reader is told once which key it should be writing.
+/// There is no release in which a config that says `lint.ignore` starts walking
+/// the directory it excluded.
+#[test]
+fn lint_ignore_still_answers_and_says_which_key_it_is() {
+    let source = r#"export default defineConfig({ lint: { ignore: ["vendor"] } });"#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let ignore = parsed.project_ignore();
+    assert_eq!(ignore.entries, ["vendor"]);
+    assert_eq!(ignore.source, IgnoreSource::LintFallback);
+    assert!(ignore.source.is_deprecated());
+    let deprecation = ignore.source.deprecation().expect("a sentence to print");
+    // Both keys, because "deprecated" without the replacement costs a search,
+    // and the five commands, because that is the fact the old name hid.
+    assert!(deprecation.contains("lint.ignore"), "{deprecation}");
+    assert!(deprecation.contains("ignore"), "{deprecation}");
+    assert!(deprecation.contains("uf fmt"), "{deprecation}");
+}
+
+/// The new key wins outright, rather than being merged with the old one.
+///
+/// A union of two lists is a rule nobody can predict from either file, and a
+/// project migrating wants to see exactly what it moved.
+#[test]
+fn the_new_ignore_key_replaces_the_old_one_rather_than_joining_it() {
+    let source = r#"
+        export default defineConfig({
+          ignore: ["vendor"],
+          lint: { ignore: ["legacy"] },
+        });
+    "#;
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let ignore = parsed.project_ignore();
+    assert_eq!(ignore.entries, ["vendor"]);
+    assert_eq!(ignore.source, IgnoreSource::Project);
+}
+
+/// A project that wrote neither key is not warned about one it never wrote.
+#[test]
+fn a_project_that_names_no_ignore_list_gets_ufs_own_and_no_deprecation() {
+    let config = UniflowedConfig::default();
+    let ignore = config.project_ignore();
+
+    assert_eq!(ignore.entries, DEFAULT_IGNORE);
+    assert_eq!(ignore.source, IgnoreSource::Default);
+    assert!(!ignore.source.is_deprecated());
+}
+
+/// An empty list is a project's instruction, not the absence of one.
+///
+/// `ignore: []` says "walk everything uf would otherwise skip", which is a
+/// different thing from saying nothing — and the reason both keys are held in
+/// an `Option` rather than defaulted to a list.
+#[test]
+fn an_empty_ignore_list_is_not_the_same_as_no_ignore_list() {
+    let object = extract_config_object("export default defineConfig({ ignore: [] });").unwrap();
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let ignore = parsed.project_ignore();
+    assert!(ignore.entries.is_empty());
+    assert_eq!(ignore.source, IgnoreSource::Project);
+}

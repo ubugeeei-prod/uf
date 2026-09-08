@@ -39,6 +39,7 @@ which is the fastest way to answer "what is it actually using".
 | `site` | Where the built site is served from, and what `uf build` writes for a crawler |
 | `env` | The `.env` files, the default mode, and the pinned toolchain |
 | `fmt` | `uf fmt` |
+| `ignore` | Paths no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test`, `uf doc` |
 | `lint` | `uf lint` and Flow's built-in lints |
 | `test` | `uf test` |
 | `permissions` | What the project's own code may reach. Absent means no limit |
@@ -324,6 +325,42 @@ they may not do is turn a check into a write — `--write`, `--fix` and their
 spellings are refused where the configuration is read, because `uf fmt --check`
 changing files is the failure nobody sees: a green CI job and a rewritten tree.
 
+## ignore
+
+Paths no command walks into. One list at the top level, because every command
+that walks the project reads it: `uf fmt`, `uf lint`, `uf check`, `uf test` and
+`uf doc`.
+
+```js
+export default defineConfig({
+  ignore: ["vendor", "app/generated"],
+});
+```
+
+A bare name — `dist`, `node_modules` — names a *kind* of directory and matches
+wherever it appears, because a build directory two levels down is still a build
+directory. A path — `app/generated` — names one place and matches as a prefix,
+which is what somebody writing a path means.
+
+Unset takes uf's own list, `["node_modules", "dist", "target"]`. `ignore: []` is
+a different instruction and means it: a project that has read that list and
+wants none of it. `.uf` and `.git` are not on either list and are not yours to
+opt back into — they are uf's own working directory and git's.
+
+Most projects need none of this. `.gitignore` is read first and covers the
+common case; see [what counts as your project](#what-counts-as-your-project).
+
+### Migrating from `lint.ignore`
+
+This lived under `lint` until
+[#575](https://github.com/ubugeeei-prod/uf/issues/575), where it was named after
+one of the five commands that obey it — so a directory excluded from
+*formatting* had to be written under `lint`, and nothing about the name said so.
+
+`lint.ignore` keeps working for as long as alpha lasts, and the five commands
+above each say once which key to move it to. Move the list; nothing else
+changes.
+
 ## lint
 
 | Key | Default | Meaning |
@@ -331,7 +368,7 @@ changing files is the failure nobody sees: a green CI job and a rewritten tree.
 | `engine` | `"rust"` | The lint engine |
 | `rules` | uf's table | Rule name to `"off"`, `"warn"` or `"error"`, merged over uf's table |
 | `files` | all | Globs to lint |
-| `ignore` | `[]` | Globs to skip |
+| `ignore` | unset | **Deprecated** spelling of the top-level [`ignore`](#ignore), read only when that is absent ([#575](https://github.com/ubugeeei-prod/uf/issues/575)) |
 | `flow.builtins` | `"mixed"` | Run Flow's own lints alongside uf's |
 | `flow.parser` | `"official-flow-rust"` | The parser used to read Flow files |
 
@@ -349,8 +386,10 @@ say so — `"off"` — because a rule you did not mention is not a rule you aske
 to stop running, and a linter that quietly shrank to one rule reports a clean
 project either way ([#475](https://github.com/ubugeeei-prod/uf/issues/475)).
 
-`ignore` is read by `uf lint`, `uf fmt`, `uf check` and `uf test` alike, which
-its name does not say — see the note below.
+`lint.ignore` was read by `uf lint`, `uf fmt`, `uf check`, `uf test` and
+`uf doc` alike, which its name did not say. The list it always was is the
+top-level [`ignore`](#ignore); the old key still works and every one of those
+five commands says so once.
 
 ## What counts as your project
 
@@ -371,9 +410,9 @@ Every command that walks the project — `uf fmt`, `uf lint`, `uf check`,
 
 2. **`.uf` and `.git`**, always, whatever the configuration says.
 
-3. **`lint.ignore`**, for anything left. It is named after one command and
-   read by all of them, which is a name that should change and has not yet
-   ([#575](https://github.com/ubugeeei-prod/uf/issues/575)).
+3. **`ignore`**, for anything left. One list at the top level, because all
+   five commands read it; `lint.ignore` is the spelling it used to have and
+   still answers to.
 
 A directory holding a `.git` of its own is another repository — a submodule,
 or a checkout that happens to live inside yours — and is never walked.

@@ -3529,6 +3529,7 @@ dependencies = [
  "thiserror",
  "uf_assets",
  "uf_bundle",
+ "uf_flow",
  "uf_runtime",
 ]
 

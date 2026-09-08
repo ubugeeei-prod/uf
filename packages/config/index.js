@@ -5,8 +5,13 @@
 export type {
   CapabilityJsHost,
   CoverageThresholds,
+  DeployAdapter,
+  PackageManagerPreference,
   Permissions,
+  PluginEntry,
   RuleLevel,
+  RuntimeEngine,
+  SizeBudget,
   TaskDefinition,
   UniflowedConfig,
 } from "./internal/schema.js";
