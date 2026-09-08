@@ -112,6 +112,47 @@ export type RenderOptions = {|
    * bytes. `uf dev` reports them in the terminal; a production host logs them.
    */
   readonly onError?: (error: mixed) => void,
+  /**
+   * Rewrite the opening chunk — everything up to and including the head —
+   * before it goes out.
+   *
+   * For `uf dev` and nothing else. Vite's `transformIndexHtml` injects
+   * `/@vite/client` and the refresh preamble and rewrites asset URLs, and it
+   * is a *whole document* hook, so the development server used to collect the
+   * page and transform it at the end. That made the one place a developer
+   * would notice streaming the one place it did not happen: a slow page showed
+   * nothing until it was finished, and `_uf.loading.js` looked broken.
+   * See ubugeeei-prod/uf#374.
+   *
+   * A production host passes nothing here and streams as it always did.
+   *
+   * # What a plugin that injects into the body gets
+   *
+   * `transformIndexHtml` is a whole-document hook and this hands it one chunk,
+   * so `injectTo` is answered against a document that stops inside `<body>`.
+   * Measured against Vite 8.2.2, injecting all four positions into a whole
+   * document and into a head-only one:
+   *
+   * | `injectTo`     | whole document      | streamed |
+   * | -------------- | ------------------- | -------- |
+   * | `head-prepend` | after `<head>`      | same     |
+   * | `head`         | before `</head>`    | same     |
+   * | `body-prepend` | after `<body>`      | same     |
+   * | `body`         | before `</body>`    | **after `<body>`** |
+   *
+   * Nothing is dropped — every tag still reaches the document — but a `body`
+   * tag lands at the *top* of the body rather than after the content, because
+   * the content has not been rendered yet when the hook runs. For a `<script>`
+   * that expects a complete DOM that is a real difference, and it is the price
+   * of streaming: a hook that wants the whole document and a server that sends
+   * the head first cannot both be satisfied.
+   *
+   * uf's own injections are `head` and `head-prepend`, and Vite's client is
+   * head-injected, so this is about a third-party plugin. `dev-head-transform`
+   * in `tests/library` pins the table above, so the day it changes is a failing
+   * test rather than a surprise.
+   */
+  readonly transformHead?: (html: string) => Promise<string>,
 |};
 
 /** The two ids the server writes and the client reads. */
@@ -285,6 +326,7 @@ export function createRenderer(options: {|
       body = await renderDocument(<App url={url} initial={resolved} />, {
         shell: shellFor(assets),
         onError,
+        transformHead: settings?.transformHead,
       });
       streaming = true;
       // Recovered before the shell was ready: a `<Suspense>` boundary whose
@@ -315,6 +357,7 @@ export function createRenderer(options: {|
       body = await renderDocument(<App url={url} initial={resolved} />, {
         shell: shellFor(assets),
         onError,
+        transformHead: settings?.transformHead,
       });
     }
 

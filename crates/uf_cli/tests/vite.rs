@@ -1601,6 +1601,19 @@ fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body:
         )
     );
 
+    // And a page that suspends arrives in two pieces. `uf dev` used to collect
+    // the whole document, because `transformIndexHtml` is a whole-document
+    // hook — so the one server a developer actually watches was the one that
+    // did not stream, and `_uf.loading.js` looked broken. It transforms only
+    // the head now, which is all Vite's injections need. ubugeeei-prod/uf#374.
+    //
+    // The same `streamed` `uf preview` and `uf start` are held to, so the three
+    // cannot drift apart. Its own id, because the fixture keeps one promise per
+    // id and a second request for one already resolved answers at once.
+    if let Err(why) = streamed(port, "dev") {
+        panic!("{}", context(&why.0, &why.1));
+    }
+
     // A route handler, asked exactly the way a browser asks: `Accept:
     // text/html`, no extension, `GET`. That is a *document* request by every
     // test the renderer can apply to it, which is why the handler was invisible
@@ -3258,40 +3271,55 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
+    if let Err(why) = streamed(port, &slow_id) {
+        panic!("{}", context(&why.0, &why.1));
+    }
+}
+
+/// Whether the server sent a suspending page's shell before the page itself.
+///
+/// One copy of the rule for the three servers that have to obey it. `uf preview`
+/// and `uf start` always did; `uf dev` collected the whole document because
+/// `transformIndexHtml` is a whole-document hook, which is the one place a
+/// developer would notice streaming and the one place it did not happen
+/// (ubugeeei-prod/uf#374). Now that it streams too, the assertion is shared
+/// rather than written twice and allowed to drift.
+///
+/// The failure is returned rather than panicked so each caller can say which
+/// server it was asking; the pair is the description and the evidence.
+fn streamed(port: u16, slow_id: &str) -> Result<(), (String, String)> {
     let slow = timed_get(port, &format!("/slow/{slow_id}"));
-    assert!(
-        slow.text.starts_with("HTTP/1.1 200"),
-        "{}",
-        context("did not render the suspending route", &slow.evidence())
-    );
-    let shell = slow.first_at("slow: waiting").unwrap_or_else(|| {
-        panic!(
-            "{}",
-            context("never sent the `_uf.loading.js` fallback", &slow.evidence())
-        )
-    });
-    let page = slow
-        .first_at(&format!("slow: {slow_id}"))
-        .unwrap_or_else(|| {
-            panic!(
-                "{}",
-                context("the suspended page never arrived", &slow.evidence())
-            )
-        });
-    assert!(
-        shell + STREAMING_MARGIN <= page,
-        "{}",
-        context(
-            &format!(
+    if !slow.text.starts_with("HTTP/1.1 200") {
+        return Err((
+            "did not render the suspending route".to_owned(),
+            slow.evidence(),
+        ));
+    }
+    let Some(shell) = slow.first_at("slow: waiting") else {
+        return Err((
+            "never sent the `_uf.loading.js` fallback".to_owned(),
+            slow.evidence(),
+        ));
+    };
+    let Some(page) = slow.first_at(&format!("slow: {slow_id}")) else {
+        return Err((
+            "the suspended page never arrived".to_owned(),
+            slow.evidence(),
+        ));
+    };
+    if shell + STREAMING_MARGIN > page {
+        return Err((
+            format!(
                 "sent the fallback and the page together: the fallback was {}ms in and the \
                  page {}ms in, and the page waits {}ms — so nothing streamed",
                 shell.as_millis(),
                 page.as_millis(),
                 SUSPENDING_ROUTE_DELAY.as_millis()
             ),
-            &slow.evidence()
-        )
-    );
+            slow.evidence(),
+        ));
+    }
+    Ok(())
 }
 
 /// How long `app/slow/[id]/_uf.page.js` waits before it renders.

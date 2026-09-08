@@ -696,15 +696,25 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }
                   // result by then — so the terminal hears about it here or not
                   // at all.
                   onError: (error) => reportRenderError(devServer, url, error),
+                  // Vite sees the head and only the head. That is what lets the
+                  // development server stream like every other host — see below.
+                  transformHead: (head) => devServer.transformIndexHtml(url, head),
                 },
               );
               if (result.error != null) reportRenderError(devServer, url, result.error);
-              // Collected rather than piped: `transformIndexHtml` is a
-              // whole-document hook, so there is no first byte to send until it
-              // has run. `uf start` and `uf preview` stream — see
-              // `internal/serve.js` — and that is a property of the development
-              // server rather than of the renderer. ubugeeei-prod/uf#374.
-              const html = await devServer.transformIndexHtml(url, await result.text());
+              // Piped, like every other host. This used to collect the whole
+              // document and transform it at the end, because
+              // `transformIndexHtml` is a *whole document* hook — which made the
+              // one place a developer would notice streaming the one place it
+              // did not happen: a slow page showed nothing until it was finished
+              // and `_uf.loading.js` looked broken.
+              //
+              // `transformHead` above is the seam. `internal/stream.js` already
+              // held the opening chunk back until the head was complete and
+              // forwarded everything after it untouched, so the hook only ever
+              // sees the head — and Vite's dev hook handles a document that ends
+              // mid-`<body>` without complaint, which was the open question on
+              // ubugeeei-prod/uf#374.
               response.statusCode = result.status ?? 200;
               // The render's own headers, then the content type over the top:
               // exactly the order `@uniflowed/server`'s `fetch.js` writes them
@@ -714,7 +724,7 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }
                 response.setHeader(name, value);
               }
               response.setHeader("content-type", "text/html; charset=utf-8");
-              response.end(html);
+              await result.pipe(response);
               return true;
             });
 
