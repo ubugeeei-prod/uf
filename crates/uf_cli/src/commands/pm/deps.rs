@@ -140,7 +140,7 @@ pub(crate) fn query(
     let detection = detect_package_manager(&resolved.root);
     let (manager, substituted) = installable(&detection);
 
-    let invocation = uf_pm::invocation_for(manager, operation, operands, true)?;
+    let invocation = uf_pm::invocation_for(&resolved.root, manager, operation, operands, true)?;
     let project = project_label(&resolved.root).to_string();
     let manager_label = manager.to_string();
     let source = chosen_by(&detection.source, substituted);
@@ -219,7 +219,8 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     // Before the manager runs, because its answer is what the reader came for
     // and it should be the last thing on the screen.
     let project = project_label(&resolved.root).to_string();
-    let invocation = uf_pm::invocation_for(manager, Operation::Why, &operands, true)?;
+    let invocation =
+        uf_pm::invocation_for(&resolved.root, manager, Operation::Why, &operands, true)?;
     let manager_label = manager.to_string();
     let source = chosen_by(&detection.source, substituted);
     let command = invocation.to_string();

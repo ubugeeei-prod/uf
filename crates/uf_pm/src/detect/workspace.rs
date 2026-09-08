@@ -18,7 +18,9 @@ use super::field::{PackageManagerSpec, parse_package_manager_field};
 use super::lockfile::{is_regular_file, managers_for, scan_lockfiles};
 use super::manager::{PackageManager, WorkspaceMarker};
 use super::outcome::{DetectionIssue, ManifestFault};
-use super::{DetectionIssues, DetectionOptions, LockfileList, lexically_normalized};
+use super::{
+    DetectionIssues, DetectionOptions, LockfileList, PNPM_WORKSPACE_FILE, lexically_normalized,
+};
 
 #[derive(Debug)]
 pub(crate) struct WorkspaceRootFind {
@@ -65,7 +67,7 @@ pub(crate) fn find_workspace_root(
             });
         }
 
-        if is_regular_file(&current.join("pnpm-workspace.yaml")) {
+        if is_regular_file(&current.join(PNPM_WORKSPACE_FILE)) {
             return Some(WorkspaceRootFind {
                 root: current,
                 marker: WorkspaceMarker::PnpmWorkspaceYaml,

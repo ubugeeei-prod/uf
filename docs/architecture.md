@@ -712,6 +712,10 @@ published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
 A shipped module owns its own declarations, raises only when a native binding is
 actually called, and runs nothing at import time, so `"sideEffects": false` and
 per-subpath exports let a bundler drop everything an application never touches.
+A library a *user* publishes ships its Flow source for the same reason, and a
+compiled build beside it, because it does not get the resolution
+`@uniflowed/*` gets by name; see [What a published Flow library
+ships](#what-a-published-flow-library-ships).
 
 Implemented native slices already cover:
 
@@ -890,7 +894,8 @@ knows which script and stylesheet tags to write), the server bundle (kept
 under `.uf/build/server/`, never in `dist/`), and every static route
 prerendered to `dist/<route>/index.html` — with `generateStaticParams` on a
 page enumerating a parameterised route. `uf` then measures `dist/` and
-enforces `build.budgets`.
+enforces `build.budgets`. A project that is a *library* takes a different build
+entirely — see [The other build: a library](#the-other-build-a-library).
 
 ### What gets rendered when
 
@@ -932,6 +937,95 @@ with the three route-shaped reasons: it is not a route, its fix is a different
 sentence, and finding it needs no module evaluated. `--adapter` and `--compile`
 lift the refusal, because each writes something that can answer.
 
+### The other build: a library
+
+`app.router.enabled: false` makes a project a library, and it has said so in
+the config reference since the key existed. Until
+[#268](https://github.com/ubugeeei-prod/uf/issues/268) the builder never read
+it: `uf build` had one build in it, the application one, so a project
+`uf new --lib` scaffolded failed on its first `uf build` with
+`Could not resolve '<root>/app.js'` — a file a library does not have.
+
+uf resolves the two builds apart the way it resolves the rendering plan, in
+Rust and once (`uf_config`'s `LibraryPlan`), and drives a different builder
+subcommand. A library build is one pass per format over the declared entries,
+and it differs from the application build in three ways, each of which is what
+"library" means:
+
+- **Every dependency stays an import.** uf reads the project's own
+  `dependencies`, `peerDependencies` and `optionalDependencies` and passes them
+  as `--external`; the host's built-in modules are external too. That is the
+  opposite of the application build, which inlines what it can, and the reason
+  is that an application is the end of the line and a library is not: a bundled
+  copy of React inside a library is a second React in every application that
+  installs it.
+- **One output per entry, named after the entry.** `index.js` becomes
+  `dist/index.js` and `internal/parse.js` becomes `dist/internal/parse.js` — the
+  path rather than the basename, so two entries cannot collide.
+- **Nothing else.** No route table, no client entry, no server bundle, no
+  prerender, no `sitemap.xml`. `uf build --compile` and `uf build --adapter`
+  are refused by name: both write a deployment that *serves* an application,
+  and a library is imported.
+
+`build.lib` holds what such a build needs and an application build has no use
+for — `entries`, `formats`, `external` — and its defaults are the scaffold, so
+a library needs none of it. Declaring it in a project whose router is on is
+refused while the config is read, because one project is one kind of build and
+two keys disagreeing about which is the failure that refusal exists for.
+`uf explain build` names the build that will run and the key that decided.
+
+### What a published Flow library ships
+
+**Both halves: the Flow source, and the JavaScript uf compiled from it.** The
+`exports` map names them with conditions and the compiled build is `default`:
+
+```json
+{
+  "exports": { ".": { "flow": "./index.js", "default": "./dist/index.js" } },
+  "files": ["index.js", "dist"],
+  "sideEffects": false
+}
+```
+
+There is no third file. The rule in [Runtime Agnostic
+Direction](#runtime-agnostic-direction) above — a shipped module owns its own
+declarations, and there are no `.js.flow` files — means the Flow source *is*
+the declaration, so a library that shipped types separately would be answering
+one question twice.
+
+Which half is `default` is the decision, and it follows from what a resolver
+that knows no conditions does: it takes `default`. So `default` has to be the
+file every runtime can evaluate, and the source goes behind an opt-in
+condition. The published `@uniflowed/*` packages do the opposite — they ship
+source and nothing else — and they can because `@uniflowed/host`'s
+`isFlowModule` transforms `.js` under `node_modules` for that scope by name,
+and `@uniflowed/vite` names the same prefix in `optimizeDeps.exclude` and
+`ssr.noExternal`. That is a hard-coded deal for one scope. A user's library
+does not get it, and cannot without uf keeping a list of every Flow library in
+the world, so a Flow library that wants to be consumed from a plain Vite app, a
+Node service or a bundler that has never heard of Flow has to emit JavaScript —
+and uf owns the only transform that produces it.
+
+`"flow"` names the *language of the file behind it* rather than the toolchain
+in front of it, so a consumer with a Flow transform that is not uf can select
+the same condition. **uf's own application build does not select it yet**, and
+adding it today would break the projects it is meant to help: Vite would
+resolve the Flow source out of `node_modules`, `isFlowModule` would decline to
+transform it because the package is not `@uniflowed/*`, and Flow syntax would
+reach the bundler's parser. Teaching the transform which third-party packages
+are Flow — and whose Flow settings apply to a dependency's source — is
+**Planned** and separate. Until it lands a uf application resolves `default`
+like everybody else and gets the compiled build, which works. The condition is
+published now because a resolver that does not know it already does the right
+thing, and one that learns it needs the package to have said so.
+
+Nothing of uf's is in the output, and that is what
+`tools/ci/publishable.sh`'s second rule asks of every published package: uf's
+contribution is the transform, which leaves nothing behind, so a library built
+by uf can be installed by someone who has never installed uf. Emitting
+TypeScript declarations from Flow types is **not written**: a `.d.ts` that is
+approximately right is worse than none, because TypeScript trusts it silently.
+
 ### The builder contract
 
 A builder is a directory with a `package.json` and a driver module. uf spawns
@@ -953,6 +1047,7 @@ Optional; a builder that transforms nothing needs neither.
 | --- | --- | --- |
 | `dev` | `--root --mode [--host --port --strict-port]` | Serves the project, rendering every navigation |
 | `build` | `--root --mode --out-dir --prerender --because [--static-build]` | Writes the client bundle, the server bundle and the prerendered documents |
+| `library` | `--root --mode --out-dir --entry… --format… [--external…]` | Writes one module per entry per format, for a project that is a library |
 | `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build]` | Serves the build through the builder's own preview server |
 | `start` | `--root --out-dir [--host --port]` | Serves the build with no bundler in the process |
 | `compile` | `--root --mode --out-dir --assets --bundle` | Links the application into one module, for `uf build --compile` |

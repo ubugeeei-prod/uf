@@ -87,6 +87,84 @@ fn creates_flow_library_template() {
     assert!(!package.contains("@uniflowed/host"));
 }
 
+/// The library template's `build` task can actually build the library.
+///
+/// It could not. `uf create lib` wrote `tasks: { build: { command: "uf build" } }`
+/// beside `app: { router: { enabled: false } }`, and `uf build` had one build
+/// in it — the application one, which links a client entry importing the
+/// project's `app.js`. A library has no `app.js`, so the scaffold's own task
+/// failed on the first run with `Could not resolve '<root>/app.js'`, and every
+/// test this template had passed anyway: they read the files and never asked
+/// whether the project they describe works. See ubugeeei-prod/uf#268.
+///
+/// This asserts the chain that makes it work, from the template's own bytes:
+/// the config it wrote parses, `uf_config` resolves it to a **library** plan,
+/// the module that plan will build exists in the project, and the manifest's
+/// `default` export names the file that build writes. `uf build` running for
+/// real is `crates/uf_cli/tests/vite.rs`, which needs a bundler this crate
+/// does not depend on.
+#[test]
+fn the_library_template_configures_a_build_that_can_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    create_project(
+        &root,
+        &CreateOptions {
+            name: "buildable".to_string(),
+            kind: CreateKind::Lib,
+            force: false,
+        },
+    )
+    .unwrap();
+
+    let config = uf_config::load_config_file(&root.join("uf.config.js")).unwrap();
+    let plan = uf_config::LibraryPlan::resolve(&config)
+        .expect("the scaffolded config makes this project a library");
+
+    // Every entry the build will look for is a file the template wrote. The
+    // failure this replaces was exactly this assertion being false for a
+    // module nobody had written down: `app.js`.
+    for entry in plan.entries() {
+        assert!(
+            root.join(entry.as_str()).is_file(),
+            "the build entry {entry} is not in the scaffold",
+        );
+    }
+
+    // And the manifest resolves to what that build writes. Derived from the
+    // config rather than typed out, so changing the default output directory
+    // or the default entry fails here instead of publishing a package whose
+    // `default` condition points at nothing.
+    let package = fs::read_to_string(root.join("package.json")).unwrap();
+    let entry = plan.entries()[0].to_string();
+    let stem = entry.strip_suffix(".js").unwrap_or(&entry);
+    let built = format!("\"default\": \"./{}/{stem}.js\"", config.build.out_dir);
+    assert!(package.contains(&built), "expected {built} in:\n{package}");
+
+    // The source is shipped too, and behind a condition rather than as the
+    // default: a resolver that knows nothing takes `default`, so `default` has
+    // to be the file every runtime can evaluate. `docs/architecture.md` is why
+    // there is no third file — the Flow source is the declaration.
+    assert!(package.contains(r#""flow": "./index.js""#), "{package}");
+    assert!(!package.contains(".js.flow"), "{package}");
+
+    // npm falls back to `.gitignore` with no `.npmignore`, and this template's
+    // `.gitignore` ignores `dist/`. Without `files` naming it, `npm publish`
+    // packs the source and leaves out the build the `default` condition points
+    // at.
+    let ignored = fs::read_to_string(root.join(".gitignore")).unwrap();
+    assert!(
+        ignored
+            .lines()
+            .any(|line| line.trim_end_matches('/') == config.build.out_dir.as_str())
+    );
+    assert!(package.contains(r#""files""#), "{package}");
+    assert!(
+        package.contains(&format!("\"{}\"", config.build.out_dir)),
+        "{package}",
+    );
+}
+
 /// A scaffolded manifest names the uf that wrote it, exactly.
 ///
 /// Both templates said `"latest"`, which is a dist-tag and not a version, and
