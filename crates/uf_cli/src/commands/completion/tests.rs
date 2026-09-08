@@ -62,6 +62,39 @@ fn enum_arguments_complete_to_their_variants() {
     assert!(complete_line(&["explain", ""]).contains(&"build".to_string()));
 }
 
+/// Completion offers exactly what `uf explain` answers, because it is the same
+/// list rather than a copy of it.
+///
+/// The copy had drifted both ways at once: `install`, `run`, `exec`, `env` and
+/// the rest were answerable and never offered, and four names were offered by a
+/// list that did not have them (ubugeeei-prod/uf#425). A reader who presses TAB
+/// to find out what is explainable was told less than the truth in one
+/// direction and more in the other.
+#[test]
+fn explain_completes_everything_it_can_explain() {
+    let offered = complete_line(&["explain", ""]);
+
+    for command in [
+        "install",
+        "run",
+        "exec",
+        "env",
+        "lsp",
+        "self-update",
+        "use",
+        "ls",
+        "audit",
+        "search",
+        "uninstall",
+    ] {
+        assert!(
+            offered.contains(&command.to_string()),
+            "`uf explain {command}` is answered and not offered"
+        );
+    }
+    assert_eq!(offered.len(), crate::commands::explain::KNOWN.len());
+}
+
 #[test]
 fn a_flag_completes_to_the_global_flags() {
     assert_eq!(complete_line(&["--c"]), vec!["--cwd", "--color"]);

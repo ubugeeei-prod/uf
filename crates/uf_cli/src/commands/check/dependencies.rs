@@ -44,12 +44,25 @@
 //! half a package resolves an import to a file that is missing for no reason
 //! the author could discover, whereas one holding none of it leaves the
 //! specifier in `untyped_modules`, where the footer names it out loud.
+//!
+//! # Which *copy* of one
+//!
+//! The one Node would load, found by climbing `node_modules` from the file
+//! that wrote the specifier: code inside `node_modules/foo` that imports `bar`
+//! gets `node_modules/foo/node_modules/bar` when there is one, and the hoisted
+//! `node_modules/bar` only when there is not. That is why the closure hands
+//! back the importer beside each specifier rather than a set of names —
+//! ubugeeei-prod/uf#486, where the previous rule (always the hoisted copy)
+//! typed the files inside a nested consumer against the wrong version's
+//! declarations. Two copies of one name can now be in one batch, because
+//! `uf_check`'s `WorkspacePackages` resolves them per importer too, so which
+//! types a file sees no longer depends on the batch's order.
 
 use std::fs;
 use std::io::Read;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use compact_str::CompactString;
+use uf_check::UnresolvedImport;
 use uf_infra::FxHashSet;
 use uf_lint::SourceFile;
 use uf_project::SourceKind;
@@ -57,6 +70,9 @@ use walkdir::WalkDir;
 
 /// The directory an installed package is read from.
 const INSTALLED: &str = "node_modules";
+
+/// The file that makes a directory a package.
+const MANIFEST: &str = "package.json";
 
 /// How many files a package may hold before it is left unread.
 ///
@@ -76,27 +92,80 @@ const HEADER_BYTES: usize = 8 * 1024;
 /// The pragma a package uses to say its source is Flow.
 const FLOW_PRAGMA: &str = "@flow";
 
-/// Read every package `unresolved` names that has not been read already.
+/// Read every installed package `unresolved` reaches that has not been read
+/// already.
 ///
-/// `read` is both the filter and the record: a package that was looked for and
-/// not found is in it too, so a specifier that cannot be answered is not
-/// searched for again on the next round.
+/// `read` is both the filter and the record, and it holds **directories**
+/// rather than names: two copies of one package are two entries, and a copy
+/// that was read and yielded nothing — it ships no Flow — is in it too, so the
+/// next round does not walk it again. That is what makes the caller's loop
+/// terminate: a round that finds no directory it has not already attempted
+/// adds no sources, and the loop ends.
 pub(super) fn load_packages(
     root: &Utf8Path,
-    unresolved: &[CompactString],
+    unresolved: &[UnresolvedImport],
     read: &mut FxHashSet<String>,
 ) -> Vec<SourceFile> {
     let mut loaded = Vec::new();
-    for specifier in unresolved {
-        let Some(name) = package_name(specifier) else {
+    for import in unresolved {
+        let Some(name) = package_name(&import.specifier) else {
             continue;
         };
-        if !read.insert(name.to_owned()) {
+        let Some(directory) = installed_for(root, &import.importer, name) else {
+            continue;
+        };
+        if !read.insert(directory.clone()) {
             continue;
         }
-        loaded.extend(read_package(root, name));
+        loaded.extend(read_package(root, &directory));
     }
     loaded
+}
+
+/// The directory Node's climb from `importer` finds `name` in, or [`None`]
+/// when no `node_modules` on that path holds it.
+///
+/// Existence is decided by the manifest, because that is what makes a
+/// directory a package: `node_modules/.bin/foo` and a leftover empty directory
+/// are both on the path and neither is one.
+fn installed_for(root: &Utf8Path, importer: &str, name: &str) -> Option<String> {
+    search_paths(importer).into_iter().find_map(|base| {
+        let candidate = if base.is_empty() {
+            format!("{INSTALLED}/{name}")
+        } else {
+            format!("{base}/{INSTALLED}/{name}")
+        };
+        root.join(&candidate)
+            .join(MANIFEST)
+            .is_file()
+            .then_some(candidate)
+    })
+}
+
+/// The directories whose `node_modules` Node consults for a specifier written
+/// in `importer`, nearest first.
+///
+/// Node's own `NODE_MODULES_PATHS`: every ancestor directory of the importing
+/// file, ending at the root, and never a `node_modules` directory itself —
+/// `node_modules/node_modules` is not a place packages are installed, and
+/// looking there would be one stat per import for nothing.
+fn search_paths(importer: &str) -> Vec<&str> {
+    let mut paths = Vec::new();
+    let mut directory = parent(importer);
+    loop {
+        if directory.rsplit('/').next() != Some(INSTALLED) {
+            paths.push(directory);
+        }
+        if directory.is_empty() {
+            return paths;
+        }
+        directory = parent(directory);
+    }
+}
+
+/// The directory a batch path sits in, or the empty string for the root.
+fn parent(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(head, _)| head)
 }
 
 /// The package a bare specifier names, or [`None`] when it names none.
@@ -119,42 +188,34 @@ fn package_name(specifier: &str) -> Option<&str> {
     (length > 0).then(|| &specifier[..length])
 }
 
-/// Every Flow source and manifest one installed package holds.
-fn read_package(root: &Utf8Path, name: &str) -> Vec<SourceFile> {
-    let installed = root.join(INSTALLED).join(name);
+/// Every Flow source and manifest the package installed at `directory` holds.
+///
+/// `directory` is project-relative and is the path the package is *reported*
+/// under, so a nested copy and a hoisted one stay two modules in the batch even
+/// though they publish one name.
+fn read_package(root: &Utf8Path, directory: &str) -> Vec<SourceFile> {
+    let installed = root.join(directory);
     // Resolved through the link before the walk rather than during it. A
     // workspace package *is* a symlink — `uf install` links `packages/form`
     // into `node_modules/@uniflowed/` — so a walk that did not follow one
     // would find the very case this exists for empty, and a walk that followed
     // every link it met could leave the package entirely.
-    let Ok(directory) = installed.canonicalize_utf8() else {
+    let Ok(resolved) = installed.canonicalize_utf8() else {
         return Vec::new();
     };
-    if !directory.join("package.json").is_file() {
+    if !resolved.join(MANIFEST).is_file() {
         return Vec::new();
     }
 
     let mut paths = Vec::new();
-    let walk = WalkDir::new(directory.as_std_path())
+    let walk = WalkDir::new(resolved.as_std_path())
         .into_iter()
-        // A dependency's own dependencies are read as packages of their own,
-        // from the *root* `node_modules`, when a specifier reaches one — never
-        // from the nested directory this skips. That is not Node's rule, and
-        // the difference is worth stating rather than discovering. Node
-        // resolves a bare specifier by climbing from the importing file, so
-        // `node_modules/foo/node_modules/bar` outranks the root's `bar` for
-        // code inside `foo`. Here the root copy wins, always.
-        //
-        // It is a rule rather than an oversight, because the alternative is
-        // not free: two versions of one name in one batch collide in
-        // `WorkspacePackages`, which indexes by published name and keeps the
-        // first. Reading both would make which types a file sees depend on the
-        // batch's order. So one copy is read per name, deterministically, and
-        // that is the hoisted one — which is the only copy a flat `npm
-        // install` produces anyway.
-        //
-        // A project that really does hold two versions of a Flow-typed package
-        // is typed against one of them. ubugeeei-prod/uf#486.
+        // A dependency's own dependencies are packages in their own right, and
+        // are read as packages when a specifier reaches one — from
+        // `installed_for`'s climb, which finds this package's nested copy
+        // before the hoisted one. Reading them *here* would be reading them
+        // under this package's path, where nothing resolves to them, and would
+        // pull in the whole transitive tree of every package that has one.
         .filter_entry(|entry| entry.depth() == 0 || entry.file_name() != INSTALLED);
     for entry in walk.flatten() {
         if !entry.file_type().is_file() {
@@ -179,18 +240,19 @@ fn read_package(root: &Utf8Path, name: &str) -> Vec<SourceFile> {
 
     let mut files = Vec::new();
     for path in paths {
-        let (Ok(relative), Ok(source)) = (path.strip_prefix(&directory), fs::read_to_string(&path))
+        let (Ok(relative), Ok(source)) = (path.strip_prefix(&resolved), fs::read_to_string(&path))
         else {
             continue;
         };
         files.push(SourceFile {
-            // Under the name that named it, not under wherever the link went.
-            // Every target inside a manifest is relative to the manifest, so a
-            // package read as `node_modules/@uniflowed/form/package.json`
-            // resolves its own `./index.js` to a path in the same shape, and
-            // one read as `packages/form/package.json` would collide with the
-            // copy the scan already holds.
-            path: format!("{INSTALLED}/{name}/{relative}"),
+            // Under the directory that named it, not under wherever the link
+            // went. Every target inside a manifest is relative to the
+            // manifest, so a package read as
+            // `node_modules/@uniflowed/form/package.json` resolves its own
+            // `./index.js` to a path in the same shape, and one read as
+            // `packages/form/package.json` would collide with the copy the
+            // scan already holds.
+            path: format!("{directory}/{relative}"),
             source,
         });
     }
@@ -246,6 +308,30 @@ mod tests {
         assert_eq!(package_name("@uniflowed/"), None);
     }
 
+    /// One unresolved import, as the closure hands it over.
+    fn import(specifier: &str, importer: &str) -> UnresolvedImport {
+        UnresolvedImport {
+            specifier: specifier.into(),
+            importer: importer.into(),
+        }
+    }
+
+    /// A project root under a temporary directory, with `files` written into
+    /// it.
+    fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        for (path, source) in files {
+            let path = root.path().join(path);
+            fs::create_dir_all(path.parent().expect("a parent")).expect("the directory is made");
+            fs::write(path, source).expect("the file is written");
+        }
+        root
+    }
+
+    fn root_of(directory: &tempfile::TempDir) -> Utf8PathBuf {
+        Utf8PathBuf::from_path_buf(directory.path().to_path_buf()).expect("a UTF-8 path")
+    }
+
     #[test]
     fn a_package_that_is_not_installed_reads_as_nothing() {
         let root = Utf8PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -254,15 +340,124 @@ mod tests {
         assert!(
             load_packages(
                 &root,
-                &[CompactString::const_new(
-                    "@uniflowed/not-installed-anywhere"
-                )],
+                &[import("@uniflowed/not-installed-anywhere", "src/app.js")],
                 &mut read,
             )
             .is_empty()
         );
-        // Recorded even so: a package that is not there is not there on the
-        // next round either, and looking again would walk the tree for nothing.
-        assert!(read.contains("@uniflowed/not-installed-anywhere"));
+        // Nothing is recorded, because no directory was found to record. The
+        // caller's loop still terminates: a round that adds no sources is the
+        // last one.
+        assert!(read.is_empty());
+    }
+
+    #[test]
+    fn a_specifier_is_looked_for_the_way_node_looks_for_it() {
+        // Every ancestor of the importing file, nearest first, and never a
+        // `node_modules` directory itself.
+        assert_eq!(search_paths("src/app.js"), ["src", ""]);
+        assert_eq!(
+            search_paths("node_modules/foo/lib/index.js"),
+            ["node_modules/foo/lib", "node_modules/foo", ""]
+        );
+        assert_eq!(
+            search_paths("node_modules/@scope/foo/index.js"),
+            ["node_modules/@scope/foo", "node_modules/@scope", ""]
+        );
+        assert_eq!(search_paths("app.js"), [""]);
+    }
+
+    /// A tree with two copies of `bar`: one hoisted, one nested inside `foo`.
+    fn two_versions() -> tempfile::TempDir {
+        project(&[
+            (
+                "node_modules/bar/package.json",
+                r#"{ "name": "bar", "version": "2.0.0", "exports": { ".": "./index.js" } }"#,
+            ),
+            (
+                "node_modules/bar/index.js",
+                "// @flow\ndeclare export const version: 2;\n",
+            ),
+            (
+                "node_modules/foo/node_modules/bar/package.json",
+                r#"{ "name": "bar", "version": "1.0.0", "exports": { ".": "./index.js" } }"#,
+            ),
+            (
+                "node_modules/foo/node_modules/bar/index.js",
+                "// @flow\ndeclare export const version: 1;\n",
+            ),
+        ])
+    }
+
+    #[test]
+    fn a_nested_consumer_reads_the_copy_installed_beside_it() {
+        // ubugeeei-prod/uf#486: before this, both importers got the hoisted
+        // copy and the files inside `foo` were typed against version 2.
+        let directory = two_versions();
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+
+        let loaded = load_packages(
+            &root,
+            &[import("bar", "node_modules/foo/index.js")],
+            &mut read,
+        );
+
+        assert_eq!(
+            loaded
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "node_modules/foo/node_modules/bar/index.js",
+                "node_modules/foo/node_modules/bar/package.json",
+            ]
+        );
+    }
+
+    #[test]
+    fn both_copies_can_be_in_one_batch() {
+        let directory = two_versions();
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+
+        let loaded = load_packages(
+            &root,
+            &[
+                import("bar", "src/app.js"),
+                import("bar", "node_modules/foo/index.js"),
+            ],
+            &mut read,
+        );
+
+        let paths: Vec<&str> = loaded.iter().map(|file| file.path.as_str()).collect();
+        assert!(paths.contains(&"node_modules/bar/index.js"), "{paths:?}");
+        assert!(
+            paths.contains(&"node_modules/foo/node_modules/bar/index.js"),
+            "{paths:?}"
+        );
+        // Two directories, so a second round asks for neither again.
+        assert_eq!(read.len(), 2);
+    }
+
+    #[test]
+    fn a_package_that_ships_no_flow_is_read_once_and_not_again() {
+        let directory = project(&[
+            (
+                "node_modules/plain/package.json",
+                r#"{ "name": "plain", "main": "./index.js" }"#,
+            ),
+            ("node_modules/plain/index.js", "module.exports = 1;\n"),
+        ]);
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+
+        assert!(
+            load_packages(&root, &[import("plain", "src/app.js")], &mut read).is_empty(),
+            "a dependency that does not opt into Flow exports `any` either way"
+        );
+        // Recorded even so, or the caller's loop would walk it every round.
+        assert!(read.contains("node_modules/plain"));
+        assert!(load_packages(&root, &[import("plain", "src/app.js")], &mut read).is_empty());
     }
 }
