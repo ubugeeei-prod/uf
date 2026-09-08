@@ -1153,3 +1153,81 @@ fn an_empty_ignore_list_is_not_the_same_as_no_ignore_list() {
     assert!(ignore.entries.is_empty());
     assert_eq!(ignore.source, IgnoreSource::Project);
 }
+
+/// `app.builtins.markdown.mdx.highlight` is read, which it was not.
+///
+/// `HighlightConfig` was declared, exported, and documented in the
+/// configuration reference — and was a field of no struct. Nothing
+/// deserialized those three keys and nothing read them, so a project that set
+/// a theme got no error and no effect. `packages/vite` had been reading
+/// `mdxConfig.highlight` the whole time and getting `undefined`. See
+/// ubugeeei-prod/uf#646.
+#[test]
+fn parses_the_mdx_highlighting_surface() {
+    let source = r#"
+        // @flow
+        import { defineConfig } from "@uniflowed/config";
+
+        export default defineConfig({
+          app: {
+            builtins: {
+              markdown: {
+                mdx: {
+                  highlight: {
+                    enabled: true,
+                    themes: { light: "solarized-light", dark: "nord" },
+                    langs: ["nix", "toml"],
+                  },
+                },
+              },
+            },
+          },
+        });
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+    let highlight = &parsed.app.builtins.markdown.mdx.highlight;
+
+    assert!(highlight.enabled);
+    assert_eq!(highlight.themes.light, "solarized-light");
+    assert_eq!(highlight.themes.dark, "nord");
+    assert_eq!(
+        highlight.langs,
+        vec![
+            CompactString::const_new("nix"),
+            CompactString::const_new("toml")
+        ]
+    );
+}
+
+/// And the defaults are the ones the reference documents, so a project that
+/// configures nothing still gets colour.
+#[test]
+fn mdx_highlighting_defaults_to_both_github_themes() {
+    let mdx = crate::MdxConfig::default();
+    assert!(mdx.highlight.enabled);
+    assert_eq!(mdx.highlight.themes.light, "github-light");
+    assert_eq!(mdx.highlight.themes.dark, "github-dark-dimmed");
+    assert!(mdx.highlight.langs.is_empty());
+}
+
+/// The key path the reference documents is the one that serializes.
+///
+/// The reference is read as a contract, and the failure this guards is the one
+/// #646 was: a struct that exists, is exported, and is reachable from no key.
+#[test]
+fn the_documented_highlight_key_path_is_the_one_uf_serializes() {
+    let config = UniflowedConfig::default();
+    let json = serde_json::to_value(&config).expect("the config serializes");
+    let highlight = json
+        .pointer("/app/builtins/markdown/mdx/highlight")
+        .expect("app.builtins.markdown.mdx.highlight is a key uf writes");
+
+    for key in ["enabled", "themes", "langs"] {
+        assert!(
+            highlight.get(key).is_some(),
+            "the reference documents {key} and the config does not carry it: {highlight}"
+        );
+    }
+}

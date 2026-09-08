@@ -36,7 +36,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use uf_config::{ByteSize, Permissions, SizeBudget, UniflowedConfig};
+use uf_config::{ByteSize, LibraryConfig, Permissions, SizeBudget, UniflowedConfig};
 use uf_flow::Loc;
 use uf_flow::ast::{statement, types};
 
@@ -74,6 +74,12 @@ fn every_section() -> UniflowedConfig {
     config.build.budgets.initial_js = Some(budget);
     config.build.budgets.per_route = Some(budget);
     config.build.budgets.per_asset = Some(budget);
+    // A library build is opt-in, so `build.lib` is `None` by default and the
+    // walk below never sees inside it — which would read as "the schema
+    // declares three keys uf does not have" for keys uf reads perfectly well.
+    // Populating it is what makes the comparison about *names* rather than
+    // about which sections happen to be on.
+    config.build.lib = Some(LibraryConfig::default());
     config.lint.rules.clear();
     config
 }

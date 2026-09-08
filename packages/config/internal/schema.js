@@ -162,6 +162,10 @@ export type UniflowedConfig = {
     readonly componentDefault?: "server" | "client",
     readonly framework?: "uniflowed" | "react" | "react-native",
     readonly react?: {
+      // React 19's Strict Mode, on by default in `uf dev`: it double-invokes
+      // render and effects so an impurity shows up in development rather
+      // than in production. Off has to be a choice a project makes.
+      readonly strictMode?: boolean,
       readonly version?: string,
       readonly asyncReact?: boolean,
       readonly suspense?: boolean,
@@ -215,6 +219,19 @@ export type UniflowedConfig = {
           readonly extensions?: $ReadOnlyArray<".mdx">,
           readonly jsxImportSource?: "@uniflowed/jsx-runtime",
           readonly pipelinePlugin?: "built-in",
+          // Colours are computed during the build and written into the HTML,
+          // so nothing ships to the browser to do it. Both themes are emitted
+          // together as CSS variables, because a build cannot know which the
+          // reader prefers.
+          readonly highlight?: {
+            readonly enabled?: boolean,
+            readonly themes?: {
+              readonly light?: string,
+              readonly dark?: string,
+            },
+            // Grammars beyond the ones a uf project uses by default.
+            readonly langs?: $ReadOnlyArray<string>,
+          },
         },
         readonly cache?: "opt-in",
       },
