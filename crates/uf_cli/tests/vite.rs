@@ -3470,11 +3470,6 @@ fn wait_for_http(port: u16, path: &str, budget: Duration) -> Option<String> {
     None
 }
 
-/// One plain HTTP/1.1 request, so the test depends on nothing but the server.
-fn http_get(host: &str, port: u16, path: &str) -> String {
-    http_request(host, port, "GET", path, None)
-}
-
 /// The same, for a method and a body — which is the half a route handler is
 /// the only thing that can answer, and therefore the half a build that serves
 /// only files gets wrong.
