@@ -899,15 +899,45 @@ now and finding out from a 404.
 
 ## Types for routes
 
-`uf build` and `uf dev` write a `router.js` next to your config, declaring the
-paths that exist and the parameters each takes. Importing `route` from it gives
-a link builder Flow checks:
+`uf build`, `uf dev` and `uf prepare` write a `router.js` next to your config,
+naming the paths that exist and the parameters each takes. Importing `route`
+from it gives a link builder Flow checks:
 
 ```js
 import { route } from "../router.js";
 
-route("/posts/[slug]", { slug: post.slug });
+route("/posts/:slug", { slug: post.slug });
 ```
 
-A path that does not exist, or a missing parameter, is a type error rather than
-a 404 in production.
+The paths are written the way the router matches them — `:slug` for a segment
+and `:slug*` for a catch-all — which is what `RoutePath` in the generated file
+lists.
+
+A route that takes no parameters takes no second argument:
+
+```js
+route("/about");
+```
+
+A route with a catch-all takes the segments as an array, because that is what
+it matches:
+
+```js
+route("/docs/:path*", { path: ["guide", "routing"] });
+```
+
+Each of these is a type error rather than a 404 in production:
+
+```js
+route("/nope");                              // not a path this router serves
+route("/posts/:slug");                       // the parameter is missing
+route("/posts/:slug", { slug: 1 });          // and here it is the wrong type
+route("/posts/:slug", { slug: "a", b: "c" }); // `b` is not a parameter of it
+route("/about", { id: "1" });                // this route takes none
+route("/docs/:path*", { path: "guide" });    // a catch-all is an array
+```
+
+`route` returns the URL with each parameter encoded, so a value containing a
+`/` stays one segment rather than becoming two — and the link it builds matches
+the route it was built from, because the builder and the matcher are the same
+code.

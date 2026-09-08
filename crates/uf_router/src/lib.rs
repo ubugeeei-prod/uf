@@ -549,8 +549,33 @@ pub fn find_reserved_file_violations(
     Ok(violations)
 }
 
+/// The `router.js` a project imports: the paths that exist, the parameters
+/// each takes, and a link builder typed by both.
+///
+/// # Why the parameters are a tuple as well as an object
+///
+/// `RouteParams` is the useful shape — `RouteParams["/posts/:slug"]` is
+/// `{ slug: string }`, and a page annotates its props with it. But a function
+/// whose second argument is `RouteParams[Path]` cannot be called for a route
+/// that has no parameters: the object is `{}`, and writing `route("/", {})` at
+/// every static link is a tax on the common case. Worse, it used to be
+/// `empty`, which *nothing* inhabits, so `route("/")` could not be written at
+/// all — a static route was untypable rather than merely awkward. See #653.
+///
+/// `RouteArgs` is the same information as the argument list it describes: `[]`
+/// for a route with no parameters and `[{ … }]` for one with them. Spread into
+/// the signature it makes `route("/")` and `route("/posts/:slug", { slug })`
+/// both exact, and a missing or extra argument an arity error.
+///
+/// # Why it delegates rather than substitutes
+///
+/// The body is one call into `@uniflowed/router`, where `buildRoute` is built
+/// out of the same `compile` the matcher uses. A builder generated here would
+/// be a second implementation of the pattern grammar, and the two would drift
+/// — as a link that 404s, which is the failure typed routes exist to remove.
 pub fn generate_router_flow(routes: &[Route]) -> String {
     let mut output = String::from("// @flow\n\n");
+    output.push_str("import { buildRoute } from \"@uniflowed/router\";\n\n");
     output.push_str("export type RoutePath = ");
     if routes.is_empty() {
         output.push_str("empty;\n\n");
@@ -572,6 +597,7 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
     // 2023 — `{| |}` is the legacy spelling of the same thing.
     if routes.is_empty() {
         output.push_str("export type RouteParams = {};\n\n");
+        output.push_str("export type RouteArgs = {};\n\n");
     } else {
         output.push_str("export type RouteParams = {\n");
         for route in routes {
@@ -582,6 +608,16 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
             ));
         }
         output.push_str("};\n\n");
+
+        output.push_str("export type RouteArgs = {\n");
+        for route in routes {
+            output.push_str(&format!(
+                "  \"{}\": {},\n",
+                route.path,
+                route_args_type(&route.params)
+            ));
+        }
+        output.push_str("};\n\n");
     }
     // Written the way `uf fmt` writes it, down to the trailing comma: uf
     // scaffolds a project and then checks it with its own formatter, so a
@@ -589,7 +625,7 @@ pub fn generate_router_flow(routes: &[Route]) -> String {
     // code nobody wrote. `the_generated_router_is_already_formatted` is what
     // keeps the two in step.
     output.push_str(
-        "declare export function route<Path extends RoutePath>(\n  path: Path,\n  params: RouteParams[Path],\n): string;\n",
+        "export function route<Path extends RoutePath>(path: Path, ...params: RouteArgs[Path]): string {\n  return buildRoute(path, ...params);\n}\n",
     );
     output
 }
@@ -603,7 +639,24 @@ pub fn write_router_manifest(
     }
     let routes = discover_routes(root, config)?;
     let manifest = root.join(config.app.router.manifest.as_str());
-    fs::write(&manifest, generate_router_flow(&routes)).map_err(|source| RouterError::Write {
+    // Through the formatter uf ships, with this project's own `fmt` settings.
+    //
+    // `generate_router_flow` writes what the printer would write, and for a
+    // handful of routes the two agree — but a union of thirty-seven paths is
+    // one line the printer would break across thirty-seven, and a project's
+    // `fmt.lineWidth` can move where that happens. `uf prepare` then fails at
+    // `run-format-check` on a file nobody wrote, which is what it did on this
+    // repository's own docs site. Formatting the output rather than predicting
+    // it makes the two agree by construction instead of by care.
+    //
+    // A generator that produced something unparseable would be a bug in this
+    // file rather than in the project, so the unformatted source is written
+    // instead of failing the build: an unformatted `router.js` still type
+    // checks and still runs.
+    let generated = generate_router_flow(&routes);
+    let source = uf_fmt::format_source(&generated, &config.fmt)
+        .map_or(generated, |formatted| formatted.output);
+    fs::write(&manifest, source).map_err(|source| RouterError::Write {
         path: manifest.clone(),
         source,
     })?;
@@ -680,9 +733,26 @@ fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
     (path, params)
 }
 
-fn route_params_type(params: &[RouteParam]) -> String {
+/// The argument list after the path, as a tuple type.
+///
+/// `[]` for a route that takes no parameters, so `route("/")` is the whole
+/// call; `[{ … }]` for one that does. Spread into `route`'s signature this is
+/// what makes the second argument required exactly when the route has
+/// parameters, rather than always or never.
+fn route_args_type(params: &[RouteParam]) -> String {
     if params.is_empty() {
-        return "empty".to_string();
+        return "[]".to_string();
+    }
+    format!("[{}]", route_params_type(params))
+}
+
+fn route_params_type(params: &[RouteParam]) -> String {
+    // `{}` and not `empty`. A route with no parameters takes an empty object,
+    // and `empty` is Flow's bottom type: no value has it, so `RouteParams`
+    // named a type for every static route that no caller could ever produce.
+    // See #653.
+    if params.is_empty() {
+        return "{}".to_string();
     }
 
     let fields = params

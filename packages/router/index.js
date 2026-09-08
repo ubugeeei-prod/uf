@@ -56,6 +56,7 @@ export {
   RouteView,
   RouterProvider,
   UnauthorizedError,
+  buildRoute,
   forbidden,
   hasClientPage,
   matchRoute,
