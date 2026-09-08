@@ -88,6 +88,8 @@
 // it. Written here because this is the file somebody reads before deciding
 // otherwise.
 
+import { asResponder } from "@uniflowed/server/host";
+
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
@@ -210,32 +212,44 @@ export function createActionDispatcher(options: {|
       return refusal(500);
     }
 
-    let result: mixed;
-    try {
-      // The build-time contract says this is `async (...ActionArgument) => …`
-      // (`ServerActionBoundary` in `../action.js`), and Flow cannot read that
-      // through a module loaded by a thunk. The arguments are the ones
-      // `decodeActionArguments` produced, so what is unchecked here is the
-      // shape of the function and not the shape of the payload.
-      const call = action as $FlowFixMe;
-      result = await call(...args);
-    } catch (error) {
-      report(record, error);
-      return refusal(500);
-    }
+    // Everything from here to the answer runs as the thing that owns this
+    // response, which is what makes `draftMode().enable()` legal in an action:
+    // a `"use server"` function is one of the two places uf lets draft mode be
+    // changed, and the `Set-Cookie` it decides on is written onto the response
+    // this returns rather than onto an object the host discards. See
+    // ubugeeei-prod/uf#282 and `asResponder`.
+    //
+    // The refusals stay outside it. A `403` for a cross-origin call must not
+    // carry a cookie the caller asked for, and a scope that covered them would
+    // be a scope in which nothing ran that could have asked.
+    return asResponder("a server action", async () => {
+      let result: mixed;
+      try {
+        // The build-time contract says this is `async (...ActionArgument) => …`
+        // (`ServerActionBoundary` in `../action.js`), and Flow cannot read that
+        // through a module loaded by a thunk. The arguments are the ones
+        // `decodeActionArguments` produced, so what is unchecked here is the
+        // shape of the function and not the shape of the payload.
+        const call = action as $FlowFixMe;
+        result = await call(...args);
+      } catch (error) {
+        report(record, error);
+        return refusal(500);
+      }
 
-    let answer: string;
-    try {
-      answer = encodeActionResult(result);
-    } catch (error) {
-      // The action ran and its return value cannot cross. Flow says so at
-      // build time — `ServerActionBoundary` in `../action.js` holds every
-      // action's return type against the grammar — so this is the case where
-      // it was reached anyway, and half a value is worse than none.
-      report(record, error);
-      return refusal(500);
-    }
-    return new Response(answer, { status: 200, headers: { ...ANSWER_HEADERS } });
+      let answer: string;
+      try {
+        answer = encodeActionResult(result);
+      } catch (error) {
+        // The action ran and its return value cannot cross. Flow says so at
+        // build time — `ServerActionBoundary` in `../action.js` holds every
+        // action's return type against the grammar — so this is the case where
+        // it was reached anyway, and half a value is worse than none.
+        report(record, error);
+        return refusal(500);
+      }
+      return new Response(answer, { status: 200, headers: { ...ANSWER_HEADERS } });
+    });
   };
 }
 

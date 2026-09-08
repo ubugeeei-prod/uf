@@ -320,36 +320,34 @@ selected — and a switch is on or off, with nowhere to put it. `Checkbox` takes
 `indeterminate` for it, and clicking a mixed checkbox reports `true` rather than
 the opposite of a boolean nobody set.
 
-The keyboard is not that difference. Both toggle on both keys:
+The keyboard is the other difference, and it follows from what each control is
+*for*:
 
 | Key | Checkbox | Switch |
 | --- | --- | --- |
 | `Space` | Toggles | Toggles |
-| `Enter` | Toggles | Toggles |
+| `Enter` | Submits the form | Toggles |
 
-Three of those four cells have a test: *"toggles a switch on Space and on
-Enter"* holds the Switch column, and *"toggles a checkbox on Space and leaves
-Enter to the form"* holds the checkbox's `Space`. The fourth is the one row on
-this page nothing asserts, and it is worth the paragraph, because the code says
-the opposite of it.
+A switch operates something, so pressing `Enter` on it operates it. A checkbox
+answers a question on the way to a submit button, and what a native `<input
+type="checkbox">` does with `Enter` is *implicit submission*: the key does not
+touch the control, and the form around it is submitted as though its default
+button had been pressed.
 
-They also arrive differently, which matters before you write a third component.
-`switch.js` handles both keys itself and calls `preventDefault`, so the browser's
-own click never lands and the switch moves exactly once. `checkbox.js` handles
-only `Space`; `Enter` reaches it as the platform's activation behaviour, since
-the default action of `Enter` on a focused `<button>` is a click, and the click
-handler toggles.
+That was the header's claim for a long time and neither half of it was true —
+ubugeeei-prod/uf#324. `checkbox.js` renders a `<button type="button">`, which is
+precisely the button that submits nothing; and leaving a key unhandled is not
+the same as making it inert, because the default action of `Enter` on a focused
+`<button>` is a click, and the click handler toggled. So a focused checkbox both
+failed to submit and changed its own state.
 
-`checkbox.js` says otherwise in its header — that `Enter` is *"left alone, so a
-checkbox inside a form still submits it"* — and neither half of that survives
-contact with the element it renders, which is `<button type="button">`. A
-`type="button"` is precisely the button that submits nothing, and leaving a key
-unhandled is not the same as making it inert: pressed on a focused checkbox in
-Chrome, `Enter` produces one click, one toggle and no submit. The test named
-above presses `Enter` while nothing is focused, so the case it is named for is
-the one case it never runs.
-[Issue #324](https://github.com/ubugeeei-prod/uf/issues/324) has the three ways
-out and the argument for each; until one is taken, the table is what runs.
+Both keys are now handled and prevented, in both components. `Space` toggles.
+`Enter` toggles a switch, and on a checkbox calls `requestSubmit` on the form
+the control is in, naming the form's default button so a handler reading
+`event.submitter` is told who pressed. Outside a form it does nothing, which is
+again what the native control does. *"submits the form on Enter rather than
+toggling itself"* is the test, and it presses `Enter` on a **focused** control,
+because that is the only version of it that would ever have failed.
 
 ## Four rules that hold across all seven
 

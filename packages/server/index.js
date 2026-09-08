@@ -15,11 +15,13 @@
 
 import type { CookieStore, DraftMode, HeaderStore, RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
+import { DraftModeError } from "./internal/draft.js";
 import type { LogFields, Logger } from "./internal/log.js";
 import { processLogger } from "./log.js";
 
 export type { CookieStore, DraftMode, HeaderStore } from "./internal/context.js";
 export type { LogFields, LogLevel, Logger } from "./internal/log.js";
+export { DraftModeError } from "./internal/draft.js";
 
 /**
  * Raised when a server function is called with no request to answer about.
@@ -97,22 +99,81 @@ export function cookies(): CookieStore {
 }
 
 /**
- * Whether this request is rendering draft content.
+ * Whether this request is rendering draft content, and how to change that.
  *
  * The flag lives on the request rather than in a module, so two requests being
- * handled at once cannot see each other's answer.
+ * handled at once cannot see each other's answer. It is read from a signed
+ * cookie when the request begins, so a guard, a route handler and the page
+ * underneath them agree about it — and so that it is `true` at all, which it
+ * never was before ubugeeei-prod/uf#282: nothing wrote the flag to a response
+ * and nothing read it from one, so `enable()` mutated an object that was
+ * discarded when the response was sent.
+ *
+ * # `enable()` is a route handler's to call, or an action's
+ *
+ * It writes a cookie, and a cookie is part of a response. `headers()` and
+ * `cookies()` above are read-only for the reason in their own paragraphs — a
+ * response header set from inside a render has no defined moment to take
+ * effect — and draft mode is the one case that needs the exception, so the
+ * exception is given exactly where a response is being produced and refused
+ * everywhere else with [`DraftModeError`]. That is Next's rule and it is Next's
+ * reason; what differs is that uf can name the two places in the error.
+ *
+ * The flow it exists for is one route handler:
+ *
+ *     // app/api/preview/_uf.route.js
+ *     export function GET(request: Request): Response {
+ *       const url = new URL(request.url);
+ *       if (url.searchParams.get("token") !== process.env.CMS_PREVIEW_TOKEN) {
+ *         return new Response("no", { status: 401 });
+ *       }
+ *       draftMode().enable();
+ *       return Response.redirect(new URL(url.searchParams.get("to") ?? "/", request.url), 307);
+ *     }
+ *
+ * uf checks that the cookie it later receives is one it issued and has not
+ * expired. It does **not** check who asked for it: the handler above is the
+ * authorization, and the token comparison in it is the application's to write,
+ * because only the application knows what a CMS editor is. A handler that
+ * enables draft mode with no check is an open door, and this documentation is
+ * the only place that can say so.
+ *
+ * # What it changes
+ *
+ * A draft request is never answered from the route cache and never from a
+ * prerendered document on disk, because both are answers about a moment before
+ * the draft existed. `packages/server/fetch.js` has the first half and
+ * `./node.js`'s static handler the second.
  */
 export function draftMode(): DraftMode {
   const context = require$VaryingContext("draftMode");
   return {
     isEnabled: context.draft,
     enable: () => {
+      requireResponder(context, "enable");
       context.draft = true;
+      context.draftChange = "enable";
     },
     disable: () => {
+      requireResponder(context, "disable");
       context.draft = false;
+      context.draftChange = "disable";
     },
   };
+}
+
+/**
+ * Refuse a draft-mode change made where no response is being produced.
+ *
+ * The message distinguishes the two ways of being in the wrong place, because
+ * they have different fixes: a render has to move the call into a handler, and
+ * a middleware has to answer with a redirect to one.
+ */
+function requireResponder(context: RequestContext, operation: string): void {
+  if (context.responder != null) {
+    return;
+  }
+  throw new DraftModeError(operation, "was called where nothing owns the response");
 }
 
 /**

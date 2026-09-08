@@ -223,7 +223,7 @@ export {
 } from "./dom.js";
 export { useKeyCombo, useKeyHeld } from "./keyboard.js";
 export {
-  RENDER_ID,
+  RENDER_META,
   RenderProvider,
   useRandom,
   useRenderEnvelope,

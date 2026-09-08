@@ -133,7 +133,7 @@ pub(crate) fn binary_name(root: &Utf8Path) -> String {
 pub(crate) fn compile(ui: &mut Ui, runtime: &Runtime, link: LinkContext<'_>) -> Result<Compiled> {
     let LinkContext {
         host,
-        package,
+        builder,
         root,
         out_dir,
         env,
@@ -163,7 +163,7 @@ pub(crate) fn compile(ui: &mut Ui, runtime: &Runtime, link: LinkContext<'_>) -> 
 
     let mut driver = Driver::spawn(
         host,
-        package,
+        builder,
         root,
         "compile",
         &[

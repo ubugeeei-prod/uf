@@ -322,3 +322,72 @@ fn line_spans_agree_with_the_lines_a_diagnostic_counts() {
         }
     }
 }
+
+#[test]
+fn a_hot_read_gains_the_optional_chain_but_only_when_asked_for() {
+    let line = "import.meta.hot.accept((module) => module);";
+    let fix = fix_for(&diagnostic("vite/hot-needs-optional-chaining", 2, 1), line).expect("a fix");
+
+    assert_eq!(fix.safety, Safety::Unsafe);
+    assert_eq!(fix.replacement, "?.");
+    assert_eq!(&line[fix.start..fix.end], ".");
+    assert_eq!(
+        apply(&format!("// @flow\n{line}\n"), &[fix]),
+        "// @flow\nimport.meta.hot?.accept((module) => module);\n"
+    );
+    assert!(plan(&format!("// @flow\n{line}\n"), &[], false).is_empty());
+}
+
+#[test]
+fn a_hot_read_inside_a_guard_is_fixed_where_the_rule_pointed() {
+    // Two leading spaces: the rule reports the member expression, not the line.
+    let line = "  import.meta.hot.invalidate(message);";
+    let fix = fix_for(&diagnostic("vite/hot-needs-optional-chaining", 3, 3), line).expect("a fix");
+
+    assert_eq!(
+        apply(
+            &format!("// @flow\nif (import.meta.hot) {{\n{line}\n}}\n"),
+            &[fix]
+        ),
+        "// @flow\nif (import.meta.hot) {\n  import.meta.hot?.invalidate(message);\n}\n"
+    );
+}
+
+#[test]
+fn a_hot_read_that_already_chains_gets_no_fix() {
+    // Not a line this rule reports, and the guard is what keeps a stale range
+    // from splicing a second `?` into a chain that has one.
+    assert!(
+        fix_for(
+            &diagnostic("vite/hot-needs-optional-chaining", 2, 1),
+            "import.meta.hot?.accept();"
+        )
+        .is_none()
+    );
+    assert!(
+        fix_for(
+            &diagnostic("vite/hot-needs-optional-chaining", 2, 1),
+            "const url = import.meta.url;"
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn the_accessibility_rules_have_no_mechanical_answer() {
+    // Each of these asks for markup to be rearranged or for words only a
+    // person has; see the module documentation for the argument per rule.
+    for rule in [
+        "a11y/alt-text",
+        "a11y/aria-props",
+        "a11y/heading-order",
+        "a11y/label-has-associated-control",
+        "a11y/no-static-element-interactions",
+        "markup/no-invalid-nesting",
+    ] {
+        assert!(
+            fix_for(&diagnostic(rule, 2, 1), "<img src=\"/cat.png\" />").is_none(),
+            "{rule} offered a fix"
+        );
+    }
+}

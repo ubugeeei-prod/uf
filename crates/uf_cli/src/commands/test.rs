@@ -20,8 +20,9 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
-use uf_config::load_config;
+use uf_config::{Permissions, ToolchainAccess, load_config};
 use uf_project::{ProjectFile, scan_selected_source_files};
+use uf_runtime::RuntimeHost;
 use uf_term::PhaseTimer;
 use uf_test::{
     Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
@@ -30,7 +31,8 @@ use uf_test::{
 };
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
-use crate::commands::vite::{installed_package, resolve_host};
+use crate::commands::builder::uniflowed_package;
+use crate::commands::vite::{find_program, resolve_host};
 
 use crate::support::{TEST, plural, project_env, quoted_list, selects, unreadable_lines};
 use crate::ui::Ui;
@@ -315,7 +317,7 @@ pub(crate) fn test_host(
     // and runs on a Capability JS Host; nothing in that path is Vite's, and
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
     // loads.
-    let loader = installed_package(root, "host", "register.js")?;
+    let loader = uniflowed_package(root, "host", "register.js")?;
     let worker = loader
         .parent()
         .map(|scope| scope.join("test/worker.js"))
@@ -343,19 +345,235 @@ pub(crate) fn test_host(
         .with_env(env.exported());
     // The worker transforms through the binary that started it, never a
     // different `uf` that happens to be on PATH.
-    if let Ok(binary) = std::env::current_exe()
-        && let Ok(binary) = Utf8PathBuf::from_path_buf(binary)
-    {
-        command = command.with_uf_binary(binary);
+    let uf_binary = uf_binary()?;
+    command = command.with_uf_binary(uf_binary.clone());
+    // After the binary is known, because the permission set has to grant the
+    // transform service the right to exist: a worker that may not start `uf
+    // transform` cannot load a line of Flow.
+    if let Some(permissions) = config.permissions.as_ref() {
+        command = command.with_permissions(worker_permissions(
+            kind,
+            root,
+            &loader,
+            Some(uf_binary.as_path()),
+            permissions,
+        )?);
     }
     if !command.loads_flow() {
+        // The reason comes from `uf_runtime::HOSTS` rather than from a sentence
+        // written here, so that the message a person meets and the table
+        // `docs/hosts.md` is generated from cannot drift apart. The two used to
+        // be separate sentences and the enum's said nothing at all.
+        let support = uf_runtime::HostSupport::for_host(runtime_host(kind));
+        let tracking = support.tracking_issue.map_or_else(String::new, |issue| {
+            format!(" Tracked by https://github.com/ubugeeei-prod/uf/issues/{issue}.")
+        });
         bail!(
-            "`uf test` cannot run on {} yet: it has no Flow loader, so a test file written in \
-             Flow could not be imported. Install Node.js or Bun.",
-            host_name
+            "`uf test` cannot run on {host_name} yet: it has no Flow loader, so a test file \
+             written in Flow could not be imported. What it needs is {}.{tracking} Node.js and \
+             Bun both run the suite today; install one, or name it in \
+             `app.runtime.capabilityJsHost.default`.",
+            support.missing.unwrap_or("a Flow loader"),
         );
     }
     Ok(command)
+}
+
+/// The `uf` every worker in this run transforms its modules through.
+///
+/// # Why this is not "whatever `uf` is installed"
+///
+/// A worker imports each test file through the host's Flow loader, and that
+/// loader shells out to `uf transform`. Which `uf` it reaches decides what the
+/// modules under test *are*. `packages/host/transform.js` falls back to a bare
+/// `uf` on `PATH` when nothing says otherwise, so a run that cannot name its
+/// own binary silently answers a different question — "what does the installed
+/// uf make of this project" rather than "what does this one" — while the
+/// report carries the name of the binary the user typed. That is not a slower
+/// run, it is a different compiler; see ubugeeei-prod/uf#217.
+///
+/// # The routes, in order, and why `current_exe` is first
+///
+/// 1. [`std::env::current_exe`], which is the exact answer wherever the
+///    platform gives one, and is therefore never overridable. An inherited
+///    `UF_BINARY` — from an outer run, from a shell profile, from a `.env`
+///    should one ever reach this process — would otherwise redirect a run to
+///    a compiler nobody chose while the report carried this binary's name,
+///    which is the defect itself rather than a fix for it. `docs/security.md`
+///    makes the same claim about the project's environment for the same
+///    reason.
+/// 2. `UF_BINARY` from this process's environment. The escape hatch, and it
+///    is placed exactly where an escape hatch is needed: a platform or
+///    filesystem where the route above will not answer, or answers with a
+///    path that is not UTF-8.
+/// 3. `argv[0]`, resolved the way the shell that launched us resolved it: a
+///    path against the working directory, a bare name along `PATH`. This is
+///    still *the binary that was invoked* rather than "an uf" — the difference
+///    from the old fallback is that it is resolved here, now, and checked to
+///    exist, instead of being left to a `uf` lookup inside a worker minutes
+///    later.
+///
+/// Refusing when all three fail is the point. The alternative considered was a
+/// warning in the run header, and a warning in a passing run is read by
+/// nobody: the run would still report on a compiler nobody chose. A refusal
+/// names the one thing that fixes it.
+fn uf_binary() -> Result<Utf8PathBuf> {
+    let current_exe = std::env::current_exe()
+        .ok()
+        .and_then(|binary| Utf8PathBuf::from_path_buf(binary).ok());
+    let declared = std::env::var("UF_BINARY").ok();
+    let argv0 = std::env::args_os()
+        .next()
+        .and_then(|argument| argument.into_string().ok());
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| Utf8PathBuf::from_path_buf(cwd).ok());
+    resolve_uf_binary(
+        current_exe,
+        declared.as_deref(),
+        argv0.as_deref(),
+        cwd.as_deref(),
+        &find_program,
+    )
+    .ok_or_else(|| {
+        anyhow::anyhow!(
+            "`uf test` cannot tell which `uf` binary is running, so it cannot promise that the \
+             workers transform this project through it: the operating system would not say \
+             (`current_exe`), and argv[0] named nothing that exists. Running the suite anyway \
+             would compile it with whatever `uf` is on PATH and report the result under this \
+             one's name. Set `UF_BINARY` to the path of the binary to use."
+        )
+    })
+}
+
+/// The decision behind [`uf_binary`], with everything it reads passed in.
+///
+/// Split out because the interesting cases are the ones a process cannot be
+/// put into from a test: `current_exe` refusing to answer, or answering with a
+/// path that is not UTF-8. Both are arguments here.
+///
+/// `on_path` is the `PATH` lookup, injected for the same reason.
+fn resolve_uf_binary(
+    current_exe: Option<Utf8PathBuf>,
+    declared: Option<&str>,
+    argv0: Option<&str>,
+    cwd: Option<&Utf8Path>,
+    on_path: &dyn Fn(&str) -> Option<Utf8PathBuf>,
+) -> Option<Utf8PathBuf> {
+    if let Some(binary) = current_exe {
+        return Some(binary);
+    }
+    if let Some(declared) = declared.filter(|declared| !declared.is_empty()) {
+        return Some(Utf8PathBuf::from(declared));
+    }
+    let argv0 = argv0.filter(|argv0| !argv0.is_empty())?;
+    // A bare name is a `PATH` lookup and anything else is a path, which is the
+    // rule every shell applies to the command it was given. `uf` written with
+    // no separator was found on `PATH`, so looking it up there finds the same
+    // file; `./target/release/uf` was not, and must not be.
+    if !argv0.contains('/') && !(cfg!(windows) && argv0.contains('\\')) {
+        return on_path(argv0);
+    }
+    let path = Utf8Path::new(argv0);
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd?.join(path)
+    };
+    // Checked rather than trusted: argv[0] is whatever the parent process
+    // chose, and a login shell's `-uf` or a name from a since-deleted
+    // directory would otherwise be handed to a worker as a compiler.
+    resolved.is_file().then_some(resolved)
+}
+
+/// What uf itself must reach on the host, whatever the project declared.
+///
+/// Three of the toolchain's own grants, and each of them is the difference
+/// between a permission set and a run that cannot start:
+///
+/// * **the project root, readable.** A worker imports the test file and
+///   everything it imports. A declared `read` list is *added to* this rather
+///   than replacing it, which is the part worth saying out loud: a permission
+///   set does not narrow a run's reach into the project, it denies the rest of
+///   the machine — `~/.ssh`, `~/.aws`, `/etc`.
+/// * **the directory the packages resolve from, readable.** `@uniflowed/test`
+///   and `@uniflowed/host` are reached through `node_modules`, which in a
+///   workspace sits above the project and would otherwise be outside every
+///   grant.
+/// * **the `uf` binary, readable and runnable.** Every Flow module is
+///   transformed by a `uf transform` child, and `packages/host/transform.js`
+///   stats the binary before spawning it to key its cache. Both are denied by
+///   default under a permission model, and the failure would surface inside
+///   uf's own loader rather than in anything the project wrote.
+///
+/// `.uf` is the only writable path uf adds: the transform and check caches, the
+/// snapshots a `--update-snapshots` run rewrites, and the coverage documents
+/// all live under it.
+///
+/// `loader` is `None` for `uf explain`, which describes a run rather than
+/// starting one and has not resolved the project's packages. The difference is
+/// one entry in the read list, and saying "the packages directory as well"
+/// costs a reader less than a second implementation of this would.
+pub(crate) fn toolchain_access(
+    root: &Utf8Path,
+    loader: Option<&Utf8Path>,
+    uf_binary: Option<&Utf8Path>,
+) -> ToolchainAccess {
+    let mut toolchain = ToolchainAccess {
+        read: vec![root.to_string()],
+        write: vec![root.join(".uf").to_string()],
+        run: Vec::new(),
+        // Node's `register()` puts the module hooks on a loader thread, which
+        // its permission model calls a worker; every host command uf starts
+        // loads Flow that way.
+        loader_thread: true,
+    };
+    if let Some(loader) = loader {
+        // `loader` is `<node_modules>/@uniflowed/host`; two levels up is the
+        // directory every bare specifier in the worker resolves through.
+        if let Some(modules) = loader.parent().and_then(Utf8Path::parent) {
+            toolchain.read.push(modules.to_string());
+        }
+        // And where the packages *really* are. A workspace links
+        // `node_modules/@uniflowed/host` at its own `packages/host`, and Node
+        // resolves a symlink before it checks the path against the grant — so
+        // a run in a workspace was denied the loader it had just been given
+        // permission to read. Granting the resolved scope directory covers
+        // every `@uniflowed/*` the worker imports and nothing else.
+        if let Ok(real) = loader.canonicalize_utf8()
+            && let Some(scope) = real.parent()
+        {
+            toolchain.read.push(scope.to_string());
+        }
+    }
+    if let Some(binary) = uf_binary {
+        toolchain.read.push(binary.to_string());
+        toolchain.run.push(binary.to_string());
+    }
+    toolchain
+}
+
+/// The host, as `uf_runtime` names it.
+pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
+    match kind {
+        HostKind::Node => RuntimeHost::Node,
+        HostKind::Bun => RuntimeHost::Bun,
+        HostKind::Deno => RuntimeHost::Deno,
+    }
+}
+
+fn worker_permissions(
+    kind: HostKind,
+    root: &Utf8Path,
+    loader: &Utf8Path,
+    uf_binary: Option<&Utf8Path>,
+    permissions: &Permissions,
+) -> Result<Vec<String>> {
+    let toolchain = toolchain_access(root, Some(loader), uf_binary);
+    // The error is the feature: a set this host cannot enforce stops the run
+    // and names the host that can, rather than being partly applied.
+    uf_runtime::permissions::host_arguments(runtime_host(kind), permissions, &toolchain)
+        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 /// Run the suite once, drawing a progress line while it goes.
@@ -520,12 +738,16 @@ fn finish(report: &TestRunReport, violations: &[uf_test::ThresholdViolation]) ->
             plural(summary.failed_files, "file")
         );
     }
-    if summary.unsupported_declarations > 0 {
+    if summary.foreign_declarations > 0 {
+        // Named rather than counted with the rest: `it.each` is a form uf runs
+        // and cannot list, and this is a declaration uf cannot run at all. The
+        // second is why the run is red, so it is what the message says.
         bail!(
-            "uf test found {}",
+            "uf test found {}, which this runner cannot execute: they register \
+             with another runner, so none of them ran",
             plural(
-                summary.unsupported_declarations,
-                "unsupported test declaration"
+                summary.foreign_declarations,
+                "test declaration from another runner"
             )
         );
     }
@@ -566,5 +788,150 @@ mod tests {
             .map(|file| file.relative_path.as_str())
             .collect();
         assert_eq!(kept, vec!["loop.test.js", "plain.test.js"]);
+    }
+
+    /// A `PATH` that holds exactly one answer, for the argv[0] route.
+    fn path_holding(name: &str, at: &str) -> impl Fn(&str) -> Option<Utf8PathBuf> {
+        let name = name.to_owned();
+        let at = Utf8PathBuf::from(at);
+        move |asked: &str| (asked == name).then(|| at.clone())
+    }
+
+    #[test]
+    fn the_running_binary_is_what_the_workers_transform_through() {
+        let found = resolve_uf_binary(
+            Some(Utf8PathBuf::from("/opt/uf/bin/uf")),
+            None,
+            Some("uf"),
+            Some(Utf8Path::new("/work")),
+            &path_holding("uf", "/usr/local/bin/uf"),
+        );
+
+        // Not the `uf` on PATH, which is a different build.
+        assert_eq!(found.as_deref(), Some(Utf8Path::new("/opt/uf/bin/uf")));
+    }
+
+    #[test]
+    fn an_inherited_uf_binary_does_not_redirect_a_run_that_knows_its_own_path() {
+        // The precedence that matters. `UF_BINARY` is set by every `uf` that
+        // spawns a child, exported by shells, and named in `docs/security.md`
+        // as the variable a cloned repository's `.env` must not be able to
+        // answer — so letting it beat the running binary would be the defect
+        // this function exists to fix, wearing a different hat: a run
+        // compiled by a binary nobody chose, reported under this one's name.
+        let found = resolve_uf_binary(
+            Some(Utf8PathBuf::from("/opt/uf/bin/uf")),
+            Some("/tmp/candidate/uf"),
+            None,
+            None,
+            &path_holding("uf", "/usr/local/bin/uf"),
+        );
+
+        assert_eq!(found.as_deref(), Some(Utf8Path::new("/opt/uf/bin/uf")));
+    }
+
+    #[test]
+    fn an_explicit_uf_binary_answers_when_the_platform_will_not() {
+        // The escape hatch, at the one place an escape hatch is needed: a
+        // machine where `current_exe` refuses, or answers with a path that is
+        // not UTF-8. Both arrive here as `None`.
+        let found = resolve_uf_binary(
+            None,
+            Some("/tmp/candidate/uf"),
+            Some("uf"),
+            Some(Utf8Path::new("/work")),
+            &path_holding("uf", "/usr/local/bin/uf"),
+        );
+
+        assert_eq!(found.as_deref(), Some(Utf8Path::new("/tmp/candidate/uf")));
+        // Empty is not an answer: `UF_BINARY=` exported by a shell means the
+        // variable is unset, not that the binary is called "".
+        assert_eq!(
+            resolve_uf_binary(
+                None,
+                Some(""),
+                Some("uf"),
+                Some(Utf8Path::new("/work")),
+                &path_holding("uf", "/usr/local/bin/uf"),
+            )
+            .as_deref(),
+            Some(Utf8Path::new("/usr/local/bin/uf"))
+        );
+    }
+
+    #[test]
+    fn a_current_exe_that_will_not_answer_falls_back_to_how_uf_was_invoked() {
+        // `current_exe` failing, and `current_exe` answering with a path that
+        // is not UTF-8, arrive here as the same `None` — and both used to set
+        // nothing at all, which left the worker resolving a bare `uf` along
+        // PATH minutes later. Resolved here instead: same lookup, one process,
+        // and the answer is checked.
+        let bare = resolve_uf_binary(
+            None,
+            None,
+            Some("uf"),
+            Some(Utf8Path::new("/work")),
+            &path_holding("uf", "/usr/local/bin/uf"),
+        );
+        assert_eq!(bare.as_deref(), Some(Utf8Path::new("/usr/local/bin/uf")));
+
+        // A path is a path, and is never looked up on PATH: `./target/release/uf`
+        // is emphatically not the installed one.
+        let running = std::env::current_exe().expect("this test process has a path");
+        let running = Utf8PathBuf::from_path_buf(running).expect("and it is UTF-8");
+        let directory = running.parent().expect("with a parent");
+        let relative = format!("./{}", running.file_name().expect("and a file name"));
+        let by_path = resolve_uf_binary(
+            None,
+            None,
+            Some(&relative),
+            Some(directory),
+            &path_holding("uf", "/usr/local/bin/uf"),
+        );
+        assert_eq!(by_path, Some(directory.join(&relative)));
+    }
+
+    #[test]
+    fn a_run_that_cannot_name_its_own_binary_is_refused() {
+        // Every route exhausted: no explicit answer, no `current_exe`, and an
+        // argv[0] that names nothing. Returning `None` is what makes `uf test`
+        // stop — running would compile the project with whatever `uf` is
+        // installed and report it under this binary's name.
+        assert_eq!(
+            resolve_uf_binary(
+                None,
+                None,
+                Some("uf"),
+                Some(Utf8Path::new("/work")),
+                &|_| None,
+            ),
+            None
+        );
+        assert_eq!(
+            resolve_uf_binary(
+                None,
+                None,
+                Some("/no/such/directory/uf"),
+                Some(Utf8Path::new("/work")),
+                &|_| None,
+            ),
+            None
+        );
+        // A login shell passes `-uf`, and a process can be started with no
+        // argv[0] at all. Neither is a binary.
+        assert_eq!(
+            resolve_uf_binary(
+                None,
+                None,
+                Some("-uf"),
+                Some(Utf8Path::new("/work")),
+                &|_| { None }
+            ),
+            None
+        );
+        assert_eq!(
+            resolve_uf_binary(None, None, None, Some(Utf8Path::new("/work")), &|_| None),
+            None
+        );
     }
 }
