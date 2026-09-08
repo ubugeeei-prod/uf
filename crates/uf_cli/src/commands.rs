@@ -21,6 +21,7 @@ pub(crate) mod i18n;
 pub(crate) mod info;
 pub(crate) mod inspect;
 pub(crate) mod lint;
+pub(crate) mod mcp;
 pub(crate) mod pm;
 pub(crate) mod prepare;
 pub(crate) mod release;

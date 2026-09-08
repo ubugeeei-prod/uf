@@ -308,6 +308,7 @@ reference, with every flag and exit code.
 | `uf info`, `uf inspect`, `uf explain` | What uf found, what your config resolved to, and which provider does each stage of a command |
 | `uf prepare` | The code generation and checks a commit should not go without; `--fix` makes the checks write |
 | `uf lsp` | The language server, over stdio |
+| `uf mcp` | The same commands as MCP tools, over stdio, for an agent |
 | `uf env`, `uf use`, `uf self-update` | The JavaScript hosts a project pins, the shared store they live in, and the uf that runs it |
 
 ## One config file

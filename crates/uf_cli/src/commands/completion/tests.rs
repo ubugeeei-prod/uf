@@ -81,6 +81,7 @@ fn explain_completes_everything_it_can_explain() {
         "exec",
         "env",
         "lsp",
+        "mcp",
         "self-update",
         "use",
         "ls",

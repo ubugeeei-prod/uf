@@ -428,6 +428,11 @@ pub(crate) enum Commands {
     },
     /// Serve the language server over stdin/stdout, for an editor.
     Lsp,
+    /// Serve the Model Context Protocol over stdin/stdout, for an agent.
+    ///
+    /// The read-only commands become tools of the same name; the two that
+    /// write are separate and say so: `uf_fmt_write`, `uf_lint_fix`.
+    Mcp,
     /// Run the checks and code generation a commit should not go without.
     Prepare {
         /// Apply `uf lint`'s safe fixes to the staged files and format them,
@@ -803,6 +808,7 @@ impl Commands {
             Self::Complete { .. }
             | Self::Completion { .. }
             | Self::Lsp
+            | Self::Mcp
             | Self::Transform
             | Self::Assets => true,
             Self::Run { script, .. } => script.is_some(),
