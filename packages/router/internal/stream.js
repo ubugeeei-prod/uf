@@ -307,9 +307,15 @@ function queueDestination(queue: ChunkQueue): NodeDestination {
 async function* assembled(
   chunks: AsyncGenerator<string, void, void>,
   shell: DocumentShell,
+  transformHead?: (html: string) => Promise<string>,
 ): AsyncGenerator<string, void, void> {
   let held = "";
   let shape = "unknown";
+  // The opening chunk is the only one the hook sees, and every path below
+  // reaches exactly one of them. Awaiting here rather than at each `yield`
+  // keeps the four of them from drifting apart.
+  const opening = async (html: string): Promise<string> =>
+    transformHead == null ? html : await transformHead(html);
 
   for await (const chunk of chunks) {
     if (shape === "document-open" || shape === "shell-open") {
@@ -329,7 +335,7 @@ async function* assembled(
         continue;
       }
       shape = "shell-open";
-      yield shell.open + split.head + shell.body + split.rest;
+      yield await opening(shell.open + split.head + shell.body + split.rest);
       held = "";
       continue;
     }
@@ -337,7 +343,7 @@ async function* assembled(
     const close = held.indexOf("</head>");
     if (close !== -1) {
       shape = "document-open";
-      yield ufDoctype(held.slice(0, close) + shell.head + held.slice(close));
+      yield await opening(ufDoctype(held.slice(0, close) + shell.head + held.slice(close)));
       held = "";
       continue;
     }
@@ -345,7 +351,9 @@ async function* assembled(
     const body = held.search(/<body[\s>]/i);
     if (body !== -1) {
       shape = "document-open";
-      yield ufDoctype(`${held.slice(0, body)}<head>${shell.head}</head>${held.slice(body)}`);
+      yield await opening(
+        ufDoctype(`${held.slice(0, body)}<head>${shell.head}</head>${held.slice(body)}`),
+      );
       held = "";
     }
   }
@@ -355,14 +363,14 @@ async function* assembled(
   // `<body>` in it, or a shell that is hoistable elements all the way down.
   // There is nothing left to wait for in any of them.
   if (shape === "document") {
-    yield ufDoctype(held + shell.head);
+    yield await opening(ufDoctype(held + shell.head));
     shape = "document-open";
   } else if (shape === "shell" || shape === "unknown") {
     // `complete` is not consulted: nothing more is coming, so a run that was
     // still open is over and whatever was left of it is markup like any other.
     const split = hoisted(held);
     shape = "shell-open";
-    yield shell.open + split.head + shell.body + split.rest;
+    yield await opening(shell.open + split.head + shell.body + split.rest);
   }
   if (shape === "shell-open") {
     yield shell.close;
@@ -582,6 +590,28 @@ export type RenderOptions = {|
    * shell's own failure is not reported here — it rejects instead.
    */
   readonly onError: (error: mixed) => void,
+  /**
+   * Rewrite the opening chunk — everything up to and including the head —
+   * before it goes out.
+   *
+   * For `uf dev`, and only for it. Vite's `transformIndexHtml` rewrites asset
+   * URLs and injects `/@vite/client` and the refresh preamble, and it is a
+   * *whole document* hook, so the development server used to collect the page
+   * and transform it at the end. That made the one place a developer would
+   * notice streaming the one place it did not happen: a slow page showed
+   * nothing until it was finished, and `_uf.loading.js` looked broken.
+   * See ubugeeei-prod/uf#374.
+   *
+   * The hook only ever sees the head, which is what makes this safe. Vite's
+   * injections are string-based against `<head>`, and its dev hook handles a
+   * document that ends mid-`<body>` without complaint — checked against Vite
+   * 8.2.2 before this existed, because "the parse step is the risk" was the
+   * open question on that issue.
+   *
+   * Absent everywhere else. `uf start`, `uf preview` and every deploy adapter
+   * have no such hook and stream already.
+   */
+  readonly transformHead?: (html: string) => Promise<string>,
 |};
 
 /**
@@ -601,7 +631,9 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
       const { pipe, abort } = ReactDOMServer.renderToPipeableStream(node, {
         onShellReady() {
           pipe(queueDestination(queue));
-          resolve(bodyOf(assembled(queue.chunks(), options.shell), () => abort()));
+          resolve(
+            bodyOf(assembled(queue.chunks(), options.shell, options.transformHead), () => abort()),
+          );
         },
         onShellError(error: mixed) {
           reject(error);
@@ -661,7 +693,7 @@ export function renderWithReadableStream(
   const controller = new AbortController();
   return render(node, { onError: options.onError, signal: controller.signal }).then(
     (stream: ByteSource) =>
-      bodyOf(assembled(decoded(stream), options.shell), () => {
+      bodyOf(assembled(decoded(stream), options.shell, options.transformHead), () => {
         controller.abort();
       }),
   );
@@ -712,7 +744,9 @@ export async function prerenderDocument(node: React.Node, options: RenderOptions
     typeof ReactDOMStatic.prerenderToNodeStream === "function"
       ? await ReactDOMStatic.prerenderToNodeStream(node, settings)
       : await ReactDOMStatic.prerender(node, settings);
-  return bodyOf(assembled(preludeChunks(result.prelude), options.shell)).text();
+  return bodyOf(
+    assembled(preludeChunks(result.prelude), options.shell, options.transformHead),
+  ).text();
 }
 
 /**

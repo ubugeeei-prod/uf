@@ -112,6 +112,21 @@ export type RenderOptions = {|
    * bytes. `uf dev` reports them in the terminal; a production host logs them.
    */
   readonly onError?: (error: mixed) => void,
+  /**
+   * Rewrite the opening chunk — everything up to and including the head —
+   * before it goes out.
+   *
+   * For `uf dev` and nothing else. Vite's `transformIndexHtml` injects
+   * `/@vite/client` and the refresh preamble and rewrites asset URLs, and it
+   * is a *whole document* hook, so the development server used to collect the
+   * page and transform it at the end. That made the one place a developer
+   * would notice streaming the one place it did not happen: a slow page showed
+   * nothing until it was finished, and `_uf.loading.js` looked broken.
+   * See ubugeeei-prod/uf#374.
+   *
+   * A production host passes nothing here and streams as it always did.
+   */
+  readonly transformHead?: (html: string) => Promise<string>,
 |};
 
 /** The two ids the server writes and the client reads. */
@@ -285,6 +300,7 @@ export function createRenderer(options: {|
       body = await renderDocument(<App url={url} initial={resolved} />, {
         shell: shellFor(assets),
         onError,
+        transformHead: settings?.transformHead,
       });
       streaming = true;
       // Recovered before the shell was ready: a `<Suspense>` boundary whose
@@ -315,6 +331,7 @@ export function createRenderer(options: {|
       body = await renderDocument(<App url={url} initial={resolved} />, {
         shell: shellFor(assets),
         onError,
+        transformHead: settings?.transformHead,
       });
     }
 
