@@ -192,6 +192,13 @@ function inlineScripts(html) {
 }
 
 /** Every URL the page *loads*, which is not every URL it names. */
+// The origin the site is served from.
+//
+// A subresource is classified by the origin it *resolves to*, so this is the
+// base every URL in a built page is resolved against as well as the host the
+// worker is driven with.
+const SITE_ORIGIN = "https://docs.uniflowed.dev";
+
 function subresources(html) {
   const found = [];
   for (const match of html.matchAll(/<(script|link|img|source|iframe|embed|object)\b([^>]*)>/gi)) {
@@ -223,7 +230,7 @@ async function main() {
 
   const env = { ASSETS: assetsBinding(site) };
   const ask = (pathname) =>
-    handler.fetch(new Request(`https://docs.uniflowed.dev${pathname}`), env, {
+    handler.fetch(new Request(`${SITE_ORIGIN}${pathname}`), env, {
       waitUntil: () => {},
     });
 
@@ -315,12 +322,36 @@ async function main() {
     }
 
     for (const { tag, url } of subresources(html)) {
-      if (/^(https?:)?\/\//i.test(url)) {
+      // Resolved, not pattern-matched. `'self'` is about the *origin* a URL
+      // resolves to, and a test for "starts with a scheme" answers a different
+      // question in both directions: it called
+      // `https://docs.uniflowed.dev/assets/x.js` external, which `'self'`
+      // permits and which would have failed this check for an allowed
+      // resource; and it let a `data:` URL through, which `img-src 'self'` and
+      // `script-src 'self'` both block. Resolving against the site's own
+      // origin gets both right — a relative path lands on it, `data:` and
+      // `blob:` resolve to the opaque origin `null`, and `//host/x` picks up
+      // the base scheme and lands on `host`.
+      let origin;
+      try {
+        origin = new URL(url, SITE_ORIGIN).origin;
+      } catch {
+        // Not a URL any browser would fetch either. Reported as its own thing
+        // rather than counted as an origin, because "malformed" and "off-site"
+        // are different problems with different fixes.
+        finding(
+          path.join(site, relative),
+          `a <${tag}> names \`${url}\`, which is not a URL a browser can resolve`,
+        );
+        continue;
+      }
+      if (origin !== SITE_ORIGIN) {
         externalOrigins += 1;
         finding(
           path.join(site, relative),
-          `a <${tag}> loads \`${url}\`, and the policy is \`default-src 'self'\`. Either the ` +
-            "site should not reach off its own origin, or this policy is out of date",
+          `a <${tag}> loads \`${url}\` from \`${origin}\`, and the policy is ` +
+            "`default-src 'self'`. Either the site should not reach off its own origin, " +
+            "or this policy is out of date",
         );
       }
     }
