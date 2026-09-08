@@ -887,6 +887,16 @@ const SERVERLESS_CAPABILITIES = { module: "@uniflowed/server/lambda", name: "lam
  * copying every file in it is bulk work over the whole build, which belongs in
  * Rust rather than in the host process — the same division `--compile` makes
  * with its embedded assets.
+ *
+ * # `--adapter static` never reaches this function
+ *
+ * It is the one implemented target with no application to link: a static host
+ * returns files, and `uf build` has already written them. So `uf` copies the
+ * output directory itself and never spawns this driver for it, which is why
+ * [`ADAPTERS`] has four rows and not five. What that target does instead of
+ * linking is refuse a project whose route handlers, middleware, unprerendered
+ * routes or server actions a static host cannot answer — in Rust, because the
+ * facts it needs are the route table and what the prerender reported.
  */
 async function deploy() {
   const vite = await import("vite");

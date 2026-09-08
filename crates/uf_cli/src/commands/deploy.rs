@@ -34,8 +34,24 @@
 //! | `edge` | `worker.js`, `export default { fetch }` | Cloudflare's asset server, through `env.ASSETS` | `wrangler.json` |
 //! | `serverless` | `lambda.js`, `export const handler` | the deployment package | — |
 //!
-//! `bun`, `deno` and `static` are not among them, and naming one is an error
-//! that says what it is waiting for — see [`resolve`], and
+//! # And one that is not a seam at all
+//!
+//! `static` is the fifth, and it has no `handler.js` because it has no
+//! application: a static host returns files, and `uf build` has always written
+//! the files. So it links nothing, spawns no bundler, and its output is
+//! `dist/` copied — not `dist/` copied into a `static/` beside a server, the
+//! way the four above carry it, but the directory itself, because the
+//! directory itself is what gets uploaded.
+//!
+//! What it *does* have is the refusal in [`static_host`]. A project with a
+//! route handler, a middleware, a route the prerender wrote no document for,
+//! or a server action is a project this target cannot serve, and until it
+//! existed such a project built, uploaded, and lost that half of itself in
+//! production. `ubugeeei-redundancy.md`: static hosting does not become a
+//! server merely because an adapter exists.
+//!
+//! `bun` and `deno` are not among them, and naming one is an error that says
+//! what it is waiting for — see [`resolve`], and
 //! [`uf_config::DeployAdapter::is_implemented`], which is the single place the
 //! distinction is recorded.
 //!
@@ -63,12 +79,16 @@ use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::{DeployAdapter, DeployAnywhereConfig};
+use uf_router::{Route, ServerModule};
 use uf_rsc::RSC_MANIFEST_ENV;
 
+use crate::commands::build::Prerendered;
 use crate::commands::compile::binary_names;
 use crate::commands::vite::{Driver, Event, LinkContext, LogLevel, render_error, render_log};
 use crate::support::project_label;
 use crate::ui::Ui;
+
+pub(crate) mod static_host;
 
 /// Where the generated entry files are written before they are linked.
 ///
@@ -294,6 +314,90 @@ pub(crate) fn deploy(
     })
 }
 
+/// What the `static` target has to be told about the build that just ran.
+///
+/// Four facts, and each of them answers a question the others cannot: the
+/// route table says what the router serves, the server modules say what it
+/// serves that a file cannot be, the prerendered pages say what actually
+/// reached `dist/`, and the actions say what the browser will `POST` back.
+/// Gathered by `uf build` because that is where all four already exist —
+/// re-deriving them here would be a second route walk and a second RSC scan of
+/// the project that was just scanned.
+pub(crate) struct SiteFacts<'a> {
+    /// Every route with a page, as [`uf_router::discover_routes`] found them.
+    pub(crate) routes: &'a [Route],
+    /// Every route handler and middleware under the router root.
+    pub(crate) server_modules: &'a [ServerModule],
+    /// The documents the prerender reported writing.
+    pub(crate) pages: &'a [Prerendered],
+    /// The callable server actions, as `(export, declaring module)`.
+    pub(crate) actions: &'a [(String, Utf8PathBuf)],
+}
+
+/// `uf build --adapter static`: refuse, or copy the site.
+///
+/// No driver and no second Vite run, which is the whole difference between
+/// this target and the other four: they link an application, and a static host
+/// does not run one. `dist/` is copied rather than moved or symlinked, for the
+/// reason every other adapter's output is a copy — `.uf/deploy/<target>` is a
+/// directory a person hands to something else, and one that stopped being
+/// valid the next time `uf build` ran would be a trap.
+///
+/// The copy lands at the top of the directory rather than in a `static/`
+/// beside a server. The four server targets need both halves and have to keep
+/// them apart; here the directory *is* the site, and a `static/` inside it
+/// would put every URL one segment deeper than the build decided.
+///
+/// The compiled binary is excluded, the same way [`deploy`] excludes it and
+/// for the same reason: `--compile` writes into `dist/`, so a
+/// `--compile --adapter static` would otherwise upload a 60 MB executable to a
+/// CDN as though it were an asset.
+pub(crate) fn deploy_static(
+    root: &Utf8Path,
+    out_dir: &Utf8Path,
+    site: SiteFacts<'_>,
+) -> Result<Deployed> {
+    let findings = static_host::unservable(
+        root,
+        site.routes,
+        site.server_modules,
+        site.pages,
+        site.actions,
+    );
+    if !findings.is_empty() {
+        bail!("{}", static_host::refusal(&findings));
+    }
+
+    let directory = root.join(OUTPUT_DIR).join(DeployAdapter::Static.as_str());
+    fs::remove_dir_all(directory.as_std_path()).or_else(ignore_missing)?;
+    fs::create_dir_all(directory.as_std_path())
+        .with_context(|| format!("failed to create {directory}"))?;
+
+    let mut copied = Copied::default();
+    let compiled = binary_names(root);
+    let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
+    copy_tree(out_dir, &directory, &compiled, &mut copied)
+        .with_context(|| format!("copying {out_dir} into {directory}"))?;
+    // The one shape check this target has. The other four are checked by
+    // `entry_files`, which asks whether the link step wrote the entry it
+    // promised; nothing links here, so what is left to be wrong is an empty
+    // `dist/` — a build that produced no documents at all, reported as a
+    // directory somebody would otherwise upload and wonder about.
+    if copied.files == 0 {
+        bail!(
+            "`{out_dir}` is empty, so the `static` adapter has nothing to write. \
+             A static deployment is the build's own output, and this build produced none."
+        );
+    }
+
+    Ok(Deployed {
+        adapter: DeployAdapter::Static,
+        directory,
+        files: copied.files,
+        bytes: copied.bytes,
+    })
+}
+
 /// The entry files an adapter's link step must have written.
 ///
 /// Checked rather than assumed, because the driver and this file are separate
@@ -309,9 +413,14 @@ const fn entry_files(adapter: DeployAdapter) -> &'static [&'static str] {
         DeployAdapter::Node | DeployAdapter::Container => &["handler.js", "server.js"],
         DeployAdapter::Edge => &["handler.js", "worker.js"],
         DeployAdapter::Serverless => &["handler.js", "lambda.js"],
-        // Refused in `resolve` before anything is built, so this is
-        // unreachable rather than permissive: an empty list would make
-        // "the adapter wrote nothing" indistinguishable from success.
+        // `static` links nothing and so promises no entry — it is written by
+        // [`deploy_static`], which never reaches this table, and its own shape
+        // check is that the copy was not empty.
+        //
+        // `bun` and `deno` are refused in `resolve` before anything is built,
+        // so their empty row is unreachable rather than permissive: reaching
+        // it would make "the adapter wrote nothing" indistinguishable from
+        // success.
         DeployAdapter::Bun | DeployAdapter::Deno | DeployAdapter::Static => &[],
     }
 }
@@ -333,6 +442,9 @@ fn platform_files(
             (directory.join("Dockerfile"), DOCKERFILE.to_owned()),
             (directory.join(".dockerignore"), DOCKERIGNORE.to_owned()),
         ],
+        // `static` is the build's own output and nothing else: a
+        // `package.json` or a platform file written into it would be a file a
+        // CDN serves at a URL the application never mentioned.
         DeployAdapter::Node
         | DeployAdapter::Serverless
         | DeployAdapter::Bun
@@ -469,10 +581,14 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         }
         DeployAdapter::Edge => format!("cd {directory} && npx wrangler deploy"),
         DeployAdapter::Serverless => format!("cd {directory} && zip -r ../function.zip ."),
+        // No command, because there is nothing to start: the directory is the
+        // site, and what happens next is an upload to a host uf knows nothing
+        // about. Naming one — `npx wrangler pages deploy`, say — would be uf
+        // choosing a hosting company on the reader's behalf, which is the one
+        // thing `ubugeeei-redundancy.md` says a deployment must never require.
+        DeployAdapter::Static => format!("upload the contents of {directory} to a static host"),
         // Unreachable: `resolve` refuses these before anything is built.
-        DeployAdapter::Bun | DeployAdapter::Deno | DeployAdapter::Static => {
-            format!("cd {directory}")
-        }
+        DeployAdapter::Bun | DeployAdapter::Deno => format!("cd {directory}"),
     }
 }
 
@@ -567,7 +683,7 @@ mod tests {
             .to_string();
         assert!(message.contains("no `bun` deploy adapter"), "{message}");
         assert!(
-            message.contains("Implemented: node, edge, serverless, container"),
+            message.contains("Implemented: node, edge, serverless, static, container"),
             "{message}"
         );
         // Not merely "not yet": `bun` is unwritten because the design says to
@@ -588,6 +704,19 @@ mod tests {
             .filter(|adapter| adapter.is_implemented())
         {
             let entries = entry_files(adapter);
+            if adapter == DeployAdapter::Static {
+                // The one implemented target that links nothing: a static host
+                // runs no application, so there is no seam for it to write.
+                // Spelled out rather than skipped, because "no entries" is a
+                // claim about this adapter and not an oversight in the table.
+                assert!(entries.is_empty(), "`static` links nothing");
+                assert!(
+                    next_command(adapter, Utf8Path::new("/tmp/my-app"), ".uf/deploy/static")
+                        .contains("upload"),
+                    "what happens next to a static site is an upload"
+                );
+                continue;
+            }
             assert!(
                 entries.contains(&"handler.js"),
                 "`{}` has to write the seam",
