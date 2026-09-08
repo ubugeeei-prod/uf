@@ -33,6 +33,11 @@
       The port's typing crates need `box_patterns`, removed from the floating
       nightly channel, so `rust-toolchain.toml` pins `nightly-2026-08-01`.
       68 ms to merge builtins, ~4 ms per file. See docs/architecture.md.
+- [x] Read `.flowconfig`'s `[libs]` when a project has one, with Flow's own
+      config parser, and merge what it names into the type environment.
+      Nothing else in the file is read: uf still requires no `.flowconfig`,
+      and a project that has one gets the library definitions it declares
+      rather than an `any` for every type in them.
 - [x] Replace whitespace formatter with a Flow AST printer backed by the
       official Flow Rust parser. Prettier-compatible, checked against
       `prettier --parser hermes` by 27 fixtures; idempotent,
