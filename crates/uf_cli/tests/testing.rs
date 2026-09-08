@@ -23,7 +23,7 @@ use std::time::Duration;
 use camino::Utf8PathBuf;
 use uf_test::{FileStatus, HostCommand, HostKind, TestStatus, Worker};
 
-use support::{Project, assert_plain, host_ready, uf};
+use support::{Project, assert_plain, host_ready, uf, worker_command};
 
 /// A suite with one of every outcome, so one project exercises the whole
 /// reporting surface.
@@ -954,4 +954,224 @@ fn a_project_with_no_tests_is_a_green_run() {
     assert!(success);
     assert_eq!(document["files"], 0);
     assert_eq!(document["success"], true);
+}
+
+#[test]
+fn a_file_that_leaves_a_fake_clock_installed_does_not_hang_the_next_one() {
+    if !host_ready() {
+        return;
+    }
+    // Two real files through one real worker, which is the only shape this is
+    // visible in: `uf test` fans files across workers by size, so whether the
+    // second file follows the first in the same process is a property of the
+    // schedule rather than of the run.
+    let project = Project::new(&[
+        (
+            "src/stops-time.test.js",
+            r#"// @flow
+import { expect, it, uft } from "@uniflowed/test";
+
+// No `afterEach` putting it back, deliberately. Every file that fakes a clock
+// today has one, and a convention is not a guarantee — the worker is.
+uft.useFakeTimers();
+
+it("fakes the clock and never restores it", () => {
+  expect(uft.isFakeTimers()).toBe(true);
+});
+"#,
+        ),
+        (
+            "src/time-passes.test.js",
+            r#"// @flow
+import { expect, it, uft } from "@uniflowed/test";
+
+it("still has a clock that moves", async () => {
+  // This assertion first, and deliberately: under a leaked fake clock the
+  // await below never settles — and neither does the timeout the runner races
+  // each case against, which is why the failure this guards against was a file
+  // that hung with nothing on screen. Asserting the clock is real turns that
+  // silence into a named failure; the await after it is what says the clock is
+  // not merely reported real but actually running.
+  expect(uft.isFakeTimers()).toBe(false);
+  await new Promise((resolve) => setTimeout(resolve, 1));
+});
+"#,
+        ),
+    ]);
+    let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf()).unwrap();
+    let mut worker = Worker::spawn(&worker_command(project.path())).expect("node starts");
+
+    let case_budget = Duration::from_secs(5);
+    // Generous, because the first file's `import` is what pays to transform
+    // `@uniflowed/test` and everything under it through `uf transform`, and a
+    // cold cache on a loaded machine spends tens of seconds there before a
+    // line of the test runs. A budget tight enough to be a useful bound on
+    // *this* file is one that fires on a busy laptop and reports a compile as
+    // a hang — the same mistake ubugeeei-prod/uf#420 is about. What bounds the
+    // regression instead is the assertion the second file opens with: a leaked
+    // clock is reported as a failed expectation long before this expires.
+    let file_budget = Duration::from_secs(180);
+    let first = worker.run_file(
+        root.join("src/stops-time.test.js").as_str(),
+        "src/stops-time.test.js",
+        None,
+        case_budget,
+        file_budget,
+    );
+    let second = worker.run_file(
+        root.join("src/time-passes.test.js").as_str(),
+        "src/time-passes.test.js",
+        None,
+        case_budget,
+        file_budget,
+    );
+    worker.kill();
+
+    assert_eq!(first.status, FileStatus::Completed, "{first:?}");
+    assert_eq!(first.records.len(), 1, "{first:?}");
+    assert_eq!(first.records[0].status, TestStatus::Passed, "{first:?}");
+
+    // The whole of it: the file after the one that stopped time gets a clock.
+    assert_eq!(second.status, FileStatus::Completed, "{second:?}");
+    let [record] = second.records.as_slice() else {
+        panic!("the second file ran its one case: {second:?}");
+    };
+    assert_eq!(record.status, TestStatus::Passed, "{record:?}");
+}
+
+#[test]
+fn a_file_that_registers_nothing_fails_rather_than_passing() {
+    if !host_ready() {
+        return;
+    }
+    // The shape of ubugeeei-prod/uf#482 without depending on another runner's
+    // behaviour: three declarations discovery can read, bound to something
+    // that is not `@uniflowed/test`, so the file loads, registers nothing, and
+    // reports nothing. It used to be "files 1, passed 0, failed 0" and a tick.
+    let project = Project::new(&[(
+        "src/probe.test.js",
+        r#"// @flow
+const record: { [string]: () => void } = {};
+const test = (name: string, body: () => void) => {
+  record[name] = body;
+};
+
+test("collected", () => {});
+test("but never registered", () => {});
+test("nor run", () => {});
+"#,
+    )]);
+
+    let (ok, stdout, stderr) = run(project.path(), &[]);
+
+    assert!(
+        !ok,
+        "a run that executed nothing is not a passing run:\n{stdout}\n{stderr}"
+    );
+    let document = json(project.path(), &[]);
+    assert_eq!(document["success"], false);
+    assert_eq!(document["failedFiles"], 1);
+    assert_eq!(document["fileReports"][0]["status"], "registered-nothing");
+    // The count comes from discovery, so the report says what it expected
+    // rather than only that something was missing.
+    let reason = document["fileReports"][0]["reason"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(reason.contains("discovery found 3 there"), "{reason}");
+    assert!(
+        stderr.contains("could not run 1 file"),
+        "the summary says so too:\n{stderr}"
+    );
+}
+
+#[test]
+fn a_form_uf_cannot_list_but_can_run_keeps_the_run_green() {
+    if !host_ready() {
+        return;
+    }
+    // The other side of the rule above, and the reason "unsupported" is not
+    // one thing. `it.each` is uf's own `it` in a shape discovery cannot expand
+    // — it would have to evaluate the table to know the names — so `--list`
+    // reports it by name and cannot count its cases. The worker runs every row
+    // regardless, so the cases are executed and reported, and failing the run
+    // over a gap in the *listing* would turn a working suite red.
+    let project = Project::new(&[(
+        "src/rows.test.js",
+        r#"// @flow
+import { expect, it } from "@uniflowed/test";
+
+it.each([1, 2, 3])("doubles %s", (n: number) => {
+  expect(n * 2).toBe(n + n);
+});
+"#,
+    )]);
+
+    let (ok, stdout, stderr) = run(project.path(), &[]);
+
+    assert!(
+        ok,
+        "every row ran, so the run is green:\n{stdout}\n{stderr}"
+    );
+    let document = json(project.path(), &[]);
+    assert_eq!(document["passed"], 3);
+    assert_eq!(document["success"], true);
+    // Named in the report all the same: a form uf cannot expand is never
+    // silently dropped, it just is not a reason to fail.
+    assert_eq!(document["unsupportedDeclarations"], 1);
+    assert_eq!(document["foreignDeclarations"], 0);
+}
+
+#[test]
+fn a_test_from_another_runner_is_neither_listed_as_runnable_nor_passed_over() {
+    if !host_ready() {
+        return;
+    }
+    // The file exactly as ubugeeei-prod/uf#482 reported it. `node:test`
+    // accepts the registration and holds it for a runner that is never
+    // started, so nothing runs — and `--list` said "1 runnable test" while the
+    // run said "0 passed, 0 failed" and exited 0.
+    let project = Project::new(&[(
+        "scripts/Probe.test.js",
+        r#"// @flow
+import assert from "node:assert/strict";
+import test from "node:test";
+
+test("a case uf lists but does not run", () => {
+  assert.equal(1, 2);
+});
+"#,
+    )]);
+
+    let listed = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--list", "Probe"])
+        .output()
+        .unwrap();
+    let listing = String::from_utf8(listed.stdout).unwrap();
+    assert!(
+        listing.contains("discovered 0 runnable tests"),
+        "a case uf cannot run is not a runnable test:\n{listing}"
+    );
+    assert!(
+        listing.contains("node:test"),
+        "and the listing says whose it is:\n{listing}"
+    );
+
+    let (ok, stdout, stderr) = run(project.path(), &["Probe"]);
+
+    assert!(
+        !ok,
+        "a run that executed none of the file's cases is not a passing run:\n{stdout}\n{stderr}"
+    );
+    assert!(
+        stderr.contains("test declaration from another runner"),
+        "and it says why:\n{stderr}"
+    );
+    // And the `it.each` half of the same count is not what made it red: a form
+    // uf runs and cannot list ahead of time keeps a suite green.
+    let document = json(project.path(), &["Probe"]);
+    assert_eq!(document["unsupportedDeclarations"], 1);
+    assert_eq!(document["foreignDeclarations"], 1);
+    assert_eq!(document["success"], false);
 }

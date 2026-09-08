@@ -187,29 +187,33 @@ impl DeployAdapter {
     /// first.
     ///
     /// "Writes something the platform accepts, in that platform's documented
-    /// shape, driven by a test" — and not "has been deployed". None of these
-    /// four has ever run on the platform it targets; the sandbox uf is
-    /// developed in has no credentials for any cloud and cannot bind a socket.
-    /// What the tests establish is the emitted file set, the emitted handler's
-    /// answers in process, and that those answers match `uf start`'s. The
-    /// documentation says the same thing in the same words.
+    /// shape, driven by a test" — and not "has been deployed". None of the
+    /// four server targets has ever run on the platform it targets; the
+    /// sandbox uf is developed in has no credentials for any cloud and cannot
+    /// bind a socket. What the tests establish is the emitted file set, the
+    /// emitted handler's answers in process, and that those answers match
+    /// `uf start`'s. The documentation says the same thing in the same words.
+    ///
+    /// `static` is the exception to that caveat rather than to the rule: its
+    /// output is `dist/`, which every other command already serves, and the
+    /// thing it had to grow was the refusal — so what its tests establish is
+    /// that a project needing a server is named and refused, and that a
+    /// project that needs none is copied. Neither of those needs a platform.
     #[must_use]
     pub const fn is_implemented(self) -> bool {
         matches!(
             self,
-            Self::Node | Self::Edge | Self::Serverless | Self::Container
+            Self::Node | Self::Edge | Self::Serverless | Self::Static | Self::Container
         )
     }
 
     /// The issue that tracks an adapter nobody has written yet.
     ///
     /// One issue rather than one per target, because what is left is one piece
-    /// of work in three parts. `bun` and `deno` need a benchmark before they
-    /// need code — the `node` output already runs unchanged on both, so an
-    /// adapter that is not measurably faster is a directory with a different
-    /// name on it — and `static` needs the route table rather than a bundler,
-    /// because the whole of what it has to do is refuse a project whose routes
-    /// a static host cannot serve.
+    /// of work: `bun` and `deno` need a benchmark before they need code. The
+    /// `node` output already runs unchanged on both, so an adapter that is not
+    /// measurably faster is a directory with a different name on it, and
+    /// nobody has run that benchmark.
     #[must_use]
     pub const fn tracking_issue(self) -> Option<u32> {
         if self.is_implemented() {
@@ -233,10 +237,6 @@ impl DeployAdapter {
                 "the `node` output already runs unchanged on both, so this is worth writing \
                  only once a benchmark shows the native server beating `node:http` under the \
                  same handler",
-            ),
-            Self::Static => Some(
-                "it emits nothing new and its whole job is to refuse a project whose routes a \
-                 static host cannot serve, which needs the route table rather than a bundler",
             ),
             _ => None,
         }

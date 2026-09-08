@@ -1,4 +1,5 @@
 pub mod reserved;
+pub mod scaffold;
 
 use std::fs;
 
@@ -24,6 +25,8 @@ pub const RESERVED_PAGE_STEM: &str = "_uf.page";
 pub const RESERVED_LAYOUT_STEM: &str = "_uf.layout";
 /// The stem every reserved middleware is spelled with.
 pub const RESERVED_MIDDLEWARE_STEM: &str = "_uf.middleware";
+/// The stem every reserved route handler is spelled with.
+pub const RESERVED_ROUTE_STEM: &str = "_uf.route";
 
 /// What a page may be written in, in the order a directory holding two is
 /// resolved.
@@ -350,6 +353,102 @@ pub fn discover_routes(
 
     routes.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(routes)
+}
+
+/// What a module in the router root needs a server for.
+///
+/// Two roles rather than every reserved name, because these are the two that
+/// are *only* ever a server: a `_uf.route.js` answers a request instead of
+/// rendering, and a `_uf.middleware.js` runs before a route resolves. Every
+/// other reserved file — a layout, a template, a loading boundary — is part of
+/// a document a prerender can write to disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerModuleKind {
+    /// `_uf.route.js`: answers a request instead of rendering a page.
+    RouteHandler,
+    /// `_uf.middleware.js`: runs before a route resolves.
+    Middleware,
+}
+
+impl ServerModuleKind {
+    /// The reserved role, as it is written in the file name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RouteHandler => "route",
+            Self::Middleware => "middleware",
+        }
+    }
+}
+
+/// One module the router runs on a server, and the URL it sits at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerModule {
+    /// The route path of the directory holding it, in the same `/posts/:slug`
+    /// spelling [`Route::path`] uses.
+    ///
+    /// A middleware's path is the subtree it guards rather than a URL that is
+    /// necessarily served: `app/dashboard/_uf.middleware.js` is reported at
+    /// `/dashboard` whether or not that directory has a page of its own.
+    pub path: CompactString,
+    /// The file, as it is written on disk.
+    pub file: Utf8PathBuf,
+    /// Which of the two it is.
+    pub kind: ServerModuleKind,
+}
+
+/// Every route handler and middleware under the router root.
+///
+/// [`discover_routes`] answers "what can be rendered"; this answers "what has
+/// to run", and they are different questions asked of the same tree. A route
+/// handler has no page and so appears in no `Route`, and a middleware appears
+/// in [`Route::middleware`] only for routes that have a page beneath it — so a
+/// caller deciding whether a deployment target can serve this project at all
+/// cannot get either from the route table.
+///
+/// The directory walk resolves each role through [`find_module`], so a
+/// directory holding both `_uf.route.js` and `_uf.route.jsx` reports the one
+/// the build's router would run rather than both. Sorted by path so a message
+/// built from this does not depend on the order the filesystem hands entries
+/// back.
+pub fn discover_server_modules(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+) -> Result<Vec<ServerModule>, RouterError> {
+    let app_root = root.join(config.app.router.root.as_str());
+    if !app_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut found = Vec::new();
+    for entry in WalkDir::new(&app_root).sort_by_file_name() {
+        let entry = entry.map_err(|source| RouterError::Walk {
+            path: app_root.clone(),
+            source,
+        })?;
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let directory = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
+            .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
+        let relative = directory.strip_prefix(&app_root).unwrap_or(&directory);
+        let (path, _) = route_path_and_params(relative);
+        for (stem, kind) in [
+            (RESERVED_ROUTE_STEM, ServerModuleKind::RouteHandler),
+            (RESERVED_MIDDLEWARE_STEM, ServerModuleKind::Middleware),
+        ] {
+            if let Some(file) = find_module(&directory, stem, &MODULE_EXTENSIONS) {
+                found.push(ServerModule {
+                    path: path.to_compact_string(),
+                    file,
+                    kind,
+                });
+            }
+        }
+    }
+
+    found.sort_by(|a, b| a.path.cmp(&b.path).then(a.file.cmp(&b.file)));
+    Ok(found)
 }
 
 /// Refuse the directory spellings uf reserves without serving.
