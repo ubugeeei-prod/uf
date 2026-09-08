@@ -4,7 +4,7 @@
 
 _2026-09-08_
 
-Thirteen changes. The one to read first is the one that was wrong in a way
+Fourteen changes. The one to read first is the one that was wrong in a way
 nothing could see: a diagnostic printed a module path exactly as it came off
 the filesystem, and a repository is attacker-authored input — `uf` is run
 against a clone, and a file in it can be named `src/\x1b[2Jgotcha.js`. Registry
@@ -12,7 +12,9 @@ text has been stripped of control characters since the progress display existed;
 filenames were not, in any reporter that named one.
 
 The rest is spread evenly. `uf check` reads a project's `.flowconfig` `[libs]`
-when it has one, and resolves a package to the copy Node would load. Four
+when it has one, resolves a package to the copy Node would load, and knows the
+half of `SubtleCrypto` a module that signs anything needs — it had `digest` and
+no `sign`, `importKey` or `CryptoKey`, so correct code was told it was wrong. Four
 parsers now share one option set, so a syntax error says the same thing
 whichever of them found it. `uf build --adapter static` refuses what a static
 host cannot serve rather than writing output that 404s. `OgImage` is a template
@@ -28,6 +30,7 @@ that replaces `uf` rather than the one that only said so.
 
 ### Fixed
 
+- **check**: the half of SubtleCrypto a signing module needs, and the CryptoKey it names (#651)
 - **term, cli, security**: a filename is text a terminal draws, not a command it runs (#649)
 - **test, server, host, tui, cli**: five defects, and the seam behind the worst of them (#642)
 - **fmt, transform, corpus, pm**: `for await` only over `of`, and one manifest for the corpus (#629)
