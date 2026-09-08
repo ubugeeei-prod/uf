@@ -110,6 +110,31 @@ fn bench_lint_scan(c: &mut Criterion) {
     });
 }
 
+/// An effect, and no `useState` anywhere.
+///
+/// `react/derived-state` reports an effect that only stores a value derived
+/// from its dependencies, and it finds those stores through the setters
+/// `useState` destructuring declares. With no `useState` there is no setter and
+/// so no finding — but the rule used to build a whole Babel AST to discover
+/// that, which is 94% of what `uf lint` spends on a module. See
+/// ubugeeei-prod/uf#668. This is the shape that skips it.
+const EFFECT_WITHOUT_STATE: &str = r#"// @flow
+import { useEffect, useRef } from "@uniflowed/react";
+
+component Ticker(label: string) renders React.Node {
+  const seen = useRef<number>(0);
+
+  useEffect(() => {
+    seen.current += 1;
+    document.title = label;
+  }, [label]);
+
+  return <span>{label}</span>;
+}
+
+export { Ticker };
+"#;
+
 fn bench_rule_set_throughput(c: &mut Criterion) {
     let config = scan_only_config();
     let mut group = c.benchmark_group("lint_rule_set");
@@ -117,6 +142,9 @@ fn bench_rule_set_throughput(c: &mut Criterion) {
     for (name, module) in [
         ("clean", RULE_HEAVY_MODULE),
         ("violating", VIOLATING_MODULE),
+        // The gate: an effect with no state cannot produce a derived-state
+        // finding, so the Babel AST is never built for it.
+        ("effect without state", EFFECT_WITHOUT_STATE),
     ] {
         let files = corpus(module, 1_000);
         let bytes = files.iter().map(|file| file.source.len() as u64).sum();
