@@ -43,7 +43,7 @@ fn a_build_without_a_checker_says_so_instead_of_failing_opaquely() {
         return;
     }
 
-    let error = check_source(Source::new("app.js", CLEAN), &CheckLimits::default())
+    let error = check_source(Source::new("app.js", CLEAN), &[], &CheckLimits::default())
         .expect_err("no checker is compiled in");
 
     assert!(error.is_unavailable());
@@ -88,7 +88,7 @@ fn a_source_keeps_the_path_diagnostics_are_reported_under() {
 
 #[test]
 fn an_empty_batch_is_not_an_error() {
-    match check_sources(&[], &CheckLimits::default()) {
+    match check_sources(&[], &[], &CheckLimits::default()) {
         Ok(report) => {
             assert_eq!(report.files_checked, 0);
             assert_eq!(report.files_skipped, 0);
@@ -144,15 +144,23 @@ fn throughput_is_unknown_when_no_time_passed() {
 fn a_file_that_opts_out_of_flow_is_not_checked() {
     require_checker!();
 
-    let checked = check_source(Source::new("app.js", TYPE_ERROR), &CheckLimits::default())
-        .expect("the checker runs");
+    let checked = check_source(
+        Source::new("app.js", TYPE_ERROR),
+        &[],
+        &CheckLimits::default(),
+    )
+    .expect("the checker runs");
     assert!(
         checked.iter().any(TypeDiagnostic::is_error),
         "the fixture must be a type error when it is checked, or this test proves nothing"
     );
 
-    let opted_out = check_source(Source::new("app.js", OPTED_OUT), &CheckLimits::default())
-        .expect("the checker runs");
+    let opted_out = check_source(
+        Source::new("app.js", OPTED_OUT),
+        &[],
+        &CheckLimits::default(),
+    )
+    .expect("the checker runs");
 
     assert!(
         opted_out.is_empty(),
@@ -169,6 +177,7 @@ fn opting_out_is_counted_as_skipped_rather_than_checked() {
             Source::new("checked.js", CLEAN),
             Source::new("plain.js", OPTED_OUT),
         ],
+        &[],
         &CheckLimits::default(),
     )
     .expect("the checker runs");
@@ -183,6 +192,7 @@ fn opting_out_does_not_hide_a_file_that_cannot_be_parsed() {
 
     let diagnostics = check_source(
         Source::new("broken.js", "// @noflow\nfunction ( {\n"),
+        &[],
         &CheckLimits::default(),
     )
     .expect("the checker runs");
@@ -199,6 +209,7 @@ fn a_file_with_no_docblock_is_still_checked() {
 
     let diagnostics = check_source(
         Source::new("app.js", "const n: number = \"not a number\";\n"),
+        &[],
         &CheckLimits::default(),
     )
     .expect("the checker runs");
@@ -237,6 +248,7 @@ fn the_platform_globals_resolve() {
     ] {
         let diagnostics = check_source(
             Source::new("app.js", &format!("// @flow\n{source}\n")),
+            &[],
             &CheckLimits::default(),
         )
         .expect("the checker runs");
@@ -263,7 +275,8 @@ fn the_platform_globals_resolve() {
 
 /// Tests must not race the wall clock; a loaded CI box is not a type error.
 fn batch(sources: &[Source<'_>]) -> CheckReport {
-    check_sources(sources, &CheckLimits::default().without_timeout()).expect("the checker runs")
+    check_sources(sources, &[], &CheckLimits::default().without_timeout())
+        .expect("the checker runs")
 }
 
 fn codes(report: &CheckReport) -> Vec<&str> {

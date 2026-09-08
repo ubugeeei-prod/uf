@@ -191,7 +191,11 @@ fn config_sources(resolved: &ResolvedConfig) -> Vec<String> {
         sources.push("package.json".to_string());
     }
     if resolved.root.join(".flowconfig").exists() {
-        sources.push(".flowconfig".to_string());
+        // Named with the section, because that is all of it uf reads and a
+        // bare `.flowconfig` here promised the rest. `[options]`, `[lints]`
+        // and `[ignore]` are uf's own to decide; `[libs]` is source the
+        // project wrote, and is merged. See `uf_check::flowconfig`.
+        sources.push(".flowconfig ([libs] only)".to_string());
     }
     sources
 }
@@ -1114,9 +1118,17 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![Stage {
-        name: "type checking",
-        provider: "flow (upstream)".to_string(),
-        detail: "uf does not type-check; Flow is the type system".to_string(),
-    }]
+    vec![
+        Stage {
+            name: "library definitions",
+            provider: "flow (upstream)".to_string(),
+            detail: "Flow's own, then `flow-typed` and whatever `.flowconfig`'s [libs] names"
+                .to_string(),
+        },
+        Stage {
+            name: "type checking",
+            provider: "flow (upstream)".to_string(),
+            detail: "uf does not type-check; Flow is the type system".to_string(),
+        },
+    ]
 }
