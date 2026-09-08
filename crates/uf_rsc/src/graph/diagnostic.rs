@@ -93,6 +93,35 @@ pub enum RscDiagnostic {
         /// The offending path, as supplied.
         module: Utf8PathBuf,
     },
+    /// A hook a uf package exports that only runs in the browser.
+    ///
+    /// The half of [`Self::UnclassifiedHookInServerModule`] that can be
+    /// decided. `useMediaQuery` is not on `CLIENT_ONLY_APIS` — it is not a
+    /// React API — and it reads `matchMedia` through a `useSyncExternalStore`,
+    /// so a Server Component calling it fails for exactly the reason
+    /// `useState` does. The registry has said so for every hook
+    /// `@uniflowed/hooks` exports since before `uf_rsc` existed; this is the
+    /// rule that reads it.
+    ///
+    /// An error rather than a warning, because unlike its unclassified
+    /// neighbour this *is* a verdict: the contract has no tolerances, and a
+    /// module that breaks it does not work once the split lands.
+    #[error(
+        "server module `{module}` calls `{hook}` at line {line}:{column}, and `{package}` exports \
+         it as a hook that only runs in the browser"
+    )]
+    ClientOnlyHookInServerModule {
+        /// The server module.
+        module: Utf8PathBuf,
+        /// Name of the hook as called.
+        hook: CompactString,
+        /// The uf package that exports it.
+        package: CompactString,
+        /// 1-based line.
+        line: u32,
+        /// 1-based column.
+        column: u32,
+    },
     /// A hook the client-only check has no answer for.
     ///
     /// Not a violation: a statement that the analysis stopped. The check
@@ -140,6 +169,7 @@ impl RscDiagnostic {
             Self::ImportEscapesProjectRoot { .. } => "rsc/import-escapes-project-root",
             Self::ModulePathOutsideProject { .. } => "rsc/module-outside-project-root",
             Self::UnclassifiedHookInServerModule { .. } => "rsc/unclassified-hook-in-server",
+            Self::ClientOnlyHookInServerModule { .. } => "rsc/client-only-hook-in-server",
             Self::Directive { issue, .. } => issue.rule(),
         }
     }
@@ -168,6 +198,7 @@ impl RscDiagnostic {
             | Self::ServerActionNotFunction { module, .. }
             | Self::ImportEscapesProjectRoot { module, .. }
             | Self::UnclassifiedHookInServerModule { module, .. }
+            | Self::ClientOnlyHookInServerModule { module, .. }
             | Self::ModulePathOutsideProject { module }
             | Self::Directive { module, .. } => module,
         }
@@ -182,6 +213,7 @@ impl RscDiagnostic {
             | Self::ServerActionNotFunction { line, .. }
             | Self::ImportEscapesProjectRoot { line, .. }
             | Self::UnclassifiedHookInServerModule { line, .. } => *line,
+            Self::ClientOnlyHookInServerModule { line, .. } => *line,
             Self::ModulePathOutsideProject { .. } => 0,
             Self::Directive { issue, .. } => issue.line(),
         }
@@ -189,15 +221,21 @@ impl RscDiagnostic {
 
     /// 1-based column the diagnostic points at.
     ///
-    /// Only the client-only API check records one — it is the only variant
-    /// that points at an expression rather than at a statement — so the rest
+    /// The three checks that point at an *expression* record one; the rest
     /// answer with the first column, which is where a reporter's caret goes
     /// when the whole line is at fault. A reporter cannot ask "is there a
     /// column?" and do something sensible with `None`, so it is not offered
     /// one.
+    ///
+    /// [`Self::UnclassifiedHookInServerModule`] has carried a column since
+    /// #348 and was not answering with it, so `uf build` printed a message
+    /// saying `line 122:24` above a caret under column 1 — the number in the
+    /// prose and the number under the code disagreeing about the same call.
     pub fn column(&self) -> u32 {
         match self {
-            Self::ClientOnlyApiInServerModule { column, .. } => *column,
+            Self::ClientOnlyApiInServerModule { column, .. }
+            | Self::ClientOnlyHookInServerModule { column, .. }
+            | Self::UnclassifiedHookInServerModule { column, .. } => *column,
             _ => 1,
         }
     }
