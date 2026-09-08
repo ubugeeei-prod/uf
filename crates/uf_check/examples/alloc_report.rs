@@ -33,13 +33,7 @@ use uf_profiler::{AllocDelta, AllocSnapshot, CountingAllocator, Window};
 static GLOBAL: CountingAllocator = CountingAllocator::new();
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let path = args
-        .iter()
-        .find(|arg| !arg.starts_with("--"))
-        .cloned()
-        .unwrap_or_else(|| String::from("packages/router/internal/runtime.js"));
-    let batch = batch_size(&args);
+    let Arguments { path, batch, cache } = Arguments::parse(std::env::args().skip(1));
     let source = std::fs::read_to_string(&path).expect("read the module");
 
     if !uf_check::is_available() {
@@ -71,7 +65,7 @@ fn main() {
     println!("{path}: {} bytes", source.len());
     println!("batch          {batch}");
 
-    if args.iter().any(|arg| arg == "--cache") {
+    if cache {
         cache_report(&sources);
         return;
     }
@@ -183,19 +177,53 @@ fn print_delta(delta: &AllocDelta, runs: u64) {
     );
 }
 
-/// `--batch N`, defaulting to one.
-fn batch_size(args: &[String]) -> usize {
-    let mut arguments = args.iter();
-    while let Some(argument) = arguments.next() {
-        if argument == "--batch" {
-            return arguments
-                .next()
-                .and_then(|count| count.parse().ok())
-                .filter(|count| *count > 0)
-                .unwrap_or(1);
+/// What the command line said.
+struct Arguments {
+    /// The module to measure.
+    path: String,
+    /// How many copies of it to hand the checker at once.
+    batch: usize,
+    /// Whether to run the three cached calls instead of the plain report.
+    cache: bool,
+}
+
+impl Arguments {
+    /// One pass, because two cannot agree about `--batch`.
+    ///
+    /// A pass that looks for the first argument not starting with `--` reads
+    /// the `2` of `--batch 2` as the file to measure, and then fails on a
+    /// module named `2`. That is only invisible while the path is written
+    /// first, which is how it was written every time it was run by hand.
+    fn parse(arguments: impl Iterator<Item = String>) -> Self {
+        let mut path = None;
+        let mut batch = 1;
+        let mut cache = false;
+        let mut arguments = arguments.peekable();
+        while let Some(argument) = arguments.next() {
+            match argument.as_str() {
+                "--cache" => cache = true,
+                "--batch" => {
+                    // Taken whatever it says, so a mistyped count is not
+                    // silently a path as well as silently a batch of one.
+                    batch = arguments
+                        .next()
+                        .and_then(|count| count.parse().ok())
+                        .filter(|count| *count > 0)
+                        .unwrap_or(1);
+                }
+                _ => {
+                    if path.is_none() {
+                        path = Some(argument);
+                    }
+                }
+            }
+        }
+        Self {
+            path: path.unwrap_or_else(|| String::from("packages/router/internal/runtime.js")),
+            batch,
+            cache,
         }
     }
-    1
 }
 
 /// `runtime.js` for copy 0, `runtime.copy1.js` for copy 1.
