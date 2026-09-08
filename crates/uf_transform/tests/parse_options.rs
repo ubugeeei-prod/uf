@@ -185,6 +185,9 @@ fn every_entry_point_parses_the_same_syntax() {
 fn parses_for_the_checker(source: &str) -> Option<bool> {
     let checked = uf_check::check_source(
         Source::new("sample.js", source),
+        // No library definitions: what the parser accepts is decided before
+        // any name is resolved.
+        &[],
         // Not the wall clock: a loaded CI box is not a syntax error. The
         // samples are one line each, so no other limit is near.
         &CheckLimits::default().without_timeout(),

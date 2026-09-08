@@ -231,6 +231,8 @@ fn linted(source: &str) -> Vec<(String, u32, u32)> {
 fn syntax_errors(path: &str, source: &str) -> Vec<TypeDiagnostic> {
     check_source(
         Source::new(path, source),
+        // No library definitions: a syntax error is a property of the file.
+        &[],
         // Tests must not race the wall clock; a loaded box is not a syntax
         // error.
         &CheckLimits::default().without_timeout(),
