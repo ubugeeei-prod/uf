@@ -34,10 +34,12 @@
 //! exit code together. A dev server has no exit code to argue about: it either
 //! says something or it does not.
 
+use std::collections::BTreeSet;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_rsc::{
-    BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_FILE_NAME, RscDiagnostic,
-    RscSeverity, analyze_project, write_manifest,
+    BuildId, ClientBundleReason, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR,
+    RSC_MANIFEST_FILE_NAME, RscDiagnostic, RscGraph, RscSeverity, analyze_project, write_manifest,
 };
 use uf_term::{CodeFrame, DiagnosticLevel, Status};
 
@@ -60,6 +62,74 @@ pub(crate) enum RscUpdate {
     Reported(Vec<RscDiagnostic>),
     /// The project could not be scanned, and this was not the last reason.
     Failed(String),
+}
+
+/// The most moves one report spells out.
+///
+/// Adding `"use client"` to a module deep in a tree moves that module and
+/// every module above it in one edit, and a project can have a great many of
+/// those. The number of modules that moved is always exact; the chains are
+/// what is bounded, because the point of a chain is that somebody reads it.
+const MAX_MOVES: usize = 12;
+
+/// A module that entered or left the client bundle between two scans.
+///
+/// The reason is carried as the line a reader gets rather than as the
+/// [`uf_rsc::ModuleId`]s it was computed from. Those are positions in a table
+/// that is rebuilt from scratch on the next save, so a chain kept past the
+/// graph that produced it would be a set of indices into a table that no
+/// longer exists — and this value outlives its graph by design, because the
+/// whole of what it is for is to be compared against the *next* one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BundleMove {
+    /// The browser now has to be able to evaluate this module.
+    Entered {
+        /// Path relative to the project root.
+        module: Utf8PathBuf,
+        /// Why: the directive on the module, or the imports that reach one.
+        reason: String,
+    },
+    /// It no longer does, so its code is out of the bundle a visitor downloads.
+    Left {
+        /// Path relative to the project root.
+        module: Utf8PathBuf,
+    },
+}
+
+impl BundleMove {
+    /// The move as the sentence the terminal prints.
+    fn line(&self) -> String {
+        match self {
+            Self::Entered { module, reason } => {
+                format!("{module} is now in the client bundle — {reason}")
+            }
+            Self::Left { module } => {
+                format!("{module} is out of the client bundle")
+            }
+        }
+    }
+}
+
+/// What moved in or out of the client bundle at one rescan.
+///
+/// Separate from [`RscUpdate`] because the two answer different questions and
+/// a save can move both: `RscUpdate` is whether the *contract* holds, and this
+/// is what the browser is being sent. Reporting them through one value would
+/// mean choosing which of the two a reader is told about.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BundleUpdate {
+    /// The moves worth spelling out, at most [`MAX_MOVES`] of them.
+    pub(crate) moves: Vec<BundleMove>,
+    /// How many moved in total, which is what the summary line says when it is
+    /// more than [`Self::moves`] holds.
+    pub(crate) total: usize,
+}
+
+impl BundleUpdate {
+    /// Whether there is anything to draw.
+    fn is_empty(&self) -> bool {
+        self.total == 0
+    }
 }
 
 /// The RSC analysis, as `uf dev` keeps it.
@@ -97,6 +167,19 @@ pub(crate) struct RscReport {
     /// The last scan failure, so an unreadable file is reported once rather
     /// than on every save until it is fixed.
     last_error: Option<String>,
+    /// The modules the browser had to evaluate at the last *successful* scan.
+    ///
+    /// `None` before the first one, which is what keeps the start-up quiet:
+    /// there is no move to report when nothing was there to move from, and a
+    /// list of every client module on start-up is the banner nobody reads.
+    ///
+    /// Deliberately kept across a failed scan, unlike [`Self::last`]. A
+    /// failure recomputes nothing, so it says nothing about what the browser
+    /// gets; forgetting it would make the scan after a half-written file
+    /// report the whole client bundle as newly arrived.
+    last_bundle: Option<BTreeSet<Utf8PathBuf>>,
+    /// What the last rescan found had moved, for [`Self::report`] to draw.
+    moved: BundleUpdate,
 }
 
 impl RscReport {
@@ -112,6 +195,8 @@ impl RscReport {
             last: None,
             displayed: false,
             last_error: None,
+            last_bundle: None,
+            moved: BundleUpdate::default(),
         }
     }
 
@@ -140,8 +225,14 @@ impl RscReport {
     }
 
     /// Rescan, and say what changed.
+    ///
+    /// The bundle moves come first because they are the consequence and the
+    /// contract diagnostics are the rule: a reader who has just made a module
+    /// the browser's business wants to be told that, and then told what it
+    /// costs them.
     pub(crate) fn report(&mut self, ui: &mut Ui) {
         let update = self.refresh();
+        render_bundle(ui, &self.moved);
         render(ui, &update);
     }
 
@@ -155,19 +246,30 @@ impl RscReport {
     /// module exists to say; a manifest that could not be written costs the
     /// reader a split, and a second warning channel about `.uf/` on every save
     /// would cost them the diagnostics.
-    fn persist(&self, analysis: &uf_rsc::RscAnalysis) {
+    /// Returns whether the manifest on disk now describes `analysis` — either
+    /// because it already did, or because the write succeeded.
+    ///
+    /// The caller needs the answer, not just the attempt. `bundle_moves`
+    /// advances the bundle it compares against, so letting it run after a
+    /// failed write would record the move as reported while Vite was still
+    /// reading the old manifest — and the next *successful* write would then
+    /// compare against the state it had already advanced to and say nothing
+    /// moved. The edit would land silently, which is the one thing this report
+    /// exists to prevent.
+    fn persist(&self, analysis: &uf_rsc::RscAnalysis) -> bool {
         let manifest = analysis.manifest();
         let Ok(json) = manifest.to_json() else {
-            return;
+            return false;
         };
         if std::fs::read_to_string(&self.manifest).is_ok_and(|current| current == json) {
-            return;
+            return true;
         }
-        let _ = write_manifest(&self.root.join(RSC_MANIFEST_BUILD_DIR), &manifest);
+        write_manifest(&self.root.join(RSC_MANIFEST_BUILD_DIR), &manifest).is_ok()
     }
 
     /// Rescan the project and decide whether there is anything new to say.
     fn refresh(&mut self) -> RscUpdate {
+        self.moved = BundleUpdate::default();
         let analysis = match analyze_project(&self.root, &self.build_id, &self.options) {
             Ok(analysis) => analysis,
             // A project that cannot be scanned is not a dev server that should
@@ -192,7 +294,19 @@ impl RscReport {
         // even when the *diagnostics* are unchanged, because adding a
         // `"use client"` import moves what the browser gets without moving what
         // the contract says.
-        self.persist(&analysis);
+        // And, for the same reason, so does the report about it. This is the
+        // edit that changes what a visitor downloads while changing nothing
+        // the contract has an opinion about, and it was the one edit `uf dev`
+        // said nothing at all about.
+        //
+        // Only when the manifest actually landed, though: `bundle_moves` moves
+        // the baseline it compares against, and moving it over a write that
+        // did not happen loses the report for good. Left alone, the next write
+        // that succeeds compares against the last state Vite really saw and
+        // says what moved since then.
+        if self.persist(&analysis) {
+            self.moved = self.bundle_moves(&analysis.graph);
+        }
 
         let diagnostics = analysis.graph.diagnostics().to_vec();
         if self.last.as_ref() == Some(&diagnostics) {
@@ -213,6 +327,147 @@ impl RscReport {
         self.displayed = true;
         RscUpdate::Reported(diagnostics)
     }
+
+    /// Diff the client bundle against the last successful scan's.
+    ///
+    /// The set is the modules [`uf_rsc::RscModule::requires_client_bundle`]
+    /// answers `true` for — the same predicate `@uniflowed/vite` splits the
+    /// route table with, read from the same graph in the same rescan, so what
+    /// this reports and what the browser is served cannot drift apart.
+    ///
+    /// The reason for each arrival is asked of the graph rather than derived
+    /// here: `client_bundle_reason` is one walk of the analysis that already
+    /// exists, and a second walk written in this file would be a second
+    /// analysis that agrees with the first until one of them is edited.
+    fn bundle_moves(&mut self, graph: &RscGraph) -> BundleUpdate {
+        let current: BTreeSet<Utf8PathBuf> = graph
+            .modules()
+            .iter()
+            .filter(|module| module.requires_client_bundle())
+            .map(|module| module.path.clone())
+            .collect();
+
+        let Some(previous) = self.last_bundle.replace(current.clone()) else {
+            // The first scan has nothing to compare against, and a project's
+            // whole client bundle listed at start-up is not a report about a
+            // decision anybody just made.
+            return BundleUpdate::default();
+        };
+
+        // Paths first, explanations after the cut. `reason_line` walks the
+        // import graph and formats a chain, and at most `MAX_MOVES` of them
+        // are ever printed; explaining every arrival first made a directive
+        // added at the root of a large tree pay a graph walk and a `String`
+        // per module in it, to throw all but twelve away.
+        let mut moves: Vec<(&Utf8Path, bool)> = current
+            .difference(&previous)
+            .map(|module| (module.as_path(), true))
+            .chain(
+                previous
+                    .difference(&current)
+                    .map(|module| (module.as_path(), false)),
+            )
+            .collect();
+        let total = moves.len();
+        // By path, so that a page and the components under it read as one
+        // change rather than as arrivals interleaved with departures.
+        moves.sort_by_key(|(module, _)| *module);
+        moves.truncate(MAX_MOVES);
+        let moves = moves
+            .into_iter()
+            .map(|(module, entered)| {
+                if entered {
+                    BundleMove::Entered {
+                        module: module.to_owned(),
+                        reason: reason_line(graph, module),
+                    }
+                } else {
+                    BundleMove::Left {
+                        module: module.to_owned(),
+                    }
+                }
+            })
+            .collect();
+        BundleUpdate { moves, total }
+    }
+}
+
+/// Why `module` is in the client bundle, as one line.
+///
+/// [`ClientBundleReason::Isolated`] cannot be reached from
+/// [`RscReport::bundle_moves`] — every module it asks about answered
+/// `requires_client_bundle`, and `uf_rsc::graph` holds those two against each
+/// other — so the arm below is a sentence rather than a panic. A report is not
+/// worth stopping a dev server for, and the honest thing to print when the two
+/// disagree is that they did.
+fn reason_line(graph: &RscGraph, module: &Utf8Path) -> String {
+    let Some(id) = graph.module_id(module) else {
+        return "the graph no longer has it".to_owned();
+    };
+    match graph.client_bundle_reason(id) {
+        ClientBundleReason::Declared => "it declares `\"use client\"`".to_owned(),
+        ClientBundleReason::Imports(chain) => {
+            let paths = chain
+                .iter()
+                .filter_map(|id| graph.module_by_id(*id))
+                .map(|module| module.path.as_str())
+                .collect::<Vec<_>>();
+            match paths.split_last() {
+                // The chain reads as the imports somebody would follow, and
+                // the last hop is named for what it is rather than left to be
+                // inferred from the arrow before it.
+                Some((boundary, above)) => format!(
+                    "{} imports {boundary}, which declares `\"use client\"`",
+                    above.join(" imports ")
+                ),
+                None => "it reaches a client boundary".to_owned(),
+            }
+        }
+        ClientBundleReason::Isolated => {
+            "the split and the explanation disagree about it, which is a bug in uf".to_owned()
+        }
+    }
+}
+
+/// Draw what moved in or out of the client bundle, if anything did.
+///
+/// On stderr beside the contract report, and for the same reason: this is a
+/// report about the project rather than about a request.
+///
+/// `Info` rather than `Warn`. A module entering the client bundle is what
+/// `"use client"` is *for* — it is the cost of a decision the reader has just
+/// made deliberately, not a mistake — and a warning colour on it would train
+/// people to add the directive without reading the line. What makes it worth
+/// printing is that the cost is otherwise invisible until somebody measures a
+/// bundle.
+fn render_bundle(ui: &mut Ui, update: &BundleUpdate) {
+    if update.is_empty() {
+        return;
+    }
+    let lines = update
+        .moves
+        .iter()
+        .map(BundleMove::line)
+        .collect::<Vec<_>>();
+    let items = lines.iter().map(String::as_str).collect::<Vec<_>>();
+    let elided = update.total.saturating_sub(update.moves.len());
+    let summary = if elided == 0 {
+        format!(
+            "{} moved across the client bundle",
+            plural(update.total, "module")
+        )
+    } else {
+        format!(
+            "{} moved across the client bundle, {elided} not listed",
+            plural(update.total, "module"),
+        )
+    };
+    ui.render_err(|renderer, out| {
+        renderer.blank(out);
+        renderer.heading(out, 2, "client bundle");
+        renderer.bullet_list(out, 4, &items);
+        renderer.status(out, Status::Info, &summary);
+    });
 }
 
 /// Draw an update, if it has anything to draw.
