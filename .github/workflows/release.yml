@@ -17,7 +17,7 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.builder }}
     # Ninety, not sixty, and the difference is one runner rather than the code.
     #
     # `uf@0.0.0-alpha.9` published every package to npm and produced no
@@ -40,16 +40,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Every target install.sh can ask for, each on a native runner so the
-        # installer test below runs the binaries it just packaged.
+        # Every target `install.sh` can ask for. `builder` is where it is
+        # compiled and `runner` is where it is *run* — the same machine for
+        # three of them, and deliberately not for the fourth.
+        #
+        # `macos-15-intel` is the oldest hardware in the fleet and the only
+        # target with no Apple-silicon runner behind it. It took 31 to 46
+        # minutes across alpha.13 to alpha.15 against 11 to 20 for the other
+        # three, and `publish` needs all four, so it was the whole release's
+        # critical path — ubugeeei-prod/uf#464. Apple silicon hosts that target
+        # with nothing but `--target`, and `package-binaries.sh` only compiles,
+        # tars and shasums, so nothing in this job has to execute what it built.
+        #
+        # Running it is what `verify` below is for, and it stays native.
         include:
           - target: x86_64-unknown-linux-gnu
+            builder: ubuntu-latest
             runner: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
+            builder: ubuntu-24.04-arm
             runner: ubuntu-24.04-arm
           - target: x86_64-apple-darwin
+            builder: macos-15
             runner: macos-15-intel
           - target: aarch64-apple-darwin
+            builder: macos-15
             runner: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,14 +109,6 @@ jobs:
           UF_CARGO_PROFILE: dist
         run: tools/release/package-binaries.sh
 
-      # The point of the whole workflow is that `curl … | sh` works. Prove it
-      # against the archive this job just produced, on this target's own
-      # hardware, before anything reaches a release page.
-      - name: Verify the installer against this archive
-        env:
-          UF_TEST_RELEASE_DIR: dist/release/uf/${{ steps.version.outputs.version }}
-        run: tools/release/test-install.sh
-
       # Name the version directory rather than globbing it. A glob makes
       # upload-artifact root the artifact at the non-wildcard prefix, so every
       # file arrives under a `<version>/` directory that `publish` does not
@@ -112,9 +119,56 @@ jobs:
           path: dist/release/uf/${{ steps.version.outputs.version }}
           if-no-files-found: error
 
+  verify:
+    name: Verify ${{ matrix.target }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    steps:
+      # The point of the whole workflow is that `curl … | sh` works. Prove it
+      # against the archive `build` produced, on this target's own hardware,
+      # before anything reaches a release page.
+      #
+      # A job of its own rather than a step inside `build`, so that where a
+      # binary is *compiled* and where it is *run* can differ. They are the same
+      # machine for three of the four; see the build matrix for why the fourth
+      # is not.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          version="${INPUT_VERSION:-${REF_NAME#uf@}}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: uf-${{ matrix.target }}
+          path: dist/release/uf/${{ steps.version.outputs.version }}
+      - name: Verify the installer against this archive
+        env:
+          UF_TEST_RELEASE_DIR: dist/release/uf/${{ steps.version.outputs.version }}
+        run: tools/release/test-install.sh
+
   publish:
     name: Publish release
-    needs: build
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
