@@ -223,6 +223,10 @@ fn a_hook_the_name_lists_do_not_know_is_an_unanswered_question() {
         .unwrap_or_else(|| panic!("nothing was reported: {:#?}", graph.diagnostics()));
     assert_eq!(diagnostic.severity(), RscSeverity::Warn);
     assert!(diagnostic.to_string().contains("useRoute"), "{diagnostic}");
+    // The caret goes where the message says it does. This variant has carried
+    // a column since #348 and `column()` was answering 1 for it, so `uf build`
+    // printed `line 86:24` over a caret under column 1.
+    assert_eq!(diagnostic.column(), 44, "{diagnostic:?}");
     assert!(
         !graph.has_errors(),
         "not knowing is not a contract violation: {:#?}",

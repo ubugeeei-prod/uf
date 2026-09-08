@@ -221,15 +221,21 @@ impl RscDiagnostic {
 
     /// 1-based column the diagnostic points at.
     ///
-    /// Only the two client-only checks record one — they are the variants that
-    /// point at an expression rather than at a statement — so the rest answer
-    /// with the first column, which is where a reporter's caret goes when the
-    /// whole line is at fault. A reporter cannot ask "is there a column?" and
-    /// do something sensible with `None`, so it is not offered one.
+    /// The three checks that point at an *expression* record one; the rest
+    /// answer with the first column, which is where a reporter's caret goes
+    /// when the whole line is at fault. A reporter cannot ask "is there a
+    /// column?" and do something sensible with `None`, so it is not offered
+    /// one.
+    ///
+    /// [`Self::UnclassifiedHookInServerModule`] has carried a column since
+    /// #348 and was not answering with it, so `uf build` printed a message
+    /// saying `line 122:24` above a caret under column 1 — the number in the
+    /// prose and the number under the code disagreeing about the same call.
     pub fn column(&self) -> u32 {
         match self {
             Self::ClientOnlyApiInServerModule { column, .. }
-            | Self::ClientOnlyHookInServerModule { column, .. } => *column,
+            | Self::ClientOnlyHookInServerModule { column, .. }
+            | Self::UnclassifiedHookInServerModule { column, .. } => *column,
             _ => 1,
         }
     }
