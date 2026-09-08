@@ -33,6 +33,98 @@ use std::path::{Path, PathBuf};
 use uf_config::FmtConfig;
 use uf_fmt::format_source;
 
+/// The manifest, as `(name, url, commit)` — every line that is not blank or a
+/// comment.
+fn manifest() -> Vec<(String, String, String)> {
+    let source = fs::read_to_string(manifest_path()).expect("tools/corpus/repos.txt");
+    source
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let mut fields = line.split_whitespace();
+            let name = fields.next().expect("a name").to_owned();
+            let url = fields.next().unwrap_or_default().to_owned();
+            let commit = fields.next().unwrap_or_default().to_owned();
+            assert!(
+                fields.next().is_none(),
+                "{name}: a manifest line is `name url commit` and nothing else"
+            );
+            (name, url, commit)
+        })
+        .collect()
+}
+
+fn manifest_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/corpus/repos.txt")
+}
+
+/// Adding a corpus repository is one line in one file.
+///
+/// It used to be one line in `tools/corpus/repos.txt` *or* a `.gitmodules`
+/// entry plus a gitlink, depending on which half of the corpus you were
+/// looking at, and `tools/corpus/sync.sh` had to run both mechanisms.
+/// ubugeeei-prod/uf#137 converged them on the manifest, and this is what
+/// keeps the second mechanism from growing back: a corpus fixture must never
+/// be a submodule again.
+///
+/// `upstream/flow` is the one submodule this repository has left, and it has
+/// to stay one for a reason that does not apply to the corpus: it is a cargo
+/// *path dependency*, so nothing in the workspace resolves without it. That
+/// is why this asserts the whole list rather than only that the corpus is
+/// absent from it.
+#[test]
+fn the_corpus_is_a_manifest_and_not_a_set_of_submodules() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let declared = fs::read_to_string(root.join(".gitmodules")).expect(".gitmodules");
+    let paths: Vec<&str> = declared
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("path"))
+        .filter_map(|rest| rest.trim_start().strip_prefix('='))
+        .map(str::trim)
+        .collect();
+
+    assert_eq!(
+        paths,
+        ["upstream/flow"],
+        "the corpus belongs in tools/corpus/repos.txt, not in .gitmodules"
+    );
+
+    let names: Vec<String> = manifest().into_iter().map(|(name, ..)| name).collect();
+    for converged in ["react", "metro", "relay", "react-native"] {
+        assert!(
+            names.iter().any(|name| name == converged),
+            "{converged} was a submodule and its pin belongs in the manifest now"
+        );
+    }
+}
+
+/// Every manifest line is a name, a URL and a full commit.
+///
+/// A pin is what makes the corpus reproducible, and the three ways to lose
+/// that quietly are an abbreviated sha, a branch name where a sha belongs,
+/// and the same repository listed twice under different names. `sync.sh`
+/// would fetch all three without complaining.
+#[test]
+fn every_pin_is_a_full_commit() {
+    let entries = manifest();
+    assert!(!entries.is_empty(), "the manifest is empty");
+
+    let mut seen: Vec<&str> = Vec::new();
+    for (name, url, commit) in &entries {
+        assert!(
+            url.starts_with("https://") && url.ends_with(".git"),
+            "{name}: {url} is not an https git URL"
+        );
+        assert!(
+            commit.len() == 40 && commit.chars().all(|c| c.is_ascii_hexdigit()),
+            "{name}: {commit} is not a full commit"
+        );
+        assert!(!seen.contains(&name.as_str()), "{name} is listed twice");
+        seen.push(name);
+    }
+}
+
 /// Every corpus repository that is checked out, in directory order.
 ///
 /// Read from the filesystem rather than listed here, so that adding a line

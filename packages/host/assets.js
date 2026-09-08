@@ -48,15 +48,35 @@ export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".avi
 export const FONT_EXTENSIONS = [".woff2", ".woff", ".ttf", ".otf"];
 
 /**
+ * The extension an Open Graph template is written under.
+ *
+ * A compound extension, so the claim is as narrow as a claim can be. Ordinary
+ * `.json` stays Vite's — only a file a project *named* `.og.json` becomes a
+ * card, and `?raw` and `?url` still reach the file itself, because a query is
+ * Vite's. It is checked before the image list for the same reason it is
+ * compound: the longer suffix has to win.
+ */
+export const OG_EXTENSION = ".og.json";
+
+/** The virtual module an icon import resolves through. */
+export const ICON_PREFIX = "uf:icon/";
+
+/** The virtual module holding every icon a build reached. */
+export const ICON_SPRITE = "uf:icon-sprite";
+
+/**
  * Whether this import is one uf's asset pipeline handles, and as what.
  *
- * Returns `"image"`, `"font"`, or `null`. The query string is stripped first:
- * `./hero.png?width=400` is an image, and the query is how an import says what
- * it wants.
+ * Returns `"image"`, `"font"`, `"og"`, `"icon"`, `"sprite"`, or `null`. The
+ * query string is stripped first: `./hero.png?width=400` is an image, and the
+ * query is how an import says what it wants.
  */
 export function assetKind(id) {
   const clean = stripQuery(id);
   const lower = clean.toLowerCase();
+  if (clean === ICON_SPRITE) return "sprite";
+  if (clean.startsWith(ICON_PREFIX)) return "icon";
+  if (lower.endsWith(OG_EXTENSION)) return "og";
   if (IMAGE_EXTENSIONS.some((extension) => lower.endsWith(extension))) return "image";
   if (FONT_EXTENSIONS.some((extension) => lower.endsWith(extension))) return "font";
   return null;
@@ -83,12 +103,41 @@ export class AssetError extends Error {
  * there are no correlation ids: the service replies once per request and in
  * order, so a plain queue of resolvers pairs a reply with its caller. Any exit
  * is final and every outstanding request is rejected at once.
+ *
+ * # Why the child is unreferenced between requests
+ *
+ * The same reason, stated once next door and applied here: a live child
+ * process and its pipes are handles, and a host with a handle open does not
+ * exit. So this service holds its host open for exactly as long as it owes an
+ * answer — referenced when a request joins an empty queue, unreferenced when
+ * the queue drains, and unreferenced from the start — and `#holdHost` acts
+ * only on the edge because `ref`/`unref` *count* on Bun where they set a flag
+ * on Node. `TransformService.#holdHost` carries that argument in full.
+ *
+ * It was invisible here for as long as it was, and that is worth saying rather
+ * than discovering: the only thing that constructs an `AssetService` is the
+ * Node-based Vite driver, and it closes the service in `buildEnd`. A host that
+ * drives assets and does not — which is where runtime independence goes, since
+ * `ubugeeei-redundancy.md` requires it be real rather than an enum — got a
+ * build that finished and then sat there, with the symptom nowhere near the
+ * cause. See ubugeeei-prod/uf#596, and #418 for the same defect in the service
+ * that is asked about every module.
  */
 export class AssetService {
   #child;
   #pending = [];
   #identity;
   #failure = null;
+  /**
+   * Whether the host is currently held open for this service.
+   *
+   * `true` before the constructor's first release, because that is what a
+   * freshly spawned child and its pipes are: referenced. Starting it `false`
+   * would make that release a no-op and leave the service holding the host
+   * from the moment it was made, which is the bug this field exists to end
+   * rather than a second spelling of it.
+   */
+  #held = true;
 
   /**
    * @param {object} [options]
@@ -110,18 +159,26 @@ export class AssetService {
     createInterface({ input: this.#child.stdout }).on("line", (line) => {
       const waiting = this.#pending.shift();
       if (!waiting) return;
-      let reply;
+      // `finally`, so the hold is released down every path out of this handler
+      // and not only the successful one. A rejected request is still a request
+      // that has been answered, and staying referenced after one would turn an
+      // image that failed to decode into a process that never exits.
       try {
-        reply = JSON.parse(line);
-      } catch {
-        waiting.reject(new Error(`uf assets sent a malformed reply: ${line}`));
-        return;
+        let reply;
+        try {
+          reply = JSON.parse(line);
+        } catch {
+          waiting.reject(new Error(`uf assets sent a malformed reply: ${line}`));
+          return;
+        }
+        if (reply.error != null) {
+          waiting.reject(new AssetError(waiting.id, reply.error));
+          return;
+        }
+        waiting.resolve(reply);
+      } finally {
+        this.#holdHost(this.#pending.length > 0);
       }
-      if (reply.error != null) {
-        waiting.reject(new AssetError(waiting.id, reply.error));
-        return;
-      }
-      waiting.resolve(reply);
     });
 
     this.#child.on("error", (error) => {
@@ -130,10 +187,36 @@ export class AssetService {
     this.#child.on("close", (code) => {
       this.#settleAll(new Error(`uf assets exited (${code})`));
     });
+
+    this.#holdHost(false);
+  }
+
+  /**
+   * Keep the host process alive, or stop keeping it alive.
+   *
+   * The pipes as well as the child, every call optional-chained, and the
+   * current state tracked so that only the edge is acted on — all three for
+   * the reasons `TransformService.#holdHost` sets out, which are the same
+   * reasons because this is the same shape of service. The third is the one
+   * that is not obvious and is a hang when it is got wrong: `ref()` and
+   * `unref()` set a flag on Node and **count** on Bun, so a service that said
+   * what it wanted on every reply would accumulate references and hold the
+   * host open for ever.
+   */
+  #holdHost(hold) {
+    if (hold === this.#held) return;
+    this.#held = hold;
+    const method = hold ? "ref" : "unref";
+    this.#child[method]?.();
+    this.#child.stdin?.[method]?.();
+    this.#child.stdout?.[method]?.();
   }
 
   #send(request) {
     if (this.#failure) return Promise.reject(this.#failure);
+    // Before the push, so the host is held from the moment it is owed an
+    // answer rather than from the moment the write lands.
+    this.#holdHost(true);
     return new Promise((resolve, reject) => {
       this.#pending.push({ id: request.id, resolve, reject });
       this.#child.stdin.write(`${JSON.stringify(request)}\n`);
@@ -143,13 +226,14 @@ export class AssetService {
   #settleAll(error) {
     this.#failure = error;
     while (this.#pending.length > 0) this.#pending.shift().reject(error);
+    this.#holdHost(false);
   }
 
   /**
    * Resize and re-encode one image.
    *
    * Resolves to the manifest the component reads: `{ width, height, format,
-   * variants, blur, declined, note }`. Every field is named here rather than
+   * variants, blur, declined, note, cached }`. Every field is named here rather than
    * passed through, which is deliberate and is the bug `transform.js` records
    * next door: a shim that copies three of four fields drops the fourth
    * silently, and the caller sees `undefined` rather than an error.
@@ -177,6 +261,12 @@ export class AssetService {
       height: image.height ?? null,
       format: image.format,
       variants: image.variants ?? [],
+      // Whether `uf assets` answered from its cache rather than doing the
+      // work. Named for the same reason every other field is: a caller
+      // measuring a warm build has to be able to tell one from a cold one,
+      // and a field that is dropped here reads as `undefined` rather than as
+      // an error.
+      cached: reply.cached === true,
       blur: image.blur ?? null,
       declined: image.declined ?? [],
       note: image.note ?? null,
@@ -198,6 +288,9 @@ export class AssetService {
    * @param {string} [options.display]
    * @param {string} [options.baseUrl] prefixed to the file name in `src: url()`
    * @param {string | null} [options.fallback] `null` for no fallback face
+   * @param {string} [options.subset] `"none"` or `"ranges"`
+   * @param {string} [options.text] characters to cut the face down to
+   * @param {boolean} [options.preload] whether the primary face is preloaded
    */
   async font(id, options) {
     const request = {
@@ -209,6 +302,9 @@ export class AssetService {
       style: options.style,
       display: options.display,
       baseUrl: options.baseUrl,
+      subset: options.subset,
+      text: options.text,
+      preload: options.preload,
     };
     // Only sent when the caller had an opinion. The service distinguishes "not
     // mentioned, use the project's" from "explicitly none", and a key that is
@@ -227,7 +323,103 @@ export class AssetService {
       metrics: font.metrics,
       fallback: font.fallback ?? null,
       fallbackDeclined: font.fallbackDeclined ?? null,
+      faces: font.faces ?? [],
+      sourceBytes: font.sourceBytes,
+      subset: font.subset ?? null,
+      subsetDeclined: font.subsetDeclined ?? null,
+      cached: reply.cached === true,
       css: font.css,
+    };
+  }
+
+  /**
+   * Turn one SVG into a symbol, and record that this build reached it.
+   *
+   * Resolves to `{ name, id, viewBox, width, height, symbol }`. The `id` is
+   * what a `<use>` points at; the sprite is assembled from every icon this
+   * service was asked about.
+   *
+   * @param {string} id absolute path to the SVG
+   * @param {object} options
+   * @param {string} options.outDir where the sprite will be written
+   * @param {string} options.name the name it was imported under
+   */
+  async icon(id, options) {
+    const reply = await this.#send({
+      kind: "icon",
+      id,
+      outDir: options.outDir,
+      name: options.name,
+    });
+    const icon = reply.icon;
+    if (icon == null) throw new AssetError(id, "uf assets returned no icon");
+    return {
+      name: icon.name,
+      id: icon.id,
+      viewBox: icon.viewBox,
+      width: icon.width,
+      height: icon.height,
+      symbol: icon.symbol,
+      cached: reply.cached === true,
+    };
+  }
+
+  /**
+   * Assemble one sprite out of the icons the caller says the build reached.
+   *
+   * The set is an argument rather than something this service accumulated,
+   * and the reason is a lifetime: a build closes this process in `buildEnd`,
+   * which runs before `generateBundle`, so a service that remembered would be
+   * asked for the sprite by a fresh process that had seen nothing. The caller
+   * outlives the service and is therefore what remembers.
+   *
+   * Ask for it once, after the graph is built. Asking earlier gets a correct
+   * sprite of the icons reached *so far*, which is not the same sprite.
+   *
+   * @param {object} options
+   * @param {string} options.outDir where the sprite is written
+   * @param {ReadonlyArray<object>} options.icons every icon `icon()` returned
+   */
+  async sprite(options) {
+    const reply = await this.#send({
+      kind: "sprite",
+      id: "uf:icon-sprite",
+      outDir: options.outDir,
+      icons: options.icons ?? [],
+    });
+    const sprite = reply.sprite;
+    if (sprite == null) throw new AssetError("uf:icon-sprite", "uf assets returned no sprite");
+    return {
+      file: sprite.file,
+      markup: sprite.markup,
+      bytes: sprite.bytes,
+      symbols: sprite.symbols,
+    };
+  }
+
+  /**
+   * Draw one Open Graph card from a declared template.
+   *
+   * Resolves to `{ file, mime, width, height, bytes, alt }`. A template uf
+   * cannot lay out rejects with a message naming the character; see
+   * `crates/uf_assets/src/og.rs` for what is and is not drawable.
+   *
+   * @param {string} id absolute path to the `.og.json`
+   * @param {object} options
+   * @param {string} options.outDir where the PNG is written
+   */
+  async og(id, options) {
+    const reply = await this.#send({ kind: "og", id, outDir: options.outDir });
+    const og = reply.og;
+    if (og == null) throw new AssetError(id, "uf assets returned no image");
+    return {
+      file: og.file,
+      mime: og.mime,
+      width: og.width,
+      height: og.height,
+      bytes: og.bytes,
+      alt: og.alt,
+      cached: reply.cached === true,
     };
   }
 

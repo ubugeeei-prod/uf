@@ -9,7 +9,10 @@
 // imports", `resolveId` + `load` + `generateBundle` + `writeBundle` +
 // `transformIndexHtml` — since before there was anything behind it, and
 // `uf inspect` has been listing it in the resolved pipeline. This is the
-// implementation of a plugin uf was already claiming to run.
+// implementation of a plugin uf was already claiming to run — and `resolveId`
+// and `generateBundle`, declared there from the start and unimplemented until
+// icons arrived, are now real: the first resolves `uf:icon/…`, the second
+// assembles the sprite once the graph is complete.
 //
 // # What an import becomes
 //
@@ -45,6 +48,19 @@
 // two must agree": there is one pipeline and one set of bytes, and the only
 // thing that differs between them is the URL prefix they are served under.
 //
+// # Icons, and why they are not `.svg`
+//
+// `import Star from "uf:icon/star"` resolves against the directory
+// `app.builtins.icons.dir` names, and `import sprite from "uf:icon-sprite"` is
+// the sprite built from every icon the build reached. Neither claims an
+// extension, which is the point: `.svg` stays Vite's, so `vite-plugin-svgr`
+// and everything like it keep working, and uf adds a capability in its own
+// namespace instead of taking one away.
+//
+// The sprite is emitted in `generateBundle`, which is the first hook that runs
+// after every module has been loaded — and therefore the first moment the set
+// of icons a build reached is the whole set.
+//
 // # What this plugin deliberately does not claim
 //
 // An import with a query — `./hero.png?url`, `?raw`, `?inline` — is left to
@@ -57,7 +73,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { AssetService, assetKind } from "@uniflowed/host/assets";
+import {
+  AssetService,
+  ICON_PREFIX,
+  ICON_SPRITE,
+  OG_EXTENSION,
+  assetKind,
+} from "@uniflowed/host/assets";
 
 /** Where transformed assets are kept, relative to the project root. */
 export const CACHE_DIR = ".uf/cache/assets";
@@ -70,6 +92,36 @@ export const CACHE_DIR = ".uf/cache/assets";
  * middlewares leave it alone.
  */
 export const DEV_PREFIX = "@uf-asset/";
+
+/**
+ * What stands in for the sprite until `generateBundle` knows what is in it.
+ *
+ * A string no source file would contain, replaced in the generated chunk once
+ * every module has been loaded. The module graph needs *something* at `load`
+ * time and the sprite is not knowable then; see the `sprite` branch of `load`.
+ */
+const SPRITE_PLACEHOLDER = "__UF_ICON_SPRITE__";
+
+/**
+ * What a `*.og.json` import resolves to.
+ *
+ * A card cannot keep its own id, and the reason is worth writing down because
+ * nothing about `enforce: "pre"` prevents it. Vite's JSON handling is a
+ * *native* rolldown plugin, `builtin:vite-json`, and it selects modules by
+ * **id**: anything still ending in `.json` when its `transform` runs is put
+ * through a JSON parser, whatever an earlier `load` returned. Ordering the
+ * hooks does not help, because the module this plugin loads is JavaScript
+ * under a name that says JSON — and the parser's answer is
+ * `expected value at line 1 column 1`.
+ *
+ * So the id changes rather than the order. The card resolves to
+ * `\0uf-og:<absolute path>.js`: `\0` is the convention for a module that is
+ * not a file, and the trailing extension is what takes it out of every
+ * `.json` filter in the pipeline.
+ */
+const OG_PREFIX = "\0uf-og:";
+/** Appended to that id so it does not end in `.json`. See [`OG_PREFIX`]. */
+const OG_SUFFIX = ".js";
 
 /**
  * The module source for one transformed asset.
@@ -146,15 +198,20 @@ export function withUrls(image, baseUrl) {
  * @param {object} options
  * @param {object} [options.images] `app.builtins.images`
  * @param {object} [options.fonts] `app.builtins.fonts`
+ * @param {object} [options.icons] `app.builtins.icons`
+ * @param {object} [options.og] `app.builtins.og`
  * @param {string} [options.command] the `uf` binary to transform through
  */
-export function assetPlugin({ images = {}, fonts = {}, command } = {}) {
+export function assetPlugin({ images = {}, fonts = {}, icons = {}, og = {}, command } = {}) {
   // Both halves can be turned off independently, and a plugin that is off is
   // still in the array: `uf inspect` lists the resolved pipeline, and a
   // pipeline that changes shape when a feature is disabled is a pipeline whose
   // listing cannot be compared between two projects.
   const imagesOn = images.enabled !== false;
   const fontsOn = fonts.enabled !== false;
+  const iconsOn = icons.enabled !== false;
+  const ogOn = og.enabled !== false;
+  const iconDir = icons.dir ?? "icons";
 
   let root = process.cwd();
   let base = "/";
@@ -174,6 +231,18 @@ export function assetPlugin({ images = {}, fonts = {}, command } = {}) {
    * redo every image, which is the whole cost this map exists to avoid.
    */
   const transformed = new Map();
+  /** Whether anything imported the sprite at all. */
+  let spriteRequested = false;
+  /**
+   * Every icon this build has reached, by symbol id.
+   *
+   * Here and not in the `uf assets` process, because this closure outlives it:
+   * a build closes the service in `buildEnd`, which runs *before*
+   * `generateBundle`, and a build with a client environment and a server one
+   * has two bundles and one set of icons between them. The plugin is what
+   * spans a build, so the plugin is what remembers.
+   */
+  const reachedIcons = new Map();
 
   const cacheDir = () => path.resolve(root, CACHE_DIR);
   /**
@@ -206,7 +275,30 @@ export function assetPlugin({ images = {}, fonts = {}, command } = {}) {
     const kind = assetKind(id);
     if (kind === "image" && !imagesOn) return null;
     if (kind === "font" && !fontsOn) return null;
+    if (kind === "og" && !ogOn) return null;
+    if ((kind === "icon" || kind === "sprite") && !iconsOn) return null;
     return kind;
+  };
+
+  /**
+   * The file one `uf:icon/<name>` names.
+   *
+   * The name is a path segment and nothing else. `..` in it would reach out of
+   * the icon directory and turn an import into a way to read the repository,
+   * so it is rejected rather than resolved — the same rule the dev middleware
+   * applies to an emitted file name.
+   */
+  const iconFile = (id) => {
+    const name = id.slice(ICON_PREFIX.length);
+    if (name === "" || name.includes("..") || path.isAbsolute(name)) return null;
+    return { name, file: path.resolve(root, iconDir, `${name}.svg`) };
+  };
+
+  /** Tell a dev server the sprite it already sent is missing an icon. */
+  const invalidateSprite = () => {
+    if (server == null || !spriteRequested) return;
+    const module = server.moduleGraph.getModuleById(ICON_SPRITE);
+    if (module != null) server.moduleGraph.invalidateModule(module);
   };
 
   return {
@@ -222,9 +314,93 @@ export function assetPlugin({ images = {}, fonts = {}, command } = {}) {
       isBuild = config.command === "build";
     },
 
+    // `uf:icon/…` and `uf:icon-sprite` are uf's own ids and resolve to
+    // themselves. Returning the id unchanged rather than a `\0`-prefixed one
+    // keeps it readable in a stack trace and in `vite --debug`, and nothing
+    // else in the pipeline claims the `uf:` scheme.
+    //
+    // A card is the opposite case: it has to *lose* its name, because the name
+    // is what the native JSON plugin claims it by. See `OG_PREFIX`.
+    async resolveId(id, importer, options) {
+      if (iconsOn && (id === ICON_SPRITE || id.startsWith(ICON_PREFIX))) return id;
+      if (!ogOn || !id.toLowerCase().endsWith(OG_EXTENSION)) return null;
+      // Compared against the id as written, so a query is never claimed:
+      // `./card.og.json?raw` and `?url` still reach the file, because a query
+      // is Vite's.
+      const resolved = await this.resolve(id, importer, { ...options, skipSelf: true });
+      if (resolved == null || resolved.external || !existsSync(resolved.id)) return resolved;
+      return `${OG_PREFIX}${resolved.id}${OG_SUFFIX}`;
+    },
+
     async load(id) {
+      if (id.startsWith(OG_PREFIX)) {
+        const file = id.slice(OG_PREFIX.length, -OG_SUFFIX.length);
+        // Watched by hand, because the module id is no longer the file's path
+        // and nothing else would associate the two. Without this a dev server
+        // never redraws a card whose template was edited.
+        this.addWatchFile(file);
+        return loadAsset.call(this, {
+          kind: "og",
+          file,
+          transformed,
+          service: ensureService(),
+          cacheDir: cacheDir(),
+          baseUrl: baseUrl(),
+          assetsDir,
+          isBuild,
+          images,
+          fonts,
+        });
+      }
+
       const kind = claims(id);
       if (kind == null) return null;
+
+      if (kind === "sprite") {
+        spriteRequested = true;
+        // A build cannot know the sprite here: `load` runs while the graph is
+        // still being walked, so the set of icons reached so far is not the
+        // set. It emits a placeholder that `generateBundle` — the first hook
+        // after every module has been loaded — replaces with the real markup.
+        //
+        // A dev server has no `generateBundle`, so it assembles from what has
+        // been reached and invalidates this module whenever a new icon turns
+        // up. That costs one extra reload the first time a page introduces an
+        // icon and is exactly right afterwards, which is the trade a dev
+        // server makes everywhere else too.
+        if (isBuild) return assetModuleSource({ markup: SPRITE_PLACEHOLDER });
+        const sprite = await ensureService().sprite({
+          outDir: cacheDir(),
+          icons: [...reachedIcons.values()],
+        });
+        return assetModuleSource({ markup: sprite.markup });
+      }
+
+      if (kind === "icon") {
+        const resolved = iconFile(id);
+        if (resolved == null) return null;
+        if (!existsSync(resolved.file)) {
+          this.error(
+            `${id} does not exist: uf looked for ${path.relative(root, resolved.file)}. ` +
+              "`app.builtins.icons.dir` is where `uf:icon/…` resolves against.",
+          );
+        }
+        const asset = await ensureService().icon(resolved.file, {
+          outDir: cacheDir(),
+          name: resolved.name,
+        });
+        this.addWatchFile(resolved.file);
+        reachedIcons.set(asset.id, asset);
+        invalidateSprite();
+        return assetModuleSource({
+          id: asset.id,
+          href: `#${asset.id}`,
+          viewBox: asset.viewBox,
+          width: asset.width,
+          height: asset.height,
+        });
+      }
+
       const file = path.resolve(id);
       // Not this plugin's to fail on: an id with one of these extensions that
       // is not a file on disk is a virtual module somebody else owns.
@@ -242,6 +418,38 @@ export function assetPlugin({ images = {}, fonts = {}, command } = {}) {
         images,
         fonts,
       });
+    },
+
+    // After every module has been loaded, which is the first moment the set of
+    // icons this build reached is the whole set. A sprite assembled in `load`
+    // would hold the icons reached *so far*, which is a different sprite on
+    // every run depending on module order.
+    async generateBundle(_options, bundle) {
+      if (!iconsOn || !spriteRequested) return;
+      const sprite = await ensureService().sprite({
+        outDir: cacheDir(),
+        icons: [...reachedIcons.values()],
+      });
+      // Inlined into the chunk and *not* emitted as a file of its own. An
+      // external sprite would be the better answer if it worked — one file
+      // cached across every page — but `<use href="sprite.svg#id">` does not
+      // resolve across documents in any version of Safari and is blocked
+      // cross-origin in Chrome, so the file would be dead weight in `dist/`
+      // and in `uf_bundle`'s size report. `uf assets` still writes it into the
+      // cache directory, which is where the dev server reads it from.
+      //
+      // The placeholder is replaced rather than the module re-run: by
+      // `generateBundle` the chunk is already generated, and the sprite is one
+      // string literal in it.
+      //
+      // A function replacement, because a plain string one would interpret
+      // `$&` and `$'` — and an icon is somebody else's markup.
+      const escaped = JSON.stringify(sprite.markup).slice(1, -1);
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type === "chunk" && chunk.code.includes(SPRITE_PLACEHOLDER)) {
+          chunk.code = chunk.code.replaceAll(SPRITE_PLACEHOLDER, () => escaped);
+        }
+      }
     },
 
     configureServer(devServer) {
@@ -288,6 +496,7 @@ export function assetPlugin({ images = {}, fonts = {}, command } = {}) {
       // files and leaves the old ones for anything still holding a URL.
       transformed.delete(`image:${path.resolve(id)}`);
       transformed.delete(`font:${path.resolve(id)}`);
+      transformed.delete(`og:${path.resolve(id)}`);
     },
 
     buildEnd() {
@@ -319,24 +528,38 @@ async function loadAsset(context) {
   const key = `${kind}:${file}`;
   let manifest = transformed.get(key);
   if (manifest == null) {
-    manifest =
-      kind === "image"
-        ? await service.image(file, {
-            outDir: cacheDir,
-            widths: images.widths,
-            quality: images.quality,
-            blur: images.placeholder,
-          })
-        : await service.font(file, {
-            outDir: cacheDir,
-            family: fonts.family,
-            display: fonts.display,
-            baseUrl,
-          });
+    if (kind === "image") {
+      manifest = await service.image(file, {
+        outDir: cacheDir,
+        widths: images.widths,
+        quality: images.quality,
+        blur: images.placeholder,
+      });
+    } else if (kind === "og") {
+      manifest = await service.og(file, { outDir: cacheDir });
+    } else {
+      manifest = await service.font(file, {
+        outDir: cacheDir,
+        family: fonts.family,
+        display: fonts.display,
+        subset: fonts.subset,
+        preload: fonts.preload,
+        baseUrl,
+      });
+    }
     transformed.set(key, manifest);
   }
 
-  const files = kind === "image" ? manifest.variants.map((v) => v.file) : [manifest.file];
+  const files =
+    kind === "image"
+      ? manifest.variants.map((v) => v.file)
+      : kind === "og"
+        ? [manifest.file]
+        : // Every bucket, not just the primary: a `unicode-range` split emits
+          // one file per script and the browser fetches whichever the page
+          // needs. Emitting only the one the manifest calls primary would
+          // leave the others named in the stylesheet and absent from `dist/`.
+          manifest.faces.map((face) => face.file);
   if (isBuild) {
     // Handed to Rollup rather than copied by hand, so the bundler owns what
     // lands in the output directory and `uf_bundle`'s size report — which
@@ -356,6 +579,18 @@ async function loadAsset(context) {
   if (kind === "image") {
     return assetModuleSource(withUrls(manifest, baseUrl));
   }
+  if (kind === "og") {
+    return assetModuleSource({
+      // The shape `Metadata.openGraph.images` and `OgImage` both read. A URL,
+      // a size and the alt text, which is all a card ever is to a page.
+      url: `${baseUrl}${manifest.file}`,
+      width: manifest.width,
+      height: manifest.height,
+      type: manifest.mime,
+      alt: manifest.alt,
+      bytes: manifest.bytes,
+    });
+  }
   return assetModuleSource({
     src: `${baseUrl}${manifest.file}`,
     family: manifest.family,
@@ -373,6 +608,19 @@ async function loadAsset(context) {
     metrics: manifest.metrics,
     fallback: manifest.fallback,
     fallbackDeclined: manifest.fallbackDeclined,
+    // Every emitted file with its URL, so `Font` can preload exactly the one
+    // marked rather than all of them — which is the one thing that would undo
+    // a `unicode-range` split.
+    faces: (manifest.faces ?? []).map((face) => ({
+      ...face,
+      url: `${baseUrl}${face.file}`,
+    })),
+    subset: manifest.subset ?? null,
+    // Carried through for the same reason `declined` is on an image: a project
+    // that asked for a subset and got the whole font is entitled to the
+    // sentence saying why, without reading this plugin.
+    subsetDeclined: manifest.subsetDeclined ?? null,
+    sourceBytes: manifest.sourceBytes ?? null,
   });
 }
 

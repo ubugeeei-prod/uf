@@ -11,7 +11,7 @@ mod ui;
 
 pub use descriptor::{
     FormContract, FormMutationPhase, HookDescriptor, NativeModule, NativeModuleKind, SchemaKind,
-    Stability, UiComponent, UiRuntime, ValidationStep,
+    Stability, UiComponent, UiReadiness, UiRuntime, ValidationStep,
 };
 pub use registry::{
     builtin_modules, hook_descriptors, module_by_specifier, std_module_descriptors, tui_contract,
