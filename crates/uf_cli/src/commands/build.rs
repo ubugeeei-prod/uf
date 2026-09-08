@@ -28,7 +28,7 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, Prerender, RenderingPlan, load_config};
+use uf_config::{DeployAdapter, LibraryPlan, Prerender, RenderingPlan, load_config};
 use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
@@ -50,6 +50,7 @@ use crate::support::{
 use crate::ui::Ui;
 
 mod guards;
+mod library;
 mod site;
 
 /// How many assets `--size-report` names before the list is cut off.
@@ -133,6 +134,24 @@ pub(crate) fn build(
 
     progress.draw("loading configuration");
     let resolved = timer.measure("config", || load_config(cwd))?;
+
+    // Which of the two builds this is, decided once. A project whose
+    // `app.router.enabled` is false is a library, and everything below this
+    // point — the route table, the RSC analysis, the client entry, the
+    // prerender — is an application's. `uf new --lib` scaffolded a project
+    // that ran all of it and failed on a missing `app.js`; see
+    // ubugeeei-prod/uf#268 and [`library`].
+    if let Some(plan) = LibraryPlan::resolve(&resolved.config) {
+        progress.finish();
+        drop(progress);
+        refuse_an_application_artefact(
+            &plan,
+            standalone,
+            requested_adapter.or(resolved.config.app.runtime.deploy.adapter),
+        )?;
+        return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
+    }
+
     let root = resolved.root.clone();
     // What this project said a build may produce, resolved once. Two settings
     // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
@@ -842,6 +861,39 @@ fn refuse_unanswerable_actions(
         if listed.len() == 1 { "is" } else { "are" },
         plan.because(),
         listed.join("\n"),
+    )
+}
+
+/// Refuse `--compile` or `--adapter` on a project that is a library.
+///
+/// Both flags produce a **deployment**: an executable that serves the
+/// application, or a directory a host runs it from. A library has no
+/// application to serve — no route table, no server entry, no request to
+/// answer — so each would have to invent one, and what it invented would be an
+/// empty server that starts and 404s everything.
+///
+/// Refused by name and before anything is built, which is the rule
+/// ubugeeei-prod/uf#638 applied to the same two flags: a target uf cannot
+/// produce is a sentence, and a sentence is cheaper before the bundle than
+/// after it.
+/// The adapter is whichever of `--adapter` and `app.runtime.deploy.adapter`
+/// asked, because a setting read and not honoured is the failure this whole
+/// change is about: a project that declared a deploy target and got a library
+/// would have been told nothing.
+fn refuse_an_application_artefact(
+    plan: &LibraryPlan,
+    standalone: bool,
+    adapter: Option<DeployAdapter>,
+) -> Result<()> {
+    let asked = match (standalone, adapter) {
+        (true, _) => "`uf build --compile` writes an executable that serves an application",
+        (_, Some(_)) => "a deploy adapter writes a directory a host serves an application from",
+        (false, None) => return Ok(()),
+    };
+    bail!(
+        "{asked}, and {}. A library is imported rather than served: `uf build` writes its \
+         modules to the output directory, and what sends them anywhere is `uf publish`.",
+        plan.because(),
     )
 }
 

@@ -17,6 +17,20 @@
 //! [`LockfileSnapshot`] still records whether the file exists and how large it
 //! is, so the summary can say the lockfile changed without inventing a list.
 //!
+//! # A linked package is a package
+//!
+//! A dependency written as a path — `file:vendor/tiny`, or a workspace member —
+//! is linked rather than fetched, and npm records the link with no version of
+//! its own. Those rows used to be skipped, so a repository whose dependencies
+//! are all local paths reported `0 packages` and an empty tree no matter what
+//! an install had just done. They are counted now, at the version of the
+//! directory they point at; see [`linked_version`] for where that version
+//! comes from and why it is not read off the disk.
+//!
+//! What a linked row is still *not* is a registry artefact:
+//! [`LockedEntry::link`] stays the flag that says so, and both
+//! [`crate::confusion`] and the provenance check skip an entry that carries it.
+//!
 //! # Untrusted input
 //!
 //! A lockfile is repository content, and this reads it before anything has
@@ -44,6 +58,15 @@ pub const MAX_LOCKFILE_BYTES: u64 = 32 * 1024 * 1024;
 /// The `node_modules` path segment npm keys its tree on.
 const TREE_SEGMENT: &str = "node_modules/";
 
+/// The version a workspace link is reported at when the lockfile names none.
+///
+/// A last resort, not the usual answer: [`linked_version`] reads the version
+/// off the row the link points at, and only a lockfile that has no such row —
+/// or has one without a version — reaches this. `"link"` rather than an empty
+/// string or a `0.0.0`, because both of those read as a version and this is
+/// the absence of one.
+const LINKED: &str = "link";
+
 /// One package as a lockfile records it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +74,10 @@ pub struct LockedEntry {
     /// Published package name.
     pub name: CompactString,
     /// The version installed at this path.
+    ///
+    /// A workspace link records no version of its own, so for one this is the
+    /// version of the directory it points at, read off that directory's own
+    /// row in the same lockfile — or [`LINKED`] when the lockfile names none.
     pub version: CompactString,
     /// The URL the manager resolved it from, when the lockfile records one.
     ///
@@ -261,10 +288,25 @@ pub fn snapshot(root: &Utf8Path, manager: PackageManager) -> LockfileSnapshot {
         let Some(entry) = entry.as_object() else {
             continue;
         };
-        let Some(version) = entry.get("version").and_then(serde_json::Value::as_str) else {
+        let resolved = entry.get("resolved").and_then(serde_json::Value::as_str);
+        let link = entry
+            .get("link")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let version = match entry.get("version").and_then(serde_json::Value::as_str) {
+            Some(version) => version.to_compact_string(),
             // A workspace link carries no version of its own; it is a pointer
-            // to a directory this repository already has.
-            continue;
+            // to a directory this repository already has. That directory is a
+            // package all the same, and dropping the row made a project whose
+            // dependencies are all local paths report a tree of nothing —
+            // `0 packages` after an install that linked fourteen of them.
+            None if link => {
+                linked_version(packages, resolved).unwrap_or_else(|| LINKED.to_compact_string())
+            }
+            // Anything else without a version is a row this does not
+            // understand, and inventing one for it would be worse than the
+            // omission.
+            None => continue,
         };
         let Some(name) = tree_name(path) else {
             continue;
@@ -273,19 +315,13 @@ pub fn snapshot(root: &Utf8Path, manager: PackageManager) -> LockfileSnapshot {
             path.to_compact_string(),
             LockedEntry {
                 name,
-                version: version.to_compact_string(),
-                resolved: entry
-                    .get("resolved")
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToCompactString::to_compact_string),
+                version,
+                resolved: resolved.map(ToCompactString::to_compact_string),
                 integrity: entry
                     .get("integrity")
                     .and_then(serde_json::Value::as_str)
                     .map(ToCompactString::to_compact_string),
-                link: entry
-                    .get("link")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false),
+                link,
             },
         );
     }
@@ -378,6 +414,47 @@ fn by_name(snapshot: &LockfileSnapshot) -> BTreeMap<CompactString, Placement> {
         placement.paths.insert(path.clone());
     }
     out
+}
+
+/// The version of the directory a `link: true` row points at.
+///
+/// npm records a path dependency twice: once as the link that sits in the tree
+///
+/// ```json
+/// "node_modules/tiny": { "resolved": "vendor/tiny", "link": true }
+/// ```
+///
+/// and once as the directory itself, `"vendor/tiny"`, which is the row that
+/// carries `name` and `version`. So the version is already in the file uf has
+/// open, keyed by the link's own `resolved`, and no directory has to be
+/// visited to find it.
+///
+/// Read from the lockfile rather than from `<resolved>/package.json` on
+/// purpose. A [`LockfileSnapshot`] is a reading of one file at one moment —
+/// `uf add` takes one before the manager runs and one after, and subtracts
+/// them — and a version fetched from the working tree would be the *current*
+/// one in both, so a workspace package whose version changed would report as
+/// unchanged. It also keeps this function away from the filesystem, which
+/// matters for input this untrusted: no symlink to follow, no directory to
+/// escape from, no path built out of a string a lockfile chose.
+///
+/// [`None`] when the row is absent, is not an object, or has no version — a
+/// lockfile is repository content and may say anything at all.
+fn linked_version(
+    packages: &serde_json::Map<String, serde_json::Value>,
+    resolved: Option<&str>,
+) -> Option<CompactString> {
+    let target = resolved?;
+    // The link's target is a key in the same map, so it is subject to the same
+    // rule: a row uf would refuse to record must not become a version either.
+    if is_polluting_json_key(target) {
+        return None;
+    }
+    packages
+        .get(target)?
+        .get("version")?
+        .as_str()
+        .map(ToCompactString::to_compact_string)
 }
 
 /// The package a `node_modules` path names.

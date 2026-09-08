@@ -146,15 +146,52 @@ fn app_package_json(name: &str) -> String {
 ///
 /// Both names are pinned to `UNIFLOWED_VERSION`, for the reasons written
 /// there.
+///
+/// # What this manifest says a Flow library ships
+///
+/// Two halves, named by two conditions. `uf build` writes the compiled
+/// JavaScript to `dist/`, and `"default"` points at it; the Flow source stays
+/// at the package root, and `"flow"` points at that. The argument is in
+/// `uf_cli`'s `commands::build::library`, and three details of it are here:
+///
+/// * **`"default"` is the compiled build, not the source.** A resolver that
+///   knows no conditions takes `default`, so `default` has to be the file
+///   every runtime can evaluate. Publishing Flow source as `default` — which
+///   is what the previous `"exports": { ".": "./index.js" }` did — is a
+///   package that is a syntax error everywhere except inside uf. uf's own
+///   `packages/*` get away with it because `@uniflowed/host`'s `isFlowModule`
+///   names that scope, and a user's library does not get that deal.
+/// * **`files` names `dist`, and it has to.** npm falls back to `.gitignore`
+///   when a package has no `.npmignore`, and the `.gitignore` this same
+///   template writes ignores `dist/`. Without this list, `npm publish` would
+///   pack the source and leave out the build — a tarball whose `default`
+///   condition points at a file that is not in it.
+/// * **`version`, because a library is published.** The application template
+///   says `"private": true`; this one is the opposite kind of project, and a
+///   manifest with no version cannot be published at all.
+///
+/// There is no `.js.flow` and there never will be: `docs/architecture.md` says
+/// a shipped module owns its own declarations, so the Flow source *is* the
+/// declaration file and shipping it twice would be two answers to one
+/// question.
 fn lib_package_json(name: &str) -> String {
     let uf = UNIFLOWED_VERSION;
     format!(
         r#"{{
   "name": "{name}",
+  "version": "0.0.0",
   "type": "module",
+  "sideEffects": false,
   "exports": {{
-    ".": "./index.js"
+    ".": {{
+      "flow": "./index.js",
+      "default": "./dist/index.js"
+    }}
   }},
+  "files": [
+    "index.js",
+    "dist"
+  ],
   "devDependencies": {{
     "@uniflowed/config": "{uf}",
     "@uniflowed/test": "{uf}"
@@ -182,12 +219,26 @@ export default defineConfig({
     .to_string()
 }
 
+/// The configuration `uf create lib` writes.
+///
+/// `app.router.enabled: false` is the whole declaration, and it is what makes
+/// `uf build` build a library rather than an application — see `uf_config`'s
+/// `LibraryPlan` and ubugeeei-prod/uf#268. There is deliberately no `build.lib`
+/// beside it: its defaults are exactly this project (`index.js`, ES modules,
+/// every declared dependency left as an import), and a scaffold that wrote
+/// them out would be teaching a reader that they are required.
+///
+/// There is no `dev` task either, and that is the same fact from the other
+/// side: a library has no application to serve.
 fn lib_config() -> String {
     r#"// @flow
 import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   app: {
+    // Turning the file-system router off is what makes this a library:
+    // `uf build` compiles index.js to dist/ rather than looking for an
+    // application to render.
     router: {
       enabled: false,
     },

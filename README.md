@@ -291,10 +291,11 @@ reference, with every flag and exit code.
 
 | | |
 | --- | --- |
-| `uf new`, `uf init` | Scaffold an application into a new directory, or into this one |
+| `uf new`, `uf init` | Scaffold an application into a new directory, or into this one; `--lib` scaffolds a library |
 | `uf clean` | Removes what a rebuild writes again — never a lockfile, and `node_modules` only when asked |
 | `uf dev` | Vite's dev server, with React Fast Refresh through `component` declarations |
 | `uf build` | Client and server bundles, prerendered routes, a size report and the build manifest |
+| `uf build`, for a library | `uf new --lib` turns the router off, and that makes the build compile your entries to `dist/` instead: every declared dependency left as an import, and a package that ships the Flow source and the JavaScript beside it |
 | `uf preview`, `uf start` | Serve that build — through Vite, or through uf's own server with no bundler in the process |
 | `uf test` | Scheduling and reporting in Rust, one file per worker, bodies on the host |
 | `uf fmt` | Flow printed from Meta's parser to match Prettier; JSON, CSS and TypeScript handed to Biome |
