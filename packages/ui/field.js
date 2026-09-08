@@ -108,6 +108,22 @@ import { withProps } from "./internal/merge-props.js";
  * `onBlur` and the constraint attributes a progressive form emits — spread onto
  * whatever element `Field.Control` renders, underneath the attributes the field
  * computes.
+ *
+ * # It is declared here and produced there
+ *
+ * `@uniflowed/form`'s `useFieldSource` builds one of these, so this type is the
+ * seam between the two packages — and it lives on this side only because the
+ * dependency can only run this way today: this package is on npm and that one
+ * is not, and `tools/release/publishable.sh` refuses a published package that
+ * depends on an unpublished one.
+ *
+ * That is backwards, and ubugeeei-prod/uf#614 says so. It stands because
+ * declaring the type twice trades a documented edge for silent drift — a
+ * `Field.Root` accepting a shape `useFieldSource` no longer produces would
+ * type-check on both sides and fail only where they meet — and because the
+ * import is type-only, so no project installing `@uniflowed/form` loads,
+ * bundles or runs any of this package. #210 is the trigger: once
+ * `@uniflowed/form` publishes, this moves there and `@uniflowed/ui` imports it.
  */
 export type FieldSource = {|
   readonly invalid: boolean,
