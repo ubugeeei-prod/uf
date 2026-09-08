@@ -25,7 +25,9 @@ fn limits() -> CheckLimits {
 }
 
 fn check(path: &str, source: &str) -> Vec<TypeDiagnostic> {
-    check_source(Source::new(path, source), &limits()).expect("the checker runs")
+    // No project library definitions: the point of these fixtures is what uf
+    // ships, and a `[libs]` entry here would be checking the project's.
+    check_source(Source::new(path, source), &[], &limits()).expect("the checker runs")
 }
 
 /// The `(line, code)` of every diagnostic, which is what these tests compare.

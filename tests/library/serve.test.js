@@ -586,6 +586,20 @@ describe("a draft request, at every front door", () => {
     };
   }
 
+  /**
+   * What the assets binding would call these bytes.
+   *
+   * The extension and nothing else, because that is all a static host has to
+   * go on — and it is the whole of what `createWorkerFetch` reads to tell a
+   * document from a chunk. A stand-in that called every file `text/html`
+   * would make the chunk assertion below pass for the wrong reason.
+   */
+  function contentType(pathname: string): string {
+    if (pathname.endsWith(".js")) return "text/javascript; charset=utf-8";
+    if (pathname.endsWith(".css")) return "text/css; charset=utf-8";
+    return "text/html; charset=utf-8";
+  }
+
   /** The three doors, each composed the way its command composes it. */
   function doors() {
     const { distDir, entry } = built();
@@ -616,11 +630,13 @@ describe("a draft request, at every front door", () => {
           fetch: async (asked: Request) => {
             const found = await cdn(asked);
             // `"not_found_handling": "none"`, which is what `wrangler.json`
-            // sets, and a `content-type` on everything it does serve — both
-            // are the binding's own contract.
+            // sets, and a `content-type` off the extension on everything it
+            // does serve — both are the binding's own contract, and the second
+            // is the whole of what this door has to read a document out of.
             if (found == null) return new Response("not found", { status: 404 });
+            const { pathname } = new URL(asked.url);
             return new Response(await found.text(), {
-              headers: { "content-type": "text/html; charset=utf-8" },
+              headers: { "content-type": contentType(pathname) },
             });
           },
         },

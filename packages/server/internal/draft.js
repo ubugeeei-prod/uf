@@ -169,7 +169,9 @@ export function carriesDraftCookie(header: string | null): boolean {
  * `../standalone.js`, the worker's assets binding in `../edge.js`, and
  * `uf preview`, where the file server is Vite's own and runs in front of
  * everything uf mounts. Each of them asks this, and none of them argues it
- * again.
+ * again. `../lambda.js` is not a fifth: its `staticDir` is served through
+ * `../node.js`'s `createStaticHandler`, so it is the first door under another
+ * name.
  *
  * A file in `dist/` is what the site said *before* the draft existed. Handing
  * one to an editor who came to look at the draft answers a different question
