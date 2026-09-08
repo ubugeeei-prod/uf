@@ -1,0 +1,22 @@
+[package]
+name = "uf_profiler"
+description = "Allocation counting, hierarchical timing spans, and report formatting for the Unified Toolchain for Flow (React)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# No dependencies, and that is a property rather than an accident. A profiler
+# that pulls in a dependency tree measures that tree as well as the program,
+# and every crate uf profiles would then link it. `std` has an atomic, a
+# thread-local and a clock, which is the whole of what this needs.
+[dependencies]
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "profiler"
+harness = false
