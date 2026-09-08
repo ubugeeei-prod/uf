@@ -3763,6 +3763,7 @@ dependencies = [
  "uf_config",
  "uf_flow",
  "uf_infra",
+ "uf_profiler",
  "uf_react_compiler",
  "uf_router",
  "uf_transform",
