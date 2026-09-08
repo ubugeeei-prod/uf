@@ -17,6 +17,11 @@ sha2.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 uf_infra = { path = "../uf_infra" }
+# The registry of uf's own packages, for the one fact the graph cannot read out
+# of a project: which hooks `@uniflowed/hooks` exports only run in a browser.
+# `hook_descriptors()` has carried it since before this crate existed and
+# nothing read it. See ubugeeei-prod/uf#388.
+uf_lib = { path = "../uf_lib" }
 walkdir.workspace = true
 
 [dev-dependencies]

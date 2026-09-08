@@ -244,3 +244,140 @@ fn a_hook_in_a_client_module_is_not_a_question() {
 
     assert!(graph.diagnostics().is_empty(), "{:#?}", graph.diagnostics());
 }
+
+/// The half of that question uf can answer: a hook out of `@uniflowed/hooks`.
+///
+/// `useMediaQuery` is not on `CLIENT_ONLY_APIS` — it is not a React API — so
+/// before this it was reported as unanswered along with everything else. The
+/// registry has said it is not server-component-safe since before `uf_rsc`
+/// existed, and nothing read it. This is ubugeeei-prod/uf#388's second half,
+/// for the one package whose table is checked against its own sources.
+#[test]
+fn a_hook_the_registry_knows_is_decided_rather_than_asked_about() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import { useMediaQuery } from \"@uniflowed/hooks\";\n\
+         export default function Page() { const wide = useMediaQuery(\"(min-width: 40em)\"); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let diagnostic = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.rule() == "rsc/client-only-hook-in-server")
+        .unwrap_or_else(|| panic!("nothing was reported: {:#?}", graph.diagnostics()));
+    assert_eq!(diagnostic.severity(), RscSeverity::Error);
+    assert!(graph.has_errors());
+    let message = diagnostic.to_string();
+    assert!(message.contains("useMediaQuery"), "{message}");
+    assert!(message.contains("@uniflowed/hooks"), "{message}");
+    // The column is the call's, not the line's: this variant points at an
+    // expression, which is the whole reason `column()` exists.
+    assert!(diagnostic.column() > 1, "{diagnostic:?}");
+    assert!(
+        !graph
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.rule() == "rsc/unclassified-hook-in-server"),
+        "decided and asked about at once: {:#?}",
+        graph.diagnostics()
+    );
+}
+
+/// A subpath import attributes the same way the package does.
+#[test]
+fn a_hook_imported_from_a_subpath_is_decided_too() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import { useOnline } from \"@uniflowed/hooks/browser\";\n\
+         export default function Page() { useOnline(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(
+        graph
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.rule() == "rsc/client-only-hook-in-server"),
+        "{:#?}",
+        graph.diagnostics()
+    );
+}
+
+/// The one hook in that table that *is* server-component-safe stays out of it.
+///
+/// `useIsomorphicLayoutEffect` is inert on a server by construction, which is
+/// the registry's own reason for it being the single `true` in fifty-eight
+/// rows. A rule that reported it would be reading the table without believing
+/// it.
+#[test]
+fn the_one_server_safe_hook_is_not_reported_as_client_only() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import { useIsomorphicLayoutEffect } from \"@uniflowed/hooks\";\n\
+         export default function Page() { useIsomorphicLayoutEffect(() => {}); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(
+        !graph
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.rule() == "rsc/client-only-hook-in-server"),
+        "{:#?}",
+        graph.diagnostics()
+    );
+    assert!(!graph.has_errors(), "{:#?}", graph.diagnostics());
+}
+
+/// The import is what attributes the name, so a module that does not import
+/// the package keeps the honest answer.
+///
+/// A project is free to write its own `useMediaQuery`, and a rule that decided
+/// a name it had never seen imported would be asserting something about code
+/// it has not read. This is the imprecision the attribution is deliberately
+/// keeping: it can be wrong about a module that imports the package *and*
+/// shadows one of its names, and it cannot be wrong about a module that never
+/// mentions it.
+#[test]
+fn a_hook_of_that_name_from_somewhere_else_is_still_a_question() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import { useMediaQuery } from \"./media.js\";\n\
+         export default function Page() { useMediaQuery(\"(min-width: 40em)\"); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(
+        graph
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.rule() == "rsc/unclassified-hook-in-server"),
+        "{:#?}",
+        graph.diagnostics()
+    );
+    assert!(!graph.has_errors(), "{:#?}", graph.diagnostics());
+}
+
+/// And it is still a question about the server alone.
+#[test]
+fn a_registry_hook_in_a_client_module_is_not_reported() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/Wide.js",
+        "\"use client\";\nimport { useMediaQuery } from \"@uniflowed/hooks\";\n\
+         export function Wide() { useMediaQuery(\"(min-width: 40em)\"); }",
+    );
+    builder.add_entry("app/Wide.js", EntryKind::Client);
+    let graph = builder.build();
+
+    assert!(graph.diagnostics().is_empty(), "{:#?}", graph.diagnostics());
+}

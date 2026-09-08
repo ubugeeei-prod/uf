@@ -3893,6 +3893,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_infra",
+ "uf_lib",
  "walkdir",
 ]
 
