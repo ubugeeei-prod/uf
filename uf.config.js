@@ -631,6 +631,18 @@ export default defineConfig({
       inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
     },
 
+    // The crates `cargo semver-checks` cannot compare, which is computed and
+    // therefore capable of being wrong in two directions: too narrow and the
+    // job fails for every pull request, which is what #633 did by adding a
+    // crate that reaches `uf_flow` and appeared in nobody's list; too wide and
+    // crates leave the gate with nothing going red. There is no `ci:semver`
+    // task beside this one because the check needs a baseline revision, and
+    // the workflow is the only place that knows which one.
+    "ci:semver:test": {
+      command: "tools/ci/test-semver-exclude.sh",
+      inputs: ["tools/ci/semver-exclude.sh", "tools/ci/test-semver-exclude.sh"],
+    },
+
     // And that a job which runs the workspace suite installs the runtimes the
     // suite starts. `bun_host.rs`, `deno_host.rs` and `permissions.rs` start
     // real processes and fail rather than skip when the runtime is absent —

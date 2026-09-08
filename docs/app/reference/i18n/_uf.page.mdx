@@ -227,13 +227,23 @@ ranked last: RFC 9110 gives it the specific meaning "not acceptable".
 
 ## Where this stops
 
-**The catalogue is not extracted at build time.** `uf build` does not walk a
-project for `message(…)` calls, so there is no `messages.json` for a
-translation vendor and no build-time report of a key no locale translates. The
-half that belongs in the package — a parse complete enough to generate from,
-and `messageUsage` to read it — is there. The half that walks a repository's
-sources is Rust's, under the same rule that puts the formatter and the checker
-there.
+**The catalogue is not extracted at *build* time**, and deliberately so: it is
+extracted when you ask. [`uf i18n extract`](/reference/cli#uf-i18n-extract)
+walks the project for `message(…)` calls and writes every message with its
+source, its parameters and where it is declared, as JSON a translation vendor
+accepts; [`uf i18n merge`](/reference/cli#uf-i18n-merge-file) reads the
+translated file back into the locale module `defineLocales` loads, and refuses
+a translation whose message has changed since it went out. Neither parses
+MessageFormat 2 — the walk reads the *declaration*, so a message's text is
+copied verbatim and its parameters are read from the object beside it. The half
+that belongs in the package — a parse complete enough to generate from, and
+`messageUsage` to read it — is here; the half that walks a repository's sources
+is Rust's, under the same rule that puts the formatter and the checker there.
+
+What is still missing is the build-time half of that: `uf build` reports
+nothing about a key no locale translates. `translate` lists them on the
+catalogue as `untranslated`, which is a fact a test can assert today, and
+nothing collects it across a project.
 
 **There is no lint rule linking a message to its parameters.** The run-time
 check in `message` catches the mismatch the first time the module loads, which

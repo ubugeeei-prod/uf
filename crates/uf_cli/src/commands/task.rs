@@ -661,31 +661,124 @@ pub(crate) fn exec_package(
     Ok(())
 }
 
+/// Whose rules a `node_modules/.bin` entry is resolved under.
+///
+/// A parameter rather than a `#[cfg]`, and that is the point of it.
+/// ubugeeei-prod/uf#390 argued — correctly — that a `#[cfg(windows)]` branch
+/// added today would "compile nowhere and run nowhere": uf publishes no
+/// Windows artifact (#309) and every job in `ci.yml` is on Ubuntu. That is
+/// true of a *branch*. It is not true of a function whose platform is an
+/// argument: [`bin_candidates`] and [`installed_binary_in`] compile and run on
+/// the Linux runner for both values, so the Windows decision is exercised on
+/// every push rather than trusted.
+///
+/// What that arrangement still cannot prove is in `tests.rs`, on the tests
+/// themselves: nothing here spawns a process, so nothing here shows that
+/// `CreateProcess` accepts the file that was chosen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BinPlatform {
+    /// One file, with the executable bit on it: `node_modules/.bin/<name>`.
+    Unix,
+    /// A list of extensions, and the extensionless file is not on it.
+    Windows,
+}
+
+impl BinPlatform {
+    /// The rules uf is actually running under.
+    const HOST: Self = if cfg!(windows) {
+        Self::Windows
+    } else {
+        Self::Unix
+    };
+}
+
+/// The extensions Windows will start a `.bin` entry under, in `PATHEXT` order.
+///
+/// npm, pnpm and yarn each write three files for one executable — `<name>`, an
+/// `sh` script for Git Bash and Cygwin; `<name>.cmd`, which is what `cmd.exe`
+/// runs; and `<name>.ps1` — and a package may ship a native `.exe` in there
+/// instead. So resolution is a list and not a suffix.
+///
+/// `.ps1` is deliberately absent: it is not in the default `PATHEXT` and
+/// `CreateProcess` cannot start a PowerShell script, so the third file a
+/// package manager writes is not a candidate for uf any more than the first
+/// one is.
+///
+/// The list is fixed rather than read from `%PATHEXT%`. A machine that has
+/// reordered its `PATHEXT` would have uf try `.exe` before `.cmd` where it
+/// wanted the reverse — and the alternative is letting an environment variable
+/// decide which of two files in `node_modules/.bin` uf executes, which is a
+/// worse thing to be able to do to somebody than an unusual ordering.
+const WINDOWS_BIN_EXTENSIONS: [&str; 4] = [".com", ".exe", ".bat", ".cmd"];
+
+/// The file names one linked binary can have, in the order to try them.
+///
+/// On Windows the extensionless file is *skipped* rather than preferred. It is
+/// the `sh` script, it exists, and `is_file()` says so — which is why #390 was
+/// a confusing "failed to execute" naming a file that plainly exists rather
+/// than a lookup that failed.
+fn bin_candidates(name: &str, platform: BinPlatform) -> Vec<String> {
+    match platform {
+        BinPlatform::Unix => vec![name.to_owned()],
+        BinPlatform::Windows => WINDOWS_BIN_EXTENSIONS
+            .iter()
+            .map(|extension| format!("{name}{extension}"))
+            .collect(),
+    }
+}
+
+/// The binary name `package` is linked under, when it is a name at all.
+///
+/// A scoped name is linked under its bare binary name — `@scope/thing`
+/// installs `thing` — which is why the last segment is what is looked up.
+///
+/// [`None`] for anything that would stop being a single file name. Nothing
+/// good comes of joining a caller's string onto a path when it can climb out
+/// of it, and `uf exec ../../evil` must not become a lookup in somebody else's
+/// `node_modules`.
+fn binary_name(package: &str) -> Option<&str> {
+    let name = package.rsplit('/').next().unwrap_or(package);
+    if name.is_empty() || name.contains(std::path::is_separator) || name.starts_with('.') {
+        return None;
+    }
+    Some(name)
+}
+
 /// The project's installed binary for `package`, when there is one.
 ///
 /// `node_modules/.bin` is where every package manager links a dependency's
 /// executables, so this is the same lookup `npm exec` does before it considers
-/// fetching anything. A scoped name is linked under its bare binary name —
-/// `@scope/thing` installs `thing` — which is why the last segment is what is
-/// looked up.
+/// fetching anything.
 ///
-/// One name, and on Windows that is the wrong number. A package manager writes
-/// three files there — `<name>` for Git Bash, `<name>.cmd`, `<name>.ps1` — and
-/// this finds the first, which Windows cannot execute. It is
-/// ubugeeei-prod/uf#390 rather than a fix here: uf publishes no Windows
-/// artifact (#309) and CI has no Windows runner, so a `#[cfg(windows)]` branch
-/// added now would compile nowhere, run nowhere, and read as a solved problem
-/// to the first person who built for it.
+/// # Arguments, and the CVE the resolution has to respect
+///
+/// What comes back may be a `.cmd` or a `.bat`, and since Rust 1.77
+/// (CVE-2024-24576) [`ProcessCommand`] spawns one of those through `cmd.exe`
+/// with batch-specific escaping. `uf exec` forwards arbitrary user arguments —
+/// `ufx eslint --fix "src/**/*.js"` — straight into that.
+///
+/// uf's part of the contract is to add nothing of its own: [`spawn_executable`]
+/// passes each argument through `Command::args`, one `argv` entry each, and
+/// never `raw_arg`, which is the documented way to *opt out* of that escaping.
+/// So a quote, a caret or a percent sign in an argument is the standard
+/// library's problem to encode and not uf's to quote — and quoting it here
+/// would be uf escaping a string that is about to be escaped again.
 fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
-    let name = package.rsplit('/').next().unwrap_or(package);
-    // Nothing good comes of joining a caller's string onto a path when it can
-    // climb out of it, and `uf exec ../../evil` must not become a lookup in
-    // somebody else's `node_modules`.
-    if name.is_empty() || name.contains(std::path::is_separator) || name.starts_with('.') {
-        return None;
-    }
-    let binary = root.join("node_modules/.bin").join(name);
-    binary.is_file().then_some(binary)
+    installed_binary_in(root, package, BinPlatform::HOST)
+}
+
+/// [`installed_binary`], with the platform said out loud.
+fn installed_binary_in(
+    root: &Utf8Path,
+    package: &str,
+    platform: BinPlatform,
+) -> Option<Utf8PathBuf> {
+    let name = binary_name(package)?;
+    let bin = root.join("node_modules/.bin");
+    bin_candidates(name, platform)
+        .into_iter()
+        .map(|candidate| bin.join(candidate))
+        .find(|candidate| candidate.is_file())
 }
 
 /// Run one executable, forwarding its arguments and its exit status.
@@ -842,3 +935,6 @@ fn exec_uniflowed_virtual_package(
         _ => Ok(false),
     }
 }
+
+#[cfg(test)]
+mod tests;

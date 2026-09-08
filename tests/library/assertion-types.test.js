@@ -23,116 +23,10 @@
 // being an error fails here, and so does an unmarked line that starts being
 // one.
 
-import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "@uniflowed/test";
-import { spawnSync } from "node:child_process";
+import { describe, it } from "@uniflowed/test";
 
-// This checkout, found by a file it has rather than by counting `..`, for the
-// reason `ui.test.js` sets out at length: which project `uf test` selected
-// depends on how the command was typed, and two levels above the worker's
-// project is this repository only under one of them.
-const repository: string = (() => {
-  const wanted = path.join("packages", "test", "internal", "expect.js");
-  const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
-  let directory = from;
-  for (let up = 0; up < 8; up += 1) {
-    if (fs.existsSync(path.join(directory, wanted))) return directory;
-    directory = path.dirname(directory);
-  }
-  throw new Error(`could not find ${wanted} above ${from}`);
-})();
-
-// The binary running this suite: `uf test` puts its own path in `UF_BINARY`, so
-// this checks *this* build rather than whatever `uf` is on PATH.
-const UF: string = (() => {
-  const binary = process.env.UF_BINARY;
-  if (binary == null || binary === "") {
-    throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
-  }
-  return binary;
-})();
-
-// The part of `uf check --json` this reads. A message arrives as spans rather
-// than a string so that a renderer can mark the code inside it, which is why
-// the comparison below joins it back together first.
-type Diagnostic = {
-  primary: { path: string, start: { line: number, column: number } },
-  message: Array<{ kind: string, text: string }>,
-};
-type Report = {
-  typeCheck: { status: string, filesChecked: number, diagnostics: Array<Diagnostic> },
-};
-
-/**
- * Hold one `tests/type-tests` fixture to its own `// expect:` markers.
- *
- * Both packages go to the checker along with the fixtures, in one command, and
- * that is load-bearing: `uf check` builds its module map from the files it is
- * asked about, so a relative import that leaves that set resolves to an
- * any-typed value — after which `expect` and `fireEvent` are `any` again, every
- * line of both fixtures passes, and this test proves the opposite of what it
- * says. The fixtures' own headers say why they are not inside the packages.
- */
-function everyMisuseIsReported(fixture: string, atLeast: number): void {
-  const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
-  const wanted = new Map<number, string>();
-  source.forEach((line, index) => {
-    const marker = line.match(/^\s*\/\/ expect: (.+)$/);
-    if (marker != null) {
-      // Lines are one-based, and the line that must fail is the next one.
-      wanted.set(index + 2, marker[1]);
-    }
-  });
-  // Without this the test would pass on a fixture somebody had emptied.
-  expect(wanted.size).toBeGreaterThan(atLeast);
-
-  const run = spawnSync(
-    UF,
-    ["check", "tests/type-tests", "packages/test", "packages/react-testing", "--json"],
-    { cwd: repository, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
-  );
-  if (run.stdout === "") {
-    throw new Error(
-      "`uf check tests/type-tests packages/test packages/react-testing --json` in " +
-        `${repository} printed nothing: status ${String(run.status)}, ` +
-        `stderr ${JSON.stringify(run.stderr)}`,
-    );
-  }
-  const report: Report = JSON.parse(run.stdout);
-  // Without this the test would pass just as happily on a run that checked
-  // nothing at all.
-  expect(report.typeCheck.status).toBe("checked");
-  expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
-
-  const reported = new Map<number, string>();
-  for (const diagnostic of report.typeCheck.diagnostics) {
-    if (diagnostic.primary.path.endsWith(fixture)) {
-      reported.set(
-        diagnostic.primary.start.line,
-        diagnostic.message.map((span) => span.text).join(""),
-      );
-    }
-  }
-
-  const missing = [];
-  for (const [line, expected] of wanted) {
-    const said = reported.get(line);
-    if (said == null || !said.includes(expected)) {
-      missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
-    }
-  }
-  // Every marked line is an error, with the message the fixture predicted.
-  expect(missing).toEqual([]);
-
-  // And nothing else in the file is: every correct assertion below the marked
-  // ones still checks, which is what says the listing describes the value
-  // rather than merely refusing things.
-  const unexpected = [...reported.keys()]
-    .filter((line) => !wanted.has(line))
-    .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
-  expect(unexpected).toEqual([]);
-}
+import { everyMisuseIsReported } from "./type-tests.js";
 
 describe("a matcher is a name the checker knows", () => {
   // `expect` was `$FlowFixMe`, and so was everything it handed back, so a
@@ -144,7 +38,11 @@ describe("a matcher is a name the checker knows", () => {
   // the received value's type would refuse, which is why it does not carry one.
 
   it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported(path.join("tests", "type-tests", "matchers.js"), 6);
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "matchers.js"),
+      alongside: ["packages/test", "packages/react-testing"],
+      atLeast: 6,
+    });
   });
 });
 
@@ -158,6 +56,10 @@ describe("an event name is a name the checker knows", () => {
   // `tests/type-tests/event-names.js` is the misuse, written down.
 
   it("reports every misuse, and only the misuses", () => {
-    everyMisuseIsReported(path.join("tests", "type-tests", "event-names.js"), 2);
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "event-names.js"),
+      alongside: ["packages/test", "packages/react-testing"],
+      atLeast: 2,
+    });
   });
 });
