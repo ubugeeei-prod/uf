@@ -40,9 +40,9 @@
 // `uf` compiles the marker away rather than leaving it to be falsy at runtime:
 // `crates/uf_transform`'s printer substitutes `void 0` for
 // `import.meta.uf.test` in every transform except the ones `uf test` asks for,
-// so `uf build` sees `if (void 0)` and Rolldown removes the block. There is no
-// `import.meta.uf` at runtime, in any host, which is also why the block cannot
-// throw in a browser that never heard of uf.
+// so `uf build` sees `if (void 0)` and the bundler removes the block. There is
+// no `import.meta.uf` at runtime, in any host, which is also why the block
+// cannot throw in a browser that never heard of uf.
 //
 // `tests/library/in-source.test.js` and `tests/library/in-source-subject.js`
 // are the block running. The other half is in `crates/uf_cli/tests/vite.rs`,
