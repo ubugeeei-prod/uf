@@ -151,14 +151,14 @@ fn lookup(mappings: &[Mapping], line: u32, column: u32) -> Option<Mapping> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::print::print;
+    use crate::print::{PrintOptions, print};
     use crate::{estree, lower};
 
     fn emitted(source: &str, options: &UfOptions) -> Emitted {
         let mut program = estree::parse(source).unwrap();
         lower::lower(&mut program, source).unwrap();
         let file = crate::babel::to_babel(program, source).unwrap();
-        let printed = print(&file).unwrap();
+        let printed = print(&file, PrintOptions::default()).unwrap();
         emit(&printed, source, options).unwrap()
     }
 

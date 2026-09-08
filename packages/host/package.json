@@ -19,6 +19,9 @@
     "./transform": "./transform.js",
     "./write-atomically": "./write-atomically.js"
   },
+  "browser": {
+    "node:module": "./internal/browser-module.js"
+  },
   "files": [
     "register.js",
     "assets.js",

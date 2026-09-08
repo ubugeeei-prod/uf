@@ -45,6 +45,13 @@ import path from "node:path";
 import mdx from "@mdx-js/rollup";
 import rehypeSlug from "rehype-slug";
 
+import {
+  AUDIT_PUBLIC_PATH,
+  AUDIT_RESOLVED_ID,
+  auditAvailable,
+  auditRuntimeSource,
+  auditTag,
+} from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
 import { emit, reportRenderError } from "./internal/events.js";
 import { highlightPlugin } from "./internal/highlight.js";
@@ -123,8 +130,15 @@ export default function uniflowed(options = {}) {
   const markdown = app.builtins?.markdown ?? {};
   const builtins = app.builtins ?? {};
 
+  const accessibility = ufConfig.accessibility ?? {};
+
   return [
-    flowPlugin({ routerRoot, appEntry, command: options.command }),
+    flowPlugin({
+      routerRoot,
+      appEntry,
+      command: options.command,
+      accessibility,
+    }),
     mdxPlugin(markdown),
     assetPlugin({
       images: builtins.images ?? {},
@@ -134,9 +148,18 @@ export default function uniflowed(options = {}) {
   ];
 }
 
-function flowPlugin({ routerRoot, appEntry, command }) {
+function flowPlugin({ routerRoot, appEntry, command, accessibility }) {
   let root = process.cwd();
   let isProduction = false;
+  /**
+   * Whether this project has axe-core, so the audit has an engine.
+   *
+   * Answered once in `configResolved` rather than per document: it is a
+   * question about `node_modules`, the answer cannot change while the server
+   * runs without a restart anyway, and asking it per render would put a module
+   * resolution on the path of every page.
+   */
+  let auditsPage = false;
   let base = "/";
   let appRoot = "";
   let entryPath = "";
@@ -279,6 +302,7 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       base = config.base;
       appRoot = path.resolve(root, routerRoot);
       entryPath = path.resolve(root, appEntry);
+      auditsPage = !isProduction && (accessibility?.devAudit ?? true) && auditAvailable(root);
     },
 
     buildStart() {
@@ -287,6 +311,7 @@ function flowPlugin({ routerRoot, appEntry, command }) {
 
     resolveId(id) {
       if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
+      if (id === AUDIT_PUBLIC_PATH) return AUDIT_RESOLVED_ID;
       if (VIRTUAL_IDS.has(id)) return resolved(id);
       // A module's own stylesheet, which `transform` below asked for by
       // importing this id. Returning it unchanged marks it resolved without
@@ -297,6 +322,7 @@ function flowPlugin({ routerRoot, appEntry, command }) {
 
     load(id, loadOptions) {
       if (id === RUNTIME_RESOLVED_ID) return refreshRuntimeSource();
+      if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe);
       if (id === resolved(VIRTUAL.routes)) {
         const table = scanRoutes(appRoot);
         // The server renders every route, so the server's table is the whole
@@ -406,7 +432,7 @@ function flowPlugin({ routerRoot, appEntry, command }) {
 
     transformIndexHtml() {
       if (isProduction) return [];
-      return [
+      const tags = [
         {
           tag: "script",
           attrs: { type: "module" },
@@ -414,6 +440,13 @@ function flowPlugin({ routerRoot, appEntry, command }) {
           injectTo: "head-prepend",
         },
       ];
+      // Only when the project has the engine. A tag pointing at a module that
+      // cannot resolve `axe-core` would be a red console on every page of a
+      // project that never asked for an audit, which is a worse default than
+      // no audit.
+      const audit = auditTag(base, auditsPage);
+      if (audit != null) tags.push(audit);
+      return tags;
     },
 
     configureServer(devServer) {

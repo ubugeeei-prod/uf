@@ -48,10 +48,16 @@ look for in the emitted JavaScript. `TALLY_MARKER` is not exported: a
 `"use server"` module may only export async functions, and a string literal in
 a function body survives minification exactly as an exported one would.
 
+`Counter.js` carries one more, `in-source-marker-no-build-may-ship-this`, and
+it is the odd one out: it is inside an `if (import.meta.uf.test)` block, so it
+has to be *absent* from a bundle the module it lives in is present in. That
+pairing is what makes it evidence rather than a grep that happens to fail —
+see ubugeeei-prod/uf#518.
+
 `crates/uf_cli/tests/vite.rs` builds this project and asserts that the
-counter's marker is in `dist/assets/*.js`, that the almanac's, the tally's and
-the ledger's are not, that `async_hooks` is not either, and that the same
-action answers identically through all four deploy adapters.
+counter's marker is in `dist/assets/*.js`, that the almanac's, the tally's, the
+ledger's and the in-source block's are not, that `async_hooks` is not either,
+and that the same action answers identically through all four deploy adapters.
 
 The documentation site cannot answer any of that: its root layout imports a
 `"use client"` theme toggle, so every route in it reaches a boundary and

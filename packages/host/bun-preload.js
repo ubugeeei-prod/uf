@@ -29,7 +29,7 @@
 // anything, and a dependency uf does not own goes to Bun's own loader having
 // never touched this file.
 
-import { FLOW_MODULE_PATTERN, isFlowModule, transformFlow } from "./transform.js";
+import { FLOW_MODULE_PATTERN, inSourceTests, isFlowModule, transformFlow } from "./transform.js";
 
 Bun.plugin({
   name: "uniflowed-flow",
@@ -47,7 +47,11 @@ Bun.plugin({
       // already. That it would be wrong for anything else is the reason the
       // agreement is a test rather than a comment.
       if (!isFlowModule(args.path)) return declined(args.path, source);
-      const out = await transformFlow(source, args.path, { development: true, sourceMap: false });
+      const out = await transformFlow(source, args.path, {
+        development: true,
+        sourceMap: false,
+        inSourceTests: inSourceTests(),
+      });
       if (out == null) return declined(args.path, source);
 
       // `js` and not the file's own extension: the transform has already

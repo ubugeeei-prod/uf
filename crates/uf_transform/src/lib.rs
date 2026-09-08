@@ -69,6 +69,20 @@ pub struct TransformOptions {
     pub jsx_import_source: String,
     /// Produce a source map.
     pub source_map: bool,
+    /// Whether `import.meta.uf.test` reaches uf's test API.
+    ///
+    /// True only for the hosts `uf test` starts. Everywhere else the marker is
+    /// substituted with `void 0`, which is what makes an in-source test block
+    /// something the bundler removes rather than something a production build
+    /// has to be trusted not to run. See [`print::IN_SOURCE_TESTS_PRESENT`].
+    ///
+    /// This is the one option that makes `uf test` and the Vite plugin produce
+    /// *different* modules from the same source, against the promise in
+    /// [`emit`]'s header. Deliberately: the difference is the feature, and it
+    /// is confined to one expression that has no meaning until a host answers
+    /// for it. The two hosts still agree byte for byte on every module that
+    /// does not write the marker, which is every module that is not a test.
+    pub in_source_tests: bool,
 }
 
 impl TransformOptions {
@@ -82,6 +96,7 @@ impl TransformOptions {
             react_compiler: ReactCompilerMode::Syntax,
             jsx_import_source: String::from("react"),
             source_map: true,
+            in_source_tests: false,
         }
     }
 }
@@ -219,7 +234,12 @@ pub fn transform(source: &str, options: &TransformOptions) -> Result<Transformed
             compiler::compile(file, scope, source, options)?
         };
 
-    let printed = print::print(&file)?;
+    let printed = print::print(
+        &file,
+        print::PrintOptions {
+            in_source_tests: options.in_source_tests,
+        },
+    )?;
     let emitted = emit::emit(&printed, source, options)?;
 
     Ok(Transformed {

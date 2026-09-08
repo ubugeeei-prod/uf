@@ -53,6 +53,7 @@ import { writeChangedSnapshots } from "./internal/snapshot.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { installInSourceTests } from "./in-source.js";
 import { reset } from "./internal/registry.js";
 import { resetModuleState } from "./internal/modules.js";
 import { run } from "./internal/run.js";
@@ -182,8 +183,44 @@ async function runFile(request: Request, generation: number): Promise<void> {
   resetModuleState();
   output.startFile();
 
+  // In-source blocks in *this* file get uf's test API; the same blocks in
+  // every module this file imports get `undefined` and do not register. See
+  // `./in-source.js` for why the marker is a call rather than a constant.
+  const url = pathToFileURL(request.file).href;
+  const uninstallInSourceTests = installInSourceTests(url);
   try {
-    await import(`${pathToFileURL(request.file).href}?uf-run=${generation}`);
+    await runImportedFile(request, generation, url, started);
+  } finally {
+    // For the whole file rather than only for its import. A block reads the
+    // marker at module scope, but a *case body* may read it too — `const
+    // { uft } = import.meta.uf.test` inside an `it` is an ordinary thing to
+    // write — and a marker that answered during the import and not during the
+    // run would be a value that changed under the file that read it.
+    //
+    // Taking it away earlier would not buy the isolation it looks like it
+    // buys: work a finished file left behind can register through a binding it
+    // captured just as easily as through this global, so the thing that keeps
+    // a straggler out of the next file is the registry reset at the top of
+    // this function and the generation stamped on every event, not the
+    // lifetime of one accessor.
+    uninstallInSourceTests();
+  }
+}
+
+/**
+ * The half of [`runFile`] that has a file to run.
+ *
+ * Split out so the caller's `finally` covers the import *and* the run without
+ * either of the two `return`s below escaping it.
+ */
+async function runImportedFile(
+  request: Request,
+  generation: number,
+  url: string,
+  started: number,
+): Promise<void> {
+  try {
+    await import(`${url}?uf-run=${generation}`);
   } catch (thrown) {
     const error = thrown instanceof Error ? thrown : new Error(String(thrown));
     write({

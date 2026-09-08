@@ -96,6 +96,12 @@ pub struct HostCommand {
     pub env: Vec<(String, String)>,
     /// Whether this run may rewrite a snapshot that did not match.
     pub update_snapshots: bool,
+    /// The project's accessibility rule set, as the JSON `axe.js` reads.
+    ///
+    /// A property of the project rather than of the invocation, so it travels
+    /// with the run the way `update_snapshots` does: two files in one run must
+    /// not be able to disagree about what "accessible" means.
+    pub axe: Option<String>,
     /// Where each worker writes its V8 coverage document, when coverage is on.
     ///
     /// Set as `NODE_V8_COVERAGE`, which is Node's own switch: V8 counts
@@ -128,6 +134,7 @@ impl HostCommand {
             uf_binary: None,
             env: Vec::new(),
             update_snapshots: false,
+            axe: None,
             coverage_dir: None,
         }
     }
@@ -246,6 +253,17 @@ impl HostCommand {
     #[must_use]
     pub fn with_snapshot_updates(mut self, update: bool) -> Self {
         self.update_snapshots = update;
+        self
+    }
+
+    /// Give every worker the project's accessibility rule set.
+    ///
+    /// `None` leaves the variable unset, which the matcher reads as "run every
+    /// rule" — the widest answer, and the right one for a project that has not
+    /// said anything.
+    #[must_use]
+    pub fn with_axe(mut self, axe: Option<String>) -> Self {
+        self.axe = axe;
         self
     }
 }
@@ -694,6 +712,13 @@ impl Worker {
                 "UF_UPDATE_SNAPSHOTS",
                 if command.update_snapshots { "1" } else { "" },
             )
+            // What makes `import.meta.uf.test` compile to uf's test API rather
+            // than to `void 0`. It is set here — on the worker, by the runner —
+            // and by nothing else, so a module compiled for a build can never
+            // acquire an in-source block and a module compiled for a test run
+            // can never lose one. The loader keys its cache on it too; see
+            // `packages/host/internal/node-hooks.js`.
+            .env("UF_IN_SOURCE_TESTS", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             // The worker's stderr is the host's own noise — an unhandled
@@ -702,6 +727,9 @@ impl Worker {
             .stderr(Stdio::inherit());
         if let Some(binary) = &command.uf_binary {
             process.env("UF_BINARY", binary.as_str());
+        }
+        if let Some(axe) = &command.axe {
+            process.env("UF_AXE", axe.as_str());
         }
         if let Some(directory) = &command.coverage_dir {
             process.env("NODE_V8_COVERAGE", directory.as_str());

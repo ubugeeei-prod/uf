@@ -12,15 +12,33 @@
   },
   "exports": {
     ".": "./index.js",
+    "./in-source": "./in-source.js",
     "./worker": "./worker.js",
     "./package.json": "./package.json"
   },
   "files": [
+    "in-source.js",
     "index.js",
-    "worker.js",
-    "internal"
+    "internal",
+    "worker.js"
   ],
   "dependencies": {
     "@uniflowed/host": "0.0.0-alpha.13"
+  },
+  "peerDependencies": {
+    "axe-core": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "axe-core": {
+      "optional": true
+    }
+  },
+  "browser": {
+    "node:async_hooks": "./internal/browser/node.js",
+    "node:fs": "./internal/browser/node.js",
+    "node:module": "./internal/browser/node.js",
+    "node:path": "./internal/browser/node.js",
+    "node:url": "./internal/browser/node.js",
+    "node:util": "./internal/browser/node.js"
   }
 }

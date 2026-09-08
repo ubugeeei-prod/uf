@@ -17,10 +17,39 @@
 import * as React from "@uniflowed/react";
 import { useState } from "@uniflowed/react";
 
+import { expect, it } from "@uniflowed/test";
+
 import { recordCount } from "../_actions/tally.js";
 
 /** The string that proves this module is in a bundle. */
 export const COUNTER_MARKER: string = "counter-marker-the-browser-needs-this";
+
+/**
+ * An in-source test in the one module of this fixture the browser certainly
+ * gets.
+ *
+ * The marker above has to be in `dist/assets/*.js` and this one has to not be,
+ * from the same file and the same build — which is the whole of what
+ * ubugeeei-prod/uf#518 asks to be proved rather than assumed. `uf` compiles
+ * `import.meta.uf.test` to `void 0` for every transform except the ones
+ * `uf test` starts, so what the bundler is handed is `if (void 0) { … }`.
+ *
+ * A separate string rather than reusing `COUNTER_MARKER`: a test that looked
+ * for the same literal twice could not tell "the block was removed" from "the
+ * block was kept and the marker appears anyway".
+ *
+ * The bindings come from the top-level import of `@uniflowed/test` above,
+ * which is the form uf recommends and the harder one to get right: the block
+ * folding away is not enough on its own, because an unused import of a package
+ * that spawns processes and reads `node:module` would still have to be shaken
+ * out of a browser bundle. `@uniflowed/test` declares `sideEffects: false` so
+ * that it can be, and this fixture is where that stops being a claim.
+ */
+if (import.meta.uf.test) {
+  it("counts up", () => {
+    expect("in-source-marker-no-build-may-ship-this").toBe(COUNTER_MARKER);
+  });
+}
 
 export default component Counter() {
   const [count, setCount] = useState<number>(0);

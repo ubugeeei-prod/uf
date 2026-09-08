@@ -44,6 +44,12 @@
   },
   "peerDependencies": {
     "react": ">=19",
-    "react-dom": ">=19"
+    "react-dom": ">=19",
+    "axe-core": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "axe-core": {
+      "optional": true
+    }
   }
 }

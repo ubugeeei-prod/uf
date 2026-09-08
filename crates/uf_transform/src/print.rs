@@ -43,19 +43,98 @@ pub struct Printed {
     pub mappings: Vec<Mapping>,
 }
 
+/// What the printer substitutes rather than prints.
+///
+/// One field today, and the type exists so the next compile-time constant is
+/// added to a struct rather than to a growing argument list.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PrintOptions {
+    /// Whether `import.meta.uf.test` reaches uf's test API.
+    ///
+    /// See [`IN_SOURCE_TESTS_PRESENT`] for what each answer prints and why the
+    /// expression is never printed back as it was written.
+    pub in_source_tests: bool,
+}
+
+/// What `import.meta.uf.test` becomes when a run collects in-source tests.
+///
+/// A call rather than a bare global, and the argument is the whole reason: a
+/// source file with an in-source block is an ordinary module, so `uf test`
+/// imports it *twice* in the general case — once as the file it is running,
+/// and again whenever a `.test.js` file under test imports it. Registering
+/// both times would run every in-source case twice and file the second copy
+/// under whichever test file happened to import it.
+///
+/// So the worker answers with the API for exactly one module — the one it was
+/// asked to run — and with `undefined` for every other. `import.meta.url` is
+/// the module asking, which is a value only the module itself can produce;
+/// that is why the substitution is an expression rather than a name the worker
+/// could have bound once.
+///
+/// Optional-called, so a module transformed for a test run and then executed
+/// by something that is not the worker — `uf run`, a `node --import
+/// @uniflowed/host/register` script — sees `undefined` and skips the block
+/// instead of failing on a global nobody installed.
+pub const IN_SOURCE_TESTS_PRESENT: &str = "globalThis.__ufInSourceTests?.(import.meta.url)";
+
+/// What `import.meta.uf.test` becomes everywhere else.
+///
+/// `void 0` rather than `undefined`: `undefined` is a binding a module can
+/// shadow, and a substitution that a local `const undefined = 1` could turn
+/// truthy would ship the block it exists to remove.
+pub const IN_SOURCE_TESTS_ABSENT: &str = "void 0";
+
 /// Print a Babel `File`.
 ///
 /// # Errors
 ///
 /// [`TransformError::Internal`] for a node kind the printer does not know,
 /// which means a stage before it produced something outside the contract.
-pub fn print(file: &Value) -> Result<Printed, TransformError> {
-    let mut printer = Printer::default();
+pub fn print(file: &Value, options: PrintOptions) -> Result<Printed, TransformError> {
+    let mut printer = Printer {
+        options,
+        ..Printer::default()
+    };
     printer.program(&file["program"])?;
     Ok(Printed {
         code: printer.out,
         mappings: printer.mappings,
     })
+}
+
+/// Whether `node` is the member expression `import.meta.uf.test`.
+///
+/// Written as a shape test rather than a rewrite pass because that is what it
+/// is: the expression has no runtime meaning of its own to preserve. Both
+/// steps accept the optional form, so `import.meta.uf?.test` — which is what
+/// somebody writes who has read that `import.meta.uf` may not be there —
+/// means the same thing as the plain spelling rather than surviving into the
+/// bundle as a property read on `undefined`.
+fn is_in_source_test_marker(node: &Value) -> bool {
+    fn step<'a>(node: &'a Value, name: &str) -> Option<&'a Value> {
+        if !matches!(
+            node_type(node),
+            Some("MemberExpression" | "OptionalMemberExpression")
+        ) || bool_field(node, "computed")
+        {
+            return None;
+        }
+        let property = &node["property"];
+        if node_type(property) != Some("Identifier") || str_field(property, "name") != Some(name) {
+            return None;
+        }
+        Some(&node["object"])
+    }
+
+    let Some(object) = step(node, "test") else {
+        return false;
+    };
+    let Some(meta) = step(object, "uf") else {
+        return false;
+    };
+    node_type(meta) == Some("MetaProperty")
+        && str_field(&meta["meta"], "name") == Some("import")
+        && str_field(&meta["property"], "name") == Some("meta")
 }
 
 /// Operator precedence, higher binds tighter. Mirrors the ECMAScript grammar.
@@ -130,6 +209,7 @@ struct Printer {
     column: u32,
     indent: usize,
     mappings: Vec<Mapping>,
+    options: PrintOptions,
 }
 
 impl Printer {
@@ -1107,6 +1187,22 @@ impl Printer {
                 }
                 self.arguments(node)?;
             }
+            Some("MemberExpression" | "OptionalMemberExpression")
+                if is_in_source_test_marker(node) =>
+            {
+                // A compile-time constant, substituted here for the same
+                // reason Vite substitutes `import.meta.hot`: the expression
+                // names something the host either furnishes or does not, and
+                // printing it back would leave a property read on a value that
+                // exists in one of the two runs. The mapping is kept so a
+                // debugger still lands on the `if` the author wrote.
+                self.mark(node);
+                self.word(if self.options.in_source_tests {
+                    IN_SOURCE_TESTS_PRESENT
+                } else {
+                    IN_SOURCE_TESTS_ABSENT
+                });
+            }
             Some("MemberExpression" | "OptionalMemberExpression") => {
                 let object = &node["object"];
                 let bracket = matches!(node_type(object), Some("NumericLiteral"))
@@ -1511,7 +1607,7 @@ mod tests {
         let mut program = parse(source).unwrap();
         lower::lower(&mut program, source).unwrap();
         let file = crate::babel::to_babel(program, source).unwrap();
-        print(&file).unwrap().code
+        print(&file, PrintOptions::default()).unwrap().code
     }
 
     fn reparses(code: &str) {
@@ -1520,6 +1616,65 @@ mod tests {
             outcome.is_ok(),
             "printed code does not parse: {outcome:?}\n{code}"
         );
+    }
+
+    fn printed_with(source: &str, options: PrintOptions) -> String {
+        let mut program = parse(source).unwrap();
+        lower::lower(&mut program, source).unwrap();
+        let file = crate::babel::to_babel(program, source).unwrap();
+        print(&file, options).unwrap().code
+    }
+
+    #[test]
+    fn the_in_source_marker_becomes_void_unless_a_test_run_asked_for_it() {
+        let source = "if (import.meta.uf.test) { console.log('here'); }\n";
+        let code = printed_with(source, PrintOptions::default());
+        assert!(code.contains("if (void 0)"), "{code}");
+        assert!(!code.contains("import.meta.uf"), "{code}");
+        reparses(&code);
+    }
+
+    #[test]
+    fn the_in_source_marker_reaches_the_api_under_a_test_run() {
+        let source = "if (import.meta.uf.test) { console.log('here'); }\n";
+        let code = printed_with(
+            source,
+            PrintOptions {
+                in_source_tests: true,
+            },
+        );
+        assert!(
+            code.contains("globalThis.__ufInSourceTests?.(import.meta.url)"),
+            "{code}"
+        );
+        reparses(&code);
+    }
+
+    #[test]
+    fn the_optional_spelling_of_the_marker_is_the_same_marker() {
+        // `import.meta.uf?.test` is what somebody writes who has noticed that
+        // `import.meta.uf` need not be there. It must not survive as an
+        // optional property read, or a production bundle would keep the block.
+        let code = printed_with("const t = import.meta.uf?.test;\n", PrintOptions::default());
+        assert!(code.contains("const t = void 0"), "{code}");
+        assert!(!code.contains("import.meta"), "{code}");
+    }
+
+    #[test]
+    fn a_member_expression_that_only_looks_like_the_marker_is_printed_as_written() {
+        // Everything here shares a prefix or a suffix with the marker and none
+        // of it is the marker: the substitution reads the whole chain rather
+        // than the property name it ends with.
+        let code = printed_with(
+            "a(import.meta.url, meta.uf.test, import.meta.uf, import.meta.uf.tests);\n",
+            PrintOptions {
+                in_source_tests: true,
+            },
+        );
+        assert!(code.contains("import.meta.url"), "{code}");
+        assert!(code.contains("meta.uf.test"), "{code}");
+        assert!(code.contains("import.meta.uf.tests"), "{code}");
+        assert!(!code.contains("__ufInSourceTests"), "{code}");
     }
 
     #[test]
@@ -1580,7 +1735,7 @@ mod tests {
         let mut program = parse(source).unwrap();
         lower::lower(&mut program, source).unwrap();
         let file = crate::babel::to_babel(program, source).unwrap();
-        let printed = print(&file).unwrap();
+        let printed = print(&file, PrintOptions::default()).unwrap();
         let return_line = printed
             .code
             .lines()
