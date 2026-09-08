@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./bun": "./bun.js",
     "./cache": "./cache.js",
     "./edge": "./edge.js",
     "./events": "./events.js",
