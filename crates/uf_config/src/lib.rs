@@ -1552,6 +1552,19 @@ impl Default for TaskRunnerConfig {
 #[non_exhaustive]
 pub enum TaskRunnerEngine {
     /// Vite+'s Rust task runner, invoked through the public `vp run` interface.
+    ///
+    /// Which is *not* how most tasks run, and the name is the last thing that
+    /// still says otherwise. A task that names a command is run by uf —
+    /// `uf_task` builds the dependency graph, runs independent nodes up to a
+    /// concurrency limit, and answers from `.uf/cache/task` when the files a
+    /// task declares it reads have not changed. This engine is reached only by
+    /// a task with *no* command of its own, which is Vite+'s to define; see
+    /// `uf run`'s `execute_task`, where handing `ci` to `vp run ci` once asked
+    /// Vite+ for a script it had never heard of.
+    ///
+    /// It stays the default because it is the only variant, and because the
+    /// hand-over it names is still real for the command-less case. See
+    /// ubugeeei-prod/uf#272.
     #[default]
     ViteTask,
 }

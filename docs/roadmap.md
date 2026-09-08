@@ -91,7 +91,9 @@ in `uf`.
   rather than by name, so `@uniflowed/vite` is one implementation of a written
   contract rather than a dependency four commands reach for (done).
 - Keep `uf.config.js` as the single config and task surface; generated projects
-  do not use npm scripts, and task execution goes through Vite Task.
+  do not use npm scripts, and uf runs the tasks it defines. Vite Task runs a
+  task that names no command of its own, and nothing else: `uf.config.js` is
+  where a task's meaning is written down and `vp run` cannot read it.
 - Keep app execution runtime-agnostic through Capability JS Hosts: Node.js,
   Deno, and Bun.
 - Add LSP JSON-RPC loop over config, parser diagnostics, formatter, and lints.
